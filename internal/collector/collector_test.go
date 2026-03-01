@@ -3,8 +3,8 @@ package collector
 import (
 	"testing"
 
-	"github.com/AthennaMind/opnsense-exporter/internal/options"
-	"github.com/AthennaMind/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 	"github.com/prometheus/common/promslog"
 )
 

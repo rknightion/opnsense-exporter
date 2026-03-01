@@ -1,4 +1,4 @@
-module github.com/AthennaMind/opnsense-exporter
+module github.com/rknightion/opnsense-exporter
 
 go 1.26.0
 

@@ -1,13 +1,14 @@
 # OPNsense Prometheus Exporter
 
-The missing OPNsense exporter for Prometheus
+> **Fork notice:** This is a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter), the original OPNsense Prometheus exporter. This fork includes significant additions and changes beyond the scope of the upstream project. Full credit to the original AthennaMind authors for building the foundation this work is based on.
 
-![GitHub License](https://img.shields.io/github/license/AthennaMind/opnsense-exporter)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/AthennaMind/opnsense-exporter/ci.yml)
-![GitHub go.mod Go version (branch)](https://img.shields.io/github/go-mod/go-version/AthennaMind/opnsense-exporter/main)
+![GitHub License](https://img.shields.io/github/license/rknightion/opnsense-exporter)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/rknightion/opnsense-exporter/ci.yml)
+![GitHub go.mod Go version (branch)](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
 
 ## Table of Contents
 
+- **[Changes from Upstream](#changes-from-upstream)**
 - **[About](#about)**
 - **[Grafana Dashboard](#grafana-dashboard)**
 - **[Metrics List](./docs/metrics.md)**
@@ -23,6 +24,30 @@ The missing OPNsense exporter for Prometheus
   - **[SSL/TLS](#ssltls)**
   - **[Exporters](#exporters)**
   - **[All Options](#all-options)**
+
+## Changes from Upstream
+
+This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) with the following additions and changes:
+
+### New Collectors
+
+- **Dnsmasq DHCP lease collector** — New collector exposing dnsmasq lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.dnsmasq-details`). Includes new `--exporter.disable-dnsmasq` flag.
+
+### Enhanced Collectors
+
+- **Interfaces** — Added 8 new metrics: received/transmitted packet totals, send queue length/max/drops, input queue drops, link state, and line rate.
+- **Protocol statistics** — Added 28 new metrics covering CARP (received/sent/dropped), pfsync (received/sent/dropped/errors), IP (received/forwarded/sent/dropped/fragments/reassembled), TCP (connections requested/accepted/established/closed/dropped, retransmit/keepalive timeouts, listen queue overflows, syncache entries), and ARP (sent failures/replies, received replies/packets, dropped no entry, entry timeouts).
+- **Unbound DNS** — Comprehensive overhaul adding 26 new metrics: query totals, cache hits/misses, prefetch/expired counts, recursive replies, timed-out/rate-limited queries, DNSSEC secure/bogus answers, queries by type and protocol, answers by rcode, unwanted queries, query flags, EDNS counts, request list stats (avg/max/current/overwritten/exceeded), recursion time (avg/median), cache counts by type, and memory usage by component.
+
+### Build & Infrastructure
+
+- **Go 1.26** — Upgraded from Go 1.25, gaining Green Tea GC (10-40% less GC overhead), ~2x faster `io.ReadAll` for API responses, and post-quantum TLS by default.
+- **Go modernization** — Applied `go fix` modernizers: `interface{}` replaced with `any`, unused loop variables removed with `for range` syntax.
+- **Standalone fork** — Module path changed to `github.com/rknightion/opnsense-exporter`. All container images, CI/CD, and deployment manifests updated accordingly.
+
+### Utilities
+
+- **Safe string parsing** — Added utility functions for safe string-to-number conversion used across the enhanced collectors.
 
 ## About
 
@@ -72,7 +97,7 @@ The exporter requires that the following OPNsense settings be enabled:
 The following command will start the exporter and expose the metrics on port 8080. Replace `ops.example.com`, `your-api-key`, `your-api-secret` and `instance1` with your own values.
 
 ```bash
-docker run -p 8080:8080 ghcr.io/athennamind/opnsense-exporter:latest \
+docker run -p 8080:8080 ghcr.io/rknightion/opnsense-exporter:latest \
       /opnsense-exporter \
       --log.level=debug \
       --log.format=json \
@@ -94,7 +119,7 @@ TODO: Add example how to add custom CA certificates to the container.
 version: '3'
 services:
   opnsense-exporter:
-    image: ghcr.io/athennamind/opnsense-exporter:latest
+    image: ghcr.io/rknightion/opnsense-exporter:latest
     container_name: opensense-exporter
     restart: always
     command:
@@ -127,7 +152,7 @@ Run the compose
 version: '3'
 services:
   opnsense-exporter:
-    image: ghcr.io/athennamind/opnsense-exporter:latest
+    image: ghcr.io/rknightion/opnsense-exporter:latest
     container_name: opensense-exporter
     restart: always
     command:

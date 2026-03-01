@@ -19,7 +19,7 @@ type HealthCheckResponse struct {
 		StatusCode int    `json:"statusCode"`
 	} `json:"Firewall"`
 	// OPNsense>25.1 has a different structure
-	// See https://github.com/AthennaMind/opnsense-exporter/issues/48#issuecomment-2692494735
+	// See https://github.com/rknightion/opnsense-exporter/issues/48#issuecomment-2692494735
 	Metadata struct {
 		System struct {
 			Status any `json:"status"`
@@ -70,7 +70,7 @@ func (h *HealthCheckResponse) GetMetadataFirewallStatus() int {
 const (
 	HealthCheckStatusOK = "OK"
 	// OPNsense>25.1 has a different value
-	// See https://github.com/AthennaMind/opnsense-exporter/issues/48#issuecomment-2692494735
+	// See https://github.com/rknightion/opnsense-exporter/issues/48#issuecomment-2692494735
 	HealthCheckStatusOK_v25_1 = 2
 )
 

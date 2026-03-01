@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/AthennaMind/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

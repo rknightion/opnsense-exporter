@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/AthennaMind/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
 // MaxRetries is the maximum number of retries

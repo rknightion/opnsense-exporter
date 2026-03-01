@@ -47,3 +47,4 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 - **Version** is read from the `VERSION` file and embedded at build time
 - Linters: `misspell` and `revive` are enabled; `unused` is disabled
 - API key/secret support file-based secrets (`OPS_API_KEY_FILE`, `OPS_API_SECRET_FILE`)
+- **Fork changelog** — This is a fork of AthennaMind/opnsense-exporter. The "Changes from Upstream" section in `README.md` must be kept up to date. When adding new collectors, enhancing existing collectors, changing build/infrastructure, or making any other notable change, add a bullet to the appropriate subsection in that list.

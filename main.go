@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/AthennaMind/opnsense-exporter/internal/collector"
-	"github.com/AthennaMind/opnsense-exporter/internal/options"
-	"github.com/AthennaMind/opnsense-exporter/opnsense"
+	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 	"github.com/prometheus/client_golang/prometheus"
 	promcollectors "github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

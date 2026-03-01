@@ -6,7 +6,7 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG Version
 
-WORKDIR /go/src/github.com/AthennaMind/opnsense-exporter
+WORKDIR /go/src/github.com/rknightion/opnsense-exporter
 COPY . .
 
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
@@ -17,9 +17,9 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
 
 FROM --platform=${BUILDPLATFORM:-linux/amd64} gcr.io/distroless/static-debian12:latest
 
-LABEL org.opencontainers.image.source=https://github.com/AthennaMind/opnsense-exporter
+LABEL org.opencontainers.image.source=https://github.com/rknightion/opnsense-exporter
 LABEL org.opencontainers.image.version=${Version}
-LABEL org.opencontainers.image.authors="The AthennaMind Authors admins@athennamind.com"
+LABEL org.opencontainers.image.authors="rknightion"
 LABEL org.opencontainers.image.title="OPNsense Prometheus Exporter"
 LABEL org.opencontainers.image.description="Prometheus exporter for OPNsense"
 

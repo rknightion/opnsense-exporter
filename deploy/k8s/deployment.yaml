@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: opnsense-exporter
-          image: ghcr.io/athennamind/opnsense-exporter:latest
+          image: ghcr.io/rknightion/opnsense-exporter:latest
           imagePullPolicy: Always
           # In pod, mount OPNSense API credentials as files
           volumeMounts:

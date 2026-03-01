@@ -70,7 +70,7 @@
       }
     ]
   },
-  "description": "Dashboard for the OPNsense Prometheus Exporter\n\nhttps://github.com/AthennaMind/opnsense-exporter",
+  "description": "Dashboard for the OPNsense Prometheus Exporter\n\nhttps://github.com/rknightion/opnsense-exporter",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -86,7 +86,7 @@
       "title": "OPNsense Exporter",
       "tooltip": "Give us a star",
       "type": "link",
-      "url": "https://github.com/AthennaMind/opnsense-exporter"
+      "url": "https://github.com/rknightion/opnsense-exporter"
     }
   ],
   "liveNow": true,
