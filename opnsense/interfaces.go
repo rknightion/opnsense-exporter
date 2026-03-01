@@ -1,5 +1,7 @@
 package opnsense
 
+import "strings"
+
 type InterfaceDetails struct {
 	Device                    string `json:"device"`
 	Driver                    string `json:"driver"`
@@ -55,6 +57,12 @@ type Interface struct {
 	InputErrors           int
 	OutputErrors          int
 	Collisions            int
+	SendQueueLength       int
+	SendQueueMaxLength    int
+	SendQueueDrops        int
+	InputQueueDrops       int
+	LinkState             int // 1=up, 0=down
+	LineRate              int // bits per second
 }
 
 type Interfaces struct {
@@ -88,11 +96,19 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 				v.MulticastsReceived, v.MulticastsTransmitted,
 				v.InputErrors, v.OutputErrors,
 				v.Collisions,
+				v.SendQueueLength, v.SendQueueMaxLength,
+				v.SendQueueDrops, v.InputQueueDrops,
+				v.LineRate,
 			},
 			url,
 		)
 		if err != nil {
 			return data, err
+		}
+
+		linkState := 0
+		if strings.Contains(v.LinkState, "up") {
+			linkState = 1
 		}
 
 		data.Interfaces = append(data.Interfaces, Interface{
@@ -109,6 +125,12 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			InputErrors:           convertedValues[v.InputErrors],
 			OutputErrors:          convertedValues[v.OutputErrors],
 			Collisions:            convertedValues[v.Collisions],
+			SendQueueLength:       convertedValues[v.SendQueueLength],
+			SendQueueMaxLength:    convertedValues[v.SendQueueMaxLength],
+			SendQueueDrops:        convertedValues[v.SendQueueDrops],
+			InputQueueDrops:       convertedValues[v.InputQueueDrops],
+			LinkState:             linkState,
+			LineRate:              convertedValues[v.LineRate],
 		})
 	}
 
