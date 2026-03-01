@@ -262,6 +262,54 @@ type ProtocolStatistics struct {
 	UDPOutputPackets          int
 	UDPReceivedDatagrams      int
 	UDPDroppedByReason        map[string]int
+
+	// CARP
+	CARPReceivedInet    int
+	CARPReceivedInet6   int
+	CARPSentInet        int
+	CARPSentInet6       int
+	CARPDroppedByReason map[string]int
+
+	// Pfsync
+	PfsyncReceivedInet    int
+	PfsyncReceivedInet6   int
+	PfsyncSentInet        int
+	PfsyncSentInet6       int
+	PfsyncDroppedByReason map[string]int
+	PfsyncSendErrors      int
+
+	// IP
+	IPReceivedPackets      int
+	IPForwardedPackets     int
+	IPFastForwardedPackets int
+	IPSentPackets          int
+	IPDroppedByReason      map[string]int
+	IPReceivedFragments    int
+	IPReassembledPackets   int
+	IPSentFragments        int
+
+	// Detailed TCP
+	TCPRetransmitTimeouts            int
+	TCPConnectionRequests            int
+	TCPConnectionAccepts             int
+	TCPConnectionsEstablished        int
+	TCPConnectionsClosed             int
+	TCPConnectionDrops               int
+	TCPKeepaliveTimeouts             int
+	TCPKeepaliveProbes               int
+	TCPConnectionsDroppedByKeepalive int
+	TCPListenQueueOverflows          int
+	TCPSyncacheEntriesAdded          int
+	TCPSyncacheDropped               int
+
+	// ARP detailed
+	ARPSentFailures            int
+	ARPSentReplies             int
+	ARPReceivedReplies         int
+	ARPReceivedPackets         int
+	ARPDroppedNoEntry          int
+	ARPEntriesTimeout          int
+	ARPDroppedDuplicateAddress int
 }
 
 func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
@@ -318,6 +366,89 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 			"BROADCAST_MULTICAST": resp.Statistics.UDP.DroppedBroadcastMulticast,
 			"FULL_SOCKET_BUFFER":  resp.Statistics.UDP.DroppedFullSocketBuffer,
 		},
+
+		// CARP
+		CARPReceivedInet:  resp.Statistics.Carp.ReceivedInetPackets,
+		CARPReceivedInet6: resp.Statistics.Carp.ReceivedInet6Packets,
+		CARPSentInet:      resp.Statistics.Carp.SentInetPackets,
+		CARPSentInet6:     resp.Statistics.Carp.SentInet6Packets,
+		CARPDroppedByReason: map[string]int{
+			"WRONG_TTL":        resp.Statistics.Carp.DroppedWrongTTL,
+			"SHORT_HEADER":     resp.Statistics.Carp.DroppedShortHeader,
+			"BAD_CHECKSUM":     resp.Statistics.Carp.DroppedBadChecksum,
+			"BAD_VERSION":      resp.Statistics.Carp.DroppedBadVersion,
+			"SHORT_PACKET":     resp.Statistics.Carp.DroppedShortPacket,
+			"BAD_AUTH":         resp.Statistics.Carp.DroppedBadAuthentication,
+			"BAD_VHID":         resp.Statistics.Carp.DroppedBadVhid,
+			"BAD_ADDRESS_LIST": resp.Statistics.Carp.DroppedBadAddressList,
+		},
+
+		// Pfsync
+		PfsyncReceivedInet:  resp.Statistics.Pfsync.ReceivedInetPackets,
+		PfsyncReceivedInet6: resp.Statistics.Pfsync.ReceivedInet6Packets,
+		PfsyncSentInet:      resp.Statistics.Pfsync.SentInetPackets,
+		PfsyncSentInet6:     resp.Statistics.Pfsync.SendInet6Packets,
+		PfsyncDroppedByReason: map[string]int{
+			"BAD_INTERFACE": resp.Statistics.Pfsync.DroppedBadInterface,
+			"BAD_TTL":       resp.Statistics.Pfsync.DroppedBadTTL,
+			"SHORT_HEADER":  resp.Statistics.Pfsync.DroppedShortHeader,
+			"BAD_VERSION":   resp.Statistics.Pfsync.DroppedBadVersion,
+			"BAD_AUTH":      resp.Statistics.Pfsync.DroppedBadAuth,
+			"BAD_ACTION":    resp.Statistics.Pfsync.DroppedBadAction,
+			"SHORT":         resp.Statistics.Pfsync.DroppedShort,
+			"BAD_VALUES":    resp.Statistics.Pfsync.DroppedBadValues,
+			"STALE_STATE":   resp.Statistics.Pfsync.DroppedStaleState,
+			"FAILED_LOOKUP": resp.Statistics.Pfsync.DroppedFailedLookup,
+		},
+		PfsyncSendErrors: resp.Statistics.Pfsync.SendErrors,
+
+		// IP
+		IPReceivedPackets:      resp.Statistics.IP.ReceivedPackets,
+		IPForwardedPackets:     resp.Statistics.IP.ForwardedPackets,
+		IPFastForwardedPackets: resp.Statistics.IP.FastForwardedPackets,
+		IPSentPackets:          resp.Statistics.IP.SentPackets,
+		IPDroppedByReason: map[string]int{
+			"BAD_CHECKSUM":        resp.Statistics.IP.DroppedBadChecksum,
+			"BELOW_MINIMUM_SIZE":  resp.Statistics.IP.DroppedBelowMinimumSize,
+			"SHORT_PACKETS":       resp.Statistics.IP.DroppedShortPackets,
+			"TOO_LONG":            resp.Statistics.IP.DroppedTooLong,
+			"SHORT_HEADER_LENGTH": resp.Statistics.IP.DroppedShortHeaderLength,
+			"SHORT_DATA":          resp.Statistics.IP.DroppedShortData,
+			"BAD_OPTIONS":         resp.Statistics.IP.DroppedBadOptions,
+			"BAD_VERSION":         resp.Statistics.IP.DroppedBadVersion,
+			"UNKNOWN_PROTOCOL":    resp.Statistics.IP.DroppedUnknownProtocol,
+			"CANNOT_FORWARD":      resp.Statistics.IP.PacketsCannotForward,
+			"NO_MBUFS":            resp.Statistics.IP.DiscardNoMbufs,
+			"NO_ROUTE":            resp.Statistics.IP.DiscardNoRoute,
+			"CANNOT_FRAGMENT":     resp.Statistics.IP.DiscardCannotFragment,
+			"BAD_ADDRESS":         resp.Statistics.IP.DiscardBadAddress,
+		},
+		IPReceivedFragments:  resp.Statistics.IP.ReceivedFragments,
+		IPReassembledPackets: resp.Statistics.IP.ReassembledPackets,
+		IPSentFragments:      resp.Statistics.IP.SentFragments,
+
+		// Detailed TCP
+		TCPRetransmitTimeouts:            resp.Statistics.TCP.RetransmitTimeouts,
+		TCPConnectionRequests:            resp.Statistics.TCP.ConnectionRequests,
+		TCPConnectionAccepts:             resp.Statistics.TCP.ConnectionsAccepts,
+		TCPConnectionsEstablished:        resp.Statistics.TCP.ConnectionsEstablished,
+		TCPConnectionsClosed:             resp.Statistics.TCP.ConnectionsClosed,
+		TCPConnectionDrops:               resp.Statistics.TCP.ConnectionDrops,
+		TCPKeepaliveTimeouts:             resp.Statistics.TCP.KeepaliveTimeout,
+		TCPKeepaliveProbes:               resp.Statistics.TCP.KeepaliveProbes,
+		TCPConnectionsDroppedByKeepalive: resp.Statistics.TCP.ConnectionsDroppedByKeepalives,
+		TCPListenQueueOverflows:          resp.Statistics.TCP.ListenQueueOverflows,
+		TCPSyncacheEntriesAdded:          resp.Statistics.TCP.Syncache.EntriesAdded,
+		TCPSyncacheDropped:               resp.Statistics.TCP.Syncache.Dropped,
+
+		// ARP detailed
+		ARPSentFailures:            resp.Statistics.Arp.SentFailures,
+		ARPSentReplies:             resp.Statistics.Arp.SentReplies,
+		ARPReceivedReplies:         resp.Statistics.Arp.ReceivedReplies,
+		ARPReceivedPackets:         resp.Statistics.Arp.ReceivedPackets,
+		ARPDroppedNoEntry:          resp.Statistics.Arp.DroppedNoEntry,
+		ARPEntriesTimeout:          resp.Statistics.Arp.EntriesTimeout,
+		ARPDroppedDuplicateAddress: resp.Statistics.Arp.DroppedDuplicateAddress,
 	}
 
 	return out, nil
