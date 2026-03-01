@@ -142,7 +142,7 @@ func (c *Client) do(method string, path EndpointPath, body io.Reader, responseSt
 	c.log.Debug("fetching data", "component", "opnsense-client", "url", url, "method", method)
 
 	// Retry the request up to MaxRetries times
-	for i := 0; i < MaxRetries; i++ {
+	for range MaxRetries {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			c.log.Error("failed to send request; retrying",

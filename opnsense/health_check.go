@@ -22,7 +22,7 @@ type HealthCheckResponse struct {
 	// See https://github.com/AthennaMind/opnsense-exporter/issues/48#issuecomment-2692494735
 	Metadata struct {
 		System struct {
-			Status interface{} `json:"status"`
+			Status any `json:"status"`
 		} `json:"System"`
 		CrashReporter struct {
 			Message    string `json:"message"`
@@ -30,9 +30,9 @@ type HealthCheckResponse struct {
 			StatusCode int    `json:"statusCode"`
 		} `json:"CrashReporter"`
 		Firewall struct {
-			Message    string      `json:"message"`
-			Status     interface{} `json:"status"`
-			StatusCode int         `json:"statusCode"`
+			Message    string `json:"message"`
+			Status     any    `json:"status"`
+			StatusCode int    `json:"statusCode"`
 		} `json:"Firewall"`
 	} `json:"metadata"`
 }
