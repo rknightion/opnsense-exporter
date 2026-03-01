@@ -81,6 +81,7 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"ipsecPhase2":             "api/ipsec/sessions/search_phase2",
 			"healthCheck":             "api/core/system/status",
 			"firmware":                "api/core/firmware/status",
+			"dnsmasqLeases":           "api/dnsmasq/leases/search",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",

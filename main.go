@@ -91,6 +91,14 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutOpenVPNCollector())
 		logger.Info("openvpn collector disabled")
 	}
+	if !collectorsSwitches.Dnsmasq {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDnsmasqCollector())
+		logger.Info("dnsmasq collector disabled")
+	}
+	if collectorsSwitches.DnsmasqDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDnsmasqDetails())
+		logger.Info("dnsmasq per-lease details enabled")
+	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
 	if err != nil {

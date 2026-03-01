@@ -31,6 +31,7 @@ const (
 	ServicesSubsystem   = "services"
 	FirewallSubsystem   = "firewall"
 	FirmwareSubsystem   = "firmware"
+	DnsmasqSubsystem    = "dnsmasq"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -118,6 +119,25 @@ func WithoutFirmwareCollector() Option { return withoutCollectorInstance(Firmwar
 // removes the openvpn collector from the list of collectors
 func WithoutOpenVPNCollector() Option {
 	return withoutCollectorInstance(OpenVPNSubsystem)
+}
+
+// WithoutDnsmasqCollector Option
+// removes the dnsmasq collector from the list of collectors
+func WithoutDnsmasqCollector() Option {
+	return withoutCollectorInstance(DnsmasqSubsystem)
+}
+
+// WithDnsmasqDetails enables per-lease detail metrics for the dnsmasq collector
+func WithDnsmasqDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if dc, ok := c.(*dnsmasqCollector); ok {
+				dc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
 }
 
 // New creates a new Collector instance.

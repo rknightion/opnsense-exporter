@@ -35,30 +35,42 @@ var (
 		"exporter.disable-firmware",
 		"Disable the scraping of the firmware metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FIRMWARE").Default("false").Bool()
+	dnsmasqCollectorDisabled = kingpin.Flag(
+		"exporter.disable-dnsmasq",
+		"Disable the scraping of Dnsmasq DHCP leases",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_DNSMASQ").Default("false").Bool()
+	dnsmasqDetailsEnabled = kingpin.Flag(
+		"exporter.enable-dnsmasq-details",
+		"Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
 type CollectorsDisableSwitch struct {
-	ARP       bool
-	Cron      bool
-	Wireguard bool
-	IPsec     bool
-	Unbound   bool
-	OpenVPN   bool
-	Firewall  bool
-	Firmware  bool
+	ARP            bool
+	Cron           bool
+	Wireguard      bool
+	IPsec          bool
+	Unbound        bool
+	OpenVPN        bool
+	Firewall       bool
+	Firmware       bool
+	Dnsmasq        bool
+	DnsmasqDetails bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
 func CollectorsSwitches() CollectorsDisableSwitch {
 	return CollectorsDisableSwitch{
-		ARP:       !*arpTableCollectorDisabled,
-		Cron:      !*cronTableCollectorDisabled,
-		Wireguard: !*wireguardCollectorDisabled,
-		IPsec:     !*ipsecCollectorDisabled,
-		Unbound:   !*unboundCollectorDisabled,
-		OpenVPN:   !*openVPNCollectorDisabled,
-		Firewall:  !*firewallCollectorDisabled,
-		Firmware:  !*firmwareCollectorDisabled,
+		ARP:            !*arpTableCollectorDisabled,
+		Cron:           !*cronTableCollectorDisabled,
+		Wireguard:      !*wireguardCollectorDisabled,
+		IPsec:          !*ipsecCollectorDisabled,
+		Unbound:        !*unboundCollectorDisabled,
+		OpenVPN:        !*openVPNCollectorDisabled,
+		Firewall:       !*firewallCollectorDisabled,
+		Firmware:       !*firmwareCollectorDisabled,
+		Dnsmasq:        !*dnsmasqCollectorDisabled,
+		DnsmasqDetails: *dnsmasqDetailsEnabled,
 	}
 }

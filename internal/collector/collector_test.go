@@ -29,6 +29,7 @@ func TestCollector(t *testing.T) {
 		WithoutUnboundCollector(),
 		WithoutWireguardCollector(),
 		WithoutFirewallCollector(),
+		WithoutDnsmasqCollector(),
 	}
 
 	collector, err := New(&client, promslog.NewNopLogger(), "test", collectOpts...)
@@ -48,6 +49,8 @@ func TestCollector(t *testing.T) {
 			t.Errorf("expected wireguard collector to be removed")
 		case "firewall":
 			t.Errorf("expected firewall collector to be removed")
+		case "dnsmasq":
+			t.Errorf("expected dnsmasq collector to be removed")
 		}
 	}
 }
