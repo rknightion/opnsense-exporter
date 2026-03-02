@@ -3,8 +3,8 @@ package collector
 import (
 	"log/slog"
 
-	"github.com/rknightion/opnsense-exporter/opnsense"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
 type firewallCollector struct {

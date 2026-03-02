@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/rknightion/opnsense-exporter/opnsense"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
 // namespace is the prefix for all metrics.
