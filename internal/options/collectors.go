@@ -71,6 +71,22 @@ var (
 		"exporter.disable-certificates",
 		"Disable the scraping of certificate expiry metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_CERTIFICATES").Default("false").Bool()
+	carpCollectorDisabled = kingpin.Flag(
+		"exporter.disable-carp",
+		"Disable the scraping of CARP/VIP status metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CARP").Default("false").Bool()
+	activityCollectorDisabled = kingpin.Flag(
+		"exporter.disable-activity",
+		"Disable the scraping of system activity metrics (CPU percentages, thread counts)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_ACTIVITY").Default("false").Bool()
+	keaCollectorDisabled = kingpin.Flag(
+		"exporter.disable-kea",
+		"Disable the scraping of Kea DHCP lease metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_KEA").Default("false").Bool()
+	keaDetailsEnabled = kingpin.Flag(
+		"exporter.enable-kea-details",
+		"Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -92,6 +108,10 @@ type CollectorsDisableSwitch struct {
 	Mbuf                 bool
 	NTP                  bool
 	Certificates         bool
+	CARP                 bool
+	Activity             bool
+	Kea                  bool
+	KeaDetails           bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -114,5 +134,9 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Mbuf:                 !*mbufCollectorDisabled,
 		NTP:                  !*ntpCollectorDisabled,
 		Certificates:         !*certificatesCollectorDisabled,
+		CARP:                 !*carpCollectorDisabled,
+		Activity:             !*activityCollectorDisabled,
+		Kea:                  !*keaCollectorDisabled,
+		KeaDetails:           *keaDetailsEnabled,
 	}
 }
