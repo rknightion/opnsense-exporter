@@ -202,22 +202,28 @@ func (c *Client) FetchGateways() (Gateways, *APICallError) {
 			LabelClass:           v.LabelClass,
 		}
 
-		switch {
-		case g.LatencyLow == "":
+		if g.LatencyLow == "" {
 			g.LatencyLow = v.CurrentLatencyLow
-		case g.LatencyHigh == "":
+		}
+		if g.LatencyHigh == "" {
 			g.LatencyHigh = v.CurrentLatencyHigh
-		case g.LossLow == "":
+		}
+		if g.LossLow == "" {
 			g.LossLow = v.CurrentLossLow
-		case g.LossHigh == "":
+		}
+		if g.LossHigh == "" {
 			g.LossHigh = v.CurrentLossHigh
-		case g.Interval == "":
+		}
+		if g.Interval == "" {
 			g.Interval = v.CurrentInterval
-		case g.TimePeriod == "":
+		}
+		if g.TimePeriod == "" {
 			g.TimePeriod = v.CurrentTimePeriod
-		case g.LossInterval == "":
+		}
+		if g.LossInterval == "" {
 			g.LossInterval = v.CurrentLossInterval
-		case g.DataLength == "":
+		}
+		if g.DataLength == "" {
 			g.DataLength = v.CurrentDataLength
 		}
 
