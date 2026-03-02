@@ -42,6 +42,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **System activity collector** — New collector exposing CPU usage percentages (user, nice, system, interrupt, idle) and thread counts (total, running, sleeping, waiting) parsed from the activity API headers. Polls `api/diagnostics/activity/get_activity`. Includes new `--exporter.disable-activity` / `OPNSENSE_EXPORTER_DISABLE_ACTIVITY` flag.
 - **Kea DHCP lease collector** — New collector exposing Kea DHCPv4 and DHCPv6 lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.enable-kea-details`). Polls both `api/kea/leases4/search` and `api/kea/leases6/search`. Includes new `--exporter.disable-kea` / `OPNSENSE_EXPORTER_DISABLE_KEA` flag.
 - **Network diagnostics collector** — New opt-in collector exposing kernel network ISR statistics (dispatched, hybrid dispatched, queued, handled, queue drops, queue length/watermark/limit per protocol), active socket counts by type, UNIX domain socket count, and routing table counts by protocol. Polls 3 API endpoints. Disabled by default; enable with `--exporter.enable-network-diagnostics` / `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS=true`.
+- **NetFlow collector** — New opt-in collector exposing netflow service status (enabled, local collection, active state, collector count) and per-interface cache statistics (packets total, unique source/destination IP addresses). Polls 3 API endpoints (`isEnabled`, `status`, `cacheStats`). Disabled by default; enable with `--exporter.enable-netflow` / `OPNSENSE_EXPORTER_ENABLE_NETFLOW=true`.
 
 ### Enhanced Collectors
 
@@ -255,6 +256,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | Flag | Env Var | Description |
 |------|---------|-------------|
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | Network diagnostics: kernel netisr stats, socket counts, route counts. Makes 3 API calls per scrape. |
+| `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | NetFlow: service status, enabled state, per-interface cache statistics. Makes 3 API calls per scrape. |
 
 #### High-cardinality detail options
 
@@ -312,6 +314,7 @@ Collector disable flags (all enabled by default):
 
 Collector enable flags (all disabled by default):
       --[no-]exporter.enable-network-diagnostics Enable the network diagnostics collector (netisr, sockets, routes)
+      --[no-]exporter.enable-netflow             Enable the netflow collector (enabled status, service status, cache stats)
 
 High-cardinality detail flags (all disabled by default):
       --[no-]exporter.enable-dnsmasq-details     Enable per-lease detail metrics for Dnsmasq DHCP
