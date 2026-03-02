@@ -193,7 +193,7 @@ Sample opnsense code:
 Note: parseStringToInt is already available in opnsense/utils.go.
 
 ================================================================================
-TODO 5: MBUF STATISTICS COLLECTOR (MEDIUM PRIORITY)
+TODO 5: MBUF STATISTICS COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: Network buffer (mbuf) exhaustion causes packet drops and network failures on
@@ -261,7 +261,7 @@ Note: All values are already integers. The JSON uses hyphenated keys so use
 json tags like `json:"mbuf-current"`.
 
 ================================================================================
-TODO 6: NTP COLLECTOR (MEDIUM PRIORITY)
+TODO 6: NTP COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: NTP accuracy is important for log correlation, certificate validation, and
@@ -327,7 +327,7 @@ Notes:
     Parse as integer for the metric value.
 
 ================================================================================
-TODO 7: CERTIFICATE EXPIRY COLLECTOR (MEDIUM PRIORITY)
+TODO 7: CERTIFICATE EXPIRY COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: Expired or soon-to-expire certificates cause service outages. Exposing
@@ -460,7 +460,7 @@ Notes:
     in use, OR just always expose the carp metadata (low cost).
 
 ================================================================================
-TODO 9: UNBOUND BLOCK LIST STATUS (LOW PRIORITY — ENHANCEMENT)
+TODO 9: UNBOUND BLOCK LIST STATUS (LOW PRIORITY — ENHANCEMENT) [COMPLETE]
 ================================================================================
 
 WHY: Many users use Unbound DNS block lists (similar to Pi-hole). Monitoring
@@ -503,7 +503,7 @@ Sample code addition to internal/collector/unbound_dns.go Update():
   }
 
 ================================================================================
-TODO 10: HEALTH CHECK ENHANCEMENT (LOW PRIORITY — ENHANCEMENT)
+TODO 10: HEALTH CHECK ENHANCEMENT (LOW PRIORITY — ENHANCEMENT) [COMPLETE]
 ================================================================================
 
 WHY: The current health check only exposes a binary firewall_status. The API
@@ -779,7 +779,7 @@ Files to modify:
   - opnsense/utils.go        (optional: add parseLineRateBits helper)
 
 ================================================================================
-TODO 17: EXPAND PROTOCOL STATISTICS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY)
+TODO 17: EXPAND PROTOCOL STATISTICS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: opnsense/protocol_statistics.go already parses many fields from the API that
@@ -832,7 +832,7 @@ the most operationally useful ones to avoid metric bloat. The list above focuses
 on retransmissions, data volume, and error conditions.
 
 ================================================================================
-TODO 18: EXPAND UNBOUND DNS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY)
+TODO 18: EXPAND UNBOUND DNS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: opnsense/unbound_dns.go parses TCPUsage (line 383) and potentially other
@@ -1153,4 +1153,4 @@ CLAUDE SHOULD IGNORE BELOW THIS LINE!
 
 prompt text (already at start of instruction)
 
-Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 5. You can also address any other TODO items required to get 3 in place or that would be complementary or sensible to implement at the same time. Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
+Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 8. You can also address any other TODO items required to get that in place or that would be complementary or sensible to implement at the same time. Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
