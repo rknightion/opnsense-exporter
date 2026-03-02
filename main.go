@@ -125,6 +125,22 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDnsmasqDetails())
 		logger.Info("dnsmasq per-lease details enabled")
 	}
+	if !collectorsSwitches.CARP {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCARPCollector())
+		logger.Info("carp collector disabled")
+	}
+	if !collectorsSwitches.Activity {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutActivityCollector())
+		logger.Info("activity collector disabled")
+	}
+	if !collectorsSwitches.Kea {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutKeaCollector())
+		logger.Info("kea collector disabled")
+	}
+	if collectorsSwitches.KeaDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithKeaDetails())
+		logger.Info("kea per-lease details enabled")
+	}
 	if collectorsSwitches.FirewallRulesDetails {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithFirewallRulesDetails())
 		logger.Info("firewall rules per-rule details enabled")
