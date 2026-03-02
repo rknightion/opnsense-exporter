@@ -22,7 +22,7 @@ builds:
       - netgo
     ldflags:
       - -s -w
-      - -X main.version=${TAG}
+      - -X main.version={{ .Version }}
 
 archives:
   - format: tar.gz
@@ -44,11 +44,4 @@ snapshot:
   name_template: "{{ incpatch .Version }}-next"
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - Merge pull request
-      - Merge branch
+  disable: true
