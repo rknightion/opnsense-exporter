@@ -59,6 +59,18 @@ var (
 		"exporter.enable-firewall-rules-details",
 		"Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets)",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS").Default("false").Bool()
+	mbufCollectorDisabled = kingpin.Flag(
+		"exporter.disable-mbuf",
+		"Disable the scraping of mbuf statistics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_MBUF").Default("false").Bool()
+	ntpCollectorDisabled = kingpin.Flag(
+		"exporter.disable-ntp",
+		"Disable the scraping of NTP peer metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_NTP").Default("false").Bool()
+	certificatesCollectorDisabled = kingpin.Flag(
+		"exporter.disable-certificates",
+		"Disable the scraping of certificate expiry metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CERTIFICATES").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -77,6 +89,9 @@ type CollectorsDisableSwitch struct {
 	FirewallRulesDetails bool
 	System               bool
 	Temperature          bool
+	Mbuf                 bool
+	NTP                  bool
+	Certificates         bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -96,5 +111,8 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		FirewallRulesDetails: *firewallRulesDetailsEnabled,
 		System:               !*systemCollectorDisabled,
 		Temperature:          !*temperatureCollectorDisabled,
+		Mbuf:                 !*mbufCollectorDisabled,
+		NTP:                  !*ntpCollectorDisabled,
+		Certificates:         !*certificatesCollectorDisabled,
 	}
 }

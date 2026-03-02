@@ -35,6 +35,9 @@ const (
 	SystemSubsystem        = "system"
 	TemperatureSubsystem   = "temperature"
 	FirewallRulesSubsystem = "firewall_rule"
+	MbufSubsystem          = "mbuf"
+	NTPSubsystem           = "ntp"
+	CertificatesSubsystem  = "certificate"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -146,6 +149,24 @@ func WithoutTemperatureCollector() Option {
 // removes the firewall_rule collector from the list of collectors
 func WithoutFirewallRulesCollector() Option {
 	return withoutCollectorInstance(FirewallRulesSubsystem)
+}
+
+// WithoutMbufCollector Option
+// removes the mbuf collector from the list of collectors
+func WithoutMbufCollector() Option {
+	return withoutCollectorInstance(MbufSubsystem)
+}
+
+// WithoutNTPCollector Option
+// removes the ntp collector from the list of collectors
+func WithoutNTPCollector() Option {
+	return withoutCollectorInstance(NTPSubsystem)
+}
+
+// WithoutCertificatesCollector Option
+// removes the certificate collector from the list of collectors
+func WithoutCertificatesCollector() Option {
+	return withoutCollectorInstance(CertificatesSubsystem)
 }
 
 // WithFirewallRulesDetails enables per-rule detail metrics for the firewall rules collector

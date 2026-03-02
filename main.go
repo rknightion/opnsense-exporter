@@ -109,6 +109,18 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutTemperatureCollector())
 		logger.Info("temperature collector disabled")
 	}
+	if !collectorsSwitches.Mbuf {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutMbufCollector())
+		logger.Info("mbuf collector disabled")
+	}
+	if !collectorsSwitches.NTP {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNTPCollector())
+		logger.Info("ntp collector disabled")
+	}
+	if !collectorsSwitches.Certificates {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCertificatesCollector())
+		logger.Info("certificates collector disabled")
+	}
 	if collectorsSwitches.DnsmasqDetails {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDnsmasqDetails())
 		logger.Info("dnsmasq per-lease details enabled")

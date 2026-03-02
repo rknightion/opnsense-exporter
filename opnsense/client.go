@@ -90,6 +90,10 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"pfStates":                "api/diagnostics/firewall/pf_states/1",
 			"firewallRuleStats":       "api/firewall/filter_util/rule_stats",
 			"firewallRules":           "api/firewall/filter/search_rule",
+			"systemMbuf":              "api/diagnostics/system/systemMbuf",
+			"ntpStatus":               "api/ntpd/service/status",
+			"certificates":            "api/trust/cert/search",
+			"unboundBlockList":        "api/unbound/overview/isBlockListEnabled",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",
