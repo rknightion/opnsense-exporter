@@ -225,6 +225,15 @@ func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus
 					v.Monitor,
 					c.instance,
 				)
+				f64, _ = strconv.ParseFloat(v.TimePeriod, 64)
+				ch <- prometheus.MustNewConstMetric(
+					c.period,
+					prometheus.GaugeValue,
+					f64,
+					v.Name,
+					v.Monitor,
+					c.instance,
+				)
 				f64, _ = strconv.ParseFloat(v.LossInterval, 64)
 				ch <- prometheus.MustNewConstMetric(
 					c.timeout,
