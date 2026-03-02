@@ -38,6 +38,9 @@ const (
 	MbufSubsystem          = "mbuf"
 	NTPSubsystem           = "ntp"
 	CertificatesSubsystem  = "certificate"
+	CARPSubsystem          = "carp"
+	ActivitySubsystem      = "activity"
+	KeaSubsystem           = "kea"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -168,6 +171,37 @@ func WithoutNTPCollector() Option {
 // removes the certificate collector from the list of collectors
 func WithoutCertificatesCollector() Option {
 	return withoutCollectorInstance(CertificatesSubsystem)
+}
+
+// WithoutCARPCollector Option
+// removes the carp collector from the list of collectors
+func WithoutCARPCollector() Option {
+	return withoutCollectorInstance(CARPSubsystem)
+}
+
+// WithoutActivityCollector Option
+// removes the activity collector from the list of collectors
+func WithoutActivityCollector() Option {
+	return withoutCollectorInstance(ActivitySubsystem)
+}
+
+// WithoutKeaCollector Option
+// removes the kea collector from the list of collectors
+func WithoutKeaCollector() Option {
+	return withoutCollectorInstance(KeaSubsystem)
+}
+
+// WithKeaDetails enables per-lease detail metrics for the kea collector
+func WithKeaDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if kc, ok := c.(*keaCollector); ok {
+				kc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
 }
 
 // WithFirewallRulesDetails enables per-rule detail metrics for the firewall rules collector
