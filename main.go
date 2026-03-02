@@ -85,6 +85,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallCollector())
 		logger.Info("firewall collector disabled")
 	}
+	if !collectorsSwitches.FirewallRules {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallRulesCollector())
+		logger.Info("firewall rules collector disabled")
+	}
 	if !collectorsSwitches.Firmware {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirmwareCollector())
 		logger.Info("firmware collector disabled")
@@ -97,9 +101,21 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDnsmasqCollector())
 		logger.Info("dnsmasq collector disabled")
 	}
+	if !collectorsSwitches.System {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSystemCollector())
+		logger.Info("system collector disabled")
+	}
+	if !collectorsSwitches.Temperature {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutTemperatureCollector())
+		logger.Info("temperature collector disabled")
+	}
 	if collectorsSwitches.DnsmasqDetails {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDnsmasqDetails())
 		logger.Info("dnsmasq per-lease details enabled")
+	}
+	if collectorsSwitches.FirewallRulesDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithFirewallRulesDetails())
+		logger.Info("firewall rules per-rule details enabled")
 	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
