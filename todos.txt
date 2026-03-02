@@ -386,7 +386,7 @@ Notes:
   - This is a low-cardinality endpoint (typically 1-20 certs).
 
 ================================================================================
-TODO 8: CARP/VIP STATUS COLLECTOR (LOW PRIORITY)
+TODO 8: CARP/VIP STATUS COLLECTOR (LOW PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: CARP (Common Address Redundancy Protocol) is used for high-availability
@@ -542,7 +542,7 @@ Notes:
     a new metric that exposes the numeric status code from metadata.system.status.
 
 ================================================================================
-TODO 12: PROCESS/ACTIVITY METRICS (LOW PRIORITY — OPTIONAL)
+TODO 12: PROCESS/ACTIVITY METRICS (LOW PRIORITY — OPTIONAL) [COMPLETE]
 ================================================================================
 
 WHY: System process information provides visibility into what's running on the
@@ -602,7 +602,7 @@ IMPLEMENTATION NOTES:
   - Could be combined into the same collector as TODO 1 (system resources).
 
 ================================================================================
-TODO 13: DHCPv4 LEASES VIA KEA (LOW PRIORITY — FUTURE-PROOFING)
+TODO 13: DHCPv4 LEASES VIA KEA (LOW PRIORITY — FUTURE-PROOFING) [COMPLETE]
 ================================================================================
 
 WHY: OPNsense is transitioning from ISC DHCP to Kea DHCP. The existing dnsmasq
