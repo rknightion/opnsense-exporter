@@ -866,7 +866,7 @@ In Update() after existing metrics:
 No changes to opnsense/ needed — TCPUsage is already parsed.
 
 ================================================================================
-TODO 19: PER-SUBSYSTEM SERVICE STATUS METRICS (MEDIUM PRIORITY)
+TODO 19: PER-SUBSYSTEM SERVICE STATUS METRICS (MEDIUM PRIORITY) [COMPLETE]
 ================================================================================
 
 WHY: While the existing services collector provides a general overview of all
@@ -938,7 +938,7 @@ Files to modify:
   - internal/collector/wireguard.go     (add metric)
 
 ================================================================================
-TODO 20: FIRMWARE METRICS SEMANTICS REWORK (MEDIUM PRIORITY — QUALITY)
+TODO 20: FIRMWARE METRICS SEMANTICS REWORK (MEDIUM PRIORITY — QUALITY) [COMPLETE]
 ================================================================================
 
 WHY: The current firmware collector encodes version strings and timestamps as
@@ -978,7 +978,7 @@ both old and new metrics are emitted, or just document the break.
 
 ================================================================================
 TODO 21: NETWORK DIAGNOSTICS COLLECTOR — NETISR, SOCKET COUNTS, ROUTES
-         (LOW PRIORITY — OPT-IN)
+         (LOW PRIORITY — OPT-IN) [COMPLETE]
 ================================================================================
 
 WHY: Kernel network ISR (interrupt service routine) statistics reveal packet
@@ -1153,4 +1153,4 @@ CLAUDE SHOULD IGNORE BELOW THIS LINE!
 
 prompt text (already at start of instruction)
 
-Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 8. You can also address any other TODO items required to get that in place or that would be complementary or sensible to implement at the same time. Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
+Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 20 AND TODO 21. You can also address any other TODO items required to get that in place or that would be complementary or sensible to implement at the same time. Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
