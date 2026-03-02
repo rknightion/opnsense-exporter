@@ -41,6 +41,7 @@ const (
 	CARPSubsystem          = "carp"
 	ActivitySubsystem      = "activity"
 	KeaSubsystem           = "kea"
+	NetworkDiagSubsystem   = "network_diag"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -189,6 +190,12 @@ func WithoutActivityCollector() Option {
 // removes the kea collector from the list of collectors
 func WithoutKeaCollector() Option {
 	return withoutCollectorInstance(KeaSubsystem)
+}
+
+// WithoutNetworkDiagnosticsCollector Option
+// removes the network_diag collector from the list of collectors
+func WithoutNetworkDiagnosticsCollector() Option {
+	return withoutCollectorInstance(NetworkDiagSubsystem)
 }
 
 // WithKeaDetails enables per-lease detail metrics for the kea collector

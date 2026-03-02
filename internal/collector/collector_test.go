@@ -39,6 +39,7 @@ func TestCollector(t *testing.T) {
 		WithoutMbufCollector(),
 		WithoutNTPCollector(),
 		WithoutCertificatesCollector(),
+		WithoutNetworkDiagnosticsCollector(),
 	}
 
 	collector, err := New(&client, promslog.NewNopLogger(), "test", collectOpts...)
@@ -78,6 +79,8 @@ func TestCollector(t *testing.T) {
 			t.Errorf("expected ntp collector to be removed")
 		case "certificate":
 			t.Errorf("expected certificate collector to be removed")
+		case "network_diag":
+			t.Errorf("expected network_diag collector to be removed")
 		}
 	}
 }

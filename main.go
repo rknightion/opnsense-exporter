@@ -145,6 +145,11 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithFirewallRulesDetails())
 		logger.Info("firewall rules per-rule details enabled")
 	}
+	if !collectorsSwitches.NetworkDiagnostics {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetworkDiagnosticsCollector())
+	} else {
+		logger.Info("network diagnostics collector enabled")
+	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
 	if err != nil {

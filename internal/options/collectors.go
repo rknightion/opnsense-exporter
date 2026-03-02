@@ -87,6 +87,10 @@ var (
 		"exporter.enable-kea-details",
 		"Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks)",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS").Default("false").Bool()
+	networkDiagnosticsEnabled = kingpin.Flag(
+		"exporter.enable-network-diagnostics",
+		"Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -112,6 +116,7 @@ type CollectorsDisableSwitch struct {
 	Activity             bool
 	Kea                  bool
 	KeaDetails           bool
+	NetworkDiagnostics   bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -138,5 +143,6 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Activity:             !*activityCollectorDisabled,
 		Kea:                  !*keaCollectorDisabled,
 		KeaDetails:           *keaDetailsEnabled,
+		NetworkDiagnostics:   *networkDiagnosticsEnabled,
 	}
 }
