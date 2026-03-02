@@ -13,6 +13,16 @@ type FirewallPFStat struct {
 	In6BlockPackets  int `json:"in6_block_packets"`
 	Out6PassPackets  int `json:"out6_pass_packets"`
 	Out6BlockPackets int `json:"out6_block_packets"`
+
+	In4PassBytes   int `json:"in4_pass_bytes"`
+	In4BlockBytes  int `json:"in4_block_bytes"`
+	Out4PassBytes  int `json:"out4_pass_bytes"`
+	Out4BlockBytes int `json:"out4_block_bytes"`
+
+	In6PassBytes   int `json:"in6_pass_bytes"`
+	In6BlockBytes  int `json:"in6_block_bytes"`
+	Out6PassBytes  int `json:"out6_pass_bytes"`
+	Out6BlockBytes int `json:"out6_block_bytes"`
 }
 
 // firewallPFStatsResponse is the struct returned by the OPNsense API

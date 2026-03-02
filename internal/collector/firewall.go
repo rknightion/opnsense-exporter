@@ -19,6 +19,19 @@ type firewallCollector struct {
 	inIPv6BlockPackets  *prometheus.Desc
 	outIPv6BlockPackets *prometheus.Desc
 
+	inIPv4PassBytes   *prometheus.Desc
+	outIPv4PassBytes  *prometheus.Desc
+	inIPv4BlockBytes  *prometheus.Desc
+	outIPv4BlockBytes *prometheus.Desc
+
+	inIPv6PassBytes   *prometheus.Desc
+	outIPv6PassBytes  *prometheus.Desc
+	inIPv6BlockBytes  *prometheus.Desc
+	outIPv6BlockBytes *prometheus.Desc
+
+	pfStatesCurrent *prometheus.Desc
+	pfStatesLimit   *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -77,6 +90,56 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 		"The number of IPv6 outgoing packets that were blocked by the firewall by interface",
 		[]string{"interface"},
 	)
+
+	c.inIPv4PassBytes = buildPrometheusDesc(c.subsystem, "in_ipv4_pass_bytes_total",
+		"The number of IPv4 incoming bytes that were allowed to pass through the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.outIPv4PassBytes = buildPrometheusDesc(c.subsystem, "out_ipv4_pass_bytes_total",
+		"The number of IPv4 outgoing bytes that were allowed to pass through the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.inIPv4BlockBytes = buildPrometheusDesc(c.subsystem, "in_ipv4_block_bytes_total",
+		"The number of IPv4 incoming bytes that were blocked by the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.outIPv4BlockBytes = buildPrometheusDesc(c.subsystem, "out_ipv4_block_bytes_total",
+		"The number of IPv4 outgoing bytes that were blocked by the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.inIPv6PassBytes = buildPrometheusDesc(c.subsystem, "in_ipv6_pass_bytes_total",
+		"The number of IPv6 incoming bytes that were allowed to pass through the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.outIPv6PassBytes = buildPrometheusDesc(c.subsystem, "out_ipv6_pass_bytes_total",
+		"The number of IPv6 outgoing bytes that were allowed to pass through the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.inIPv6BlockBytes = buildPrometheusDesc(c.subsystem, "in_ipv6_block_bytes_total",
+		"The number of IPv6 incoming bytes that were blocked by the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.outIPv6BlockBytes = buildPrometheusDesc(c.subsystem, "out_ipv6_block_bytes_total",
+		"The number of IPv6 outgoing bytes that were blocked by the firewall by interface",
+		[]string{"interface"},
+	)
+
+	c.pfStatesCurrent = buildPrometheusDesc(c.subsystem, "pf_states_current",
+		"Current number of active PF states",
+		nil,
+	)
+
+	c.pfStatesLimit = buildPrometheusDesc(c.subsystem, "pf_states_limit",
+		"Maximum number of PF states allowed",
+		nil,
+	)
 }
 
 func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -89,6 +152,19 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.outIPv6PassPackets
 	ch <- c.inIPv6BlockPackets
 	ch <- c.outIPv6BlockPackets
+
+	ch <- c.inIPv4PassBytes
+	ch <- c.outIPv4PassBytes
+	ch <- c.inIPv4BlockBytes
+	ch <- c.outIPv4BlockBytes
+
+	ch <- c.inIPv6PassBytes
+	ch <- c.outIPv6PassBytes
+	ch <- c.inIPv6BlockBytes
+	ch <- c.outIPv6BlockBytes
+
+	ch <- c.pfStatesCurrent
+	ch <- c.pfStatesLimit
 }
 
 func (c *firewallCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -107,6 +183,14 @@ func (c *firewallCollector) Update(client *opnsense.Client, ch chan<- prometheus
 			c.outIPv6PassPackets:  v.Out6PassPackets,
 			c.inIPv6BlockPackets:  v.In6BlockPackets,
 			c.outIPv6BlockPackets: v.Out6BlockPackets,
+			c.inIPv4PassBytes:     v.In4PassBytes,
+			c.outIPv4PassBytes:    v.Out4PassBytes,
+			c.inIPv4BlockBytes:    v.In4BlockBytes,
+			c.outIPv4BlockBytes:   v.Out4BlockBytes,
+			c.inIPv6PassBytes:     v.In6PassBytes,
+			c.outIPv6PassBytes:    v.Out6PassBytes,
+			c.inIPv6BlockBytes:    v.In6BlockBytes,
+			c.outIPv6BlockBytes:   v.Out6BlockBytes,
 		}
 		for metric, value := range metricsValueMapping {
 			ch <- prometheus.MustNewConstMetric(
@@ -118,5 +202,23 @@ func (c *firewallCollector) Update(client *opnsense.Client, ch chan<- prometheus
 			)
 		}
 	}
+
+	pfStates, pfErr := client.FetchPFStates()
+	if pfErr != nil {
+		return pfErr
+	}
+	ch <- prometheus.MustNewConstMetric(
+		c.pfStatesCurrent,
+		prometheus.GaugeValue,
+		float64(pfStates.Current),
+		c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.pfStatesLimit,
+		prometheus.GaugeValue,
+		float64(pfStates.Limit),
+		c.instance,
+	)
+
 	return nil
 }
