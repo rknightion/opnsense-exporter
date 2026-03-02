@@ -3,9 +3,9 @@ package collector
 import (
 	"testing"
 
+	"github.com/prometheus/common/promslog"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/opnsense"
-	"github.com/prometheus/common/promslog"
 )
 
 func TestCollector(t *testing.T) {
@@ -29,7 +29,9 @@ func TestCollector(t *testing.T) {
 		WithoutUnboundCollector(),
 		WithoutWireguardCollector(),
 		WithoutFirewallCollector(),
+		WithoutFirewallRulesCollector(),
 		WithoutDnsmasqCollector(),
+		WithoutSystemCollector(),
 	}
 
 	collector, err := New(&client, promslog.NewNopLogger(), "test", collectOpts...)
@@ -49,8 +51,12 @@ func TestCollector(t *testing.T) {
 			t.Errorf("expected wireguard collector to be removed")
 		case "firewall":
 			t.Errorf("expected firewall collector to be removed")
+		case "firewall_rule":
+			t.Errorf("expected firewall_rule collector to be removed")
 		case "dnsmasq":
 			t.Errorf("expected dnsmasq collector to be removed")
+		case "system":
+			t.Errorf("expected system collector to be removed")
 		}
 	}
 }
