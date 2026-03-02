@@ -98,6 +98,13 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"systemActivity":          "api/diagnostics/activity/get_activity",
 			"keaLeases4":              "api/kea/leases4/search",
 			"keaLeases6":              "api/kea/leases6/search",
+			"unboundServiceStatus":    "api/unbound/service/status",
+			"dnsmasqServiceStatus":    "api/dnsmasq/service/status",
+			"ipsecServiceStatus":      "api/ipsec/service/status",
+			"wireguardServiceStatus":  "api/wireguard/service/status",
+			"netisrStatistics":        "api/diagnostics/interface/get_netisr_statistics",
+			"socketStatistics":        "api/diagnostics/interface/get_socket_statistics",
+			"routingTable":            "api/diagnostics/interface/get_routes",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",
