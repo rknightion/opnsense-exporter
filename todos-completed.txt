@@ -1,0 +1,198 @@
+================================================================================
+TODO 1: SYSTEM RESOURCES COLLECTOR (HIGH PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: Memory, CPU load, uptime, disk, and swap are fundamental monitoring metrics.
+While node_exporter covers these on standard Linux hosts, OPNsense runs FreeBSD
+and this data is available directly via the OPNsense API, making it valuable for
+users who only run this exporter against their firewall.
+
+API ENDPOINTS (all GET, all verified working):
+
+1. GET api/diagnostics/system/systemResources
+   Response:
+   {
+     "memory": {
+       "total": "34157367296",
+       "total_frmt": "32575",
+       "used": 26293434401,
+       "used_frmt": "25075",
+       "arc": "9398875792",
+       "arc_frmt": "8963",
+       "arc_txt": "ARC size 8963 MB"
+     }
+   }
+
+Note: Arc may be optional as not all systems will use zfs so we should not error if these do not exist 
+
+2. GET api/diagnostics/system/systemTime
+   Response:
+   {
+     "uptime": "23 days, 03:56:57",
+     "datetime": "Sun Mar 1 17:12:35 GMT 2026",
+     "boottime": "Fri Feb 6 13:15:38 GMT 2026",
+     "config": "Thu Feb 26 14:03:49 GMT 2026",
+     "loadavg": "0.43, 0.44, 0.46"
+   }
+
+3. GET api/diagnostics/system/systemDisk
+   Response:
+   {
+     "devices": [
+       {
+         "device": "zroot/ROOT/default",
+         "type": "zfs",
+         "blocks": "876G",
+         "used": "17G",
+         "available": "859G",
+         "used_pct": 2,
+         "mountpoint": "/"
+       }
+     ]
+   }
+
+4. GET api/diagnostics/system/systemSwap
+   Response:
+   {
+     "swap": [
+       { "device": "/dev/ada0p3", "total": "8388608", "used": "223420" },
+       { "device": "/dev/md98", "total": "2097152", "used": "219652" }
+     ]
+   }
+
+PROPOSED METRICS:
+  opnsense_system_memory_total_bytes        gauge   - memory.total (string→int)
+  opnsense_system_memory_used_bytes         gauge   - memory.used (int)
+  opnsense_system_memory_arc_bytes          gauge   - memory.arc (string→int)
+  opnsense_system_uptime_seconds            gauge   - parse boottime to compute uptime
+  opnsense_system_load_average              gauge   labels: [interval] - "1","5","15"
+  opnsense_system_config_last_change        gauge   - parse config timestamp
+  opnsense_system_disk_total_bytes          gauge   labels: [device, type, mountpoint]
+  opnsense_system_disk_used_bytes           gauge   labels: [device, type, mountpoint]
+  opnsense_system_disk_usage_ratio          gauge   labels: [device, type, mountpoint] - used_pct/100
+  opnsense_system_swap_total_bytes          gauge   labels: [device]
+  opnsense_system_swap_used_bytes           gauge   labels: [device]
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/system_resources.go  (new — Fetch method + structs)
+  - internal/collector/system.go  (new — collector)
+  - opnsense/client.go            (add 4 endpoints to map)
+  - internal/collector/collector.go (add subsystem constant)
+  - internal/options/collectors.go (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "systemResources": "api/diagnostics/system/systemResources",
+  "systemTime":      "api/diagnostics/system/systemTime",
+  "systemDisk":      "api/diagnostics/system/systemDisk",
+  "systemSwap":      "api/diagnostics/system/systemSwap",
+
+Notes:
+  - The boottime field is a human-readable string "Fri Feb 6 13:15:38 GMT 2026".
+    Parse with time.Parse("Mon Jan 2 15:04:05 MST 2006", boottime) and compute
+    uptime as time.Since(parsed).Seconds().
+  - The loadavg field is comma-separated: split on ", " and parse each float.
+  - Memory "total" and "arc" are strings, "used" is int — handle both types.
+  - Disk "blocks"/"used"/"available" are human-readable (e.g. "876G") but used_pct
+    is already numeric. For bytes, parse the human-readable strings or use used_pct.
+    Actually simpler: just expose used_pct as a ratio and skip byte parsing for disks.
+  - Swap total/used are in KB (strings).
+  - Call all 4 endpoints in the single Update() method. This means 4 HTTP calls per
+    scrape for this collector — acceptable since these are lightweight endpoints.
+
+
+
+
+================================================================================
+TODO 2: TEMPERATURE COLLECTOR (HIGH PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: Hardware temperature monitoring is critical for firewall appliances. The data
+is already partially implemented in opnsense/system.go (FetchSystemInfo + Temperature
+struct) but it's DEAD CODE — the "systemInfo" endpoint key is missing from the
+client.go endpoints map, and no collector uses it.
+
+IMPORTANT: There are TWO approaches. The existing system.go code calls a widget API
+that is undocumented. A better, verified endpoint exists:
+
+API ENDPOINT (verified working):
+  GET api/diagnostics/system/systemTemperature
+
+  Response (array):
+  [
+    {
+      "device": "dev.cpu.0.temperature",
+      "device_seq": 0,
+      "temperature": "29.0",
+      "type_translated": "CPU",
+      "type": "cpu"
+    },
+    {
+      "device": "dev.pchtherm.0.temperature",
+      "device_seq": 0,
+      "temperature": "39.0",
+      "type_translated": "Platform",
+      "type": "platform"
+    },
+    {
+      "device": "hw.acpi.thermal.tz0.temperature",
+      "device_seq": 0,
+      "temperature": "27.9",
+      "type_translated": "Zone",
+      "type": "zone"
+    }
+  ]
+
+PROPOSED METRICS:
+  opnsense_temperature_celsius   gauge   labels: [device, type, device_seq]
+    Example: opnsense_temperature_celsius{device="dev.cpu.0.temperature",type="cpu",device_seq="0"} 29.0
+
+IMPLEMENTATION:
+
+Option A (RECOMMENDED): New clean implementation using the verified endpoint
+  Files to create/modify:
+    - opnsense/temperature.go           (new — simple Fetch + struct)
+    - internal/collector/temperature.go  (new — collector)
+    - opnsense/client.go                 (add endpoint)
+    - internal/collector/collector.go    (add subsystem constant)
+    - internal/options/collectors.go     (add disable flag)
+
+  Add to opnsense/client.go endpoints map:
+    "systemTemperature": "api/diagnostics/system/systemTemperature",
+
+  The response is a simple JSON array of objects. Parse temperature as float64
+  (it's a string like "29.0"). Use safeParseFloat() from opnsense/utils.go.
+
+Option B: Fix the dead code in opnsense/system.go
+  - Add "systemInfo" to client.go endpoints map (would need to find correct URL)
+  - Wire existing FetchSystemInfo() into a collector
+  - BUT: the systemInfo widget endpoint URL is unknown/untested, so Option A is safer
+
+ALSO: Consider deleting opnsense/system.go entirely or refactoring it to use the
+new endpoint, since it's currently unreachable dead code.
+
+
+================================================================================
+TODO 11: FIX DEAD CODE IN opnsense/system.go (CLEANUP) [COMPLETE]
+================================================================================
+
+WHY: opnsense/system.go contains FetchSystemInfo() and Temperature/SystemInfo
+structs, but the "systemInfo" endpoint key is NEVER registered in the client.go
+endpoints map. This code is unreachable dead code.
+
+CURRENT STATE:
+  - opnsense/system.go:107 references c.endpoints["systemInfo"]
+  - opnsense/client.go endpoints map does NOT contain "systemInfo"
+  - No collector ever calls FetchSystemInfo()
+  - The Temperature struct duplicates what TODO 2 will provide
+
+RECOMMENDED ACTION:
+  If implementing TODO 2 (Temperature Collector) using the new
+  api/diagnostics/system/systemTemperature endpoint:
+    → DELETE opnsense/system.go entirely (it's dead code)
+    → The new temperature.go will replace it
+
+  If for some reason you want to keep it:
+    → Find the correct widget API URL and add "systemInfo" to the endpoints map
+    → But this is NOT recommended since the new endpoint is cleaner
