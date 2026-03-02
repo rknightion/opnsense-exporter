@@ -105,6 +105,9 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"netisrStatistics":        "api/diagnostics/interface/get_netisr_statistics",
 			"socketStatistics":        "api/diagnostics/interface/get_socket_statistics",
 			"routingTable":            "api/diagnostics/interface/get_routes",
+			"netflowIsEnabled":        "api/diagnostics/netflow/isEnabled",
+			"netflowStatus":           "api/diagnostics/netflow/status",
+			"netflowCacheStats":       "api/diagnostics/netflow/cacheStats",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",

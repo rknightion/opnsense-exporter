@@ -42,6 +42,7 @@ const (
 	ActivitySubsystem      = "activity"
 	KeaSubsystem           = "kea"
 	NetworkDiagSubsystem   = "network_diag"
+	NetflowSubsystem       = "netflow"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -196,6 +197,12 @@ func WithoutKeaCollector() Option {
 // removes the network_diag collector from the list of collectors
 func WithoutNetworkDiagnosticsCollector() Option {
 	return withoutCollectorInstance(NetworkDiagSubsystem)
+}
+
+// WithoutNetflowCollector Option
+// removes the netflow collector from the list of collectors
+func WithoutNetflowCollector() Option {
+	return withoutCollectorInstance(NetflowSubsystem)
 }
 
 // WithKeaDetails enables per-lease detail metrics for the kea collector
