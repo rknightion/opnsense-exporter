@@ -19,19 +19,22 @@ const namespace = "opnsense"
 const instanceLabelName = "opnsense_instance"
 
 const (
-	ArpTableSubsystem   = "arp_table"
-	GatewaysSubsystem   = "gateways"
-	CronTableSubsystem  = "cron"
-	WireguardSubsystem  = "wireguard"
-	IPsecSubsystem      = "ipsec"
-	UnboundDNSSubsystem = "unbound_dns"
-	InterfacesSubsystem = "interfaces"
-	ProtocolSubsystem   = "protocol"
-	OpenVPNSubsystem    = "openvpn"
-	ServicesSubsystem   = "services"
-	FirewallSubsystem   = "firewall"
-	FirmwareSubsystem   = "firmware"
-	DnsmasqSubsystem    = "dnsmasq"
+	ArpTableSubsystem      = "arp_table"
+	GatewaysSubsystem      = "gateways"
+	CronTableSubsystem     = "cron"
+	WireguardSubsystem     = "wireguard"
+	IPsecSubsystem         = "ipsec"
+	UnboundDNSSubsystem    = "unbound_dns"
+	InterfacesSubsystem    = "interfaces"
+	ProtocolSubsystem      = "protocol"
+	OpenVPNSubsystem       = "openvpn"
+	ServicesSubsystem      = "services"
+	FirewallSubsystem      = "firewall"
+	FirmwareSubsystem      = "firmware"
+	DnsmasqSubsystem       = "dnsmasq"
+	SystemSubsystem        = "system"
+	TemperatureSubsystem   = "temperature"
+	FirewallRulesSubsystem = "firewall_rule"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -125,6 +128,37 @@ func WithoutOpenVPNCollector() Option {
 // removes the dnsmasq collector from the list of collectors
 func WithoutDnsmasqCollector() Option {
 	return withoutCollectorInstance(DnsmasqSubsystem)
+}
+
+// WithoutSystemCollector Option
+// removes the system collector from the list of collectors
+func WithoutSystemCollector() Option {
+	return withoutCollectorInstance(SystemSubsystem)
+}
+
+// WithoutTemperatureCollector Option
+// removes the temperature collector from the list of collectors
+func WithoutTemperatureCollector() Option {
+	return withoutCollectorInstance(TemperatureSubsystem)
+}
+
+// WithoutFirewallRulesCollector Option
+// removes the firewall_rule collector from the list of collectors
+func WithoutFirewallRulesCollector() Option {
+	return withoutCollectorInstance(FirewallRulesSubsystem)
+}
+
+// WithFirewallRulesDetails enables per-rule detail metrics for the firewall rules collector
+func WithFirewallRulesDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if frc, ok := c.(*firewallRulesCollector); ok {
+				frc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
 }
 
 // WithDnsmasqDetails enables per-lease detail metrics for the dnsmasq collector
