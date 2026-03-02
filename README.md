@@ -31,13 +31,22 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 
 ### New Collectors
 
+- **System resources collector** — New collector exposing memory (total, used, ZFS ARC), system uptime, load averages (1/5/15 min), configuration last change timestamp, per-device disk usage (total, used, ratio), and per-device swap usage. Polls 4 API endpoints. Includes new `--exporter.disable-system` / `OPNSENSE_EXPORTER_DISABLE_SYSTEM` flag.
 - **Dnsmasq DHCP lease collector** — New collector exposing dnsmasq lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.dnsmasq-details`). Includes new `--exporter.disable-dnsmasq` flag.
+- **Temperature collector** — New collector exposing hardware temperature readings (`opnsense_temperature_celsius`) with per-device labels (device, type, device_seq). Polls `api/diagnostics/system/systemTemperature`. Includes new `--exporter.disable-temperature` / `OPNSENSE_EXPORTER_DISABLE_TEMPERATURE` flag.
+- **Firewall rule statistics collector** — New collector exposing per-rule firewall statistics (evaluations, packets, bytes, active states, PF rule count) with rule metadata labels (UUID, description, action, interface, direction). Fetches 2 API endpoints and joins rule stats with metadata. High-cardinality per-rule detail metrics are opt-in via `--exporter.enable-firewall-rules-details` / `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS`. Summary metric (total rules count) is always emitted. Includes new `--exporter.disable-firewall-rules` / `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` flag.
 
 ### Enhanced Collectors
 
 - **Interfaces** — Added 8 new metrics: received/transmitted packet totals, send queue length/max/drops, input queue drops, link state, and line rate.
 - **Protocol statistics** — Added 28 new metrics covering CARP (received/sent/dropped), pfsync (received/sent/dropped/errors), IP (received/forwarded/sent/dropped/fragments/reassembled), TCP (connections requested/accepted/established/closed/dropped, retransmit/keepalive timeouts, listen queue overflows, syncache entries), and ARP (sent failures/replies, received replies/packets, dropped no entry, entry timeouts).
 - **Unbound DNS** — Comprehensive overhaul adding 26 new metrics: query totals, cache hits/misses, prefetch/expired counts, recursive replies, timed-out/rate-limited queries, DNSSEC secure/bogus answers, queries by type and protocol, answers by rcode, unwanted queries, query flags, EDNS counts, request list stats (avg/max/current/overwritten/exceeded), recursion time (avg/median), cache counts by type, and memory usage by component.
+- **Firewall PF statistics** — Added 8 byte counter metrics (IPv4/IPv6 pass/block bytes by interface) complementing the existing packet counters. Added PF state table metrics (current states, state limit) for capacity monitoring.
+
+### Bug Fixes
+
+- **Gateway probe_period** — Fixed `probe_period_seconds` metric that was defined but never emitted. Fixed fallback logic that used a `switch` statement (only first match runs) instead of independent `if` blocks, causing empty gateway configuration fields to not be backfilled.
+- **Interface line rate** — Fixed parsing of line rate values containing unit suffix (e.g. "64000 bit/s") which caused `strconv.Atoi` to fail and silently return 0.
 
 ### Build & Infrastructure
 
@@ -45,6 +54,8 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Go modernization** — Applied `go fix` modernizers: `interface{}` replaced with `any`, unused loop variables removed with `for range` syntax.
 - **Standalone fork** — Module path changed to `github.com/rknightion/opnsense-exporter`. All container images, CI/CD, and deployment manifests updated accordingly.
 - **Profiling support** — Enabled Go pprof and godeltaprof (Pyroscope) endpoints at `/debug/pprof/*` for CPU, memory, mutex, block, and goroutine profiling. Supports Grafana Alloy pull-mode scraping out of the box.
+- **Dead code removal** — Removed unreachable `opnsense/system.go` (dead `FetchSystemInfo()` with unregistered endpoint), replaced by the new temperature collector using the verified diagnostics API.
+- **Release automation** — Migrated from manual tag-triggered releases to [release-please](https://github.com/googleapis/release-please) for automated conventional commit-driven versioning and changelogs. Docker builds use native multi-arch runners (amd64/arm64) with QEMU fallback for arm/v6. All GitHub Actions pinned to commit hashes for supply-chain security.
 
 ### Utilities
 
