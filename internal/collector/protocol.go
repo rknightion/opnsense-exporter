@@ -64,6 +64,23 @@ type protocolCollector struct {
 	arpDroppedNoEntry  *prometheus.Desc
 	arpEntriesTimeout  *prometheus.Desc
 
+	// Expanded TCP metrics
+	tcpSentDataBytes           *prometheus.Desc
+	tcpRetransmittedPackets    *prometheus.Desc
+	tcpRetransmittedBytes      *prometheus.Desc
+	tcpReceivedInSequenceBytes *prometheus.Desc
+	tcpReceivedDuplicateBytes  *prometheus.Desc
+	tcpSegmentsUpdatedRtt      *prometheus.Desc
+	tcpBadConnectionAttempts   *prometheus.Desc
+	tcpKeepaliveProbes         *prometheus.Desc
+	tcpSyncacheDropped         *prometheus.Desc
+
+	// Expanded IP metrics
+	ipSentFragments *prometheus.Desc
+
+	// Expanded ARP metrics
+	arpDroppedDuplicateAddress *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -260,6 +277,56 @@ func (c *protocolCollector) Register(namespace, instanceLabel string, log *slog.
 		"Number of ARP entries that timed out",
 		nil,
 	)
+
+	// Expanded TCP metrics
+	c.tcpSentDataBytes = buildPrometheusDesc(c.subsystem, "tcp_sent_data_bytes_total",
+		"Total bytes of data sent via TCP",
+		nil,
+	)
+	c.tcpRetransmittedPackets = buildPrometheusDesc(c.subsystem, "tcp_retransmitted_packets_total",
+		"Total number of TCP packets retransmitted",
+		nil,
+	)
+	c.tcpRetransmittedBytes = buildPrometheusDesc(c.subsystem, "tcp_retransmitted_bytes_total",
+		"Total bytes retransmitted via TCP",
+		nil,
+	)
+	c.tcpReceivedInSequenceBytes = buildPrometheusDesc(c.subsystem, "tcp_received_in_sequence_bytes_total",
+		"Total bytes received in sequence via TCP",
+		nil,
+	)
+	c.tcpReceivedDuplicateBytes = buildPrometheusDesc(c.subsystem, "tcp_received_duplicate_bytes_total",
+		"Total completely duplicate bytes received via TCP",
+		nil,
+	)
+	c.tcpSegmentsUpdatedRtt = buildPrometheusDesc(c.subsystem, "tcp_segments_updated_rtt_total",
+		"Total TCP segments that updated RTT",
+		nil,
+	)
+	c.tcpBadConnectionAttempts = buildPrometheusDesc(c.subsystem, "tcp_bad_connection_attempts_total",
+		"Total bad TCP connection attempts",
+		nil,
+	)
+	c.tcpKeepaliveProbes = buildPrometheusDesc(c.subsystem, "tcp_keepalive_probes_total",
+		"Total TCP keepalive probes sent",
+		nil,
+	)
+	c.tcpSyncacheDropped = buildPrometheusDesc(c.subsystem, "tcp_syncache_dropped_total",
+		"Total TCP syncache entries dropped",
+		nil,
+	)
+
+	// Expanded IP metrics
+	c.ipSentFragments = buildPrometheusDesc(c.subsystem, "ip_sent_fragments_total",
+		"Total IP fragments sent",
+		nil,
+	)
+
+	// Expanded ARP metrics
+	c.arpDroppedDuplicateAddress = buildPrometheusDesc(c.subsystem, "arp_dropped_duplicate_address_total",
+		"Total ARP packets dropped due to duplicate address",
+		nil,
+	)
 }
 
 func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -313,6 +380,23 @@ func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.arpReceivedPackets
 	ch <- c.arpDroppedNoEntry
 	ch <- c.arpEntriesTimeout
+
+	// Expanded TCP
+	ch <- c.tcpSentDataBytes
+	ch <- c.tcpRetransmittedPackets
+	ch <- c.tcpRetransmittedBytes
+	ch <- c.tcpReceivedInSequenceBytes
+	ch <- c.tcpReceivedDuplicateBytes
+	ch <- c.tcpSegmentsUpdatedRtt
+	ch <- c.tcpBadConnectionAttempts
+	ch <- c.tcpKeepaliveProbes
+	ch <- c.tcpSyncacheDropped
+
+	// Expanded IP
+	ch <- c.ipSentFragments
+
+	// Expanded ARP
+	ch <- c.arpDroppedDuplicateAddress
 }
 
 func (c *protocolCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -478,6 +562,45 @@ func (c *protocolCollector) Update(client *opnsense.Client, ch chan<- prometheus
 	)
 	ch <- prometheus.MustNewConstMetric(
 		c.arpEntriesTimeout, prometheus.CounterValue, float64(data.ARPEntriesTimeout), c.instance,
+	)
+
+	// Expanded TCP metrics
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSentDataBytes, prometheus.CounterValue, float64(data.TCPSentDataBytes), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpRetransmittedPackets, prometheus.CounterValue, float64(data.TCPRetransmittedPackets), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpRetransmittedBytes, prometheus.CounterValue, float64(data.TCPRetransmittedBytes), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpReceivedInSequenceBytes, prometheus.CounterValue, float64(data.TCPReceivedInSequenceBytes), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpReceivedDuplicateBytes, prometheus.CounterValue, float64(data.TCPReceivedDuplicateBytes), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSegmentsUpdatedRtt, prometheus.CounterValue, float64(data.TCPSegmentsUpdatedRtt), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpBadConnectionAttempts, prometheus.CounterValue, float64(data.TCPBadConnectionAttempts), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpKeepaliveProbes, prometheus.CounterValue, float64(data.TCPKeepaliveProbes), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSyncacheDropped, prometheus.CounterValue, float64(data.TCPSyncacheDropped), c.instance,
+	)
+
+	// Expanded IP metrics
+	ch <- prometheus.MustNewConstMetric(
+		c.ipSentFragments, prometheus.CounterValue, float64(data.IPSentFragments), c.instance,
+	)
+
+	// Expanded ARP metrics
+	ch <- prometheus.MustNewConstMetric(
+		c.arpDroppedDuplicateAddress, prometheus.CounterValue, float64(data.ARPDroppedDuplicateAddress), c.instance,
 	)
 
 	return nil

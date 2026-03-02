@@ -301,6 +301,13 @@ type ProtocolStatistics struct {
 	TCPListenQueueOverflows          int
 	TCPSyncacheEntriesAdded          int
 	TCPSyncacheDropped               int
+	TCPSentDataBytes                 int
+	TCPRetransmittedPackets          int
+	TCPRetransmittedBytes            int
+	TCPReceivedInSequenceBytes       int
+	TCPReceivedDuplicateBytes        int
+	TCPSegmentsUpdatedRtt            int
+	TCPBadConnectionAttempts         int
 
 	// ARP detailed
 	ARPSentFailures            int
@@ -440,6 +447,13 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		TCPListenQueueOverflows:          resp.Statistics.TCP.ListenQueueOverflows,
 		TCPSyncacheEntriesAdded:          resp.Statistics.TCP.Syncache.EntriesAdded,
 		TCPSyncacheDropped:               resp.Statistics.TCP.Syncache.Dropped,
+		TCPSentDataBytes:                 resp.Statistics.TCP.SentDataBytes,
+		TCPRetransmittedPackets:          resp.Statistics.TCP.SentRetransmittedPackets,
+		TCPRetransmittedBytes:            resp.Statistics.TCP.SentRetransmittedBytes,
+		TCPReceivedInSequenceBytes:       resp.Statistics.TCP.ReceivedInSequenceBytes,
+		TCPReceivedDuplicateBytes:        resp.Statistics.TCP.ReceivedCompletelyDuplicateBytes,
+		TCPSegmentsUpdatedRtt:            resp.Statistics.TCP.SegmentsUpdatedRtt,
+		TCPBadConnectionAttempts:         resp.Statistics.TCP.BadConnectionAttempts,
 
 		// ARP detailed
 		ARPSentFailures:            resp.Statistics.Arp.SentFailures,
