@@ -91,6 +91,10 @@ var (
 		"exporter.enable-network-diagnostics",
 		"Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS").Default("false").Bool()
+	netflowEnabled = kingpin.Flag(
+		"exporter.enable-netflow",
+		"Enable the netflow collector (enabled status, service status, cache stats). Disabled by default.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NETFLOW").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -117,6 +121,7 @@ type CollectorsDisableSwitch struct {
 	Kea                  bool
 	KeaDetails           bool
 	NetworkDiagnostics   bool
+	Netflow              bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -144,5 +149,6 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Kea:                  !*keaCollectorDisabled,
 		KeaDetails:           *keaDetailsEnabled,
 		NetworkDiagnostics:   *networkDiagnosticsEnabled,
+		Netflow:              *netflowEnabled,
 	}
 }

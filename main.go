@@ -150,6 +150,11 @@ func main() {
 	} else {
 		logger.Info("network diagnostics collector enabled")
 	}
+	if !collectorsSwitches.Netflow {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetflowCollector())
+	} else {
+		logger.Info("netflow collector enabled")
+	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
 	if err != nil {
