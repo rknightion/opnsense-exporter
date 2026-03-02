@@ -2,83 +2,162 @@ name: CI
 
 on:
   push:
-    tags:
-      - "v*.*.*"
-    branches:
-      - "main"
+    branches: [main]
   pull_request:
-    branches:
-      - "main"
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   tests:
     name: Tests & Linters
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
         with:
           go-version: "1.26"
-      - name: Check out code
-        uses: actions/checkout@v4
-      - name: "Run Linters"
-        uses: golangci/golangci-lint-action@v8
+
+      - name: Run linters
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
         with:
           version: latest
           args: --verbose
+
       - name: Run tests
         run: go test -v ./...
 
-  build:
-    name: Build & Publish on Tag
-    runs-on: ubuntu-latest
+  docker-build-verify:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Get TAG
-        id: get_tag
-        run: echo TAG=${GITHUB_REF#refs/tags/} >> $GITHUB_ENV
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         with:
-          images: |
-            ghcr.io/rknightion/opnsense-exporter
-          tags: |
-            type=semver,pattern={{version}}
+          driver-opts: |
+            env.OTEL_EXPORTER_OTLP_ENDPOINT=${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+            env.OTEL_EXPORTER_OTLP_HEADERS=${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+            env.OTEL_TRACES_EXPORTER=otlp
+            env.OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+            env.OTEL_SERVICE_NAME=opnsense-exporter-ci
+            "env.OTEL_RESOURCE_ATTRIBUTES=ci.pipeline=${{ github.workflow }},ci.run_id=${{ github.run_id }},ci.ref=${{ github.ref_name }}"
+
+      - name: Build Docker image (verify only)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: opnsense-exporter:ci-test
+          build-args: |
+            Version=ci-test
+          cache-from: |
+            type=gha,scope=build-verify
+            type=gha,scope=build-linux-amd64
+          cache-to: type=gha,scope=build-verify,mode=max
+
+  docker-build-main:
+    needs: [tests, docker-build-verify]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64, linux/arm/v6]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Prepare platform pair
+        run: echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+        env:
+          platform: ${{ matrix.platform }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        if: matrix.platform == 'linux/arm/v6'
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
-      - name: Login to GHCR
-        if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          driver-opts: |
+            env.OTEL_EXPORTER_OTLP_ENDPOINT=${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+            env.OTEL_EXPORTER_OTLP_HEADERS=${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+            env.OTEL_TRACES_EXPORTER=otlp
+            env.OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+            env.OTEL_SERVICE_NAME=opnsense-exporter-ci
+            "env.OTEL_RESOURCE_ATTRIBUTES=ci.pipeline=${{ github.workflow }},ci.run_id=${{ github.run_id }},ci.ref=${{ github.ref_name }},ci.platform=${{ matrix.platform }}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Release build
-        id: release_build
-        uses: docker/build-push-action@v3
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
-          platforms: linux/amd64,linux/arm/v6,linux/arm64
-          build-args: |
-            Version=${{ env.TAG }}
           context: .
-          push: ${{ github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/') }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            Version=main-${{ github.sha }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: |
+            type=gha,scope=build-${{ env.PLATFORM_PAIR }}
+            type=gha,scope=build-verify
+          cache-to: type=gha,scope=build-${{ env.PLATFORM_PAIR }},mode=max
 
-permissions:
-  packages: write
-  # Required: allow read access to the content for analysis.
-  contents: read
-  # Optional: allow read access to pull requests. Use with `only-new-issues` option.
-  pull-requests: read
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
 
+      - name: Upload digest
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: digests-main-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge-main:
+    needs: docker-build-main
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8
+        with:
+          path: /tmp/digests
+          pattern: digests-main-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ github.repository }}:main \
+            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
