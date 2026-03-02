@@ -404,3 +404,27 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 
 	return data, nil
 }
+
+type unboundBlockListResponse struct {
+	Enabled bool `json:"enabled"`
+}
+
+// FetchUnboundBlockListStatus checks if the Unbound DNS blocklist is enabled
+func (c *Client) FetchUnboundBlockListStatus() (bool, *APICallError) {
+	var resp unboundBlockListResponse
+
+	url, ok := c.endpoints["unboundBlockList"]
+	if !ok {
+		return false, &APICallError{
+			Endpoint:   "unboundBlockList",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return false, err
+	}
+
+	return resp.Enabled, nil
+}

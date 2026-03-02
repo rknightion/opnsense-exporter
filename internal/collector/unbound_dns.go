@@ -47,6 +47,10 @@ type unboundDNSCollector struct {
 	requestListOverwritten *prometheus.Desc
 	requestListExceeded    *prometheus.Desc
 
+	// Gauge descriptors (no extra labels, additional)
+	tcpUsage         *prometheus.Desc
+	blocklistEnabled *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -184,6 +188,16 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		"Total number of request list entries that exceeded the maximum",
 		nil,
 	)
+
+	c.tcpUsage = buildPrometheusDesc(c.subsystem, "tcp_usage_ratio",
+		"TCP connection usage ratio for the DNS resolver (0.0 to 1.0)",
+		nil,
+	)
+
+	c.blocklistEnabled = buildPrometheusDesc(c.subsystem, "blocklist_enabled",
+		"Whether the DNS blocklist is enabled (1 = enabled, 0 = disabled)",
+		nil,
+	)
 }
 
 func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -214,6 +228,8 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.requestListCurrent
 	ch <- c.requestListOverwritten
 	ch <- c.requestListExceeded
+	ch <- c.tcpUsage
+	ch <- c.blocklistEnabled
 }
 
 func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -403,6 +419,25 @@ func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- promethe
 		c.requestListExceeded, prometheus.CounterValue,
 		float64(data.RequestListExceeded), c.instance,
 	)
+
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpUsage, prometheus.GaugeValue,
+		data.TCPUsage, c.instance,
+	)
+
+	enabled, blErr := client.FetchUnboundBlockListStatus()
+	if blErr != nil {
+		c.log.Warn("failed to fetch unbound blocklist status", "err", blErr)
+	} else {
+		val := 0.0
+		if enabled {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.blocklistEnabled, prometheus.GaugeValue,
+			val, c.instance,
+		)
+	}
 
 	return nil
 }
