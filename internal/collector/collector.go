@@ -59,6 +59,7 @@ type Collector struct {
 
 	isUp                 prometheus.Gauge
 	firewallHealthStatus prometheus.Gauge
+	systemStatusCode     prometheus.Gauge
 	scrapes              prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
 	instanceLabel        string
@@ -232,6 +233,15 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		},
 	})
 
+	c.systemStatusCode = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "system_status_code",
+		Help:      "Numeric system status code from health check (2 = OK for OPNsense >= 25.1)",
+		ConstLabels: prometheus.Labels{
+			instanceLabelName: instanceName,
+		},
+	})
+
 	c.scrapes = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_scrapes_total",
@@ -271,14 +281,19 @@ func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
 	systemStatus, err := c.Client.HealthCheck()
 	if err != nil {
 		c.isUp.Set(0)
+		c.systemStatusCode.Set(0)
 		c.isUp.Collect(ch)
+		c.systemStatusCode.Collect(ch)
 		return err
 	}
+
+	c.systemStatusCode.Set(float64(systemStatus.GetMetadataSystemStatus()))
 
 	if systemStatus.System.Status != opnsense.HealthCheckStatusOK &&
 		systemStatus.GetMetadataSystemStatus() != opnsense.HealthCheckStatusOK_v25_1 {
 		c.isUp.Set(0)
 		c.isUp.Collect(ch)
+		c.systemStatusCode.Collect(ch)
 		return nil
 	}
 
@@ -292,6 +307,7 @@ func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
 
 	c.isUp.Collect(ch)
 	c.firewallHealthStatus.Collect(ch)
+	c.systemStatusCode.Collect(ch)
 	return nil
 }
 
