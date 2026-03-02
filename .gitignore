@@ -33,3 +33,5 @@ local.docker-compose.yml
 # IDEs
 .idea/
 .vscode/
+
+opnsense-exporter
