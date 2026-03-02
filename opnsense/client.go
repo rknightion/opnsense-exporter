@@ -94,6 +94,10 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"ntpStatus":               "api/ntpd/service/status",
 			"certificates":            "api/trust/cert/search",
 			"unboundBlockList":        "api/unbound/overview/isBlockListEnabled",
+			"carpStatus":              "api/diagnostics/interface/get_vip_status",
+			"systemActivity":          "api/diagnostics/activity/get_activity",
+			"keaLeases4":              "api/kea/leases4/search",
+			"keaLeases6":              "api/kea/leases6/search",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",
