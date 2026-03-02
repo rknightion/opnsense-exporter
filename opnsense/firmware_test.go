@@ -51,20 +51,22 @@ func TestFetchFirmwareStatus_Success(t *testing.T) {
 	if firmware.ProductABI != "24.1:amd64" {
 		t.Errorf("expected ProductABI '24.1:amd64', got %q", firmware.ProductABI)
 	}
-	if firmware.LastCheck != "2024-01-15T10:30:00" {
-		t.Errorf("expected LastCheck '2024-01-15T10:30:00', got %q", firmware.LastCheck)
+	if firmware.NeedsReboot != true {
+		t.Errorf("expected NeedsReboot true, got %v", firmware.NeedsReboot)
 	}
-	if firmware.NeedsReboot != "1" {
-		t.Errorf("expected NeedsReboot '1', got %q", firmware.NeedsReboot)
-	}
-	if firmware.UpgradeNeedsReboot != "1" {
-		t.Errorf("expected UpgradeNeedsReboot '1', got %q", firmware.UpgradeNeedsReboot)
+	if firmware.UpgradeNeedsReboot != true {
+		t.Errorf("expected UpgradeNeedsReboot true, got %v", firmware.UpgradeNeedsReboot)
 	}
 	if firmware.NewPackages != 1 {
 		t.Errorf("expected NewPackages=1, got %d", firmware.NewPackages)
 	}
 	if firmware.UpgradePackages != 2 {
 		t.Errorf("expected UpgradePackages=2, got %d", firmware.UpgradePackages)
+	}
+	// "2024-01-15T10:30:00" parsed as UTC = 1705314600
+	expectedTimestamp := float64(1705314600)
+	if firmware.LastCheckTimestamp != expectedTimestamp {
+		t.Errorf("expected LastCheckTimestamp %v, got %v", expectedTimestamp, firmware.LastCheckTimestamp)
 	}
 }
 
@@ -91,6 +93,15 @@ func TestFetchFirmwareStatus_StatusNone(t *testing.T) {
 	if firmware.ProductId != "undefined" {
 		t.Errorf("expected ProductId 'undefined' for status=none, got %q", firmware.ProductId)
 	}
+	if firmware.NeedsReboot != false {
+		t.Errorf("expected NeedsReboot false for status=none, got %v", firmware.NeedsReboot)
+	}
+	if firmware.UpgradeNeedsReboot != false {
+		t.Errorf("expected UpgradeNeedsReboot false for status=none, got %v", firmware.UpgradeNeedsReboot)
+	}
+	if firmware.LastCheckTimestamp != 0 {
+		t.Errorf("expected LastCheckTimestamp 0 for status=none, got %v", firmware.LastCheckTimestamp)
+	}
 	if firmware.NewPackages != 0 {
 		t.Errorf("expected NewPackages=0, got %d", firmware.NewPackages)
 	}
@@ -115,57 +126,14 @@ func TestFetchFirmwareStatus_ServerError(t *testing.T) {
 	}
 }
 
-func TestGetNeedsReboot(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    string
-		expected bool
-	}{
-		{"Reboot needed", "1", true},
-		{"No reboot needed", "0", false},
-		{"Empty string", "", false},
-		{"Undefined", "undefined", false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			fs := &FirmwareStatus{NeedsReboot: tc.value}
-			if got := fs.GetNeedsReboot(); got != tc.expected {
-				t.Errorf("GetNeedsReboot() = %v; want %v", got, tc.expected)
-			}
-		})
-	}
-}
-
-func TestGetUpgradeNeedsReboot(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    string
-		expected bool
-	}{
-		{"Reboot needed", "1", true},
-		{"No reboot needed", "0", false},
-		{"Empty string", "", false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			fs := &FirmwareStatus{UpgradeNeedsReboot: tc.value}
-			if got := fs.GetUpgradeNeedsReboot(); got != tc.expected {
-				t.Errorf("GetUpgradeNeedsReboot() = %v; want %v", got, tc.expected)
-			}
-		})
-	}
-}
-
 func TestNewFirmwareStatus(t *testing.T) {
 	fs := NewFirmwareStatus()
 
 	if fs.LastCheck != "undefined" {
 		t.Errorf("expected LastCheck 'undefined', got %q", fs.LastCheck)
 	}
-	if fs.NeedsReboot != "undefined" {
-		t.Errorf("expected NeedsReboot 'undefined', got %q", fs.NeedsReboot)
+	if fs.NeedsReboot != false {
+		t.Errorf("expected NeedsReboot false, got %v", fs.NeedsReboot)
 	}
 	if fs.OsVersion != "undefined" {
 		t.Errorf("expected OsVersion 'undefined', got %q", fs.OsVersion)
@@ -179,13 +147,39 @@ func TestNewFirmwareStatus(t *testing.T) {
 	if fs.ProductVersion != "undefined" {
 		t.Errorf("expected ProductVersion 'undefined', got %q", fs.ProductVersion)
 	}
-	if fs.UpgradeNeedsReboot != "undefined" {
-		t.Errorf("expected UpgradeNeedsReboot 'undefined', got %q", fs.UpgradeNeedsReboot)
+	if fs.UpgradeNeedsReboot != false {
+		t.Errorf("expected UpgradeNeedsReboot false, got %v", fs.UpgradeNeedsReboot)
 	}
 	if fs.NewPackages != 0 {
 		t.Errorf("expected NewPackages=0, got %d", fs.NewPackages)
 	}
 	if fs.UpgradePackages != 0 {
 		t.Errorf("expected UpgradePackages=0, got %d", fs.UpgradePackages)
+	}
+	if fs.LastCheckTimestamp != 0 {
+		t.Errorf("expected LastCheckTimestamp=0, got %v", fs.LastCheckTimestamp)
+	}
+}
+
+func TestParseLastCheckTimestamp(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected float64
+	}{
+		{"RFC3339 with Z", "2024-01-15T10:30:00Z", 1705314600},
+		{"No timezone", "2024-01-15T10:30:00", 1705314600},
+		{"Undefined", "undefined", 0},
+		{"Empty string", "", 0},
+		{"Garbage", "garbage", 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseLastCheckTimestamp(tc.input)
+			if got != tc.expected {
+				t.Errorf("parseLastCheckTimestamp(%q) = %v; want %v", tc.input, got, tc.expected)
+			}
+		})
 	}
 }

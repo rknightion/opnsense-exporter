@@ -1,5 +1,7 @@
 package opnsense
 
+import "time"
+
 type firmwareStatusResponse struct {
 	LastCheck      string `json:"last_check"`
 	NeedsReboot    string `json:"needs_reboot"`
@@ -29,38 +31,45 @@ type firmwareStatusResponse struct {
 
 type FirmwareStatus struct {
 	LastCheck          string
-	NeedsReboot        string
+	NeedsReboot        bool
 	NewPackages        int
 	OsVersion          string
 	ProductABI         string
 	ProductId          string
 	ProductVersion     string
 	UpgradePackages    int
-	UpgradeNeedsReboot string
-}
-
-// GetNeedsReboot converts NeedsReboot field to bool, handling empty strings and integers
-func (f *FirmwareStatus) GetNeedsReboot() bool {
-	return f.NeedsReboot == "1"
-}
-
-// GetUpgradeNeedsReboot converts UpgradeNeedsReboot field to bool, handling empty strings and integers
-func (f *FirmwareStatus) GetUpgradeNeedsReboot() bool {
-	return f.UpgradeNeedsReboot == "1"
+	UpgradeNeedsReboot bool
+	LastCheckTimestamp float64
 }
 
 func NewFirmwareStatus() FirmwareStatus {
 	return FirmwareStatus{
 		LastCheck:          "undefined",
-		NeedsReboot:        "undefined",
+		NeedsReboot:        false,
 		NewPackages:        0,
 		OsVersion:          "undefined",
 		ProductABI:         "undefined",
 		ProductId:          "undefined",
 		ProductVersion:     "undefined",
 		UpgradePackages:    0,
-		UpgradeNeedsReboot: "undefined",
+		UpgradeNeedsReboot: false,
+		LastCheckTimestamp: 0,
 	}
+}
+
+func parseLastCheckTimestamp(raw string) float64 {
+	if raw == "" || raw == "undefined" {
+		return 0
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err == nil {
+		return float64(t.Unix())
+	}
+	t, err = time.Parse("2006-01-02T15:04:05", raw)
+	if err == nil {
+		return float64(t.UTC().Unix())
+	}
+	return 0
 }
 
 func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
@@ -87,8 +96,9 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		data.ProductId = resp.ProductID
 		data.ProductVersion = resp.ProductVersion
 		data.LastCheck = resp.LastCheck
-		data.NeedsReboot = resp.NeedsReboot
-		data.UpgradeNeedsReboot = resp.Product.ProductCheck.UpgradeNeedsReboot
+		data.NeedsReboot = resp.NeedsReboot == "1"
+		data.UpgradeNeedsReboot = resp.Product.ProductCheck.UpgradeNeedsReboot == "1"
+		data.LastCheckTimestamp = parseLastCheckTimestamp(resp.LastCheck)
 		data.NewPackages = len(resp.NewPackages)
 		data.UpgradePackages = len(resp.UpgradePackages)
 	}

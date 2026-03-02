@@ -2,7 +2,6 @@ package collector
 
 import (
 	"log/slog"
-	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/opnsense"
@@ -11,15 +10,12 @@ import (
 type firmwareCollector struct {
 	log *slog.Logger
 
-	lastCheck          *prometheus.Desc
-	needsReboot        *prometheus.Desc
-	newPackages        *prometheus.Desc
-	osVersion          *prometheus.Desc
-	productAbi         *prometheus.Desc
-	productId          *prometheus.Desc
-	productVersion     *prometheus.Desc
-	upgradePackages    *prometheus.Desc
-	upgradeNeedsReboot *prometheus.Desc
+	info                 *prometheus.Desc
+	needsReboot          *prometheus.Desc
+	upgradeNeedsReboot   *prometheus.Desc
+	lastCheckTimestamp   *prometheus.Desc
+	newPackagesCount     *prometheus.Desc
+	upgradePackagesCount *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -41,50 +37,32 @@ func (c *firmwareCollector) Register(namespace, instanceLabel string, log *slog.
 
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.lastCheck = buildPrometheusDesc(c.subsystem, "last_check",
-		"last check for upgrade", []string{"last_check"})
+	c.info = buildPrometheusDesc(c.subsystem, "info",
+		"OPNsense firmware information", []string{"os_version", "product_version", "product_id", "product_abi"})
 
 	c.needsReboot = buildPrometheusDesc(c.subsystem, "needs_reboot",
-		"opnsense would like to be rebooted", []string{"needs_reboot"})
-
-	c.newPackages = buildPrometheusDesc(c.subsystem, "new_packages",
-		"new packages", []string{"new_packages"})
-
-	c.osVersion = buildPrometheusDesc(c.subsystem, "os_version",
-		"Version of this opnSense", []string{"os_version"})
-
-	c.productAbi = buildPrometheusDesc(c.subsystem, "product_abi",
-		"Product ABI of this opnSense", []string{"product_abi"})
-
-	c.productId = buildPrometheusDesc(c.subsystem, "product_id",
-		"Product ID of this opnSense", []string{"product_id"})
-
-	c.productVersion = buildPrometheusDesc(c.subsystem, "product_version",
-		"Product Version of this opnSense", []string{"product_version"})
-
-	c.upgradePackages = buildPrometheusDesc(c.subsystem, "upgrade_packages",
-		"upgrade packages", []string{"upgrade_packages"})
+		"Whether OPNsense needs a reboot (1 = yes, 0 = no)", nil)
 
 	c.upgradeNeedsReboot = buildPrometheusDesc(c.subsystem, "upgrade_needs_reboot",
-		"upgrade involves reboot", []string{"upgrade_needs_reboot"})
+		"Whether the upgrade requires a reboot (1 = yes, 0 = no)", nil)
+
+	c.lastCheckTimestamp = buildPrometheusDesc(c.subsystem, "last_check_timestamp_seconds",
+		"Unix timestamp of the last firmware update check", nil)
+
+	c.newPackagesCount = buildPrometheusDesc(c.subsystem, "new_packages_count",
+		"Number of new packages available", nil)
+
+	c.upgradePackagesCount = buildPrometheusDesc(c.subsystem, "upgrade_packages_count",
+		"Number of packages with available upgrades", nil)
 }
 
 func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.info
 	ch <- c.needsReboot
-	ch <- c.newPackages
-	ch <- c.lastCheck
-	ch <- c.osVersion
-	ch <- c.productAbi
-	ch <- c.productId
-	ch <- c.productVersion
-	ch <- c.upgradePackages
 	ch <- c.upgradeNeedsReboot
-}
-
-func (c *firmwareCollector) update(ch chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType, value float64, labelValues ...string) {
-	ch <- prometheus.MustNewConstMetric(
-		desc, valueType, value, labelValues...,
-	)
+	ch <- c.lastCheckTimestamp
+	ch <- c.newPackagesCount
+	ch <- c.upgradePackagesCount
 }
 
 func (c *firmwareCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -93,15 +71,26 @@ func (c *firmwareCollector) Update(client *opnsense.Client, ch chan<- prometheus
 		return err
 	}
 
-	ch <- prometheus.MustNewConstMetric(c.needsReboot, prometheus.GaugeValue, float64(1), data.NeedsReboot, c.instance)
-	ch <- prometheus.MustNewConstMetric(c.newPackages, prometheus.GaugeValue, float64(data.NewPackages), strconv.Itoa(data.NewPackages), c.instance)
-	ch <- prometheus.MustNewConstMetric(c.lastCheck, prometheus.GaugeValue, float64(1), data.LastCheck, c.instance)
-	ch <- prometheus.MustNewConstMetric(c.osVersion, prometheus.GaugeValue, float64(1), data.OsVersion, c.instance)
-	ch <- prometheus.MustNewConstMetric(c.productAbi, prometheus.GaugeValue, float64(1), data.ProductABI, c.instance)
-	ch <- prometheus.MustNewConstMetric(c.productId, prometheus.GaugeValue, float64(1), data.ProductId, c.instance)
-	ch <- prometheus.MustNewConstMetric(c.productVersion, prometheus.GaugeValue, float64(1), data.ProductVersion, c.instance)
-	ch <- prometheus.MustNewConstMetric(c.upgradePackages, prometheus.GaugeValue, float64(data.UpgradePackages), strconv.Itoa(data.UpgradePackages), c.instance)
-	ch <- prometheus.MustNewConstMetric(c.upgradeNeedsReboot, prometheus.GaugeValue, float64(1), data.UpgradeNeedsReboot, c.instance)
+	ch <- prometheus.MustNewConstMetric(c.info, prometheus.GaugeValue, 1,
+		data.OsVersion, data.ProductVersion, data.ProductId, data.ProductABI, c.instance)
+
+	var needsRebootVal float64
+	if data.NeedsReboot {
+		needsRebootVal = 1.0
+	}
+	ch <- prometheus.MustNewConstMetric(c.needsReboot, prometheus.GaugeValue, needsRebootVal, c.instance)
+
+	var upgradeNeedsRebootVal float64
+	if data.UpgradeNeedsReboot {
+		upgradeNeedsRebootVal = 1.0
+	}
+	ch <- prometheus.MustNewConstMetric(c.upgradeNeedsReboot, prometheus.GaugeValue, upgradeNeedsRebootVal, c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.lastCheckTimestamp, prometheus.GaugeValue, data.LastCheckTimestamp, c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.newPackagesCount, prometheus.GaugeValue, float64(data.NewPackages), c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.upgradePackagesCount, prometheus.GaugeValue, float64(data.UpgradePackages), c.instance)
 
 	return nil
 }
