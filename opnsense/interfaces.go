@@ -98,7 +98,6 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 				v.Collisions,
 				v.SendQueueLength, v.SendQueueMaxLength,
 				v.SendQueueDrops, v.InputQueueDrops,
-				v.LineRate,
 			},
 			url,
 		)
@@ -130,7 +129,7 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			SendQueueDrops:        convertedValues[v.SendQueueDrops],
 			InputQueueDrops:       convertedValues[v.InputQueueDrops],
 			LinkState:             linkState,
-			LineRate:              convertedValues[v.LineRate],
+			LineRate:              parseLineRateBits(v.LineRate),
 		})
 	}
 

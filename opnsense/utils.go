@@ -107,3 +107,10 @@ func safeParseFloat(s string) float64 {
 	v, _ := strconv.ParseFloat(s, 64)
 	return v
 }
+
+// parseLineRateBits strips the "bit/s" suffix from OPNsense line rate strings
+// and returns the numeric value as an int.
+func parseLineRateBits(v string) int {
+	v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "bit/s"))
+	return safeAtoi(v)
+}
