@@ -15,7 +15,9 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
   -ldflags "-s -w -X main.version=${Version}" \
   -o /usr/bin/opnsense-exporter .
 
-FROM --platform=${BUILDPLATFORM:-linux/amd64} gcr.io/distroless/static-debian12:latest
+FROM gcr.io/distroless/static-debian12:latest
+
+ARG Version
 
 LABEL org.opencontainers.image.source=https://github.com/rknightion/opnsense-exporter
 LABEL org.opencontainers.image.version=${Version}
