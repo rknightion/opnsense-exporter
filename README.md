@@ -56,6 +56,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Profiling support** — Enabled Go pprof and godeltaprof (Pyroscope) endpoints at `/debug/pprof/*` for CPU, memory, mutex, block, and goroutine profiling. Supports Grafana Alloy pull-mode scraping out of the box.
 - **Dead code removal** — Removed unreachable `opnsense/system.go` (dead `FetchSystemInfo()` with unregistered endpoint), replaced by the new temperature collector using the verified diagnostics API.
 - **Release automation** — Migrated from manual tag-triggered releases to [release-please](https://github.com/googleapis/release-please) for automated conventional commit-driven versioning and changelogs. Docker builds use native multi-arch runners (amd64/arm64). All GitHub Actions pinned to commit hashes for supply-chain security.
+- **Dockerfile modernization** — Alpine-based builder (smaller pulls), BuildKit cache mounts for faster rebuilds, `-trimpath` and `-mod=vendor` flags for reproducibility, distroless debian13 nonroot runtime image pinned by digest.
 
 ### Utilities
 
