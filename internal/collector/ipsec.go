@@ -23,6 +23,7 @@ type ipsecCollector struct {
 	phase2_packets_out  *prometheus.Desc
 	phase2_rekey_time   *prometheus.Desc
 	phase2_life_time    *prometheus.Desc
+	serviceRunning      *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -97,6 +98,11 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"IPsec phase2 life time",
 		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
 	)
+
+	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
+		"Whether the service is running (1 = running, 0 = stopped/disabled)",
+		nil,
+	)
 }
 
 func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -114,6 +120,7 @@ func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.phase2_packets_out
 	ch <- c.phase2_rekey_time
 	ch <- c.phase2_life_time
+	ch <- c.serviceRunning
 }
 
 func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -250,5 +257,20 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 			)
 		}
 	}
+
+	status, sErr := client.FetchServiceStatus("ipsecServiceStatus")
+	if sErr != nil {
+		c.log.Warn("failed to fetch service status", "err", sErr)
+	} else {
+		val := 0.0
+		if status == "running" {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.serviceRunning, prometheus.GaugeValue,
+			val, c.instance,
+		)
+	}
+
 	return nil
 }

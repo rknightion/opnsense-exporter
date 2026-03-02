@@ -52,6 +52,10 @@ func TestIPsecCollector_Update(t *testing.T) {
 		}`))
 	})
 
+	mux.HandleFunc("/api/ipsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -64,8 +68,9 @@ func TestIPsecCollector_Update(t *testing.T) {
 
 	// Phase1: 6 metrics (status, install_time, bytes_in, bytes_out, packets_in, packets_out)
 	// Phase2: 7 metrics (install_time, bytes_in, bytes_out, packets_in, packets_out, rekey_time, life_time)
-	// Total: 6 + 7 = 13
-	expectedCount := 13
+	// 1 serviceRunning
+	// Total: 6 + 7 + 1 = 14
+	expectedCount := 14
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -101,6 +106,10 @@ func TestIPsecCollector_Update_NoPhase2(t *testing.T) {
 		}`))
 	})
 
+	mux.HandleFunc("/api/ipsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -111,8 +120,8 @@ func TestIPsecCollector_Update_NoPhase2(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Phase1 only: 6 metrics
-	expectedCount := 6
+	// Phase1 only: 6 metrics + 1 serviceRunning
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

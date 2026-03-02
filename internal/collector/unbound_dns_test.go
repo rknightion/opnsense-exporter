@@ -144,6 +144,10 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 		w.Write([]byte(`{"enabled": true}`))
 	})
 
+	mux.HandleFunc("/api/unbound/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -171,8 +175,9 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 	// 2 requestListOverwritten, requestListExceeded
 	// 1 tcpUsage
 	// 1 blocklistEnabled
-	// Total: 1+11+14+6+7+2+8+2+4+4+6+2+2+1+1 = 71
-	expectedCount := 71
+	// 1 serviceRunning
+	// Total: 1+11+14+6+7+2+8+2+4+4+6+2+2+1+1+1 = 72
+	expectedCount := 72
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

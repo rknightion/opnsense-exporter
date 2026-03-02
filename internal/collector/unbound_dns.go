@@ -50,6 +50,7 @@ type unboundDNSCollector struct {
 	// Gauge descriptors (no extra labels, additional)
 	tcpUsage         *prometheus.Desc
 	blocklistEnabled *prometheus.Desc
+	serviceRunning   *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -198,6 +199,11 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		"Whether the DNS blocklist is enabled (1 = enabled, 0 = disabled)",
 		nil,
 	)
+
+	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
+		"Whether the service is running (1 = running, 0 = stopped/disabled)",
+		nil,
+	)
 }
 
 func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -230,6 +236,7 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.requestListExceeded
 	ch <- c.tcpUsage
 	ch <- c.blocklistEnabled
+	ch <- c.serviceRunning
 }
 
 func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -435,6 +442,20 @@ func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- promethe
 		}
 		ch <- prometheus.MustNewConstMetric(
 			c.blocklistEnabled, prometheus.GaugeValue,
+			val, c.instance,
+		)
+	}
+
+	status, sErr := client.FetchServiceStatus("unboundServiceStatus")
+	if sErr != nil {
+		c.log.Warn("failed to fetch service status", "err", sErr)
+	} else {
+		val := 0.0
+		if status == "running" {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.serviceRunning, prometheus.GaugeValue,
 			val, c.instance,
 		)
 	}

@@ -9,7 +9,9 @@ import (
 )
 
 func TestDnsmasqCollector_Update_NoDetails(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/dnsmasq/leases/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
 			"total": 3,
 			"rowCount": 3,
@@ -57,7 +59,13 @@ func TestDnsmasqCollector_Update_NoDetails(t *testing.T) {
 			],
 			"interfaces": {"igb1": "LAN", "igb2": "IOT"}
 		}`))
-	}))
+	})
+
+	mux.HandleFunc("/api/dnsmasq/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	client := newCollectorTestClient(t, server)
@@ -68,15 +76,17 @@ func TestDnsmasqCollector_Update_NoDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 2 leasesByIface (LAN, IOT) = 5
-	expectedCount := 5
+	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 2 leasesByIface (LAN, IOT) + 1 serviceRunning = 6
+	expectedCount := 6
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 }
 
 func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/dnsmasq/leases/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
 			"total": 2,
 			"rowCount": 2,
@@ -111,7 +121,13 @@ func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
 			],
 			"interfaces": {"igb1": "LAN"}
 		}`))
-	}))
+	})
+
+	mux.HandleFunc("/api/dnsmasq/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	client := newCollectorTestClient(t, server)
@@ -122,8 +138,8 @@ func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) + 2 leaseInfo = 6
-	expectedCount := 6
+	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) + 2 leaseInfo + 1 serviceRunning = 7
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

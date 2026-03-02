@@ -10,11 +10,12 @@ import (
 type dnsmasqCollector struct {
 	log *slog.Logger
 
-	leasesTotal   *prometheus.Desc
-	leasesByIface *prometheus.Desc
-	reservedTotal *prometheus.Desc
-	dynamicTotal  *prometheus.Desc
-	leaseInfo     *prometheus.Desc
+	leasesTotal    *prometheus.Desc
+	leasesByIface  *prometheus.Desc
+	reservedTotal  *prometheus.Desc
+	dynamicTotal   *prometheus.Desc
+	leaseInfo      *prometheus.Desc
+	serviceRunning *prometheus.Desc
 
 	subsystem      string
 	instance       string
@@ -56,6 +57,11 @@ func (c *dnsmasqCollector) Register(namespace, instanceLabel string, log *slog.L
 		"Per-lease information (value is expire timestamp). Only emitted when --exporter.enable-dnsmasq-details is set.",
 		[]string{"address", "hostname", "hwaddr", "interface"},
 	)
+
+	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
+		"Whether the service is running (1 = running, 0 = stopped/disabled)",
+		nil,
+	)
 }
 
 func (c *dnsmasqCollector) SetDetailsEnabled(enabled bool) {
@@ -68,6 +74,7 @@ func (c *dnsmasqCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.reservedTotal
 	ch <- c.dynamicTotal
 	ch <- c.leaseInfo
+	ch <- c.serviceRunning
 }
 
 func (c *dnsmasqCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -118,6 +125,20 @@ func (c *dnsmasqCollector) Update(client *opnsense.Client, ch chan<- prometheus.
 				c.instance,
 			)
 		}
+	}
+
+	status, sErr := client.FetchServiceStatus("dnsmasqServiceStatus")
+	if sErr != nil {
+		c.log.Warn("failed to fetch service status", "err", sErr)
+	} else {
+		val := 0.0
+		if status == "running" {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.serviceRunning, prometheus.GaugeValue,
+			val, c.instance,
+		)
 	}
 
 	return nil

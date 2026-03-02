@@ -9,7 +9,9 @@ import (
 )
 
 func TestWireguardCollector_Update(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/wireguard/service/show", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
 			"rows": [
 				{
@@ -50,7 +52,13 @@ func TestWireguardCollector_Update(t *testing.T) {
 			"total": 3,
 			"current": 1
 		}`))
-	}))
+	})
+
+	mux.HandleFunc("/api/wireguard/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	client := newCollectorTestClient(t, server)
@@ -60,22 +68,30 @@ func TestWireguardCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 interface status + 2 peers * 4 metrics each (status, latestHandshake, transferRx, transferTx) = 1 + 8 = 9
-	expectedCount := 9
+	// 1 interface status + 2 peers * 4 metrics each (status, latestHandshake, transferRx, transferTx) + 1 serviceRunning = 1 + 8 + 1 = 10
+	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 }
 
 func TestWireguardCollector_Update_Empty(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/wireguard/service/show", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
 			"rows": [],
 			"rowCount": 0,
 			"total": 0,
 			"current": 1
 		}`))
-	}))
+	})
+
+	mux.HandleFunc("/api/wireguard/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	client := newCollectorTestClient(t, server)
@@ -85,8 +101,9 @@ func TestWireguardCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	if len(metrics) != 0 {
-		t.Errorf("expected 0 metrics, got %d", len(metrics))
+	// 1 serviceRunning (no interfaces or peers)
+	if len(metrics) != 1 {
+		t.Errorf("expected 1 metrics, got %d", len(metrics))
 	}
 }
 

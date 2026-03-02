@@ -14,6 +14,7 @@ type WireguardCollector struct {
 	TransferRx      *prometheus.Desc
 	TransferTx      *prometheus.Desc
 	LatestHandshake *prometheus.Desc
+	serviceRunning  *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -59,6 +60,11 @@ func (c *WireguardCollector) Register(namespace, instanceLabel string, log *slog
 		"Last handshake by peer in seconds",
 		[]string{"device", "device_type", "device_name", "peer_name"},
 	)
+
+	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
+		"Whether the service is running (1 = running, 0 = stopped/disabled)",
+		nil,
+	)
 }
 
 func (c *WireguardCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -67,6 +73,7 @@ func (c *WireguardCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.LatestHandshake
 	ch <- c.TransferRx
 	ch <- c.TransferTx
+	ch <- c.serviceRunning
 }
 
 func (c *WireguardCollector) update(ch chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType, value float64, labelValues ...string) {
@@ -90,6 +97,20 @@ func (c *WireguardCollector) Update(client *opnsense.Client, ch chan<- prometheu
 		c.update(ch, c.LatestHandshake, prometheus.CounterValue, float64(instance.LatestHandshake), instance.Device, instance.DeviceType, instance.DeviceName, instance.Name, c.instance)
 		c.update(ch, c.TransferRx, prometheus.CounterValue, float64(instance.TransferRx), instance.Device, instance.DeviceType, instance.DeviceName, instance.Name, c.instance)
 		c.update(ch, c.TransferTx, prometheus.CounterValue, float64(instance.TransferTx), instance.Device, instance.DeviceType, instance.DeviceName, instance.Name, c.instance)
+	}
+
+	status, sErr := client.FetchServiceStatus("wireguardServiceStatus")
+	if sErr != nil {
+		c.log.Warn("failed to fetch service status", "err", sErr)
+	} else {
+		val := 0.0
+		if status == "running" {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.serviceRunning, prometheus.GaugeValue,
+			val, c.instance,
+		)
 	}
 
 	return nil
