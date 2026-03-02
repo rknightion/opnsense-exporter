@@ -24,7 +24,12 @@ local.Makefile
 key
 secret
 local.docker-compose.yml
-*.DS_Store
+.DS_Store
+
+# Environment files
+.env
+.env.*
 
 # IDEs
 .idea/
+.vscode/

@@ -44,6 +44,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Go 1.26** — Upgraded from Go 1.25, gaining Green Tea GC (10-40% less GC overhead), ~2x faster `io.ReadAll` for API responses, and post-quantum TLS by default.
 - **Go modernization** — Applied `go fix` modernizers: `interface{}` replaced with `any`, unused loop variables removed with `for range` syntax.
 - **Standalone fork** — Module path changed to `github.com/rknightion/opnsense-exporter`. All container images, CI/CD, and deployment manifests updated accordingly.
+- **Profiling support** — Enabled Go pprof and godeltaprof (Pyroscope) endpoints at `/debug/pprof/*` for CPU, memory, mutex, block, and goroutine profiling. Supports Grafana Alloy pull-mode scraping out of the box.
 
 ### Utilities
 
