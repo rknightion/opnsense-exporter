@@ -53,7 +53,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS").Default("false").Bool()
 	firewallRulesCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firewall-rules",
-		"Disable the scraping of per-rule firewall statistics",
+		"Disable the scraping of firewall rule statistics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES").Default("false").Bool()
 	firewallRulesDetailsEnabled = kingpin.Flag(
 		"exporter.enable-firewall-rules-details",

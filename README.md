@@ -34,7 +34,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **System resources collector** — New collector exposing memory (total, used, ZFS ARC), system uptime, load averages (1/5/15 min), configuration last change timestamp, per-device disk usage (total, used, ratio), and per-device swap usage. Polls 4 API endpoints. Includes new `--exporter.disable-system` / `OPNSENSE_EXPORTER_DISABLE_SYSTEM` flag.
 - **Dnsmasq DHCP lease collector** — New collector exposing dnsmasq lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.dnsmasq-details`). Includes new `--exporter.disable-dnsmasq` flag.
 - **Temperature collector** — New collector exposing hardware temperature readings (`opnsense_temperature_celsius`) with per-device labels (device, type, device_seq). Polls `api/diagnostics/system/systemTemperature`. Includes new `--exporter.disable-temperature` / `OPNSENSE_EXPORTER_DISABLE_TEMPERATURE` flag.
-- **Firewall rule statistics collector** — New collector exposing per-rule firewall statistics (evaluations, packets, bytes, active states, PF rule count) with rule metadata labels (UUID, description, action, interface, direction). Fetches 2 API endpoints and joins rule stats with metadata. High-cardinality per-rule detail metrics are opt-in via `--exporter.enable-firewall-rules-details` / `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS`. Summary metric (total rules count) is always emitted. Includes new `--exporter.disable-firewall-rules` / `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` flag.
+- **Firewall rule statistics collector** — New collector exposing a summary metric (total rules count) by default, with opt-in high-cardinality per-rule detail metrics (evaluations, packets, bytes, active states, PF rule count) with rule metadata labels (UUID, description, action, interface, direction). Detail metrics are enabled via `--exporter.enable-firewall-rules-details` / `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` and fetch 2 API endpoints, joining rule stats with metadata. Includes new `--exporter.disable-firewall-rules` / `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` flag.
 - **Mbuf statistics collector** — New collector exposing FreeBSD network buffer (mbuf) statistics: current/cache/total mbuf counts, cluster counts and max, allocation failures and sleeps by type (mbuf, cluster, packet, jumbop), and memory bytes in use/total. Polls `api/diagnostics/system/systemMbuf`. Includes new `--exporter.disable-mbuf` / `OPNSENSE_EXPORTER_DISABLE_MBUF` flag.
 - **NTP collector** — New collector exposing NTP peer metrics: peer info, stratum, seconds since last response, poll interval, reachability register (octal decoded), round-trip delay, clock offset, and jitter (all in milliseconds), plus total peer count. Polls `api/ntpd/service/status`. Includes new `--exporter.disable-ntp` / `OPNSENSE_EXPORTER_DISABLE_NTP` flag.
 - **Certificate expiry collector** — New collector exposing certificate validity timestamps (valid_from, valid_to as Unix epoch seconds), certificate info, and total certificate count with description, common name, cert type, and in-use labels. Enables alerting on approaching expiry. Polls `api/trust/cert/search`. Includes new `--exporter.disable-certificates` / `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` flag.
@@ -238,7 +238,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-unbound` | `OPNSENSE_EXPORTER_DISABLE_UNBOUND` | Unbound DNS resolver statistics |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | OpenVPN instances and sessions |
 | `--exporter.disable-firewall` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL` | Firewall PF interface statistics (packet/byte counters, state table) |
-| `--exporter.disable-firewall-rules` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` | Per-rule firewall statistics (evaluations, packets, bytes, states) |
+| `--exporter.disable-firewall-rules` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` | Firewall rule statistics (total rule count; per-rule details opt-in) |
 | `--exporter.disable-firmware` | `OPNSENSE_EXPORTER_DISABLE_FIRMWARE` | Firmware version info, update status, and reboot flags |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | System resources (memory, uptime, load, disk, swap) |
 | `--exporter.disable-temperature` | `OPNSENSE_EXPORTER_DISABLE_TEMPERATURE` | Hardware temperature sensors |
@@ -298,7 +298,7 @@ Collector disable flags (all enabled by default):
       --[no-]exporter.disable-unbound            Disable the scraping of Unbound service
       --[no-]exporter.disable-openvpn            Disable the scraping of OpenVPN service
       --[no-]exporter.disable-firewall           Disable the scraping of the firewall (pf) metrics
-      --[no-]exporter.disable-firewall-rules     Disable the scraping of per-rule firewall statistics
+      --[no-]exporter.disable-firewall-rules     Disable the scraping of firewall rule statistics
       --[no-]exporter.disable-firmware           Disable the scraping of the firmware metrics
       --[no-]exporter.disable-system             Disable the scraping of system resource metrics (memory, uptime, disk, swap)
       --[no-]exporter.disable-temperature        Disable the scraping of temperature metrics
