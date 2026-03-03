@@ -6,7 +6,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 
 	_ "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
@@ -26,10 +25,7 @@ func main() {
 	options.Init()
 	logger := promslog.New(options.PromLogConfig)
 
-	runtime.GOMAXPROCS(*options.MaxProcs)
-
 	logger.Info("starting opnsense-exporter", "version", version)
-	logger.Info("settings Go MAXPROCS", "procs", runtime.GOMAXPROCS(0))
 
 	opnsConfig, err := options.OPNSense()
 	if err != nil {

@@ -69,6 +69,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Dead code removal** — Removed unreachable `opnsense/system.go` (dead `FetchSystemInfo()` with unregistered endpoint), replaced by the new temperature collector using the verified diagnostics API.
 - **Release automation** — Migrated from manual tag-triggered releases to [release-please](https://github.com/googleapis/release-please) for automated conventional commit-driven versioning and changelogs. Docker builds use native multi-arch runners (amd64/arm64). All GitHub Actions pinned to commit hashes for supply-chain security.
 - **Dockerfile modernization** — Alpine-based builder (smaller pulls), BuildKit cache mounts for faster rebuilds, `-trimpath` and `-mod=vendor` flags for reproducibility, distroless debian13 nonroot runtime image pinned by digest.
+- **Removed GOMAXPROCS flag** — Removed the `--runtime.gomaxprocs` flag (previously defaulting to 2). Go's runtime now auto-detects available CPUs, which is the correct default for this I/O-bound exporter.
 
 ### Utilities
 
@@ -335,7 +336,6 @@ Runtime:
       --exporter.instance-label=EXPORTER.INSTANCE-LABEL
                                                  Label to identify the OPNsense instance in every metric. Required.
                                                  ($OPNSENSE_EXPORTER_INSTANCE_LABEL)
-      --runtime.gomaxprocs=2                     Target number of CPUs for the Go runtime (GOMAXPROCS) ($GOMAXPROCS)
       --log.level=info                           Log severity threshold. One of: [debug, info, warn, error]
       --log.format=logfmt                        Log output format. One of: [logfmt, json]
 ```

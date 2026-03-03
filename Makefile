@@ -16,7 +16,6 @@ local-run: default
 		--log.format="logfmt" \
 		--web.telemetry-path="/metrics" \
 		--web.listen-address=":$(or $(OPS_EXPORTER_PORT), 8080)" \
-		--runtime.gomaxprocs=4 \
 		--exporter.instance-label="$(or $(OPS_INSTANCE), opnsense-local1)" \
 		--opnsense.protocol="https" \
 		--opnsense.address="${OPS_ADDRESS}" \

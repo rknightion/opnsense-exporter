@@ -14,10 +14,6 @@ var (
 		"web.disable-exporter-metrics",
 		"Exclude metrics about the exporter itself (promhttp_*, process_*, go_*).",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS").Bool()
-	MaxProcs = kingpin.Flag(
-		"runtime.gomaxprocs",
-		"The target number of CPUs that the Go runtime will run on (GOMAXPROCS)",
-	).Envar("GOMAXPROCS").Default("2").Int()
 	InstanceLabel = kingpin.Flag(
 		"exporter.instance-label",
 		"Label to use to identify the instance in every metric. "+
