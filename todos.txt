@@ -7,6 +7,30 @@ in the OPNsense Prometheus exporter. Each task is self-contained with API
 endpoint details, verified JSON response structures, proposed metric names, and
 sample implementation code.
 
+GOAL: Achieve sufficient system metric coverage via the OPNsense API to
+effectively replace the need for a Prometheus node_exporter running on the
+OPNsense box.
+
+CURRENT COVERAGE STATUS (what we already collect):
+  - Memory total/used/ARC (system collector)
+  - Load average 1/5/15 (system collector)
+  - Uptime, boot time, config change time (system collector)
+  - Disk capacity per mount (system collector)
+  - Swap total/used (system collector)
+  - Temperature per sensor (temperature collector)
+  - Interface traffic bytes/packets/errors/drops/multicasts (interfaces collector)
+  - 50+ TCP/UDP/IP/ICMP/ARP/CARP/Pfsync protocol statistics (protocol collector)
+  - Netisr dispatch stats, socket counts, route counts (network_diag collector)
+  - PF states current/limit, per-interface pass/block packets/bytes (firewall)
+  - Per-rule evaluations/packets/bytes/states (firewall_rules collector)
+  - NTP per-peer stratum/delay/offset/jitter (ntp collector)
+  - Mbuf current/cache/total/max/failures (mbuf collector)
+  - System activity threads/CPU% (activity collector)
+  - Firmware version/reboot/packages (firmware collector)
+  - All service statuses (services collector)
+  - ARP table, CARP VIPs, certificates, cron jobs
+  - OpenVPN, WireGuard, IPsec, Unbound DNS, Dnsmasq, Kea DHCP
+
 ARCHITECTURE REFERENCE:
 - Adding a new collector requires 4 files (see CLAUDE.md "Adding a New Collector")
 - Sub-collectors self-register via init() → collectorInstances slice
@@ -16,1106 +40,6 @@ ARCHITECTURE REFERENCE:
 - Endpoint URLs go in opnsense/client.go NewClient() endpoints map
 - Subsystem name constants go in internal/collector/collector.go
 
-
-================================================================================
-TODO 3: FIREWALL RULE STATISTICS COLLECTOR (HIGH PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: Per-rule statistics (evaluations, packets, bytes, active states) enable users
-to understand which firewall rules are actually being hit and how much traffic they
-handle. This is extremely valuable for firewall management and troubleshooting.
-
-API ENDPOINTS (both verified working):
-
-1. GET api/firewall/filter_util/rule_stats
-   Response:
-   {
-     "status": "ok",
-     "stats": {
-       "8fc9aa37-e79b-4cc6-8032-d214d92e7f42": {
-         "pf_rules": 2,
-         "evaluations": 3871754,
-         "packets": 543672,
-         "bytes": 167179623,
-         "states": 48
-       },
-       "fcc89aee950e474ad952872fb6c678aa": {
-         "pf_rules": 1,
-         "evaluations": 2019866,
-         "packets": 14891851,
-         "bytes": 11924361606,
-         "states": 7084
-       }
-     }
-   }
-
-   Note: Keys are either UUID format (user-created rules, matchable to
-   search_rule) or MD5 hash format (auto-generated/system rules, no description
-   available). On the dev environment: 43 UUID keys, 48 hash keys.
-
-2. GET api/firewall/filter/search_rule (for mapping UUIDs to descriptions)
-   Response:
-   {
-     "total": 45,
-     "rows": [
-       {
-         "uuid": "8fc9aa37-e79b-4cc6-8032-d214d92e7f42",
-         "description": "mDNS",
-         "action": "pass",
-         "interface": "opt2,lan",
-         "%interface": "IOT, LAN",
-         "direction": "in",
-         "protocol": "UDP",
-         "enabled": "1"
-       }
-     ]
-   }
-
-PROPOSED METRICS:
-  opnsense_firewall_rule_evaluations_total  counter  labels: [uuid, description, action, interface, direction]
-  opnsense_firewall_rule_packets_total      counter  labels: [uuid, description, action, interface, direction]
-  opnsense_firewall_rule_bytes_total        counter  labels: [uuid, description, action, interface, direction]
-  opnsense_firewall_rule_states             gauge    labels: [uuid, description, action, interface, direction]
-  opnsense_firewall_rule_pf_rules           gauge    labels: [uuid, description, action, interface, direction]
-
-IMPLEMENTATION:
-
-Files to create/modify:
-  - opnsense/firewall_rules.go           (new)
-  - internal/collector/firewall_rules.go (new)
-  - opnsense/client.go                   (add 2 endpoints)
-  - internal/collector/collector.go      (add subsystem constant)
-  - internal/options/collectors.go       (add disable flag)
-
-Add to opnsense/client.go endpoints map:
-  "firewallRuleStats": "api/firewall/filter_util/rule_stats",
-  "firewallRules":     "api/firewall/filter/search_rule",
-
-Design decisions:
-  - Fetch both endpoints: rule_stats for numbers, search_rule for descriptions.
-  - Build a map[uuid]ruleInfo from search_rule, then join with rule_stats.
-  - For hash-format keys (system rules), use description="system" or "auto".
-  - This is a HIGH CARDINALITY collector (91 rules on dev env). Add a disable flag
-    AND consider an optional detail flag similar to dnsmasq-details.
-  - The search_rule endpoint returns rule metadata including %interface (human-readable
-    interface names). Use %interface for the label value, not the raw interface codes.
-  - search_rule is a POST endpoint with body: {"current":1,"rowCount":-1,"sort":{},"searchPhrase":""}
-
-Sample opnsense code:
-  type firewallRuleStatsResponse struct {
-      Status string                       `json:"status"`
-      Stats  map[string]firewallRuleStat  `json:"stats"`
-  }
-  type firewallRuleStat struct {
-      PfRules     int `json:"pf_rules"`
-      Evaluations int `json:"evaluations"`
-      Packets     int `json:"packets"`
-      Bytes       int `json:"bytes"`
-      States      int `json:"states"`
-  }
-  type firewallRuleSearchResponse struct {
-      Total    int              `json:"total"`
-      RowCount int              `json:"rowCount"`
-      Current  int              `json:"current"`
-      Rows     []firewallRule   `json:"rows"`
-  }
-  type firewallRule struct {
-      UUID        string `json:"uuid"`
-      Description string `json:"description"`
-      Action      string `json:"action"`
-      Interface   string `json:"%interface"`
-      Direction   string `json:"direction"`
-      Protocol    string `json:"protocol"`
-      Enabled     string `json:"enabled"`
-  }
-
-================================================================================
-TODO 4: PF STATE TABLE COLLECTOR (HIGH PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: The PF state table current count and limit are critical for capacity planning.
-When states approach the limit, new connections will be dropped. This is one of the
-most important firewall health metrics.
-
-API ENDPOINT (verified working):
-  GET api/diagnostics/firewall/pf_states/1
-
-  Response:
-  {
-    "current": "15045",
-    "limit": "3257500"
-  }
-
-  Note: The /1 path parameter requests page 1 with minimal data — we only need
-  the metadata (current count and limit), not the actual state entries.
-
-PROPOSED METRICS:
-  opnsense_firewall_pf_states_current   gauge   - current active states
-  opnsense_firewall_pf_states_limit     gauge   - maximum allowed states
-
-IMPLEMENTATION:
-
-This is small enough to add to the EXISTING firewall collector
-(internal/collector/firewall.go) rather than creating a new one. However, it
-requires a new Fetch method since it's a different API endpoint.
-
-Files to create/modify:
-  - opnsense/pf_states.go            (new — Fetch method + struct)
-  - internal/collector/firewall.go   (modify — add 2 new metrics)
-  - opnsense/client.go               (add endpoint)
-
-Add to opnsense/client.go endpoints map:
-  "pfStates": "api/diagnostics/firewall/pf_states/1",
-
-Sample opnsense code:
-  type pfStatesResponse struct {
-      Current string `json:"current"`
-      Limit   string `json:"limit"`
-  }
-  type PFStates struct {
-      Current int
-      Limit   int
-  }
-  func (c *Client) FetchPFStates() (PFStates, *APICallError) {
-      var resp pfStatesResponse
-      url, ok := c.endpoints["pfStates"]
-      if !ok {
-          return PFStates{}, &APICallError{Endpoint: "pfStates", Message: "endpoint not found"}
-      }
-      if err := c.do("GET", url, nil, &resp); err != nil {
-          return PFStates{}, err
-      }
-      current, _ := parseStringToInt(resp.Current, url)
-      limit, _ := parseStringToInt(resp.Limit, url)
-      return PFStates{Current: current, Limit: limit}, nil
-  }
-
-Note: parseStringToInt is already available in opnsense/utils.go.
-
-================================================================================
-TODO 5: MBUF STATISTICS COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: Network buffer (mbuf) exhaustion causes packet drops and network failures on
-FreeBSD systems. Monitoring mbuf usage vs capacity is important for network health.
-
-API ENDPOINT (verified working):
-  GET api/diagnostics/system/systemMbuf
-
-  Response:
-  {
-    "mbuf-statistics": {
-      "mbuf-current": 23423,
-      "mbuf-cache": 24802,
-      "mbuf-total": 48225,
-      "cluster-current": 17463,
-      "cluster-cache": 11313,
-      "cluster-total": 28776,
-      "cluster-max": 2028369,
-      "packet-count": 366,
-      "packet-free": 4460,
-      "jumbo-count": 0,
-      "jumbo-cache": 1877,
-      "jumbo-total": 1877,
-      "jumbo-max": 1014184,
-      "bytes-in-use": 40851,
-      "bytes-in-cache": 36334,
-      "bytes-total": 77185,
-      "mbuf-failures": 0,
-      "cluster-failures": 0,
-      "packet-failures": 0,
-      "mbuf-sleeps": 0,
-      "cluster-sleeps": 0,
-      "packet-sleeps": 0,
-      "jumbop-sleeps": 0,
-      "jumbop-failures": 0
-    }
-  }
-
-PROPOSED METRICS:
-  opnsense_mbuf_current              gauge   - mbuf-current
-  opnsense_mbuf_cache                gauge   - mbuf-cache
-  opnsense_mbuf_total                gauge   - mbuf-total
-  opnsense_mbuf_cluster_current      gauge   - cluster-current
-  opnsense_mbuf_cluster_cache        gauge   - cluster-cache
-  opnsense_mbuf_cluster_total        gauge   - cluster-total
-  opnsense_mbuf_cluster_max          gauge   - cluster-max
-  opnsense_mbuf_failures_total       counter labels: [type] - "mbuf","cluster","packet"
-  opnsense_mbuf_sleeps_total         counter labels: [type] - "mbuf","cluster","packet","jumbop"
-  opnsense_mbuf_bytes_in_use         gauge   - bytes-in-use (in KB)
-  opnsense_mbuf_bytes_total          gauge   - bytes-total (in KB)
-
-IMPLEMENTATION:
-
-Files to create/modify:
-  - opnsense/mbuf.go              (new)
-  - internal/collector/mbuf.go    (new)
-  - opnsense/client.go            (add endpoint)
-  - internal/collector/collector.go (add subsystem constant)
-  - internal/options/collectors.go (add disable flag)
-
-Add to opnsense/client.go endpoints map:
-  "systemMbuf": "api/diagnostics/system/systemMbuf",
-
-Note: All values are already integers. The JSON uses hyphenated keys so use
-json tags like `json:"mbuf-current"`.
-
-================================================================================
-TODO 6: NTP COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: NTP accuracy is important for log correlation, certificate validation, and
-general system health. Monitoring NTP peer status, offset, and jitter helps detect
-time synchronization issues.
-
-API ENDPOINT (verified working):
-  GET api/ntpd/service/status
-
-  Response:
-  {
-    "total": 1,
-    "rowCount": 1,
-    "current": 1,
-    "rows": [
-      {
-        "status": "*",
-        "server": "10.0.0.2",
-        "refid": ".PPS.",
-        "stratum": "1",
-        "type": "u",
-        "when": "36",
-        "poll": "64",
-        "reach": "377",
-        "delay": "0.259",
-        "offset": "+0.280",
-        "jitter": "0.033"
-      }
-    ]
-  }
-
-  Status field meanings: * = sys.peer, + = candidate, - = outlier, # = selected,
-  x = designated falseticker, . = culled, (space) = reject
-
-PROPOSED METRICS:
-  opnsense_ntp_peer_info               gauge   labels: [server, refid, type, status] - value 1
-  opnsense_ntp_peer_stratum            gauge   labels: [server]
-  opnsense_ntp_peer_when_seconds       gauge   labels: [server] - seconds since last response
-  opnsense_ntp_peer_poll_seconds       gauge   labels: [server] - poll interval
-  opnsense_ntp_peer_reach              gauge   labels: [server] - reachability register (octal)
-  opnsense_ntp_peer_delay_milliseconds gauge   labels: [server]
-  opnsense_ntp_peer_offset_milliseconds gauge  labels: [server]
-  opnsense_ntp_peer_jitter_milliseconds gauge  labels: [server]
-  opnsense_ntp_peers_total             gauge   - total number of configured peers
-
-IMPLEMENTATION:
-
-Files to create/modify:
-  - opnsense/ntp.go              (new)
-  - internal/collector/ntp.go    (new)
-  - opnsense/client.go           (add endpoint)
-  - internal/collector/collector.go (add subsystem constant)
-  - internal/options/collectors.go (add disable flag)
-
-Add to opnsense/client.go endpoints map:
-  "ntpStatus": "api/ntpd/service/status",
-
-Notes:
-  - The offset field includes a sign prefix ("+0.280" or "-0.123"). Use
-    safeParseFloat() from opnsense/utils.go which handles this.
-  - The "when" field can be "-" if the peer hasn't responded yet.
-  - The "reach" field is an octal number (377 = all 8 last polls successful).
-    Parse as integer for the metric value.
-
-================================================================================
-TODO 7: CERTIFICATE EXPIRY COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: Expired or soon-to-expire certificates cause service outages. Exposing
-certificate validity timestamps enables alerting before expiry.
-
-API ENDPOINT (verified working):
-  GET api/trust/cert/search
-
-  Response:
-  {
-    "total": 3,
-    "rows": [
-      {
-        "uuid": "...",
-        "descr": "Web GUI SSL certificate",
-        "commonname": "",
-        "valid_from": "1594071389",
-        "valid_to": "1665351390",
-        "in_use": "0",
-        "cert_type": "server_cert",
-        "%cert_type": "Server Certificate",
-        "name": "...",
-        "key_type": "...",
-        ...
-      }
-    ]
-  }
-
-  Note: valid_from and valid_to are Unix timestamps (strings).
-
-PROPOSED METRICS:
-  opnsense_certificate_valid_from_seconds  gauge  labels: [description, commonname, cert_type, in_use]
-  opnsense_certificate_valid_to_seconds    gauge  labels: [description, commonname, cert_type, in_use]
-  opnsense_certificate_info                gauge  labels: [description, commonname, cert_type, in_use] - value 1
-  opnsense_certificates_total              gauge  - total certificate count
-
-  Users can alert on: (opnsense_certificate_valid_to_seconds - time()) < 2592000
-  to detect certificates expiring within 30 days.
-
-IMPLEMENTATION:
-
-Files to create/modify:
-  - opnsense/certificates.go            (new)
-  - internal/collector/certificates.go   (new)
-  - opnsense/client.go                   (add endpoint)
-  - internal/collector/collector.go      (add subsystem constant)
-  - internal/options/collectors.go       (add disable flag)
-
-Add to opnsense/client.go endpoints map:
-  "certificates": "api/trust/cert/search",
-
-Notes:
-  - valid_from/valid_to are string Unix timestamps. Use parseStringToInt()
-    from opnsense/utils.go, then expose as float64 for Prometheus gauge.
-  - Use %cert_type for human-readable cert type label, not cert_type.
-  - This is a low-cardinality endpoint (typically 1-20 certs).
-
-================================================================================
-TODO 8: CARP/VIP STATUS COLLECTOR (LOW PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: CARP (Common Address Redundancy Protocol) is used for high-availability
-firewall clusters. Monitoring CARP status and demotion level is critical for HA
-deployments. Not all OPNsense installations use CARP.
-
-API ENDPOINT (verified working):
-  GET api/diagnostics/interface/get_vip_status
-
-  Response (no CARP configured):
-  {
-    "total": 0,
-    "rowCount": 0,
-    "current": 1,
-    "rows": [],
-    "carp": {
-      "demotion": "0",
-      "allow": "1",
-      "maintenancemode": false,
-      "status_msg": "Could not locate any defined CARP interfaces."
-    }
-  }
-
-  Response (with CARP, expected structure based on API docs):
-  {
-    "rows": [
-      {
-        "interface": "LAN",
-        "vhid": "1",
-        "advbase": "1",
-        "advskew": "0",
-        "status": "MASTER",
-        "status_txt": "MASTER",
-        "vip": "10.0.0.1",
-        "subnet": "24"
-      }
-    ],
-    "carp": {
-      "demotion": "0",
-      "allow": "1",
-      "maintenancemode": false
-    }
-  }
-
-PROPOSED METRICS:
-  opnsense_carp_demotion              gauge   - demotion counter
-  opnsense_carp_allow                 gauge   - 1=CARP allowed, 0=disabled
-  opnsense_carp_maintenance_mode      gauge   - 1=maintenance, 0=normal
-  opnsense_carp_vip_status            gauge   labels: [interface, vhid, vip] - 1=MASTER, 0=BACKUP, 2=INIT
-  opnsense_carp_vip_advbase_seconds   gauge   labels: [interface, vhid, vip]
-  opnsense_carp_vip_advskew           gauge   labels: [interface, vhid, vip]
-  opnsense_carp_vips_total            gauge   - total VIP count
-
-IMPLEMENTATION:
-
-Files to create/modify:
-  - opnsense/carp.go              (new)
-  - internal/collector/carp.go    (new)
-  - opnsense/client.go            (add endpoint)
-  - internal/collector/collector.go (add subsystem constant)
-  - internal/options/collectors.go (add disable flag)
-
-Add to opnsense/client.go endpoints map:
-  "carpStatus": "api/diagnostics/interface/get_vip_status",
-
-Notes:
-  - CARP status should map: "MASTER"→1, "BACKUP"→0, "INIT"→2
-  - Even with 0 VIPs, still expose carp_demotion and carp_allow metrics from
-    the "carp" object.
-  - This collector is optional and should default to disabled unless CARP is
-    in use, OR just always expose the carp metadata (low cost).
-
-================================================================================
-TODO 9: UNBOUND BLOCK LIST STATUS (LOW PRIORITY — ENHANCEMENT) [COMPLETE]
-================================================================================
-
-WHY: Many users use Unbound DNS block lists (similar to Pi-hole). Monitoring
-whether the block list is enabled/disabled is useful for ensuring DNS filtering
-is active.
-
-API ENDPOINT (verified working):
-  GET api/unbound/overview/isBlockListEnabled
-
-  Response:
-  { "enabled": false }
-
-PROPOSED METRIC:
-  opnsense_unbound_dns_blocklist_enabled  gauge  - 1=enabled, 0=disabled
-
-IMPLEMENTATION:
-
-This should be added to the EXISTING unbound_dns collector rather than creating
-a new one.
-
-Files to modify:
-  - opnsense/unbound_dns.go              (add new Fetch method or extend existing)
-  - internal/collector/unbound_dns.go     (add metric + call in Update())
-  - opnsense/client.go                    (add endpoint)
-
-Add to opnsense/client.go endpoints map:
-  "unboundBlockList": "api/unbound/overview/isBlockListEnabled",
-
-Sample code addition to internal/collector/unbound_dns.go Update():
-  blockListData, blErr := client.FetchUnboundBlockListStatus()
-  if blErr != nil {
-      // log warning but don't fail the whole collector
-      c.log.Warn("Failed to fetch unbound block list status", "err", blErr)
-  } else {
-      val := 0.0
-      if blockListData.Enabled {
-          val = 1.0
-      }
-      ch <- prometheus.MustNewConstMetric(c.blockListEnabled, prometheus.GaugeValue, val, c.instance)
-  }
-
-================================================================================
-TODO 10: HEALTH CHECK ENHANCEMENT (LOW PRIORITY — ENHANCEMENT) [COMPLETE]
-================================================================================
-
-WHY: The current health check only exposes a binary firewall_status. The API
-returns a numeric system status code and a separate crash_reporter status that
-are not exposed.
-
-CURRENT API RESPONSE (verified):
-  GET api/core/system/status
-  {
-    "metadata": {
-      "system": {
-        "status": 2,
-        "message": "No pending messages",
-        "title": "System"
-      },
-      "translations": { ... },
-      "subsystems": []
-    }
-  }
-
-  The "status" field is numeric: 2=OK, other values indicate warnings/errors.
-
-PROPOSED ADDITIONAL METRICS:
-  opnsense_system_status_code   gauge   - numeric system status (2=OK)
-
-IMPLEMENTATION:
-
-Files to modify:
-  - opnsense/health_check.go       (expose system status code in struct)
-  - internal/collector/collector.go (add metric in main Collector, alongside existing firewall_status)
-
-Notes:
-  - The HealthCheckResponse struct already parses the full response including
-    metadata.system.status via GetMetadataSystemStatus().
-  - The main Collector in collector.go already calls HealthCheck() — just add
-    a new metric that exposes the numeric status code from metadata.system.status.
-
-================================================================================
-TODO 12: PROCESS/ACTIVITY METRICS (LOW PRIORITY — OPTIONAL) [COMPLETE]
-================================================================================
-
-WHY: System process information provides visibility into what's running on the
-firewall, total thread count, and CPU/memory consumption patterns.
-
-API ENDPOINT (verified working):
-  GET api/diagnostics/activity/get_activity
-
-  Response:
-  {
-    "headers": [
-      "last pid: 65652;  load averages:  0.74,  0.52,  0.49  up 23+03:58:03    17:13:41",
-      "849 threads:   13 running, 802 sleeping, 34 waiting",
-      "CPU:  1.3% user,  0.0% nice,  2.2% system,  0.1% interrupt, 96.4% idle",
-      "Mem: 5249M Active, 3393M Inact, 5446M Laundry, 13G Wired, 372K Buf, 3900M Free",
-      "ARC: 8970M Total, 4571M MFU, 3776M MRU, 34M Anon, 67M Header, 517M Other",
-      "     7809M Compressed, 13G Uncompressed, 1.74:1 Ratio",
-      "Swap: 10G Total, 433M Used, 9807M Free, 4% Inuse"
-    ],
-    "details": [
-      {
-        "C": "11",
-        "PID": "11",
-        "THR": "100014",
-        "USERNAME": "root",
-        "PRI": "187",
-        "NICE": "ki31",
-        "SIZE": "0B",
-        "RES": "192K",
-        "STATE": "CPU11",
-        "TIME": "535.2H",
-        "WCPU": "99.35%",
-        "COMMAND": "[idle{idle: cpu11}]"
-      }
-    ]
-  }
-
-PROPOSED METRICS (parse from headers only — details are too high-cardinality):
-  opnsense_system_threads_total          gauge   - parse from headers[1]
-  opnsense_system_threads_running        gauge   - parse "13 running"
-  opnsense_system_threads_sleeping       gauge   - parse "802 sleeping"
-  opnsense_system_threads_waiting        gauge   - parse "34 waiting"
-  opnsense_system_cpu_user_percent       gauge   - parse from headers[2]
-  opnsense_system_cpu_nice_percent       gauge   - parse from headers[2]
-  opnsense_system_cpu_system_percent     gauge   - parse from headers[2]
-  opnsense_system_cpu_interrupt_percent  gauge   - parse from headers[2]
-  opnsense_system_cpu_idle_percent       gauge   - parse from headers[2]
-
-IMPLEMENTATION NOTES:
-  - The headers are plain text that must be regex-parsed. This is fragile.
-  - TODO 1 (System Resources) provides the same load averages and memory data
-    via structured JSON endpoints, which is much more reliable.
-  - Consider ONLY implementing this for CPU percentages (user/nice/system/
-    interrupt/idle) since that data is NOT available from any structured endpoint.
-  - The "details" array (per-process) should NOT be exposed — too high cardinality.
-  - If TODO 1 is implemented, the main value-add here is CPU percentage breakdown.
-  - Could be combined into the same collector as TODO 1 (system resources).
-
-================================================================================
-TODO 13: DHCPv4 LEASES VIA KEA (LOW PRIORITY — FUTURE-PROOFING) [COMPLETE]
-================================================================================
-
-WHY: OPNsense is transitioning from ISC DHCP to Kea DHCP. The existing dnsmasq
-collector handles dnsmasq DHCP leases. A Kea collector would cover the new DHCP
-backend. The Kea API is available but returned 0 leases on the dev environment
-(likely because dnsmasq is the active DHCP server there).
-
-API ENDPOINT (verified available, returns empty):
-  GET api/kea/leases4/search
-
-  Response (empty):
-  {
-    "total": 0,
-    "rowCount": 0,
-    "current": 1,
-    "rows": [],
-    "interfaces": {}
-  }
-
-  Expected row structure (based on API pattern, similar to dnsmasq):
-  {
-    "address": "10.0.1.50",
-    "hwaddr": "aa:bb:cc:dd:ee:ff",
-    "hostname": "device-name",
-    "expire": 1772401221,
-    "if_descr": "LAN",
-    "is_reserved": "0"
-  }
-
-PROPOSED METRICS (mirror dnsmasq collector pattern):
-  opnsense_kea_dhcp4_leases_total           gauge
-  opnsense_kea_dhcp4_leases_by_interface    gauge   labels: [interface]
-  opnsense_kea_dhcp4_leases_reserved_total  gauge
-  opnsense_kea_dhcp4_leases_dynamic_total   gauge
-  opnsense_kea_dhcp4_lease_info             gauge   labels: [address, hostname, hwaddr, interface]
-
-IMPLEMENTATION:
-  - Mirror the dnsmasq collector pattern exactly (opnsense/dnsmasq.go + internal/collector/dnsmasq.go)
-  - Add endpoint: "keaLeases4": "api/kea/leases4/search"
-  - Add disable flag: OPNSENSE_EXPORTER_DISABLE_KEA_DHCP4
-  - Also consider api/kea/leases6/search for IPv6 leases
-
-================================================================================
-TODO 14: FIX GATEWAY PROBE_PERIOD + FALLBACK BUG (HIGH PRIORITY — BUG FIX) [COMPLETE]
-================================================================================
-
-WHY: Two bugs exist in the gateway collector:
-1. The `probe_period_seconds` metric descriptor is defined (internal/collector/
-   gateways.go:96-100) but NEVER emitted in the Update() method. The code emits
-   interval and timeout but skips period entirely.
-2. The fallback logic in opnsense/gateways.go:205-222 uses a `switch { case ... }`
-   pattern. In Go, switch only executes the FIRST matching case. So if LatencyLow
-   is empty, it gets backfilled but all subsequent empty fields (LatencyHigh,
-   LossLow, LossHigh, Interval, TimePeriod, LossInterval, DataLength) stay empty.
-
-CURRENT BUGGY CODE (opnsense/gateways.go:205-222):
-  switch {
-  case g.LatencyLow == "":
-      g.LatencyLow = v.CurrentLatencyLow
-  case g.LatencyHigh == "":
-      g.LatencyHigh = v.CurrentLatencyHigh
-  // ... only first match runs
-  }
-
-FIX: Replace switch with independent if blocks:
-  if g.LatencyLow == "" {
-      g.LatencyLow = v.CurrentLatencyLow
-  }
-  if g.LatencyHigh == "" {
-      g.LatencyHigh = v.CurrentLatencyHigh
-  }
-  if g.LossLow == "" {
-      g.LossLow = v.CurrentLossLow
-  }
-  // ... etc for all 8 fields
-
-FIX: Add probe_period_seconds emission in internal/collector/gateways.go Update(),
-between the interval and timeout emissions (after line 227):
-  f64, _ = strconv.ParseFloat(v.TimePeriod, 64)
-  ch <- prometheus.MustNewConstMetric(
-      c.period,
-      prometheus.GaugeValue,
-      f64,
-      v.Name,
-      v.Monitor,
-      c.instance,
-  )
-
-Files to modify:
-  - opnsense/gateways.go              (fix switch → independent ifs)
-  - internal/collector/gateways.go    (add probe_period emission)
-
-================================================================================
-TODO 15: ADD FIREWALL PF BYTE COUNTERS (HIGH PRIORITY — ENHANCEMENT) [COMPLETE]
-================================================================================
-
-WHY: The PF interface statistics API returns BOTH packet AND byte counters, but
-the exporter only exposes packet counters. The byte data is extremely valuable —
-on the dev environment, igb3 shows 10.2TB of outbound pass bytes. Without byte
-counters, users cannot measure bandwidth through the firewall per interface.
-
-CURRENT STATE:
-  - API returns: in4_pass_bytes, out4_pass_bytes, in4_block_bytes, out4_block_bytes
-    (and ipv6 equivalents), plus "cleared" timestamp and "references" count
-  - opnsense/firewall.go FirewallPFStat struct only has _packets fields
-  - internal/collector/firewall.go only emits packet metrics
-
-VERIFIED API RESPONSE (sample from igb3):
-  {
-    "in4_pass_packets": 4883218024,
-    "in4_pass_bytes": 2918052260182,
-    "out4_pass_packets": 8175971954,
-    "out4_pass_bytes": 10245045603012,
-    "in4_block_packets": 9236207,
-    "in4_block_bytes": 428427199,
-    "cleared": "2026-02-06T13:16:34",
-    "references": 128
-  }
-
-PROPOSED ADDITIONAL METRICS:
-  opnsense_firewall_in_ipv4_pass_bytes_total     counter  labels: [interface]
-  opnsense_firewall_out_ipv4_pass_bytes_total    counter  labels: [interface]
-  opnsense_firewall_in_ipv4_block_bytes_total    counter  labels: [interface]
-  opnsense_firewall_out_ipv4_block_bytes_total   counter  labels: [interface]
-  opnsense_firewall_in_ipv6_pass_bytes_total     counter  labels: [interface]
-  opnsense_firewall_out_ipv6_pass_bytes_total    counter  labels: [interface]
-  opnsense_firewall_in_ipv6_block_bytes_total    counter  labels: [interface]
-  opnsense_firewall_out_ipv6_block_bytes_total   counter  labels: [interface]
-
-IMPLEMENTATION:
-
-Files to modify:
-  - opnsense/firewall.go             (add byte fields to FirewallPFStat struct)
-  - internal/collector/firewall.go   (add 8 byte metric descriptors + emissions)
-
-Add to FirewallPFStat struct (opnsense/firewall.go):
-  In4PassBytes   int `json:"in4_pass_bytes"`
-  In4BlockBytes  int `json:"in4_block_bytes"`
-  Out4PassBytes  int `json:"out4_pass_bytes"`
-  Out4BlockBytes int `json:"out4_block_bytes"`
-  In6PassBytes   int `json:"in6_pass_bytes"`
-  In6BlockBytes  int `json:"in6_block_bytes"`
-  Out6PassBytes  int `json:"out6_pass_bytes"`
-  Out6BlockBytes int `json:"out6_block_bytes"`
-
-Mirror the existing packet metric pattern in the collector. No new endpoints needed —
-same API response, just parse more fields.
-
-================================================================================
-TODO 16: HARDEN INTERFACE LINE RATE PARSING (HIGH PRIORITY — BUG FIX) [COMPLETE]
-================================================================================
-
-WHY: The live API returns line rate as "64000 bit/s" (string with unit suffix),
-but opnsense/interfaces.go passes it through sliceIntToMapStringInt() which uses
-strconv.Atoi(). Atoi fails on "64000 bit/s" and returns 0, silently losing the
-line rate data.
-
-CURRENT CODE PATH:
-  opnsense/interfaces.go:101 → sliceIntToMapStringInt()
-  opnsense/utils.go:55-67 → uses strconv.Atoi() which fails on unit suffix
-
-FIX: Strip the unit suffix before parsing. Add a helper or modify the parsing:
-  // In opnsense/interfaces.go or utils.go
-  func parseLineRateBits(v string) int {
-      v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "bit/s"))
-      return safeAtoi(v)
-  }
-
-Also consider adding the "packets for unknown protocol" field as a new metric
-(currently in the API response but not parsed).
-
-Files to modify:
-  - opnsense/interfaces.go   (fix line rate parsing)
-  - opnsense/utils.go        (optional: add parseLineRateBits helper)
-
-================================================================================
-TODO 17: EXPAND PROTOCOL STATISTICS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: opnsense/protocol_statistics.go already parses many fields from the API that
-internal/collector/protocol.go never emits. These are "free" metrics — no new API
-calls needed, just wire parsed data to Prometheus.
-
-ALREADY PARSED BUT NOT EXPORTED (from opnsense/protocol_statistics.go):
-
-TCP (significant subset):
-  - SentDataPackets, SentDataBytes
-  - SentRetransmittedPackets, SentRetransmittedBytes
-  - ReceivedAckPackets, ReceivedAckBytes
-  - ReceivedInSequencePackets, ReceivedInSequenceBytes
-  - ReceivedDuplicatePackets, ReceivedDuplicateBytes
-  - SegmentsSentTotal, SegmentsRetransmittedTotal
-  - BadConnectionAttempts
-  - KeepaliveProbesSent
-  - SyncacheDropped (separate from SyncacheEntriesAdded which IS exported)
-  - HostcacheEntries, HostcacheInserts, HostcacheOverflows
-
-IP:
-  - FastForwardedPackets (already in struct, already exported — skip)
-  - SentFragments, SentFragmentsFailed
-
-ARP:
-  - DroppedDuplicateAddress
-
-PROPOSED ADDITIONAL METRICS (most valuable subset):
-  opnsense_protocol_tcp_sent_data_bytes_total            counter
-  opnsense_protocol_tcp_retransmitted_packets_total      counter
-  opnsense_protocol_tcp_retransmitted_bytes_total        counter
-  opnsense_protocol_tcp_received_in_sequence_bytes_total counter
-  opnsense_protocol_tcp_received_duplicate_bytes_total   counter
-  opnsense_protocol_tcp_segments_total                   counter
-  opnsense_protocol_tcp_bad_connection_attempts_total    counter
-  opnsense_protocol_tcp_keepalive_probes_total           counter
-  opnsense_protocol_tcp_syncache_dropped_total           counter
-  opnsense_protocol_ip_sent_fragments_total              counter
-  opnsense_protocol_arp_dropped_duplicate_address_total  counter
-
-IMPLEMENTATION:
-
-Files to modify:
-  - internal/collector/protocol.go   (add new metric descriptors + emissions)
-
-No changes to opnsense/ needed — the data is already parsed.
-
-NOTE: Be selective. The protocol_statistics response has 150+ fields. Only expose
-the most operationally useful ones to avoid metric bloat. The list above focuses
-on retransmissions, data volume, and error conditions.
-
-================================================================================
-TODO 18: EXPAND UNBOUND DNS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: opnsense/unbound_dns.go parses TCPUsage (line 383) and potentially other
-fields that internal/collector/unbound_dns.go never emits.
-
-ALREADY PARSED BUT NOT EXPORTED:
-  - TCPUsage (float64) — TCP connection usage ratio for the DNS resolver
-
-PROPOSED ADDITIONAL METRIC:
-  opnsense_unbound_dns_tcp_usage_ratio  gauge  - TCP connection usage (0.0-1.0)
-
-IMPLEMENTATION:
-
-Files to modify:
-  - internal/collector/unbound_dns.go  (add metric descriptor + emission)
-
-In Register():
-  c.tcpUsage = buildPrometheusDesc(c.subsystem, "tcp_usage_ratio",
-      "TCP connection usage ratio for the DNS resolver",
-      nil,
-  )
-
-In Update() after existing metrics:
-  ch <- prometheus.MustNewConstMetric(
-      c.tcpUsage,
-      prometheus.GaugeValue,
-      data.TCPUsage,
-      c.instance,
-  )
-
-No changes to opnsense/ needed — TCPUsage is already parsed.
-
-================================================================================
-TODO 19: PER-SUBSYSTEM SERVICE STATUS METRICS (MEDIUM PRIORITY) [COMPLETE]
-================================================================================
-
-WHY: While the existing services collector provides a general overview of all
-services, individual /api/<subsystem>/service/status endpoints provide more
-reliable, direct health status for specific subsystems. This is especially useful
-when the general services endpoint doesn't reflect the actual subsystem state.
-
-API ENDPOINTS (all verified working, all GET):
-
-  GET api/unbound/service/status    → {"status": "running", "widget": {...}}
-  GET api/dnsmasq/service/status    → {"status": "running", "widget": {...}}
-  GET api/ipsec/service/status      → {"status": "running", "widget": {...}}
-  GET api/wireguard/service/status  → {"status": "disabled", "widget": {...}}
-  GET api/openvpn/service/status    → (expected same pattern)
-
-  Status values: "running", "stopped", "disabled"
-
-PROPOSED APPROACH:
-Add a service_running metric to each EXISTING subsystem collector rather than
-creating a new collector. Each subsystem collector already calls its own API —
-adding one more lightweight call is minimal overhead.
-
-PROPOSED METRICS (added to existing collectors):
-  opnsense_unbound_dns_service_running   gauge  - 1=running, 0=stopped/disabled
-  opnsense_dnsmasq_service_running       gauge  - 1=running, 0=stopped/disabled
-  opnsense_ipsec_service_running         gauge  - 1=running, 0=stopped/disabled
-  opnsense_wireguard_service_running     gauge  - 1=running, 0=stopped/disabled
-
-IMPLEMENTATION:
-
-Create a shared helper in opnsense/ (reusable across collectors):
-
-  // opnsense/service_status.go (new, small)
-  type serviceStatusResponse struct {
-      Status string `json:"status"`
-  }
-  func (c *Client) FetchServiceStatus(endpointName EndpointName) (string, *APICallError) {
-      var resp serviceStatusResponse
-      url, ok := c.endpoints[endpointName]
-      if !ok {
-          return "", &APICallError{Endpoint: string(endpointName), Message: "endpoint not found"}
-      }
-      if err := c.do("GET", url, nil, &resp); err != nil {
-          return "", err
-      }
-      return resp.Status, nil
-  }
-
-Add to opnsense/client.go endpoints map:
-  "unboundServiceStatus":   "api/unbound/service/status",
-  "dnsmasqServiceStatus":   "api/dnsmasq/service/status",
-  "ipsecServiceStatus":     "api/ipsec/service/status",
-  "wireguardServiceStatus": "api/wireguard/service/status",
-
-Then in each collector's Update(), add a call at the start:
-  status, sErr := client.FetchServiceStatus("unboundServiceStatus")
-  if sErr == nil {
-      val := 0.0
-      if status == "running" { val = 1.0 }
-      ch <- prometheus.MustNewConstMetric(c.serviceRunning, prometheus.GaugeValue, val, c.instance)
-  }
-
-Files to modify:
-  - opnsense/service_status.go          (new — shared helper)
-  - opnsense/client.go                  (add 4 endpoints)
-  - internal/collector/unbound_dns.go   (add metric)
-  - internal/collector/dnsmasq.go       (add metric)
-  - internal/collector/ipsec.go         (add metric)
-  - internal/collector/wireguard.go     (add metric)
-
-================================================================================
-TODO 20: FIRMWARE METRICS SEMANTICS REWORK (MEDIUM PRIORITY — QUALITY) [COMPLETE]
-================================================================================
-
-WHY: The current firmware collector encodes version strings and timestamps as
-label values with the metric value always set to 1. This is a Prometheus
-anti-pattern — it means you can't do math on the values (e.g. alerting on
-last_check age) and it makes the metrics harder to use in queries.
-
-CURRENT ANTI-PATTERN (internal/collector/firmware.go):
-  // Lines 96-104: version string encoded as label, value=1
-  ch <- prometheus.MustNewConstMetric(c.osVersion, prometheus.GaugeValue,
-      float64(1), data.OsVersion, c.instance)
-  ch <- prometheus.MustNewConstMetric(c.productVersion, prometheus.GaugeValue,
-      float64(1), data.ProductVersion, c.instance)
-  // Same pattern for lastCheck, needsReboot, etc.
-
-PROPOSED REWORK:
-
-Keep one info metric with version labels (standard Prometheus pattern):
-  opnsense_firmware_info{os_version, product_version, product_id, product_abi} = 1
-
-Replace value-in-label metrics with proper numeric gauges:
-  opnsense_firmware_needs_reboot             gauge  - 1=yes, 0=no (parse from string)
-  opnsense_firmware_upgrade_needs_reboot     gauge  - 1=yes, 0=no
-  opnsense_firmware_last_check_timestamp_seconds  gauge  - Unix timestamp of last check
-  opnsense_firmware_new_packages_count       gauge  - numeric count
-  opnsense_firmware_upgrade_packages_count   gauge  - numeric count
-
-IMPLEMENTATION:
-
-Files to modify:
-  - internal/collector/firmware.go  (rework metric definitions + emissions)
-  - opnsense/firmware.go            (possibly adjust parsing for last_check timestamp)
-
-NOTE: This is a BREAKING CHANGE for existing users' Grafana dashboards and
-alerting rules. Document the change clearly. Consider a migration period where
-both old and new metrics are emitted, or just document the break.
-
-================================================================================
-TODO 21: NETWORK DIAGNOSTICS COLLECTOR — NETISR, SOCKET COUNTS, ROUTES
-         (LOW PRIORITY — OPT-IN) [COMPLETE]
-================================================================================
-
-WHY: Kernel network ISR (interrupt service routine) statistics reveal packet
-processing bottlenecks. Queue drops indicate the kernel is unable to process
-packets fast enough. On the dev environment, IP has 2,102 queue drops across
-12 CPUs — a real indicator of processing pressure.
-
-API ENDPOINTS (all GET, all verified working):
-
-1. GET api/diagnostics/interface/get_netisr_statistics
-   Response structure:
-   {
-     "netisr": {
-       "protocol": [
-         {"name": "ip", "protocol": 1, "queue-limit": 3000, "policy": "hybrid"},
-         {"name": "arp", "protocol": 4, "queue-limit": 256, "policy": "default"}
-       ],
-       "workstream": [
-         {
-           "work": [
-             {
-               "workstream": 0, "cpu": 0, "name": "ip",
-               "length": 0, "watermark": 3000,
-               "dispatched": 0, "hybrid-dispatched": 1199460314,
-               "queue-drops": 112, "queued": 2362824269,
-               "handled": 3562284583
-             }
-           ]
-         }
-       ]
-     }
-   }
-
-   Aggregate across all CPUs (12 workstreams) per protocol:
-   arp:    dispatched=19976085, hybrid=0, drops=0, handled=19976085
-   ether:  dispatched=14323241130, hybrid=0, drops=0, handled=14323241130
-   ip:     dispatched=0, hybrid=3206525567, drops=2102, handled=14030941426
-   ip6:    dispatched=0, hybrid=575491, drops=0, handled=3015871
-
-2. GET api/diagnostics/interface/get_socket_statistics
-   Response has per-connection data, but we only extract aggregate counts:
-   Active Internet connections: tcp4=45, tcp6=8, udp4=28, udp6=7, etc.
-   Active UNIX domain sockets: 95
-
-3. GET api/diagnostics/interface/get_routes
-   Returns array of 57 routes. Only useful as counts:
-   ipv4=51, ipv6=6
-
-PROPOSED METRICS:
-
-  Netisr (aggregate across CPUs per protocol):
-  opnsense_netisr_dispatched_total         counter  labels: [protocol]
-  opnsense_netisr_hybrid_dispatched_total  counter  labels: [protocol]
-  opnsense_netisr_queued_total             counter  labels: [protocol]
-  opnsense_netisr_handled_total            counter  labels: [protocol]
-  opnsense_netisr_queue_drops_total        counter  labels: [protocol]
-  opnsense_netisr_queue_length             gauge    labels: [protocol] (current)
-  opnsense_netisr_queue_watermark          gauge    labels: [protocol] (peak)
-  opnsense_netisr_queue_limit              gauge    labels: [protocol] (config)
-
-  Socket counts:
-  opnsense_sockets_active                  gauge    labels: [type] - tcp4,tcp6,udp4,udp6,etc.
-  opnsense_sockets_unix_total              gauge
-
-  Route counts:
-  opnsense_routes_total                    gauge    labels: [proto] - ipv4,ipv6
-
-IMPLEMENTATION:
-
-This should be a SINGLE opt-in collector (disabled by default) since it makes
-3 API calls and the data is primarily useful for advanced debugging.
-
-Files to create/modify:
-  - opnsense/network_diagnostics.go       (new — 3 Fetch methods)
-  - internal/collector/network_diag.go    (new — collector)
-  - opnsense/client.go                    (add 3 endpoints)
-  - internal/collector/collector.go       (add subsystem constant)
-  - internal/options/collectors.go        (add DISABLE flag, default DISABLED)
-
-Add to opnsense/client.go endpoints map:
-  "netisrStatistics":  "api/diagnostics/interface/get_netisr_statistics",
-  "socketStatistics":  "api/diagnostics/interface/get_socket_statistics",
-  "routingTable":      "api/diagnostics/interface/get_routes",
-
-Netisr implementation note:
-  The workstream array has one entry per CPU. Aggregate by iterating all
-  workstreams and summing dispatched/hybrid-dispatched/queue-drops/queued/handled
-  per protocol name. For length/watermark, take the max across CPUs.
-
-Socket implementation note:
-  The response is a dict with keys like "tcp4/[addr:port-addr:port]". Count
-  entries by extracting the protocol prefix (split on "/"). Only expose counts.
-
-Route implementation note:
-  The response is an array of route objects with a "proto" field. Count by proto.
-
-Default: DISABLED. Enable with --exporter.enable-network-diagnostics or
-  OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS=true
-
-================================================================================
-SUMMARY — IMPLEMENTATION PRIORITY ORDER
-================================================================================
-
-HIGH PRIORITY — BUG FIXES (fix these first):
-  TODO 14: Gateway probe_period never emitted + fallback bug — Small
-  TODO 15: Firewall PF byte counters missing from struct/collector — Small
-  TODO 16: Interface line rate parsing fails on "64000 bit/s" — Small
-
-HIGH PRIORITY — NEW COLLECTORS (most monitoring value):
-  TODO 1:  System Resources (memory, disk, swap, uptime, load) — 4 new endpoints
-  TODO 2:  Temperature — 1 new endpoint, partial code exists
-  TODO 3:  Firewall Rule Stats — 2 new endpoints, high user demand
-  TODO 4:  PF State Table (current/limit) — 1 new endpoint, critical capacity metric
-
-MEDIUM PRIORITY (significant value):
-  TODO 5:  Mbuf Statistics — FreeBSD-specific, important for network health
-  TODO 6:  NTP — time sync monitoring
-  TODO 7:  Certificate Expiry — prevents outages from expired certs
-  TODO 17: Protocol statistics expansion — already-parsed fields, no new API calls
-  TODO 18: Unbound TCPUsage — already parsed, just emit it
-  TODO 19: Per-subsystem service status — 4 lightweight new endpoints
-  TODO 20: Firmware metrics semantics rework — quality improvement, breaking change
-
-LOW PRIORITY (nice to have):
-  TODO 8:  CARP/VIP Status — only relevant for HA deployments
-  TODO 9:  Unbound Block List — simple boolean, low effort
-  TODO 10: Health Check Enhancement — expose numeric status code
-  TODO 11: Dead Code Cleanup — remove opnsense/system.go
-  TODO 12: Process/Activity — CPU% parsing (fragile text parsing)
-  TODO 13: Kea DHCPv4 — future-proofing for DHCP backend transition
-  TODO 21: Network Diagnostics (netisr/sockets/routes) — opt-in, advanced
-
-ESTIMATED EFFORT:
-  TODOs 14, 15, 16, 18:  Small (< 30 min each) — targeted fixes
-  TODOs 4, 9, 10, 11:    Small (< 1 hour each) — few files, simple logic
-  TODOs 1, 2, 5, 6, 7, 8, 19: Medium (1-2 hours each) — new collector pattern
-  TODOs 3, 12, 13, 17, 20, 21: Large (2-4 hours each) — multiple endpoints/rework
 
 ================================================================================
 COMMON PATTERNS & UTILITIES TO REUSE
@@ -1147,10 +71,1421 @@ opnsense/client.go:
   - endpoints map — add new endpoint name→path entries
 
 
-======
-CLAUDE SHOULD IGNORE BELOW THIS LINE!
-=====
+================================================================================
+TODO 20: PF STATISTICS DEEP DIVE COLLECTOR (HIGH PRIORITY)
+================================================================================
 
-prompt text (already at start of instruction)
+WHY: The existing firewall collector only uses pf_statistics/interfaces for
+per-interface pass/block counts. Three additional pf_statistics sub-endpoints
+provide critical firewall health data: state table search/insert/removal rates,
+PF counters (matches, state-mismatches, map failures), PF memory limits, and
+protocol timeout configurations. This data is essential for diagnosing firewall
+performance issues and capacity planning.
 
-Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 20 AND TODO 21. You can also address any other TODO items required to get that in place or that would be complementary or sensible to implement at the same time. Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
+API ENDPOINTS (all GET, all verified working on 10.0.0.254):
+
+1. GET api/diagnostics/firewall/pf_statistics/info
+   Response:
+   {
+     "info": {
+       "state-table": {
+         "current-entries": { "total": 14132 },
+         "searches": { "total": 28296058526, "rate": 13020.3 },
+         "inserts": { "total": 85139478, "rate": 39.2 },
+         "removals": { "total": 85126962, "rate": 39.2 }
+       },
+       "source-tracking-table": {
+         "current-entries": { "total": 0 },
+         "searches": { "total": 0, "rate": 0 },
+         "inserts": { "total": 0, "rate": 0 },
+         "removals": { "total": 0, "rate": 0 }
+       },
+       "counters": {
+         "match": { "total": 108547746, "rate": 49.9 },
+         "bad-offset": { "total": 0, "rate": 0 },
+         "fragment": { "total": 62, "rate": 0 },
+         "short": { "total": 0, "rate": 0 },
+         "normalize": { "total": 22, "rate": 0 },
+         "memory": { "total": 0, "rate": 0 },
+         "bad-timestamp": { "total": 0, "rate": 0 },
+         "congestion": { "total": 0, "rate": 0 },
+         "ip-option": { "total": 23528, "rate": 0 },
+         "proto-cksum": { "total": 0, "rate": 0 },
+         "state-mismatch": { "total": 875943, "rate": 0.4 },
+         "state-insert": { "total": 1623, "rate": 0 },
+         "state-limit": { "total": 0, "rate": 0 },
+         "src-limit": { "total": 0, "rate": 0 },
+         "synproxy": { "total": 0, "rate": 0 },
+         "map-failed": { "total": 52804, "rate": 0 }
+       },
+       "limit-counters": {
+         "max-states-per-rule": { "total": 0, "rate": 0 },
+         "max-src-states": { "total": 0, "rate": 0 },
+         "max-src-nodes": { "total": 0, "rate": 0 },
+         "max-src-conn": { "total": 0, "rate": 0 },
+         "max-src-conn-rate": { "total": 0, "rate": 0 },
+         "overload-table-insertion": { "total": 0, "rate": 0 },
+         "overload-flush-states": { "total": 0, "rate": 0 },
+         "synfloods-detected": { "total": 0, "rate": 0 },
+         "syncookies-sent": { "total": 0, "rate": 0 },
+         "syncookies-validated": { "total": 0, "rate": 0 }
+       }
+     }
+   }
+
+2. GET api/diagnostics/firewall/pf_statistics/memory
+   Response:
+   {
+     "memory": {
+       "states": 3257500,
+       "src-nodes": 3257500,
+       "frags": 5000,
+       "table-entries": 10000000
+     }
+   }
+
+3. GET api/diagnostics/firewall/pf_statistics/timeouts
+   Response:
+   {
+     "timeouts": {
+       "tcp.first": "3600s",
+       "tcp.opening": "900s",
+       "tcp.established": "432000s",
+       "tcp.closing": "3600s",
+       "tcp.finwait": "600s",
+       "tcp.closed": "180s",
+       "tcp.tsdiff": "60s",
+       "sctp.first": "120s",
+       "sctp.opening": "30s",
+       "sctp.established": "86400s",
+       "sctp.closing": "900s",
+       "sctp.closed": "90s",
+       "udp.first": "300s",
+       "udp.single": "150s",
+       "udp.multiple": "900s",
+       "icmp.first": "20s",
+       "icmp.error": "10s",
+       "other.first": "60s",
+       "other.single": "30s",
+       "other.multiple": "60s",
+       "frag": "30s",
+       "interval": "10s",
+       "adaptive.start": "0 states",
+       "adaptive.end": "0 states",
+       "src.track": "0s"
+     }
+   }
+
+PROPOSED METRICS:
+
+  From pf_statistics/info — state-table:
+    opnsense_pf_state_table_entries         gauge   - current state count
+    opnsense_pf_state_table_searches_total  counter - total state table lookups
+    opnsense_pf_state_table_inserts_total   counter - total state insertions
+    opnsense_pf_state_table_removals_total  counter - total state removals
+
+  From pf_statistics/info — source-tracking:
+    opnsense_pf_source_tracking_entries     gauge   - current source tracking count
+
+  From pf_statistics/info — counters:
+    opnsense_pf_counter_total               counter labels: [counter]
+      counter values: "match", "bad-offset", "fragment", "short", "normalize",
+        "memory", "bad-timestamp", "congestion", "ip-option", "proto-cksum",
+        "state-mismatch", "state-insert", "state-limit", "src-limit",
+        "synproxy", "map-failed"
+
+  From pf_statistics/info — limit-counters:
+    opnsense_pf_limit_counter_total         counter labels: [counter]
+      counter values: "max-states-per-rule", "max-src-states", "max-src-nodes",
+        "max-src-conn", "max-src-conn-rate", "overload-table-insertion",
+        "overload-flush-states", "synfloods-detected", "syncookies-sent",
+        "syncookies-validated"
+
+  From pf_statistics/memory:
+    opnsense_pf_memory_limit                gauge   labels: [pool]
+      pool values: "states", "src-nodes", "frags", "table-entries"
+
+  From pf_statistics/timeouts:
+    opnsense_pf_timeout_seconds             gauge   labels: [name]
+      Parse "3600s" → 3600.0. Skip entries with "states" suffix (adaptive.*).
+
+IMPLEMENTATION:
+
+This should be a NEW collector (pf_stats) separate from the existing firewall
+collector, since it uses different endpoints and provides different dimensions
+of data.
+
+Files to create/modify:
+  - opnsense/pf_statistics.go             (new — Fetch method + structs)
+  - internal/collector/pf_stats.go        (new — collector)
+  - opnsense/client.go                     (add 3 endpoints)
+  - internal/collector/collector.go       (add PFStatsSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "pfStatsInfo":     "api/diagnostics/firewall/pf_statistics/info",
+  "pfStatsMemory":   "api/diagnostics/firewall/pf_statistics/memory",
+  "pfStatsTimeouts": "api/diagnostics/firewall/pf_statistics/timeouts",
+
+Notes:
+  - The "total" fields in counters/limit-counters may be float64 (e.g. rate is
+    float but total is also sometimes returned as float). Use json.Number or
+    float64 for flexibility.
+  - The pf_statistics/info endpoint provides rate values too, but these are
+    instantaneous rates computed by pfctl and not useful for Prometheus (which
+    computes its own rates). Only expose the "total" values as counters.
+  - The timeout values are strings with "s" suffix — parse by trimming "s" and
+    converting to float64. Skip adaptive.start/adaptive.end which have "states"
+    suffix.
+  - The memory endpoint provides pool LIMITS (max allocations), not current
+    usage. Current state count is already in state-table.current-entries.
+  - Use FetchSystemResources()-style partial failure tolerance: call all 3
+    endpoints, log warnings for failures, only fail if all 3 fail.
+
+
+================================================================================
+TODO 21: ENHANCED SYSTEM INFORMATION COLLECTOR (MEDIUM PRIORITY)
+================================================================================
+
+WHY: Provides hostname, OS version, FreeBSD version, and CPU model as info
+metrics. This replaces node_exporter's node_uname_info and provides key
+system identification labels for Prometheus queries. Combined with the existing
+firmware collector (which has OPNsense version), this gives complete system
+identification.
+
+API ENDPOINTS (all GET, all verified working on 10.0.0.254):
+
+1. GET api/diagnostics/cpu_usage/getCPUType
+   (also works as: api/diagnostics/cpu_usage/get_c_p_u_type)
+   Response:
+   ["Intel(R) Xeon(R) E-2136 CPU @ 3.30GHz (6 cores, 12 threads)"]
+
+   Note: Returns a JSON array with a single string element.
+
+2. GET api/diagnostics/system/system_information
+   (also works as: api/diagnostics/system/systemInformation)
+   Response:
+   {
+     "name": "opnsense.rob-knight.net",
+     "versions": [
+       "OPNsense 26.1.2_5-amd64",
+       "FreeBSD 14.3-RELEASE-p8",
+       "OpenSSL 3.0.19"
+     ],
+     "updates": "Click to check for updates."
+   }
+
+PROPOSED METRICS:
+
+  opnsense_system_info    gauge (always 1)
+    labels: [hostname, opnsense_version, freebsd_version, openssl_version,
+             cpu_model, cpu_cores, cpu_threads]
+
+  Example:
+    opnsense_system_info{hostname="opnsense.rob-knight.net",
+      opnsense_version="26.1.2_5-amd64",
+      freebsd_version="14.3-RELEASE-p8",
+      openssl_version="3.0.19",
+      cpu_model="Intel(R) Xeon(R) E-2136 CPU @ 3.30GHz",
+      cpu_cores="6",cpu_threads="12"} 1
+
+IMPLEMENTATION:
+
+This can be added to the EXISTING system collector (internal/collector/system.go)
+since it's related system information. However, the CPU type endpoint is new and
+needs to be registered.
+
+Files to create/modify:
+  - opnsense/system_resources.go    (add FetchSystemInfo and FetchCPUType methods)
+  - internal/collector/system.go    (add systemInfo metric descriptor + emit)
+  - opnsense/client.go              (add 2 endpoints)
+
+Add to opnsense/client.go endpoints map:
+  "cpuType":           "api/diagnostics/cpu_usage/getCPUType",
+  "systemInformation": "api/diagnostics/system/system_information",
+
+Notes:
+  - The CPU type response is a JSON array: unmarshal into []string and take [0].
+  - Parse the CPU string to extract cores/threads: look for pattern
+    "(\d+) cores, (\d+) threads" using regex, or just expose the full string
+    as cpu_model and skip cores/threads if parsing is fragile.
+  - The versions array has 3 elements in fixed order: OPNsense, FreeBSD, OpenSSL.
+    Parse "OPNsense " prefix off versions[0], "FreeBSD " off versions[1],
+    "OpenSSL " off versions[2].
+  - This is an INFO metric (always value 1) — use prometheus.GaugeValue.
+  - These values rarely change, so they add minimal overhead per scrape.
+  - This data is complementary to the firmware collector's opnsense_firmware_info
+    metric. Consider whether to consolidate or keep separate. Recommend keeping
+    separate since system_info includes FreeBSD and CPU data that firmware doesn't.
+  - Treat failures on these endpoints as non-fatal (like memory.arc) — the rest
+    of the system collector should still work even if these new calls fail.
+
+
+================================================================================
+TODO 22: KERNEL NETWORK MEMORY STATISTICS (MEDIUM PRIORITY)
+================================================================================
+
+WHY: The existing mbuf collector uses api/diagnostics/system/systemMbuf which
+provides basic mbuf counts. However, api/diagnostics/interface/get_memory_statistics
+provides a MORE COMPREHENSIVE view of kernel network memory including mbuf,
+cluster, jumbo page, and sendfile statistics with failure and sleep counters.
+These failure counters are critical for detecting network buffer exhaustion.
+
+NOTE: This endpoint is ALREADY registered in client.go as endpoint
+"netisrStatistics" — wait, actually checking: it's NOT the same endpoint.
+The get_memory_statistics is a different endpoint that is NOT yet registered.
+The network_diag collector currently does NOT use get_memory_statistics.
+
+API ENDPOINT (GET, verified working on 10.0.0.254):
+
+  GET api/diagnostics/interface/get_memory_statistics
+  Response:
+  {
+    "mbuf-statistics": {
+      "mbuf-current": 23426,
+      "mbuf-cache": 21274,
+      "mbuf-total": 44700,
+      "cluster-current": 17563,
+      "cluster-cache": 9837,
+      "cluster-total": 27400,
+      "cluster-max": 2028369,
+      "packet-count": 392,
+      "packet-free": 4434,
+      "jumbo-count": 1,
+      "jumbo-cache": 1983,
+      "jumbo-total": 1984,
+      "jumbo-max": 1014184,
+      "jumbo-page-size": 4,
+      "jumbo9-count": 0,
+      "jumbo9-cache": 0,
+      "jumbo9-total": 0,
+      "jumbo9-max": 300499,
+      "jumbo16-count": 0,
+      "jumbo16-cache": 0,
+      "jumbo16-total": 0,
+      "jumbo16-limit": 169030,
+      "bytes-in-use": 41042,
+      "bytes-in-cache": 32924,
+      "bytes-total": 73967,
+      "mbuf-failures": 0,
+      "cluster-failures": 0,
+      "packet-failures": 0,
+      "mbuf-sleeps": 0,
+      "cluster-sleeps": 0,
+      "packet-sleeps": 0,
+      "jumbop-sleeps": 0,
+      "jumbo9-sleeps": 0,
+      "jumbo16-sleeps": 0,
+      "jumbop-failures": 0,
+      "jumbo9-failures": 0,
+      "jumbo16-failures": 0,
+      "sendfile-syscalls": 0,
+      "sendfile-no-io": 0,
+      "sendfile-io-count": 0,
+      "sendfile-pages-sent": 0,
+      "sendfile-pages-valid": 0,
+      "sendfile-pages-bogus": 0,
+      "sendfile-requested-readahead": 0,
+      "sendfile-readahead": 0,
+      "sendfile-busy-encounters": 0,
+      "sfbufs-alloc-failed": 0,
+      "sfbufs-alloc-wait": 0
+    }
+  }
+
+DECISION: Replace or enhance the existing mbuf collector?
+
+Option A (RECOMMENDED): ENHANCE the existing mbuf collector to add the failure
+  and sleep counters from this endpoint. The existing mbuf collector already
+  covers the basic counts from systemMbuf. This endpoint provides additional
+  failure/sleep/sendfile data.
+
+Option B: Replace the mbuf collector entirely with this endpoint. However,
+  the systemMbuf endpoint data is already well-structured for the current
+  collector, so enhancement is simpler.
+
+PROPOSED NEW METRICS (to add to existing mbuf collector):
+
+  opnsense_mbuf_failures_total          counter labels: [type]
+    type values: "mbuf", "cluster", "packet", "jumbop", "jumbo9", "jumbo16"
+
+  opnsense_mbuf_sleeps_total            counter labels: [type]
+    type values: "mbuf", "cluster", "packet", "jumbop", "jumbo9", "jumbo16"
+
+  opnsense_mbuf_bytes_in_use            gauge   - bytes-in-use
+  opnsense_mbuf_bytes_in_cache          gauge   - bytes-in-cache
+  opnsense_mbuf_bytes_total             gauge   - bytes-total
+
+  opnsense_mbuf_sendfile_syscalls_total counter - sendfile-syscalls
+  opnsense_mbuf_sendfile_io_total       counter - sendfile-io-count
+  opnsense_mbuf_sendfile_pages_sent_total counter - sendfile-pages-sent
+
+IMPLEMENTATION:
+
+Files to modify:
+  - opnsense/mbuf.go                   (add FetchMemoryStatistics method)
+  - internal/collector/mbuf.go         (add new metric descriptors + emit)
+  - opnsense/client.go                 (add endpoint)
+
+Add to opnsense/client.go endpoints map:
+  "memoryStatistics": "api/diagnostics/interface/get_memory_statistics",
+
+Notes:
+  - Add a second API call to the existing mbuf collector's Update() method.
+  - Use partial failure tolerance: if the new endpoint fails, still return
+    the existing systemMbuf data and log a warning.
+  - All values are integers, no parsing needed.
+  - The failure and sleep counters are the most valuable additions — they
+    indicate buffer exhaustion which causes packet drops.
+  - The bytes-in-use/cache/total provide byte-level memory view that the
+    existing mbuf collector doesn't have.
+
+
+================================================================================
+TODO 23: BPF STATISTICS COLLECTOR (MEDIUM PRIORITY)
+================================================================================
+
+WHY: Berkeley Packet Filter (BPF) statistics show which processes are using
+raw packet capture and how many packets they're receiving/dropping. This is
+useful for detecting packet capture overhead or misconfigured services (e.g.
+dnsmasq, dhcpd) that are dropping packets.
+
+API ENDPOINT (GET, verified working on 10.0.0.254):
+
+  GET api/diagnostics/interface/get_bpf_statistics
+  Response:
+  {
+    "bpf-statistics": {
+      "bpf-entry": [
+        {
+          "pid": 12706,
+          "interface-name": "igb0_vlan50",
+          "direction": "bidirectional",
+          "received-packets": 11442,
+          "dropped-packets": 11424,
+          "filter-packets": 11442,
+          "store-buffer-length": 4028,
+          "hold-buffer-length": 3236,
+          "process": "dnsmasq"
+        },
+        {
+          "pid": 28395,
+          "interface-name": "igb0",
+          "direction": "bidirectional",
+          "received-packets": 987654321,
+          "dropped-packets": 0,
+          "filter-packets": 987654321,
+          "store-buffer-length": 32768,
+          "hold-buffer-length": 32768,
+          "process": "dhcpd"
+        }
+      ]
+    }
+  }
+
+  Note: Optional boolean fields (immediate, header-complete, locked) may also
+  appear on some entries but are not consistently present.
+
+PROPOSED METRICS:
+
+  opnsense_bpf_received_packets_total   counter labels: [process, interface, pid]
+  opnsense_bpf_dropped_packets_total    counter labels: [process, interface, pid]
+  opnsense_bpf_filter_packets_total     counter labels: [process, interface, pid]
+  opnsense_bpf_store_buffer_bytes       gauge   labels: [process, interface, pid]
+  opnsense_bpf_hold_buffer_bytes        gauge   labels: [process, interface, pid]
+  opnsense_bpf_listeners_total          gauge   - count of bpf-entry array
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/bpf_statistics.go            (new — Fetch method + structs)
+  - internal/collector/bpf.go             (new — collector)
+  - opnsense/client.go                     (add endpoint)
+  - internal/collector/collector.go       (add BPFSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "bpfStatistics": "api/diagnostics/interface/get_bpf_statistics",
+
+Notes:
+  - Use "pid" as a label (converted to string) since the same process name
+    may have multiple BPF listeners on different interfaces.
+  - This is a LOW CARDINALITY collector — typically only 5-15 BPF listeners.
+  - The main value is the dropped-packets counter: if this is non-zero and
+    growing, a process is losing packets due to buffer overflow.
+  - Consider if "pid" label is too volatile (PIDs change on restart). Could
+    use only process+interface labels instead for more stable time series.
+    RECOMMENDATION: Use process+interface only (skip pid) to avoid label churn.
+
+
+================================================================================
+TODO 24: NDP (IPv6 NEIGHBOR DISCOVERY) TABLE COLLECTOR (LOW PRIORITY)
+================================================================================
+
+WHY: The NDP table is the IPv6 equivalent of the ARP table. Since we already
+have an ARP table collector, providing NDP metrics gives parity for IPv6
+networks. Useful for tracking IPv6 neighbor count and detecting stale entries.
+
+API ENDPOINT (GET, verified working on 10.0.0.254):
+
+  GET api/diagnostics/interface/get_ndp
+  Response (empty on test instance — no IPv6 configured on LAN segments):
+  []
+
+  Expected non-empty response format (from documentation):
+  [
+    {
+      "mac": "00:11:22:33:44:55",
+      "ip": "fe80::1",
+      "intf": "igb0",
+      "intf_description": "LAN",
+      "manufacturer": "Vendor Name",
+      "expire": "23h59m50s",
+      "type": "dynamic"
+    }
+  ]
+
+PROPOSED METRICS:
+
+  opnsense_ndp_entries_total     gauge   - total NDP entries
+  opnsense_ndp_entries           gauge   labels: [interface]  - per-interface count
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/ndp.go                    (new — Fetch method + structs)
+  - internal/collector/ndp.go          (new — collector, very similar to arp_table.go)
+  - opnsense/client.go                 (add endpoint)
+  - internal/collector/collector.go   (add NDPSubsystem constant)
+  - internal/options/collectors.go    (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "ndpTable": "api/diagnostics/interface/get_ndp",
+
+Notes:
+  - The response is a JSON array (like temperature), not wrapped in an object.
+  - If the array is empty, just emit the total as 0.
+  - Pattern follows arp_table.go exactly — count entries, optionally group by
+    interface.
+  - This collector will be useful only for users with IPv6 configured. The
+    disable flag should default to ENABLED (like ARP) since it's lightweight.
+  - The test instance returned an empty array since no IPv6 is configured on
+    LAN segments, but the endpoint is functional.
+
+
+================================================================================
+TODO 25: NETFLOW CACHE STATISTICS COLLECTOR (LOW PRIORITY)
+================================================================================
+
+WHY: For OPNsense instances with NetFlow/IPFIX enabled, cache statistics
+provide packet counts per interface and unique source/destination address
+counts. This is useful for traffic analysis capacity monitoring.
+
+API ENDPOINT (GET, verified working on 10.0.0.254):
+
+  GET api/diagnostics/netflow/cache_stats
+  Response:
+  {
+    "netflow_pppoe0": {
+      "Pkts": 0,
+      "if": "pppoe0",
+      "SrcIPaddresses": 0,
+      "DstIPaddresses": 0
+    },
+    "netflow_igb0": {
+      "Pkts": 1758120,
+      "if": "igb0",
+      "SrcIPaddresses": 466,
+      "DstIPaddresses": 476
+    },
+    "ksocket_netflow_igb0": {
+      "Pkts": 0,
+      "if": "netflow_igb0",
+      "SrcIPaddresses": 0,
+      "DstIPaddresses": 0
+    },
+    "netflow_igb0_vlan25": {
+      "Pkts": 21009,
+      "if": "igb0_vlan25",
+      "SrcIPaddresses": 9,
+      "DstIPaddresses": 12
+    },
+    "ksocket_netflow_igb0_vlan25": {
+      "Pkts": 0,
+      "if": "netflow_igb0_vlan25",
+      "SrcIPaddresses": 0,
+      "DstIPaddresses": 0
+    },
+    "netflow_igb0_vlan50": {
+      "Pkts": 90455,
+      "if": "igb0_vlan50",
+      "SrcIPaddresses": 66,
+      "DstIPaddresses": 61
+    }
+  }
+
+  Note: Keys are dynamic: "netflow_<ifname>" for capture stats and
+  "ksocket_netflow_<ifname>" for kernel socket stats.
+
+PROPOSED METRICS:
+
+  opnsense_netflow_packets_total            counter labels: [interface, type]
+    type = "capture" (netflow_*) or "ksocket" (ksocket_netflow_*)
+  opnsense_netflow_source_addresses         gauge   labels: [interface, type]
+  opnsense_netflow_destination_addresses    gauge   labels: [interface, type]
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/netflow.go                    (new — Fetch method + structs)
+  - internal/collector/netflow.go          (new — collector)
+  - opnsense/client.go                     (add endpoint)
+  - internal/collector/collector.go       (add NetflowSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "netflowCacheStats": "api/diagnostics/netflow/cache_stats",
+
+Notes:
+  - The response uses DYNAMIC keys, not a fixed structure. Iterate over the
+    map entries. Parse the key prefix to determine type: if key starts with
+    "ksocket_" it's a kernel socket entry, otherwise it's a capture entry.
+  - Use the "if" field as the interface label (not the map key).
+  - Filter out ksocket entries where Pkts=0 to reduce noise, or include them
+    all and let users filter in PromQL.
+  - This endpoint only returns data when NetFlow is enabled. If NetFlow is
+    disabled, the endpoint may return an empty object {} or an error.
+    Handle gracefully — return no metrics (not an error) if response is empty.
+  - Check api/diagnostics/netflow/is_enabled first to avoid unnecessary calls.
+    If disabled, skip the cache_stats call entirely.
+
+
+================================================================================
+TODO 26: Q-FEEDS THREAT INTELLIGENCE COLLECTOR (MEDIUM PRIORITY)
+================================================================================
+
+WHY: Q-Feeds is a threat intelligence plugin for OPNsense that provides IP
+and domain-based blocking. When installed, it exposes rich statistics on
+blocked threats including per-feed entry counts, packets/bytes/addresses
+blocked, and license status. This is valuable for security monitoring and
+demonstrating threat feed effectiveness.
+
+IMPORTANT: This is a PLUGIN collector — the q-feeds plugin (os-q-feeds-connector)
+must be installed on the OPNsense instance. The collector must gracefully handle
+the case where the plugin is not installed (HTTP 404 on all endpoints).
+
+API ENDPOINTS (all GET, all verified working on 10.0.0.254):
+
+1. GET api/qfeeds/settings/stats
+   Response:
+   {
+     "feeds": [
+       {
+         "name": "malware_ip",
+         "total_entries": 441464,
+         "packets_blocked": 174978,
+         "bytes_blocked": 9121745,
+         "addresses_blocked": 7139,
+         "updated_at": "2026-03-03T17:00:59Z",
+         "next_update": "2026-03-03T17:20:59Z",
+         "licensed": true
+       }
+     ],
+     "totals": {
+       "entries": 441464,
+       "addresses_blocked": 7139,
+       "packets_blocked": 174978,
+       "bytes_blocked": 9121745
+     },
+     "license": {
+       "name": "Premium",
+       "expiry_date": "2027-02-08T13:53:37Z"
+     }
+   }
+
+2. GET api/qfeeds/settings/search_feeds
+   Response:
+   {
+     "total": 2,
+     "rowCount": 2,
+     "current": 1,
+     "rows": [
+       {
+         "id": 9,
+         "feed_type": "malware_ip",
+         "type": "ip",
+         "description": "Malicious IP addresses",
+         "created_at": "2024-09-02T12:00:00Z",
+         "updated_at": "2026-03-03T17:00:59Z",
+         "frequency": 1200,
+         "next_update": "2026-03-03T17:20:59Z",
+         "licensed": "1",
+         "local_filename": "/var/db/qfeeds-tables/malware_ip.txt",
+         "updated_at_dt": 1772557259,
+         "next_update_dt": 1772558459
+       },
+       {
+         "id": 10,
+         "feed_type": "malware_domains",
+         "type": "domains",
+         "description": "Malicious domain names",
+         "created_at": "2024-09-02T12:00:00Z",
+         "updated_at": "2026-03-03T17:01:02Z",
+         "frequency": 1200,
+         "next_update": "2026-03-03T17:21:02Z",
+         "licensed": "1",
+         "local_filename": "/var/db/qfeeds-tables/malware_domains.txt",
+         "updated_at_dt": 1772557262,
+         "next_update_dt": 1772558462
+       }
+     ]
+   }
+
+   Note: search_events endpoint also exists (50,000 blocked events on test
+   instance) but is too large/expensive to call per scrape. Use stats only.
+
+PROPOSED METRICS:
+
+  Per-feed metrics (labels: [feed_name, feed_type]):
+    opnsense_qfeeds_feed_entries_total        gauge   - total_entries per feed
+    opnsense_qfeeds_feed_packets_blocked_total counter - packets_blocked per feed
+    opnsense_qfeeds_feed_bytes_blocked_total   counter - bytes_blocked per feed
+    opnsense_qfeeds_feed_addresses_blocked     gauge   - addresses_blocked per feed
+    opnsense_qfeeds_feed_last_update_timestamp gauge   - updated_at as unix timestamp
+    opnsense_qfeeds_feed_next_update_timestamp gauge   - next_update as unix timestamp
+
+  Aggregate metrics (no extra labels):
+    opnsense_qfeeds_entries_total              gauge   - totals.entries
+    opnsense_qfeeds_packets_blocked_total      counter - totals.packets_blocked
+    opnsense_qfeeds_bytes_blocked_total        counter - totals.bytes_blocked
+    opnsense_qfeeds_addresses_blocked          gauge   - totals.addresses_blocked
+
+  License info:
+    opnsense_qfeeds_license_info              gauge (always 1) labels: [license_name]
+    opnsense_qfeeds_license_expiry_timestamp  gauge   - expiry_date as unix timestamp
+
+  Feed count:
+    opnsense_qfeeds_feeds_total               gauge   - number of configured feeds
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/qfeeds.go                     (new — Fetch method + structs)
+  - internal/collector/qfeeds.go           (new — collector)
+  - opnsense/client.go                     (add endpoint)
+  - internal/collector/collector.go       (add QFeedsSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "qfeedsStats": "api/qfeeds/settings/stats",
+
+Notes:
+  - This is a PLUGIN collector. The plugin may not be installed. When the
+    endpoint returns HTTP 404, return nil (not an error) so the collector
+    is silently skipped. Check for 404 status specifically.
+  - ONLY the stats endpoint is needed — it provides both per-feed and
+    aggregate data in a single call. Do NOT call search_feeds or
+    search_events per scrape (too expensive).
+  - Parse ISO 8601 timestamps (e.g. "2026-03-03T17:00:59Z") to unix
+    timestamps using time.Parse(time.RFC3339, ...).
+  - The "licensed" field in stats is a bool, but in search_feeds it's
+    a string "1"/"0" — use the stats endpoint only.
+  - Default: DISABLED. Users must explicitly enable this collector since
+    the plugin is not universally installed. Use env var
+    OPNSENSE_EXPORTER_ENABLE_QFEEDS=true to enable.
+  - Unlike other collectors which use --disable flags, this one should
+    use an --enable flag (or --disable defaulting to disabled).
+
+
+================================================================================
+TODO 27: FIREWALL AGGREGATE STATS (LOW PRIORITY)
+================================================================================
+
+WHY: The api/diagnostics/firewall/stats endpoint provides a simple per-interface
+rule match count that complements the more detailed firewall_rules collector.
+It gives a quick overview of which interfaces are seeing the most firewall rule
+matches without the cardinality of per-rule metrics.
+
+API ENDPOINT (GET, verified working on 10.0.0.254):
+
+  GET api/diagnostics/firewall/stats
+  Response:
+  [
+    {"label": "WAN", "value": 2264},
+    {"label": "IOT", "value": 1132},
+    {"label": "MGMT", "value": 821},
+    {"label": "AAISP", "value": 648},
+    {"label": "CAM", "value": 120},
+    {"label": "LAN", "value": 15}
+  ]
+
+  Note: Response is a JSON array (not an object). Labels are human-readable
+  interface descriptions, not raw interface names.
+
+PROPOSED METRICS:
+
+  opnsense_firewall_interface_hits_total    counter labels: [interface]
+    Example: opnsense_firewall_interface_hits_total{interface="WAN"} 2264
+
+IMPLEMENTATION:
+
+This is small enough to add to the EXISTING firewall collector rather than
+creating a new one.
+
+Files to modify:
+  - opnsense/firewall.go              (add FetchFirewallStats method)
+  - internal/collector/firewall.go    (add metric descriptor + emit)
+  - opnsense/client.go                (add endpoint)
+
+Add to opnsense/client.go endpoints map:
+  "firewallStats": "api/diagnostics/firewall/stats",
+
+Notes:
+  - Response is a simple JSON array: unmarshal into []struct{Label string; Value int}.
+  - Use partial failure tolerance: if this endpoint fails, don't fail the
+    whole firewall collector (log warning, continue with other firewall metrics).
+  - The values appear to be cumulative counters (rule match counts), so expose
+    as counter type.
+  - This is LOW CARDINALITY — one entry per interface (6 on test instance).
+
+
+================================================================================
+TODO 28: PFSYNC HA NODE COLLECTOR (LOW PRIORITY)
+================================================================================
+
+WHY: For OPNsense HA (high availability) setups using pfsync, monitoring the
+cluster node count and identifying the local node is useful for HA health
+checks. This is only relevant for multi-node firewall clusters.
+
+API ENDPOINT (GET, verified working on 10.0.0.254):
+
+  GET api/diagnostics/interface/get_pfsync_nodes
+  Response:
+  {
+    "total": 1,
+    "rowCount": 1,
+    "current": 1,
+    "rows": [
+      {
+        "creatorid": "b19d2dd9",
+        "this": 1
+      }
+    ]
+  }
+
+  Note: "this" = 1 means this row is the local node. In an HA cluster,
+  there would be multiple rows with different creatorid values.
+
+PROPOSED METRICS:
+
+  opnsense_pfsync_nodes_total        gauge   - total number of pfsync nodes
+  opnsense_pfsync_node_info          gauge (always 1) labels: [creatorid, is_local]
+    is_local = "true"/"false" based on "this" field
+
+IMPLEMENTATION:
+
+This is small enough to add to the existing network_diag collector.
+
+Files to modify:
+  - opnsense/network_diagnostics.go   (add FetchPFSyncNodes method)
+  - internal/collector/network_diag.go (add metric descriptors + emit)
+
+The endpoint is already registered in client.go as "pfSyncNodes" — wait,
+let me check... it's NOT registered. Need to add it.
+
+Add to opnsense/client.go endpoints map:
+  "pfsyncNodes": "api/diagnostics/interface/get_pfsync_nodes",
+
+Notes:
+  - Standard paginated response format (total, rowCount, current, rows).
+  - Use partial failure tolerance within the network_diag collector.
+  - For single-node setups (most common), this will show 1 node with this=1.
+  - The "creatorid" is a hex string identifying the node in the pfsync cluster.
+
+
+================================================================================
+NODE EXPORTER COVERAGE GAP ANALYSIS — CANNOT BE FILLED VIA API
+================================================================================
+
+The following node_exporter metrics CANNOT be replaced by this exporter because
+the OPNsense API does not expose the underlying data. Users who need these
+specific metrics will still need node_exporter or an alternative agent running
+directly on the OPNsense box.
+
+1. PER-CORE CPU TIME COUNTERS (node_cpu_seconds_total)
+   - The OPNsense API only provides AGGREGATE CPU percentages via the activity
+     endpoint (cpu user/nice/system/interrupt/idle).
+   - The cpu_usage/stream endpoint provides per-core data but is a STREAMING
+     endpoint that requires a persistent connection — not suitable for
+     point-in-time Prometheus scrapes.
+   - Impact: HIGH for users who need per-core CPU analysis.
+
+2. MEMORY BREAKDOWN (node_memory_active/inactive/wired/laundry/free_bytes)
+   - The API provides only total/used/ARC. FreeBSD's detailed vm page
+     categories (active, inactive, wired, laundry, free) are not exposed.
+   - The api/diagnostics/system/memory endpoint has malloc/zone stats but
+     NOT the vm page category breakdown.
+   - Impact: MEDIUM — total/used is sufficient for basic monitoring.
+
+3. DISK I/O STATISTICS (node_disk_read/written_bytes_total)
+   - No OPNsense API endpoint provides disk read/write throughput, IOPS,
+     or I/O latency. Only filesystem capacity (df-style) is available.
+   - Impact: MEDIUM — disk I/O is less critical for firewall appliances.
+
+4. KERNEL COUNTERS (context switches, interrupts, forks, page faults)
+   - These low-level FreeBSD kernel counters (from sysctl) are not exposed
+     through any OPNsense API endpoint.
+   - Impact: LOW — rarely needed for firewall monitoring.
+
+5. FILE DESCRIPTORS / OPEN FILES
+   - FreeBSD's kern.openfiles / kern.maxfiles are not exposed via API.
+   - Impact: LOW — file descriptor exhaustion is rare on firewalls.
+
+================================================================================
+TODO 29: SMART DISK HEALTH COLLECTOR (HIGH PRIORITY)
+================================================================================
+
+WHY: SMART (Self-Monitoring, Analysis and Reporting Technology) provides
+critical disk health data including health pass/fail, temperature, power-on
+hours, wear leveling, error counts, and bad sector counts. This replaces the
+need for smartctl-based node_exporter textfile collectors and provides
+proactive disk failure alerting. The os-smart plugin is installed on the
+test instance.
+
+IMPORTANT: All SMART endpoints use POST (not GET). The plugin exposes its
+API through api/smart/service/ paths.
+
+API ENDPOINTS (all POST, all verified working on 10.0.0.254):
+
+1. POST api/smart/service/list
+   Body: {} (empty JSON or no body)
+   Response:
+   {
+     "devices": ["ada0"]
+   }
+
+   Note: Returns array of device names. For NVMe drives, names may be
+   "nvme0" or similar. The backend runs: sysctl -n kern.disks | sed s:nda:nvme:g
+
+2. POST api/smart/service/info
+   Body: {"device":"ada0","type":"H","json":"1"}
+   Response (Health check):
+   {
+     "output": {
+       "smartctl": {"exit_status": 0},
+       "device": {"name": "/dev/ada0", "type": "atacam", "protocol": "ATA"},
+       "smart_status": {"passed": true}
+     }
+   }
+
+3. POST api/smart/service/info
+   Body: {"device":"ada0","type":"A","json":"1"}
+   Response (SMART Attributes — SATA drive):
+   {
+     "output": {
+       "ata_smart_attributes": {
+         "revision": 1,
+         "table": [
+           {"id": 5, "name": "Reallocated_Sector_Ct", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0}},
+           {"id": 9, "name": "Power_On_Hours", "value": 92, "worst": 92, "thresh": 0, "raw": {"value": 35997}},
+           {"id": 12, "name": "Power_Cycle_Count", "value": 99, "worst": 99, "thresh": 0, "raw": {"value": 34}},
+           {"id": 177, "name": "Wear_Leveling_Count", "value": 47, "worst": 47, "thresh": 0, "raw": {"value": 526}},
+           {"id": 179, "name": "Used_Rsvd_Blk_Cnt_Tot", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0}},
+           {"id": 181, "name": "Program_Fail_Cnt_Total", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0}},
+           {"id": 182, "name": "Erase_Fail_Count_Total", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0}},
+           {"id": 183, "name": "Runtime_Bad_Block", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0}},
+           {"id": 187, "name": "Uncorrectable_Error_Cnt", "value": 100, "worst": 100, "thresh": 0, "raw": {"value": 0}},
+           {"id": 190, "name": "Airflow_Temperature_Cel", "value": 63, "worst": 48, "thresh": 0, "raw": {"value": 37}},
+           {"id": 195, "name": "ECC_Error_Rate", "value": 200, "worst": 200, "thresh": 0, "raw": {"value": 0}},
+           {"id": 199, "name": "CRC_Error_Count", "value": 100, "worst": 100, "thresh": 0, "raw": {"value": 0}},
+           {"id": 235, "name": "POR_Recovery_Count", "value": 99, "worst": 99, "thresh": 0, "raw": {"value": 22}},
+           {"id": 241, "name": "Total_LBAs_Written", "value": 99, "worst": 99, "thresh": 0, "raw": {"value": 186384710456}}
+         ]
+       },
+       "temperature": {"current": 37},
+       "power_on_time": {"hours": 35997},
+       "power_cycle_count": 34
+     }
+   }
+
+   Note for NVMe drives, the response structure differs:
+   {
+     "output": {
+       "nvme_smart_health_information_log": {
+         "critical_warning": 0,
+         "temperature": 37,
+         "available_spare": 100,
+         "available_spare_threshold": 10,
+         "percentage_used": 2,
+         "data_units_read": 12345678,
+         "data_units_written": 87654321,
+         "power_cycles": 15,
+         "power_on_hours": 5000,
+         "unsafe_shutdowns": 3,
+         "media_errors": 0,
+         "num_err_log_entries": 0
+       }
+     }
+   }
+
+4. POST api/smart/service/info
+   Body: {"device":"ada0","type":"i","json":"1"}
+   Response (Device identity):
+   {
+     "output": {
+       "model_family": "Samsung based SSDs",
+       "model_name": "Samsung SSD 870 QVO 1TB",
+       "serial_number": "S5SVNF0R316136P",
+       "firmware_version": "SVQ01B6Q",
+       "user_capacity": {"blocks": 1953525168, "bytes": 1000204886016},
+       "rotation_rate": 0,
+       "form_factor": {"ata_value": 3, "name": "2.5 inches"},
+       "smart_support": {"available": true, "enabled": true},
+       "interface_speed": {
+         "max": {"string": "6.0 Gb/s"},
+         "current": {"string": "6.0 Gb/s"}
+       }
+     }
+   }
+
+PROPOSED METRICS:
+
+  Device info (always 1):
+    opnsense_smart_device_info              gauge labels: [device, model, serial, firmware, protocol]
+      Example: opnsense_smart_device_info{device="ada0",model="Samsung SSD 870 QVO 1TB",
+               serial="S5SVNF0R316136P",firmware="SVQ01B6Q",protocol="ATA"} 1
+
+  Health status:
+    opnsense_smart_device_healthy           gauge labels: [device]
+      1 = passed, 0 = failed
+
+  Common metrics (both SATA and NVMe):
+    opnsense_smart_temperature_celsius      gauge labels: [device]
+    opnsense_smart_power_on_hours           gauge labels: [device]  (counter semantics but gauge for current value)
+    opnsense_smart_power_cycles_total       gauge labels: [device]
+    opnsense_smart_capacity_bytes           gauge labels: [device]
+
+  SATA-specific (from ata_smart_attributes — key attributes only):
+    opnsense_smart_attribute_value          gauge labels: [device, attribute_name, attribute_id]
+    opnsense_smart_attribute_worst          gauge labels: [device, attribute_name, attribute_id]
+    opnsense_smart_attribute_threshold      gauge labels: [device, attribute_name, attribute_id]
+    opnsense_smart_attribute_raw            gauge labels: [device, attribute_name, attribute_id]
+
+  NVMe-specific:
+    opnsense_smart_nvme_available_spare_percent   gauge labels: [device]
+    opnsense_smart_nvme_percentage_used           gauge labels: [device]
+    opnsense_smart_nvme_critical_warning          gauge labels: [device]
+    opnsense_smart_nvme_media_errors_total        gauge labels: [device]
+    opnsense_smart_nvme_unsafe_shutdowns_total    gauge labels: [device]
+    opnsense_smart_nvme_data_units_read_total     counter labels: [device]
+    opnsense_smart_nvme_data_units_written_total  counter labels: [device]
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/smart.go                      (new — Fetch methods + structs)
+  - internal/collector/smart.go            (new — collector)
+  - opnsense/client.go                     (add endpoints)
+  - internal/collector/collector.go       (add SmartSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "smartList": "api/smart/service/list",
+  "smartInfo": "api/smart/service/info",
+
+Notes:
+  - ALL endpoints are POST. The client.do() method already supports POST.
+    Send JSON body using bytes.NewBuffer(jsonBytes) as the body parameter.
+  - Collector strategy: Call "list" to enumerate devices, then for each device
+    call "info" twice: once with type="H" (health), once with type="A" (attributes).
+    The device identity (type="i") can also be called for the info metric labels.
+  - IMPORTANT: calling info for EACH device means N*2 or N*3 API calls per scrape
+    (N = number of disks). For a firewall with 1-2 disks this is fine. For many
+    disks, consider caching identity data since it rarely changes.
+  - Handle both SATA and NVMe response formats: check for "ata_smart_attributes"
+    vs "nvme_smart_health_information_log" in the response.
+  - The SATA attribute_raw values are the most useful for alerting:
+    ID 5 (Reallocated_Sector_Ct), ID 187 (Uncorrectable_Error_Cnt),
+    ID 197 (Current_Pending_Sector), ID 198 (Offline_Uncorrectable) — any
+    non-zero raw value on these indicates potential disk failure.
+  - Plugin detection: if "smartList" returns 404, silently skip (plugin not
+    installed). Use same pattern as Q-Feeds.
+  - Default: ENABLED (opt-out with --disable-smart). The plugin is common
+    enough to be on by default.
+
+
+================================================================================
+TODO 30: TAILSCALE COLLECTOR (MEDIUM PRIORITY)
+================================================================================
+
+WHY: Tailscale is a popular mesh VPN used on OPNsense for remote access and
+site-to-site connectivity. The api/tailscale/status/status endpoint exposes
+the full tailscale status including per-peer connection data (bytes transferred,
+online status, relay vs direct, handshake times). This gives visibility into
+the Tailscale mesh network health without needing direct CLI access.
+
+API ENDPOINTS (verified working on 10.0.0.254):
+
+1. GET api/tailscale/service/status
+   Response:
+   {
+     "status": "running",
+     "widget": {"caption_restart": "Restart", "caption_start": "Start", "caption_stop": "Stop"}
+   }
+
+2. GET api/tailscale/status/status
+   Response (83.6KB on test instance — 75 peers):
+   {
+     "Version": "1.94.1",
+     "TUN": true,
+     "BackendState": "Running",
+     "HaveNodeKey": true,
+     "TailscaleIPs": ["100.73.205.40", "fd7a:115c:a1e0::ad01:cd28"],
+     "Self": {
+       "ID": "n...",
+       "HostName": "opnsense",
+       "DNSName": "opnsense.saga-turtle.ts.net.",
+       "OS": "freebsd",
+       "TailscaleIPs": ["100.73.205.40", "fd7a:115c:a1e0::ad01:cd28"],
+       "Tags": ["tag:networking"],
+       "PrimaryRoutes": ["10.0.0.0/24", "10.0.20.0/24", "10.0.25.0/24",
+                          "10.0.50.0/24", "10.0.100.0/24"],
+       "RxBytes": 123456789,
+       "TxBytes": 987654321,
+       "Online": true,
+       "ExitNode": false,
+       "ExitNodeOption": true,
+       "Active": true
+     },
+     "Peer": {
+       "<nodeKeyHex>": {
+         "HostName": "peerhost",
+         "DNSName": "peerhost.saga-turtle.ts.net.",
+         "OS": "linux",
+         "TailscaleIPs": ["100.x.y.z"],
+         "CurAddr": "1.2.3.4:41641",
+         "Relay": "lhr",
+         "RxBytes": 12345,
+         "TxBytes": 67890,
+         "Online": true,
+         "ExitNode": false,
+         "Active": true,
+         "LastSeen": "2026-03-03T17:05:00Z",
+         "LastHandshake": "2026-03-03T17:04:30Z",
+         "Expired": false,
+         "KeyExpiry": "2026-09-01T00:00:00Z"
+       }
+     },
+     "Health": ["warning message if any"],
+     "CurrentTailnet": {
+       "Name": "user@example.com",
+       "MagicDNSSuffix": "saga-turtle.ts.net",
+       "MagicDNSEnabled": true
+     }
+   }
+
+PROPOSED METRICS:
+
+  Service status:
+    opnsense_tailscale_up                    gauge   - 1 if BackendState="Running", 0 otherwise
+
+  Self node:
+    opnsense_tailscale_self_info             gauge (always 1) labels: [hostname, dns_name, os, version, tailnet]
+    opnsense_tailscale_self_received_bytes_total  counter - Self.RxBytes
+    opnsense_tailscale_self_transmitted_bytes_total counter - Self.TxBytes
+    opnsense_tailscale_self_exit_node        gauge   - 1 if Self.ExitNode, 0 otherwise
+    opnsense_tailscale_advertised_routes     gauge   - len(Self.PrimaryRoutes)
+
+  Peer summary:
+    opnsense_tailscale_peers_total           gauge   - total peer count
+    opnsense_tailscale_peers_online          gauge   - count of peers with Online=true
+    opnsense_tailscale_peers_active          gauge   - count of peers with Active=true
+
+  Per-peer metrics (labels: [hostname, os]):
+    opnsense_tailscale_peer_online           gauge   - 1 if Online, 0 otherwise
+    opnsense_tailscale_peer_received_bytes_total  counter - peer.RxBytes
+    opnsense_tailscale_peer_transmitted_bytes_total counter - peer.TxBytes
+    opnsense_tailscale_peer_last_seen_timestamp  gauge   - LastSeen as unix timestamp
+    opnsense_tailscale_peer_last_handshake_timestamp gauge - LastHandshake as unix timestamp
+    opnsense_tailscale_peer_key_expiry_timestamp gauge   - KeyExpiry as unix timestamp (if present)
+    opnsense_tailscale_peer_expired          gauge   - 1 if Expired=true
+
+  Health:
+    opnsense_tailscale_health_warnings       gauge   - len(Health) array
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/tailscale.go                  (new — Fetch method + structs)
+  - internal/collector/tailscale.go        (new — collector)
+  - opnsense/client.go                     (add endpoints)
+  - internal/collector/collector.go       (add TailscaleSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "tailscaleStatus":        "api/tailscale/status/status",
+  "tailscaleServiceStatus": "api/tailscale/service/status",
+
+Notes:
+  - The status/status response can be VERY LARGE (83KB with 75 peers on
+    test instance). This is a single API call but parse carefully.
+  - The Peer map uses node key hex strings as keys — ignore these, iterate
+    over the values.
+  - Per-peer metrics have HIGH CARDINALITY (75 peers on test instance).
+    Consider providing a --tailscale-details flag (like --kea-details)
+    to control whether per-peer metrics are emitted. Default: per-peer
+    metrics ENABLED (most users want this for VPN monitoring).
+  - Alternatively, only emit peer summary counts by default and require
+    --tailscale-details for per-peer breakdown.
+  - Parse timestamps with time.Parse(time.RFC3339, ...) — they're ISO 8601.
+  - Some peers may have null/missing fields (Expired, KeyExpiry) — handle
+    gracefully.
+  - Plugin detection: if status/status returns 404, silently skip.
+  - Default: ENABLED (opt-out with --disable-tailscale).
+  - The test instance has 75 peers — at ~7 metrics per peer, that's 525
+    per-peer time series. This is significant but manageable.
+
+
+================================================================================
+TODO 31: CROWDSEC SECURITY COLLECTOR (MEDIUM PRIORITY)
+================================================================================
+
+WHY: CrowdSec is a popular open-source security engine that detects and blocks
+malicious IPs using community-driven threat intelligence. When installed on
+OPNsense, it provides alerts, decisions (bans/captchas), bouncer status,
+machine registration, and installed collections/scenarios. These metrics are
+valuable for security monitoring and incident response.
+
+IMPORTANT: The os-crowdsec plugin was NOT installed on the test instance
+(installed=0 in firmware info), so these responses are based on API
+documentation and source code analysis, NOT live testing. The endpoint
+paths and response formats are confirmed from the CrowdSec OPNsense plugin
+GitHub repository source code.
+
+API ENDPOINTS (all GET except where noted, all use standard OPNsense API auth):
+
+1. GET api/crowdsec/service/status
+   Expected Response:
+   {
+     "status": "running",
+     "widget": {"caption_restart": "Restart", "caption_start": "Start", "caption_stop": "Stop"}
+   }
+
+2. GET api/crowdsec/alerts/search
+   Expected Response (paginated):
+   {
+     "total": 150,
+     "rowCount": 50,
+     "current": 1,
+     "rows": [
+       {
+         "id": "123",
+         "scope_value": "Ip:1.2.3.4",
+         "reason": "crowdsecurity/ssh-bf",
+         "country": "CN",
+         "as": "AS12345 Example ISP",
+         "decisions": "ban:1",
+         "created_at": "2026-03-03T10:00:00Z"
+       }
+     ]
+   }
+
+   Note: scope_value is formatted as "scope:value" (e.g. "Ip:1.2.3.4").
+
+3. GET api/crowdsec/decisions/search
+   Expected Response (paginated):
+   {
+     "total": 500,
+     "rowCount": 50,
+     "current": 1,
+     "rows": [
+       {
+         "id": "456",
+         "origin": "cscli",
+         "scope_value": "Ip:1.2.3.4",
+         "reason": "crowdsecurity/ssh-bf",
+         "action": "ban",
+         "country": "CN",
+         "as": "AS12345",
+         "events_count": "5",
+         "expiration": "3h59m50s",
+         "alert_id": "123"
+       }
+     ]
+   }
+
+   Note: Deleted decisions (negative duration) are automatically filtered out.
+
+4. GET api/crowdsec/bouncers/search
+   Expected Response:
+   {
+     "total": 2,
+     "rows": [
+       {
+         "name": "cs-firewall-bouncer",
+         "type": "firewall",
+         "version": "0.0.31",
+         "valid": true,
+         "ip_address": "127.0.0.1",
+         "last_seen": "2026-03-03T17:00:00Z",
+         "os": "freebsd/amd64"
+       }
+     ]
+   }
+
+5. GET api/crowdsec/machines/search
+   Expected Response:
+   {
+     "total": 1,
+     "rows": [
+       {
+         "name": "opnsense-abc123",
+         "ip_address": "127.0.0.1",
+         "version": "1.6.4",
+         "validated": true,
+         "last_seen": "2026-03-03T17:00:00Z",
+         "os": "freebsd"
+       }
+     ]
+   }
+
+6. GET api/crowdsec/collections/search
+   Expected Response:
+   {
+     "total": 5,
+     "rows": [
+       {
+         "name": "crowdsecurity/linux",
+         "status": "enabled",
+         "local_version": "0.2",
+         "description": "Linux basics"
+       }
+     ]
+   }
+
+7. GET api/crowdsec/version/get
+   Expected Response:
+   {
+     "general": {
+       "version": "1.6.4"
+     }
+   }
+
+PROPOSED METRICS:
+
+  Service:
+    opnsense_crowdsec_up                     gauge   - 1 if running, 0 otherwise
+
+  Alerts and Decisions (counts only — avoid per-alert cardinality):
+    opnsense_crowdsec_alerts_total           gauge   - total alert count
+    opnsense_crowdsec_decisions_total        gauge   - total active decision count
+    opnsense_crowdsec_decisions_by_action    gauge   labels: [action] - count by action type (ban/captcha)
+
+  Bouncers:
+    opnsense_crowdsec_bouncers_total         gauge   - total bouncer count
+    opnsense_crowdsec_bouncer_info           gauge (always 1) labels: [name, type, version, os]
+    opnsense_crowdsec_bouncer_valid          gauge   labels: [name] - 1 if valid
+
+  Machines:
+    opnsense_crowdsec_machines_total         gauge   - total machine count
+    opnsense_crowdsec_machine_validated      gauge   labels: [name] - 1 if validated
+
+  Collections/Scenarios:
+    opnsense_crowdsec_collections_total      gauge   - installed collection count
+    opnsense_crowdsec_scenarios_total        gauge   - installed scenario count
+
+  Version info:
+    opnsense_crowdsec_info                   gauge (always 1) labels: [version]
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/crowdsec.go                   (new — Fetch methods + structs)
+  - internal/collector/crowdsec.go         (new — collector)
+  - opnsense/client.go                     (add endpoints)
+  - internal/collector/collector.go       (add CrowdSecSubsystem constant)
+  - internal/options/collectors.go        (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "crowdsecServiceStatus": "api/crowdsec/service/status",
+  "crowdsecAlerts":        "api/crowdsec/alerts/search",
+  "crowdsecDecisions":     "api/crowdsec/decisions/search",
+  "crowdsecBouncers":      "api/crowdsec/bouncers/search",
+  "crowdsecMachines":      "api/crowdsec/machines/search",
+  "crowdsecCollections":   "api/crowdsec/collections/search",
+  "crowdsecVersion":       "api/crowdsec/version/get",
+
+Notes:
+  - NOT LIVE TESTED — response formats are from source code analysis.
+    The implementing agent should verify responses against a live instance
+    if possible, or build defensively with lenient JSON parsing.
+  - Plugin detection: if any endpoint returns 404, assume plugin is not
+    installed and silently skip all CrowdSec metrics.
+  - For alerts and decisions, only fetch the TOTAL count, not all rows.
+    Use rowCount=1 to minimize response size: POST body or query param
+    to limit rows. The "total" field in the paginated response gives the
+    count without needing all rows.
+  - Default: ENABLED (opt-out with --disable-crowdsec).
+  - Multiple API calls per scrape (7 endpoints). Consider combining related
+    calls or making some optional with a --crowdsec-details flag.
+  - The alerts/decisions counts are the most important metrics. Bouncer and
+    machine info changes rarely and could be called less frequently, but
+    for simplicity, call everything each scrape.
+
+
+================================================================================
+NODE EXPORTER COVERAGE GAP ANALYSIS — CANNOT BE FILLED VIA API
+================================================================================
+
+The following node_exporter metrics CANNOT be replaced by this exporter because
+the OPNsense API does not expose the underlying data. Users who need these
+specific metrics will still need node_exporter or an alternative agent running
+directly on the OPNsense box.
+
+1. PER-CORE CPU TIME COUNTERS (node_cpu_seconds_total)
+   - The OPNsense API only provides AGGREGATE CPU percentages via the activity
+     endpoint (cpu user/nice/system/interrupt/idle).
+   - The cpu_usage/stream endpoint provides per-core data but is a STREAMING
+     endpoint that requires a persistent connection — not suitable for
+     point-in-time Prometheus scrapes.
+   - Impact: HIGH for users who need per-core CPU analysis.
+
+2. MEMORY BREAKDOWN (node_memory_active/inactive/wired/laundry/free_bytes)
+   - The API provides only total/used/ARC. FreeBSD's detailed vm page
+     categories (active, inactive, wired, laundry, free) are not exposed.
+   - The api/diagnostics/system/memory endpoint has malloc/zone stats but
+     NOT the vm page category breakdown.
+   - Impact: MEDIUM — total/used is sufficient for basic monitoring.
+
+3. DISK I/O STATISTICS (node_disk_read/written_bytes_total)
+   - No OPNsense API endpoint provides disk read/write throughput, IOPS,
+     or I/O latency. Only filesystem capacity (df-style) is available.
+   - However, SMART provides Total_LBAs_Written (id=241) which gives
+     cumulative bytes written — a partial substitute.
+   - Impact: MEDIUM — disk I/O is less critical for firewall appliances.
+
+4. KERNEL COUNTERS (context switches, interrupts, forks, page faults)
+   - These low-level FreeBSD kernel counters (from sysctl) are not exposed
+     through any OPNsense API endpoint.
+   - Impact: LOW — rarely needed for firewall monitoring.
+
+5. FILE DESCRIPTORS / OPEN FILES
+   - FreeBSD's kern.openfiles / kern.maxfiles are not exposed via API.
+   - Impact: LOW — file descriptor exhaustion is rare on firewalls.
+
+NOTE ON ZENARMOR: Zenarmor (os-sensei) is installed on the test instance but
+does NOT expose a standard OPNsense REST API. It uses a proprietary separate
+API with its own authentication and requires a paid business license. Building
+a collector for Zenarmor is NOT feasible through the standard OPNsense API.
+
+CONCLUSION: With the existing collectors plus TODOs 20-31 above, the OPNsense
+exporter will cover approximately 90%+ of what node_exporter provides for
+FreeBSD systems, PLUS extensive firewall, VPN, security, and plugin coverage
+that node_exporter cannot provide at all. The remaining gaps (per-core CPU,
+memory page categories, disk I/O) require direct system access.
+
+For most firewall monitoring use cases, the OPNsense exporter provides
+SUPERIOR coverage in areas that matter most: network interfaces, firewall
+state tables, protocol statistics, NTP, temperature, VPN metrics, disk health,
+threat intelligence, and security — none of which node_exporter handles as
+comprehensively.

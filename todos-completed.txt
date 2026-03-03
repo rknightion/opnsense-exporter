@@ -196,3 +196,1064 @@ RECOMMENDED ACTION:
   If for some reason you want to keep it:
     → Find the correct widget API URL and add "systemInfo" to the endpoints map
     → But this is NOT recommended since the new endpoint is cleaner
+
+================================================================================
+TODO 3: FIREWALL RULE STATISTICS COLLECTOR (HIGH PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: Per-rule statistics (evaluations, packets, bytes, active states) enable users
+to understand which firewall rules are actually being hit and how much traffic they
+handle. This is extremely valuable for firewall management and troubleshooting.
+
+API ENDPOINTS (both verified working):
+
+1. GET api/firewall/filter_util/rule_stats
+   Response:
+   {
+     "status": "ok",
+     "stats": {
+       "8fc9aa37-e79b-4cc6-8032-d214d92e7f42": {
+         "pf_rules": 2,
+         "evaluations": 3871754,
+         "packets": 543672,
+         "bytes": 167179623,
+         "states": 48
+       },
+       "fcc89aee950e474ad952872fb6c678aa": {
+         "pf_rules": 1,
+         "evaluations": 2019866,
+         "packets": 14891851,
+         "bytes": 11924361606,
+         "states": 7084
+       }
+     }
+   }
+
+   Note: Keys are either UUID format (user-created rules, matchable to
+   search_rule) or MD5 hash format (auto-generated/system rules, no description
+   available). On the dev environment: 43 UUID keys, 48 hash keys.
+
+2. GET api/firewall/filter/search_rule (for mapping UUIDs to descriptions)
+   Response:
+   {
+     "total": 45,
+     "rows": [
+       {
+         "uuid": "8fc9aa37-e79b-4cc6-8032-d214d92e7f42",
+         "description": "mDNS",
+         "action": "pass",
+         "interface": "opt2,lan",
+         "%interface": "IOT, LAN",
+         "direction": "in",
+         "protocol": "UDP",
+         "enabled": "1"
+       }
+     ]
+   }
+
+PROPOSED METRICS:
+  opnsense_firewall_rule_evaluations_total  counter  labels: [uuid, description, action, interface, direction]
+  opnsense_firewall_rule_packets_total      counter  labels: [uuid, description, action, interface, direction]
+  opnsense_firewall_rule_bytes_total        counter  labels: [uuid, description, action, interface, direction]
+  opnsense_firewall_rule_states             gauge    labels: [uuid, description, action, interface, direction]
+  opnsense_firewall_rule_pf_rules           gauge    labels: [uuid, description, action, interface, direction]
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/firewall_rules.go           (new)
+  - internal/collector/firewall_rules.go (new)
+  - opnsense/client.go                   (add 2 endpoints)
+  - internal/collector/collector.go      (add subsystem constant)
+  - internal/options/collectors.go       (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "firewallRuleStats": "api/firewall/filter_util/rule_stats",
+  "firewallRules":     "api/firewall/filter/search_rule",
+
+Design decisions:
+  - Fetch both endpoints: rule_stats for numbers, search_rule for descriptions.
+  - Build a map[uuid]ruleInfo from search_rule, then join with rule_stats.
+  - For hash-format keys (system rules), use description="system" or "auto".
+  - This is a HIGH CARDINALITY collector (91 rules on dev env). Add a disable flag
+    AND consider an optional detail flag similar to dnsmasq-details.
+  - The search_rule endpoint returns rule metadata including %interface (human-readable
+    interface names). Use %interface for the label value, not the raw interface codes.
+  - search_rule is a POST endpoint with body: {"current":1,"rowCount":-1,"sort":{},"searchPhrase":""}
+
+Sample opnsense code:
+  type firewallRuleStatsResponse struct {
+      Status string                       `json:"status"`
+      Stats  map[string]firewallRuleStat  `json:"stats"`
+  }
+  type firewallRuleStat struct {
+      PfRules     int `json:"pf_rules"`
+      Evaluations int `json:"evaluations"`
+      Packets     int `json:"packets"`
+      Bytes       int `json:"bytes"`
+      States      int `json:"states"`
+  }
+  type firewallRuleSearchResponse struct {
+      Total    int              `json:"total"`
+      RowCount int              `json:"rowCount"`
+      Current  int              `json:"current"`
+      Rows     []firewallRule   `json:"rows"`
+  }
+  type firewallRule struct {
+      UUID        string `json:"uuid"`
+      Description string `json:"description"`
+      Action      string `json:"action"`
+      Interface   string `json:"%interface"`
+      Direction   string `json:"direction"`
+      Protocol    string `json:"protocol"`
+      Enabled     string `json:"enabled"`
+  }
+
+================================================================================
+TODO 4: PF STATE TABLE COLLECTOR (HIGH PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: The PF state table current count and limit are critical for capacity planning.
+When states approach the limit, new connections will be dropped. This is one of the
+most important firewall health metrics.
+
+API ENDPOINT (verified working):
+  GET api/diagnostics/firewall/pf_states/1
+
+  Response:
+  {
+    "current": "15045",
+    "limit": "3257500"
+  }
+
+  Note: The /1 path parameter requests page 1 with minimal data — we only need
+  the metadata (current count and limit), not the actual state entries.
+
+PROPOSED METRICS:
+  opnsense_firewall_pf_states_current   gauge   - current active states
+  opnsense_firewall_pf_states_limit     gauge   - maximum allowed states
+
+IMPLEMENTATION:
+
+This is small enough to add to the EXISTING firewall collector
+(internal/collector/firewall.go) rather than creating a new one. However, it
+requires a new Fetch method since it's a different API endpoint.
+
+Files to create/modify:
+  - opnsense/pf_states.go            (new — Fetch method + struct)
+  - internal/collector/firewall.go   (modify — add 2 new metrics)
+  - opnsense/client.go               (add endpoint)
+
+Add to opnsense/client.go endpoints map:
+  "pfStates": "api/diagnostics/firewall/pf_states/1",
+
+Sample opnsense code:
+  type pfStatesResponse struct {
+      Current string `json:"current"`
+      Limit   string `json:"limit"`
+  }
+  type PFStates struct {
+      Current int
+      Limit   int
+  }
+  func (c *Client) FetchPFStates() (PFStates, *APICallError) {
+      var resp pfStatesResponse
+      url, ok := c.endpoints["pfStates"]
+      if !ok {
+          return PFStates{}, &APICallError{Endpoint: "pfStates", Message: "endpoint not found"}
+      }
+      if err := c.do("GET", url, nil, &resp); err != nil {
+          return PFStates{}, err
+      }
+      current, _ := parseStringToInt(resp.Current, url)
+      limit, _ := parseStringToInt(resp.Limit, url)
+      return PFStates{Current: current, Limit: limit}, nil
+  }
+
+Note: parseStringToInt is already available in opnsense/utils.go.
+
+================================================================================
+TODO 5: MBUF STATISTICS COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: Network buffer (mbuf) exhaustion causes packet drops and network failures on
+FreeBSD systems. Monitoring mbuf usage vs capacity is important for network health.
+
+API ENDPOINT (verified working):
+  GET api/diagnostics/system/systemMbuf
+
+  Response:
+  {
+    "mbuf-statistics": {
+      "mbuf-current": 23423,
+      "mbuf-cache": 24802,
+      "mbuf-total": 48225,
+      "cluster-current": 17463,
+      "cluster-cache": 11313,
+      "cluster-total": 28776,
+      "cluster-max": 2028369,
+      "packet-count": 366,
+      "packet-free": 4460,
+      "jumbo-count": 0,
+      "jumbo-cache": 1877,
+      "jumbo-total": 1877,
+      "jumbo-max": 1014184,
+      "bytes-in-use": 40851,
+      "bytes-in-cache": 36334,
+      "bytes-total": 77185,
+      "mbuf-failures": 0,
+      "cluster-failures": 0,
+      "packet-failures": 0,
+      "mbuf-sleeps": 0,
+      "cluster-sleeps": 0,
+      "packet-sleeps": 0,
+      "jumbop-sleeps": 0,
+      "jumbop-failures": 0
+    }
+  }
+
+PROPOSED METRICS:
+  opnsense_mbuf_current              gauge   - mbuf-current
+  opnsense_mbuf_cache                gauge   - mbuf-cache
+  opnsense_mbuf_total                gauge   - mbuf-total
+  opnsense_mbuf_cluster_current      gauge   - cluster-current
+  opnsense_mbuf_cluster_cache        gauge   - cluster-cache
+  opnsense_mbuf_cluster_total        gauge   - cluster-total
+  opnsense_mbuf_cluster_max          gauge   - cluster-max
+  opnsense_mbuf_failures_total       counter labels: [type] - "mbuf","cluster","packet"
+  opnsense_mbuf_sleeps_total         counter labels: [type] - "mbuf","cluster","packet","jumbop"
+  opnsense_mbuf_bytes_in_use         gauge   - bytes-in-use (in KB)
+  opnsense_mbuf_bytes_total          gauge   - bytes-total (in KB)
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/mbuf.go              (new)
+  - internal/collector/mbuf.go    (new)
+  - opnsense/client.go            (add endpoint)
+  - internal/collector/collector.go (add subsystem constant)
+  - internal/options/collectors.go (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "systemMbuf": "api/diagnostics/system/systemMbuf",
+
+Note: All values are already integers. The JSON uses hyphenated keys so use
+json tags like `json:"mbuf-current"`.
+
+================================================================================
+TODO 6: NTP COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: NTP accuracy is important for log correlation, certificate validation, and
+general system health. Monitoring NTP peer status, offset, and jitter helps detect
+time synchronization issues.
+
+API ENDPOINT (verified working):
+  GET api/ntpd/service/status
+
+  Response:
+  {
+    "total": 1,
+    "rowCount": 1,
+    "current": 1,
+    "rows": [
+      {
+        "status": "*",
+        "server": "10.0.0.2",
+        "refid": ".PPS.",
+        "stratum": "1",
+        "type": "u",
+        "when": "36",
+        "poll": "64",
+        "reach": "377",
+        "delay": "0.259",
+        "offset": "+0.280",
+        "jitter": "0.033"
+      }
+    ]
+  }
+
+  Status field meanings: * = sys.peer, + = candidate, - = outlier, # = selected,
+  x = designated falseticker, . = culled, (space) = reject
+
+PROPOSED METRICS:
+  opnsense_ntp_peer_info               gauge   labels: [server, refid, type, status] - value 1
+  opnsense_ntp_peer_stratum            gauge   labels: [server]
+  opnsense_ntp_peer_when_seconds       gauge   labels: [server] - seconds since last response
+  opnsense_ntp_peer_poll_seconds       gauge   labels: [server] - poll interval
+  opnsense_ntp_peer_reach              gauge   labels: [server] - reachability register (octal)
+  opnsense_ntp_peer_delay_milliseconds gauge   labels: [server]
+  opnsense_ntp_peer_offset_milliseconds gauge  labels: [server]
+  opnsense_ntp_peer_jitter_milliseconds gauge  labels: [server]
+  opnsense_ntp_peers_total             gauge   - total number of configured peers
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/ntp.go              (new)
+  - internal/collector/ntp.go    (new)
+  - opnsense/client.go           (add endpoint)
+  - internal/collector/collector.go (add subsystem constant)
+  - internal/options/collectors.go (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "ntpStatus": "api/ntpd/service/status",
+
+Notes:
+  - The offset field includes a sign prefix ("+0.280" or "-0.123"). Use
+    safeParseFloat() from opnsense/utils.go which handles this.
+  - The "when" field can be "-" if the peer hasn't responded yet.
+  - The "reach" field is an octal number (377 = all 8 last polls successful).
+    Parse as integer for the metric value.
+
+================================================================================
+TODO 7: CERTIFICATE EXPIRY COLLECTOR (MEDIUM PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: Expired or soon-to-expire certificates cause service outages. Exposing
+certificate validity timestamps enables alerting before expiry.
+
+API ENDPOINT (verified working):
+  GET api/trust/cert/search
+
+  Response:
+  {
+    "total": 3,
+    "rows": [
+      {
+        "uuid": "...",
+        "descr": "Web GUI SSL certificate",
+        "commonname": "",
+        "valid_from": "1594071389",
+        "valid_to": "1665351390",
+        "in_use": "0",
+        "cert_type": "server_cert",
+        "%cert_type": "Server Certificate",
+        "name": "...",
+        "key_type": "...",
+        ...
+      }
+    ]
+  }
+
+  Note: valid_from and valid_to are Unix timestamps (strings).
+
+PROPOSED METRICS:
+  opnsense_certificate_valid_from_seconds  gauge  labels: [description, commonname, cert_type, in_use]
+  opnsense_certificate_valid_to_seconds    gauge  labels: [description, commonname, cert_type, in_use]
+  opnsense_certificate_info                gauge  labels: [description, commonname, cert_type, in_use] - value 1
+  opnsense_certificates_total              gauge  - total certificate count
+
+  Users can alert on: (opnsense_certificate_valid_to_seconds - time()) < 2592000
+  to detect certificates expiring within 30 days.
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/certificates.go            (new)
+  - internal/collector/certificates.go   (new)
+  - opnsense/client.go                   (add endpoint)
+  - internal/collector/collector.go      (add subsystem constant)
+  - internal/options/collectors.go       (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "certificates": "api/trust/cert/search",
+
+Notes:
+  - valid_from/valid_to are string Unix timestamps. Use parseStringToInt()
+    from opnsense/utils.go, then expose as float64 for Prometheus gauge.
+  - Use %cert_type for human-readable cert type label, not cert_type.
+  - This is a low-cardinality endpoint (typically 1-20 certs).
+
+================================================================================
+TODO 8: CARP/VIP STATUS COLLECTOR (LOW PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: CARP (Common Address Redundancy Protocol) is used for high-availability
+firewall clusters. Monitoring CARP status and demotion level is critical for HA
+deployments. Not all OPNsense installations use CARP.
+
+API ENDPOINT (verified working):
+  GET api/diagnostics/interface/get_vip_status
+
+  Response (no CARP configured):
+  {
+    "total": 0,
+    "rowCount": 0,
+    "current": 1,
+    "rows": [],
+    "carp": {
+      "demotion": "0",
+      "allow": "1",
+      "maintenancemode": false,
+      "status_msg": "Could not locate any defined CARP interfaces."
+    }
+  }
+
+  Response (with CARP, expected structure based on API docs):
+  {
+    "rows": [
+      {
+        "interface": "LAN",
+        "vhid": "1",
+        "advbase": "1",
+        "advskew": "0",
+        "status": "MASTER",
+        "status_txt": "MASTER",
+        "vip": "10.0.0.1",
+        "subnet": "24"
+      }
+    ],
+    "carp": {
+      "demotion": "0",
+      "allow": "1",
+      "maintenancemode": false
+    }
+  }
+
+PROPOSED METRICS:
+  opnsense_carp_demotion              gauge   - demotion counter
+  opnsense_carp_allow                 gauge   - 1=CARP allowed, 0=disabled
+  opnsense_carp_maintenance_mode      gauge   - 1=maintenance, 0=normal
+  opnsense_carp_vip_status            gauge   labels: [interface, vhid, vip] - 1=MASTER, 0=BACKUP, 2=INIT
+  opnsense_carp_vip_advbase_seconds   gauge   labels: [interface, vhid, vip]
+  opnsense_carp_vip_advskew           gauge   labels: [interface, vhid, vip]
+  opnsense_carp_vips_total            gauge   - total VIP count
+
+IMPLEMENTATION:
+
+Files to create/modify:
+  - opnsense/carp.go              (new)
+  - internal/collector/carp.go    (new)
+  - opnsense/client.go            (add endpoint)
+  - internal/collector/collector.go (add subsystem constant)
+  - internal/options/collectors.go (add disable flag)
+
+Add to opnsense/client.go endpoints map:
+  "carpStatus": "api/diagnostics/interface/get_vip_status",
+
+Notes:
+  - CARP status should map: "MASTER"→1, "BACKUP"→0, "INIT"→2
+  - Even with 0 VIPs, still expose carp_demotion and carp_allow metrics from
+    the "carp" object.
+  - This collector is optional and should default to disabled unless CARP is
+    in use, OR just always expose the carp metadata (low cost).
+
+================================================================================
+TODO 9: UNBOUND BLOCK LIST STATUS (LOW PRIORITY — ENHANCEMENT) [COMPLETE]
+================================================================================
+
+WHY: Many users use Unbound DNS block lists (similar to Pi-hole). Monitoring
+whether the block list is enabled/disabled is useful for ensuring DNS filtering
+is active.
+
+API ENDPOINT (verified working):
+  GET api/unbound/overview/isBlockListEnabled
+
+  Response:
+  { "enabled": false }
+
+PROPOSED METRIC:
+  opnsense_unbound_dns_blocklist_enabled  gauge  - 1=enabled, 0=disabled
+
+IMPLEMENTATION:
+
+This should be added to the EXISTING unbound_dns collector rather than creating
+a new one.
+
+Files to modify:
+  - opnsense/unbound_dns.go              (add new Fetch method or extend existing)
+  - internal/collector/unbound_dns.go     (add metric + call in Update())
+  - opnsense/client.go                    (add endpoint)
+
+Add to opnsense/client.go endpoints map:
+  "unboundBlockList": "api/unbound/overview/isBlockListEnabled",
+
+Sample code addition to internal/collector/unbound_dns.go Update():
+  blockListData, blErr := client.FetchUnboundBlockListStatus()
+  if blErr != nil {
+      // log warning but don't fail the whole collector
+      c.log.Warn("Failed to fetch unbound block list status", "err", blErr)
+  } else {
+      val := 0.0
+      if blockListData.Enabled {
+          val = 1.0
+      }
+      ch <- prometheus.MustNewConstMetric(c.blockListEnabled, prometheus.GaugeValue, val, c.instance)
+  }
+
+================================================================================
+TODO 10: HEALTH CHECK ENHANCEMENT (LOW PRIORITY — ENHANCEMENT) [COMPLETE]
+================================================================================
+
+WHY: The current health check only exposes a binary firewall_status. The API
+returns a numeric system status code and a separate crash_reporter status that
+are not exposed.
+
+CURRENT API RESPONSE (verified):
+  GET api/core/system/status
+  {
+    "metadata": {
+      "system": {
+        "status": 2,
+        "message": "No pending messages",
+        "title": "System"
+      },
+      "translations": { ... },
+      "subsystems": []
+    }
+  }
+
+  The "status" field is numeric: 2=OK, other values indicate warnings/errors.
+
+PROPOSED ADDITIONAL METRICS:
+  opnsense_system_status_code   gauge   - numeric system status (2=OK)
+
+IMPLEMENTATION:
+
+Files to modify:
+  - opnsense/health_check.go       (expose system status code in struct)
+  - internal/collector/collector.go (add metric in main Collector, alongside existing firewall_status)
+
+Notes:
+  - The HealthCheckResponse struct already parses the full response including
+    metadata.system.status via GetMetadataSystemStatus().
+  - The main Collector in collector.go already calls HealthCheck() — just add
+    a new metric that exposes the numeric status code from metadata.system.status.
+
+================================================================================
+TODO 12: PROCESS/ACTIVITY METRICS (LOW PRIORITY — OPTIONAL) [COMPLETE]
+================================================================================
+
+WHY: System process information provides visibility into what's running on the
+firewall, total thread count, and CPU/memory consumption patterns.
+
+API ENDPOINT (verified working):
+  GET api/diagnostics/activity/get_activity
+
+  Response:
+  {
+    "headers": [
+      "last pid: 65652;  load averages:  0.74,  0.52,  0.49  up 23+03:58:03    17:13:41",
+      "849 threads:   13 running, 802 sleeping, 34 waiting",
+      "CPU:  1.3% user,  0.0% nice,  2.2% system,  0.1% interrupt, 96.4% idle",
+      "Mem: 5249M Active, 3393M Inact, 5446M Laundry, 13G Wired, 372K Buf, 3900M Free",
+      "ARC: 8970M Total, 4571M MFU, 3776M MRU, 34M Anon, 67M Header, 517M Other",
+      "     7809M Compressed, 13G Uncompressed, 1.74:1 Ratio",
+      "Swap: 10G Total, 433M Used, 9807M Free, 4% Inuse"
+    ],
+    "details": [
+      {
+        "C": "11",
+        "PID": "11",
+        "THR": "100014",
+        "USERNAME": "root",
+        "PRI": "187",
+        "NICE": "ki31",
+        "SIZE": "0B",
+        "RES": "192K",
+        "STATE": "CPU11",
+        "TIME": "535.2H",
+        "WCPU": "99.35%",
+        "COMMAND": "[idle{idle: cpu11}]"
+      }
+    ]
+  }
+
+PROPOSED METRICS (parse from headers only — details are too high-cardinality):
+  opnsense_system_threads_total          gauge   - parse from headers[1]
+  opnsense_system_threads_running        gauge   - parse "13 running"
+  opnsense_system_threads_sleeping       gauge   - parse "802 sleeping"
+  opnsense_system_threads_waiting        gauge   - parse "34 waiting"
+  opnsense_system_cpu_user_percent       gauge   - parse from headers[2]
+  opnsense_system_cpu_nice_percent       gauge   - parse from headers[2]
+  opnsense_system_cpu_system_percent     gauge   - parse from headers[2]
+  opnsense_system_cpu_interrupt_percent  gauge   - parse from headers[2]
+  opnsense_system_cpu_idle_percent       gauge   - parse from headers[2]
+
+IMPLEMENTATION NOTES:
+  - The headers are plain text that must be regex-parsed. This is fragile.
+  - TODO 1 (System Resources) provides the same load averages and memory data
+    via structured JSON endpoints, which is much more reliable.
+  - Consider ONLY implementing this for CPU percentages (user/nice/system/
+    interrupt/idle) since that data is NOT available from any structured endpoint.
+  - The "details" array (per-process) should NOT be exposed — too high cardinality.
+  - If TODO 1 is implemented, the main value-add here is CPU percentage breakdown.
+  - Could be combined into the same collector as TODO 1 (system resources).
+
+================================================================================
+TODO 13: DHCPv4 LEASES VIA KEA (LOW PRIORITY — FUTURE-PROOFING) [COMPLETE]
+================================================================================
+
+WHY: OPNsense is transitioning from ISC DHCP to Kea DHCP. The existing dnsmasq
+collector handles dnsmasq DHCP leases. A Kea collector would cover the new DHCP
+backend. The Kea API is available but returned 0 leases on the dev environment
+(likely because dnsmasq is the active DHCP server there).
+
+API ENDPOINT (verified available, returns empty):
+  GET api/kea/leases4/search
+
+  Response (empty):
+  {
+    "total": 0,
+    "rowCount": 0,
+    "current": 1,
+    "rows": [],
+    "interfaces": {}
+  }
+
+  Expected row structure (based on API pattern, similar to dnsmasq):
+  {
+    "address": "10.0.1.50",
+    "hwaddr": "aa:bb:cc:dd:ee:ff",
+    "hostname": "device-name",
+    "expire": 1772401221,
+    "if_descr": "LAN",
+    "is_reserved": "0"
+  }
+
+PROPOSED METRICS (mirror dnsmasq collector pattern):
+  opnsense_kea_dhcp4_leases_total           gauge
+  opnsense_kea_dhcp4_leases_by_interface    gauge   labels: [interface]
+  opnsense_kea_dhcp4_leases_reserved_total  gauge
+  opnsense_kea_dhcp4_leases_dynamic_total   gauge
+  opnsense_kea_dhcp4_lease_info             gauge   labels: [address, hostname, hwaddr, interface]
+
+IMPLEMENTATION:
+  - Mirror the dnsmasq collector pattern exactly (opnsense/dnsmasq.go + internal/collector/dnsmasq.go)
+  - Add endpoint: "keaLeases4": "api/kea/leases4/search"
+  - Add disable flag: OPNSENSE_EXPORTER_DISABLE_KEA_DHCP4
+  - Also consider api/kea/leases6/search for IPv6 leases
+
+================================================================================
+TODO 14: FIX GATEWAY PROBE_PERIOD + FALLBACK BUG (HIGH PRIORITY — BUG FIX) [COMPLETE]
+================================================================================
+
+WHY: Two bugs exist in the gateway collector:
+1. The `probe_period_seconds` metric descriptor is defined (internal/collector/
+   gateways.go:96-100) but NEVER emitted in the Update() method. The code emits
+   interval and timeout but skips period entirely.
+2. The fallback logic in opnsense/gateways.go:205-222 uses a `switch { case ... }`
+   pattern. In Go, switch only executes the FIRST matching case. So if LatencyLow
+   is empty, it gets backfilled but all subsequent empty fields (LatencyHigh,
+   LossLow, LossHigh, Interval, TimePeriod, LossInterval, DataLength) stay empty.
+
+CURRENT BUGGY CODE (opnsense/gateways.go:205-222):
+  switch {
+  case g.LatencyLow == "":
+      g.LatencyLow = v.CurrentLatencyLow
+  case g.LatencyHigh == "":
+      g.LatencyHigh = v.CurrentLatencyHigh
+  // ... only first match runs
+  }
+
+FIX: Replace switch with independent if blocks:
+  if g.LatencyLow == "" {
+      g.LatencyLow = v.CurrentLatencyLow
+  }
+  if g.LatencyHigh == "" {
+      g.LatencyHigh = v.CurrentLatencyHigh
+  }
+  if g.LossLow == "" {
+      g.LossLow = v.CurrentLossLow
+  }
+  // ... etc for all 8 fields
+
+FIX: Add probe_period_seconds emission in internal/collector/gateways.go Update(),
+between the interval and timeout emissions (after line 227):
+  f64, _ = strconv.ParseFloat(v.TimePeriod, 64)
+  ch <- prometheus.MustNewConstMetric(
+      c.period,
+      prometheus.GaugeValue,
+      f64,
+      v.Name,
+      v.Monitor,
+      c.instance,
+  )
+
+Files to modify:
+  - opnsense/gateways.go              (fix switch → independent ifs)
+  - internal/collector/gateways.go    (add probe_period emission)
+
+================================================================================
+TODO 15: ADD FIREWALL PF BYTE COUNTERS (HIGH PRIORITY — ENHANCEMENT) [COMPLETE]
+================================================================================
+
+WHY: The PF interface statistics API returns BOTH packet AND byte counters, but
+the exporter only exposes packet counters. The byte data is extremely valuable —
+on the dev environment, igb3 shows 10.2TB of outbound pass bytes. Without byte
+counters, users cannot measure bandwidth through the firewall per interface.
+
+CURRENT STATE:
+  - API returns: in4_pass_bytes, out4_pass_bytes, in4_block_bytes, out4_block_bytes
+    (and ipv6 equivalents), plus "cleared" timestamp and "references" count
+  - opnsense/firewall.go FirewallPFStat struct only has _packets fields
+  - internal/collector/firewall.go only emits packet metrics
+
+VERIFIED API RESPONSE (sample from igb3):
+  {
+    "in4_pass_packets": 4883218024,
+    "in4_pass_bytes": 2918052260182,
+    "out4_pass_packets": 8175971954,
+    "out4_pass_bytes": 10245045603012,
+    "in4_block_packets": 9236207,
+    "in4_block_bytes": 428427199,
+    "cleared": "2026-02-06T13:16:34",
+    "references": 128
+  }
+
+PROPOSED ADDITIONAL METRICS:
+  opnsense_firewall_in_ipv4_pass_bytes_total     counter  labels: [interface]
+  opnsense_firewall_out_ipv4_pass_bytes_total    counter  labels: [interface]
+  opnsense_firewall_in_ipv4_block_bytes_total    counter  labels: [interface]
+  opnsense_firewall_out_ipv4_block_bytes_total   counter  labels: [interface]
+  opnsense_firewall_in_ipv6_pass_bytes_total     counter  labels: [interface]
+  opnsense_firewall_out_ipv6_pass_bytes_total    counter  labels: [interface]
+  opnsense_firewall_in_ipv6_block_bytes_total    counter  labels: [interface]
+  opnsense_firewall_out_ipv6_block_bytes_total   counter  labels: [interface]
+
+IMPLEMENTATION:
+
+Files to modify:
+  - opnsense/firewall.go             (add byte fields to FirewallPFStat struct)
+  - internal/collector/firewall.go   (add 8 byte metric descriptors + emissions)
+
+Add to FirewallPFStat struct (opnsense/firewall.go):
+  In4PassBytes   int `json:"in4_pass_bytes"`
+  In4BlockBytes  int `json:"in4_block_bytes"`
+  Out4PassBytes  int `json:"out4_pass_bytes"`
+  Out4BlockBytes int `json:"out4_block_bytes"`
+  In6PassBytes   int `json:"in6_pass_bytes"`
+  In6BlockBytes  int `json:"in6_block_bytes"`
+  Out6PassBytes  int `json:"out6_pass_bytes"`
+  Out6BlockBytes int `json:"out6_block_bytes"`
+
+Mirror the existing packet metric pattern in the collector. No new endpoints needed —
+same API response, just parse more fields.
+
+================================================================================
+TODO 16: HARDEN INTERFACE LINE RATE PARSING (HIGH PRIORITY — BUG FIX) [COMPLETE]
+================================================================================
+
+WHY: The live API returns line rate as "64000 bit/s" (string with unit suffix),
+but opnsense/interfaces.go passes it through sliceIntToMapStringInt() which uses
+strconv.Atoi(). Atoi fails on "64000 bit/s" and returns 0, silently losing the
+line rate data.
+
+CURRENT CODE PATH:
+  opnsense/interfaces.go:101 → sliceIntToMapStringInt()
+  opnsense/utils.go:55-67 → uses strconv.Atoi() which fails on unit suffix
+
+FIX: Strip the unit suffix before parsing. Add a helper or modify the parsing:
+  // In opnsense/interfaces.go or utils.go
+  func parseLineRateBits(v string) int {
+      v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "bit/s"))
+      return safeAtoi(v)
+  }
+
+Also consider adding the "packets for unknown protocol" field as a new metric
+(currently in the API response but not parsed).
+
+Files to modify:
+  - opnsense/interfaces.go   (fix line rate parsing)
+  - opnsense/utils.go        (optional: add parseLineRateBits helper)
+
+================================================================================
+TODO 17: EXPAND PROTOCOL STATISTICS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: opnsense/protocol_statistics.go already parses many fields from the API that
+internal/collector/protocol.go never emits. These are "free" metrics — no new API
+calls needed, just wire parsed data to Prometheus.
+
+ALREADY PARSED BUT NOT EXPORTED (from opnsense/protocol_statistics.go):
+
+TCP (significant subset):
+  - SentDataPackets, SentDataBytes
+  - SentRetransmittedPackets, SentRetransmittedBytes
+  - ReceivedAckPackets, ReceivedAckBytes
+  - ReceivedInSequencePackets, ReceivedInSequenceBytes
+  - ReceivedDuplicatePackets, ReceivedDuplicateBytes
+  - SegmentsSentTotal, SegmentsRetransmittedTotal
+  - BadConnectionAttempts
+  - KeepaliveProbesSent
+  - SyncacheDropped (separate from SyncacheEntriesAdded which IS exported)
+  - HostcacheEntries, HostcacheInserts, HostcacheOverflows
+
+IP:
+  - FastForwardedPackets (already in struct, already exported — skip)
+  - SentFragments, SentFragmentsFailed
+
+ARP:
+  - DroppedDuplicateAddress
+
+PROPOSED ADDITIONAL METRICS (most valuable subset):
+  opnsense_protocol_tcp_sent_data_bytes_total            counter
+  opnsense_protocol_tcp_retransmitted_packets_total      counter
+  opnsense_protocol_tcp_retransmitted_bytes_total        counter
+  opnsense_protocol_tcp_received_in_sequence_bytes_total counter
+  opnsense_protocol_tcp_received_duplicate_bytes_total   counter
+  opnsense_protocol_tcp_segments_total                   counter
+  opnsense_protocol_tcp_bad_connection_attempts_total    counter
+  opnsense_protocol_tcp_keepalive_probes_total           counter
+  opnsense_protocol_tcp_syncache_dropped_total           counter
+  opnsense_protocol_ip_sent_fragments_total              counter
+  opnsense_protocol_arp_dropped_duplicate_address_total  counter
+
+IMPLEMENTATION:
+
+Files to modify:
+  - internal/collector/protocol.go   (add new metric descriptors + emissions)
+
+No changes to opnsense/ needed — the data is already parsed.
+
+NOTE: Be selective. The protocol_statistics response has 150+ fields. Only expose
+the most operationally useful ones to avoid metric bloat. The list above focuses
+on retransmissions, data volume, and error conditions.
+
+================================================================================
+TODO 18: EXPAND UNBOUND DNS FROM ALREADY-PARSED FIELDS (MEDIUM PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: opnsense/unbound_dns.go parses TCPUsage (line 383) and potentially other
+fields that internal/collector/unbound_dns.go never emits.
+
+ALREADY PARSED BUT NOT EXPORTED:
+  - TCPUsage (float64) — TCP connection usage ratio for the DNS resolver
+
+PROPOSED ADDITIONAL METRIC:
+  opnsense_unbound_dns_tcp_usage_ratio  gauge  - TCP connection usage (0.0-1.0)
+
+IMPLEMENTATION:
+
+Files to modify:
+  - internal/collector/unbound_dns.go  (add metric descriptor + emission)
+
+In Register():
+  c.tcpUsage = buildPrometheusDesc(c.subsystem, "tcp_usage_ratio",
+      "TCP connection usage ratio for the DNS resolver",
+      nil,
+  )
+
+In Update() after existing metrics:
+  ch <- prometheus.MustNewConstMetric(
+      c.tcpUsage,
+      prometheus.GaugeValue,
+      data.TCPUsage,
+      c.instance,
+  )
+
+No changes to opnsense/ needed — TCPUsage is already parsed.
+
+================================================================================
+TODO 19: PER-SUBSYSTEM SERVICE STATUS METRICS (MEDIUM PRIORITY) [COMPLETE]
+================================================================================
+
+WHY: While the existing services collector provides a general overview of all
+services, individual /api/<subsystem>/service/status endpoints provide more
+reliable, direct health status for specific subsystems. This is especially useful
+when the general services endpoint doesn't reflect the actual subsystem state.
+
+API ENDPOINTS (all verified working, all GET):
+
+  GET api/unbound/service/status    → {"status": "running", "widget": {...}}
+  GET api/dnsmasq/service/status    → {"status": "running", "widget": {...}}
+  GET api/ipsec/service/status      → {"status": "running", "widget": {...}}
+  GET api/wireguard/service/status  → {"status": "disabled", "widget": {...}}
+  GET api/openvpn/service/status    → (expected same pattern)
+
+  Status values: "running", "stopped", "disabled"
+
+PROPOSED APPROACH:
+Add a service_running metric to each EXISTING subsystem collector rather than
+creating a new collector. Each subsystem collector already calls its own API —
+adding one more lightweight call is minimal overhead.
+
+PROPOSED METRICS (added to existing collectors):
+  opnsense_unbound_dns_service_running   gauge  - 1=running, 0=stopped/disabled
+  opnsense_dnsmasq_service_running       gauge  - 1=running, 0=stopped/disabled
+  opnsense_ipsec_service_running         gauge  - 1=running, 0=stopped/disabled
+  opnsense_wireguard_service_running     gauge  - 1=running, 0=stopped/disabled
+
+IMPLEMENTATION:
+
+Create a shared helper in opnsense/ (reusable across collectors):
+
+  // opnsense/service_status.go (new, small)
+  type serviceStatusResponse struct {
+      Status string `json:"status"`
+  }
+  func (c *Client) FetchServiceStatus(endpointName EndpointName) (string, *APICallError) {
+      var resp serviceStatusResponse
+      url, ok := c.endpoints[endpointName]
+      if !ok {
+          return "", &APICallError{Endpoint: string(endpointName), Message: "endpoint not found"}
+      }
+      if err := c.do("GET", url, nil, &resp); err != nil {
+          return "", err
+      }
+      return resp.Status, nil
+  }
+
+Add to opnsense/client.go endpoints map:
+  "unboundServiceStatus":   "api/unbound/service/status",
+  "dnsmasqServiceStatus":   "api/dnsmasq/service/status",
+  "ipsecServiceStatus":     "api/ipsec/service/status",
+  "wireguardServiceStatus": "api/wireguard/service/status",
+
+Then in each collector's Update(), add a call at the start:
+  status, sErr := client.FetchServiceStatus("unboundServiceStatus")
+  if sErr == nil {
+      val := 0.0
+      if status == "running" { val = 1.0 }
+      ch <- prometheus.MustNewConstMetric(c.serviceRunning, prometheus.GaugeValue, val, c.instance)
+  }
+
+Files to modify:
+  - opnsense/service_status.go          (new — shared helper)
+  - opnsense/client.go                  (add 4 endpoints)
+  - internal/collector/unbound_dns.go   (add metric)
+  - internal/collector/dnsmasq.go       (add metric)
+  - internal/collector/ipsec.go         (add metric)
+  - internal/collector/wireguard.go     (add metric)
+
+================================================================================
+TODO 20: FIRMWARE METRICS SEMANTICS REWORK (MEDIUM PRIORITY — QUALITY) [COMPLETE]
+================================================================================
+
+WHY: The current firmware collector encodes version strings and timestamps as
+label values with the metric value always set to 1. This is a Prometheus
+anti-pattern — it means you can't do math on the values (e.g. alerting on
+last_check age) and it makes the metrics harder to use in queries.
+
+CURRENT ANTI-PATTERN (internal/collector/firmware.go):
+  // Lines 96-104: version string encoded as label, value=1
+  ch <- prometheus.MustNewConstMetric(c.osVersion, prometheus.GaugeValue,
+      float64(1), data.OsVersion, c.instance)
+  ch <- prometheus.MustNewConstMetric(c.productVersion, prometheus.GaugeValue,
+      float64(1), data.ProductVersion, c.instance)
+  // Same pattern for lastCheck, needsReboot, etc.
+
+PROPOSED REWORK:
+
+Keep one info metric with version labels (standard Prometheus pattern):
+  opnsense_firmware_info{os_version, product_version, product_id, product_abi} = 1
+
+Replace value-in-label metrics with proper numeric gauges:
+  opnsense_firmware_needs_reboot             gauge  - 1=yes, 0=no (parse from string)
+  opnsense_firmware_upgrade_needs_reboot     gauge  - 1=yes, 0=no
+  opnsense_firmware_last_check_timestamp_seconds  gauge  - Unix timestamp of last check
+  opnsense_firmware_new_packages_count       gauge  - numeric count
+  opnsense_firmware_upgrade_packages_count   gauge  - numeric count
+
+IMPLEMENTATION:
+
+Files to modify:
+  - internal/collector/firmware.go  (rework metric definitions + emissions)
+  - opnsense/firmware.go            (possibly adjust parsing for last_check timestamp)
+
+NOTE: This is a BREAKING CHANGE for existing users' Grafana dashboards and
+alerting rules. Document the change clearly. Consider a migration period where
+both old and new metrics are emitted, or just document the break.
+
+================================================================================
+TODO 21: NETWORK DIAGNOSTICS COLLECTOR — NETISR, SOCKET COUNTS, ROUTES
+         (LOW PRIORITY — OPT-IN) [COMPLETE]
+================================================================================
+
+WHY: Kernel network ISR (interrupt service routine) statistics reveal packet
+processing bottlenecks. Queue drops indicate the kernel is unable to process
+packets fast enough. On the dev environment, IP has 2,102 queue drops across
+12 CPUs — a real indicator of processing pressure.
+
+API ENDPOINTS (all GET, all verified working):
+
+1. GET api/diagnostics/interface/get_netisr_statistics
+   Response structure:
+   {
+     "netisr": {
+       "protocol": [
+         {"name": "ip", "protocol": 1, "queue-limit": 3000, "policy": "hybrid"},
+         {"name": "arp", "protocol": 4, "queue-limit": 256, "policy": "default"}
+       ],
+       "workstream": [
+         {
+           "work": [
+             {
+               "workstream": 0, "cpu": 0, "name": "ip",
+               "length": 0, "watermark": 3000,
+               "dispatched": 0, "hybrid-dispatched": 1199460314,
+               "queue-drops": 112, "queued": 2362824269,
+               "handled": 3562284583
+             }
+           ]
+         }
+       ]
+     }
+   }
+
+   Aggregate across all CPUs (12 workstreams) per protocol:
+   arp:    dispatched=19976085, hybrid=0, drops=0, handled=19976085
+   ether:  dispatched=14323241130, hybrid=0, drops=0, handled=14323241130
+   ip:     dispatched=0, hybrid=3206525567, drops=2102, handled=14030941426
+   ip6:    dispatched=0, hybrid=575491, drops=0, handled=3015871
+
+2. GET api/diagnostics/interface/get_socket_statistics
+   Response has per-connection data, but we only extract aggregate counts:
+   Active Internet connections: tcp4=45, tcp6=8, udp4=28, udp6=7, etc.
+   Active UNIX domain sockets: 95
+
+3. GET api/diagnostics/interface/get_routes
+   Returns array of 57 routes. Only useful as counts:
+   ipv4=51, ipv6=6
+
+PROPOSED METRICS:
+
+  Netisr (aggregate across CPUs per protocol):
+  opnsense_netisr_dispatched_total         counter  labels: [protocol]
+  opnsense_netisr_hybrid_dispatched_total  counter  labels: [protocol]
+  opnsense_netisr_queued_total             counter  labels: [protocol]
+  opnsense_netisr_handled_total            counter  labels: [protocol]
+  opnsense_netisr_queue_drops_total        counter  labels: [protocol]
+  opnsense_netisr_queue_length             gauge    labels: [protocol] (current)
+  opnsense_netisr_queue_watermark          gauge    labels: [protocol] (peak)
+  opnsense_netisr_queue_limit              gauge    labels: [protocol] (config)
+
+  Socket counts:
+  opnsense_sockets_active                  gauge    labels: [type] - tcp4,tcp6,udp4,udp6,etc.
+  opnsense_sockets_unix_total              gauge
+
+  Route counts:
+  opnsense_routes_total                    gauge    labels: [proto] - ipv4,ipv6
+
+IMPLEMENTATION:
+
+This should be a SINGLE opt-in collector (disabled by default) since it makes
+3 API calls and the data is primarily useful for advanced debugging.
+
+Files to create/modify:
+  - opnsense/network_diagnostics.go       (new — 3 Fetch methods)
+  - internal/collector/network_diag.go    (new — collector)
+  - opnsense/client.go                    (add 3 endpoints)
+  - internal/collector/collector.go       (add subsystem constant)
+  - internal/options/collectors.go        (add DISABLE flag, default DISABLED)
+
+Add to opnsense/client.go endpoints map:
+  "netisrStatistics":  "api/diagnostics/interface/get_netisr_statistics",
+  "socketStatistics":  "api/diagnostics/interface/get_socket_statistics",
+  "routingTable":      "api/diagnostics/interface/get_routes",
+
+Netisr implementation note:
+  The workstream array has one entry per CPU. Aggregate by iterating all
+  workstreams and summing dispatched/hybrid-dispatched/queue-drops/queued/handled
+  per protocol name. For length/watermark, take the max across CPUs.
+
+Socket implementation note:
+  The response is a dict with keys like "tcp4/[addr:port-addr:port]". Count
+  entries by extracting the protocol prefix (split on "/"). Only expose counts.
+
+Route implementation note:
+  The response is an array of route objects with a "proto" field. Count by proto.
+
+Default: DISABLED. Enable with --exporter.enable-network-diagnostics or
+  OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS=true
