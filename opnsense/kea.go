@@ -10,11 +10,10 @@ type keaLeaseRow struct {
 }
 
 type keaLeaseResponse struct {
-	Total      int               `json:"total"`
-	RowCount   int               `json:"rowCount"`
-	Current    int               `json:"current"`
-	Rows       []keaLeaseRow     `json:"rows"`
-	Interfaces map[string]string `json:"interfaces"`
+	Total    int           `json:"total"`
+	RowCount int           `json:"rowCount"`
+	Current  int           `json:"current"`
+	Rows     []keaLeaseRow `json:"rows"`
 }
 
 type KeaLease struct {

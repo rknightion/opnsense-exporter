@@ -235,6 +235,44 @@ func TestKeaCollector_Update_Empty(t *testing.T) {
 	}
 }
 
+func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
+	// When Kea is not enabled, OPNsense returns "interfaces": [] instead of {}.
+	// The collector must handle this without errors and emit zero-value metrics.
+	keaDisabledResponse := `{
+		"total": 0,
+		"rowCount": 0,
+		"current": 1,
+		"rows": [],
+		"interfaces": []
+	}`
+
+	mux := keaTestMux(t, keaDisabledResponse, keaDisabledResponse)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register("opnsense", "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
+	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
+	// Total = 6
+	expectedCount := 6
+	if len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	for _, m := range metrics {
+		value := getMetricValue(m)
+		if value != 0 {
+			t.Errorf("expected metric value 0, got %v", value)
+		}
+	}
+}
+
 func TestKeaCollector_Name(t *testing.T) {
 	c := &keaCollector{subsystem: KeaSubsystem}
 	if c.Name() != KeaSubsystem {

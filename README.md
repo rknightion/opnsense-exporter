@@ -57,6 +57,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 
 - **Gateway probe_period** — Fixed `probe_period_seconds` metric that was defined but never emitted. Fixed fallback logic that used a `switch` statement (only first match runs) instead of independent `if` blocks, causing empty gateway configuration fields to not be backfilled.
 - **Interface line rate** — Fixed parsing of line rate values containing unit suffix (e.g. "64000 bit/s") which caused `strconv.Atoi` to fail and silently return 0.
+- **Kea DHCP** — Fixed JSON unmarshal failure when Kea DHCP is not enabled on OPNsense. The API returns `"interfaces": []` (array) instead of `{}` (object) when Kea is disabled, which caused every scrape to log errors.
 
 ### Build & Infrastructure
 

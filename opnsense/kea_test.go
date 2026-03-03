@@ -199,6 +199,36 @@ func TestFetchKeaLeases6_Success(t *testing.T) {
 	}
 }
 
+func TestFetchKeaLeases4_KeaDisabled(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	// When Kea is not enabled, OPNsense returns "interfaces" as an empty
+	// JSON array [] instead of an object {}. The collector must handle this
+	// gracefully rather than failing with a JSON unmarshal error.
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 0,
+			"rowCount": 0,
+			"current": 1,
+			"rows": [],
+			"interfaces": []
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error when Kea is disabled: %v", err)
+	}
+
+	if data.TotalLeases != 0 {
+		t.Errorf("expected TotalLeases=0, got %d", data.TotalLeases)
+	}
+	if len(data.Leases) != 0 {
+		t.Errorf("expected 0 leases, got %d", len(data.Leases))
+	}
+}
+
 func TestFetchKeaLeases4_ServerError(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
