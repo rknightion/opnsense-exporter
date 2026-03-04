@@ -183,3 +183,54 @@ func (c *Client) FetchRouteStatistics() (RouteCounts, *APICallError) {
 
 	return data, nil
 }
+
+// --- pfsync types ---
+
+type pfsyncNodeEntry struct {
+	CreatorID string `json:"creatorid"`
+	This      int    `json:"this"`
+}
+
+type pfsyncNodesResponse struct {
+	Total    int               `json:"total"`
+	RowCount int               `json:"rowCount"`
+	Current  int               `json:"current"`
+	Rows     []pfsyncNodeEntry `json:"rows"`
+}
+
+type PFSyncNode struct {
+	CreatorID string
+	IsLocal   bool
+}
+
+type PFSyncNodes struct {
+	Total int
+	Nodes []PFSyncNode
+}
+
+func (c *Client) FetchPFSyncNodes() (PFSyncNodes, *APICallError) {
+	var resp pfsyncNodesResponse
+	var data PFSyncNodes
+
+	url, ok := c.endpoints["pfsyncNodes"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "pfsyncNodes",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return data, err
+	}
+
+	data.Total = resp.Total
+	for _, row := range resp.Rows {
+		data.Nodes = append(data.Nodes, PFSyncNode{
+			CreatorID: row.CreatorID,
+			IsLocal:   row.This == 1,
+		})
+	}
+	return data, nil
+}

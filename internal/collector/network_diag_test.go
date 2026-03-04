@@ -57,6 +57,18 @@ func TestNetworkDiagCollector_Update(t *testing.T) {
 		]`))
 	})
 
+	mux.HandleFunc("/api/diagnostics/interface/get_pfsync_nodes", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{"creatorid": "node1", "this": 1},
+				{"creatorid": "node2", "this": 0}
+			]
+		}`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -71,8 +83,9 @@ func TestNetworkDiagCollector_Update(t *testing.T) {
 	// 3 socket types (tcp4, udp4, unix) active = 3
 	// 1 unix total = 1
 	// 2 route protos (IPv4, IPv6) = 2
-	// Total: 16 + 3 + 1 + 2 = 22
-	expectedCount := 22
+	// 1 pfsync nodes total + 2 pfsync node info = 3
+	// Total: 16 + 3 + 1 + 2 + 3 = 25
+	expectedCount := 25
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

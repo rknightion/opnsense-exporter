@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,6 +27,10 @@ type networkDiagCollector struct {
 
 	// route metrics
 	routesTotal *prometheus.Desc
+
+	// pfsync metrics
+	pfsyncNodesTotal *prometheus.Desc
+	pfsyncNodeInfo   *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -92,6 +97,15 @@ func (c *networkDiagCollector) Register(namespace, instanceLabel string, log *sl
 		"Number of routing table entries by protocol",
 		[]string{"proto"},
 	)
+
+	c.pfsyncNodesTotal = buildPrometheusDesc(c.subsystem, "pfsync_nodes_total",
+		"Total number of pfsync cluster nodes",
+		nil,
+	)
+	c.pfsyncNodeInfo = buildPrometheusDesc(c.subsystem, "pfsync_node_info",
+		"PFSync node information (value is always 1)",
+		[]string{"creatorid", "is_local"},
+	)
 }
 
 func (c *networkDiagCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -106,6 +120,8 @@ func (c *networkDiagCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.socketsActive
 	ch <- c.socketsUnixTotal
 	ch <- c.routesTotal
+	ch <- c.pfsyncNodesTotal
+	ch <- c.pfsyncNodeInfo
 }
 
 func (c *networkDiagCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -211,6 +227,29 @@ func (c *networkDiagCollector) Update(client *opnsense.Client, ch chan<- prometh
 			proto,
 			c.instance,
 		)
+	}
+
+	// Fetch pfsync nodes
+	pfsyncData, pfsyncErr := client.FetchPFSyncNodes()
+	if pfsyncErr != nil {
+		c.log.Warn("failed to fetch pfsync nodes", "error", pfsyncErr.Error())
+	} else {
+		ch <- prometheus.MustNewConstMetric(
+			c.pfsyncNodesTotal,
+			prometheus.GaugeValue,
+			float64(pfsyncData.Total),
+			c.instance,
+		)
+		for _, node := range pfsyncData.Nodes {
+			ch <- prometheus.MustNewConstMetric(
+				c.pfsyncNodeInfo,
+				prometheus.GaugeValue,
+				1,
+				node.CreatorID,
+				fmt.Sprintf("%t", node.IsLocal),
+				c.instance,
+			)
+		}
 	}
 
 	return nil

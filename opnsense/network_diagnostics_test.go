@@ -233,3 +233,88 @@ func TestFetchRouteStatistics_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchPFSyncNodes_Success(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{"creatorid": "ab12cd34", "this": 1},
+				{"creatorid": "ef56gh78", "this": 0}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchPFSyncNodes()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.Total != 2 {
+		t.Errorf("expected Total=2, got %d", data.Total)
+	}
+	if len(data.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(data.Nodes))
+	}
+
+	n1 := data.Nodes[0]
+	if n1.CreatorID != "ab12cd34" {
+		t.Errorf("expected CreatorID 'ab12cd34', got %q", n1.CreatorID)
+	}
+	if !n1.IsLocal {
+		t.Error("expected first node IsLocal=true")
+	}
+
+	n2 := data.Nodes[1]
+	if n2.CreatorID != "ef56gh78" {
+		t.Errorf("expected CreatorID 'ef56gh78', got %q", n2.CreatorID)
+	}
+	if n2.IsLocal {
+		t.Error("expected second node IsLocal=false")
+	}
+}
+
+func TestFetchPFSyncNodes_EmptyRows(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 0,
+			"rowCount": 0,
+			"current": 1,
+			"rows": []
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchPFSyncNodes()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.Total != 0 {
+		t.Errorf("expected Total=0, got %d", data.Total)
+	}
+	if len(data.Nodes) != 0 {
+		t.Errorf("expected 0 nodes, got %d", len(data.Nodes))
+	}
+}
+
+func TestFetchPFSyncNodes_ServerError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	defer server.Close()
+
+	_, err := client.FetchPFSyncNodes()
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+	if err.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
