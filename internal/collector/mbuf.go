@@ -10,17 +10,20 @@ import (
 type mbufCollector struct {
 	log *slog.Logger
 
-	mbufCurrent    *prometheus.Desc
-	mbufCache      *prometheus.Desc
-	mbufTotal      *prometheus.Desc
-	clusterCurrent *prometheus.Desc
-	clusterCache   *prometheus.Desc
-	clusterTotal   *prometheus.Desc
-	clusterMax     *prometheus.Desc
-	failuresTotal  *prometheus.Desc
-	sleepsTotal    *prometheus.Desc
-	bytesInUse     *prometheus.Desc
-	bytesTotal     *prometheus.Desc
+	mbufCurrent       *prometheus.Desc
+	mbufCache         *prometheus.Desc
+	mbufTotal         *prometheus.Desc
+	clusterCurrent    *prometheus.Desc
+	clusterCache      *prometheus.Desc
+	clusterTotal      *prometheus.Desc
+	clusterMax        *prometheus.Desc
+	failuresTotal     *prometheus.Desc
+	sleepsTotal       *prometheus.Desc
+	bytesInUse        *prometheus.Desc
+	bytesTotal        *prometheus.Desc
+	sendfileSyscalls  *prometheus.Desc
+	sendfileIOCount   *prometheus.Desc
+	sendfilePagesSent *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -85,6 +88,18 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Total number of bytes of memory available for mbufs",
 		nil,
 	)
+	c.sendfileSyscalls = buildPrometheusDesc(c.subsystem, "sendfile_syscalls_total",
+		"Total number of sendfile syscalls",
+		nil,
+	)
+	c.sendfileIOCount = buildPrometheusDesc(c.subsystem, "sendfile_io_total",
+		"Total number of sendfile I/O operations",
+		nil,
+	)
+	c.sendfilePagesSent = buildPrometheusDesc(c.subsystem, "sendfile_pages_sent_total",
+		"Total number of pages sent via sendfile",
+		nil,
+	)
 }
 
 func (c *mbufCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -99,6 +114,9 @@ func (c *mbufCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.sleepsTotal
 	ch <- c.bytesInUse
 	ch <- c.bytesTotal
+	ch <- c.sendfileSyscalls
+	ch <- c.sendfileIOCount
+	ch <- c.sendfilePagesSent
 }
 
 func (c *mbufCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -180,6 +198,25 @@ func (c *mbufCollector) Update(client *opnsense.Client, ch chan<- prometheus.Met
 		c.bytesTotal,
 		prometheus.GaugeValue,
 		float64(data.BytesTotal),
+		c.instance,
+	)
+
+	ch <- prometheus.MustNewConstMetric(
+		c.sendfileSyscalls,
+		prometheus.CounterValue,
+		float64(data.SendfileSyscalls),
+		c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.sendfileIOCount,
+		prometheus.CounterValue,
+		float64(data.SendfileIOCount),
+		c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.sendfilePagesSent,
+		prometheus.CounterValue,
+		float64(data.SendfilePagesSent),
 		c.instance,
 	)
 

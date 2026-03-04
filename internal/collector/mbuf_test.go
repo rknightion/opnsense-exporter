@@ -49,11 +49,12 @@ func TestMbufCollector_Update(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// 7 gauge metrics (mbufCurrent, mbufCache, mbufTotal, clusterCurrent, clusterCache, clusterTotal, clusterMax)
-	// 4 failures by type (mbuf, cluster, packet, jumbop)
-	// 4 sleeps by type (mbuf, cluster, packet, jumbop)
+	// 6 failures by type (mbuf, cluster, packet, jumbop, jumbo9, jumbo16)
+	// 6 sleeps by type (mbuf, cluster, packet, jumbop, jumbo9, jumbo16)
 	// 2 bytes metrics (bytesInUse, bytesTotal)
-	// Total: 7 + 4 + 4 + 2 = 17
-	expectedCount := 17
+	// 3 sendfile metrics (syscalls, ioCount, pagesSent)
+	// Total: 7 + 6 + 6 + 2 + 3 = 24
+	expectedCount := 24
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

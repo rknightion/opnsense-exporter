@@ -31,18 +31,35 @@ type mbufResponse struct {
 	MbufStatistics mbufStatisticsData `json:"mbuf-statistics"`
 }
 
+type memoryStatisticsData struct {
+	Jumbo9Failures    int `json:"jumbo9-failures"`
+	Jumbo16Failures   int `json:"jumbo16-failures"`
+	Jumbo9Sleeps      int `json:"jumbo9-sleeps"`
+	Jumbo16Sleeps     int `json:"jumbo16-sleeps"`
+	SendfileSyscalls  int `json:"sendfile-syscalls"`
+	SendfileIOCount   int `json:"sendfile-io-count"`
+	SendfilePagesSent int `json:"sendfile-pages-sent"`
+}
+
+type memoryStatisticsResponse struct {
+	MbufStatistics memoryStatisticsData `json:"mbuf-statistics"`
+}
+
 type MbufStatistics struct {
-	MbufCurrent    int
-	MbufCache      int
-	MbufTotal      int
-	ClusterCurrent int
-	ClusterCache   int
-	ClusterTotal   int
-	ClusterMax     int
-	BytesInUse     int
-	BytesTotal     int
-	FailuresByType map[string]int
-	SleepsByType   map[string]int
+	MbufCurrent       int
+	MbufCache         int
+	MbufTotal         int
+	ClusterCurrent    int
+	ClusterCache      int
+	ClusterTotal      int
+	ClusterMax        int
+	BytesInUse        int
+	BytesTotal        int
+	FailuresByType    map[string]int
+	SleepsByType      map[string]int
+	SendfileSyscalls  int
+	SendfileIOCount   int
+	SendfilePagesSent int
 }
 
 func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
@@ -86,6 +103,27 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 		"cluster": s.ClusterSleeps,
 		"packet":  s.PacketSleeps,
 		"jumbop":  s.JumbopSleeps,
+	}
+
+	// Fetch additional memory statistics (partial failure tolerant)
+	var memResp memoryStatisticsResponse
+	memURL, ok := c.endpoints["memoryStatistics"]
+	if ok {
+		if memErr := c.do("GET", memURL, nil, &memResp); memErr != nil {
+			c.log.Warn("memory statistics sub-call failed",
+				"endpoint", "memoryStatistics",
+				"error", memErr.Error(),
+			)
+		} else {
+			ms := memResp.MbufStatistics
+			data.FailuresByType["jumbo9"] = ms.Jumbo9Failures
+			data.FailuresByType["jumbo16"] = ms.Jumbo16Failures
+			data.SleepsByType["jumbo9"] = ms.Jumbo9Sleeps
+			data.SleepsByType["jumbo16"] = ms.Jumbo16Sleeps
+			data.SendfileSyscalls = ms.SendfileSyscalls
+			data.SendfileIOCount = ms.SendfileIOCount
+			data.SendfilePagesSent = ms.SendfilePagesSent
+		}
 	}
 
 	return data, nil
