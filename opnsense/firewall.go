@@ -60,3 +60,36 @@ func (c *Client) FetchPFStatsByInterface() (FirewallPFStats, *APICallError) {
 	}
 	return data, nil
 }
+
+type firewallStatEntry struct {
+	Label string `json:"label"`
+	Value int    `json:"value"`
+}
+
+type FirewallInterfaceHit struct {
+	Label string
+	Value int
+}
+
+func (c *Client) FetchFirewallStats() ([]FirewallInterfaceHit, *APICallError) {
+	var resp []firewallStatEntry
+
+	url, ok := c.endpoints["firewallStats"]
+	if !ok {
+		return nil, &APICallError{
+			Endpoint:   "firewallStats",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	hits := make([]FirewallInterfaceHit, len(resp))
+	for i, entry := range resp {
+		hits[i] = FirewallInterfaceHit{Label: entry.Label, Value: entry.Value}
+	}
+	return hits, nil
+}

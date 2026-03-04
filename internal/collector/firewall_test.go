@@ -44,6 +44,13 @@ func TestFirewallCollector_Update(t *testing.T) {
 		}`))
 	})
 
+	mux.HandleFunc("/api/diagnostics/firewall/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[
+			{"label": "igb0", "value": 5000},
+			{"label": "lo0", "value": 100}
+		]`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -54,8 +61,8 @@ func TestFirewallCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 16 metrics per interface (8 packet types + 8 byte types) + 2 pfStates (current + limit) = 18
-	expectedCount := 18
+	// 16 metrics per interface (8 packet types + 8 byte types) + 2 pfStates (current + limit) + 2 firewallStats = 20
+	expectedCount := 20
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -116,6 +123,13 @@ func TestFirewallCollector_Update_MultipleInterfaces(t *testing.T) {
 		}`))
 	})
 
+	mux.HandleFunc("/api/diagnostics/firewall/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[
+			{"label": "igb0", "value": 1000},
+			{"label": "igb1", "value": 2000}
+		]`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -126,8 +140,8 @@ func TestFirewallCollector_Update_MultipleInterfaces(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 16 metrics per interface * 2 interfaces + 2 pfStates = 34
-	expectedCount := 34
+	// 16 metrics per interface * 2 interfaces + 2 pfStates + 2 firewallStats = 36
+	expectedCount := 36
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

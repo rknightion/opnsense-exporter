@@ -127,3 +127,71 @@ func TestFetchPFStatsByInterface_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchFirewallStats_Success(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`[
+			{"label": "igb0", "value": 12345},
+			{"label": "igb1", "value": 6789},
+			{"label": "lo0", "value": 100}
+		]`))
+	})
+	defer server.Close()
+
+	hits, err := client.FetchFirewallStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(hits) != 3 {
+		t.Fatalf("expected 3 hits, got %d", len(hits))
+	}
+
+	// Find igb0
+	var found bool
+	for _, h := range hits {
+		if h.Label == "igb0" {
+			found = true
+			if h.Value != 12345 {
+				t.Errorf("expected igb0 value=12345, got %d", h.Value)
+			}
+		}
+	}
+	if !found {
+		t.Error("igb0 not found in results")
+	}
+}
+
+func TestFetchFirewallStats_EmptyArray(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	defer server.Close()
+
+	hits, err := client.FetchFirewallStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Errorf("expected 0 hits, got %d", len(hits))
+	}
+}
+
+func TestFetchFirewallStats_ServerError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	defer server.Close()
+
+	_, err := client.FetchFirewallStats()
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+	if err.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}

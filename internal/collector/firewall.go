@@ -32,6 +32,8 @@ type firewallCollector struct {
 	pfStatesCurrent *prometheus.Desc
 	pfStatesLimit   *prometheus.Desc
 
+	interfaceHitsTotal *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -140,6 +142,11 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 		"Maximum number of PF states allowed",
 		nil,
 	)
+
+	c.interfaceHitsTotal = buildPrometheusDesc(c.subsystem, "interface_hits_total",
+		"Total number of firewall rule matches per interface",
+		[]string{"interface"},
+	)
 }
 
 func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -165,6 +172,8 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 
 	ch <- c.pfStatesCurrent
 	ch <- c.pfStatesLimit
+
+	ch <- c.interfaceHitsTotal
 }
 
 func (c *firewallCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -219,6 +228,21 @@ func (c *firewallCollector) Update(client *opnsense.Client, ch chan<- prometheus
 		float64(pfStates.Limit),
 		c.instance,
 	)
+
+	fwStats, fwErr := client.FetchFirewallStats()
+	if fwErr != nil {
+		c.log.Warn("failed to fetch firewall aggregate stats", "error", fwErr.Error())
+	} else {
+		for _, hit := range fwStats {
+			ch <- prometheus.MustNewConstMetric(
+				c.interfaceHitsTotal,
+				prometheus.CounterValue,
+				float64(hit.Value),
+				hit.Label,
+				c.instance,
+			)
+		}
+	}
 
 	return nil
 }
