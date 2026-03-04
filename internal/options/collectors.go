@@ -95,6 +95,14 @@ var (
 		"exporter.enable-netflow",
 		"Enable the netflow collector (enabled status, service status, cache stats). Disabled by default.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_NETFLOW").Default("false").Bool()
+	pfStatsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-pf-stats",
+		"Disable the scraping of PF statistics (state table, counters, memory limits, timeouts)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_PF_STATS").Default("false").Bool()
+	ndpCollectorDisabled = kingpin.Flag(
+		"exporter.disable-ndp",
+		"Disable the scraping of the NDP (IPv6 neighbor discovery) table",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_NDP").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -122,6 +130,8 @@ type CollectorsDisableSwitch struct {
 	KeaDetails           bool
 	NetworkDiagnostics   bool
 	Netflow              bool
+	PFStats              bool
+	NDP                  bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -150,5 +160,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		KeaDetails:           *keaDetailsEnabled,
 		NetworkDiagnostics:   *networkDiagnosticsEnabled,
 		Netflow:              *netflowEnabled,
+		PFStats:              !*pfStatsCollectorDisabled,
+		NDP:                  !*ndpCollectorDisabled,
 	}
 }

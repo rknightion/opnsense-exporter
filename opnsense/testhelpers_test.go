@@ -116,5 +116,14 @@ func testEndpoints() map[EndpointName]EndpointPath {
 		"netflowIsEnabled":        "api/diagnostics/netflow/isEnabled",
 		"netflowStatus":           "api/diagnostics/netflow/status",
 		"netflowCacheStats":       "api/diagnostics/netflow/cacheStats",
+		"pfStatsInfo":             "api/diagnostics/firewall/pf_statistics/info",
+		"pfStatsMemory":           "api/diagnostics/firewall/pf_statistics/memory",
+		"pfStatsTimeouts":         "api/diagnostics/firewall/pf_statistics/timeouts",
+		"cpuType":                 "api/diagnostics/cpu_usage/getCPUType",
+		"systemInformation":       "api/diagnostics/system/system_information",
+		"memoryStatistics":        "api/diagnostics/interface/get_memory_statistics",
+		"ndpTable":                "api/diagnostics/interface/get_ndp",
+		"firewallStats":           "api/diagnostics/firewall/stats",
+		"pfsyncNodes":             "api/diagnostics/interface/get_pfsync_nodes",
 	}
 }

@@ -151,6 +151,14 @@ func main() {
 	} else {
 		logger.Info("netflow collector enabled")
 	}
+	if !collectorsSwitches.PFStats {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutPFStatsCollector())
+		logger.Info("pf stats collector disabled")
+	}
+	if !collectorsSwitches.NDP {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNDPCollector())
+		logger.Info("ndp collector disabled")
+	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
 	if err != nil {
