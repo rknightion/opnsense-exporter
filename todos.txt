@@ -7,10 +7,6 @@ in the OPNsense Prometheus exporter. Each task is self-contained with API
 endpoint details, verified JSON response structures, proposed metric names, and
 sample implementation code.
 
-GOAL: Achieve sufficient system metric coverage via the OPNsense API to
-effectively replace the need for a Prometheus node_exporter running on the
-OPNsense box.
-
 CURRENT COVERAGE STATUS (what we already collect):
   - Memory total/used/ARC (system collector)
   - Load average 1/5/15 (system collector)
@@ -72,7 +68,7 @@ opnsense/client.go:
 
 
 ================================================================================
-TODO 20: PF STATISTICS DEEP DIVE COLLECTOR (HIGH PRIORITY)
+TODO 20: PF STATISTICS DEEP DIVE COLLECTOR (HIGH PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: The existing firewall collector only uses pf_statistics/interfaces for
@@ -244,7 +240,7 @@ Notes:
 
 
 ================================================================================
-TODO 21: ENHANCED SYSTEM INFORMATION COLLECTOR (MEDIUM PRIORITY)
+TODO 21: ENHANCED SYSTEM INFORMATION COLLECTOR (MEDIUM PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: Provides hostname, OS version, FreeBSD version, and CPU model as info
@@ -322,7 +318,7 @@ Notes:
 
 
 ================================================================================
-TODO 22: KERNEL NETWORK MEMORY STATISTICS (MEDIUM PRIORITY)
+TODO 22: KERNEL NETWORK MEMORY STATISTICS (MEDIUM PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: The existing mbuf collector uses api/diagnostics/system/systemMbuf which
@@ -519,7 +515,7 @@ Notes:
 
 
 ================================================================================
-TODO 24: NDP (IPv6 NEIGHBOR DISCOVERY) TABLE COLLECTOR (LOW PRIORITY)
+TODO 24: NDP (IPv6 NEIGHBOR DISCOVERY) TABLE COLLECTOR (LOW PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: The NDP table is the IPv6 equivalent of the ARP table. Since we already
@@ -798,7 +794,7 @@ Notes:
 
 
 ================================================================================
-TODO 27: FIREWALL AGGREGATE STATS (LOW PRIORITY)
+TODO 27: FIREWALL AGGREGATE STATS (LOW PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: The api/diagnostics/firewall/stats endpoint provides a simple per-interface
@@ -850,7 +846,7 @@ Notes:
 
 
 ================================================================================
-TODO 28: PFSYNC HA NODE COLLECTOR (LOW PRIORITY)
+TODO 28: PFSYNC HA NODE COLLECTOR (LOW PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: For OPNsense HA (high availability) setups using pfsync, monitoring the
@@ -1489,3 +1485,6 @@ SUPERIOR coverage in areas that matter most: network interfaces, firewall
 state tables, protocol statistics, NTP, temperature, VPN metrics, disk health,
 threat intelligence, and security — none of which node_exporter handles as
 comprehensively.
+
+
+Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 20 AND TODO 21. You can also address any other TODO items required to get that in place or that would be complementary or sensible to implement at the same time due to touching similar areas. Ideally the more TODOs we can do in the same session the better (but not absoloutely essential). Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
