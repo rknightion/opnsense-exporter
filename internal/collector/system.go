@@ -21,6 +21,7 @@ type systemCollector struct {
 	diskUsageRatio   *prometheus.Desc
 	swapTotalBytes   *prometheus.Desc
 	swapUsedBytes    *prometheus.Desc
+	systemInfo       *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -85,6 +86,10 @@ func (c *systemCollector) Register(namespace, instanceLabel string, log *slog.Lo
 		"Used swap space in bytes",
 		[]string{"device"},
 	)
+	c.systemInfo = buildPrometheusDesc(c.subsystem, "info",
+		"System information with hostname, OS versions, and CPU details (value is always 1)",
+		[]string{"hostname", "opnsense_version", "freebsd_version", "openssl_version", "cpu_model", "cpu_cores", "cpu_threads"},
+	)
 }
 
 func (c *systemCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -99,6 +104,7 @@ func (c *systemCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.diskUsageRatio
 	ch <- c.swapTotalBytes
 	ch <- c.swapUsedBytes
+	ch <- c.systemInfo
 }
 
 func (c *systemCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -210,6 +216,22 @@ func (c *systemCollector) Update(client *opnsense.Client, ch chan<- prometheus.M
 			prometheus.GaugeValue,
 			float64(swap.Used),
 			swap.Device,
+			c.instance,
+		)
+	}
+
+	if data.Info != nil {
+		ch <- prometheus.MustNewConstMetric(
+			c.systemInfo,
+			prometheus.GaugeValue,
+			1,
+			data.Info.Hostname,
+			data.Info.OPNsenseVersion,
+			data.Info.FreeBSDVersion,
+			data.Info.OpenSSLVersion,
+			data.Info.CPUModel,
+			data.Info.CPUCores,
+			data.Info.CPUThreads,
 			c.instance,
 		)
 	}

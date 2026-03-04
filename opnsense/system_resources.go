@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"encoding/json"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -51,6 +52,12 @@ type systemSwapResponse struct {
 	Swap []systemSwapDevice `json:"swap"`
 }
 
+type systemInformationResponse struct {
+	Name     string   `json:"name"`
+	Versions []string `json:"versions"`
+	Updates  string   `json:"updates"`
+}
+
 // Public data structs.
 
 type SystemMemory struct {
@@ -81,11 +88,22 @@ type SystemSwap struct {
 	Used   int64
 }
 
+type SystemInfo struct {
+	Hostname        string
+	OPNsenseVersion string
+	FreeBSDVersion  string
+	OpenSSLVersion  string
+	CPUModel        string
+	CPUCores        string
+	CPUThreads      string
+}
+
 type SystemResources struct {
 	Memory SystemMemory
 	Time   SystemTime
 	Disks  []SystemDisk
 	Swaps  []SystemSwap
+	Info   *SystemInfo
 }
 
 // parseHumanBytes parses strings like "876G", "17M", "512K" to bytes.
@@ -256,9 +274,87 @@ func (c *Client) fetchSystemSwap(data *SystemResources) *APICallError {
 	return nil
 }
 
-// FetchSystemResources calls 4 OPNsense endpoints to gather system resource data.
+var cpuCoresThreadsRegex = regexp.MustCompile(`\((\d+) cores?, (\d+) threads?\)`)
+
+func (c *Client) fetchSystemInfo(data *SystemResources) *APICallError {
+	var resp systemInformationResponse
+
+	url, ok := c.endpoints["systemInformation"]
+	if !ok {
+		return &APICallError{
+			Endpoint:   "systemInformation",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return err
+	}
+
+	if data.Info == nil {
+		data.Info = &SystemInfo{}
+	}
+
+	data.Info.Hostname = resp.Name
+
+	if len(resp.Versions) > 0 {
+		data.Info.OPNsenseVersion = strings.TrimPrefix(resp.Versions[0], "OPNsense ")
+	}
+	if len(resp.Versions) > 1 {
+		data.Info.FreeBSDVersion = strings.TrimPrefix(resp.Versions[1], "FreeBSD ")
+	}
+	if len(resp.Versions) > 2 {
+		data.Info.OpenSSLVersion = strings.TrimPrefix(resp.Versions[2], "OpenSSL ")
+	}
+
+	return nil
+}
+
+func (c *Client) fetchCPUType(data *SystemResources) *APICallError {
+	var resp []string
+
+	url, ok := c.endpoints["cpuType"]
+	if !ok {
+		return &APICallError{
+			Endpoint:   "cpuType",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return err
+	}
+
+	if data.Info == nil {
+		data.Info = &SystemInfo{}
+	}
+
+	if len(resp) > 0 {
+		raw := resp[0]
+
+		// Extract CPU model by trimming from " (" onwards
+		if before, _, found := strings.Cut(raw, " ("); found {
+			data.Info.CPUModel = before
+		} else {
+			data.Info.CPUModel = raw
+		}
+
+		// Extract cores and threads using regex
+		matches := cpuCoresThreadsRegex.FindStringSubmatch(raw)
+		if len(matches) == 3 {
+			data.Info.CPUCores = matches[1]
+			data.Info.CPUThreads = matches[2]
+		}
+	}
+
+	return nil
+}
+
+// FetchSystemResources calls 6 OPNsense endpoints to gather system resource data.
 // It tolerates partial failure: if some calls fail but others succeed, it logs warnings
-// and returns partial data. It only returns an error if all 4 calls fail.
+// and returns partial data. It only returns an error if all calls fail.
 func (c *Client) FetchSystemResources() (SystemResources, *APICallError) {
 	var data SystemResources
 
@@ -272,6 +368,8 @@ func (c *Client) FetchSystemResources() (SystemResources, *APICallError) {
 		{"systemTime", c.fetchSystemTime(&data)},
 		{"systemDisk", c.fetchSystemDisk(&data)},
 		{"systemSwap", c.fetchSystemSwap(&data)},
+		{"systemInformation", c.fetchSystemInfo(&data)},
+		{"cpuType", c.fetchCPUType(&data)},
 	}
 
 	var firstErr *APICallError

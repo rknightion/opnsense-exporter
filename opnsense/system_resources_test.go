@@ -38,6 +38,24 @@ func TestParseHumanBytes(t *testing.T) {
 	}
 }
 
+func registerSystemInfoHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"name": "fw01.example.com",
+			"versions": [
+				"OPNsense 24.1.3_1",
+				"FreeBSD 14.0-CURRENT",
+				"OpenSSL 3.0.12 24 Oct 2023"
+			],
+			"updates": "0"
+		}`))
+	})
+
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Intel(R) Xeon(R) CPU E3-1265L v3 @ 2.50GHz (4 cores, 8 threads)"]`))
+	})
+}
+
 func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
@@ -109,6 +127,9 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 			]
 		}`))
 	})
+
+	// System information and CPU type endpoints
+	registerSystemInfoHandlers(mux)
 
 	data, err := client.FetchSystemResources()
 	if err != nil {
@@ -189,6 +210,32 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 	if swap1.Used != 1048576*1024 {
 		t.Errorf("expected swap used=%d, got %d", 1048576*1024, swap1.Used)
 	}
+
+	// System Info
+	if data.Info == nil {
+		t.Fatal("expected Info to be non-nil")
+	}
+	if data.Info.Hostname != "fw01.example.com" {
+		t.Errorf("expected Hostname='fw01.example.com', got %q", data.Info.Hostname)
+	}
+	if data.Info.OPNsenseVersion != "24.1.3_1" {
+		t.Errorf("expected OPNsenseVersion='24.1.3_1', got %q", data.Info.OPNsenseVersion)
+	}
+	if data.Info.FreeBSDVersion != "14.0-CURRENT" {
+		t.Errorf("expected FreeBSDVersion='14.0-CURRENT', got %q", data.Info.FreeBSDVersion)
+	}
+	if data.Info.OpenSSLVersion != "3.0.12 24 Oct 2023" {
+		t.Errorf("expected OpenSSLVersion='3.0.12 24 Oct 2023', got %q", data.Info.OpenSSLVersion)
+	}
+	if data.Info.CPUModel != "Intel(R) Xeon(R) CPU E3-1265L v3 @ 2.50GHz" {
+		t.Errorf("expected CPUModel='Intel(R) Xeon(R) CPU E3-1265L v3 @ 2.50GHz', got %q", data.Info.CPUModel)
+	}
+	if data.Info.CPUCores != "4" {
+		t.Errorf("expected CPUCores='4', got %q", data.Info.CPUCores)
+	}
+	if data.Info.CPUThreads != "8" {
+		t.Errorf("expected CPUThreads='8', got %q", data.Info.CPUThreads)
+	}
 }
 
 func TestFetchSystemResources_PartialFailure(t *testing.T) {
@@ -222,6 +269,9 @@ func TestFetchSystemResources_PartialFailure(t *testing.T) {
 		w.Write([]byte(`{"swap": []}`))
 	})
 
+	// System info endpoints succeed
+	registerSystemInfoHandlers(mux)
+
 	data, err := client.FetchSystemResources()
 	if err != nil {
 		t.Fatalf("expected no error for partial failure, got: %v", err)
@@ -234,6 +284,14 @@ func TestFetchSystemResources_PartialFailure(t *testing.T) {
 	// ARC empty string should result in HasArc=false
 	if data.Memory.HasArc {
 		t.Error("expected Memory.HasArc=false for empty arc string")
+	}
+
+	// System info should still be populated despite time failure
+	if data.Info == nil {
+		t.Fatal("expected Info to be non-nil despite partial failure")
+	}
+	if data.Info.Hostname != "fw01.example.com" {
+		t.Errorf("expected Hostname='fw01.example.com', got %q", data.Info.Hostname)
 	}
 }
 
@@ -251,6 +309,8 @@ func TestFetchSystemResources_AllFail(t *testing.T) {
 	mux.HandleFunc("/api/diagnostics/system/systemTime", failHandler)
 	mux.HandleFunc("/api/diagnostics/system/systemDisk", failHandler)
 	mux.HandleFunc("/api/diagnostics/system/systemSwap", failHandler)
+	mux.HandleFunc("/api/diagnostics/system/system_information", failHandler)
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", failHandler)
 
 	_, err := client.FetchSystemResources()
 	if err == nil {
@@ -280,6 +340,7 @@ func TestFetchSystemResources_ArcZeroString(t *testing.T) {
 	mux.HandleFunc("/api/diagnostics/system/systemSwap", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"swap": []}`))
 	})
+	registerSystemInfoHandlers(mux)
 
 	data, err := client.FetchSystemResources()
 	if err != nil {
@@ -292,5 +353,148 @@ func TestFetchSystemResources_ArcZeroString(t *testing.T) {
 	}
 	if data.Memory.Arc != 0 {
 		t.Errorf("expected Memory.Arc=0, got %d", data.Memory.Arc)
+	}
+}
+
+func TestFetchSystemInfo(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"name": "opnsense.local",
+			"versions": [
+				"OPNsense 24.7",
+				"FreeBSD 14.1-RELEASE-p3",
+				"OpenSSL 3.3.1 4 Jun 2024"
+			],
+			"updates": "1"
+		}`))
+	})
+
+	data := &SystemResources{}
+	err := client.fetchSystemInfo(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.Info == nil {
+		t.Fatal("expected Info to be non-nil")
+	}
+	if data.Info.Hostname != "opnsense.local" {
+		t.Errorf("expected Hostname='opnsense.local', got %q", data.Info.Hostname)
+	}
+	if data.Info.OPNsenseVersion != "24.7" {
+		t.Errorf("expected OPNsenseVersion='24.7', got %q", data.Info.OPNsenseVersion)
+	}
+	if data.Info.FreeBSDVersion != "14.1-RELEASE-p3" {
+		t.Errorf("expected FreeBSDVersion='14.1-RELEASE-p3', got %q", data.Info.FreeBSDVersion)
+	}
+	if data.Info.OpenSSLVersion != "3.3.1 4 Jun 2024" {
+		t.Errorf("expected OpenSSLVersion='3.3.1 4 Jun 2024', got %q", data.Info.OpenSSLVersion)
+	}
+}
+
+func TestFetchSystemInfo_EmptyVersions(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"name": "fw01",
+			"versions": [],
+			"updates": "0"
+		}`))
+	})
+
+	data := &SystemResources{}
+	err := client.fetchSystemInfo(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.Info.Hostname != "fw01" {
+		t.Errorf("expected Hostname='fw01', got %q", data.Info.Hostname)
+	}
+	if data.Info.OPNsenseVersion != "" {
+		t.Errorf("expected empty OPNsenseVersion, got %q", data.Info.OPNsenseVersion)
+	}
+}
+
+func TestFetchCPUType(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["AMD Ryzen 5 5600X 6-Core Processor (6 cores, 12 threads)"]`))
+	})
+
+	data := &SystemResources{}
+	err := client.fetchCPUType(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.Info == nil {
+		t.Fatal("expected Info to be non-nil")
+	}
+	if data.Info.CPUModel != "AMD Ryzen 5 5600X 6-Core Processor" {
+		t.Errorf("expected CPUModel='AMD Ryzen 5 5600X 6-Core Processor', got %q", data.Info.CPUModel)
+	}
+	if data.Info.CPUCores != "6" {
+		t.Errorf("expected CPUCores='6', got %q", data.Info.CPUCores)
+	}
+	if data.Info.CPUThreads != "12" {
+		t.Errorf("expected CPUThreads='12', got %q", data.Info.CPUThreads)
+	}
+}
+
+func TestFetchCPUType_SingleCore(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Intel Atom C3558 (1 core, 1 thread)"]`))
+	})
+
+	data := &SystemResources{}
+	err := client.fetchCPUType(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.Info.CPUModel != "Intel Atom C3558" {
+		t.Errorf("expected CPUModel='Intel Atom C3558', got %q", data.Info.CPUModel)
+	}
+	if data.Info.CPUCores != "1" {
+		t.Errorf("expected CPUCores='1', got %q", data.Info.CPUCores)
+	}
+	if data.Info.CPUThreads != "1" {
+		t.Errorf("expected CPUThreads='1', got %q", data.Info.CPUThreads)
+	}
+}
+
+func TestFetchCPUType_NoCoresInfo(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Generic CPU"]`))
+	})
+
+	data := &SystemResources{}
+	err := client.fetchCPUType(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.Info.CPUModel != "Generic CPU" {
+		t.Errorf("expected CPUModel='Generic CPU', got %q", data.Info.CPUModel)
+	}
+	if data.Info.CPUCores != "" {
+		t.Errorf("expected empty CPUCores, got %q", data.Info.CPUCores)
+	}
+	if data.Info.CPUThreads != "" {
+		t.Errorf("expected empty CPUThreads, got %q", data.Info.CPUThreads)
 	}
 }

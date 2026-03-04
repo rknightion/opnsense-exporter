@@ -63,6 +63,22 @@ func TestSystemCollector_Update(t *testing.T) {
 		}`))
 	})
 
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"name": "fw01.example.com",
+			"versions": [
+				"OPNsense 24.1.3_1",
+				"FreeBSD 14.0-CURRENT",
+				"OpenSSL 3.0.12 24 Oct 2023"
+			],
+			"updates": "0"
+		}`))
+	})
+
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Intel(R) Xeon(R) CPU E3-1265L v3 @ 2.50GHz (4 cores, 8 threads)"]`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -77,10 +93,45 @@ func TestSystemCollector_Update(t *testing.T) {
 	// Time: 1 uptime + 3 loadAverage + 1 configLastChange = 5
 	// Disk: 3 per device (total, used, usageRatio) * 1 device = 3
 	// Swap: 2 per device (total, used) * 1 device = 2
-	// Total: 3 + 5 + 3 + 2 = 13
-	expectedCount := 13
+	// Info: 1 metric
+	// Total: 3 + 5 + 3 + 2 + 1 = 14
+	expectedCount := 14
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	// Find and verify the system_info metric
+	found := false
+	for _, m := range metrics {
+		labels := getMetricLabels(m)
+		if hostname, ok := labels["hostname"]; ok && hostname == "fw01.example.com" {
+			found = true
+			if labels["opnsense_version"] != "24.1.3_1" {
+				t.Errorf("expected opnsense_version='24.1.3_1', got %q", labels["opnsense_version"])
+			}
+			if labels["freebsd_version"] != "14.0-CURRENT" {
+				t.Errorf("expected freebsd_version='14.0-CURRENT', got %q", labels["freebsd_version"])
+			}
+			if labels["openssl_version"] != "3.0.12 24 Oct 2023" {
+				t.Errorf("expected openssl_version='3.0.12 24 Oct 2023', got %q", labels["openssl_version"])
+			}
+			if labels["cpu_model"] != "Intel(R) Xeon(R) CPU E3-1265L v3 @ 2.50GHz" {
+				t.Errorf("expected cpu_model='Intel(R) Xeon(R) CPU E3-1265L v3 @ 2.50GHz', got %q", labels["cpu_model"])
+			}
+			if labels["cpu_cores"] != "4" {
+				t.Errorf("expected cpu_cores='4', got %q", labels["cpu_cores"])
+			}
+			if labels["cpu_threads"] != "8" {
+				t.Errorf("expected cpu_threads='8', got %q", labels["cpu_threads"])
+			}
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("expected system_info value=1, got %f", v)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Error("system_info metric not found in output")
 	}
 }
 
@@ -117,6 +168,18 @@ func TestSystemCollector_Update_NoArc(t *testing.T) {
 		w.Write([]byte(`{"swap": []}`))
 	})
 
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"name": "fw01",
+			"versions": ["OPNsense 24.1"],
+			"updates": "0"
+		}`))
+	})
+
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Generic CPU (2 cores, 2 threads)"]`))
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -131,8 +194,9 @@ func TestSystemCollector_Update_NoArc(t *testing.T) {
 	// Time: 1 uptime + 3 loadAverage = 4 (no configLastChange since config is "")
 	// Disk: 0 (no devices)
 	// Swap: 0 (no swap)
-	// Total: 2 + 4 + 0 + 0 = 6
-	expectedCount := 6
+	// Info: 1 metric
+	// Total: 2 + 4 + 0 + 0 + 1 = 7
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
