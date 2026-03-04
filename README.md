@@ -43,6 +43,8 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Kea DHCP lease collector** — New collector exposing Kea DHCPv4 and DHCPv6 lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.enable-kea-details`). Polls both `api/kea/leases4/search` and `api/kea/leases6/search`. Includes new `--exporter.disable-kea` / `OPNSENSE_EXPORTER_DISABLE_KEA` flag.
 - **Network diagnostics collector** — New opt-in collector exposing kernel network ISR statistics (dispatched, hybrid dispatched, queued, handled, queue drops, queue length/watermark/limit per protocol), active socket counts by type, UNIX domain socket count, and routing table counts by protocol. Polls 3 API endpoints. Disabled by default; enable with `--exporter.enable-network-diagnostics` / `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS=true`.
 - **NetFlow collector** — New opt-in collector exposing netflow service status (enabled, local collection, active state, collector count) and per-interface cache statistics (packets total, unique source/destination IP addresses). Polls 3 API endpoints (`isEnabled`, `status`, `cacheStats`). Disabled by default; enable with `--exporter.enable-netflow` / `OPNSENSE_EXPORTER_ENABLE_NETFLOW=true`.
+- **PF statistics deep dive collector** — New collector exposing detailed PF (packet filter) internals: state table entries/searches/inserts/removals, 16 PF counters (match, bad-offset, fragment, state-mismatch, map-failed, etc.), 10 limit counters (max-states-per-rule, synfloods-detected, syncookies, etc.), memory pool limits (states, src-nodes, frags, table-entries), and protocol timeout configurations. Polls 3 `pf_statistics` sub-endpoints. Includes new `--exporter.disable-pf-stats` / `OPNSENSE_EXPORTER_DISABLE_PF_STATS` flag.
+- **NDP (IPv6 neighbor discovery) table collector** — New collector exposing IPv6 neighbor entries with IP, MAC, interface, and type labels (mirrors the ARP table collector for IPv6). Includes new `--exporter.disable-ndp` / `OPNSENSE_EXPORTER_DISABLE_NDP` flag.
 
 ### Enhanced Collectors
 
@@ -53,6 +55,10 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Health check** — Added `opnsense_system_status_code` gauge exposing the numeric system status code from the health check API (2 = OK for OPNsense >= 25.1).
 - **Unbound DNS / Dnsmasq / IPsec / Wireguard** — Added `service_running` gauge to each collector (1 = running, 0 = stopped/disabled) via per-subsystem service status API endpoints.
 - **Firmware** — Reworked metrics to follow Prometheus best practices: consolidated version strings into a single `opnsense_firmware_info` metric with labels, replaced value-in-label anti-patterns with proper numeric gauges (`needs_reboot`, `upgrade_needs_reboot`, `last_check_timestamp_seconds`, `new_packages_count`, `upgrade_packages_count`).
+- **System resources** — Added `opnsense_system_info` gauge (always 1) with labels for hostname, OPNsense version, FreeBSD version, OpenSSL version, CPU model, cores, and threads. Polls 2 additional endpoints (`system_information`, `getCPUType`). Partial failure tolerant — existing system metrics still work if these new endpoints fail.
+- **Mbuf statistics** — Added jumbo9 and jumbo16 buffer types to failure and sleep counters, plus 3 new sendfile metrics (`sendfile_syscalls_total`, `sendfile_io_total`, `sendfile_pages_sent_total`). Polls an additional `get_memory_statistics` endpoint with partial failure tolerance.
+- **Firewall PF statistics** — Added `opnsense_firewall_interface_hits_total` counter showing per-interface rule match counts from the aggregate stats endpoint. Partial failure tolerant.
+- **Network diagnostics** — Added pfsync HA cluster metrics: `pfsync_nodes_total` gauge and per-node `pfsync_node_info` with creatorid and is_local labels. Partial failure tolerant.
 
 ### Bug Fixes
 
