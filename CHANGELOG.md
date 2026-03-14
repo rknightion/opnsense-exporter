@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.2.0](https://github.com/rknightion/opnsense-exporter/compare/v0.1.0...v0.2.0) (2026-03-14)
+
+
+### Features
+
+* **client:** add new API endpoints for enhanced collectors ([6c6cde9](https://github.com/rknightion/opnsense-exporter/commit/6c6cde9d56b936ff3763ad186a8961812793e29d))
+* **collectors:** add NDP collector for IPv6 neighbor discovery table ([2a2dffe](https://github.com/rknightion/opnsense-exporter/commit/2a2dffe542657c3b09cc426bd37fdebb406a96cc))
+* **collectors:** add PF statistics deep dive collector ([28ec3d6](https://github.com/rknightion/opnsense-exporter/commit/28ec3d64c387eb2592389969360a0af37a3c19f7))
+* **collectors:** enhance firewall collector with per-interface hit counters ([499eb01](https://github.com/rknightion/opnsense-exporter/commit/499eb016685c638b9a31a7209ef83164eee05de8))
+* **collectors:** enhance mbuf collector with additional memory statistics ([cb78df6](https://github.com/rknightion/opnsense-exporter/commit/cb78df6df8af670baf4ace4008b25e31f2d19407))
+* **collectors:** enhance network diagnostics collector with pfsync HA metrics ([a03b23d](https://github.com/rknightion/opnsense-exporter/commit/a03b23d7bdafd68be9b6a4068a8d9a7a1eccade9))
+* **collectors:** enhance system collector with detailed system information ([b123643](https://github.com/rknightion/opnsense-exporter/commit/b123643a17b6c701eb0105e3f6bb4004695b2737))
+* **netflow:** add configuration options and CLI flags ([546ccfe](https://github.com/rknightion/opnsense-exporter/commit/546ccfeff092b4417960961d53e800eed2814b7e))
+* **netflow:** add NetFlow collector implementation ([63e5154](https://github.com/rknightion/opnsense-exporter/commit/63e51540cc923b11e819a101a60b5204905b1a95))
+
+
+### Bug Fixes
+
+* add markdown attribute to hero-badges div ([fb6884f](https://github.com/rknightion/opnsense-exporter/commit/fb6884f8fc446955a16769318b32fd511377d735))
+* use direct type conversion to satisfy staticcheck S1016 ([2964580](https://github.com/rknightion/opnsense-exporter/commit/29645809a3377e2dce44acc3de5b846a40bf2444))
+
+
+### Refactoring
+
+* **docgen:** replace if-else chain with switch statement for metric parsing ([65d7dd4](https://github.com/rknightion/opnsense-exporter/commit/65d7dd436525b2962272566a81b6df26266a55f6))
+* remove GOMAXPROCS configuration option ([190bd1e](https://github.com/rknightion/opnsense-exporter/commit/190bd1e4ea4bc91f978774ce720156810ee2597d))
+
+
+### Miscellaneous
+
+* **deps:** pin dependencies ([#5](https://github.com/rknightion/opnsense-exporter/issues/5)) ([f28c389](https://github.com/rknightion/opnsense-exporter/commit/f28c389d3bd8ded5428118edbe300c1d177ef021))
+* **deps:** update actions/checkout action to v6 ([#10](https://github.com/rknightion/opnsense-exporter/issues/10)) ([e2493c8](https://github.com/rknightion/opnsense-exporter/commit/e2493c883c01dc13cd10be264e5b56c927772df1))
+* **deps:** update actions/download-artifact digest to 3e5f45b ([#6](https://github.com/rknightion/opnsense-exporter/issues/6)) ([98e119d](https://github.com/rknightion/opnsense-exporter/commit/98e119d8ab951db90efe6b39e85a88d78d43bbad))
+* **deps:** update actions/setup-go action to v6 ([#11](https://github.com/rknightion/opnsense-exporter/issues/11)) ([9d83482](https://github.com/rknightion/opnsense-exporter/commit/9d83482616498604a6a101d82b3192ab64baba50))
+* **deps:** update actions/setup-go digest to 40f1582 ([#8](https://github.com/rknightion/opnsense-exporter/issues/8)) ([5f1a7a5](https://github.com/rknightion/opnsense-exporter/commit/5f1a7a53dd3c217e2705b84d899dba68f6f6860f))
+* **deps:** update docker/build-push-action action to v7 ([#12](https://github.com/rknightion/opnsense-exporter/issues/12)) ([733c911](https://github.com/rknightion/opnsense-exporter/commit/733c911220c3f9b5627fb8df6f28bd30b698ec3b))
+* **deps:** update docker/login-action action to v4 ([#13](https://github.com/rknightion/opnsense-exporter/issues/13)) ([89b8997](https://github.com/rknightion/opnsense-exporter/commit/89b8997d43a158610f86b03ae2b42ef507676425))
+* **deps:** update docker/metadata-action action to v6 ([#14](https://github.com/rknightion/opnsense-exporter/issues/14)) ([3adce41](https://github.com/rknightion/opnsense-exporter/commit/3adce419c40a39cc8d4642f72b7fa223fc0b6cdb))
+* **deps:** update docker/setup-buildx-action action to v4 ([#15](https://github.com/rknightion/opnsense-exporter/issues/15)) ([a2a0a05](https://github.com/rknightion/opnsense-exporter/commit/a2a0a05d38469f8d7abb29fcdab1093e8ac233f8))
+* **deps:** update github/codeql-action action to v4 ([#16](https://github.com/rknightion/opnsense-exporter/issues/16)) ([da86204](https://github.com/rknightion/opnsense-exporter/commit/da86204df7e81e052d5cea29f5f311ca7d48c4b1))
+* **deps:** update golangci/golangci-lint-action action to v9 ([#17](https://github.com/rknightion/opnsense-exporter/issues/17)) ([21b76d0](https://github.com/rknightion/opnsense-exporter/commit/21b76d0ce78db50aa2db592db894c98ca87ecf02))
+* **deps:** update goreleaser/goreleaser-action action to v7 ([#18](https://github.com/rknightion/opnsense-exporter/issues/18)) ([647277e](https://github.com/rknightion/opnsense-exporter/commit/647277e2d6d2e2f0f3f1eb844655c026436c9823))
+* **deps:** update goreleaser/goreleaser-action digest to e435ccd ([#9](https://github.com/rknightion/opnsense-exporter/issues/9)) ([494a4cc](https://github.com/rknightion/opnsense-exporter/commit/494a4cc6edf0fcf74180bda28f908d540ecf92c9))
+
+
+### Documentation
+
+* add auto-generated collector reference and update metrics documentation structure ([d41b180](https://github.com/rknightion/opnsense-exporter/commit/d41b18059c4ab912fde3dc371c0dde8c218d00cd))
+* add comprehensive documentation infrastructure with automated generation ([e519f1a](https://github.com/rknightion/opnsense-exporter/commit/e519f1a747e1453ac2c1fdb05f77025199ba6a85))
+* add comprehensive documentation infrastructure with mkdocs ([3854de8](https://github.com/rknightion/opnsense-exporter/commit/3854de87476fb3d63f13c3bbe2ea08858dac4ca8))
+* reorganize completed TODOs and expand remaining tasks ([0b942d0](https://github.com/rknightion/opnsense-exporter/commit/0b942d07aa51bbd50b1da259f5d8ca9719b8cb26))
+* restructure and expand metrics documentation ([bf1d7a0](https://github.com/rknightion/opnsense-exporter/commit/bf1d7a06402a20a59330915a6e10b91b0b0dbf06))
+* update README and metrics documentation for NetFlow collector ([3cb4185](https://github.com/rknightion/opnsense-exporter/commit/3cb418596b4380ca18193de4db75faa8851e31e4))
+* update README with new collector descriptions ([45feac4](https://github.com/rknightion/opnsense-exporter/commit/45feac49d981637b8ddc1283207eaca06ccaf7b3))
+* update todos with completed implementation status ([b2aa505](https://github.com/rknightion/opnsense-exporter/commit/b2aa5059064733cfe9a1d4bf207202418cd34a4a))
+
+
+### CI/CD
+
+* restrict docs sync trigger to docs-related path changes ([746c084](https://github.com/rknightion/opnsense-exporter/commit/746c084123eeaa5726c4f9cdfa4f3b201ba82203))
+* trigger PR checks for branch protection ([5b9d965](https://github.com/rknightion/opnsense-exporter/commit/5b9d9652f17258cf29c7dc13832219da5c156b48))
+* trigger PR checks for branch protection setup ([5a49761](https://github.com/rknightion/opnsense-exporter/commit/5a49761f7affcbc2b6130f678c294185f09ff196))
+
 ## [0.1.0](https://github.com/rknightion/opnsense-exporter/compare/v0.0.13...v0.1.0) (2026-03-03)
 
 
