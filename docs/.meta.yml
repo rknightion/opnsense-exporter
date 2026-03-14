@@ -1,0 +1,21 @@
+title: OPNsense Exporter Documentation
+description: Comprehensive Prometheus exporter for OPNsense firewalls providing 320+ metrics across 26 collectors for firewall monitoring, network diagnostics, and system observability
+
+# Global meta tags for all pages
+tags:
+  - prometheus
+  - monitoring
+  - opnsense
+  - firewall-monitoring
+  - observability
+
+# Social media defaults
+image: assets/og-image.png
+twitter:
+  creator: "@rknightion"
+  site: "@rknightion"
+
+# SEO defaults
+robots: index,follow
+language: en
+canonical_base: https://m7kni.io/opnsense-exporter/

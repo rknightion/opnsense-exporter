@@ -1,0 +1,7 @@
+title: Metrics Reference
+description: Complete reference of all Prometheus metrics exposed by the OPNsense Exporter, including naming conventions, label schemas, and PromQL examples
+
+tags:
+  - metrics
+  - prometheus
+  - reference

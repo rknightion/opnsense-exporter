@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+
+# Encourage indexing of documentation
+Allow: /getting-started/
+Allow: /configuration/
+Allow: /deployment/
+Allow: /integration-dashboards/
+Allow: /metrics/
+Allow: /collectors/
+Allow: /architecture/
+Allow: /security/
+
+# Static assets
+Allow: /assets/
+Allow: /stylesheets/
+Allow: /javascripts/
+
+Sitemap: https://m7kni.io/opnsense-exporter/sitemap.xml

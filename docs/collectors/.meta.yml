@@ -1,0 +1,7 @@
+title: Collectors
+description: Documentation for all 26 OPNsense Exporter collectors covering firewall, network, system, and service subsystems
+
+tags:
+  - collectors
+  - configuration
+  - reference
