@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'docs/**'
+      - 'zensical.toml'
+      - 'scripts/docgen/**'
   workflow_dispatch:
 
 concurrency:
