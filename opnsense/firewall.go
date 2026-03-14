@@ -89,7 +89,7 @@ func (c *Client) FetchFirewallStats() ([]FirewallInterfaceHit, *APICallError) {
 
 	hits := make([]FirewallInterfaceHit, len(resp))
 	for i, entry := range resp {
-		hits[i] = FirewallInterfaceHit{Label: entry.Label, Value: entry.Value}
+		hits[i] = FirewallInterfaceHit(entry)
 	}
 	return hits, nil
 }
