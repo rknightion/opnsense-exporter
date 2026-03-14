@@ -1,6 +1,6 @@
 BINARY_NAME=opnsense-exporter-local
 
-.PHONY: default
+.PHONY: default docgen
 default:
 	go build \
 	-tags osusergo,netgo \
@@ -35,3 +35,6 @@ clean:
 lint:
 	gofmt -s -w $(shell find . -type f -name '*.go'| grep -v "/vendor/\|/.git/")
 	golangci-lint run --fix
+
+docgen:
+	go run ./scripts/docgen
