@@ -12,7 +12,7 @@ image: assets/social-card.png
 
 A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 320+ metrics across 26 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
 
-<div class="hero-badges">
+<div class="hero-badges" markdown>
 
 [Getting Started](getting-started.md){ .md-button .md-button--primary .md-button--stretch }
 [GitHub :fontawesome-brands-github:](https://github.com/rknightion/opnsense-exporter){ .md-button .md-button--primary .md-button--stretch target="_blank" }
