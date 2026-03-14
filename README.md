@@ -11,7 +11,8 @@
 - **[Changes from Upstream](#changes-from-upstream)**
 - **[About](#about)**
 - **[Grafana Dashboard](#grafana-dashboard)**
-- **[Metrics List](./docs/metrics.md)**
+- **[Full Documentation](https://m7kni.io/opnsense-exporter/)**
+- **[Metrics List](https://m7kni.io/opnsense-exporter/metrics/metrics/)**
 - **[Contributing](./CONTRIBUTING.md)**
 - **[OPNsense User Permissions](#opnsense-user-permissions)**
 - **[Usage](#usage)**
@@ -76,6 +77,11 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Release automation** — Migrated from manual tag-triggered releases to [release-please](https://github.com/googleapis/release-please) for automated conventional commit-driven versioning and changelogs. Docker builds use native multi-arch runners (amd64/arm64). All GitHub Actions pinned to commit hashes for supply-chain security.
 - **Dockerfile modernization** — Alpine-based builder (smaller pulls), BuildKit cache mounts for faster rebuilds, `-trimpath` and `-mod=vendor` flags for reproducibility, distroless debian13 nonroot runtime image pinned by digest.
 - **Removed GOMAXPROCS flag** — Removed the `--runtime.gomaxprocs` flag (previously defaulting to 2). Go's runtime now auto-detects available CPUs, which is the correct default for this I/O-bound exporter.
+
+### Documentation
+
+- **Zensical documentation site** — Added comprehensive documentation site at [m7kni.io/opnsense-exporter](https://m7kni.io/opnsense-exporter/) with auto-generated metrics reference, deployment guides, architecture overview, and integration with the m7kni.io docs hub.
+- **Auto-generated metrics docs** — Added `scripts/docgen/main.go` that uses Go AST parsing to extract all 275 metrics from source code and generate the complete metrics reference page. Run `make docgen` to regenerate.
 
 ### Utilities
 

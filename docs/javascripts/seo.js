@@ -211,7 +211,6 @@ function getDocumentationSection() {
 
 function getPageKeywords() {
   const path = window.location.pathname;
-  const title = document.title.toLowerCase();
   const content = document.body.textContent.toLowerCase();
 
   let keywords = ['opnsense', 'prometheus', 'exporter', 'monitoring', 'firewall'];

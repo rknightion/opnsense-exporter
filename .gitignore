@@ -35,3 +35,4 @@ local.docker-compose.yml
 .vscode/
 
 opnsense-exporter
+docgen
