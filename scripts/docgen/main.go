@@ -218,13 +218,14 @@ func parseTopLevelMetrics(filePath string) []MetricInfo {
 					continue
 				}
 
-				if funcName == "prometheus.NewGauge" || funcName == "NewGauge" {
+				switch funcName {
+				case "prometheus.NewGauge", "NewGauge":
 					m := parseGaugeOpts(call)
 					if m != nil {
 						m.Type = "Gauge"
 						metrics = append(metrics, *m)
 					}
-				} else if funcName == "prometheus.NewCounterVec" || funcName == "NewCounterVec" {
+				case "prometheus.NewCounterVec", "NewCounterVec":
 					m := parseCounterVecOpts(call)
 					if m != nil {
 						m.Type = "Counter"
@@ -661,7 +662,7 @@ func parseFlagInfo(filePath string, subsystemConstants map[string]string) map[st
 
 				isEnable := strings.Contains(flagName, "enable-")
 
-				def := "Enabled"
+				var def string
 				if isEnable {
 					// enable-xxx defaults to false -> Disabled by default
 					if defaultVal == "false" {
