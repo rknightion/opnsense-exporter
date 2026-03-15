@@ -53,35 +53,22 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 
 ## Grafana dashboard
 
-A pre-built Grafana dashboard is available for visualizing OPNsense Exporter metrics.
+!!! warning "Minimum Grafana version: 11.4+"
+    The comprehensive dashboard uses the v2beta1 schema with TabsLayout, which requires **Grafana 11.4 or later**.
 
-**[OPNsense Exporter Dashboard on Grafana.com](https://grafana.com/grafana/dashboards/21113)** (ID: `21113`)
+A comprehensive Grafana dashboard covering all 275+ metrics is available for visualizing OPNsense Exporter data. The dashboard is organized into 8 tabs: Overview, Firewall, Interfaces, Gateways, DNS, VPN, DHCP & Neighbors, and Network Internals.
 
 ### Import the dashboard
 
 1. Open Grafana and navigate to **Dashboards > Import**.
-2. Enter the dashboard ID `21113` and click **Load**.
+2. Import the JSON file from the repository: `deploy/grafana/dashboard.json`
 3. Select your Prometheus data source and click **Import**.
 
-Alternatively, import the JSON file directly from the repository:
+The dashboard uses template variables for `datasource`, `opnsense_instance`, `interface`, and `rate_interval`.
 
-```
-deploy/grafana/dashboard-v1.json
-```
+### Legacy dashboard
 
-### Dashboard panels
-
-The dashboard includes panels for:
-
-![Gateway monitoring](assets/gateways.png)
-
-![Interface statistics](assets/interfaces.png)
-
-![Service status](assets/services.png)
-
-![Firmware and system](assets/firmware.png)
-
-![ARP table](assets/arp.png)
+The legacy v1 dashboard is still available at `deploy/grafana/dashboard-v1.json` or via [Grafana.com](https://grafana.com/grafana/dashboards/21113) (ID: `21113`) for older Grafana versions.
 
 ## Example PromQL queries
 

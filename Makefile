@@ -38,3 +38,6 @@ lint:
 
 docgen:
 	go run ./scripts/docgen
+
+dashboard:
+	python3 scripts/generate-dashboard.py

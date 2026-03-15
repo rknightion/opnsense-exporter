@@ -83,6 +83,11 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Zensical documentation site** — Added comprehensive documentation site at [m7kni.io/opnsense-exporter](https://m7kni.io/opnsense-exporter/) with auto-generated metrics reference, deployment guides, architecture overview, and integration with the m7kni.io docs hub.
 - **Auto-generated metrics docs** — Added `scripts/docgen/main.go` that uses Go AST parsing to extract all 275 metrics from source code and generate the complete metrics reference page. Run `make docgen` to regenerate.
 
+### Dashboard
+
+- **Comprehensive Grafana dashboard** — Replaced the upstream dashboard with a comprehensive v2beta1 dashboard using TabsLayout with 8 tabs (Overview, Firewall, Interfaces, Gateways, DNS, VPN, DHCP & Neighbors, Network Internals) covering all 275+ metrics across 197 panels. Uses a variety of visualization types (stat, timeseries, table, status-history, gauge, bar-gauge, pie-chart) with AutoGridLayout for interface status panels and collapsed rows for opt-in collectors. Requires **Grafana 11.4+** for TabsLayout support.
+- **Dashboard generation script** — Added `scripts/generate-dashboard.py` to programmatically generate the dashboard JSON. Run `make dashboard` to regenerate after adding new metrics.
+
 ### Utilities
 
 - **Safe string parsing** — Added utility functions for safe string-to-number conversion used across the enhanced collectors.
@@ -95,11 +100,11 @@ While the `node_exporter` must be installed on the firewall itself, this exporte
 
 ## Grafana Dashboard
 
-**[OPNsense Exporter Dashboard](https://grafana.com/grafana/dashboards/21113)**
+> **Minimum Grafana version: 11.4+** — The dashboard uses the v2beta1 schema with TabsLayout, which requires Grafana 11.4 or later.
 
-![gateways](docs/assets/gateways.png)
+The comprehensive dashboard covers all 275+ metrics across 8 tabs: Overview, Firewall, Interfaces, Gateways, DNS, VPN, DHCP & Neighbors, and Network Internals. Import it from `deploy/grafana/dashboard.json`.
 
-Finaly we have a Grafana dashboard to visualize the data from this exporter. The dashboard can be imported into Grafana by using the id `21113` or by importing the `deploy/grafana/dashboard-v1.json` file. Please give a review to the dashboard if you like our work. Thank you!
+The legacy v1 dashboard is available at `deploy/grafana/dashboard-v1.json` or via Grafana dashboard id `21113` for older Grafana versions.
 
 ## OPNsense user permissions
 
