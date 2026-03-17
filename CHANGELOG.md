@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/rknightion/opnsense-exporter/compare/v0.2.0...v0.2.1) (2026-03-16)
+
+
+### Miscellaneous
+
+* **deps:** update gcr.io/distroless/static-debian13:nonroot docker digest to e3f9456 ([#20](https://github.com/rknightion/opnsense-exporter/issues/20)) ([a542a93](https://github.com/rknightion/opnsense-exporter/commit/a542a93a8759d7a3e9b843e03f145d43cdde767c))
+* **deps:** update github/codeql-action digest to b1bff81 ([#21](https://github.com/rknightion/opnsense-exporter/issues/21)) ([3378bb1](https://github.com/rknightion/opnsense-exporter/commit/3378bb1fce54983dec72d6d00faa327f7cb6e25a))
+* replace old Grafana dashboard with comprehensive v2 dashboard ([da5a351](https://github.com/rknightion/opnsense-exporter/commit/da5a35183f12b659478ef9aefd34d170e5982a62))
+
 ## [0.2.0](https://github.com/rknightion/opnsense-exporter/compare/v0.1.0...v0.2.0) (2026-03-14)
 
 
