@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/rknightion/opnsense-exporter/compare/v0.2.1...v0.2.2) (2026-03-20)
+
+
+### Miscellaneous
+
+* **deps:** update github/codeql-action digest to 3869755 ([#25](https://github.com/rknightion/opnsense-exporter/issues/25)) ([d196062](https://github.com/rknightion/opnsense-exporter/commit/d1960623297ea8b29d2f8fb2458be9d793dd56b2))
+* **deps:** update github/codeql-action digest to c6f9311 ([#23](https://github.com/rknightion/opnsense-exporter/issues/23)) ([5ed9dbe](https://github.com/rknightion/opnsense-exporter/commit/5ed9dbe1ad72f8c2d808657518271443c2e460fe))
+
 ## [0.2.1](https://github.com/rknightion/opnsense-exporter/compare/v0.2.0...v0.2.1) (2026-03-16)
 
 
