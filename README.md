@@ -80,7 +80,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 
 ### Build & Infrastructure
 
-- **Optional instance label** — `--exporter.instance-label` / `OPNSENSE_EXPORTER_INSTANCE_LABEL` is no longer required. When unset it now defaults to the hostname the OPNsense API reports for itself (via `api/diagnostics/system/system_information`), falling back to the configured OPNsense address if that lookup fails. Single-instance deployments work with no label configuration; set it explicitly only to override or to disambiguate multiple exporters.
+- **Optional instance label** — `--exporter.instance-label` / `OPNSENSE_EXPORTER_INSTANCE_LABEL` is no longer required. When unset it now defaults to the hostname the OPNsense API reports for itself (via `api/diagnostics/system/system_information`), falling back to the configured OPNsense address if that lookup fails or does not return within a short timeout (so an unreachable box never delays startup). Single-instance deployments work with no label configuration; set it explicitly only to override or to disambiguate multiple exporters.
 - **Go 1.26** — Upgraded from Go 1.25, gaining Green Tea GC (10-40% less GC overhead), ~2x faster `io.ReadAll` for API responses, and post-quantum TLS by default.
 - **Go modernization** — Applied `go fix` modernizers: `interface{}` replaced with `any`, unused loop variables removed with `for range` syntax.
 - **Standalone fork** — Module path changed to `github.com/rknightion/opnsense-exporter`. All container images, CI/CD, and deployment manifests updated accordingly.

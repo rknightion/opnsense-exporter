@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	_ "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,6 +21,11 @@ import (
 )
 
 var version = ""
+
+// instanceLabelLookupTimeout bounds the best-effort startup hostname lookup used
+// to derive a default instance label, so an unreachable OPNsense box (which the
+// API client would otherwise retry for up to ~45s) never delays startup.
+const instanceLabelLookupTimeout = 5 * time.Second
 
 func main() {
 	options.Init()
@@ -185,15 +191,38 @@ func main() {
 	// out of the box, falling back to the configured address if the lookup fails.
 	instanceLabel := *options.InstanceLabel
 	if instanceLabel == "" {
-		if hostname, hErr := opnsenseClient.FetchSystemHostname(); hErr == nil && hostname != "" {
-			instanceLabel = hostname
-			logger.Info("instance label not set; using OPNsense hostname", "instance", instanceLabel)
-		} else {
-			instanceLabel = opnsConfig.Host
+		// Default to the configured address, then try to upgrade to the OPNsense
+		// hostname. The lookup runs in a goroutine bounded by a short timeout so an
+		// unreachable box never blocks startup; a late result is simply ignored.
+		instanceLabel = opnsConfig.Host
+
+		type hostnameResult struct {
+			hostname string
+			err      *opnsense.APICallError
+		}
+		resCh := make(chan hostnameResult, 1)
+		go func() {
+			hostname, hErr := opnsenseClient.FetchSystemHostname()
+			resCh <- hostnameResult{hostname: hostname, err: hErr}
+		}()
+
+		select {
+		case res := <-resCh:
+			if res.err == nil && res.hostname != "" {
+				instanceLabel = res.hostname
+				logger.Info("instance label not set; using OPNsense hostname", "instance", instanceLabel)
+			} else {
+				logger.Warn(
+					"instance label not set and hostname lookup failed; falling back to configured address",
+					"instance", instanceLabel,
+					"err", res.err,
+				)
+			}
+		case <-time.After(instanceLabelLookupTimeout):
 			logger.Warn(
-				"instance label not set and hostname lookup failed; falling back to configured address",
+				"instance label not set and hostname lookup timed out; falling back to configured address",
 				"instance", instanceLabel,
-				"err", hErr,
+				"timeout", instanceLabelLookupTimeout.String(),
 			)
 		}
 	}
