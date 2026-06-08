@@ -91,6 +91,7 @@ These metrics are always emitted regardless of collector configuration:
 |--------|------|-------------|
 | `opnsense_up` | Gauge | Last scrape success (1 = yes, 0 = no) |
 | `opnsense_firewall_status` | Gauge | Firewall health (1 = ok, 0 = errors) |
+| `opnsense_crash_reporter_status` | Gauge | Crash reporter status (1 = ok/no crash reports, 0 = crash reports present); absent when OPNsense is unreachable |
 | `opnsense_system_status_code` | Gauge | Numeric health status (2 = OK on OPNsense >= 25.1) |
 | `opnsense_exporter_scrapes_total` | Counter | Total scrapes performed |
 | `opnsense_exporter_endpoint_errors_total` | Counter | API errors by endpoint |

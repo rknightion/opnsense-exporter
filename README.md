@@ -33,7 +33,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 ### New Collectors
 
 - **System resources collector** — New collector exposing memory (total, used, ZFS ARC), system uptime, load averages (1/5/15 min), configuration last change timestamp, per-device disk usage (total, used, ratio), and per-device swap usage. Polls 4 API endpoints. Includes new `--exporter.disable-system` / `OPNSENSE_EXPORTER_DISABLE_SYSTEM` flag.
-- **Dnsmasq DHCP lease collector** — New collector exposing dnsmasq lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.dnsmasq-details`). Includes new `--exporter.disable-dnsmasq` flag.
+- **Dnsmasq DHCP lease collector** — New collector exposing dnsmasq lease metrics: total leases, leases by interface, reserved vs dynamic counts, and optional per-lease detail metrics (enabled via `--exporter.enable-dnsmasq-details`). Includes new `--exporter.disable-dnsmasq` flag.
 - **Temperature collector** — New collector exposing hardware temperature readings (`opnsense_temperature_celsius`) with per-device labels (device, type, device_seq). Polls `api/diagnostics/system/systemTemperature`. Includes new `--exporter.disable-temperature` / `OPNSENSE_EXPORTER_DISABLE_TEMPERATURE` flag.
 - **Firewall rule statistics collector** — New collector exposing a summary metric (total rules count) by default, with opt-in high-cardinality per-rule detail metrics (evaluations, packets, bytes, active states, PF rule count) with rule metadata labels (UUID, description, action, interface, direction). Detail metrics are enabled via `--exporter.enable-firewall-rules-details` / `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` and fetch 2 API endpoints, joining rule stats with metadata. Includes new `--exporter.disable-firewall-rules` / `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` flag.
 - **Mbuf statistics collector** — New collector exposing FreeBSD network buffer (mbuf) statistics: current/cache/total mbuf counts, cluster counts and max, allocation failures and sleeps by type (mbuf, cluster, packet, jumbop), and memory bytes in use/total. Polls `api/diagnostics/system/systemMbuf`. Includes new `--exporter.disable-mbuf` / `OPNSENSE_EXPORTER_DISABLE_MBUF` flag.
@@ -347,6 +347,12 @@ Collector disable flags (all enabled by default):
       --[no-]exporter.disable-carp               Disable the scraping of CARP/VIP status metrics
       --[no-]exporter.disable-activity           Disable the scraping of system activity metrics (CPU percentages, thread counts)
       --[no-]exporter.disable-kea                Disable the scraping of Kea DHCP lease metrics
+      --[no-]exporter.disable-pf-stats           Disable the scraping of PF statistics (state table, counters, memory limits, timeouts)
+      --[no-]exporter.disable-ndp                Disable the scraping of the NDP (IPv6 neighbor discovery) table
+      --[no-]exporter.disable-dhcpv4             Disable the scraping of ISC DHCPv4 leases
+      --[no-]exporter.disable-acme               Disable the scraping of ACME client certificate renewal status and expiry metrics
+      --[no-]exporter.disable-smart              Disable the SMART disk health collector (per-disk POST fanout; silent when the os-smart plugin is absent)
+      --[no-]exporter.disable-dyndns             Disable the scraping of DynDNS (ddclient) account update status metrics
 
 Collector enable flags (all disabled by default):
       --[no-]exporter.enable-network-diagnostics Enable the network diagnostics collector (netisr, sockets, routes)
@@ -357,6 +363,7 @@ High-cardinality detail flags (all disabled by default):
       --[no-]exporter.enable-firewall-rules-details
                                                  Enable per-rule detail metrics for firewall rules
       --[no-]exporter.enable-kea-details         Enable per-lease detail metrics for Kea DHCP
+      --[no-]exporter.enable-dhcpv4-details      Enable per-lease detail metrics for ISC DHCPv4
 
 Web server:
       --web.telemetry-path="/metrics"            Path under which to expose metrics

@@ -26,11 +26,11 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 
 - **`opnsense/`** — API client. Each subsystem has a dedicated `Fetch*()` method (e.g., `FetchGateways()`, `FetchWireguardConfig()`). The client handles TLS, basic auth, retries (max 3), and gzip decompression. Data structs for JSON unmarshaling live here too.
 
-- **`internal/collector/`** — Prometheus collector implementations. `collector.go` holds the top-level `Collector` struct that runs 14 sub-collectors concurrently via goroutines. Each sub-collector (one file per subsystem) implements `CollectorInstance` with `Name()`, `Register()`, `Describe()`, and `Update()`. **Sub-collectors register themselves via `init()` functions** appending to the global `collectorInstances` slice — adding a new collector requires only creating the file with an `init()` function.
+- **`internal/collector/`** — Prometheus collector implementations. `collector.go` holds the top-level `Collector` struct that runs 30 sub-collectors concurrently via goroutines. Each sub-collector (one file per subsystem) implements `CollectorInstance` with `Name()`, `Register()`, `Describe()`, and `Update()`. **Sub-collectors register themselves via `init()` functions** appending to the global `collectorInstances` slice — adding a new collector requires only creating the file with an `init()` function.
 
 - **`internal/options/`** — Configuration via kingpin CLI flags and env vars. `ops.go` handles OPNsense connection config; `exporter.go` handles server config; `collectors.go` has per-collector disable switches. All env vars are prefixed `OPNSENSE_EXPORTER_`.
 
-**Data flow:** `main.go` → builds API client + options → creates `Collector` → registers with Prometheus registry → serves HTTP. On each scrape, `Collector.Update()` fans out to all enabled sub-collectors in parallel.
+**Data flow:** `main.go` → builds API client + options → creates `Collector` → registers with Prometheus registry → serves HTTP. On each scrape, `Collector.Collect()` fans out to all enabled sub-collectors in parallel.
 
 ## Adding a New Collector
 
@@ -53,7 +53,7 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 
 - **Vendor directory is committed** — always run `make sync-vendor` after `go.mod` changes
 - **Static binary build** with `-ldflags "-s -w"` and `CGO_ENABLED=0`
-- **Version** is read from the `VERSION` file and embedded at build time
+- **Version** — the repository root contains a `version.txt` file managed by release-please; the binary version is embedded at build time via `-X main.version=...` (GoReleaser uses the git tag; local `make` builds embed `local-test`)
 - Linters: `misspell` and `revive` are enabled; `unused` is disabled
 - API key/secret support file-based secrets (`OPS_API_KEY_FILE`, `OPS_API_SECRET_FILE`)
 - **Fork changelog** — This is a fork of AthennaMind/opnsense-exporter. The "Changes from Upstream" section in `README.md` must be kept up to date. When adding new collectors, enhancing existing collectors, changing build/infrastructure, or making any other notable change, add a bullet to the appropriate subsection in that list.

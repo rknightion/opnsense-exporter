@@ -8,7 +8,7 @@ tags:
 
 # Collectors
 
-The OPNsense Exporter runs 26 sub-collectors concurrently via goroutines, each targeting a specific OPNsense subsystem. On every Prometheus scrape, all enabled collectors fan out in parallel, query the OPNsense REST API, and emit their metrics.
+The OPNsense Exporter runs 30 sub-collectors concurrently via goroutines, each targeting a specific OPNsense subsystem. On every Prometheus scrape, all enabled collectors fan out in parallel, query the OPNsense REST API, and emit their metrics.
 
 ## Scrape flow
 
@@ -44,6 +44,7 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 |--------|------|-------------|
 | `opnsense_up` | Gauge | Was the last scrape successful (1 = yes, 0 = no) |
 | `opnsense_firewall_status` | Gauge | Firewall health status from system health check (1 = ok, 0 = errors) |
+| `opnsense_crash_reporter_status` | Gauge | Crash reporter status (1 = ok/no crash reports, 0 = crash reports present); absent when OPNsense is unreachable |
 | `opnsense_system_status_code` | Gauge | Numeric system status code from health check (2 = OK for OPNsense >= 25.1) |
 | `opnsense_exporter_scrapes_total` | Counter | Total number of scrapes performed |
 | `opnsense_exporter_endpoint_errors_total` | Counter | Total API errors by endpoint |
@@ -78,6 +79,10 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 | Kea DHCP | `kea` | Kea DHCPv4/v6 leases (total, by interface, reserved vs dynamic) | `--exporter.disable-kea` |
 | PF stats | `pf_stats` | PF state table, counters, limit counters, memory limits, timeouts | `--exporter.disable-pf-stats` |
 | NDP | `ndp` | IPv6 neighbor discovery table entries | `--exporter.disable-ndp` |
+| ISC DHCPv4 | `dhcpv4` | ISC DHCPv4 lease metrics (silent when the legacy ISC DHCP backend is absent) | `--exporter.disable-dhcpv4` |
+| ACME client | `acme` | ACME certificate renewal status and expiry (silent when `os-acme-client` is absent) | `--exporter.disable-acme` |
+| SMART disk health | `smart` | Per-disk SMART health, temperature, power-on hours (silent when `os-smart` is absent) | `--exporter.disable-smart` |
+| DynDNS | `dyndns` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) | `--exporter.disable-dyndns` |
 
 ### Disabled by default (opt-in)
 
@@ -95,6 +100,7 @@ These produce one time series per item and should be evaluated carefully before 
 | Dnsmasq per-lease details | Dnsmasq DHCP | `--exporter.enable-dnsmasq-details` |
 | Firewall per-rule details | Firewall rules | `--exporter.enable-firewall-rules-details` |
 | Kea per-lease details | Kea DHCP | `--exporter.enable-kea-details` |
+| ISC DHCPv4 per-lease details | ISC DHCPv4 | `--exporter.enable-dhcpv4-details` |
 
 !!! warning "Cardinality impact"
     Each active DHCP lease or firewall rule generates multiple time series when detail metrics are enabled. On a firewall with 500 DHCP leases, enabling Dnsmasq details creates approximately 500 additional time series. Monitor your Prometheus storage after enabling.

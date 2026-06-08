@@ -70,7 +70,7 @@ The build produces a fully static binary with:
 
 ### Version
 
-The version is read from the `VERSION` file at the repository root and embedded at build time via `-ldflags`.
+The version is embedded at build time via `-ldflags -X main.version=...`. The `version.txt` file at the repository root is managed by release-please and tracks the current released version; GoReleaser embeds the git tag as the version in release builds, while local `make` builds embed `local-test`.
 
 ### Linters
 

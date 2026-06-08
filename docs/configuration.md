@@ -238,6 +238,9 @@ Flags:
                                 interface. Repeatable for multiple addresses.
                                 Examples: `:9100` or `[::1]:9100` for http,
                                 `vsock://:9100` for vsock
+      --[no-]web.systemd-socket
+                                Use systemd socket activation listeners instead
+                                of port listeners (Linux only)
       --web.config.file=""      Path to configuration file that can
                                 enable TLS or authentication. See:
                                 https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md

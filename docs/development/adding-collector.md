@@ -16,6 +16,7 @@ This guide walks through adding a new collector to the OPNsense Exporter. The pr
 3. Add a `Fetch*()` method and data structs in `opnsense/`
 4. Add a disable flag in `internal/options/collectors.go`
 5. Wire the disable flag in `internal/collector/collector.go` and `main.go`
+6. Update the docs: docgen maps + `make docgen`, the README/`configuration.md` flag tables, and the fork changelog
 
 ## Step 1: Create the collector
 
@@ -225,15 +226,36 @@ go test ./internal/collector/ -run TestExample
 go test ./opnsense/ -run TestFetchExample
 ```
 
+## Step 6: Update the documentation
+
+Documentation must be kept in sync with the code, or the metrics/collector
+reference and flag tables drift. After the code is in place:
+
+1. Add the new subsystem to the **two hand-maintained maps** in
+   `scripts/docgen/main.go`: `flagToSubsystem` (flag → subsystem) and
+   `subsystemToDisplayName` (subsystem → pretty name). If you skip this, docgen
+   renders the collector with a blank flag and a lowercase display name.
+2. Run `make docgen`. This regenerates **only** `docs/metrics/metrics.md` and
+   `docs/collectors/reference.md` — never hand-edit those two files. Commit the
+   regenerated output.
+3. Manually update the flag/env-var tables that docgen does **not** touch: the
+   README "Collector Options" tables and the `docs/configuration.md` "Collector
+   switches" tables. Refresh the verbatim `--help` block in
+   `docs/configuration.md` by building (`CGO_ENABLED=0 go build`) and pasting the
+   output of `./opnsense-exporter --help`.
+4. Add a bullet to the README "Changes from Upstream" fork changelog.
+
 ## Checklist
 
 - [ ] Collector implements `CollectorInstance` interface
 - [ ] `init()` function registers the collector
 - [ ] Subsystem constant added to `collector.go`
 - [ ] `Fetch*()` method and data structs added to `opnsense/`
-- [ ] API endpoint registered in the client
+- [ ] API endpoint registered in the client (and `testEndpoints()` / endpoint count updated)
 - [ ] Disable flag added to `internal/options/collectors.go`
 - [ ] `Without*()` option added to `collector.go`
 - [ ] Disable logic wired in `main.go`
 - [ ] Tests added and passing
+- [ ] `scripts/docgen/main.go` maps updated and `make docgen` run
+- [ ] README and `docs/configuration.md` flag tables + `--help` block updated
 - [ ] README "Changes from Upstream" section updated

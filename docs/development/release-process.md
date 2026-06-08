@@ -44,7 +44,7 @@ Scopes are optional but encouraged. Common scopes: `collector`, `client`, `optio
 
 When commits with `feat:` or `fix:` prefixes land on `main`, release-please automatically creates or updates a release PR. This PR:
 
-- Bumps the version in the `VERSION` file
+- Bumps the version in the `version.txt` file
 - Updates `CHANGELOG.md` with all changes since the last release
 - Shows the proposed version bump in the PR title
 
@@ -88,13 +88,13 @@ Each image is a multi-architecture manifest supporting:
 - **Runtime stage:** Distroless Debian 13 (nonroot), pinned by digest
 - **Binary:** Static, CGO disabled, `-trimpath`, `-mod=vendor`
 
-## VERSION file
+## version.txt file
 
-The `VERSION` file at the repository root contains the current version string. It is:
+The `version.txt` file at the repository root contains the current version string. It is:
 
 - Updated automatically by release-please during releases
-- Read at build time and embedded in the binary via `-ldflags`
-- Reported in the exporter's landing page and startup logs
+- Used by release-please to track the current release; the binary version is embedded via `-ldflags -X main.version=...` using the git tag (not read from this file at build time)
+- Reported in the exporter's startup logs
 
 ## GitHub Actions
 

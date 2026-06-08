@@ -16,7 +16,7 @@ function addStructuredData() {
     "name": "OPNsense Exporter",
     "applicationCategory": "Network Monitoring Software",
     "operatingSystem": "Linux, Docker, FreeBSD",
-    "description": "A comprehensive Prometheus exporter for OPNsense firewalls providing 320+ metrics across 26 collectors for firewall monitoring, network diagnostics, and system observability",
+    "description": "A comprehensive Prometheus exporter for OPNsense firewalls providing 300+ metrics across 30 collectors for firewall monitoring, network diagnostics, and system observability",
     "url": "https://m7kni.io/opnsense-exporter/",
     "downloadUrl": "https://github.com/rknightion/opnsense-exporter",
     "softwareVersion": "latest",
@@ -59,7 +59,7 @@ function addStructuredData() {
     "screenshot": "https://m7kni.io/opnsense-exporter/assets/social-card.png",
     "featureList": [
       "26 specialized collectors for OPNsense subsystems",
-      "320+ Prometheus metrics",
+      "300+ Prometheus metrics",
       "Concurrent collection via goroutines",
       "Docker and Kubernetes deployment",
       "File-based secret support",
@@ -148,7 +148,7 @@ function enhanceMetaTags() {
 function addOpenGraphTags() {
   const title = document.title || 'OPNsense Exporter';
   const description = document.querySelector('meta[name="description"]')?.content ||
-    'Comprehensive Prometheus exporter for OPNsense firewalls with 320+ metrics';
+    'Comprehensive Prometheus exporter for OPNsense firewalls with 300+ metrics';
   const url = window.location.href;
   const siteName = 'OPNsense Exporter Documentation';
 
@@ -168,7 +168,7 @@ function addOpenGraphTags() {
 function addTwitterCardTags() {
   const title = document.title || 'OPNsense Exporter';
   const description = document.querySelector('meta[name="description"]')?.content ||
-    'Comprehensive Prometheus exporter for OPNsense firewalls with 320+ metrics';
+    'Comprehensive Prometheus exporter for OPNsense firewalls with 300+ metrics';
 
   addMetaTag('name', 'twitter:card', 'summary_large_image');
   addMetaTag('name', 'twitter:title', title);

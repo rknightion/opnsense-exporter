@@ -69,7 +69,7 @@ Data structs for JSON unmarshaling live alongside each `Fetch*()` method.
 
 ### `internal/collector/` -- Prometheus collectors
 
-This package contains the top-level `Collector` struct and all 26 sub-collectors. Each sub-collector lives in its own file and implements the `CollectorInstance` interface:
+This package contains the top-level `Collector` struct and all 30 sub-collectors. Each sub-collector lives in its own file and implements the `CollectorInstance` interface:
 
 ```go
 type CollectorInstance interface {
@@ -172,10 +172,19 @@ All metrics use the `opnsense` namespace prefix. The subsystem constants define 
 | `CARPSubsystem` | `carp` |
 | `ActivitySubsystem` | `activity` |
 | `KeaSubsystem` | `kea` |
+| `CronTableSubsystem` | `cron` |
+| `WireguardSubsystem` | `wireguard` |
+| `IPsecSubsystem` | `ipsec` |
+| `OpenVPNSubsystem` | `openvpn` |
+| `ServicesSubsystem` | `services` |
 | `NetworkDiagSubsystem` | `network_diag` |
 | `NetflowSubsystem` | `netflow` |
 | `PFStatsSubsystem` | `pf_stats` |
 | `NDPSubsystem` | `ndp` |
+| `Dhcpv4Subsystem` | `dhcpv4` |
+| `ACMESubsystem` | `acme` |
+| `SMARTSubsystem` | `smart` |
+| `DynDNSSubsystem` | `dyndns` |
 
 ## Profiling
 
