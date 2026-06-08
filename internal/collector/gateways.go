@@ -23,6 +23,10 @@ type gatewaysCollector struct {
 	period         *prometheus.Desc
 	timeout        *prometheus.Desc
 	status         *prometheus.Desc
+	forceDown      *prometheus.Desc
+	virtual        *prometheus.Desc
+	dynamic        *prometheus.Desc
+	priority       *prometheus.Desc
 	subsystem      string
 	instance       string
 }
@@ -107,12 +111,36 @@ func (c *gatewaysCollector) Register(namespace, instanceLabel string, log *slog.
 		"Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending)",
 		[]string{"name", "address", "default_gateway"},
 	)
+	c.forceDown = buildPrometheusDesc(
+		c.subsystem, "force_down",
+		"1 if the gateway is administratively forced down, 0 otherwise",
+		[]string{"name", "address"},
+	)
+	c.virtual = buildPrometheusDesc(
+		c.subsystem, "virtual",
+		"1 if the gateway is virtual, 0 otherwise",
+		[]string{"name", "address"},
+	)
+	c.dynamic = buildPrometheusDesc(
+		c.subsystem, "dynamic",
+		"1 if the gateway is dynamically configured, 0 otherwise",
+		[]string{"name", "address"},
+	)
+	c.priority = buildPrometheusDesc(
+		c.subsystem, "priority",
+		"Gateway priority (lower value = higher priority)",
+		[]string{"name", "address"},
+	)
 }
 
 func (c *gatewaysCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.status
 	ch <- c.lossPercentage
 	ch <- c.rtt
+	ch <- c.forceDown
+	ch <- c.virtual
+	ch <- c.dynamic
+	ch <- c.priority
 }
 
 func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -136,6 +164,10 @@ func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus
 			interfaceEnabledFloat,
 			v.Name,
 			v.Description,
+			// device = the OS network device (JSON "if", e.g. pppoe0), held by the
+			// misleadingly-named Interface struct field. interface = the OPNsense
+			// interface assignment (JSON "interface", e.g. opt7), held by
+			// HardwareInterface. Verified against a live OPNsense 26.1 box.
 			v.Interface,
 			v.IPProtocol,
 			strconv.FormatBool(v.Enabled),
@@ -144,6 +176,65 @@ func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus
 			strconv.FormatBool(v.Upstream),
 			c.instance,
 		)
+
+		forceDownFloat := 0.0
+		if v.ForceDown {
+			forceDownFloat = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.forceDown,
+			prometheus.GaugeValue,
+			forceDownFloat,
+			v.Name,
+			v.Gateway,
+			c.instance,
+		)
+
+		virtualFloat := 0.0
+		if v.Virtual {
+			virtualFloat = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.virtual,
+			prometheus.GaugeValue,
+			virtualFloat,
+			v.Name,
+			v.Gateway,
+			c.instance,
+		)
+
+		dynamicFloat := 0.0
+		if v.Dynamic {
+			dynamicFloat = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.dynamic,
+			prometheus.GaugeValue,
+			dynamicFloat,
+			v.Name,
+			v.Gateway,
+			c.instance,
+		)
+
+		if v.Priority != "" {
+			priorityFloat, err := strconv.ParseFloat(v.Priority, 64)
+			if err != nil {
+				c.log.Debug("skipping gateway priority metric: unparseable value",
+					"gateway", v.Name, "priority", v.Priority, "error", err)
+			} else {
+				ch <- prometheus.MustNewConstMetric(
+					c.priority,
+					prometheus.GaugeValue,
+					priorityFloat,
+					v.Name,
+					v.Gateway,
+					c.instance,
+				)
+			}
+		} else {
+			c.log.Debug("skipping gateway priority metric: empty value", "gateway", v.Name)
+		}
+
 		if v.Enabled {
 			ch <- prometheus.MustNewConstMetric(
 				c.monitor,
