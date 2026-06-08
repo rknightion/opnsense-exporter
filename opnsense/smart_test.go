@@ -198,9 +198,11 @@ func TestFetchSMARTDevices_Empty(t *testing.T) {
 	}
 }
 
-func TestFetchSMARTDevices_ListError(t *testing.T) {
-	// When the list endpoint returns 404 (plugin not installed), FetchSMARTDevices
-	// must propagate the error.
+func TestFetchSMARTDevices_ListNotFound(t *testing.T) {
+	// When the list endpoint returns 404 (os-smart plugin not installed),
+	// FetchSMARTDevices must degrade gracefully: empty data, no error. The
+	// collector is enabled by default so this keeps it quiet on boxes without
+	// the plugin.
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
 
@@ -209,12 +211,31 @@ func TestFetchSMARTDevices_ListError(t *testing.T) {
 		w.Write([]byte("not found"))
 	})
 
+	data, err := client.FetchSMARTDevices()
+	if err != nil {
+		t.Fatalf("expected nil error for 404 (plugin absent), got %v", err)
+	}
+	if len(data.Devices) != 0 {
+		t.Errorf("expected no devices for 404, got %d", len(data.Devices))
+	}
+}
+
+func TestFetchSMARTDevices_ListServerError(t *testing.T) {
+	// A genuine server error (500) must still propagate.
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("boom"))
+	})
+
 	_, err := client.FetchSMARTDevices()
 	if err == nil {
-		t.Fatal("expected error when list endpoint returns 404")
+		t.Fatal("expected error when list endpoint returns 500")
 	}
-	if err.StatusCode != http.StatusNotFound {
-		t.Errorf("expected status 404, got %d", err.StatusCode)
+	if err.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
 

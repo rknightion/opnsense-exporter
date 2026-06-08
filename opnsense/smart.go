@@ -1,6 +1,9 @@
 package opnsense
 
-import "net/url"
+import (
+	"net/http"
+	"net/url"
+)
 
 // smartListResponse is the JSON structure returned by api/smart/service/list.
 // The devices array contains bare device names (e.g. "ada0", "nvme0") with no /dev/ prefix.
@@ -99,6 +102,12 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 	// Step 1: list devices via empty form POST.
 	var listResp smartListResponse
 	if err := c.doForm(listURL, url.Values{}, &listResp); err != nil {
+		// os-smart plugin not installed → endpoint 404s. Treat as "feature
+		// absent" (empty data, no error) so the collector, which is enabled by
+		// default, stays quiet on boxes without the plugin.
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
 		return data, err
 	}
 

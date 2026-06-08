@@ -115,10 +115,10 @@ var (
 		"exporter.disable-acme",
 		"Disable the scraping of ACME client certificate renewal status and expiry metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ACME").Default("false").Bool()
-	smartEnabled = kingpin.Flag(
-		"exporter.enable-smart",
-		"Enable the SMART disk health collector (per-disk POST fanout). Disabled by default.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").Bool()
+	smartCollectorDisabled = kingpin.Flag(
+		"exporter.disable-smart",
+		"Disable the SMART disk health collector (per-disk POST fanout; silent when the os-smart plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_SMART").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -185,6 +185,6 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Dhcpv4:               !*dhcpv4CollectorDisabled,
 		Dhcpv4Details:        *dhcpv4DetailsEnabled,
 		ACME:                 !*acmeCollectorDisabled,
-		SMART:                *smartEnabled,
+		SMART:                !*smartCollectorDisabled,
 	}
 }

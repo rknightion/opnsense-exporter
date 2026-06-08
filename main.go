@@ -173,8 +173,7 @@ func main() {
 	}
 	if !collectorsSwitches.SMART {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSMARTCollector())
-	} else {
-		logger.Info("smart disk health collector enabled")
+		logger.Info("smart collector disabled")
 	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
