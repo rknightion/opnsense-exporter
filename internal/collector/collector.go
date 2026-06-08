@@ -66,6 +66,7 @@ type Collector struct {
 
 	isUp                 prometheus.Gauge
 	firewallHealthStatus prometheus.Gauge
+	crashReporterStatus  prometheus.Gauge
 	systemStatusCode     prometheus.Gauge
 	scrapes              prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
@@ -295,6 +296,15 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		},
 	})
 
+	c.crashReporterStatus = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "crash_reporter_status",
+		Help:      "Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present)",
+		ConstLabels: prometheus.Labels{
+			instanceLabelName: instanceName,
+		},
+	})
+
 	c.systemStatusCode = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "system_status_code",
@@ -351,11 +361,25 @@ func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
 
 	c.systemStatusCode.Set(float64(systemStatus.GetMetadataSystemStatus()))
 
+	// Crash reporter health: healthy by default, flagged 0 only if either the
+	// top-level or metadata CrashReporter status is present and not OK. A valid
+	// health response is required to populate this, so it is left absent on the
+	// unreachable path above rather than emitting a misleading 0.
+	crashHealthy := 1.0
+	if s := systemStatus.CrashReporter.Status; s != "" && s != opnsense.HealthCheckStatusOK {
+		crashHealthy = 0
+	}
+	if s := systemStatus.Metadata.CrashReporter.Status; s != "" && s != opnsense.HealthCheckStatusOK {
+		crashHealthy = 0
+	}
+	c.crashReporterStatus.Set(crashHealthy)
+
 	if systemStatus.System.Status != opnsense.HealthCheckStatusOK &&
 		systemStatus.GetMetadataSystemStatus() != opnsense.HealthCheckStatusOK_v25_1 {
 		c.isUp.Set(0)
 		c.isUp.Collect(ch)
 		c.systemStatusCode.Collect(ch)
+		c.crashReporterStatus.Collect(ch)
 		return nil
 	}
 
@@ -369,6 +393,7 @@ func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
 
 	c.isUp.Collect(ch)
 	c.firewallHealthStatus.Collect(ch)
+	c.crashReporterStatus.Collect(ch)
 	c.systemStatusCode.Collect(ch)
 	return nil
 }
