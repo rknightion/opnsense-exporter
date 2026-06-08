@@ -7,14 +7,16 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 301
-- **Gauges:** 163
+- **Total metrics:** 303
+- **Gauges:** 165
 - **Counters:** 138
 
 ## General
 
 | Metric Name | Type | Labels | Description |
 |-------------|------|--------|-------------|
+| opnsense_exporter_build_info | Gauge | version, goversion | Build information of the opnsense exporter (value is always 1; see labels) |
+| opnsense_exporter_collector_enabled | Gauge | collector | Whether a collector is enabled (1) or disabled (0) in this exporter instance, by subsystem |
 | opnsense_up | Gauge | --- | Was the last scrape of OPNsense successful. (1 = yes, 0 = no) |
 | opnsense_firewall_status | Gauge | --- | Status of the firewall reported by the system health check (1 = ok, 0 = errors) |
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |

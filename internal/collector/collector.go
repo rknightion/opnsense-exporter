@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -76,6 +77,14 @@ type Collector struct {
 	endpointErrors       prometheus.CounterVec
 	instanceLabel        string
 	collectors           []CollectorInstance
+
+	// version is the exporter build version, surfaced via opnsense_exporter_build_info.
+	version string
+	// collectorStates maps every registered collector subsystem name to whether it
+	// is enabled in this exporter instance, surfaced via opnsense_exporter_collector_enabled.
+	collectorStates  map[string]bool
+	buildInfo        *prometheus.Desc
+	collectorEnabled *prometheus.Desc
 }
 
 type Option func(*Collector) error
@@ -300,13 +309,43 @@ func WithDnsmasqDetails() Option {
 	}
 }
 
+// WithBuildInfo sets the exporter build version surfaced via
+// opnsense_exporter_build_info.
+func WithBuildInfo(version string) Option {
+	return func(o *Collector) error {
+		o.version = version
+		return nil
+	}
+}
+
+// deriveCollectorStates maps every registered collector subsystem name to whether
+// it remains enabled (present in the enabled subset) for this exporter instance.
+// It is a pure helper so the enable/disable accounting can be unit-tested without
+// constructing a Collector (which registers metrics on the global registry).
+func deriveCollectorStates(all, enabled []CollectorInstance) map[string]bool {
+	enabledSet := make(map[string]bool, len(enabled))
+	for _, c := range enabled {
+		enabledSet[c.Name()] = true
+	}
+	states := make(map[string]bool, len(all))
+	for _, c := range all {
+		states[c.Name()] = enabledSet[c.Name()]
+	}
+	return states
+}
+
 // New creates a new Collector instance.
 func New(client *opnsense.Client, log *slog.Logger, instanceName string, options ...Option) (*Collector, error) {
+	// Snapshot the full registered set before any option removes collectors, and
+	// give the Collector its own copy so the WithoutXCollector options never mutate
+	// the package-global collectorInstances backing array.
+	allCollectors := append([]CollectorInstance(nil), collectorInstances...)
+
 	c := Collector{
 		Client:        client,
 		log:           log,
 		instanceLabel: instanceName,
-		collectors:    collectorInstances,
+		collectors:    append([]CollectorInstance(nil), collectorInstances...),
 	}
 
 	for _, option := range options {
@@ -314,6 +353,22 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 			return nil, errors.Join(err, fmt.Errorf("failed to apply collector option"))
 		}
 	}
+
+	c.collectorStates = deriveCollectorStates(allCollectors, c.collectors)
+
+	c.buildInfo = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "build_info"),
+		"Build information of the opnsense exporter (value is always 1; see labels)",
+		[]string{"version", "goversion", instanceLabelName},
+		nil,
+	)
+
+	c.collectorEnabled = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "collector_enabled"),
+		"Whether a collector is enabled (1) or disabled (0) in this exporter instance, by subsystem",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
 
 	for _, collector := range c.collectors {
 		collector.Register(namespace, instanceName, c.log)
@@ -384,9 +439,31 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapes.Describe(ch)
 	c.endpointErrors.Describe(ch)
 	c.isUp.Describe(ch)
+	ch <- c.buildInfo
+	ch <- c.collectorEnabled
 
 	for _, collector := range c.collectors {
 		collector.Describe(ch)
+	}
+}
+
+// collectExporterInfo emits the static exporter build/version metric and the
+// per-collector enabled state, so dashboards can pin the running version and
+// distinguish "collector disabled" from "feature absent / no data".
+func (c *Collector) collectExporterInfo(ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(
+		c.buildInfo, prometheus.GaugeValue, 1,
+		c.version, runtime.Version(), c.instanceLabel,
+	)
+	for name, enabled := range c.collectorStates {
+		value := 0.0
+		if enabled {
+			value = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.collectorEnabled, prometheus.GaugeValue, value,
+			name, c.instanceLabel,
+		)
 	}
 }
 
@@ -484,4 +561,5 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	c.scrapes.WithLabelValues(c.instanceLabel).Inc()
 	c.scrapes.Collect(ch)
 	c.endpointErrors.Collect(ch)
+	c.collectExporterInfo(ch)
 }

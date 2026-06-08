@@ -231,6 +231,15 @@ func parseTopLevelMetrics(filePath string) []MetricInfo {
 						m.Type = "Counter"
 						metrics = append(metrics, *m)
 					}
+				case "prometheus.NewDesc", "NewDesc":
+					// Const-metric descriptors (e.g. exporter build_info,
+					// collector_enabled) emitted via MustNewConstMetric. These are
+					// gauges by construction.
+					m := parseNewDescOpts(call)
+					if m != nil {
+						m.Type = "Gauge"
+						metrics = append(metrics, *m)
+					}
 				}
 			}
 			return true
@@ -288,6 +297,67 @@ func parseCounterVecOpts(call *ast.CallExpr) *MetricInfo {
 	}
 
 	return parsePrometheusOpts(comp, labels)
+}
+
+// parseNewDescOpts parses a prometheus.NewDesc(fqName, help, variableLabels, constLabels)
+// call. The fqName is typically prometheus.BuildFQName(namespace, subsystem, name). Only
+// string-literal label elements are captured; the trailing instanceLabelName identifier is
+// naturally skipped (matching the convention used elsewhere in the exporter).
+func parseNewDescOpts(call *ast.CallExpr) *MetricInfo {
+	if len(call.Args) < 3 {
+		return nil
+	}
+
+	fullName := extractFQName(call.Args[0])
+	if fullName == "" {
+		return nil
+	}
+
+	m := &MetricInfo{
+		FullName: fullName,
+		Help:     stringLitValue(call.Args[1]),
+	}
+
+	if compLit, ok := call.Args[2].(*ast.CompositeLit); ok {
+		for _, elt := range compLit.Elts {
+			if lit, ok := elt.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				l := strings.Trim(lit.Value, `"`)
+				if l != "opnsense_instance" {
+					m.Labels = append(m.Labels, l)
+				}
+			}
+		}
+	}
+
+	return m
+}
+
+// extractFQName resolves a metric fully-qualified name from either a string literal or a
+// prometheus.BuildFQName(namespace, subsystem, name) call.
+func extractFQName(expr ast.Expr) string {
+	if s := stringLitValue(expr); s != "" {
+		return s
+	}
+
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return ""
+	}
+	switch callExprFuncName(call) {
+	case "prometheus.BuildFQName", "BuildFQName":
+	default:
+		return ""
+	}
+
+	var parts []string
+	for _, a := range call.Args {
+		s := stringLitValue(a)
+		if s == "" {
+			return ""
+		}
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, "_")
 }
 
 func parsePrometheusOpts(comp *ast.CompositeLit, extraLabels []string) *MetricInfo {

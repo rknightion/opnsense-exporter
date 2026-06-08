@@ -61,7 +61,9 @@ func main() {
 	}
 
 	collectorsSwitches := options.CollectorsSwitches()
-	collectorOptionFuncs := []collector.Option{}
+	collectorOptionFuncs := []collector.Option{
+		collector.WithBuildInfo(version),
+	}
 
 	if !collectorsSwitches.Unbound {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutUnboundCollector())
