@@ -60,12 +60,11 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
 
-	// Use a fixed boottime in the past to compute uptime
-	bootTime := time.Now().Add(-2 * time.Hour)
-	bootTimeStr := bootTime.Format(opnsenseTimeFormat)
-
-	configTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	configTimeStr := configTime.Format(opnsenseTimeFormat)
+	// Mirror the live box: timestamps carry only a timezone abbreviation (BST)
+	// that time.Parse cannot map to an offset. boottime/datetime/config share
+	// that zone, so uptime (datetime-boottime) and config age (datetime-config)
+	// must come out correct regardless of the unmappable offset. Here uptime is
+	// exactly 9d23h19m20s (861560s) and config changed 23h57m22s (86242s) ago.
 
 	// Memory endpoint
 	mux.HandleFunc("/api/diagnostics/system/systemResources", func(w http.ResponseWriter, r *http.Request) {
@@ -80,13 +79,13 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 
 	// Time endpoint
 	mux.HandleFunc("/api/diagnostics/system/systemTime", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{
-			"uptime": "2:00:00",
-			"datetime": "Mon Jan 15 12:30:00 UTC 2024",
-			"boottime": %q,
-			"config": %q,
+		fmt.Fprint(w, `{
+			"uptime": "9 days, 23:19:20",
+			"datetime": "Mon Jun 8 18:41:59 BST 2026",
+			"boottime": "Fri May 29 19:22:39 BST 2026",
+			"config": "Sun Jun 7 18:44:37 BST 2026",
 			"loadavg": "0.12, 0.34, 0.56"
-		}`, bootTimeStr, configTimeStr)
+		}`)
 	})
 
 	// Disk endpoint
@@ -150,9 +149,10 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 		t.Error("expected Memory.HasArc=true")
 	}
 
-	// Time - uptime should be approximately 2 hours
-	if data.Time.Uptime < 7100 || data.Time.Uptime > 7300 {
-		t.Errorf("expected uptime around 7200s, got %f", data.Time.Uptime)
+	// Time - uptime is datetime-boottime = 9d23h19m20s = 861560s exactly,
+	// independent of the unmappable BST offset and of the exporter clock.
+	if data.Time.Uptime != 861560 {
+		t.Errorf("expected uptime 861560s, got %f", data.Time.Uptime)
 	}
 
 	// Load average
@@ -166,10 +166,11 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 		t.Errorf("expected LoadAverage[2]=0.56, got %f", data.Time.LoadAverage[2])
 	}
 
-	// Config last change
-	expectedConfigTime := float64(configTime.Unix())
-	if data.Time.ConfigLastChange != expectedConfigTime {
-		t.Errorf("expected ConfigLastChange=%f, got %f", expectedConfigTime, data.Time.ConfigLastChange)
+	// Config last change: age (datetime-config) is 23h57m22s = 86242s; the
+	// absolute timestamp is anchored to the exporter clock at scrape time.
+	expectedConfigTime := float64(time.Now().Add(-86242 * time.Second).Unix())
+	if diff := data.Time.ConfigLastChange - expectedConfigTime; diff < -5 || diff > 5 {
+		t.Errorf("expected ConfigLastChange≈%f (±5s), got %f", expectedConfigTime, data.Time.ConfigLastChange)
 	}
 
 	// Disks

@@ -210,15 +210,33 @@ func (c *Client) fetchSystemTime(data *SystemResources) *APICallError {
 		return err
 	}
 
-	// Parse boottime to compute uptime
-	bootTime, err := time.Parse(opnsenseTimeFormat, resp.Boottime)
-	if err == nil {
+	// OPNsense reports these timestamps with only a timezone abbreviation
+	// (e.g. "BST"), which time.Parse cannot map to a UTC offset — it falls back
+	// to a fabricated zone with a zero offset, so the parsed instants are skewed
+	// by the box's real offset. boottime, datetime and config all share the same
+	// zone, so a DIFFERENCE between any two cancels that offset and is correct.
+	// We therefore derive uptime and config age from datetime (the box's own
+	// "now") rather than mixing a skewed timestamp with the exporter's clock.
+	now := time.Now()
+	bootTime, errBoot := time.Parse(opnsenseTimeFormat, resp.Boottime)
+	dateTime, errDate := time.Parse(opnsenseTimeFormat, resp.Datetime)
+	configTime, errConfig := time.Parse(opnsenseTimeFormat, resp.Config)
+
+	// Uptime: datetime - boottime (offset cancels). Fall back to comparing
+	// boottime against the exporter clock if datetime is unavailable.
+	switch {
+	case errDate == nil && errBoot == nil:
+		data.Time.Uptime = dateTime.Sub(bootTime).Seconds()
+	case errBoot == nil:
 		data.Time.Uptime = time.Since(bootTime).Seconds()
 	}
 
-	// Parse config last change time
-	configTime, err := time.Parse(opnsenseTimeFormat, resp.Config)
-	if err == nil {
+	// Config last change: the age (datetime - config) is offset-independent;
+	// anchor it to the exporter's wall clock to produce an absolute timestamp.
+	switch {
+	case errDate == nil && errConfig == nil:
+		data.Time.ConfigLastChange = float64(now.Add(-dateTime.Sub(configTime)).Unix())
+	case errConfig == nil:
 		data.Time.ConfigLastChange = float64(configTime.Unix())
 	}
 
