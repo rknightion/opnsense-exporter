@@ -279,6 +279,12 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | CARP/VIP high-availability status |
 | `--exporter.disable-activity` | `OPNSENSE_EXPORTER_DISABLE_ACTIVITY` | System activity (CPU percentages, thread counts) |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | Kea DHCP lease metrics |
+| `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF statistics (state table, counters, memory limits, timeouts) |
+| `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | NDP (IPv6 neighbor discovery) table |
+| `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | ISC DHCPv4 lease metrics (silent when the legacy ISC DHCP backend is absent) |
+| `--exporter.disable-acme` | `OPNSENSE_EXPORTER_DISABLE_ACME` | ACME client certificate renewal status and expiry (silent when `os-acme-client` is absent) |
+| `--exporter.disable-smart` | `OPNSENSE_EXPORTER_DISABLE_SMART` | SMART disk health (per-disk POST fanout; silent when `os-smart` is absent) |
+| `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) |
 
 #### Disabled by default (opt-in with flag)
 
@@ -296,6 +302,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | Emit per-lease detail metrics for Dnsmasq DHCP. One time series per active DHCP lease (address, hostname, MAC, interface). |
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Emit per-rule detail metrics for firewall rules. One time series per firewall rule per metric (UUID, description, action, interface, direction). |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Emit per-lease detail metrics for Kea DHCP. One time series per active DHCP lease (address, hostname, MAC, interface). |
+| `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | Emit per-lease detail metrics for ISC DHCPv4. One time series per active DHCP lease (address, hostname, MAC, interface). |
 
 #### Exporter meta-metrics
 

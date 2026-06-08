@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 275
-- **Gauges:** 143
-- **Counters:** 132
+- **Total metrics:** 301
+- **Gauges:** 163
+- **Counters:** 138
 
 ## General
 
@@ -17,9 +17,21 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|
 | opnsense_up | Gauge | --- | Was the last scrape of OPNsense successful. (1 = yes, 0 = no) |
 | opnsense_firewall_status | Gauge | --- | Status of the firewall reported by the system health check (1 = ok, 0 = errors) |
+| opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |
 | opnsense_system_status_code | Gauge | --- | Numeric system status code from health check (2 = OK for OPNsense >= 25.1) |
 | opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics. |
 | opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching |
+
+## ACME Client
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_acme_certificates_total | Counter | --- | Total number of ACME-managed certificates | --exporter.disable-acme |
+| opnsense_acme_certificate_last_update_timestamp_seconds | Gauge | name, description | Unix timestamp of the last successful ACME certificate issue or renewal (0 = never) | --exporter.disable-acme |
+| opnsense_acme_certificate_status_code | Gauge | name, description | Numeric ACME operation status code from the last ACME run (100 = default/unknown) | --exporter.disable-acme |
+| opnsense_acme_certificate_status_last_update_timestamp_seconds | Gauge | name, description | Unix timestamp of the last ACME client run for this certificate (0 = never run) | --exporter.disable-acme |
+| opnsense_acme_certificate_enabled | Gauge | name, description | Whether this ACME-managed certificate is enabled (1 = enabled, 0 = disabled) | --exporter.disable-acme |
+| opnsense_acme_certificate_info | Gauge | name, description, alt_names | ACME certificate information (value is always 1; use labels) | --exporter.disable-acme |
 
 ## ARP Table
 
@@ -78,6 +90,16 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_dnsmasq_leases_dynamic_total | Counter | --- | Total number of dynamic DHCP leases | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_lease_info | Gauge | address, hostname, hwaddr, interface | Per-lease information (value is expire timestamp). Only emitted when --exporter.enable-dnsmasq-details is set. | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-dnsmasq |
+
+## DynDNS
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_dyndns_accounts_total | Counter | --- | Total number of configured DynDNS accounts | --exporter.disable-dyndns |
+| opnsense_dyndns_account_enabled | Gauge | description, service, hostnames, interface | Whether this DynDNS account is enabled (1 = enabled, 0 = disabled) | --exporter.disable-dyndns |
+| opnsense_dyndns_account_last_update_timestamp_seconds | Gauge | description, service, hostnames | Unix timestamp of the last successful DynDNS IP update for this account | --exporter.disable-dyndns |
+| opnsense_dyndns_account_info | Gauge | description, service, hostnames, zone, interface, current_ip | DynDNS account information (value is always 1; use labels) | --exporter.disable-dyndns |
+| opnsense_dyndns_service_running | Gauge | --- | Whether the DynDNS service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-dyndns |
 
 ## Firewall
 
@@ -142,6 +164,10 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_gateways_probe_period_seconds | Gauge | name, address | Gateway probe period | --- |
 | opnsense_gateways_probe_timeout_seconds | Gauge | name, address | Gateway probe timeout | --- |
 | opnsense_gateways_status | Gauge | name, address, default_gateway | Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending) | --- |
+| opnsense_gateways_force_down | Gauge | name, address | 1 if the gateway is administratively forced down, 0 otherwise | --- |
+| opnsense_gateways_virtual | Gauge | name, address | 1 if the gateway is virtual, 0 otherwise | --- |
+| opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --- |
+| opnsense_gateways_priority | Gauge | name, address | Gateway priority (lower value = higher priority) | --- |
 
 ## IPsec
 
@@ -161,6 +187,16 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ipsec_phase2_rekey_time | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 rekey time | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_life_time | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 life time | --exporter.disable-ipsec |
 | opnsense_ipsec_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-ipsec |
+
+## ISC DHCPv4
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_dhcpv4_leases_total | Counter | --- | Total number of ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_leases_by_interface | Gauge | interface | Number of ISC DHCPv4 leases per interface | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_leases_reserved_total | Counter | --- | Total number of reserved (static) ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_leases_dynamic_total | Counter | --- | Total number of dynamic ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_lease_info | Gauge | address, hostname, mac, interface, type, state, status | Per-lease ISC DHCPv4 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv4-details is set. | --exporter.disable-dhcpv4 |
 
 ## Interfaces
 
@@ -344,6 +380,15 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_protocol_ip_sent_fragments_total | Counter | --- | Total IP fragments sent | --- |
 | opnsense_protocol_arp_dropped_duplicate_address_total | Counter | --- | Total ARP packets dropped due to duplicate address | --- |
 
+## SMART Disk Health
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_smart_devices_total | Counter | --- | Number of SMART-monitored devices enumerated by the os-smart plugin | --exporter.disable-smart |
+| opnsense_smart_device_health | Gauge | device, model, serial | SMART overall health assessment (1 = passed, 0 = failed) | --exporter.disable-smart |
+| opnsense_smart_device_temperature_celsius | Gauge | device | Current drive temperature in degrees Celsius | --exporter.disable-smart |
+| opnsense_smart_device_power_on_hours | Gauge | device | Total power-on hours reported by the drive | --exporter.disable-smart |
+
 ## Services
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -419,5 +464,6 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_wireguard_peer_received_bytes_total | Counter | device, device_type, device_name, peer_name | Bytes received by this wireguard peer | --exporter.disable-wireguard |
 | opnsense_wireguard_peer_transmitted_bytes_total | Counter | device, device_type, device_name, peer_name | Bytes transmitted by this wireguard peer | --exporter.disable-wireguard |
 | opnsense_wireguard_peer_last_handshake_seconds | Gauge | device, device_type, device_name, peer_name | Last handshake by peer in seconds | --exporter.disable-wireguard |
+| opnsense_wireguard_peer_handshake_age_seconds | Gauge | device, device_type, device_name, peer_name | Seconds since the peer's last handshake | --exporter.disable-wireguard |
 | opnsense_wireguard_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-wireguard |
 

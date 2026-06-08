@@ -76,6 +76,10 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | Kea DHCP lease metrics |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | NDP (IPv6 neighbor discovery) table |
+| `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | ISC DHCPv4 lease metrics (silent when the legacy ISC DHCP backend is absent) |
+| `--exporter.disable-acme` | `OPNSENSE_EXPORTER_DISABLE_ACME` | ACME client certificate renewal status and expiry (silent when `os-acme-client` is absent) |
+| `--exporter.disable-smart` | `OPNSENSE_EXPORTER_DISABLE_SMART` | SMART disk health, one `list` + one `info` POST per disk per scrape (silent when `os-smart` is absent) |
+| `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) |
 
 ### Disabled by default (opt-in with flag)
 
@@ -98,74 +102,163 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | Per-lease detail metrics for Dnsmasq DHCP. One time series per active lease (address, hostname, MAC, interface). |
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Per-rule detail metrics for firewall rules. One time series per rule per metric (UUID, description, action, interface, direction). |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Per-lease detail metrics for Kea DHCP. One time series per active lease (address, hostname, MAC, interface). |
+| `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | Per-lease detail metrics for ISC DHCPv4. One time series per active lease (address, hostname, MAC, interface). |
 
 ## Full flag reference
 
 The complete list of flags as output by `--help`:
 
 ```text
+usage: opnsense-exporter --exporter.instance-label=EXPORTER.INSTANCE-LABEL --opnsense.protocol=OPNSENSE.PROTOCOL --opnsense.address=OPNSENSE.ADDRESS [<flags>]
+
+
 Flags:
-  -h, --[no-]help                Show context-sensitive help (also try
-                                 --help-long and --help-man).
+  -h, --[no-]help               Show context-sensitive help (also try
+                                --help-long and --help-man).
+      --[no-]exporter.disable-arp-table  
+                                Disable the scraping of the ARP table
+                                ($OPNSENSE_EXPORTER_DISABLE_ARP_TABLE)
+      --[no-]exporter.disable-cron-table  
+                                Disable the scraping of the cron table
+                                ($OPNSENSE_EXPORTER_DISABLE_CRON_TABLE)
+      --[no-]exporter.disable-wireguard  
+                                Disable the scraping of Wireguard service
+                                ($OPNSENSE_EXPORTER_DISABLE_WIREGUARD)
+      --[no-]exporter.disable-ipsec  
+                                Disable the scraping of IPSec service
+                                ($OPNSENSE_EXPORTER_DISABLE_IPSEC)
+      --[no-]exporter.disable-unbound  
+                                Disable the scraping of Unbound service
+                                ($OPNSENSE_EXPORTER_DISABLE_UNBOUND)
+      --[no-]exporter.disable-openvpn  
+                                Disable the scraping of OpenVPN service
+                                ($OPNSENSE_EXPORTER_DISABLE_OPENVPN)
+      --[no-]exporter.disable-firewall  
+                                Disable the scraping of the firewall (pf)
+                                metrics ($OPNSENSE_EXPORTER_DISABLE_FIREWALL)
+      --[no-]exporter.disable-firmware  
+                                Disable the scraping of the firmware metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_FIRMWARE)
+      --[no-]exporter.disable-system  
+                                Disable the scraping of system resource
+                                metrics (memory, uptime, disk, swap)
+                                ($OPNSENSE_EXPORTER_DISABLE_SYSTEM)
+      --[no-]exporter.disable-temperature  
+                                Disable the scraping of temperature metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_TEMPERATURE)
+      --[no-]exporter.disable-dnsmasq  
+                                Disable the scraping of Dnsmasq DHCP leases
+                                ($OPNSENSE_EXPORTER_DISABLE_DNSMASQ)
+      --[no-]exporter.enable-dnsmasq-details  
+                                Enable per-lease detail metrics for Dnsmasq
+                                DHCP (high cardinality on large networks)
+                                ($OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS)
+      --[no-]exporter.disable-firewall-rules  
+                                Disable the scraping of firewall rule statistics
+                                ($OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES)
+      --[no-]exporter.enable-firewall-rules-details  
+                                Enable per-rule detail metrics for firewall
+                                rules (high cardinality on large rulesets)
+                                ($OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS)
+      --[no-]exporter.disable-mbuf  
+                                Disable the scraping of mbuf statistics
+                                ($OPNSENSE_EXPORTER_DISABLE_MBUF)
+      --[no-]exporter.disable-ntp  
+                                Disable the scraping of NTP peer metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_NTP)
+      --[no-]exporter.disable-certificates  
+                                Disable the scraping of
+                                certificate expiry metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_CERTIFICATES)
+      --[no-]exporter.disable-carp  
+                                Disable the scraping of CARP/VIP status metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_CARP)
+      --[no-]exporter.disable-activity  
+                                Disable the scraping of system activity
+                                metrics (CPU percentages, thread counts)
+                                ($OPNSENSE_EXPORTER_DISABLE_ACTIVITY)
+      --[no-]exporter.disable-kea  
+                                Disable the scraping of Kea DHCP lease metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_KEA)
+      --[no-]exporter.enable-kea-details  
+                                Enable per-lease detail metrics for Kea
+                                DHCP (high cardinality on large networks)
+                                ($OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS)
+      --[no-]exporter.enable-network-diagnostics  
+                                Enable the network diagnostics collector
+                                (netisr, sockets, routes). Disabled by default.
+                                ($OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS)
+      --[no-]exporter.enable-netflow  
+                                Enable the netflow collector (enabled status,
+                                service status, cache stats). Disabled by
+                                default. ($OPNSENSE_EXPORTER_ENABLE_NETFLOW)
+      --[no-]exporter.disable-pf-stats  
+                                Disable the scraping of PF statistics (state
+                                table, counters, memory limits, timeouts)
+                                ($OPNSENSE_EXPORTER_DISABLE_PF_STATS)
+      --[no-]exporter.disable-ndp  
+                                Disable the scraping of the NDP
+                                (IPv6 neighbor discovery) table
+                                ($OPNSENSE_EXPORTER_DISABLE_NDP)
+      --[no-]exporter.disable-dhcpv4  
+                                Disable the scraping of ISC DHCPv4 leases
+                                ($OPNSENSE_EXPORTER_DISABLE_DHCPV4)
+      --[no-]exporter.enable-dhcpv4-details  
+                                Enable per-lease detail metrics for ISC
+                                DHCPv4 (high cardinality on large networks)
+                                ($OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS)
+      --[no-]exporter.disable-acme  
+                                Disable the scraping of ACME client
+                                certificate renewal status and expiry metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_ACME)
+      --[no-]exporter.disable-smart  
+                                Disable the SMART disk health
+                                collector (per-disk POST fanout;
+                                silent when the os-smart plugin is absent)
+                                ($OPNSENSE_EXPORTER_DISABLE_SMART)
+      --[no-]exporter.disable-dyndns  
+                                Disable the scraping of DynDNS
+                                (ddclient) account update status metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_DYNDNS)
+      --web.telemetry-path="/metrics"  
+                                Path under which to expose metrics.
+      --[no-]web.disable-exporter-metrics  
+                                Exclude metrics about the exporter
+                                itself (promhttp_*, process_*, go_*).
+                                ($OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS)
+      --exporter.instance-label=EXPORTER.INSTANCE-LABEL  
+                                Label to use to identify the instance in
+                                every metric. If you have multiple instances
+                                of the exporter, you can differentiate them
+                                by using different value in this flag, that
+                                represents the instance of the target OPNsense.
+                                ($OPNSENSE_EXPORTER_INSTANCE_LABEL)
+      --web.listen-address=:8080 ...  
+                                Addresses on which to expose metrics and web
+                                interface. Repeatable for multiple addresses.
+                                Examples: `:9100` or `[::1]:9100` for http,
+                                `vsock://:9100` for vsock
+      --web.config.file=""      Path to configuration file that can
+                                enable TLS or authentication. See:
+                                https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md
+      --opnsense.protocol=OPNSENSE.PROTOCOL  
+                                Protocol to use to connect to
+                                OPNsense API. One of: [http, https]
+                                ($OPNSENSE_EXPORTER_OPS_PROTOCOL)
+      --opnsense.address=OPNSENSE.ADDRESS  
+                                Hostname or IP address of OPNsense API
+                                ($OPNSENSE_EXPORTER_OPS_API)
+      --opnsense.api-key=""     API key to use to connect to OPNsense API.
+                                This flag/ENV or the OPS_API_KEY_FILE my be set.
+                                ($OPNSENSE_EXPORTER_OPS_API_KEY)
+      --opnsense.api-secret=""  API secret to use to connect to OPNsense API.
+                                This flag/ENV or the OPS_API_SECRET_FILE my be
+                                set. ($OPNSENSE_EXPORTER_OPS_API_SECRET)
+      --[no-]opnsense.insecure  Disable TLS certificate verification
+                                ($OPNSENSE_EXPORTER_OPS_INSECURE)
+      --log.level=info          Only log messages with the given severity or
+                                above. One of: [debug, info, warn, error]
+      --log.format=logfmt       Output format of log messages. One of: [logfmt,
+                                json]
 
-OPNsense connection:
-      --opnsense.protocol=OPNSENSE.PROTOCOL
-                                 Protocol to use to connect to OPNsense API.
-                                 One of: [http, https]
-                                 ($OPNSENSE_EXPORTER_OPS_PROTOCOL)
-      --opnsense.address=OPNSENSE.ADDRESS
-                                 Hostname or IP address of OPNsense API
-                                 ($OPNSENSE_EXPORTER_OPS_API)
-      --opnsense.api-key=""      API key to use to connect to OPNsense API.
-                                 This flag/ENV or the OPS_API_KEY_FILE must
-                                 be set. ($OPNSENSE_EXPORTER_OPS_API_KEY)
-      --opnsense.api-secret=""   API secret to use to connect to OPNsense API.
-                                 This flag/ENV or the OPS_API_SECRET_FILE must
-                                 be set. ($OPNSENSE_EXPORTER_OPS_API_SECRET)
-      --[no-]opnsense.insecure   Disable TLS certificate verification
-                                 ($OPNSENSE_EXPORTER_OPS_INSECURE)
-
-Collector disable flags (all enabled by default):
-      --[no-]exporter.disable-arp-table
-      --[no-]exporter.disable-cron-table
-      --[no-]exporter.disable-wireguard
-      --[no-]exporter.disable-ipsec
-      --[no-]exporter.disable-unbound
-      --[no-]exporter.disable-openvpn
-      --[no-]exporter.disable-firewall
-      --[no-]exporter.disable-firewall-rules
-      --[no-]exporter.disable-firmware
-      --[no-]exporter.disable-system
-      --[no-]exporter.disable-temperature
-      --[no-]exporter.disable-dnsmasq
-      --[no-]exporter.disable-mbuf
-      --[no-]exporter.disable-ntp
-      --[no-]exporter.disable-certificates
-      --[no-]exporter.disable-carp
-      --[no-]exporter.disable-activity
-      --[no-]exporter.disable-kea
-      --[no-]exporter.disable-pf-stats
-      --[no-]exporter.disable-ndp
-
-Collector enable flags (all disabled by default):
-      --[no-]exporter.enable-network-diagnostics
-      --[no-]exporter.enable-netflow
-
-High-cardinality detail flags (all disabled by default):
-      --[no-]exporter.enable-dnsmasq-details
-      --[no-]exporter.enable-firewall-rules-details
-      --[no-]exporter.enable-kea-details
-
-Web server:
-      --web.telemetry-path="/metrics"
-      --[no-]web.disable-exporter-metrics
-      --web.listen-address=:8080 ...
-      --[no-]web.systemd-socket
-      --web.config.file=""
-
-Runtime:
-      --exporter.instance-label=EXPORTER.INSTANCE-LABEL
-                                 ($OPNSENSE_EXPORTER_INSTANCE_LABEL)
-      --log.level=info
-      --log.format=logfmt
 ```

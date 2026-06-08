@@ -6,17 +6,20 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 
 | Collector | Subsystem | Metrics | Default | Flag | Environment Variable |
 |-----------|-----------|---------|---------|------|---------------------|
+| ACME Client | acme | 6 | Enabled | --exporter.disable-acme | OPNSENSE_EXPORTER_DISABLE_ACME |
 | ARP Table | arp_table | 1 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
 | Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
 | Certificates | certificate | 4 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
 | Dnsmasq DHCP | dnsmasq | 6 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
+| DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
 | Firewall | firewall | 19 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
 | Firewall Rules | firewall_rule | 6 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 6 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
-| Gateways | gateways | 13 | Enabled | --- | --- |
+| Gateways | gateways | 17 | Enabled | --- | --- |
 | IPsec | ipsec | 14 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
+| ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | Interfaces | interfaces | 16 | Enabled | --- | --- |
 | Kea DHCP | kea | 10 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
@@ -27,9 +30,10 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | OpenVPN | openvpn | 2 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 51 | Enabled | --- | --- |
+| SMART Disk Health | smart | 4 | Enabled | --exporter.disable-smart | OPNSENSE_EXPORTER_DISABLE_SMART |
 | Services | services | 3 | Enabled | --- | --- |
 | System | system | 12 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
 | Unbound DNS | unbound_dns | 30 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
-| Wireguard | wireguard | 6 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
+| Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
 
