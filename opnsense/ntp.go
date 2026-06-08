@@ -63,11 +63,14 @@ func (c *Client) FetchNTPStatus() (NTPStatus, *APICallError) {
 			whenSeconds = safeParseFloat(row.When)
 		}
 
-		reach := int64(0)
+		// Reach is an 8-bit NTP shift register rendered as octal (0-377 == 0-255).
+		// Parse with bit size 32 so the value provably fits an int on every
+		// platform, avoiding a narrowing conversion (CWE-190/681).
+		reach := 0
 		if row.Reach != "" {
-			parsed, err := strconv.ParseInt(row.Reach, 8, 64)
+			parsed, err := strconv.ParseInt(row.Reach, 8, 32)
 			if err == nil {
-				reach = parsed
+				reach = int(parsed)
 			}
 		}
 
@@ -79,7 +82,7 @@ func (c *Client) FetchNTPStatus() (NTPStatus, *APICallError) {
 			Stratum:      safeAtoi(row.Stratum),
 			WhenSeconds:  whenSeconds,
 			PollSeconds:  safeParseFloat(row.Poll),
-			Reach:        int(reach),
+			Reach:        reach,
 			DelayMillis:  safeParseFloat(row.Delay),
 			OffsetMillis: safeParseFloat(row.Offset),
 			JitterMillis: safeParseFloat(row.Jitter),
