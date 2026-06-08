@@ -186,6 +186,7 @@ func (c *Client) do(method string, path EndpointPath, body io.Reader, responseSt
 			time.Sleep(25 * time.Millisecond)
 			continue
 		}
+		defer resp.Body.Close()
 
 		var reader io.ReadCloser
 		switch resp.Header.Get("Content-Encoding") {
