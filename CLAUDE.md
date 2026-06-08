@@ -49,6 +49,10 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 8. Manually update the flag/env-var tables that docgen does **not** touch: the README "Collector Options" tables and the `docs/configuration.md` "Collector switches" tables. Refresh the verbatim `--help` block in `docs/configuration.md` by building (`CGO_ENABLED=0 go build`) and pasting `./opnsense-exporter --help`
 9. Add a bullet to the README "Changes from Upstream" fork changelog (see Key Conventions)
 
+**Dashboard (required — a coverage gate enforces this):**
+
+10. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`.
+
 ## Key Conventions
 
 - **Vendor directory is committed** — always run `make sync-vendor` after `go.mod` changes
