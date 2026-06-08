@@ -15807,7 +15807,7 @@
         "spec": {
           "id": 140,
           "title": "WireGuard Peer Status",
-          "description": "Peer reachability over time: Up / Down / Unknown.",
+          "description": "Peer reachability over time: Up / Down / Unknown / Stale.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -15876,6 +15876,11 @@
                           "text": "Unknown",
                           "color": "orange",
                           "index": 2
+                        },
+                        "3": {
+                          "text": "Stale",
+                          "color": "yellow",
+                          "index": 3
                         }
                       }
                     }

@@ -462,7 +462,7 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_wireguard_interfaces_status | Gauge | device, device_type, device_name | Wireguard interface (1 = up, 0 = down) | --exporter.disable-wireguard |
-| opnsense_wireguard_peer_status | Gauge | device, device_type, device_name, peer_name | Wireguard peer status (1 = up, 0 = down, 2 = unknown) | --exporter.disable-wireguard |
+| opnsense_wireguard_peer_status | Gauge | device, device_type, device_name, peer_name | Wireguard peer status (1 = up, 0 = down, 2 = unknown, 3 = stale) | --exporter.disable-wireguard |
 | opnsense_wireguard_peer_received_bytes_total | Counter | device, device_type, device_name, peer_name | Bytes received by this wireguard peer | --exporter.disable-wireguard |
 | opnsense_wireguard_peer_transmitted_bytes_total | Counter | device, device_type, device_name, peer_name | Bytes transmitted by this wireguard peer | --exporter.disable-wireguard |
 | opnsense_wireguard_peer_last_handshake_seconds | Gauge | device, device_type, device_name, peer_name | Last handshake by peer in seconds | --exporter.disable-wireguard |

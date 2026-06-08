@@ -35,6 +35,10 @@ const (
 	WGPeerStatusDown WGPeerStatus = iota
 	WGPeerStatusUp
 	WGPeerStatusUnknown
+	// WGPeerStatusStale is reported when a peer's last handshake was more than
+	// 300s ago. WireGuard refreshes handshakes roughly every 120s while traffic
+	// flows, so "stale" means configured-but-idle/unreachable rather than down.
+	WGPeerStatusStale
 )
 
 type WireguardPeers struct {
@@ -81,6 +85,8 @@ func parseWGPeerStatus(statusTranslated string, logger *slog.Logger, originalSta
 		return WGPeerStatusUp
 	case "offline":
 		return WGPeerStatusDown
+	case "stale":
+		return WGPeerStatusStale
 	default:
 		logger.Warn("unknown wireguard peer status detected", "status", originalStatus)
 		return WGPeerStatusUnknown

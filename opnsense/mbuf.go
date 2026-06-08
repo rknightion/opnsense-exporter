@@ -88,8 +88,11 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 	data.ClusterCache = s.ClusterCache
 	data.ClusterTotal = s.ClusterTotal
 	data.ClusterMax = s.ClusterMax
-	data.BytesInUse = s.BytesInUse
-	data.BytesTotal = s.BytesTotal
+	// OPNsense sources these from netstat -m, which reports the mbuf memory
+	// pool in KILOBYTES. The exporter's bytes_in_use / bytes_total metrics are
+	// declared in bytes, so convert here.
+	data.BytesInUse = s.BytesInUse * 1024
+	data.BytesTotal = s.BytesTotal * 1024
 
 	data.FailuresByType = map[string]int{
 		"mbuf":    s.MbufFails,

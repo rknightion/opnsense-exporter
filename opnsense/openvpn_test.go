@@ -129,10 +129,16 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 					"username": "user2",
 					"virtual_address": "10.8.0.3",
 					"status": "disconnected"
+				},
+				{
+					"description": "Site-to-Site",
+					"username": "",
+					"virtual_address": "10.9.0.1",
+					"status": "connected"
 				}
 			],
-			"rowCount": 2,
-			"total": 2,
+			"rowCount": 3,
+			"total": 3,
 			"current": 1
 		}`))
 	})
@@ -143,11 +149,11 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(data.Rows) != 2 {
-		t.Fatalf("expected 2 sessions, got %d", len(data.Rows))
+	if len(data.Rows) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(data.Rows))
 	}
 
-	// Status "ok" -> 1
+	// Status "ok" -> 1 (server client_list rows)
 	s1 := data.Rows[0]
 	if s1.Username != "user1" {
 		t.Errorf("expected username 'user1', got %q", s1.Username)
@@ -163,6 +169,12 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 	s2 := data.Rows[1]
 	if s2.Status != 0 {
 		t.Errorf("expected Status=0 for 'disconnected', got %d", s2.Status)
+	}
+
+	// Status "connected" -> 1 (client / point-to-point state-machine value)
+	s3 := data.Rows[2]
+	if s3.Status != 1 {
+		t.Errorf("expected Status=1 for 'connected', got %d", s3.Status)
 	}
 }
 

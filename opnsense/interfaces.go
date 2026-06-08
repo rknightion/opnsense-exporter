@@ -105,8 +105,12 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			return data, err
 		}
 
+		// OPNsense >=25.x reports "link state" as a numeric string from the
+		// kernel ifmedia status: "2" = up (LINK_STATE_UP), "1" = down,
+		// "0" = unknown. Older releases used the human string "link state is
+		// up"/"...is down". Treat both shapes as up only when explicitly up.
 		linkState := 0
-		if strings.Contains(v.LinkState, "up") {
+		if v.LinkState == "2" || strings.Contains(v.LinkState, "is up") {
 			linkState = 1
 		}
 

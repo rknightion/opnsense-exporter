@@ -146,11 +146,17 @@ func TestFetchSocketStatistics_Success(t *testing.T) {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
 		w.Write([]byte(`{
-			"tcp4/[10.0.0.1:80-10.0.0.2:1234]": {},
-			"tcp4/[10.0.0.1:443-10.0.0.3:5678]": {},
-			"udp4/[10.0.0.1:53-*:*]": {},
-			"unix/[/var/run/log.sock]": {},
-			"unix/[/var/run/devd.sock]": {}
+			"statistics": {
+				"Active Internet connections": {
+					"tcp4/[10.0.0.1:80-10.0.0.2:1234]": {},
+					"tcp4/[10.0.0.1:443-10.0.0.3:5678]": {},
+					"udp4/[10.0.0.1:53-*:*]": {}
+				},
+				"Active UNIX domain sockets": {
+					"fffff8001d757280 - /var/run/log.sock": {},
+					"fffff80020f24000": {}
+				}
+			}
 		}`))
 	})
 	defer server.Close()
@@ -171,6 +177,33 @@ func TestFetchSocketStatistics_Success(t *testing.T) {
 	}
 	if data.UnixTotal != 2 {
 		t.Errorf("UnixTotal = %d; want 2", data.UnixTotal)
+	}
+}
+
+func TestFetchSocketStatistics_EmptySection(t *testing.T) {
+	// OPNsense (PHP) serializes an empty section as [] rather than {}.
+	// This must not fail the whole decode.
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"statistics": {
+				"Active Internet connections": {
+					"tcp4/[10.0.0.1:80-10.0.0.2:1234]": {}
+				},
+				"Active UNIX domain sockets": []
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchSocketStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ByType["tcp4"] != 1 {
+		t.Errorf("tcp4 count = %d; want 1", data.ByType["tcp4"])
+	}
+	if data.UnixTotal != 0 {
+		t.Errorf("UnixTotal = %d; want 0", data.UnixTotal)
 	}
 }
 

@@ -170,6 +170,44 @@ func TestFetchWireguardConfig_UnknownStatuses(t *testing.T) {
 	}
 }
 
+func TestFetchWireguardConfig_StalePeer(t *testing.T) {
+	// OPNsense reports peer-status "stale" when the last handshake was more than
+	// 300s ago (a normal idle state, not down or unknown).
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"if": "wg0",
+					"type": "peer",
+					"status": "",
+					"name": "Idle Peer",
+					"ifname": "wg0",
+					"latest-handshake": 1,
+					"transfer-rx": 100,
+					"transfer-tx": 200,
+					"peer-status": "stale"
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchWireguardConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Peers) != 1 {
+		t.Fatalf("expected 1 peer, got %d", len(data.Peers))
+	}
+	if data.Peers[0].Status != WGPeerStatusStale {
+		t.Errorf("expected WGPeerStatusStale (%d) for 'stale', got %d", WGPeerStatusStale, data.Peers[0].Status)
+	}
+}
+
 func TestFetchWireguardConfig_ServerError(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

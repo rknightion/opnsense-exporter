@@ -1,6 +1,9 @@
 package opnsense
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // --- netisr types ---
 
@@ -124,9 +127,18 @@ func (c *Client) FetchNetisrStatistics() (map[string]NetisrProtocolStats, *APICa
 }
 
 // FetchSocketStatistics retrieves socket statistics from OPNsense.
-// The API returns a map where keys are formatted as "proto/[details]".
+// The API nests entries under a top-level "statistics" object keyed by section
+// name: "Active Internet connections" (keys formatted "proto/[details]", e.g.
+// "tcp4/[...]") and "Active UNIX domain sockets" (keys are kernel addresses with
+// no proto prefix). We count Internet sockets by protocol prefix and Unix
+// sockets by section membership.
 func (c *Client) FetchSocketStatistics() (SocketCounts, *APICallError) {
-	var resp map[string]any
+	// Each section is an object keyed by socket; decode lazily because OPNsense
+	// (PHP) serializes an empty section as [] rather than {}, which would fail a
+	// map decode for the whole response.
+	var resp struct {
+		Statistics map[string]json.RawMessage `json:"statistics"`
+	}
 	data := SocketCounts{
 		ByType: make(map[string]int),
 	}
@@ -144,12 +156,22 @@ func (c *Client) FetchSocketStatistics() (SocketCounts, *APICallError) {
 		return data, err
 	}
 
-	for key := range resp {
-		parts := strings.SplitN(key, "/", 2)
-		prefix := parts[0]
-		data.ByType[prefix]++
-		if prefix == "unix" {
-			data.UnixTotal++
+	for section, raw := range resp.Statistics {
+		var entries map[string]any
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			// Empty section serialized as [] (or otherwise not an object) → skip.
+			continue
+		}
+		// Unix domain sockets have opaque address keys (no proto prefix), so
+		// they are identified by their section rather than by key shape.
+		if strings.Contains(section, "UNIX") {
+			data.ByType["unix"] += len(entries)
+			data.UnixTotal += len(entries)
+			continue
+		}
+		for key := range entries {
+			prefix, _, _ := strings.Cut(key, "/")
+			data.ByType[prefix]++
 		}
 	}
 

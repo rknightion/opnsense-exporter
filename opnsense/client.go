@@ -50,7 +50,7 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 		return Client{}, errors.Join(fmt.Errorf("failed to load system cert pool"), err)
 	}
 
-	gatewayLossRegex, err := regexp.Compile(`\d\.\d %`)
+	gatewayLossRegex, err := regexp.Compile(`\d+\.\d+ %`)
 	if err != nil {
 		return Client{}, errors.Join(fmt.Errorf("failed to build regex for gatewayLoss calculation"), err)
 	}

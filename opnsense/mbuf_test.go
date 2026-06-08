@@ -68,11 +68,12 @@ func TestFetchMbufStatistics_Success(t *testing.T) {
 	if data.ClusterMax != 1024 {
 		t.Errorf("expected ClusterMax=1024, got %d", data.ClusterMax)
 	}
-	if data.BytesInUse != 65536 {
-		t.Errorf("expected BytesInUse=65536, got %d", data.BytesInUse)
+	// API reports KB; FetchMbufStatistics converts to bytes (×1024).
+	if data.BytesInUse != 65536*1024 {
+		t.Errorf("expected BytesInUse=%d, got %d", 65536*1024, data.BytesInUse)
 	}
-	if data.BytesTotal != 131072 {
-		t.Errorf("expected BytesTotal=131072, got %d", data.BytesTotal)
+	if data.BytesTotal != 131072*1024 {
+		t.Errorf("expected BytesTotal=%d, got %d", 131072*1024, data.BytesTotal)
 	}
 
 	// Check FailuresByType map
@@ -160,8 +161,8 @@ func TestFetchMbufStatistics_WithMemoryStatistics(t *testing.T) {
 	if data.MbufCurrent != 1024 {
 		t.Errorf("expected MbufCurrent=1024, got %d", data.MbufCurrent)
 	}
-	if data.BytesInUse != 65536 {
-		t.Errorf("expected BytesInUse=65536, got %d", data.BytesInUse)
+	if data.BytesInUse != 65536*1024 {
+		t.Errorf("expected BytesInUse=%d, got %d", 65536*1024, data.BytesInUse)
 	}
 
 	// Check FailuresByType map includes jumbo9 and jumbo16

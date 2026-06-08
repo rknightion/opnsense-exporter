@@ -19,7 +19,8 @@ from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
 
 
 # Custom peer-status mapping: 0=Down, 1=Up, 2=Unknown
-_WG_PEER = {"0": ("Down", "red"), "1": ("Up", "green"), "2": ("Unknown", "orange")}
+_WG_PEER = {"0": ("Down", "red"), "1": ("Up", "green"), "2": ("Unknown", "orange"),
+            "3": ("Stale", "yellow")}
 
 
 def build(b: Builder):
@@ -86,7 +87,7 @@ def build(b: Builder):
         [(sel("opnsense_wireguard_peer_status"),
           "{{peer_name}} ({{device_name}})")],
         _WG_PEER, w=24, h=8,
-        desc="Peer reachability over time: Up / Down / Unknown.",
+        desc="Peer reachability over time: Up / Down / Unknown / Stale.",
     )
     wg_rx = b.ts(
         "WireGuard Peer RX",

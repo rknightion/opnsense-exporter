@@ -24,7 +24,7 @@ func TestFetchInterfaces_Success(t *testing.T) {
 					"type": "Ethernet",
 					"address length": "6",
 					"header length": "14",
-					"link state": "link state is up",
+					"link state": "2",
 					"vhid": "0",
 					"datalen": "152",
 					"mtu": "1500",

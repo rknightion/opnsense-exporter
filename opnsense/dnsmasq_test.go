@@ -150,13 +150,14 @@ func TestFetchDnsmasqLeases_EmptyResponse(t *testing.T) {
 }
 
 func TestFetchDnsmasqLeases_ArrayQuirks(t *testing.T) {
-	// OPNsense PHP serializes empty fields as [] instead of "" or {}.
-	// is_reserved arriving as [] must be treated as not-reserved;
-	// interfaces arriving as [] must be treated as an empty map.
+	// OPNsense PHP serializes is_reserved as a JSON array: a NON-EMPTY array
+	// (e.g. ["hwaddr"], the live 26.1 shape) means reserved, an empty array ([])
+	// means dynamic. Older releases used the string "1"/"0". interfaces arriving
+	// as [] must be treated as an empty map.
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
-			"total": 2,
-			"rowCount": 2,
+			"total": 3,
+			"rowCount": 3,
 			"current": 1,
 			"rows": [
 				{
@@ -184,6 +185,19 @@ func TestFetchDnsmasqLeases_ArrayQuirks(t *testing.T) {
 					"if_name": "em0",
 					"mac_info": "",
 					"is_reserved": "1"
+				},
+				{
+					"expire": 7200,
+					"hwaddr": "aa:bb:cc:dd:ee:f3",
+					"iaid": "",
+					"address": "192.168.1.12",
+					"hostname": "printer1",
+					"client_id": "",
+					"if": "em0",
+					"if_descr": "LAN",
+					"if_name": "em0",
+					"mac_info": "",
+					"is_reserved": ["hwaddr"]
 				}
 			],
 			"interfaces": []
@@ -196,11 +210,11 @@ func TestFetchDnsmasqLeases_ArrayQuirks(t *testing.T) {
 		t.Fatalf("unexpected error when fields are []: %v", err)
 	}
 
-	if data.TotalLeases != 2 {
-		t.Errorf("expected TotalLeases=2, got %d", data.TotalLeases)
+	if data.TotalLeases != 3 {
+		t.Errorf("expected TotalLeases=3, got %d", data.TotalLeases)
 	}
-	if len(data.Leases) != 2 {
-		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	if len(data.Leases) != 3 {
+		t.Fatalf("expected 3 leases, got %d", len(data.Leases))
 	}
 
 	// Row with is_reserved:[] must be treated as not-reserved.
@@ -211,9 +225,13 @@ func TestFetchDnsmasqLeases_ArrayQuirks(t *testing.T) {
 	if !data.Leases[1].IsReserved {
 		t.Error("expected second lease (is_reserved:\"1\") to be reserved")
 	}
+	// Row with is_reserved:["hwaddr"] (live 26.1 reserved shape) must be reserved.
+	if !data.Leases[2].IsReserved {
+		t.Error("expected third lease (is_reserved:[\"hwaddr\"]) to be reserved")
+	}
 
-	if data.ReservedCount != 1 {
-		t.Errorf("expected ReservedCount=1, got %d", data.ReservedCount)
+	if data.ReservedCount != 2 {
+		t.Errorf("expected ReservedCount=2, got %d", data.ReservedCount)
 	}
 	if data.DynamicCount != 1 {
 		t.Errorf("expected DynamicCount=1, got %d", data.DynamicCount)

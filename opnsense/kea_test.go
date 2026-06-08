@@ -230,15 +230,16 @@ func TestFetchKeaLeases4_KeaDisabled(t *testing.T) {
 }
 
 func TestFetchKeaLeases6_IsReservedArray(t *testing.T) {
-	// OPNsense PHP serializes empty is_reserved as [] instead of "0"/"".
-	// The collector must handle this gracefully (treat as not-reserved).
+	// OPNsense PHP serializes is_reserved as a JSON array: a NON-EMPTY array
+	// (e.g. ["hwaddr"], the live 26.1 reserved shape) means reserved, an empty
+	// array ([]) means dynamic. Older releases used the string "1"/"0".
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
 
 	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
-			"total": 2,
-			"rowCount": 2,
+			"total": 3,
+			"rowCount": 3,
 			"current": 1,
 			"rows": [
 				{
@@ -256,6 +257,14 @@ func TestFetchKeaLeases6_IsReservedArray(t *testing.T) {
 					"expire": 1772502000,
 					"if_descr": "LAN",
 					"is_reserved": "1"
+				},
+				{
+					"address": "fd00::30",
+					"hwaddr": "aa:bb:cc:dd:ee:30",
+					"hostname": "printer1",
+					"expire": 1772503000,
+					"if_descr": "LAN",
+					"is_reserved": ["hwaddr"]
 				}
 			]
 		}`))
@@ -266,11 +275,11 @@ func TestFetchKeaLeases6_IsReservedArray(t *testing.T) {
 		t.Fatalf("unexpected error when is_reserved is []: %v", err)
 	}
 
-	if data.TotalLeases != 2 {
-		t.Errorf("expected TotalLeases=2, got %d", data.TotalLeases)
+	if data.TotalLeases != 3 {
+		t.Errorf("expected TotalLeases=3, got %d", data.TotalLeases)
 	}
-	if len(data.Leases) != 2 {
-		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	if len(data.Leases) != 3 {
+		t.Fatalf("expected 3 leases, got %d", len(data.Leases))
 	}
 
 	// Row with is_reserved:[] must be treated as not-reserved.
@@ -281,9 +290,13 @@ func TestFetchKeaLeases6_IsReservedArray(t *testing.T) {
 	if !data.Leases[1].IsReserved {
 		t.Error("expected second lease (is_reserved:\"1\") to be reserved")
 	}
+	// Row with is_reserved:["hwaddr"] (live 26.1 reserved shape) must be reserved.
+	if !data.Leases[2].IsReserved {
+		t.Error("expected third lease (is_reserved:[\"hwaddr\"]) to be reserved")
+	}
 
-	if data.ReservedCount != 1 {
-		t.Errorf("expected ReservedCount=1, got %d", data.ReservedCount)
+	if data.ReservedCount != 2 {
+		t.Errorf("expected ReservedCount=2, got %d", data.ReservedCount)
 	}
 	if data.DynamicCount != 1 {
 		t.Errorf("expected DynamicCount=1, got %d", data.DynamicCount)

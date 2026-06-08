@@ -82,12 +82,15 @@ func parseBoolToInt(b bool) int {
 	return i
 }
 
-// parseOpenVPNsessionStatusToInt parses a string to a int
-// not sure if this is really necessary
-// as only connected VPN clients are returned by the API
+// parseOpenVPNsessionStatusToInt maps an OPNsense OpenVPN session status string
+// to 1 (up) or 0 (down). The status comes from ovpn_status.py: server instances
+// with connected clients report "ok" (from the status header), while client and
+// point-to-point instances report the lowercased OpenVPN state-machine value —
+// "connected" when fully established. Transitional states (wait/auth/
+// reconnecting/...), "failed", and an absent status are treated as not-up.
 func parseOpenVPNsessionStatusToInt(status string) int {
 	switch status {
-	case "ok":
+	case "ok", "connected":
 		return 1
 	default:
 		return 0

@@ -134,3 +134,33 @@ func TestFlexStringMap_EmptyObject(t *testing.T) {
 		t.Errorf("expected empty map, got %v", fsm)
 	}
 }
+
+func TestFlexBool_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"non-empty array (live reserved)", `["hwaddr"]`, true},
+		{"empty array (live dynamic)", `[]`, false},
+		{"legacy string 1", `"1"`, true},
+		{"legacy string 0", `"0"`, false},
+		{"empty string", `""`, false},
+		{"null", `null`, false},
+		{"json true", `true`, true},
+		{"json false", `false`, false},
+		{"number 1", `1`, true},
+		{"number 0", `0`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var fb flexBool
+			if err := json.Unmarshal([]byte(tt.input), &fb); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if fb.Bool() != tt.want {
+				t.Errorf("flexBool(%s) = %v, want %v", tt.input, fb.Bool(), tt.want)
+			}
+		})
+	}
+}

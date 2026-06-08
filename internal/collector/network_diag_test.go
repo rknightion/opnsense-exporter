@@ -42,10 +42,16 @@ func TestNetworkDiagCollector_Update(t *testing.T) {
 
 	mux.HandleFunc("/api/diagnostics/interface/get_socket_statistics", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
-			"tcp4/[10.0.0.1:80-10.0.0.2:1234]": {},
-			"tcp4/[10.0.0.1:443-10.0.0.3:5678]": {},
-			"udp4/[10.0.0.1:53-*:*]": {},
-			"unix/[/var/run/log.sock]": {}
+			"statistics": {
+				"Active Internet connections": {
+					"tcp4/[10.0.0.1:80-10.0.0.2:1234]": {},
+					"tcp4/[10.0.0.1:443-10.0.0.3:5678]": {},
+					"udp4/[10.0.0.1:53-*:*]": {}
+				},
+				"Active UNIX domain sockets": {
+					"fffff8001d757280 - /var/run/log.sock": {}
+				}
+			}
 		}`))
 	})
 
