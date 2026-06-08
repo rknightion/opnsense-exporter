@@ -88,6 +88,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Dead code removal** — Removed unreachable `opnsense/system.go` (dead `FetchSystemInfo()` with unregistered endpoint), replaced by the new temperature collector using the verified diagnostics API.
 - **Release automation** — Migrated from manual tag-triggered releases to [release-please](https://github.com/googleapis/release-please) for automated conventional commit-driven versioning and changelogs. Docker builds use native multi-arch runners (amd64/arm64). All GitHub Actions pinned to commit hashes for supply-chain security.
 - **Dockerfile modernization** — Alpine-based builder (smaller pulls), BuildKit cache mounts for faster rebuilds, `-trimpath` and `-mod=vendor` flags for reproducibility, distroless debian13 nonroot runtime image pinned by digest.
+- **Fully off Docker Hub** — The Go toolchain build stage now pulls from Google's `mirror.gcr.io/library/golang` mirror instead of `docker.io`, eliminating the last Docker Hub dependency (and the anonymous-pull rate-limit/gateway-timeout failures it caused in CI). Both build and runtime base images are now served from Google infrastructure.
 - **Removed GOMAXPROCS flag** — Removed the `--runtime.gomaxprocs` flag (previously defaulting to 2). Go's runtime now auto-detects available CPUs, which is the correct default for this I/O-bound exporter.
 
 ### Documentation
