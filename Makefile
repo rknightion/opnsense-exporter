@@ -1,6 +1,6 @@
 BINARY_NAME=opnsense-exporter-local
 
-.PHONY: default docgen
+.PHONY: default docgen dashboard rules
 default:
 	go build \
 	-tags osusergo,netgo \
@@ -40,4 +40,7 @@ docgen:
 	go run ./scripts/docgen
 
 dashboard:
-	python3 scripts/generate-dashboard.py
+	cd grafana && python3 build_dashboard.py
+
+rules:
+	cd grafana/alerts && python3 build_rules.py

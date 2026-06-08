@@ -1,0 +1,46 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "RecordingRule",
+  "metadata": {
+    "name": "oxrec-system-mem-utilization",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "instance:opnsense_system_mem:utilization",
+    "metric": "instance:opnsense_system_mem:utilization",
+    "targetDatasourceUID": "",
+    "paused": false,
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {},
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "10m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "opnsense_system_memory_used_bytes / (opnsense_system_memory_total_bytes > 0)",
+          "instant": false,
+          "range": true,
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        },
+        "source": true
+      }
+    }
+  }
+}

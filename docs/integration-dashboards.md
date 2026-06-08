@@ -53,22 +53,18 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 
 ## Grafana dashboard
 
-!!! warning "Minimum Grafana version: 11.4+"
-    The comprehensive dashboard uses the v2beta1 schema with TabsLayout, which requires **Grafana 11.4 or later**.
+!!! warning "Minimum Grafana version: 13+"
+    The dashboard uses the v2 dynamic schema (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`, which require **Grafana 13 or later**.
 
-A comprehensive Grafana dashboard covering all 275+ metrics is available for visualizing OPNsense Exporter data. The dashboard is organized into 8 tabs: Overview, Firewall, Interfaces, Gateways, DNS, VPN, DHCP & Neighbors, and Network Internals.
+A single comprehensive Grafana dashboard covers **all 303 metrics across 16 tabs** (Overview, System & Resources, Interfaces, Firewall & PF, Gateways & WAN, DNS — Unbound, DHCP, VPN, Routing & Neighbors, Protocol Stats, NTP, Certificates, Services/Cron/DynDNS, NetFlow, CARP/HA, Diagnostics). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 
 ### Import the dashboard
 
-1. Open Grafana and navigate to **Dashboards > Import**.
-2. Import the JSON file from the repository: `deploy/grafana/dashboard.json`
+1. Open Grafana and navigate to **Dashboards > New > Import**.
+2. Import the JSON file from the repository: `grafana/dashboard.json`
 3. Select your Prometheus data source and click **Import**.
 
-The dashboard uses template variables for `datasource`, `opnsense_instance`, `interface`, and `rate_interval`.
-
-### Legacy dashboard
-
-The legacy v1 dashboard is still available at `deploy/grafana/dashboard-v1.json` or via [Grafana.com](https://grafana.com/grafana/dashboards/21113) (ID: `21113`) for older Grafana versions.
+The dashboard uses template variables for `datasource`, `opnsense_instance`, and `interface`. See [`grafana/README.md`](https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md) for `gcx`/GitOps deployment and the bundled alert and recording rules.
 
 ## Example PromQL queries
 

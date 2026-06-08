@@ -36,3 +36,7 @@ local.docker-compose.yml
 
 opnsense-exporter
 docgen
+
+# Python (grafana dashboard/rules builders)
+__pycache__/
+*.pyc

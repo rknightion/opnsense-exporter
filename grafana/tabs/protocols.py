@@ -1,0 +1,368 @@
+"""
+Protocol Stats tab — covers all 51 opnsense_protocol_* metrics.
+
+Rows:
+  TCP Traffic         — sent/received packets rate ts
+  TCP Connection Lifecycle — request/accept/established/closed/drop/bad-attempt rate ts
+  TCP Retransmit & Queue — retransmit/keepalive/syncache/listen-queue rate ts
+  TCP Bytes           — sent/retransmit/in-seq/dup bytes (Bps) rate ts + RTT segments
+  TCP Connection State (gauge) — statetimeline + piechart of current state distribution
+  UDP                 — delivered/output/received rate ts + dropped-by-reason table
+  IP                  — received/forwarded/sent/fragment rate ts + dropped-by-reason table
+  ARP (Activity)      — sent-req/recv-req/sent-reply/recv-reply/recv-packets rate ts
+  ARP (Errors & Aging) — sent-failures/dropped-no-entry/entries-timeout/dropped-dup rate ts
+  ICMP                — calls/sent rate ts + dropped-by-reason table
+  CARP Protocol       — recv/sent rate ts + dropped-by-reason table
+  pfsync Protocol     — recv/sent rate ts + dropped-by-reason table + send-errors ts
+"""
+
+from builder import Builder, sel, RATE
+
+
+def build(b: Builder):
+    # -------------------------------------------------------------------------
+    # TCP — Traffic
+    # -------------------------------------------------------------------------
+    tcp_traffic = b.ts(
+        "TCP Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_sent_packets_total')}[{RATE}])",
+             "sent"),
+            (f"rate({sel('opnsense_protocol_tcp_received_packets_total')}[{RATE}])",
+             "received"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of TCP packets sent and received.",
+    )
+
+    # TCP — Connection Lifecycle
+    tcp_lifecycle = b.ts(
+        "TCP Connection Lifecycle (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_connection_requests_total')}[{RATE}])",
+             "requests"),
+            (f"rate({sel('opnsense_protocol_tcp_connection_accepts_total')}[{RATE}])",
+             "accepts"),
+            (f"rate({sel('opnsense_protocol_tcp_connections_established_total')}[{RATE}])",
+             "established"),
+            (f"rate({sel('opnsense_protocol_tcp_connections_closed_total')}[{RATE}])",
+             "closed"),
+            (f"rate({sel('opnsense_protocol_tcp_connection_drops_total')}[{RATE}])",
+             "drops"),
+            (f"rate({sel('opnsense_protocol_tcp_bad_connection_attempts_total')}[{RATE}])",
+             "bad attempts"),
+        ],
+        unit="connps",
+        w=12, h=8,
+        desc="Rate of TCP connection lifecycle events.",
+    )
+
+    # TCP — Retransmit, Keepalive, Syncache, Listen Queue
+    tcp_retransmit = b.ts(
+        "TCP Retransmit, Keepalive & Queue (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_retransmit_timeouts_total')}[{RATE}])",
+             "retransmit timeouts"),
+            (f"rate({sel('opnsense_protocol_tcp_keepalive_timeouts_total')}[{RATE}])",
+             "keepalive timeouts"),
+            (f"rate({sel('opnsense_protocol_tcp_keepalive_probes_total')}[{RATE}])",
+             "keepalive probes"),
+            (f"rate({sel('opnsense_protocol_tcp_retransmitted_packets_total')}[{RATE}])",
+             "retransmitted packets"),
+            (f"rate({sel('opnsense_protocol_tcp_listen_queue_overflows_total')}[{RATE}])",
+             "listen queue overflows"),
+            (f"rate({sel('opnsense_protocol_tcp_syncache_entries_total')}[{RATE}])",
+             "syncache entries added"),
+            (f"rate({sel('opnsense_protocol_tcp_syncache_dropped_total')}[{RATE}])",
+             "syncache dropped"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc="Rate of TCP retransmits, keepalive events, syncache activity, and listen queue overflows.",
+    )
+
+    # TCP — Bytes throughput
+    tcp_bytes = b.ts(
+        "TCP Throughput (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_sent_data_bytes_total')}[{RATE}])",
+             "sent"),
+            (f"rate({sel('opnsense_protocol_tcp_retransmitted_bytes_total')}[{RATE}])",
+             "retransmitted"),
+            (f"rate({sel('opnsense_protocol_tcp_received_in_sequence_bytes_total')}[{RATE}])",
+             "received in-sequence"),
+            (f"rate({sel('opnsense_protocol_tcp_received_duplicate_bytes_total')}[{RATE}])",
+             "received duplicate"),
+        ],
+        unit="Bps",
+        w=12, h=8,
+        desc="TCP byte throughput (bytes per second). Includes duplicate and retransmitted bytes.",
+    )
+
+    # TCP — RTT segments (rate ts)
+    tcp_rtt = b.ts(
+        "TCP Segments Updated RTT (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_segments_updated_rtt_total')}[{RATE}])",
+             "segments updating RTT"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc="Rate of TCP segments that caused an RTT sample update.",
+    )
+
+    # TCP — Connection state: statetimeline (gauge — raw)
+    tcp_state_tl = b.statetimeline(
+        "TCP Connections by State (over time)",
+        [
+            (sel("opnsense_protocol_tcp_connection_count_by_state", 'state=~".+"'),
+             "{{state}}"),
+        ],
+        mappings={},  # no binary mapping — numeric count displayed as-is
+        unit="short",
+        w=16, h=8,
+        desc="Number of TCP connections by state (gauge — current value, not rate).",
+    )
+
+    # TCP — Connection state: piechart (current distribution)
+    tcp_state_pie = b.piechart(
+        "TCP Connections by State (now)",
+        [
+            (sel("opnsense_protocol_tcp_connection_count_by_state", 'state=~".+"'),
+             "{{state}}"),
+        ],
+        unit="short",
+        w=8, h=8,
+        desc="Current distribution of TCP connections across states (gauge).",
+    )
+
+    # -------------------------------------------------------------------------
+    # UDP
+    # -------------------------------------------------------------------------
+    udp_traffic = b.ts(
+        "UDP Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_udp_received_datagrams_total')}[{RATE}])",
+             "received datagrams"),
+            (f"rate({sel('opnsense_protocol_udp_delivered_packets_total')}[{RATE}])",
+             "delivered"),
+            (f"rate({sel('opnsense_protocol_udp_output_packets_total')}[{RATE}])",
+             "output"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of UDP datagrams received, delivered, and output.",
+    )
+
+    udp_drops = b.table(
+        "UDP Dropped by Reason",
+        [
+            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_udp_dropped_by_reason_total")}[5m])))',
+        ],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)",
+        w=12, h=8,
+        desc="UDP drops broken down by reason (5-minute average rate).",
+    )
+
+    # -------------------------------------------------------------------------
+    # IP
+    # -------------------------------------------------------------------------
+    ip_traffic = b.ts(
+        "IP Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_ip_received_packets_total')}[{RATE}])",
+             "received"),
+            (f"rate({sel('opnsense_protocol_ip_forwarded_packets_total')}[{RATE}])",
+             "forwarded"),
+            (f"rate({sel('opnsense_protocol_ip_sent_packets_total')}[{RATE}])",
+             "sent"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of IP packets received, forwarded, and sent.",
+    )
+
+    ip_frags = b.ts(
+        "IP Fragmentation (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_ip_fragments_received_total')}[{RATE}])",
+             "fragments received"),
+            (f"rate({sel('opnsense_protocol_ip_reassembled_packets_total')}[{RATE}])",
+             "reassembled"),
+            (f"rate({sel('opnsense_protocol_ip_sent_fragments_total')}[{RATE}])",
+             "fragments sent"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of IP fragment reception, reassembly, and transmission.",
+    )
+
+    ip_drops = b.table(
+        "IP Dropped by Reason",
+        [
+            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_ip_dropped_by_reason_total")}[5m])))',
+        ],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)",
+        w=24, h=8,
+        desc="IP drops broken down by reason (5-minute average rate).",
+    )
+
+    # -------------------------------------------------------------------------
+    # ARP
+    # -------------------------------------------------------------------------
+    arp_activity = b.ts(
+        "ARP Activity (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_arp_sent_requests_total')}[{RATE}])",
+             "sent requests"),
+            (f"rate({sel('opnsense_protocol_arp_received_requests_total')}[{RATE}])",
+             "received requests"),
+            (f"rate({sel('opnsense_protocol_arp_sent_replies_total')}[{RATE}])",
+             "sent replies"),
+            (f"rate({sel('opnsense_protocol_arp_received_replies_total')}[{RATE}])",
+             "received replies"),
+            (f"rate({sel('opnsense_protocol_arp_received_packets_total')}[{RATE}])",
+             "received packets"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of ARP requests, replies, and packets.",
+    )
+
+    arp_errors = b.ts(
+        "ARP Errors & Aging (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_arp_sent_failures_total')}[{RATE}])",
+             "send failures"),
+            (f"rate({sel('opnsense_protocol_arp_dropped_no_entry_total')}[{RATE}])",
+             "dropped (no entry)"),
+            (f"rate({sel('opnsense_protocol_arp_entries_timeout_total')}[{RATE}])",
+             "entries timed out"),
+            (f"rate({sel('opnsense_protocol_arp_dropped_duplicate_address_total')}[{RATE}])",
+             "dropped (duplicate addr)"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of ARP errors, drops, and aging events.",
+    )
+
+    # -------------------------------------------------------------------------
+    # ICMP
+    # -------------------------------------------------------------------------
+    icmp_traffic = b.ts(
+        "ICMP (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_icmp_calls_total')}[{RATE}])",
+             "calls"),
+            (f"rate({sel('opnsense_protocol_icmp_sent_packets_total')}[{RATE}])",
+             "sent packets"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of ICMP calls and sent packets.",
+    )
+
+    icmp_drops = b.table(
+        "ICMP Dropped by Reason",
+        [
+            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_icmp_dropped_by_reason_total")}[5m])))',
+        ],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)",
+        w=12, h=8,
+        desc="ICMP drops broken down by reason (5-minute average rate).",
+    )
+
+    # -------------------------------------------------------------------------
+    # CARP (protocol-level stats, distinct from the CARP VIP tab)
+    # -------------------------------------------------------------------------
+    carp_traffic = b.ts(
+        "CARP Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_carp_received_packets_total')}[{RATE}])",
+             "received {{address_family}}"),
+            (f"rate({sel('opnsense_protocol_carp_sent_packets_total')}[{RATE}])",
+             "sent {{address_family}}"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of CARP packets received and sent, by address family.",
+    )
+
+    carp_drops = b.table(
+        "CARP Dropped by Reason",
+        [
+            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_carp_dropped_by_reason_total")}[5m])))',
+        ],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)",
+        w=12, h=8,
+        desc="CARP drops broken down by reason (5-minute average rate).",
+    )
+
+    # -------------------------------------------------------------------------
+    # pfsync
+    # -------------------------------------------------------------------------
+    pfsync_traffic = b.ts(
+        "pfsync Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_pfsync_received_packets_total')}[{RATE}])",
+             "received {{address_family}}"),
+            (f"rate({sel('opnsense_protocol_pfsync_sent_packets_total')}[{RATE}])",
+             "sent {{address_family}}"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Rate of pfsync packets received and sent, by address family.",
+    )
+
+    pfsync_errors = b.ts(
+        "pfsync Send Errors (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_pfsync_send_errors_total')}[{RATE}])",
+             "send errors"),
+        ],
+        unit="pps",
+        w=8, h=8,
+        desc="Rate of pfsync send errors.",
+    )
+
+    pfsync_drops = b.table(
+        "pfsync Dropped by Reason",
+        [
+            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_pfsync_dropped_by_reason_total")}[5m])))',
+        ],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)",
+        w=16, h=8,
+        desc="pfsync drops broken down by reason (5-minute average rate).",
+    )
+
+    # -------------------------------------------------------------------------
+    # Assemble the tab
+    # -------------------------------------------------------------------------
+    b.tab("Protocol Stats", [
+        b.row("TCP Traffic", [tcp_traffic, tcp_lifecycle]),
+        b.row("TCP Retransmit & Queue", [tcp_retransmit, tcp_bytes]),
+        b.row("TCP Bytes & RTT", [tcp_rtt, tcp_state_pie]),
+        b.row("TCP Connection State", [tcp_state_tl]),
+        b.row("UDP", [udp_traffic, udp_drops]),
+        b.row("IP", [ip_traffic, ip_frags, ip_drops]),
+        b.row("ARP", [arp_activity, arp_errors]),
+        b.row("ICMP", [icmp_traffic, icmp_drops]),
+        b.row("CARP Protocol", [carp_traffic, carp_drops]),
+        b.row("pfsync Protocol", [pfsync_traffic, pfsync_errors, pfsync_drops]),
+    ])

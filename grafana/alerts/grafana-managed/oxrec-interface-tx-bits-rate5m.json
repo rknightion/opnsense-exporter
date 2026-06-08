@@ -1,0 +1,46 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "RecordingRule",
+  "metadata": {
+    "name": "oxrec-interface-tx-bits-rate5m",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "instance:opnsense_interface_tx_bits:rate5m",
+    "metric": "instance:opnsense_interface_tx_bits:rate5m",
+    "targetDatasourceUID": "",
+    "paused": false,
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {},
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "10m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (opnsense_instance, interface) (rate(opnsense_interfaces_transmitted_bytes_total[5m])) * 8",
+          "instant": false,
+          "range": true,
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        },
+        "source": true
+      }
+    }
+  }
+}

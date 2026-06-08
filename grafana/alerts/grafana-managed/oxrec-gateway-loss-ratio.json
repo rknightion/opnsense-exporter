@@ -1,0 +1,46 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "RecordingRule",
+  "metadata": {
+    "name": "oxrec-gateway-loss-ratio",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "instance:opnsense_gateway_loss:ratio",
+    "metric": "instance:opnsense_gateway_loss:ratio",
+    "targetDatasourceUID": "",
+    "paused": false,
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {},
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "10m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "opnsense_gateways_loss_percentage / 100",
+          "instant": false,
+          "range": true,
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        },
+        "source": true
+      }
+    }
+  }
+}

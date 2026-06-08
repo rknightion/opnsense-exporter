@@ -67,6 +67,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Mbuf statistics** — Added jumbo9 and jumbo16 buffer types to failure and sleep counters, plus 3 new sendfile metrics (`sendfile_syscalls_total`, `sendfile_io_total`, `sendfile_pages_sent_total`). Polls an additional `get_memory_statistics` endpoint with partial failure tolerance.
 - **Firewall PF statistics** — Added `opnsense_firewall_interface_hits_total` counter showing per-interface rule match counts from the aggregate stats endpoint. Partial failure tolerant.
 - **Network diagnostics** — Added pfsync HA cluster metrics: `pfsync_nodes_total` gauge and per-node `pfsync_node_info` with creatorid and is_local labels. Partial failure tolerant.
+- **Exporter self-observability** — Added two always-on exporter-level metrics: `opnsense_exporter_build_info` (value 1, with `version` and `goversion` labels) for pinning the running build, and `opnsense_exporter_collector_enabled{collector="<subsystem>"}` (1 = enabled, 0 = disabled) emitted for every registered collector so dashboards/alerts can distinguish "collector disabled" from "feature absent / no data". Both carry the `opnsense_instance` label and are surfaced on the dashboard's Diagnostics tab.
 
 ### Bug Fixes
 
@@ -96,10 +97,12 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Zensical documentation site** — Added comprehensive documentation site at [m7kni.io/opnsense-exporter](https://m7kni.io/opnsense-exporter/) with auto-generated metrics reference, deployment guides, architecture overview, and integration with the m7kni.io docs hub.
 - **Auto-generated metrics docs** — Added `scripts/docgen/main.go` that uses Go AST parsing to extract all 275 metrics from source code and generate the complete metrics reference page. Run `make docgen` to regenerate.
 
-### Dashboard
+### Dashboard & Alerting
 
-- **Comprehensive Grafana dashboard** — Replaced the upstream dashboard with a comprehensive v2beta1 dashboard using TabsLayout with 8 tabs (Overview, Firewall, Interfaces, Gateways, DNS, VPN, DHCP & Neighbors, Network Internals) covering all 275+ metrics across 197 panels. Uses a variety of visualization types (stat, timeseries, table, status-history, gauge, bar-gauge, pie-chart) with AutoGridLayout for interface status panels and collapsed rows for opt-in collectors. Requires **Grafana 11.4+** for TabsLayout support.
-- **Dashboard generation script** — Added `scripts/generate-dashboard.py` to programmatically generate the dashboard JSON. Run `make dashboard` to regenerate after adding new metrics.
+- **Single dynamic Grafana dashboard** — Replaced the previous dashboard with one comprehensive **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`, requires **Grafana 13+**) at [`grafana/dashboard.json`](grafana/dashboard.json). It uses `TabsLayout` across 16 tabs (Overview, System & Resources, Interfaces, Firewall & PF, Gateways & WAN, DNS — Unbound, DHCP, VPN, Routing & Neighbors, Protocol Stats, NTP, Certificates, Services/Cron/DynDNS, NetFlow, CARP/HA, Diagnostics) covering **all 303 metrics across 239 panels** with a wide variety of visualisations (timeseries, stat, gauge, bar-gauge, table, state-timeline, status-history, pie-chart). Tabs and rows **auto show/hide** via `conditionalRendering` + hidden sentinel variables, so unused collectors / absent OPNsense plugins disappear automatically (DHCP backends gate on actual lease data). A build-time coverage gate fails the build if any metric is left unreferenced.
+- **Self-observability** — A Diagnostics tab covers scrape health, per-endpoint errors, the new `opnsense_exporter_build_info` / `opnsense_exporter_collector_enabled` metrics, and the exporter's own Go-runtime metrics.
+- **Dashboard generator** — [`grafana/build_dashboard.py`](grafana/build_dashboard.py) (+ `builder.py` and per-tab modules under `grafana/tabs/`) programmatically generate the v2 manifest. Run `make dashboard`.
+- **Alert & recording rules** — Added [`grafana/alerts/`](grafana/alerts/): 18 alert rules and 8 recording rules, shipped both as a portable Prometheus rule-group YAML and as Grafana-managed `rules.alerting.grafana.app/v0alpha1` manifests (`make rules`). See [`grafana/README.md`](grafana/README.md).
 
 ### Utilities
 
@@ -113,11 +116,9 @@ While the `node_exporter` must be installed on the firewall itself, this exporte
 
 ## Grafana Dashboard
 
-> **Minimum Grafana version: 11.4+** — The dashboard uses the v2beta1 schema with TabsLayout, which requires Grafana 11.4 or later.
+> **Minimum Grafana version: 13+** — the dashboard uses the v2 dynamic schema (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
-The comprehensive dashboard covers all 275+ metrics across 8 tabs: Overview, Firewall, Interfaces, Gateways, DNS, VPN, DHCP & Neighbors, and Network Internals. Import it from `deploy/grafana/dashboard.json`.
-
-The legacy v1 dashboard is available at `deploy/grafana/dashboard-v1.json` or via Grafana dashboard id `21113` for older Grafana versions.
+A single comprehensive dashboard covers **all 303 metrics across 16 tabs**, auto-hiding tabs/rows for collectors and plugins you don't run. Import [`grafana/dashboard.json`](grafana/dashboard.json) via the Grafana UI, `gcx`, or GitOps. Alert and recording rules live alongside it in [`grafana/alerts/`](grafana/alerts/). Full deployment and customisation instructions: [`grafana/README.md`](grafana/README.md).
 
 ## OPNsense user permissions
 
