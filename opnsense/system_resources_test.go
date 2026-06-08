@@ -295,6 +295,37 @@ func TestFetchSystemResources_PartialFailure(t *testing.T) {
 	}
 }
 
+func TestFetchSystemHostname(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"name":"opnsense.example.com","versions":["OPNsense 26.1.8"],"updates":""}`))
+	})
+
+	hostname, err := client.FetchSystemHostname()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hostname != "opnsense.example.com" {
+		t.Errorf("expected hostname %q, got %q", "opnsense.example.com", hostname)
+	}
+}
+
+func TestFetchSystemHostname_Error(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+
+	if _, err := client.FetchSystemHostname(); err == nil {
+		t.Fatal("expected error when system_information endpoint fails")
+	}
+}
+
 func TestFetchSystemResources_AllFail(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()

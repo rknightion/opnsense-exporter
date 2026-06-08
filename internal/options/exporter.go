@@ -18,8 +18,10 @@ var (
 		"exporter.instance-label",
 		"Label to use to identify the instance in every metric. "+
 			"If you have multiple instances of the exporter, you can differentiate them by using "+
-			"different value in this flag, that represents the instance of the target OPNsense.",
-	).Envar("OPNSENSE_EXPORTER_INSTANCE_LABEL").Required().String()
+			"different value in this flag, that represents the instance of the target OPNsense. "+
+			"If left empty, it defaults to the OPNsense hostname reported by the API "+
+			"(falling back to the configured OPNsense address if that lookup fails).",
+	).Envar("OPNSENSE_EXPORTER_INSTANCE_LABEL").Default("").String()
 
 	WebConfig = kingpinflag.AddFlags(kingpin.CommandLine, ":8080")
 )

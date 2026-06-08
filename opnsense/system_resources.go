@@ -58,6 +58,29 @@ type systemInformationResponse struct {
 	Updates  string   `json:"updates"`
 }
 
+// FetchSystemHostname returns the hostname the OPNsense firewall reports for
+// itself (the "name" field of api/diagnostics/system/system_information, e.g.
+// "opnsense.example.com"). It is used to derive a default instance label when
+// the user does not set one explicitly.
+func (c *Client) FetchSystemHostname() (string, *APICallError) {
+	var resp systemInformationResponse
+
+	url, ok := c.endpoints["systemInformation"]
+	if !ok {
+		return "", &APICallError{
+			Endpoint:   "systemInformation",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return "", err
+	}
+
+	return resp.Name, nil
+}
+
 // Public data structs.
 
 type SystemMemory struct {

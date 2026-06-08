@@ -180,7 +180,25 @@ func main() {
 		logger.Info("dyndns collector disabled")
 	}
 
-	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
+	// Resolve the instance label. When the user does not set one, default to the
+	// OPNsense hostname reported by the API so single-instance deployments work
+	// out of the box, falling back to the configured address if the lookup fails.
+	instanceLabel := *options.InstanceLabel
+	if instanceLabel == "" {
+		if hostname, hErr := opnsenseClient.FetchSystemHostname(); hErr == nil && hostname != "" {
+			instanceLabel = hostname
+			logger.Info("instance label not set; using OPNsense hostname", "instance", instanceLabel)
+		} else {
+			instanceLabel = opnsConfig.Host
+			logger.Warn(
+				"instance label not set and hostname lookup failed; falling back to configured address",
+				"instance", instanceLabel,
+				"err", hErr,
+			)
+		}
+	}
+
+	collectorInstance, err := collector.New(&opnsenseClient, logger, instanceLabel, collectorOptionFuncs...)
 	if err != nil {
 		logger.Error("failed to construct the collecotr", "err", err)
 		os.Exit(1)

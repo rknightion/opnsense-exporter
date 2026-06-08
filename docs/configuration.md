@@ -39,7 +39,7 @@ For secure credential management in containers and orchestrated environments, cr
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `--exporter.instance-label` | `OPNSENSE_EXPORTER_INSTANCE_LABEL` | -- (required) | Label added to every metric to identify this OPNsense instance. Must be unique across multiple exporter instances. |
+| `--exporter.instance-label` | `OPNSENSE_EXPORTER_INSTANCE_LABEL` | OPNsense hostname (auto-detected) | Label added to every metric to identify this OPNsense instance. If left unset, it defaults to the hostname the OPNsense API reports for itself (falling back to the configured address if that lookup fails). Set it explicitly when running multiple exporters so each has a unique, stable value. |
 | `--web.listen-address` | -- | `:8080` | Address(es) on which to expose metrics. Repeatable for multiple addresses. |
 | `--web.telemetry-path` | -- | `/metrics` | HTTP path under which to expose metrics |
 | `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | `false` | Exclude metrics about the exporter itself (`promhttp_*`, `process_*`, `go_*`) |
@@ -109,7 +109,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 The complete list of flags as output by `--help`:
 
 ```text
-usage: opnsense-exporter --exporter.instance-label=EXPORTER.INSTANCE-LABEL --opnsense.protocol=OPNSENSE.PROTOCOL --opnsense.address=OPNSENSE.ADDRESS [<flags>]
+usage: opnsense-exporter --opnsense.protocol=OPNSENSE.PROTOCOL --opnsense.address=OPNSENSE.ADDRESS [<flags>]
 
 
 Flags:
@@ -226,21 +226,21 @@ Flags:
                                 Exclude metrics about the exporter
                                 itself (promhttp_*, process_*, go_*).
                                 ($OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS)
-      --exporter.instance-label=EXPORTER.INSTANCE-LABEL  
+      --exporter.instance-label=""  
                                 Label to use to identify the instance in
                                 every metric. If you have multiple instances
                                 of the exporter, you can differentiate them
                                 by using different value in this flag, that
                                 represents the instance of the target OPNsense.
-                                ($OPNSENSE_EXPORTER_INSTANCE_LABEL)
+                                If left empty, it defaults to the OPNsense
+                                hostname reported by the API (falling back to
+                                the configured OPNsense address if that lookup
+                                fails). ($OPNSENSE_EXPORTER_INSTANCE_LABEL)
       --web.listen-address=:8080 ...  
                                 Addresses on which to expose metrics and web
                                 interface. Repeatable for multiple addresses.
                                 Examples: `:9100` or `[::1]:9100` for http,
                                 `vsock://:9100` for vsock
-      --[no-]web.systemd-socket
-                                Use systemd socket activation listeners instead
-                                of port listeners (Linux only)
       --web.config.file=""      Path to configuration file that can
                                 enable TLS or authentication. See:
                                 https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md
