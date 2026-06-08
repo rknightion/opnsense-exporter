@@ -390,6 +390,18 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, collector := range c.collectors {
 		go func(coll CollectorInstance) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					c.log.Error(
+						"panic in collector goroutine; skipping",
+						"component", "collector",
+						"collector_name", coll.Name(),
+						"panic", fmt.Sprintf("%v", r),
+					)
+					c.endpointErrors.WithLabelValues(coll.Name(), c.instanceLabel).Inc()
+				}
+			}()
 			if err := coll.Update(c.Client, ch); err != nil {
 				c.log.Error(
 					"failed to update",
@@ -399,7 +411,6 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				)
 				c.endpointErrors.WithLabelValues(err.Endpoint, c.instanceLabel).Inc()
 			}
-			wg.Done()
 		}(collector)
 	}
 	wg.Wait()
