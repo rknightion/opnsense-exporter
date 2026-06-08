@@ -48,6 +48,7 @@ const (
 	NDPSubsystem           = "ndp"
 	ACMESubsystem          = "acme"
 	SMARTSubsystem         = "smart"
+	DynDNSSubsystem        = "dyndns"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -239,6 +240,12 @@ func WithoutACMECollector() Option {
 // removes the smart collector from the list of collectors
 func WithoutSMARTCollector() Option {
 	return withoutCollectorInstance(SMARTSubsystem)
+}
+
+// WithoutDynDNSCollector Option
+// removes the dyndns collector from the list of collectors
+func WithoutDynDNSCollector() Option {
+	return withoutCollectorInstance(DynDNSSubsystem)
 }
 
 // WithKeaDetails enables per-lease detail metrics for the kea collector

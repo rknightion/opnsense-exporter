@@ -175,6 +175,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSMARTCollector())
 		logger.Info("smart collector disabled")
 	}
+	if !collectorsSwitches.DynDNS {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDynDNSCollector())
+		logger.Info("dyndns collector disabled")
+	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
 	if err != nil {

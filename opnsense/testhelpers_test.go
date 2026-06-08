@@ -128,5 +128,7 @@ func testEndpoints() map[EndpointName]EndpointPath {
 		"acmeCertificates":        "api/acmeclient/certificates/search",
 		"smartList":               "api/smart/service/list",
 		"smartInfo":               "api/smart/service/info",
+		"dyndnsAccounts":          "api/dyndns/accounts/searchItem",
+		"dyndnsServiceStatus":     "api/dyndns/service/status",
 	}
 }

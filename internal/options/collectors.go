@@ -119,6 +119,10 @@ var (
 		"exporter.disable-smart",
 		"Disable the SMART disk health collector (per-disk POST fanout; silent when the os-smart plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_SMART").Default("false").Bool()
+	dyndnsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-dyndns",
+		"Disable the scraping of DynDNS (ddclient) account update status metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_DYNDNS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -152,6 +156,7 @@ type CollectorsDisableSwitch struct {
 	Dhcpv4Details        bool
 	ACME                 bool
 	SMART                bool
+	DynDNS               bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -186,5 +191,6 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Dhcpv4Details:        *dhcpv4DetailsEnabled,
 		ACME:                 !*acmeCollectorDisabled,
 		SMART:                !*smartCollectorDisabled,
+		DynDNS:               !*dyndnsCollectorDisabled,
 	}
 }

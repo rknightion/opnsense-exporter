@@ -122,6 +122,8 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"acmeCertificates":        "api/acmeclient/certificates/search",
 			"smartList":               "api/smart/service/list",
 			"smartInfo":               "api/smart/service/info",
+			"dyndnsAccounts":          "api/dyndns/accounts/searchItem",
+			"dyndnsServiceStatus":     "api/dyndns/service/status",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",
