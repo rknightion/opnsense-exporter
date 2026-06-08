@@ -34,11 +34,20 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 
 ## Adding a New Collector
 
-1. Create `internal/collector/<subsystem>.go` implementing `CollectorInstance`
-2. Add an `init()` that appends to `collectorInstances`
-3. Add a `Fetch<Subsystem>()` method in `opnsense/` with corresponding data structs
-4. Add a disable flag in `internal/options/collectors.go`
-5. Wire the disable flag into `internal/collector/collector.go`
+**Code:**
+
+1. Create `internal/collector/<subsystem>.go` implementing `CollectorInstance` with an `init()` that appends to `collectorInstances`
+2. Add a `Fetch<Subsystem>()` method in `opnsense/` with data structs, register its endpoint(s) in the `endpoints` map in `opnsense/client.go`, and add the endpoint name(s) to `testEndpoints()` in `opnsense/testhelpers_test.go` (and bump the count in `opnsense/client_test.go`). For plugin-gated endpoints, treat a 404 as "feature absent" (return empty data + `nil`, mirroring `FetchACMECertificates`) so the collector stays silent when the plugin is missing.
+3. Add a `<Subsystem>Subsystem` const and a `Without<Subsystem>Collector()` option in `internal/collector/collector.go`
+4. Add the flag + `CollectorsDisableSwitch` field + switch entry in `internal/options/collectors.go`. Use `exporter.disable-*` (default-on) for low-cardinality collectors; reserve `exporter.enable-*` (default-off) for collectors with extra per-scrape API cost or high cardinality
+5. Wire it in `main.go` (`if !collectorsSwitches.<X> { ... WithoutXCollector() }`)
+
+**Docs (required — keep collectors/metrics in sync):**
+
+6. Add the new subsystem to the **two hand-maintained maps** in `scripts/docgen/main.go`: `flagToSubsystem` (flag → subsystem) and `subsystemToDisplayName` (subsystem → pretty name). docgen will otherwise render the collector with a blank flag and lowercase name.
+7. Run `make docgen` (regenerates `docs/metrics/metrics.md` and `docs/collectors/reference.md` only) and commit the result
+8. Manually update the flag/env-var tables that docgen does **not** touch: the README "Collector Options" tables and the `docs/configuration.md` "Collector switches" tables. Refresh the verbatim `--help` block in `docs/configuration.md` by building (`CGO_ENABLED=0 go build`) and pasting `./opnsense-exporter --help`
+9. Add a bullet to the README "Changes from Upstream" fork changelog (see Key Conventions)
 
 ## Key Conventions
 
