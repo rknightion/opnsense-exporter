@@ -1,12 +1,12 @@
 package opnsense
 
 type keaLeaseRow struct {
-	Address    string `json:"address"`
-	HWAddr     string `json:"hwaddr"`
-	Hostname   string `json:"hostname"`
-	Expire     int    `json:"expire"`
-	IfDescr    string `json:"if_descr"`
-	IsReserved string `json:"is_reserved"`
+	Address    string     `json:"address"`
+	HWAddr     string     `json:"hwaddr"`
+	Hostname   string     `json:"hostname"`
+	Expire     int        `json:"expire"`
+	IfDescr    string     `json:"if_descr"`
+	IsReserved flexString `json:"is_reserved"`
 }
 
 type keaLeaseResponse struct {
@@ -54,7 +54,7 @@ func (c *Client) fetchKeaLeases(endpointName EndpointName) (KeaLeases, *APICallE
 	data.LeasesByInterface = make(map[string]int)
 
 	for _, row := range resp.Rows {
-		reserved := row.IsReserved == "1"
+		reserved := row.IsReserved.String() == "1"
 
 		lease := KeaLease{
 			Address:    row.Address,

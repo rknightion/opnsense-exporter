@@ -149,6 +149,77 @@ func TestFetchDnsmasqLeases_EmptyResponse(t *testing.T) {
 	}
 }
 
+func TestFetchDnsmasqLeases_ArrayQuirks(t *testing.T) {
+	// OPNsense PHP serializes empty fields as [] instead of "" or {}.
+	// is_reserved arriving as [] must be treated as not-reserved;
+	// interfaces arriving as [] must be treated as an empty map.
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{
+					"expire": 3600,
+					"hwaddr": "aa:bb:cc:dd:ee:f1",
+					"iaid": "",
+					"address": "192.168.1.10",
+					"hostname": "desktop1",
+					"client_id": "",
+					"if": "em0",
+					"if_descr": "LAN",
+					"if_name": "em0",
+					"mac_info": "",
+					"is_reserved": []
+				},
+				{
+					"expire": 7200,
+					"hwaddr": "aa:bb:cc:dd:ee:f2",
+					"iaid": "",
+					"address": "192.168.1.11",
+					"hostname": "laptop1",
+					"client_id": "",
+					"if": "em0",
+					"if_descr": "LAN",
+					"if_name": "em0",
+					"mac_info": "",
+					"is_reserved": "1"
+				}
+			],
+			"interfaces": []
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchDnsmasqLeases()
+	if err != nil {
+		t.Fatalf("unexpected error when fields are []: %v", err)
+	}
+
+	if data.TotalLeases != 2 {
+		t.Errorf("expected TotalLeases=2, got %d", data.TotalLeases)
+	}
+	if len(data.Leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	}
+
+	// Row with is_reserved:[] must be treated as not-reserved.
+	if data.Leases[0].IsReserved {
+		t.Error("expected first lease (is_reserved:[]) to be not reserved")
+	}
+	// Row with is_reserved:"1" must still be reserved.
+	if !data.Leases[1].IsReserved {
+		t.Error("expected second lease (is_reserved:\"1\") to be reserved")
+	}
+
+	if data.ReservedCount != 1 {
+		t.Errorf("expected ReservedCount=1, got %d", data.ReservedCount)
+	}
+	if data.DynamicCount != 1 {
+		t.Errorf("expected DynamicCount=1, got %d", data.DynamicCount)
+	}
+}
+
 func TestFetchDnsmasqLeases_ServerError(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

@@ -229,6 +229,67 @@ func TestFetchKeaLeases4_KeaDisabled(t *testing.T) {
 	}
 }
 
+func TestFetchKeaLeases6_IsReservedArray(t *testing.T) {
+	// OPNsense PHP serializes empty is_reserved as [] instead of "0"/"".
+	// The collector must handle this gracefully (treat as not-reserved).
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{
+					"address": "fd00::10",
+					"hwaddr": "aa:bb:cc:dd:ee:10",
+					"hostname": "server1",
+					"expire": 1772501000,
+					"if_descr": "LAN",
+					"is_reserved": []
+				},
+				{
+					"address": "fd00::20",
+					"hwaddr": "aa:bb:cc:dd:ee:20",
+					"hostname": "workstation1",
+					"expire": 1772502000,
+					"if_descr": "LAN",
+					"is_reserved": "1"
+				}
+			]
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases6()
+	if err != nil {
+		t.Fatalf("unexpected error when is_reserved is []: %v", err)
+	}
+
+	if data.TotalLeases != 2 {
+		t.Errorf("expected TotalLeases=2, got %d", data.TotalLeases)
+	}
+	if len(data.Leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	}
+
+	// Row with is_reserved:[] must be treated as not-reserved.
+	if data.Leases[0].IsReserved {
+		t.Error("expected first lease (is_reserved:[]) to be not reserved")
+	}
+	// Row with is_reserved:"1" must still be reserved.
+	if !data.Leases[1].IsReserved {
+		t.Error("expected second lease (is_reserved:\"1\") to be reserved")
+	}
+
+	if data.ReservedCount != 1 {
+		t.Errorf("expected ReservedCount=1, got %d", data.ReservedCount)
+	}
+	if data.DynamicCount != 1 {
+		t.Errorf("expected DynamicCount=1, got %d", data.DynamicCount)
+	}
+}
+
 func TestFetchKeaLeases4_ServerError(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()

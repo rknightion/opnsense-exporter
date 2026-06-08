@@ -1,10 +1,5 @@
 package opnsense
 
-import (
-	"fmt"
-	"strconv"
-)
-
 type unboundDNSStatusResponse struct {
 	Status string `json:"status"`
 	Data   struct {
@@ -276,7 +271,6 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	var (
 		response unboundDNSStatusResponse
 		data     UnboundDNSOverview
-		err      error
 	)
 
 	url, ok := c.endpoints["unboundDNSStatus"]
@@ -291,15 +285,8 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 		return data, err
 	}
 
-	// Uptime
-	data.UptimeSeconds, err = strconv.ParseFloat(response.Data.Time.Up, 64)
-	if err != nil {
-		return data, &APICallError{
-			Endpoint:   string(url),
-			Message:    fmt.Sprintf("unable to parse uptime %s", err),
-			StatusCode: 0,
-		}
-	}
+	// Uptime — use tolerant helper so empty/invalid values (e.g. during restart) return 0
+	data.UptimeSeconds = safeParseFloat(response.Data.Time.Up)
 
 	// Query totals
 	data.QueriesTotal = safeAtoi(response.Data.Total.Num.Queries)

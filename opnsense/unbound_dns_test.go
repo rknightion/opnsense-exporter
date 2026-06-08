@@ -336,6 +336,46 @@ func TestFetchUnboundOverview_Success(t *testing.T) {
 	}
 }
 
+func TestFetchUnboundOverview_EmptyUptime(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "0", "queries_ip_ratelimited": "0", "queries_cookie_valid": "0", "queries_cookie_client": "0", "queries_cookie_invalid": "0", "cachehits": "0", "cachemiss": "0", "prefetch": "0", "queries_timed_out": "0", "expired": "0", "recursivereplies": "0", "queries_discard_timeout": "0", "queries_wait_limit": "0", "dns_error_reports": "0", "dnscrypt": {"crypted": "0", "cert": "0", "cleartext": "0", "malformed": "0"}},
+					"query": {"queue_time_us": {"max": "0"}},
+					"requestlist": {"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0", "current": {"all": "0", "user": "0"}},
+					"recursion": {"time": {"avg": "0", "median": "0"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "0", "up": "", "elapsed": "0"},
+				"mem": {"cache": {"rrset": "0", "message": "0", "dnscrypt_shared_secret": "0", "dnscrypt_nonce": "0"}, "mod": {"iterator": "0", "validator": "0", "respip": "0", "dynlibmod": "0"}, "streamwait": "0", "http": {"query_buffer": "0", "response_buffer": "0"}},
+				"num": {
+					"query": {"type": {"A": "0", "SOA": "0", "PTR": "0", "MX": "0", "TXT": "0", "AAAA": "0", "SRV": "0", "SVCB": "0", "HTTPS": "0", "NS": "0", "CNAME": "0", "NAPTR": "0", "DNSKEY": "0", "ANY": "0", "LOC": "0", "HINFO": "0"}, "class": {"IN": "0"}, "opcode": {"QUERY": "0"}, "tcp": "0", "tcpout": "0", "udpout": "0", "tls": {"__value__": "0", "resume": "0"}, "ipv6": "0", "https": "0", "flags": {"QR": "0", "AA": "0", "TC": "0", "RD": "0", "RA": "0", "Z": "0", "AD": "0", "CD": "0"}, "edns": {"present": "0", "DO": "0"}, "ratelimited": "0", "aggressive": {"NOERROR": "0", "NXDOMAIN": "0"}, "dnscrypt": {"shared_secret": {"cachemiss": "0"}, "replay": "0"}, "authzone": {"up": "0", "down": "0"}},
+					"answer": {"rcode": {"NOERROR": "0", "FORMERR": "0", "SERVFAIL": "0", "NXDOMAIN": "0", "NOTIMPL": "0", "REFUSED": "0", "nodata": "0"}, "secure": "0", "bogus": "0"},
+					"rrset": {"bogus": "0"}
+				},
+				"unwanted": {"queries": "0", "replies": "0"},
+				"msg": {"cache": {"count": "0", "max_collisions": "0"}},
+				"rrset": {"cache": {"count": "0", "max_collisions": "0"}},
+				"infra": {"cache": {"count": "0"}},
+				"key": {"cache": {"count": "0"}},
+				"dnscrypt_shared_secret": {"cache": {"count": "0"}},
+				"dnscrypt_nonce": {"cache": {"count": "0"}}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("expected no error for empty uptime string, got: %v", err)
+	}
+	if data.UptimeSeconds != 0 {
+		t.Errorf("expected UptimeSeconds=0 for empty uptime string, got %f", data.UptimeSeconds)
+	}
+}
+
 func TestFetchUnboundOverview_InvalidUptime(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
@@ -367,9 +407,12 @@ func TestFetchUnboundOverview_InvalidUptime(t *testing.T) {
 	})
 	defer server.Close()
 
-	_, err := client.FetchUnboundOverview()
-	if err == nil {
-		t.Fatal("expected error for invalid uptime string")
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("expected no error for unparseable uptime string, got: %v", err)
+	}
+	if data.UptimeSeconds != 0 {
+		t.Errorf("expected UptimeSeconds=0 for unparseable uptime string, got %f", data.UptimeSeconds)
 	}
 }
 

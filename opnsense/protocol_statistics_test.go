@@ -417,6 +417,198 @@ func TestFetchProtocolStatistics_Success(t *testing.T) {
 	}
 }
 
+func TestFetchProtocolStatistics_ScientificNotationCounters(t *testing.T) {
+	// OPNsense can return counter values like max uint64 (18446744073709551615) serialized
+	// as scientific notation (1.8446744073709552e+19). Go's encoding/json cannot unmarshal
+	// a number with an exponent into an int, so such values must degrade to 0.
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"statistics": {
+				"tcp": {
+					"sent-packets": 100,
+					"sent-data-packets": 0,
+					"sent-data-bytes": 0,
+					"sent-retransmitted-packets": 0,
+					"sent-retransmitted-bytes": 0,
+					"sent-unnecessary-retransmitted-packets": 0,
+					"sent-resends-by-mtu-discovery": 0,
+					"sent-ack-only-packets": 0,
+					"sent-packets-delayed": 0,
+					"sent-urg-only-packets": 0,
+					"sent-window-probe-packets": 0,
+					"sent-window-update-packets": 0,
+					"sent-control-packets": 0,
+					"received-packets": 200,
+					"received-ack-packets": 0,
+					"received-ack-bytes": 0,
+					"received-duplicate-acks": 0,
+					"received-udp-tunneled-pkts": 0,
+					"received-bad-udp-tunneled-pkts": 0,
+					"received-acks-for-unsent-data": 0,
+					"received-in-sequence-packets": 0,
+					"received-in-sequence-bytes": 0,
+					"received-completely-duplicate-packets": 0,
+					"received-completely-duplicate-bytes": 0,
+					"received-old-duplicate-packets": 0,
+					"received-some-duplicate-packets": 0,
+					"received-some-duplicate-bytes": 0,
+					"received-out-of-order": 0,
+					"received-out-of-order-bytes": 0,
+					"received-after-window-packets": 0,
+					"received-after-window-bytes": 0,
+					"received-window-probes": 0,
+					"receive-window-update-packets": 0,
+					"received-after-close-packets": 0,
+					"discard-bad-checksum": 0,
+					"discard-bad-header-offset": 0,
+					"discard-too-short": 0,
+					"discard-reassembly-queue-full": 0,
+					"connection-requests": 0,
+					"connections-accepts": 0,
+					"bad-connection-attempts": 0,
+					"listen-queue-overflows": 0,
+					"ignored-in-window-resets": 0,
+					"connections-established": 0,
+					"connections-hostcache-rtt": 0,
+					"connections-hostcache-rttvar": 0,
+					"connections-hostcache-ssthresh": 0,
+					"connections-closed": 0,
+					"connection-drops": 0,
+					"connections-updated-rtt-on-close": 0,
+					"connections-updated-variance-on-close": 0,
+					"connections-updated-ssthresh-on-close": 0,
+					"embryonic-connections-dropped": 0,
+					"segments-updated-rtt": 0,
+					"segment-update-attempts": 0,
+					"retransmit-timeouts": 0,
+					"connections-dropped-by-retransmit-timeout": 0,
+					"persist-timeout": 0,
+					"connections-dropped-by-persist-timeout": 0,
+					"connections-dropped-by-finwait2-timeout": 0,
+					"keepalive-timeout": 0,
+					"keepalive-probes": 0,
+					"connections-dropped-by-keepalives": 0,
+					"ack-header-predictions": 0,
+					"data-packet-header-predictions": 0,
+					"syncache": {
+						"entries-added": 0, "retransmitted": 0, "duplicates": 0,
+						"dropped": 0, "completed": 0, "bucket-overflow": 0,
+						"cache-overflow": 0, "reset": 0, "stale": 0, "aborted": 0,
+						"bad-ack": 0, "unreachable": 0, "zone-failures": 0,
+						"sent-cookies": 0, "receivd-cookies": 0
+					},
+					"hostcache": {"entries-added": 0, "buffer-overflows": 0},
+					"sack": {"recovery-episodes": 0, "segment-retransmits": 0,
+						"byte-retransmits": 0, "received-blocks": 0,
+						"sent-option-blocks": 0, "scoreboard-overflows": 0},
+					"ecn": {"ce-packets": 0, "ect0-packets": 0, "ect1-packets": 0,
+						"handshakes": 0, "congestion-reductions": 0},
+					"tcp-signature": {"received-good-signature": 0,
+						"received-bad-signature": 0, "failed-make-signature": 0,
+						"no-signature-expected": 0, "no-signature-provided": 0},
+					"pmtud": {"pmtud-activated": 0, "pmtud-activated-min-mss": 0,
+						"pmtud-failed": 0},
+					"tw": {"tw_responds": 0, "tw_recycles": 0, "tw_resets": 0},
+					"TCP connection count by state": {
+						"CLOSED": 0, "LISTEN": 0, "SYN_SENT": 0, "SYN_RCVD": 0,
+						"ESTABLISHED": 0, "CLOSE_WAIT": 0, "FIN_WAIT_1": 0,
+						"CLOSING": 0, "LAST_ACK": 0, "FIN_WAIT_2": 0, "TIME_WAIT": 0
+					}
+				},
+				"udp": {
+					"received-datagrams": 42,
+					"dropped-incomplete-headers": 0,
+					"dropped-bad-data-length": 0,
+					"dropped-bad-checksum": 0,
+					"dropped-no-checksum": 0,
+					"dropped-no-socket": 0,
+					"dropped-broadcast-multicast": 0,
+					"dropped-full-socket-buffer": 0,
+					"not-for-hashed-pcb": 0,
+					"delivered-packets": 1.8446744073709552e+19,
+					"output-packets": 99,
+					"multicast-source-filter-matches": 0
+				},
+				"ip": {
+					"received-packets": 0, "dropped-bad-checksum": 0,
+					"dropped-below-minimum-size": 0, "dropped-short-packets": 0,
+					"dropped-too-long": 0, "dropped-short-header-length": 0,
+					"dropped-short-data": 0, "dropped-bad-options": 0,
+					"dropped-bad-version": 0, "received-fragments": 0,
+					"dropped-fragments": 0, "dropped-fragments-after-timeout": 0,
+					"reassembled-packets": 0, "received-local-packets": 0,
+					"dropped-unknown-protocol": 0, "forwarded-packets": 0,
+					"fast-forwarded-packets": 0, "packets-cannot-forward": 0,
+					"received-unknown-multicast-group": 0, "redirects-sent": 0,
+					"sent-packets": 0, "send-packets-fabricated-header": 0,
+					"discard-no-mbufs": 0, "discard-no-route": 0,
+					"sent-fragments": 0, "fragments-created": 0,
+					"discard-cannot-fragment": 0, "discard-tunnel-no-gif": 0,
+					"discard-bad-address": 0
+				},
+				"icmp": {
+					"icmp-calls": 0, "errors-not-from-message": 0,
+					"dropped-bad-code": 0, "dropped-too-short": 0,
+					"dropped-bad-checksum": 0, "dropped-bad-length": 0,
+					"dropped-multicast-echo": 0, "dropped-multicast-timestamp": 0,
+					"sent-packets": 0, "discard-invalid-return-address": 0,
+					"discard-no-route": 0, "icmp-address-responses": "0"
+				},
+				"carp": {
+					"received-inet-packets": 0, "received-inet6-packets": 0,
+					"dropped-wrong-ttl": 0, "dropped-short-header": 0,
+					"dropped-bad-checksum": 0, "dropped-bad-version": 0,
+					"dropped-short-packet": 0, "dropped-bad-authentication": 0,
+					"dropped-bad-vhid": 0, "dropped-bad-address-list": 0,
+					"sent-inet-packets": 0, "sent-inet6-packets": 0,
+					"send-failed-memory-error": 0
+				},
+				"pfsync": {
+					"received-inet-packets": 0, "received-inet6-packets": 0,
+					"input-histogram": [],
+					"dropped-bad-interface": 0, "dropped-bad-ttl": 0,
+					"dropped-short-header": 0, "dropped-bad-version": 0,
+					"dropped-bad-auth": 0, "dropped-bad-action": 0,
+					"dropped-short": 0, "dropped-bad-values": 0,
+					"dropped-stale-state": 0, "dropped-failed-lookup": 0,
+					"sent-inet-packets": 0, "send-inet6-packets": 0,
+					"output-histogram": [], "discarded-no-memory": 0,
+					"send-errors": 0
+				},
+				"arp": {
+					"sent-requests": 0, "sent-failures": 0, "sent-replies": 0,
+					"received-requests": 0, "received-replies": 0,
+					"received-packets": 0, "dropped-no-entry": 0,
+					"entries-timeout": 0, "dropped-duplicate-address": 0
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchProtocolStatistics()
+	if err != nil {
+		t.Fatalf("FetchProtocolStatistics returned error for scientific-notation counter: %v", err)
+	}
+	// The huge value (max uint64 in scientific notation) must degrade to 0.
+	if data.UDPDeliveredPackets != 0 {
+		t.Errorf("expected UDPDeliveredPackets=0 for scientific-notation overflow, got %d", data.UDPDeliveredPackets)
+	}
+	// Normal counters must still parse correctly.
+	if data.TCPSentPackets != 100 {
+		t.Errorf("expected TCPSentPackets=100, got %d", data.TCPSentPackets)
+	}
+	if data.TCPReceivedPackets != 200 {
+		t.Errorf("expected TCPReceivedPackets=200, got %d", data.TCPReceivedPackets)
+	}
+	if data.UDPReceivedDatagrams != 42 {
+		t.Errorf("expected UDPReceivedDatagrams=42, got %d", data.UDPReceivedDatagrams)
+	}
+	if data.UDPOutputPackets != 99 {
+		t.Errorf("expected UDPOutputPackets=99, got %d", data.UDPOutputPackets)
+	}
+}
+
 func TestFetchProtocolStatistics_ServerError(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

@@ -1,17 +1,17 @@
 package opnsense
 
 type dnsmasqLeaseRow struct {
-	Expire     int    `json:"expire"`
-	HWAddr     string `json:"hwaddr"`
-	IAID       string `json:"iaid"`
-	Address    string `json:"address"`
-	Hostname   string `json:"hostname"`
-	ClientID   string `json:"client_id"`
-	If         string `json:"if"`
-	IfDescr    string `json:"if_descr"`
-	IfName     string `json:"if_name"`
-	MacInfo    string `json:"mac_info"`
-	IsReserved string `json:"is_reserved"`
+	Expire     int        `json:"expire"`
+	HWAddr     string     `json:"hwaddr"`
+	IAID       string     `json:"iaid"`
+	Address    string     `json:"address"`
+	Hostname   string     `json:"hostname"`
+	ClientID   string     `json:"client_id"`
+	If         string     `json:"if"`
+	IfDescr    string     `json:"if_descr"`
+	IfName     string     `json:"if_name"`
+	MacInfo    string     `json:"mac_info"`
+	IsReserved flexString `json:"is_reserved"`
 }
 
 type dnsmasqLeaseResponse struct {
@@ -19,7 +19,7 @@ type dnsmasqLeaseResponse struct {
 	RowCount   int               `json:"rowCount"`
 	Current    int               `json:"current"`
 	Rows       []dnsmasqLeaseRow `json:"rows"`
-	Interfaces map[string]string `json:"interfaces"`
+	Interfaces flexStringMap     `json:"interfaces"`
 }
 
 type DnsmasqLease struct {
@@ -60,7 +60,7 @@ func (c *Client) FetchDnsmasqLeases() (DnsmasqLeases, *APICallError) {
 	data.LeasesByInterface = make(map[string]int)
 
 	for _, row := range resp.Rows {
-		reserved := row.IsReserved == "1"
+		reserved := row.IsReserved.String() == "1"
 
 		lease := DnsmasqLease{
 			Address:    row.Address,
