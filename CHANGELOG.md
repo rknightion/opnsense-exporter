@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.2.2](https://github.com/rknightion/opnsense-exporter/compare/v0.2.1...v0.2.2) (2026-06-08)
+
+
+### Bug Fixes
+
+* **collectors:** tolerate OPNsense 25.7 API model drift ([0e6b9bc](https://github.com/rknightion/opnsense-exporter/commit/0e6b9bc3cc276fc6f0438a6ff4d2ce2d0908ed8d))
+* **deps:** update module github.com/grafana/pyroscope-go/godeltaprof to v0.1.10 ([#38](https://github.com/rknightion/opnsense-exporter/issues/38)) ([8bc67f1](https://github.com/rknightion/opnsense-exporter/commit/8bc67f1600bfa34e078eaf881ac7b73b0722836d))
+* **deps:** update module github.com/grafana/pyroscope-go/godeltaprof to v0.1.11 ([#41](https://github.com/rknightion/opnsense-exporter/issues/41)) ([fb21d9f](https://github.com/rknightion/opnsense-exporter/commit/fb21d9fe412ee97b3cabf9bf0c095cf7c3e1efa3))
+* **deps:** update module github.com/prometheus/exporter-toolkit to v0.16.0 ([#30](https://github.com/rknightion/opnsense-exporter/issues/30)) ([9c0094e](https://github.com/rknightion/opnsense-exporter/commit/9c0094e3f2abcc2e8f606c23b9c2beca50d70285))
+* **docs:** remove glightbox slide_effect option (rejected by zensical 0.0.44) ([42a31e6](https://github.com/rknightion/opnsense-exporter/commit/42a31e6bec0bf453a39afd790027199abfef4ca9))
+
+
+### Miscellaneous
+
+* automerge Renovate vulnerability-fix PRs ([d3b0977](https://github.com/rknightion/opnsense-exporter/commit/d3b0977d9b5c41ddad08d0756b96a6c7c8783faa))
+* **deps:** update actions/setup-go digest to 4a36011 ([#28](https://github.com/rknightion/opnsense-exporter/issues/28)) ([9d094ca](https://github.com/rknightion/opnsense-exporter/commit/9d094ca9e8478a20f887b5e406473c9d8f7f5309))
+* **deps:** update actions/upload-artifact digest to 043fb46 ([#32](https://github.com/rknightion/opnsense-exporter/issues/32)) ([d0f2ae2](https://github.com/rknightion/opnsense-exporter/commit/d0f2ae24c0182f574d506ead6c7b5a32661defb9))
+* **deps:** update docker/build-push-action digest to bcafcac ([#31](https://github.com/rknightion/opnsense-exporter/issues/31)) ([02232b6](https://github.com/rknightion/opnsense-exporter/commit/02232b6c9004c7900a6a572cb48ae877fd494809))
+* **deps:** update docker/login-action digest to 4907a6d ([#29](https://github.com/rknightion/opnsense-exporter/issues/29)) ([8b4ff11](https://github.com/rknightion/opnsense-exporter/commit/8b4ff11568f29099e4ff72834331eaf7c1cb3fbd))
+* **deps:** update github actions ([#34](https://github.com/rknightion/opnsense-exporter/issues/34)) ([06fc36e](https://github.com/rknightion/opnsense-exporter/commit/06fc36e50d58c7e5bb4d0e8d881da20f881163c7))
+* **deps:** update github/codeql-action digest to 3869755 ([#25](https://github.com/rknightion/opnsense-exporter/issues/25)) ([d196062](https://github.com/rknightion/opnsense-exporter/commit/d1960623297ea8b29d2f8fb2458be9d793dd56b2))
+* **deps:** update github/codeql-action digest to 68bde55 ([#39](https://github.com/rknightion/opnsense-exporter/issues/39)) ([fdf085c](https://github.com/rknightion/opnsense-exporter/commit/fdf085c907ee3ee96cad22314861be782b991d67))
+* **deps:** update github/codeql-action digest to b8bb9f2 ([#26](https://github.com/rknightion/opnsense-exporter/issues/26)) ([d7ba908](https://github.com/rknightion/opnsense-exporter/commit/d7ba9085645f5644e8c38406d0444695fdb05da4))
+* **deps:** update github/codeql-action digest to c10b806 ([#27](https://github.com/rknightion/opnsense-exporter/issues/27)) ([7f9164a](https://github.com/rknightion/opnsense-exporter/commit/7f9164a11a48348dc430d3a0bf17417ef7164159))
+* **deps:** update github/codeql-action digest to c6f9311 ([#23](https://github.com/rknightion/opnsense-exporter/issues/23)) ([5ed9dbe](https://github.com/rknightion/opnsense-exporter/commit/5ed9dbe1ad72f8c2d808657518271443c2e460fe))
+* **deps:** update github/codeql-action digest to e46ed2c ([#37](https://github.com/rknightion/opnsense-exporter/issues/37)) ([60ecb55](https://github.com/rknightion/opnsense-exporter/commit/60ecb552b95fdee7ddd1c558f6bf3103eb6ae88e))
+* **deps:** update googleapis/release-please-action action to v5 ([#35](https://github.com/rknightion/opnsense-exporter/issues/35)) ([9f57415](https://github.com/rknightion/opnsense-exporter/commit/9f574156123e3332abb4b28232ba09ebf3e9f066))
+* **deps:** update googleapis/release-please-action digest to 5c625bf ([#33](https://github.com/rknightion/opnsense-exporter/issues/33)) ([2b9008e](https://github.com/rknightion/opnsense-exporter/commit/2b9008e4d169265a7b5a764eeedec55ca5f1de44))
+* **deps:** update goreleaser/goreleaser-action digest to 1a80836 ([#36](https://github.com/rknightion/opnsense-exporter/issues/36)) ([21925be](https://github.com/rknightion/opnsense-exporter/commit/21925be280c8322f448199174874fb961c78bd8c))
+
 ## [0.2.1](https://github.com/rknightion/opnsense-exporter/compare/v0.2.0...v0.2.1) (2026-03-16)
 
 
