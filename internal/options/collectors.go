@@ -103,6 +103,22 @@ var (
 		"exporter.disable-ndp",
 		"Disable the scraping of the NDP (IPv6 neighbor discovery) table",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_NDP").Default("false").Bool()
+	dhcpv4CollectorDisabled = kingpin.Flag(
+		"exporter.disable-dhcpv4",
+		"Disable the scraping of ISC DHCPv4 leases",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_DHCPV4").Default("false").Bool()
+	dhcpv4DetailsEnabled = kingpin.Flag(
+		"exporter.enable-dhcpv4-details",
+		"Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS").Default("false").Bool()
+	acmeCollectorDisabled = kingpin.Flag(
+		"exporter.disable-acme",
+		"Disable the scraping of ACME client certificate renewal status and expiry metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_ACME").Default("false").Bool()
+	smartEnabled = kingpin.Flag(
+		"exporter.enable-smart",
+		"Enable the SMART disk health collector (per-disk POST fanout). Disabled by default.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -132,6 +148,10 @@ type CollectorsDisableSwitch struct {
 	Netflow              bool
 	PFStats              bool
 	NDP                  bool
+	Dhcpv4               bool
+	Dhcpv4Details        bool
+	ACME                 bool
+	SMART                bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -162,5 +182,9 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Netflow:              *netflowEnabled,
 		PFStats:              !*pfStatsCollectorDisabled,
 		NDP:                  !*ndpCollectorDisabled,
+		Dhcpv4:               !*dhcpv4CollectorDisabled,
+		Dhcpv4Details:        *dhcpv4DetailsEnabled,
+		ACME:                 !*acmeCollectorDisabled,
+		SMART:                *smartEnabled,
 	}
 }

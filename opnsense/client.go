@@ -10,8 +10,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"regexp"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -117,6 +119,9 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"ndpTable":                "api/diagnostics/interface/get_ndp",
 			"firewallStats":           "api/diagnostics/firewall/stats",
 			"pfsyncNodes":             "api/diagnostics/interface/get_pfsync_nodes",
+			"acmeCertificates":        "api/acmeclient/certificates/search",
+			"smartList":               "api/smart/service/list",
+			"smartInfo":               "api/smart/service/info",
 		},
 		headers: map[string]string{
 			"Accept":          "application/json",
@@ -150,12 +155,25 @@ func (c *Client) Endpoints() map[EndpointName]EndpointPath {
 }
 
 // do sends a request to the OPNsense API.
-// The response is unmarshalled
-// into the responseStruc
+// The response is unmarshalled into responseStruct.
+// For POST requests, Content-Type is set to application/json;charset=utf-8.
 func (c *Client) do(method string, path EndpointPath, body io.Reader, responseStruct any) *APICallError {
-	url := fmt.Sprintf("%s/%s", c.baseURL, string(path))
+	return c.doWithContentType(method, path, body, "application/json;charset=utf-8", responseStruct)
+}
 
-	req, err := http.NewRequest(method, url, body)
+// doForm sends a form-encoded POST request to the OPNsense API.
+// form values are URL-encoded in the request body.
+func (c *Client) doForm(path EndpointPath, form url.Values, responseStruct any) *APICallError {
+	return c.doWithContentType("POST", path, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded", responseStruct)
+}
+
+// doWithContentType sends a request to the OPNsense API with the specified
+// Content-Type header (only set for POST). The response is unmarshalled into
+// responseStruct. This is the underlying implementation used by do and doForm.
+func (c *Client) doWithContentType(method string, path EndpointPath, body io.Reader, contentType string, responseStruct any) *APICallError {
+	reqURL := fmt.Sprintf("%s/%s", c.baseURL, string(path))
+
+	req, err := http.NewRequest(method, reqURL, body)
 	if err != nil {
 		return &APICallError{
 			Endpoint:   string(path),
@@ -171,10 +189,10 @@ func (c *Client) do(method string, path EndpointPath, body io.Reader, responseSt
 	}
 
 	if method == "POST" {
-		req.Header.Add("Content-Type", "application/json;charset=utf-8")
+		req.Header.Add("Content-Type", contentType)
 	}
 
-	c.log.Debug("fetching data", "component", "opnsense-client", "url", url, "method", method)
+	c.log.Debug("fetching data", "component", "opnsense-client", "url", reqURL, "method", method)
 
 	// Retry the request up to MaxRetries times
 	for range MaxRetries {
@@ -203,7 +221,7 @@ func (c *Client) do(method string, path EndpointPath, body io.Reader, responseSt
 			reader = resp.Body
 		}
 
-		body, err := io.ReadAll(reader)
+		respBody, err := io.ReadAll(reader)
 		if err != nil {
 			return &APICallError{
 				Endpoint:   string(path),
@@ -215,7 +233,7 @@ func (c *Client) do(method string, path EndpointPath, body io.Reader, responseSt
 		reader.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			err := json.Unmarshal(body, &responseStruct)
+			err := json.Unmarshal(respBody, &responseStruct)
 			if err != nil {
 				return &APICallError{
 					Endpoint:   string(path),
@@ -224,13 +242,13 @@ func (c *Client) do(method string, path EndpointPath, body io.Reader, responseSt
 				}
 			}
 
-			c.log.Debug("returned data", "component", "opnsense-client", "url", url, "data", string(body))
+			c.log.Debug("returned data", "component", "opnsense-client", "url", reqURL, "data", string(respBody))
 
 			return nil
 		} else {
 			return &APICallError{
 				Endpoint:   string(path),
-				Message:    string(body),
+				Message:    string(respBody),
 				StatusCode: resp.StatusCode,
 			}
 		}

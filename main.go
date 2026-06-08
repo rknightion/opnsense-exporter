@@ -159,6 +159,23 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNDPCollector())
 		logger.Info("ndp collector disabled")
 	}
+	if !collectorsSwitches.Dhcpv4 {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDhcpv4Collector())
+		logger.Info("dhcpv4 collector disabled")
+	}
+	if collectorsSwitches.Dhcpv4Details {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDhcpv4Details())
+		logger.Info("dhcpv4 per-lease details enabled")
+	}
+	if !collectorsSwitches.ACME {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutACMECollector())
+		logger.Info("acme collector disabled")
+	}
+	if !collectorsSwitches.SMART {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSMARTCollector())
+	} else {
+		logger.Info("smart disk health collector enabled")
+	}
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, *options.InstanceLabel, collectorOptionFuncs...)
 	if err != nil {

@@ -41,10 +41,13 @@ const (
 	CARPSubsystem          = "carp"
 	ActivitySubsystem      = "activity"
 	KeaSubsystem           = "kea"
+	Dhcpv4Subsystem        = "dhcpv4"
 	NetworkDiagSubsystem   = "network_diag"
 	NetflowSubsystem       = "netflow"
 	PFStatsSubsystem       = "pf_stats"
 	NDPSubsystem           = "ndp"
+	ACMESubsystem          = "acme"
+	SMARTSubsystem         = "smart"
 )
 
 // CollectorInstance is the interface a service specific collectors must implement.
@@ -220,6 +223,24 @@ func WithoutNDPCollector() Option {
 	return withoutCollectorInstance(NDPSubsystem)
 }
 
+// WithoutDhcpv4Collector Option
+// removes the dhcpv4 collector from the list of collectors
+func WithoutDhcpv4Collector() Option {
+	return withoutCollectorInstance(Dhcpv4Subsystem)
+}
+
+// WithoutACMECollector Option
+// removes the acme collector from the list of collectors
+func WithoutACMECollector() Option {
+	return withoutCollectorInstance(ACMESubsystem)
+}
+
+// WithoutSMARTCollector Option
+// removes the smart collector from the list of collectors
+func WithoutSMARTCollector() Option {
+	return withoutCollectorInstance(SMARTSubsystem)
+}
+
 // WithKeaDetails enables per-lease detail metrics for the kea collector
 func WithKeaDetails() Option {
 	return func(o *Collector) error {
@@ -239,6 +260,19 @@ func WithFirewallRulesDetails() Option {
 		for _, c := range o.collectors {
 			if frc, ok := c.(*firewallRulesCollector); ok {
 				frc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithDhcpv4Details enables per-lease detail metrics for the dhcpv4 collector
+func WithDhcpv4Details() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if dc, ok := c.(*dhcpv4Collector); ok {
+				dc.SetDetailsEnabled(true)
 				return nil
 			}
 		}
