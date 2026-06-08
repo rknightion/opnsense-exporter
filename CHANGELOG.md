@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.0](https://github.com/rknightion/opnsense-exporter/compare/v0.2.2...v0.3.0) (2026-06-08)
+
+
+### Features
+
+* **collector:** add DHCPv4, ACME and SMART disk collectors ([83b0a8e](https://github.com/rknightion/opnsense-exporter/commit/83b0a8ebb930aadfc6a07ef4047714de87c2f4a5))
+* **collector:** add DynDNS (ddclient) account status collector ([da5216e](https://github.com/rknightion/opnsense-exporter/commit/da5216e5c2b6aee0bf72cf19b676b1311f9cfc35))
+* **collector:** add exporter build and collector-enabled self-observability metrics ([ca82ebb](https://github.com/rknightion/opnsense-exporter/commit/ca82ebb6ca31e7215791363db56e2053016f84db))
+* **collector:** export crash-reporter health status ([58c838d](https://github.com/rknightion/opnsense-exporter/commit/58c838db623f914b70e2364d696536547a1630e8))
+* default instance label to the OPNsense hostname ([f49855b](https://github.com/rknightion/opnsense-exporter/commit/f49855be734e584aadc0c4b406a1aea0f53b6dfa))
+* **gateways:** export force_down, virtual, dynamic and priority metrics ([d48d484](https://github.com/rknightion/opnsense-exporter/commit/d48d484bec636aa92824542e3421fed0ec2b5efe))
+* **grafana:** comprehensive v2 dynamic dashboard with alerts and recording rules ([81d36dd](https://github.com/rknightion/opnsense-exporter/commit/81d36dd43852e907b7a690f52cd8c82bf3556eed))
+* **smart:** enable collector by default and degrade gracefully when absent ([7c49635](https://github.com/rknightion/opnsense-exporter/commit/7c49635949ef9005dacdc1b275168c0f5d26b23e))
+* **wireguard:** add peer handshake-age gauge and fix last-handshake type ([b1f68b1](https://github.com/rknightion/opnsense-exporter/commit/b1f68b12c52dc5b439e9cbbfe6cebde72c5bf63f))
+
+
+### Bug Fixes
+
+* **client:** close response body to prevent gzip connection leak ([2182b99](https://github.com/rknightion/opnsense-exporter/commit/2182b9919311f202bde8dcd2d744002acc8f3ad9))
+* **collector:** recover from panics in sub-collector goroutines ([12fa832](https://github.com/rknightion/opnsense-exporter/commit/12fa832ca757a91487caa62f765123e606dfc50b))
+* **health:** stop reporting a healthy firewall as unhealthy on OPNsense 25.1+ ([f292a50](https://github.com/rknightion/opnsense-exporter/commit/f292a50207e752fadfd86ee5daf9a7de2cba0bfa))
+* **ntp:** avoid narrowing int conversion of NTP reach value ([02b687a](https://github.com/rknightion/opnsense-exporter/commit/02b687a568aa9e88da85b78e251d4642ea202578))
+* **opnsense:** correct seven API-shape mismatches found in OPNsense 26.1 audit ([baf14f0](https://github.com/rknightion/opnsense-exporter/commit/baf14f0d47302bb1a34a895fb27a6a4028ae54dc))
+* **startup:** bound the instance-label hostname lookup with a short timeout ([258205c](https://github.com/rknightion/opnsense-exporter/commit/258205c81d3a0f6a180f0b9f592a75116596dedd))
+* **system:** correct uptime/config-change skew in non-UTC timezones ([9d561e5](https://github.com/rknightion/opnsense-exporter/commit/9d561e57ae84a3c5dd6f4503bd3f2638e1050184))
+
+
+### Documentation
+
+* align documentation with code reality ([721305a](https://github.com/rknightion/opnsense-exporter/commit/721305a3f7d6c88822329c4b337d77df4f7f2e1c))
+* **claude:** note the dashboard coverage gate in the add-a-collector flow ([532c636](https://github.com/rknightion/opnsense-exporter/commit/532c63656c7967a427eadaf8769dcf1b8dd4d4da))
+* **claude:** require docgen + doc-table updates when adding a collector ([8078c80](https://github.com/rknightion/opnsense-exporter/commit/8078c8034eddcd18dbe62b9df991d0838737fa9d))
+* document new collector flags and regenerate generated docs ([1674ba7](https://github.com/rknightion/opnsense-exporter/commit/1674ba752a02952d435664f2d369e0d943c10116))
+* **readme:** update fork changelog for new collectors, enhancements and fixes ([5682bda](https://github.com/rknightion/opnsense-exporter/commit/5682bdad34fb7e3aa0183a0565fb1b2e71fb6260))
+
+
+### CI/CD
+
+* pull Go build image from mirror.gcr.io to drop Docker Hub dependency ([23069fb](https://github.com/rknightion/opnsense-exporter/commit/23069fbf70e9cfb23e1461a3447aa9c76ad13550))
+
 ## [0.2.2](https://github.com/rknightion/opnsense-exporter/compare/v0.2.1...v0.2.2) (2026-06-08)
 
 
