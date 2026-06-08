@@ -110,6 +110,38 @@ func TestWithFirewallRulesDetails(t *testing.T) {
 	}
 }
 
+func TestFirewallIsHealthy(t *testing.T) {
+	mk := func(legacy string, meta any) opnsense.HealthCheckResponse {
+		var r opnsense.HealthCheckResponse
+		r.Firewall.Status = legacy
+		r.Metadata.Firewall.Status = meta
+		return r
+	}
+
+	cases := []struct {
+		name string
+		resp opnsense.HealthCheckResponse
+		want bool
+	}{
+		// OPNsense 25.1+ healthy box: no Firewall entry at all (the original bug).
+		{"new format healthy (absent)", mk("", nil), true},
+		{"legacy OK", mk(opnsense.HealthCheckStatusOK, nil), true},
+		{"legacy error", mk("Error", nil), false},
+		// Metadata status arrives as a JSON number via encoding/json -> float64.
+		{"metadata numeric OK", mk("", float64(opnsense.HealthCheckStatusOK_v25_1)), true},
+		{"metadata numeric not OK", mk("", float64(1)), false},
+		{"metadata string OK", mk("", "OK"), true},
+		{"metadata string error", mk("", "Error"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := firewallIsHealthy(tc.resp); got != tc.want {
+				t.Errorf("firewallIsHealthy(%s) = %v, want %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestWithBuildInfo(t *testing.T) {
 	c := &Collector{}
 	if err := WithBuildInfo("1.2.3")(c); err != nil {

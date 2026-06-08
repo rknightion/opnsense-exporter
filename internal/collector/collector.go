@@ -318,6 +318,35 @@ func WithBuildInfo(version string) Option {
 	}
 }
 
+// firewallIsHealthy reports whether the OPNsense firewall subsystem is healthy, tolerating
+// both the legacy (<25.1) top-level string status and the 25.1+ metadata status. On 25.1+ a
+// healthy box reports an OK overall system status and OMITS any per-Firewall entry (the
+// subsystems list is empty), so an absent metadata firewall status must be treated as healthy
+// — otherwise opnsense_firewall_status reads 0 on a perfectly healthy firewall. The metadata
+// status may arrive as a JSON number (e.g. 2), a string ("OK"), or be absent.
+func firewallIsHealthy(resp opnsense.HealthCheckResponse) bool {
+	// Legacy format: explicit string status that is present and not "OK".
+	if s := resp.Firewall.Status; s != "" && s != opnsense.HealthCheckStatusOK {
+		return false
+	}
+	// 25.1+ metadata format: only flag unhealthy when a status is actually reported.
+	switch s := resp.Metadata.Firewall.Status.(type) {
+	case string:
+		if s != "" && s != opnsense.HealthCheckStatusOK {
+			return false
+		}
+	case float64:
+		if int(s) != opnsense.HealthCheckStatusOK_v25_1 {
+			return false
+		}
+	case int:
+		if s != opnsense.HealthCheckStatusOK_v25_1 {
+			return false
+		}
+	}
+	return true
+}
+
 // deriveCollectorStates maps every registered collector subsystem name to whether
 // it remains enabled (present in the enabled subset) for this exporter instance.
 // It is a pure helper so the enable/disable accounting can be unit-tested without
@@ -504,8 +533,7 @@ func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
 	c.isUp.Set(1)
 	c.firewallHealthStatus.Set(1)
 
-	if systemStatus.Firewall.Status != opnsense.HealthCheckStatusOK &&
-		systemStatus.GetMetadataFirewallStatus() != opnsense.HealthCheckStatusOK_v25_1 {
+	if !firewallIsHealthy(systemStatus) {
 		c.firewallHealthStatus.Set(0)
 	}
 
