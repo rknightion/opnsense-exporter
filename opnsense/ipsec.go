@@ -26,8 +26,6 @@ type ipsecSearchResponse struct {
 type ipsecPhase2 struct {
 	Phase2desc  string
 	Name        string
-	SpiIn       string
-	SpiOut      string
 	InstallTime int
 	RekeyTime   int
 	LifeTime    int
@@ -41,8 +39,6 @@ type ipsecPhase2SearchResponse struct {
 	Rows []struct {
 		Phase2desc  string `json:"phase2desc"`
 		Name        string `json:"name"`
-		SpiIn       string `json:"spi-in"`
-		SpiOut      string `json:"spi-out"`
 		InstallTime string `json:"install-time"`
 		RekeyTime   string `json:"rekey-time"`
 		LifeTime    string `json:"life-time"`
@@ -161,8 +157,6 @@ func (c *Client) FetchIPsecPhase1() (IPsecPhase1, *APICallError) {
 				phase2Rows = append(phase2Rows, ipsecPhase2{
 					Phase2desc:  v2.Phase2desc,
 					Name:        v2.Name,
-					SpiIn:       v2.SpiIn,
-					SpiOut:      v2.SpiOut,
 					InstallTime: p2InstallTime,
 					RekeyTime:   rekeyTime,
 					LifeTime:    lifeTime,

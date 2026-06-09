@@ -705,6 +705,8 @@ func parseFlagInfo(filePath string, subsystemConstants map[string]string) map[st
 		"exporter.disable-acme":                  "acme",
 		"exporter.disable-smart":                 "smart",
 		"exporter.disable-dyndns":                "dyndns",
+		"exporter.disable-gateways":              "gateways",
+		"exporter.enable-openvpn-details":        "openvpn",
 	}
 
 	// Parse all var declarations to find kingpin.Flag chains
@@ -763,9 +765,9 @@ func parseFlagInfo(filePath string, subsystemConstants map[string]string) map[st
 		}
 	}
 
-	// Also add entries for gateways, interfaces, services, protocol which have no disable flag
+	// Also add entries for interfaces, services, protocol which have no disable flag
 	// (they are always enabled)
-	for _, constName := range []string{"GatewaysSubsystem", "InterfacesSubsystem", "ServicesSubsystem", "ProtocolSubsystem"} {
+	for _, constName := range []string{"InterfacesSubsystem", "ServicesSubsystem", "ProtocolSubsystem"} {
 		if val, ok := subsystemConstants[constName]; ok {
 			if _, exists := result[val]; !exists {
 				result[val] = FlagInfo{

@@ -106,6 +106,14 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutOpenVPNCollector())
 		logger.Info("openvpn collector disabled")
 	}
+	if !collectorsSwitches.Gateways {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutGatewaysCollector())
+		logger.Info("gateways collector disabled")
+	}
+	if collectorsSwitches.OpenVPNDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithOpenVPNDetails())
+		logger.Info("openvpn per-session details enabled")
+	}
 	if !collectorsSwitches.Dnsmasq {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDnsmasqCollector())
 		logger.Info("dnsmasq collector disabled")

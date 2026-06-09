@@ -67,6 +67,9 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Mbuf statistics** — Added jumbo9 and jumbo16 buffer types to failure and sleep counters, plus 3 new sendfile metrics (`sendfile_syscalls_total`, `sendfile_io_total`, `sendfile_pages_sent_total`). Polls an additional `get_memory_statistics` endpoint with partial failure tolerance.
 - **Firewall PF statistics** — Added `opnsense_firewall_interface_hits_total` counter showing per-interface rule match counts from the aggregate stats endpoint. Partial failure tolerant.
 - **Network diagnostics** — Added pfsync HA cluster metrics: `pfsync_nodes_total` gauge and per-node `pfsync_node_info` with creatorid and is_local labels. Partial failure tolerant.
+- **OpenVPN** — Per-session metrics are now opt-in: the per-session `opnsense_openvpn_sessions` series (description, virtual address and **username** labels) is only emitted when `--exporter.enable-openvpn-details` / `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` is set, since it exposes usernames and per-client tunnel addresses on the metrics endpoint. Two new aggregate metrics are always emitted instead: `opnsense_openvpn_sessions_total` (total session count) and `opnsense_openvpn_sessions_by_instance` (session count per instance description). **Breaking:** the per-session series is no longer emitted by default — set the flag to restore it.
+- **IPsec** — Phase 2 metrics no longer carry `spi_in`/`spi_out` labels (remaining labels: `description`, `name`, `phase1_name`). SPIs change on every rekey, so the labels created a brand-new set of time series per rekey (series churn) with no analytic value. **Breaking** for any queries that referenced those labels.
+- **Gateways** — The gateways collector can now be disabled with `--exporter.disable-gateways` / `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` (it previously had no disable switch).
 - **Exporter self-observability** — Added two always-on exporter-level metrics: `opnsense_exporter_build_info` (value 1, with `version` and `goversion` labels) for pinning the running build, and `opnsense_exporter_collector_enabled{collector="<subsystem>"}` (1 = enabled, 0 = disabled) emitted for every registered collector so dashboards/alerts can distinguish "collector disabled" from "feature absent / no data". Both carry the `opnsense_instance` label and are surfaced on the dashboard's Diagnostics tab.
 
 ### Bug Fixes
@@ -103,6 +106,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Fully off Docker Hub** — The Go toolchain build stage now pulls from Google's `mirror.gcr.io/library/golang` mirror instead of `docker.io`, eliminating the last Docker Hub dependency (and the anonymous-pull rate-limit/gateway-timeout failures it caused in CI). Both build and runtime base images are now served from Google infrastructure.
 - **Removed GOMAXPROCS flag** — Removed the `--runtime.gomaxprocs` flag (previously defaulting to 2). Go's runtime now auto-detects available CPUs, which is the correct default for this I/O-bound exporter.
 - **Security hardening** — The metrics HTTP server now sets `ReadHeaderTimeout`/`IdleTimeout` (Slowloris protection); API responses are capped at 64 MiB after decompression (decompression-bomb protection); successful API response bodies are no longer logged at debug level (error responses still carry a bounded body excerpt for debugging); API POST requests now correctly resend their body on retry; release workflow permissions are scoped per-job and CI build-telemetry secrets are no longer injected into PR-triggered builds.
+- **Security hardening (supply chain & logging)** — GoReleaser is pinned to an exact version in the release workflow instead of `latest` (with a Renovate hint so bots can bump it); the documentation site no longer loads third-party CDN JavaScript (the unused MathJax and polyfill scripts were removed); API error-log body excerpts now redact credential fields — JSON values whose keys contain `password`, `secret`, `token`, `api_key` or `private_key` are replaced with `[REDACTED]` before logging.
 
 ### Documentation
 
@@ -166,17 +170,18 @@ The exporter requires that the following OPNsense settings be enabled:
 The following command will start the exporter and expose the metrics on port 8080. Replace `ops.example.com`, `your-api-key`, `your-api-secret` and `instance1` with your own values.
 
 ```bash
-docker run -p 8080:8080 ghcr.io/rknightion/opnsense-exporter:latest \
-      /opnsense-exporter \
-      --log.level=debug \
+docker run -p 8080:8080 \
+      -e OPNSENSE_EXPORTER_OPS_API_KEY=your-api-key \
+      -e OPNSENSE_EXPORTER_OPS_API_SECRET=your-api-secret \
+      ghcr.io/rknightion/opnsense-exporter:latest \
       --log.format=json \
       --opnsense.protocol=https \
       --opnsense.address=ops.example.com \
-      --opnsense.api-key=your-api-key \
-      --opnsense.api-secret=your-api-secret \
       --exporter.instance-label=instance1 \
       --web.listen-address=:8080
 ```
+
+For production deployments, prefer file-based secrets (`OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE`) over plain environment variables — see the [Docker secrets example](#docker-compose) below.
 
 TODO: Add example how to add custom CA certificates to the container.
 
@@ -300,6 +305,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-acme` | `OPNSENSE_EXPORTER_DISABLE_ACME` | ACME client certificate renewal status and expiry (silent when `os-acme-client` is absent) |
 | `--exporter.disable-smart` | `OPNSENSE_EXPORTER_DISABLE_SMART` | SMART disk health (per-disk POST fanout; silent when `os-smart` is absent) |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) |
+| `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | Gateway status (RTT, packet loss, gateway state) |
 
 #### Disabled by default (opt-in with flag)
 
@@ -318,6 +324,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Emit per-rule detail metrics for firewall rules. One time series per firewall rule per metric (UUID, description, action, interface, direction). |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Emit per-lease detail metrics for Kea DHCP. One time series per active DHCP lease (address, hostname, MAC, interface). |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | Emit per-lease detail metrics for ISC DHCPv4. One time series per active DHCP lease (address, hostname, MAC, interface). |
+| `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | Emit per-session detail metrics for OpenVPN. One time series per connected session (description, virtual address, username). **Exposes usernames and per-client tunnel addresses in metric labels.** |
 
 #### Exporter meta-metrics
 
@@ -352,6 +359,11 @@ Flags:
       --[no-]exporter.disable-openvpn  
                                 Disable the scraping of OpenVPN service
                                 ($OPNSENSE_EXPORTER_DISABLE_OPENVPN)
+      --[no-]exporter.enable-openvpn-details  
+                                Enable per-session detail metrics
+                                for OpenVPN (exposes usernames
+                                and per-client tunnel addresses)
+                                ($OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS)
       --[no-]exporter.disable-firewall  
                                 Disable the scraping of the firewall (pf)
                                 metrics ($OPNSENSE_EXPORTER_DISABLE_FIREWALL)
@@ -439,6 +451,9 @@ Flags:
                                 Disable the scraping of DynDNS
                                 (ddclient) account update status metrics
                                 ($OPNSENSE_EXPORTER_DISABLE_DYNDNS)
+      --[no-]exporter.disable-gateways  
+                                Disable the scraping of gateway status metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_GATEWAYS)
       --web.telemetry-path="/metrics"  
                                 Path under which to expose metrics.
       --[no-]web.disable-exporter-metrics  
@@ -478,9 +493,82 @@ Flags:
                                 set. ($OPNSENSE_EXPORTER_OPS_API_SECRET)
       --[no-]opnsense.insecure  Disable TLS certificate verification
                                 ($OPNSENSE_EXPORTER_OPS_INSECURE)
+      --[no-]otlp.enabled       Enable pushing metrics to an OTLP endpoint (in
+                                addition to the /metrics pull endpoint). Off by
+                                default. ($OPNSENSE_EXPORTER_OTLP_ENABLED)
+      --otlp.endpoint=""        OTLP endpoint URL. When empty, the standard
+                                OTEL_EXPORTER_OTLP_ENDPOINT env var is used.
+                                ($OPNSENSE_EXPORTER_OTLP_ENDPOINT)
+      --otlp.protocol="http/protobuf"  
+                                OTLP transport protocol: grpc or http/protobuf.
+                                When empty, OTEL_EXPORTER_OTLP_PROTOCOL is used.
+                                ($OPNSENSE_EXPORTER_OTLP_PROTOCOL)
+      --[no-]otlp.insecure      Disable TLS for the OTLP connection (plaintext).
+                                ($OPNSENSE_EXPORTER_OTLP_INSECURE)
+      --otlp.headers=""         OTLP headers as comma-separated key=value pairs
+                                (e.g. X-Scope-OrgID=1,Authorization=Bearer x).
+                                When set, replaces OTEL_EXPORTER_OTLP_HEADERS
+                                entirely; when empty, that env var is used.
+                                ($OPNSENSE_EXPORTER_OTLP_HEADERS)
+      --otlp.export-interval=60s  
+                                Interval between OTLP metric exports
+                                (independent of Prometheus scrapes).
+                                ($OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL)
+      --otlp.tls-ca-file=""     Path to a CA certificate file
+                                used to verify the OTLP server.
+                                ($OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE)
+      --otlp.tls-cert-file=""   Path to a client certificate file for OTLP
+                                mutual TLS (requires --otlp.tls-key-file).
+                                ($OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE)
+      --otlp.tls-key-file=""    Path to a client key file for OTLP mutual
+                                TLS (requires --otlp.tls-cert-file).
+                                ($OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE)
+      --otlp.service-name="opnsense-exporter"  
+                                service.name resource attribute for exported
+                                metrics. ($OPNSENSE_EXPORTER_OTLP_SERVICE_NAME)
+      --otlp.grafana-cloud-instance-id=""  
+                                Grafana Cloud OTLP instance ID.
+                                With --otlp.grafana-cloud-token,
+                                synthesizes basic-auth. This flag/ENV or
+                                OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE
+                                may be set.
+                                ($OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID)
+      --otlp.grafana-cloud-token=""  
+                                Grafana Cloud Access Policy
+                                token. This flag/ENV or
+                                OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE
+                                may be set.
+                                ($OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN)
+      --otlp.grafana-cloud-endpoint=""  
+                                Grafana Cloud OTLP gateway base URL (required
+                                when using the Grafana Cloud shortcut).
+                                ($OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT)
+      --pyroscope.server-address=""  
+                                Grafana Cloud Pyroscope endpoint URL.
+                                When empty, continuous profiling is disabled.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS)
+      --pyroscope.auth-user=""  HTTP basic auth user for Pyroscope (Grafana
+                                Cloud stack/instance ID). This flag/ENV
+                                or PYROSCOPE_AUTH_USER_FILE may be set.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER)
+      --pyroscope.auth-password=""  
+                                HTTP basic auth password for Pyroscope (Grafana
+                                Cloud Access Policy token). This flag/ENV
+                                or PYROSCOPE_AUTH_PASSWORD_FILE may be set.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD)
+      --pyroscope.tenant-id=""  Pyroscope tenant ID (only needed for
+                                multi-tenancy; unused for Grafana Cloud).
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID)
+      --pyroscope.application-name="opnsense-exporter"  
+                                Pyroscope application name
+                                profiles are reported under.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME)
+      --[no-]pyroscope.enable-mutex-block  
+                                Enable goroutine/mutex/block profiling
+                                (adds minor runtime overhead).
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK)
       --log.level=info          Only log messages with the given severity or
                                 above. One of: [debug, info, warn, error]
       --log.format=logfmt       Output format of log messages. One of: [logfmt,
                                 json]
-
 ```

@@ -34,8 +34,8 @@ local.docker-compose.yml
 .idea/
 .vscode/
 
-opnsense-exporter
-docgen
+/opnsense-exporter
+/docgen
 
 # Python (grafana dashboard/rules builders)
 __pycache__/

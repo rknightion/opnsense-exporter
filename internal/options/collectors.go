@@ -27,6 +27,10 @@ var (
 		"exporter.disable-openvpn",
 		"Disable the scraping of OpenVPN service",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_OPENVPN").Default("false").Bool()
+	openVPNDetailsEnabled = kingpin.Flag(
+		"exporter.enable-openvpn-details",
+		"Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS").Default("false").Bool()
 	firewallCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firewall",
 		"Disable the scraping of the firewall (pf) metrics",
@@ -123,6 +127,10 @@ var (
 		"exporter.disable-dyndns",
 		"Disable the scraping of DynDNS (ddclient) account update status metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_DYNDNS").Default("false").Bool()
+	gatewaysCollectorDisabled = kingpin.Flag(
+		"exporter.disable-gateways",
+		"Disable the scraping of gateway status metrics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_GATEWAYS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -133,6 +141,7 @@ type CollectorsDisableSwitch struct {
 	IPsec                bool
 	Unbound              bool
 	OpenVPN              bool
+	OpenVPNDetails       bool
 	Firewall             bool
 	Firmware             bool
 	Dnsmasq              bool
@@ -157,6 +166,7 @@ type CollectorsDisableSwitch struct {
 	ACME                 bool
 	SMART                bool
 	DynDNS               bool
+	Gateways             bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -168,6 +178,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		IPsec:                !*ipsecCollectorDisabled,
 		Unbound:              !*unboundCollectorDisabled,
 		OpenVPN:              !*openVPNCollectorDisabled,
+		OpenVPNDetails:       *openVPNDetailsEnabled,
 		Firewall:             !*firewallCollectorDisabled,
 		Firmware:             !*firmwareCollectorDisabled,
 		Dnsmasq:              !*dnsmasqCollectorDisabled,
@@ -192,5 +203,6 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		ACME:                 !*acmeCollectorDisabled,
 		SMART:                !*smartCollectorDisabled,
 		DynDNS:               !*dyndnsCollectorDisabled,
+		Gateways:             !*gatewaysCollectorDisabled,
 	}
 }

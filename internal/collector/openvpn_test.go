@@ -3,12 +3,15 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
-func TestOpenVPNCollector_Update(t *testing.T) {
+func openVPNTestServer(t *testing.T, sessionsJSON string) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/openvpn/instances/search", func(w http.ResponseWriter, r *http.Request) {
@@ -36,24 +39,54 @@ func TestOpenVPNCollector_Update(t *testing.T) {
 	})
 
 	mux.HandleFunc("/api/openvpn/service/search_sessions", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{
-			"rows": [
-				{
-					"description": "Site-to-Site VPN",
-					"username": "user1",
-					"virtual_address": "10.0.0.2",
-					"status": "ok"
-				}
-			],
-			"rowCount": 1,
-			"total": 1,
-			"current": 1
-		}`))
+		w.Write([]byte(sessionsJSON))
 	})
 
 	server := httptest.NewServer(mux)
-	defer server.Close()
+	t.Cleanup(server.Close)
+	return server
+}
 
+const openVPNTestSessions = `{
+	"rows": [
+		{
+			"description": "Site-to-Site VPN",
+			"username": "user1",
+			"virtual_address": "10.0.0.2",
+			"status": "ok"
+		},
+		{
+			"description": "Site-to-Site VPN",
+			"username": "user2",
+			"virtual_address": "10.0.0.3",
+			"status": "ok"
+		},
+		{
+			"description": "Road Warrior",
+			"username": "user3",
+			"virtual_address": "10.0.1.2",
+			"status": "ok"
+		}
+	],
+	"rowCount": 3,
+	"total": 3,
+	"current": 1
+}`
+
+// metricsByDesc groups collected metrics by exact fqName.
+func metricsByDesc(metrics []prometheus.Metric, fqName string) []prometheus.Metric {
+	var out []prometheus.Metric
+	needle := `fqName: "` + fqName + `"`
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), needle) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func TestOpenVPNCollector_Update_DefaultNoSessionDetails(t *testing.T) {
+	server := openVPNTestServer(t, openVPNTestSessions)
 	client := newCollectorTestClient(t, server)
 
 	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
@@ -61,45 +94,83 @@ func TestOpenVPNCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 2 instances + 1 session = 3
-	expectedCount := 3
-	if len(metrics) != expectedCount {
+	// Per-session series must NOT be emitted by default.
+	if got := metricsByDesc(metrics, "opnsense_openvpn_sessions"); len(got) != 0 {
+		t.Errorf("expected no per-session metrics by default, got %d", len(got))
+	}
+
+	totals := metricsByDesc(metrics, "opnsense_openvpn_sessions_total")
+	if len(totals) != 1 {
+		t.Fatalf("expected 1 sessions_total metric, got %d", len(totals))
+	}
+	if v := getMetricValue(totals[0]); v != 3 {
+		t.Errorf("expected sessions_total = 3, got %v", v)
+	}
+
+	byInstance := metricsByDesc(metrics, "opnsense_openvpn_sessions_by_instance")
+	if len(byInstance) != 2 {
+		t.Fatalf("expected 2 sessions_by_instance metrics, got %d", len(byInstance))
+	}
+	counts := map[string]float64{}
+	for _, m := range byInstance {
+		counts[getMetricLabels(m)["description"]] = getMetricValue(m)
+	}
+	if counts["Site-to-Site VPN"] != 2 {
+		t.Errorf("expected 2 sessions for Site-to-Site VPN, got %v", counts["Site-to-Site VPN"])
+	}
+	if counts["Road Warrior"] != 1 {
+		t.Errorf("expected 1 session for Road Warrior, got %v", counts["Road Warrior"])
+	}
+
+	// 2 instances + 1 sessions_total + 2 sessions_by_instance = 5
+	if expectedCount := 5; len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+}
+
+func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
+	server := openVPNTestServer(t, openVPNTestSessions)
+	client := newCollectorTestClient(t, server)
+
+	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+
+	sessions := metricsByDesc(metrics, "opnsense_openvpn_sessions")
+	if len(sessions) != 3 {
+		t.Fatalf("expected 3 per-session metrics with details enabled, got %d", len(sessions))
+	}
+	found := false
+	for _, m := range sessions {
+		labels := getMetricLabels(m)
+		if labels["username"] == "user1" && labels["virtual_address"] == "10.0.0.2" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected a per-session metric with username=user1 and virtual_address=10.0.0.2")
+	}
+
+	// Aggregates still emitted alongside details.
+	if got := metricsByDesc(metrics, "opnsense_openvpn_sessions_total"); len(got) != 1 {
+		t.Errorf("expected 1 sessions_total metric, got %d", len(got))
+	}
+
+	// 2 instances + 1 sessions_total + 2 sessions_by_instance + 3 sessions = 8
+	if expectedCount := 8; len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 }
 
 func TestOpenVPNCollector_Update_NoSessions(t *testing.T) {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/api/openvpn/instances/search", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{
-			"rows": [
-				{
-					"uuid": "vpn-uuid-1",
-					"description": "VPN Server",
-					"role": "Server",
-					"dev_type": "tun",
-					"enabled": "1"
-				}
-			],
-			"rowCount": 1,
-			"total": 1,
-			"current": 1
-		}`))
-	})
-
-	mux.HandleFunc("/api/openvpn/service/search_sessions", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{
-			"rows": [],
-			"rowCount": 0,
-			"total": 0,
-			"current": 1
-		}`))
-	})
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
+	server := openVPNTestServer(t, `{
+		"rows": [],
+		"rowCount": 0,
+		"total": 0,
+		"current": 1
+	}`)
 	client := newCollectorTestClient(t, server)
 
 	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
@@ -107,9 +178,17 @@ func TestOpenVPNCollector_Update_NoSessions(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 instance + 0 sessions = 1
-	expectedCount := 1
-	if len(metrics) != expectedCount {
+	// sessions_total must be emitted even when there are zero sessions.
+	totals := metricsByDesc(metrics, "opnsense_openvpn_sessions_total")
+	if len(totals) != 1 {
+		t.Fatalf("expected 1 sessions_total metric, got %d", len(totals))
+	}
+	if v := getMetricValue(totals[0]); v != 0 {
+		t.Errorf("expected sessions_total = 0, got %v", v)
+	}
+
+	// 2 instances + 1 sessions_total = 3
+	if expectedCount := 3; len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 }

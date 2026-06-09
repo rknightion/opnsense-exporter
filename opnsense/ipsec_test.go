@@ -122,9 +122,6 @@ func TestFetchIPsecPhase1_Success(t *testing.T) {
 	if ph2_1.Phase2desc != "Tunnel 1" {
 		t.Errorf("expected Phase2desc 'Tunnel 1', got %q", ph2_1.Phase2desc)
 	}
-	if ph2_1.SpiIn != "0xaabbccdd" {
-		t.Errorf("expected SpiIn '0xaabbccdd', got %q", ph2_1.SpiIn)
-	}
 	if ph2_1.InstallTime != 1800 {
 		t.Errorf("expected Phase2 InstallTime=1800, got %d", ph2_1.InstallTime)
 	}

@@ -163,6 +163,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-acme` | `OPNSENSE_EXPORTER_DISABLE_ACME` | ACME client certificate renewal status and expiry (silent when `os-acme-client` is absent) |
 | `--exporter.disable-smart` | `OPNSENSE_EXPORTER_DISABLE_SMART` | SMART disk health, one `list` + one `info` POST per disk per scrape (silent when `os-smart` is absent) |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) |
+| `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | Gateway status (RTT, packet loss, gateway state) |
 
 ### Disabled by default (opt-in with flag)
 
@@ -186,6 +187,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Per-rule detail metrics for firewall rules. One time series per rule per metric (UUID, description, action, interface, direction). |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Per-lease detail metrics for Kea DHCP. One time series per active lease (address, hostname, MAC, interface). |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | Per-lease detail metrics for ISC DHCPv4. One time series per active lease (address, hostname, MAC, interface). |
+| `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | Per-session detail metrics for OpenVPN. One time series per connected session (description, virtual address, username). **Exposes usernames and per-client tunnel addresses** in metric labels. |
 
 ## Full flag reference
 
@@ -216,6 +218,11 @@ Flags:
       --[no-]exporter.disable-openvpn  
                                 Disable the scraping of OpenVPN service
                                 ($OPNSENSE_EXPORTER_DISABLE_OPENVPN)
+      --[no-]exporter.enable-openvpn-details  
+                                Enable per-session detail metrics
+                                for OpenVPN (exposes usernames
+                                and per-client tunnel addresses)
+                                ($OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS)
       --[no-]exporter.disable-firewall  
                                 Disable the scraping of the firewall (pf)
                                 metrics ($OPNSENSE_EXPORTER_DISABLE_FIREWALL)
@@ -303,6 +310,9 @@ Flags:
                                 Disable the scraping of DynDNS
                                 (ddclient) account update status metrics
                                 ($OPNSENSE_EXPORTER_DISABLE_DYNDNS)
+      --[no-]exporter.disable-gateways  
+                                Disable the scraping of gateway status metrics
+                                ($OPNSENSE_EXPORTER_DISABLE_GATEWAYS)
       --web.telemetry-path="/metrics"  
                                 Path under which to expose metrics.
       --[no-]web.disable-exporter-metrics  
@@ -420,5 +430,4 @@ Flags:
                                 above. One of: [debug, info, warn, error]
       --log.format=logfmt       Output format of log messages. One of: [logfmt,
                                 json]
-
 ```

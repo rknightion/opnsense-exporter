@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 303
-- **Gauges:** 165
-- **Counters:** 138
+- **Total metrics:** 305
+- **Gauges:** 166
+- **Counters:** 139
 
 ## General
 
@@ -153,23 +153,23 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_gateways_info | Gauge | name, description, device, protocol, enabled, weight, interface, upstream | Information of the gateway | --- |
-| opnsense_gateways_monitor_info | Gauge | name, enabled, no_route, address | Gateway monitoring configuration | --- |
-| opnsense_gateways_rtt_milliseconds | Gauge | name, address | RTT is the average (mean) of the round trip time in milliseconds by name and address | --- |
-| opnsense_gateways_rttd_milliseconds | Gauge | name, address | RTTd is the standard deviation of the round trip time in milliseconds by name and address | --- |
-| opnsense_gateways_rtt_low_milliseconds | Gauge | name, address | Gateway low latency threshold | --- |
-| opnsense_gateways_rtt_high_milliseconds | Gauge | name, address | Gateway high latency threshold | --- |
-| opnsense_gateways_loss_percentage | Gauge | name, address | The current gateway loss percentage by name and address | --- |
-| opnsense_gateways_loss_low_percentage | Gauge | name, address | Gateway low packet loss threshold | --- |
-| opnsense_gateways_loss_high_percentage | Gauge | name, address | Gateway high packet loss threshold | --- |
-| opnsense_gateways_probe_interval_seconds | Gauge | name, address | Gateway probe interval | --- |
-| opnsense_gateways_probe_period_seconds | Gauge | name, address | Gateway probe period | --- |
-| opnsense_gateways_probe_timeout_seconds | Gauge | name, address | Gateway probe timeout | --- |
-| opnsense_gateways_status | Gauge | name, address, default_gateway | Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending) | --- |
-| opnsense_gateways_force_down | Gauge | name, address | 1 if the gateway is administratively forced down, 0 otherwise | --- |
-| opnsense_gateways_virtual | Gauge | name, address | 1 if the gateway is virtual, 0 otherwise | --- |
-| opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --- |
-| opnsense_gateways_priority | Gauge | name, address | Gateway priority (lower value = higher priority) | --- |
+| opnsense_gateways_info | Gauge | name, description, device, protocol, enabled, weight, interface, upstream | Information of the gateway | --exporter.disable-gateways |
+| opnsense_gateways_monitor_info | Gauge | name, enabled, no_route, address | Gateway monitoring configuration | --exporter.disable-gateways |
+| opnsense_gateways_rtt_milliseconds | Gauge | name, address | RTT is the average (mean) of the round trip time in milliseconds by name and address | --exporter.disable-gateways |
+| opnsense_gateways_rttd_milliseconds | Gauge | name, address | RTTd is the standard deviation of the round trip time in milliseconds by name and address | --exporter.disable-gateways |
+| opnsense_gateways_rtt_low_milliseconds | Gauge | name, address | Gateway low latency threshold | --exporter.disable-gateways |
+| opnsense_gateways_rtt_high_milliseconds | Gauge | name, address | Gateway high latency threshold | --exporter.disable-gateways |
+| opnsense_gateways_loss_percentage | Gauge | name, address | The current gateway loss percentage by name and address | --exporter.disable-gateways |
+| opnsense_gateways_loss_low_percentage | Gauge | name, address | Gateway low packet loss threshold | --exporter.disable-gateways |
+| opnsense_gateways_loss_high_percentage | Gauge | name, address | Gateway high packet loss threshold | --exporter.disable-gateways |
+| opnsense_gateways_probe_interval_seconds | Gauge | name, address | Gateway probe interval | --exporter.disable-gateways |
+| opnsense_gateways_probe_period_seconds | Gauge | name, address | Gateway probe period | --exporter.disable-gateways |
+| opnsense_gateways_probe_timeout_seconds | Gauge | name, address | Gateway probe timeout | --exporter.disable-gateways |
+| opnsense_gateways_status | Gauge | name, address, default_gateway | Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending) | --exporter.disable-gateways |
+| opnsense_gateways_force_down | Gauge | name, address | 1 if the gateway is administratively forced down, 0 otherwise | --exporter.disable-gateways |
+| opnsense_gateways_virtual | Gauge | name, address | 1 if the gateway is virtual, 0 otherwise | --exporter.disable-gateways |
+| opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --exporter.disable-gateways |
+| opnsense_gateways_priority | Gauge | name, address | Gateway priority (lower value = higher priority) | --exporter.disable-gateways |
 
 ## IPsec
 
@@ -181,13 +181,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ipsec_phase1_bytes_out | Gauge | description, name | IPsec phase1 bytes out | --exporter.disable-ipsec |
 | opnsense_ipsec_phase1_packets_in | Gauge | description, name | IPsec phase1 packets in | --exporter.disable-ipsec |
 | opnsense_ipsec_phase1_packets_out | Gauge | description, name | IPsec phase1 packets out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_install_time | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 install time | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_bytes_in | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 bytes in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_bytes_out | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 bytes out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_packets_in | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 packets in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_packets_out | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 packets out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_rekey_time | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 rekey time | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_life_time | Gauge | description, name, spi_in, spi_out, phase1_name | IPsec phase2 life time | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_install_time | Gauge | description, name, phase1_name | IPsec phase2 install time | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_bytes_in | Gauge | description, name, phase1_name | IPsec phase2 bytes in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_bytes_out | Gauge | description, name, phase1_name | IPsec phase2 bytes out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_packets_in | Gauge | description, name, phase1_name | IPsec phase2 packets in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_packets_out | Gauge | description, name, phase1_name | IPsec phase2 packets out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_rekey_time | Gauge | description, name, phase1_name | IPsec phase2 rekey time | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_life_time | Gauge | description, name, phase1_name | IPsec phase2 life time | --exporter.disable-ipsec |
 | opnsense_ipsec_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-ipsec |
 
 ## ISC DHCPv4
@@ -310,7 +310,9 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_openvpn_instances | Gauge | uuid, role, description, device_type | OpenVPN instances (1 = enabled, 0 = disabled) by role (server, client) | --exporter.disable-openvpn |
-| opnsense_openvpn_sessions | Gauge | description, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok) | --exporter.disable-openvpn |
+| opnsense_openvpn_sessions | Gauge | description, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_sessions_total | Counter | --- | Total number of OpenVPN sessions | --exporter.disable-openvpn |
+| opnsense_openvpn_sessions_by_instance | Gauge | description | Number of OpenVPN sessions per instance | --exporter.disable-openvpn |
 
 ## PF Statistics
 

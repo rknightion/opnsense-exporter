@@ -8,12 +8,15 @@ import (
 )
 
 type openVPNCollector struct {
-	log       *slog.Logger
-	instances *prometheus.Desc
-	sessions  *prometheus.Desc
+	log                *slog.Logger
+	instances          *prometheus.Desc
+	sessions           *prometheus.Desc
+	sessionsTotal      *prometheus.Desc
+	sessionsByInstance *prometheus.Desc
 
-	subsystem string
-	instance  string
+	subsystem      string
+	instance       string
+	detailsEnabled bool
 }
 
 func init() {
@@ -37,14 +40,28 @@ func (c *openVPNCollector) Register(namespace, instanceLabel string, log *slog.L
 		[]string{"uuid", "role", "description", "device_type"},
 	)
 	c.sessions = buildPrometheusDesc(c.subsystem, "sessions",
-		"OpenVPN session (1 = ok, 0 = not ok)",
+		"OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set.",
 		[]string{"description", "virtual_address", "username"},
 	)
+	c.sessionsTotal = buildPrometheusDesc(c.subsystem, "sessions_total",
+		"Total number of OpenVPN sessions",
+		nil,
+	)
+	c.sessionsByInstance = buildPrometheusDesc(c.subsystem, "sessions_by_instance",
+		"Number of OpenVPN sessions per instance",
+		[]string{"description"},
+	)
+}
+
+func (c *openVPNCollector) SetDetailsEnabled(enabled bool) {
+	c.detailsEnabled = enabled
 }
 
 func (c *openVPNCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.instances
 	ch <- c.sessions
+	ch <- c.sessionsTotal
+	ch <- c.sessionsByInstance
 }
 
 func (c *openVPNCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -69,16 +86,40 @@ func (c *openVPNCollector) Update(client *opnsense.Client, ch chan<- prometheus.
 	if err != nil {
 		return err
 	}
+
+	ch <- prometheus.MustNewConstMetric(
+		c.sessionsTotal,
+		prometheus.GaugeValue,
+		float64(len(sessions.Rows)),
+		c.instance,
+	)
+
+	sessionsByInstance := make(map[string]int)
 	for _, session := range sessions.Rows {
+		sessionsByInstance[session.Description]++
+	}
+	for description, count := range sessionsByInstance {
 		ch <- prometheus.MustNewConstMetric(
-			c.sessions,
+			c.sessionsByInstance,
 			prometheus.GaugeValue,
-			float64(session.Status),
-			session.Description,
-			session.VirtualAddress,
-			session.Username,
+			float64(count),
+			description,
 			c.instance,
 		)
+	}
+
+	if c.detailsEnabled {
+		for _, session := range sessions.Rows {
+			ch <- prometheus.MustNewConstMetric(
+				c.sessions,
+				prometheus.GaugeValue,
+				float64(session.Status),
+				session.Description,
+				session.VirtualAddress,
+				session.Username,
+				c.instance,
+			)
+		}
 	}
 
 	return nil

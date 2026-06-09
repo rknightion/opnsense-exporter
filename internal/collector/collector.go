@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strconv"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -257,6 +258,12 @@ func WithoutDynDNSCollector() Option {
 	return withoutCollectorInstance(DynDNSSubsystem)
 }
 
+// WithoutGatewaysCollector Option
+// removes the gateways collector from the list of collectors
+func WithoutGatewaysCollector() Option {
+	return withoutCollectorInstance(GatewaysSubsystem)
+}
+
 // WithKeaDetails enables per-lease detail metrics for the kea collector
 func WithKeaDetails() Option {
 	return func(o *Collector) error {
@@ -309,6 +316,19 @@ func WithDnsmasqDetails() Option {
 	}
 }
 
+// WithOpenVPNDetails enables per-session detail metrics for the OpenVPN collector
+func WithOpenVPNDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if oc, ok := c.(*openVPNCollector); ok {
+				oc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithBuildInfo sets the exporter build version surfaced via
 // opnsense_exporter_build_info.
 func WithBuildInfo(version string) Option {
@@ -332,7 +352,14 @@ func firewallIsHealthy(resp opnsense.HealthCheckResponse) bool {
 	// 25.1+ metadata format: only flag unhealthy when a status is actually reported.
 	switch s := resp.Metadata.Firewall.Status.(type) {
 	case string:
-		if s != "" && s != opnsense.HealthCheckStatusOK {
+		if s == "" || s == opnsense.HealthCheckStatusOK {
+			// healthy
+		} else if i, err := strconv.Atoi(s); err == nil {
+			// OPNsense 25.1+ can return the numeric status as a string (e.g. "2").
+			if i != opnsense.HealthCheckStatusOK_v25_1 {
+				return false
+			}
+		} else {
 			return false
 		}
 	case float64:

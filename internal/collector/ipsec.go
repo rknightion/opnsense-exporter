@@ -72,31 +72,31 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 
 	c.phase2_install_time = buildPrometheusDesc(c.subsystem, "phase2_install_time",
 		"IPsec phase2 install time",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 	c.phase2_bytes_in = buildPrometheusDesc(c.subsystem, "phase2_bytes_in",
 		"IPsec phase2 bytes in",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 	c.phase2_bytes_out = buildPrometheusDesc(c.subsystem, "phase2_bytes_out",
 		"IPsec phase2 bytes out",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 	c.phase2_packets_in = buildPrometheusDesc(c.subsystem, "phase2_packets_in",
 		"IPsec phase2 packets in",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 	c.phase2_packets_out = buildPrometheusDesc(c.subsystem, "phase2_packets_out",
 		"IPsec phase2 packets out",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 	c.phase2_rekey_time = buildPrometheusDesc(c.subsystem, "phase2_rekey_time",
 		"IPsec phase2 rekey time",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 	c.phase2_life_time = buildPrometheusDesc(c.subsystem, "phase2_life_time",
 		"IPsec phase2 life time",
-		[]string{"description", "name", "spi_in", "spi_out", "phase1_name"},
+		[]string{"description", "name", "phase1_name"},
 	)
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
@@ -177,15 +177,32 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 			phase1.Name,
 			c.instance,
 		)
-		for _, phase2 := range phase1.Phase2 {
+
+		// Without the SPI labels, overlapping SAs for the same child (the old and
+		// new SA are both installed briefly during a rekey) would produce duplicate
+		// label sets and fail the scrape. Dedupe by (description, name), keeping
+		// the row with the smallest InstallTime: install time is age-in-seconds,
+		// so the smallest value is the newest SA.
+		type phase2Key struct{ desc, name string }
+		newest := make(map[phase2Key]int)
+		for i, phase2 := range phase1.Phase2 {
+			key := phase2Key{phase2.Phase2desc, phase2.Name}
+			if j, ok := newest[key]; !ok || phase2.InstallTime < phase1.Phase2[j].InstallTime {
+				newest[key] = i
+			}
+		}
+
+		for i, phase2 := range phase1.Phase2 {
+			if newest[phase2Key{phase2.Phase2desc, phase2.Name}] != i {
+				continue
+			}
+
 			ch <- prometheus.MustNewConstMetric(
 				c.phase2_install_time,
 				prometheus.GaugeValue,
 				float64(phase2.InstallTime),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)
@@ -195,8 +212,6 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 				float64(phase2.BytesIn),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)
@@ -206,8 +221,6 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 				float64(phase2.BytesOut),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)
@@ -217,8 +230,6 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 				float64(phase2.PacketsIn),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)
@@ -228,8 +239,6 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 				float64(phase2.PacketsOut),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)
@@ -239,8 +248,6 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 				float64(phase2.RekeyTime),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)
@@ -250,8 +257,6 @@ func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Me
 				float64(phase2.LifeTime),
 				phase2.Phase2desc,
 				phase2.Name,
-				phase2.SpiIn,
-				phase2.SpiOut,
 				phase1.Name,
 				c.instance,
 			)

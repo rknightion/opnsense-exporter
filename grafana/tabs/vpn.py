@@ -10,7 +10,8 @@ Rows:
   2. WireGuard Interfaces  gated has_wireguard_ifaces: statetimeline UPDOWN
   3. WireGuard Peers       gated has_wireguard_peers: peer status statetimeline,
                             RX/TX rate ts, last-handshake table, handshake age stat
-  4. OpenVPN               gated has_openvpn: instances table, sessions table
+  4. OpenVPN               gated has_openvpn: session count ts, per-instance sessions ts,
+                            instances table, per-session details table (opt-in metric)
   5. IPsec Tunnels         gated has_ipsec_tunnels: phase1 statetimeline + ts,
                             phase2 tables + ts
 """
@@ -138,6 +139,18 @@ def build(b: Builder):
     # ================================================================
     # Row 4: OpenVPN
     # ================================================================
+    ovpn_sessions_total = b.ts(
+        "OpenVPN Sessions",
+        [(sel("opnsense_openvpn_sessions_total"), "sessions")],
+        unit="short", w=12, h=8,
+        desc="Total number of active OpenVPN sessions over time.",
+    )
+    ovpn_sessions_by_instance = b.ts(
+        "OpenVPN Sessions by Instance",
+        [(sel("opnsense_openvpn_sessions_by_instance"), "{{description}}")],
+        unit="short", w=12, h=8,
+        desc="Number of active OpenVPN sessions per server/client instance.",
+    )
     ovpn_instances = b.table(
         "OpenVPN Instances",
         [sel("opnsense_openvpn_instances")],
@@ -165,7 +178,11 @@ def build(b: Builder):
             "Value": "OK",
         },
         sort_by="Instance",
-        desc="Active OpenVPN sessions. Value: 1 = ok, 0 = not ok.",
+        desc=(
+            "Per-session OpenVPN details (username, virtual address). "
+            "Value: 1 = ok, 0 = not ok. Only populated when the exporter runs "
+            "with --exporter.enable-openvpn-details."
+        ),
     )
 
     # ================================================================
@@ -217,8 +234,6 @@ def build(b: Builder):
         renames={
             "description": "Description",
             "name": "Name",
-            "spi_in": "SPI In",
-            "spi_out": "SPI Out",
             "phase1_name": "Phase 1",
             "Value": "Install Age (s)",
         },
@@ -259,8 +274,6 @@ def build(b: Builder):
         renames={
             "description": "Description",
             "name": "Name",
-            "spi_in": "SPI In",
-            "spi_out": "SPI Out",
             "phase1_name": "Phase 1",
             "opnsense_ipsec_phase2_rekey_time": "Rekey Time (s)",
             "opnsense_ipsec_phase2_life_time": "Life Time (s)",
@@ -287,7 +300,8 @@ def build(b: Builder):
                wg_handshake_table, wg_handshake_age],
               present="has_wireguard_peers"),
         b.row("OpenVPN",
-              [ovpn_instances, ovpn_sessions],
+              [ovpn_sessions_total, ovpn_sessions_by_instance,
+               ovpn_instances, ovpn_sessions],
               present="has_openvpn"),
         b.row("IPsec Phase 1",
               [ipsec_p1_state, ipsec_p1_install, ipsec_p1_bytes, ipsec_p1_pkts],

@@ -131,7 +131,12 @@ func TestFirewallIsHealthy(t *testing.T) {
 		{"metadata numeric OK", mk("", float64(opnsense.HealthCheckStatusOK_v25_1)), true},
 		{"metadata numeric not OK", mk("", float64(1)), false},
 		{"metadata string OK", mk("", "OK"), true},
+		{"metadata string empty", mk("", ""), true},
 		{"metadata string error", mk("", "Error"), false},
+		{"metadata string ERROR", mk("", "ERROR"), false},
+		// OPNsense 25.1+ can also report the numeric status as a string ("2").
+		{"metadata numeric string OK", mk("", "2"), true},
+		{"metadata numeric string not OK", mk("", "1"), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -239,6 +244,48 @@ func TestCollectExporterInfo(t *testing.T) {
 	}
 	if states["netflow"] != 0 {
 		t.Errorf("collector_enabled{collector=netflow} = %v, want 0", states["netflow"])
+	}
+}
+
+func TestWithoutGatewaysCollector(t *testing.T) {
+	// Test the option function directly without calling New() to avoid
+	// duplicate metrics registration on the global prometheus registry.
+	gc := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c := &Collector{
+		collectors: []CollectorInstance{gc},
+	}
+
+	opt := WithoutGatewaysCollector()
+	if err := opt(c); err != nil {
+		t.Fatalf("expected no error applying option, got %v", err)
+	}
+
+	for _, instance := range c.collectors {
+		if instance.Name() == GatewaysSubsystem {
+			t.Errorf("expected gateways collector to be removed")
+		}
+	}
+}
+
+func TestWithOpenVPNDetails(t *testing.T) {
+	// Test the option function directly without calling New() to avoid
+	// duplicate metrics registration on the global prometheus registry.
+	oc := &openVPNCollector{subsystem: OpenVPNSubsystem}
+	c := &Collector{
+		collectors: []CollectorInstance{oc},
+	}
+
+	if oc.detailsEnabled {
+		t.Fatal("expected detailsEnabled to start as false")
+	}
+
+	opt := WithOpenVPNDetails()
+	if err := opt(c); err != nil {
+		t.Fatalf("expected no error applying option, got %v", err)
+	}
+
+	if !oc.detailsEnabled {
+		t.Errorf("expected openVPNCollector.detailsEnabled to be true after applying option")
 	}
 }
 
