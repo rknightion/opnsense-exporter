@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/rknightion/opnsense-exporter/internal/collector"
 )
 
 // MetricInfo holds parsed information about a single Prometheus metric.
@@ -44,14 +46,13 @@ func main() {
 	fmt.Fprintf(os.Stderr, "docgen: repo root = %s\n", repoRoot)
 
 	collectorDir := filepath.Join(repoRoot, "internal", "collector")
-	optionsFile := filepath.Join(repoRoot, "internal", "options", "collectors.go")
 
 	// Step 1: Parse subsystem constants from collector.go
 	subsystemConstants := parseSubsystemConstants(filepath.Join(collectorDir, "collector.go"))
 	fmt.Fprintf(os.Stderr, "docgen: parsed %d subsystem constants\n", len(subsystemConstants))
 
-	// Step 2: Parse flags from options/collectors.go
-	flagsBySubsystem := parseFlagInfo(optionsFile, subsystemConstants)
+	// Step 2: Derive flag mappings from kingpin model + options.CollectorFlags.
+	flagsBySubsystem := collectorFlagInfo(collectAllFlags())
 	fmt.Fprintf(os.Stderr, "docgen: parsed %d flag mappings\n", len(flagsBySubsystem))
 
 	// Step 3: Parse top-level metrics from collector.go
@@ -462,9 +463,14 @@ func parseCollectorFile(filePath string, subsystemConstants map[string]string) *
 	// Find all buildPrometheusDesc calls
 	metrics := findBuildPrometheusDescCalls(f, subsystem, fset)
 
+	displayName, ok := collector.SubsystemDisplayNames[subsystem]
+	if !ok {
+		fatal("subsystem %q has no entry in collector.SubsystemDisplayNames", subsystem)
+	}
+
 	return &CollectorInfo{
 		Subsystem:   subsystem,
-		DisplayName: subsystemToDisplayName(subsystem),
+		DisplayName: displayName,
 		Metrics:     metrics,
 	}
 }
@@ -659,241 +665,6 @@ func extractLabelsArg(expr ast.Expr) []string {
 		}
 	}
 	return labels
-}
-
-// parseFlagInfo parses internal/options/collectors.go to extract flag names and env vars.
-func parseFlagInfo(filePath string, subsystemConstants map[string]string) map[string]FlagInfo {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filePath, nil, 0)
-	if err != nil {
-		fatal("parsing %s: %v", filePath, err)
-	}
-
-	result := make(map[string]FlagInfo)
-
-	// We need to manually map flag names to subsystems since the code doesn't
-	// directly reference subsystem constants. We'll build the mapping from the
-	// known patterns.
-	flagToSubsystem := map[string]string{
-		"exporter.disable-arp-table":             "arp_table",
-		"exporter.disable-cron-table":            "cron",
-		"exporter.disable-wireguard":             "wireguard",
-		"exporter.disable-ipsec":                 "ipsec",
-		"exporter.disable-unbound":               "unbound_dns",
-		"exporter.disable-openvpn":               "openvpn",
-		"exporter.disable-firewall":              "firewall",
-		"exporter.disable-firmware":              "firmware",
-		"exporter.disable-system":                "system",
-		"exporter.disable-temperature":           "temperature",
-		"exporter.disable-dnsmasq":               "dnsmasq",
-		"exporter.disable-firewall-rules":        "firewall_rule",
-		"exporter.disable-mbuf":                  "mbuf",
-		"exporter.disable-ntp":                   "ntp",
-		"exporter.disable-certificates":          "certificate",
-		"exporter.disable-carp":                  "carp",
-		"exporter.disable-activity":              "activity",
-		"exporter.disable-kea":                   "kea",
-		"exporter.enable-network-diagnostics":    "network_diag",
-		"exporter.enable-netflow":                "netflow",
-		"exporter.disable-pf-stats":              "pf_stats",
-		"exporter.disable-ndp":                   "ndp",
-		"exporter.enable-dnsmasq-details":        "dnsmasq",
-		"exporter.enable-kea-details":            "kea",
-		"exporter.enable-firewall-rules-details": "firewall_rule",
-		"exporter.disable-dhcpv4":                "dhcpv4",
-		"exporter.enable-dhcpv4-details":         "dhcpv4",
-		"exporter.disable-acme":                  "acme",
-		"exporter.disable-smart":                 "smart",
-		"exporter.disable-dyndns":                "dyndns",
-		"exporter.disable-gateways":              "gateways",
-		"exporter.enable-openvpn-details":        "openvpn",
-	}
-
-	// Parse all var declarations to find kingpin.Flag chains
-	for _, decl := range f.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.VAR {
-			continue
-		}
-		for _, spec := range gd.Specs {
-			vs, ok := spec.(*ast.ValueSpec)
-			if !ok {
-				continue
-			}
-			for _, val := range vs.Values {
-				// The value is the outermost call like .Bool()
-				flagName, envVar, defaultVal := extractFlagChain(val)
-				if flagName == "" {
-					continue
-				}
-
-				subsystem, ok := flagToSubsystem[flagName]
-				if !ok {
-					continue
-				}
-
-				// Skip detail flags - they don't represent the collector enable/disable
-				if strings.Contains(flagName, "-details") {
-					continue
-				}
-
-				isEnable := strings.Contains(flagName, "enable-")
-
-				var def string
-				if isEnable {
-					// enable-xxx defaults to false -> Disabled by default
-					if defaultVal == "false" {
-						def = "Disabled"
-					} else {
-						def = "Enabled"
-					}
-				} else {
-					// disable-xxx defaults to false -> Enabled by default
-					if defaultVal == "false" {
-						def = "Enabled"
-					} else {
-						def = "Disabled"
-					}
-				}
-
-				result[subsystem] = FlagInfo{
-					FlagName: "--" + flagName,
-					EnvVar:   envVar,
-					Default:  def,
-				}
-			}
-		}
-	}
-
-	// Also add entries for interfaces, services, protocol which have no disable flag
-	// (they are always enabled)
-	for _, constName := range []string{"InterfacesSubsystem", "ServicesSubsystem", "ProtocolSubsystem"} {
-		if val, ok := subsystemConstants[constName]; ok {
-			if _, exists := result[val]; !exists {
-				result[val] = FlagInfo{
-					FlagName: "",
-					EnvVar:   "",
-					Default:  "Enabled",
-				}
-			}
-		}
-	}
-
-	return result
-}
-
-// extractFlagChain walks a chained method call to find kingpin.Flag("name", "desc").Envar("ENV").Default("val")
-func extractFlagChain(expr ast.Expr) (flagName, envVar, defaultVal string) {
-	// The expression is the outermost call in a chain like:
-	// kingpin.Flag("name", "desc").Envar("ENV").Default("false").Bool()
-	// Walk down the chain to find all method calls.
-	type chainLink struct {
-		method string
-		args   []ast.Expr
-	}
-
-	var chain []chainLink
-	current, ok := expr.(*ast.CallExpr)
-	if !ok {
-		return "", "", ""
-	}
-
-	for {
-		sel, ok := current.Fun.(*ast.SelectorExpr)
-		if !ok {
-			break
-		}
-
-		chain = append(chain, chainLink{
-			method: sel.Sel.Name,
-			args:   current.Args,
-		})
-
-		// Move to the receiver
-		innerCall, ok := sel.X.(*ast.CallExpr)
-		if !ok {
-			break
-		}
-		current = innerCall
-	}
-
-	// Now check if current is kingpin.Flag(...)
-	if sel, ok := current.Fun.(*ast.SelectorExpr); ok {
-		if ident, ok := sel.X.(*ast.Ident); ok {
-			if ident.Name == "kingpin" && sel.Sel.Name == "Flag" {
-				if len(current.Args) >= 1 {
-					flagName = extractStringLit(current.Args[0])
-				}
-			}
-		}
-	}
-
-	if flagName == "" {
-		return "", "", ""
-	}
-
-	// Extract Envar and Default from the chain
-	for _, link := range chain {
-		switch link.method {
-		case "Envar":
-			if len(link.args) >= 1 {
-				envVar = extractStringLit(link.args[0])
-			}
-		case "Default":
-			if len(link.args) >= 1 {
-				defaultVal = extractStringLit(link.args[0])
-			}
-		}
-	}
-
-	return flagName, envVar, defaultVal
-}
-
-func extractStringLit(expr ast.Expr) string {
-	if lit, ok := expr.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-		return strings.Trim(lit.Value, `"`)
-	}
-	return ""
-}
-
-func subsystemToDisplayName(subsystem string) string {
-	displayNames := map[string]string{
-		"arp_table":     "ARP Table",
-		"gateways":      "Gateways",
-		"cron":          "Cron",
-		"wireguard":     "Wireguard",
-		"ipsec":         "IPsec",
-		"unbound_dns":   "Unbound DNS",
-		"interfaces":    "Interfaces",
-		"protocol":      "Protocol Statistics",
-		"openvpn":       "OpenVPN",
-		"services":      "Services",
-		"firewall":      "Firewall",
-		"firmware":      "Firmware",
-		"dnsmasq":       "Dnsmasq DHCP",
-		"system":        "System",
-		"temperature":   "Temperature",
-		"firewall_rule": "Firewall Rules",
-		"mbuf":          "Mbuf",
-		"ntp":           "NTP",
-		"certificate":   "Certificates",
-		"carp":          "CARP",
-		"activity":      "Activity",
-		"kea":           "Kea DHCP",
-		"network_diag":  "Network Diagnostics",
-		"netflow":       "NetFlow",
-		"pf_stats":      "PF Statistics",
-		"ndp":           "NDP",
-		"dhcpv4":        "ISC DHCPv4",
-		"acme":          "ACME Client",
-		"smart":         "SMART Disk Health",
-		"dyndns":        "DynDNS",
-	}
-
-	if name, ok := displayNames[subsystem]; ok {
-		return name
-	}
-	return subsystem
 }
 
 func formatLabels(labels []string) string {
