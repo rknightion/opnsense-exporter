@@ -1,0 +1,246 @@
+package options
+
+import (
+	"encoding/base64"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/alecthomas/kingpin/v2"
+)
+
+var (
+	otlpEnabled = kingpin.Flag(
+		"otlp.enabled",
+		"Enable pushing metrics to an OTLP endpoint (in addition to the /metrics pull endpoint). "+
+			"Off by default.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_ENABLED").Default("false").Bool()
+	otlpEndpoint = kingpin.Flag(
+		"otlp.endpoint",
+		"OTLP endpoint URL. When empty, the standard OTEL_EXPORTER_OTLP_ENDPOINT env var is used.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_ENDPOINT").Default("").String()
+	otlpProtocol = kingpin.Flag(
+		"otlp.protocol",
+		"OTLP transport protocol: grpc or http/protobuf. When empty, OTEL_EXPORTER_OTLP_PROTOCOL is used.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_PROTOCOL").Default("http/protobuf").String()
+	otlpInsecure = kingpin.Flag(
+		"otlp.insecure",
+		"Disable TLS for the OTLP connection (plaintext).",
+	).Envar("OPNSENSE_EXPORTER_OTLP_INSECURE").Default("false").Bool()
+	otlpHeaders = kingpin.Flag(
+		"otlp.headers",
+		"OTLP headers as comma-separated key=value pairs (e.g. X-Scope-OrgID=1,Authorization=Bearer x). "+
+			"When set, replaces OTEL_EXPORTER_OTLP_HEADERS entirely; when empty, that env var is used.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_HEADERS").Default("").String()
+	otlpExportInterval = kingpin.Flag(
+		"otlp.export-interval",
+		"Interval between OTLP metric exports (independent of Prometheus scrapes).",
+	).Envar("OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL").Default("60s").Duration()
+	otlpTLSCAFile = kingpin.Flag(
+		"otlp.tls-ca-file",
+		"Path to a CA certificate file used to verify the OTLP server.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE").Default("").String()
+	otlpTLSCertFile = kingpin.Flag(
+		"otlp.tls-cert-file",
+		"Path to a client certificate file for OTLP mutual TLS (requires --otlp.tls-key-file).",
+	).Envar("OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE").Default("").String()
+	otlpTLSKeyFile = kingpin.Flag(
+		"otlp.tls-key-file",
+		"Path to a client key file for OTLP mutual TLS (requires --otlp.tls-cert-file).",
+	).Envar("OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE").Default("").String()
+	otlpServiceName = kingpin.Flag(
+		"otlp.service-name",
+		"service.name resource attribute for exported metrics.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_SERVICE_NAME").Default("opnsense-exporter").String()
+	otlpGCInstanceID = kingpin.Flag(
+		"otlp.grafana-cloud-instance-id",
+		"Grafana Cloud OTLP instance ID. With --otlp.grafana-cloud-token, synthesizes basic-auth. "+
+			"This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID").Default("").String()
+	otlpGCToken = kingpin.Flag(
+		"otlp.grafana-cloud-token",
+		"Grafana Cloud Access Policy token. "+
+			"This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN").Default("").String()
+	otlpGCEndpoint = kingpin.Flag(
+		"otlp.grafana-cloud-endpoint",
+		"Grafana Cloud OTLP gateway base URL (required when using the Grafana Cloud shortcut).",
+	).Envar("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT").Default("").String()
+)
+
+// OTLPConfig holds the resolved configuration for OTLP metrics export.
+//
+// Temporality is intentionally not configurable: metrics are sourced from the
+// Prometheus registry via a bridge producer, so they arrive already aggregated as
+// cumulative (Prometheus' model) and are exported as-is. That is exactly the
+// temporality Grafana Cloud / Prometheus OTLP ingest require, and an exporter-side
+// temporality selector cannot re-aggregate producer-supplied metrics anyway.
+type OTLPConfig struct {
+	Endpoint       string
+	Protocol       string // "grpc" | "http/protobuf" | "" (defer to OTEL_* env)
+	Insecure       bool
+	Headers        map[string]string
+	ExportInterval time.Duration
+	TLSCAFile      string
+	TLSCertFile    string
+	TLSKeyFile     string
+	ServiceName    string
+}
+
+// Validate checks an enabled OTLP configuration for internal consistency.
+func (c *OTLPConfig) Validate() error {
+	switch c.Protocol {
+	case "", "grpc", "http/protobuf":
+	default:
+		return fmt.Errorf("otlp protocol must be grpc or http/protobuf, got %q", c.Protocol)
+	}
+	if c.ExportInterval <= 0 {
+		return fmt.Errorf("otlp export-interval must be positive, got %s", c.ExportInterval)
+	}
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return fmt.Errorf("otlp mutual TLS requires both --otlp.tls-cert-file and --otlp.tls-key-file")
+	}
+	// --otlp.insecure means plaintext, which is mutually exclusive with TLS
+	// material. The http exporter rejects this at construction (a non-fatal start
+	// failure that would silently disable export); the grpc exporter silently
+	// ignores insecure. Reject it up front so it is a fatal, obvious config error.
+	if c.Insecure && (c.TLSCAFile != "" || c.TLSCertFile != "" || c.TLSKeyFile != "") {
+		return fmt.Errorf("otlp --otlp.insecure cannot be combined with --otlp.tls-ca-file/--otlp.tls-cert-file/--otlp.tls-key-file")
+	}
+	return nil
+}
+
+// otlpRawInputs is the set of raw flag/env values (with secrets already resolved)
+// that assembleOTLP turns into an OTLPConfig. Splitting it out keeps the precedence
+// and Grafana Cloud shortcut logic pure and unit-testable, independent of the
+// package-global kingpin flags.
+type otlpRawInputs struct {
+	enabled      bool
+	endpoint     string
+	protocol     string
+	insecure     bool
+	headers      string
+	interval     time.Duration
+	tlsCAFile    string
+	tlsCertFile  string
+	tlsKeyFile   string
+	serviceName  string
+	gcInstanceID string
+	gcToken      string
+	gcEndpoint   string
+}
+
+// parseHeaders parses "k=v,k2=v2" into a map. Whitespace around keys, values and
+// separators is trimmed. Only the first '=' is treated as the separator so header
+// values may themselves contain '='. Empty segments are skipped.
+func parseHeaders(s string) map[string]string {
+	out := map[string]string{}
+	for pair := range strings.SplitSeq(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		out[k] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+// assembleOTLP applies precedence and the Grafana Cloud shortcut to raw inputs,
+// returning the resolved config and whether OTLP export is enabled. Precedence
+// (highest first): explicit flags/OPNSENSE_EXPORTER_OTLP_* env, then the Grafana
+// Cloud shortcut, then standard OTEL_* env consulted later by the SDK when a field
+// is left empty.
+func assembleOTLP(in otlpRawInputs) (*OTLPConfig, bool, error) {
+	if !in.enabled {
+		return nil, false, nil
+	}
+
+	headers := parseHeaders(in.headers)
+
+	// Grafana Cloud shortcut: both id and token required; synthesize basic-auth and
+	// (when no explicit endpoint is set) the endpoint. Explicit values always win.
+	gcID := strings.TrimSpace(in.gcInstanceID)
+	gcToken := strings.TrimSpace(in.gcToken)
+	endpoint := strings.TrimSpace(in.endpoint)
+	switch {
+	case gcID != "" && gcToken == "":
+		return nil, false, fmt.Errorf("otlp grafana-cloud-instance-id set without grafana-cloud-token")
+	case gcToken != "" && gcID == "":
+		return nil, false, fmt.Errorf("otlp grafana-cloud-token set without grafana-cloud-instance-id")
+	case gcID != "" && gcToken != "":
+		gcEndpoint := strings.TrimSpace(in.gcEndpoint)
+		if endpoint == "" {
+			endpoint = gcEndpoint
+		}
+		if endpoint == "" {
+			return nil, false, fmt.Errorf("otlp grafana-cloud credentials set but no endpoint (set --otlp.grafana-cloud-endpoint or --otlp.endpoint)")
+		}
+		if _, ok := headers["Authorization"]; !ok {
+			auth := base64.StdEncoding.EncodeToString([]byte(gcID + ":" + gcToken))
+			headers["Authorization"] = "Basic " + auth
+		}
+	}
+
+	if len(headers) == 0 {
+		headers = nil
+	}
+
+	cfg := &OTLPConfig{
+		Endpoint:       endpoint,
+		Protocol:       strings.TrimSpace(in.protocol),
+		Insecure:       in.insecure,
+		Headers:        headers,
+		ExportInterval: in.interval,
+		TLSCAFile:      strings.TrimSpace(in.tlsCAFile),
+		TLSCertFile:    strings.TrimSpace(in.tlsCertFile),
+		TLSKeyFile:     strings.TrimSpace(in.tlsKeyFile),
+		ServiceName:    strings.TrimSpace(in.serviceName),
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, false, err
+	}
+	return cfg, true, nil
+}
+
+// OTLP assembles the OTLP export configuration from flags/env. The returned bool
+// reports whether OTLP export is enabled (true only when --otlp.enabled is set).
+// Grafana Cloud instance ID and token support *_FILE secret variants, mirroring the
+// OPS_API_*_FILE precedence used elsewhere.
+func OTLP() (*OTLPConfig, bool, error) {
+	if !*otlpEnabled {
+		return nil, false, nil
+	}
+
+	gcID, err := resolveSecret("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE", *otlpGCInstanceID)
+	if err != nil {
+		return nil, false, err
+	}
+	gcToken, err := resolveSecret("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE", *otlpGCToken)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return assembleOTLP(otlpRawInputs{
+		enabled:      true,
+		endpoint:     *otlpEndpoint,
+		protocol:     *otlpProtocol,
+		insecure:     *otlpInsecure,
+		headers:      *otlpHeaders,
+		interval:     *otlpExportInterval,
+		tlsCAFile:    *otlpTLSCAFile,
+		tlsCertFile:  *otlpTLSCertFile,
+		tlsKeyFile:   *otlpTLSKeyFile,
+		serviceName:  *otlpServiceName,
+		gcInstanceID: gcID,
+		gcToken:      gcToken,
+		gcEndpoint:   *otlpGCEndpoint,
+	})
+}

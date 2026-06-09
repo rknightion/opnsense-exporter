@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
+	"github.com/rknightion/opnsense-exporter/internal/telemetry"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -25,6 +27,10 @@ var version = ""
 // to derive a default instance label, so an unreachable OPNsense box (which the
 // API client would otherwise retry for up to ~45s) never delays startup.
 const instanceLabelLookupTimeout = 5 * time.Second
+
+// otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
+// export endpoint cannot hang process exit.
+const otlpShutdownTimeout = 10 * time.Second
 
 func main() {
 	options.Init()
@@ -265,6 +271,40 @@ func main() {
 	}
 
 	registry.MustRegister(collectorInstance)
+
+	// OTLP metrics export is opt-in (--otlp.enabled). It pushes the exact metrics
+	// exposed at /metrics to an OTLP endpoint via a Prometheus bridge producer over
+	// the same registry, so names, labels and values stay in parity. An invalid
+	// configuration is fatal; a transient start/export failure is logged but
+	// non-fatal so the exporter keeps serving /metrics. A stopOTLP closure (rather
+	// than the MeterProvider) keeps the OTEL SDK out of main's imports beyond Start.
+	otlpCfg, otlpEnabled, err := options.OTLP()
+	if err != nil {
+		logger.Error("invalid otlp configuration", "err", err)
+		os.Exit(1)
+	}
+	var stopOTLP func()
+	if otlpEnabled {
+		shutdown, terr := telemetry.Start(context.Background(), registry, otlpCfg, version, instanceLabel, logger)
+		if terr != nil {
+			logger.Error("failed to start otlp metrics export", "err", terr)
+		} else {
+			stopOTLP = func() {
+				ctx, cancel := context.WithTimeout(context.Background(), otlpShutdownTimeout)
+				defer cancel()
+				if err := shutdown(ctx); err != nil {
+					logger.Error("failed to flush final otlp export", "err", err)
+				}
+			}
+			logger.Info(
+				"otlp metrics export enabled",
+				"endpoint", otlpCfg.Endpoint,
+				"protocol", otlpCfg.Protocol,
+				"interval", otlpCfg.ExportInterval.String(),
+			)
+		}
+	}
+
 	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 	http.Handle(*options.MetricsPath, handler)
 
@@ -304,6 +344,9 @@ func main() {
 		select {
 		case <-term:
 			logger.Info("Received SIGTERM, exiting gracefully...")
+			if stopOTLP != nil {
+				stopOTLP()
+			}
 			if stopProfiling != nil {
 				stopProfiling()
 			}

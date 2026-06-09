@@ -40,3 +40,6 @@ docgen
 # Python (grafana dashboard/rules builders)
 __pycache__/
 *.pyc
+
+# Superpowers scratch (specs/plans) — never committed
+docs/superpowers/

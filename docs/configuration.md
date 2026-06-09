@@ -74,6 +74,63 @@ and non-empty.
 
 Profiles are tagged with `instance` (the resolved instance label) and `version`.
 
+## OTLP metrics export
+
+In addition to the `/metrics` pull endpoint, the exporter can **push** the exact
+same metrics to an OpenTelemetry (OTLP) endpoint. A Prometheus-bridge producer reads
+the existing registry on each export tick, so OTLP metric names, labels and values
+are identical to what `/metrics` exposes (no native renaming) — existing dashboards
+keep working against either backend. Export is **disabled by default** and activates
+only when `--otlp.enabled` (env `OPNSENSE_EXPORTER_OTLP_ENABLED`) is set. The pull
+endpoint is unaffected whether or not OTLP is enabled.
+
+Any field left empty falls through to the corresponding **standard OpenTelemetry
+environment variable** (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`,
+`OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_SERVICE_NAME`,
+`OTEL_RESOURCE_ATTRIBUTES`, …) read natively by the OTEL SDK. Explicit `--otlp.*`
+flags take precedence over those env vars.
+
+| Flag | Env Var | Default | Description |
+|---|---|---|---|
+| `--otlp.enabled` | `OPNSENSE_EXPORTER_OTLP_ENABLED` | `false` | Master switch. When false, no OTLP export occurs. |
+| `--otlp.endpoint` | `OPNSENSE_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | OTLP endpoint URL. Empty defers to `OTEL_EXPORTER_OTLP_ENDPOINT`. |
+| `--otlp.protocol` | `OPNSENSE_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `grpc` or `http/protobuf`. |
+| `--otlp.insecure` | `OPNSENSE_EXPORTER_OTLP_INSECURE` | `false` | Disable TLS (plaintext). |
+| `--otlp.headers` | `OPNSENSE_EXPORTER_OTLP_HEADERS` | _(empty)_ | Headers as `k=v,k2=v2`. When set, **replaces** `OTEL_EXPORTER_OTLP_HEADERS` entirely; when empty, that env var is used. |
+| `--otlp.export-interval` | `OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL` | `60s` | Interval between exports (independent of Prometheus scrapes). |
+| `--otlp.tls-ca-file` | `OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE` | _(empty)_ | CA certificate file to verify the OTLP server. |
+| `--otlp.tls-cert-file` | `OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE` | _(empty)_ | Client certificate for mutual TLS (requires the key file). |
+| `--otlp.tls-key-file` | `OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE` | _(empty)_ | Client key for mutual TLS (requires the cert file). |
+| `--otlp.service-name` | `OPNSENSE_EXPORTER_OTLP_SERVICE_NAME` | `opnsense-exporter` | `service.name` resource attribute. |
+| `--otlp.grafana-cloud-instance-id` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID` | _(empty)_ | Grafana Cloud OTLP instance ID (shortcut). |
+| `--otlp.grafana-cloud-token` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN` | _(empty)_ | Grafana Cloud Access Policy token (shortcut). |
+| `--otlp.grafana-cloud-endpoint` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT` | _(empty)_ | Grafana Cloud OTLP gateway base URL (required to use the shortcut). |
+
+The metric set exported over OTLP is byte-for-byte the same as the Prometheus
+catalogue (see the [metrics reference](metrics/metrics.md)); enabling OTLP adds no
+new metric names.
+
+### Grafana Cloud shortcut
+
+Setting `--otlp.grafana-cloud-instance-id`, `--otlp.grafana-cloud-token` and
+`--otlp.grafana-cloud-endpoint` together synthesizes the
+`Authorization: Basic base64(instanceID:token)` header and uses the gateway URL as
+the endpoint, so you do not have to assemble the basic-auth header yourself. An
+explicit `--otlp.endpoint` or `Authorization` header always wins over the shortcut.
+The instance ID and token also support `*_FILE` secret variants
+(`OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE`,
+`OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE`), whose file contents take
+precedence over the flag/env value, mirroring the OPNsense API credentials.
+
+### Temporality
+
+Exported metrics are always **cumulative**, and this is not configurable. They are
+sourced from the Prometheus registry via a bridge producer, so they arrive already
+aggregated as cumulative (Prometheus' model) and are exported as-is — exactly the
+temporality Grafana Cloud's metrics backend (Mimir) and Prometheus' OTLP ingest
+require. An exporter-side temporality selector cannot re-aggregate
+producer-supplied metrics, so no delta option is offered.
+
 ## Collector switches
 
 All collectors are **enabled by default** unless noted otherwise. Each can be individually disabled or enabled using CLI flags or environment variables.
@@ -285,6 +342,56 @@ Flags:
                                 set. ($OPNSENSE_EXPORTER_OPS_API_SECRET)
       --[no-]opnsense.insecure  Disable TLS certificate verification
                                 ($OPNSENSE_EXPORTER_OPS_INSECURE)
+      --[no-]otlp.enabled       Enable pushing metrics to an OTLP endpoint (in
+                                addition to the /metrics pull endpoint). Off by
+                                default. ($OPNSENSE_EXPORTER_OTLP_ENABLED)
+      --otlp.endpoint=""        OTLP endpoint URL. When empty, the standard
+                                OTEL_EXPORTER_OTLP_ENDPOINT env var is used.
+                                ($OPNSENSE_EXPORTER_OTLP_ENDPOINT)
+      --otlp.protocol="http/protobuf"  
+                                OTLP transport protocol: grpc or http/protobuf.
+                                When empty, OTEL_EXPORTER_OTLP_PROTOCOL is used.
+                                ($OPNSENSE_EXPORTER_OTLP_PROTOCOL)
+      --[no-]otlp.insecure      Disable TLS for the OTLP connection (plaintext).
+                                ($OPNSENSE_EXPORTER_OTLP_INSECURE)
+      --otlp.headers=""         OTLP headers as comma-separated key=value pairs
+                                (e.g. X-Scope-OrgID=1,Authorization=Bearer x).
+                                When set, replaces OTEL_EXPORTER_OTLP_HEADERS
+                                entirely; when empty, that env var is used.
+                                ($OPNSENSE_EXPORTER_OTLP_HEADERS)
+      --otlp.export-interval=60s  
+                                Interval between OTLP metric exports
+                                (independent of Prometheus scrapes).
+                                ($OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL)
+      --otlp.tls-ca-file=""     Path to a CA certificate file
+                                used to verify the OTLP server.
+                                ($OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE)
+      --otlp.tls-cert-file=""   Path to a client certificate file for OTLP
+                                mutual TLS (requires --otlp.tls-key-file).
+                                ($OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE)
+      --otlp.tls-key-file=""    Path to a client key file for OTLP mutual
+                                TLS (requires --otlp.tls-cert-file).
+                                ($OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE)
+      --otlp.service-name="opnsense-exporter"  
+                                service.name resource attribute for exported
+                                metrics. ($OPNSENSE_EXPORTER_OTLP_SERVICE_NAME)
+      --otlp.grafana-cloud-instance-id=""  
+                                Grafana Cloud OTLP instance ID.
+                                With --otlp.grafana-cloud-token,
+                                synthesizes basic-auth. This flag/ENV or
+                                OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE
+                                may be set.
+                                ($OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID)
+      --otlp.grafana-cloud-token=""  
+                                Grafana Cloud Access Policy
+                                token. This flag/ENV or
+                                OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE
+                                may be set.
+                                ($OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN)
+      --otlp.grafana-cloud-endpoint=""  
+                                Grafana Cloud OTLP gateway base URL (required
+                                when using the Grafana Cloud shortcut).
+                                ($OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT)
       --pyroscope.server-address=""  
                                 Grafana Cloud Pyroscope endpoint URL.
                                 When empty, continuous profiling is disabled.
