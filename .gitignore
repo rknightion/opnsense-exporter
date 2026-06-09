@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-
+opnsense-exporter-security-findings/
 # Test binary, built with `go test -c`
 *.test
 
