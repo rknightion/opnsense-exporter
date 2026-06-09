@@ -48,6 +48,32 @@ For secure credential management in containers and orchestrated environments, cr
 | `--log.level` | -- | `info` | Log severity threshold. One of: `debug`, `info`, `warn`, `error` |
 | `--log.format` | -- | `logfmt` | Log output format. One of: `logfmt`, `json` |
 
+## Continuous profiling (Pyroscope)
+
+The exporter can push continuous profiles to Grafana Cloud Pyroscope using the
+`pyroscope-go` SDK. Profiling is **disabled by default** and activates only when
+`--pyroscope.server-address` (env `OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS`)
+is set. There are no unauthenticated `/debug/pprof/*` endpoints.
+
+| Flag | Env Var | Default | Description |
+|---|---|---|---|
+| `--pyroscope.server-address` | `OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS` | _(empty)_ | Pyroscope endpoint URL. Empty disables profiling. |
+| `--pyroscope.auth-user` | `OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER` | _(empty)_ | Basic auth user (Grafana Cloud stack/instance ID). |
+| `--pyroscope.auth-password` | `OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD` | _(empty)_ | Basic auth password (Cloud Access Policy token). |
+| `--pyroscope.tenant-id` | `OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID` | _(empty)_ | Tenant ID for multi-tenancy (unused for Grafana Cloud). |
+| `--pyroscope.application-name` | `OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME` | `opnsense-exporter` | Application name profiles report under. |
+| `--pyroscope.enable-mutex-block` | `OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK` | `false` | Also collect goroutine/mutex/block profiles (minor overhead). |
+
+### File-based secrets
+
+Like the OPNsense API credentials, the auth user and password can be read from
+files instead of flags/env vars: set `PYROSCOPE_AUTH_USER_FILE` and/or
+`PYROSCOPE_AUTH_PASSWORD_FILE` to a path whose first line holds the value. The
+file value takes precedence over the corresponding flag/env var when present
+and non-empty.
+
+Profiles are tagged with `instance` (the resolved instance label) and `version`.
+
 ## Collector switches
 
 All collectors are **enabled by default** unless noted otherwise. Each can be individually disabled or enabled using CLI flags or environment variables.
@@ -259,6 +285,30 @@ Flags:
                                 set. ($OPNSENSE_EXPORTER_OPS_API_SECRET)
       --[no-]opnsense.insecure  Disable TLS certificate verification
                                 ($OPNSENSE_EXPORTER_OPS_INSECURE)
+      --pyroscope.server-address=""  
+                                Grafana Cloud Pyroscope endpoint URL.
+                                When empty, continuous profiling is disabled.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS)
+      --pyroscope.auth-user=""  HTTP basic auth user for Pyroscope (Grafana
+                                Cloud stack/instance ID). This flag/ENV
+                                or PYROSCOPE_AUTH_USER_FILE may be set.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER)
+      --pyroscope.auth-password=""  
+                                HTTP basic auth password for Pyroscope (Grafana
+                                Cloud Access Policy token). This flag/ENV
+                                or PYROSCOPE_AUTH_PASSWORD_FILE may be set.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD)
+      --pyroscope.tenant-id=""  Pyroscope tenant ID (only needed for
+                                multi-tenancy; unused for Grafana Cloud).
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID)
+      --pyroscope.application-name="opnsense-exporter"  
+                                Pyroscope application name
+                                profiles are reported under.
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME)
+      --[no-]pyroscope.enable-mutex-block  
+                                Enable goroutine/mutex/block profiling
+                                (adds minor runtime overhead).
+                                ($OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK)
       --log.level=info          Only log messages with the given severity or
                                 above. One of: [debug, info, warn, error]
       --log.format=logfmt       Output format of log messages. One of: [logfmt,
