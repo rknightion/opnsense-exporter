@@ -310,3 +310,21 @@ func TestWithDnsmasqDetails(t *testing.T) {
 		t.Errorf("expected dnsmasqCollector.detailsEnabled to be true after applying option")
 	}
 }
+
+func TestSubsystemDisplayNamesComplete(t *testing.T) {
+	registered := map[string]bool{}
+	for _, c := range AllCollectors() {
+		registered[c.Name()] = true
+		if _, ok := SubsystemDisplayNames[c.Name()]; !ok {
+			t.Errorf("collector %q has no SubsystemDisplayNames entry", c.Name())
+		}
+	}
+	if len(registered) == 0 {
+		t.Fatal("no collectors registered")
+	}
+	for subsystem := range SubsystemDisplayNames {
+		if !registered[subsystem] {
+			t.Errorf("SubsystemDisplayNames entry %q matches no registered collector", subsystem)
+		}
+	}
+}

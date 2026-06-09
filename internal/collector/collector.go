@@ -53,6 +53,49 @@ const (
 	DynDNSSubsystem        = "dyndns"
 )
 
+// SubsystemDisplayNames maps every collector subsystem to the human-readable
+// name used in generated documentation. A unit test and scripts/docgen fail
+// when a registered collector has no entry, so a new collector without a
+// display name breaks the build instead of rendering a raw slug.
+var SubsystemDisplayNames = map[string]string{
+	ArpTableSubsystem:      "ARP Table",
+	GatewaysSubsystem:      "Gateways",
+	CronTableSubsystem:     "Cron",
+	WireguardSubsystem:     "Wireguard",
+	IPsecSubsystem:         "IPsec",
+	UnboundDNSSubsystem:    "Unbound DNS",
+	InterfacesSubsystem:    "Interfaces",
+	ProtocolSubsystem:      "Protocol Statistics",
+	OpenVPNSubsystem:       "OpenVPN",
+	ServicesSubsystem:      "Services",
+	FirewallSubsystem:      "Firewall",
+	FirmwareSubsystem:      "Firmware",
+	DnsmasqSubsystem:       "Dnsmasq DHCP",
+	SystemSubsystem:        "System",
+	TemperatureSubsystem:   "Temperature",
+	FirewallRulesSubsystem: "Firewall Rules",
+	MbufSubsystem:          "Mbuf",
+	NTPSubsystem:           "NTP",
+	CertificatesSubsystem:  "Certificates",
+	CARPSubsystem:          "CARP",
+	ActivitySubsystem:      "Activity",
+	KeaSubsystem:           "Kea DHCP",
+	Dhcpv4Subsystem:        "ISC DHCPv4",
+	NetworkDiagSubsystem:   "Network Diagnostics",
+	NetflowSubsystem:       "NetFlow",
+	PFStatsSubsystem:       "PF Statistics",
+	NDPSubsystem:           "NDP",
+	ACMESubsystem:          "ACME Client",
+	SMARTSubsystem:         "SMART Disk Health",
+	DynDNSSubsystem:        "DynDNS",
+}
+
+// AllCollectors returns a copy of every collector instance registered via
+// init(), regardless of enable/disable switches. Consumed by scripts/docgen.
+func AllCollectors() []CollectorInstance {
+	return append([]CollectorInstance(nil), collectorInstances...)
+}
+
 // CollectorInstance is the interface a service specific collectors must implement.
 type CollectorInstance interface {
 	Register(namespace, isntance string, log *slog.Logger)
