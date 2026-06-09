@@ -1,0 +1,7 @@
+# Tokens that doclint must not flag. One token per line, no leading --.
+# Historical flags referenced in upgrade notes / changelogs:
+runtime.gomaxprocs
+# Wildcard-prose stems: docs write "--exporter.disable-*" or
+# "--exporter.disable-<name>"; the token regex captures the stem.
+exporter.disable
+exporter.enable
