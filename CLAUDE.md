@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 make              # Build binary (static, version-embedded)
 make test         # Run all tests: go test ./...
 make lint         # Run gofmt + golangci-lint --fix
+make docs         # Regenerate all generated docs (metrics, collector reference, config tables, counts) + doclint
+make docs-check   # CI gate: fail if generated docs are stale or doc tokens are invalid (alias: pre-commit hook via make install-hooks)
 make sync-vendor  # go mod tidy && go mod vendor (run after dependency changes)
 make clean        # Format, remove binary
 ```
@@ -42,16 +44,15 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 4. Add the flag + `CollectorsDisableSwitch` field + switch entry in `internal/options/collectors.go`. Use `exporter.disable-*` (default-on) for low-cardinality collectors; reserve `exporter.enable-*` (default-off) for collectors with extra per-scrape API cost or high cardinality
 5. Wire it in `main.go` (`if !collectorsSwitches.<X> { ... WithoutXCollector() }`)
 
-**Docs (required — keep collectors/metrics in sync):**
+**Docs (generated — do not hand-edit tables):**
 
-6. Add the new subsystem to the **two hand-maintained maps** in `scripts/docgen/main.go`: `flagToSubsystem` (flag → subsystem) and `subsystemToDisplayName` (subsystem → pretty name). docgen will otherwise render the collector with a blank flag and lowercase name.
-7. Run `make docgen` (regenerates `docs/metrics/metrics.md` and `docs/collectors/reference.md` only) and commit the result
-8. Manually update the flag/env-var tables that docgen does **not** touch: the README "Collector Options" tables and the `docs/configuration.md` "Collector switches" tables. Refresh the verbatim `--help` block in `docs/configuration.md` by building (`CGO_ENABLED=0 go build`) and pasting `./opnsense-exporter --help`
-9. Add a bullet to the README "Changes from Upstream" fork changelog (see Key Conventions)
+6. Add the subsystem's display name to `SubsystemDisplayNames` in `internal/collector/collector.go` (a unit test fails without it)
+7. Add a `CollectorFlags` entry in `internal/options/collectors.go` binding the new flag to the subsystem string (a unit test fails without it)
+8. Run `make docs` and commit the result. It regenerates the metrics/collector references, re-injects the flag tables in `docs/configuration.md`, re-pins metric/collector counts across the site and README, lints all doc flag/env tokens, and cross-checks docs against the live collector registry. CI (`make docs-check`) fails if any of this is stale.
 
 **Dashboard (required — a coverage gate enforces this):**
 
-10. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`.
+9. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`.
 
 ## Key Conventions
 
@@ -60,4 +61,5 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 - **Version** — the repository root contains a `version.txt` file managed by release-please; the binary version is embedded at build time via `-X main.version=...` (GoReleaser uses the git tag; local `make` builds embed `local-test`)
 - Linters: `misspell` and `revive` are enabled; `unused` is disabled
 - API key/secret support file-based secrets (`OPS_API_KEY_FILE`, `OPS_API_SECRET_FILE`)
-- **Fork changelog** — This is a fork of AthennaMind/opnsense-exporter. The "Changes from Upstream" section in `README.md` must be kept up to date. When adding new collectors, enhancing existing collectors, changing build/infrastructure, or making any other notable change, add a bullet to the appropriate subsection in that list.
+- **Changelog** — release history lives in `CHANGELOG.md`, managed by release-please from conventional commits. There is no separate "changes from upstream" list to maintain; the README carries only a short hard-fork notice.
+- **Generated docs** — never hand-edit content between `<!-- docgen:begin/end -->` markers or the docgen-generated pages; run `make docs` instead.
