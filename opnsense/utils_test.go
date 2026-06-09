@@ -132,6 +132,7 @@ func TestSafeAtoi(t *testing.T) {
 		{"Empty", "", 0},
 		{"Invalid", "abc", 0},
 		{"Negative", "-10", -10},
+		{"Overflow", "99999999999999999999", 0},
 	}
 
 	for _, tc := range tests {
@@ -155,6 +156,7 @@ func TestSafeParseFloat(t *testing.T) {
 		{"Empty", "", 0},
 		{"Invalid", "abc", 0},
 		{"Negative", "-1.5", -1.5},
+		{"Out of range", "1e999", 0},
 	}
 
 	for _, tc := range tests {

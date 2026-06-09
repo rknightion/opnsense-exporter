@@ -97,17 +97,25 @@ func parseOpenVPNsessionStatusToInt(status string) int {
 	}
 }
 
-// safeAtoi parses a string to int, returning 0 on any error.
-// Useful for OPNsense API fields that may be empty or missing.
+// safeAtoi parses a string to int, returning 0 on any error — including
+// out-of-range values, where strconv would otherwise hand back a saturated
+// partial result. Useful for OPNsense API fields that may be empty or missing.
 func safeAtoi(s string) int {
-	v, _ := strconv.Atoi(s)
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
 	return v
 }
 
-// safeParseFloat parses a string to float64, returning 0 on any error.
+// safeParseFloat parses a string to float64, returning 0 on any error —
+// including out-of-range values, where strconv would otherwise hand back ±Inf.
 // Useful for OPNsense API fields that may be empty or missing.
 func safeParseFloat(s string) float64 {
-	v, _ := strconv.ParseFloat(s, 64)
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
 	return v
 }
 

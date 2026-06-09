@@ -48,6 +48,9 @@ Create a group (e.g., `monitoring`) with only the following GUI permissions and 
 !!! note
     Some of the newer collectors (temperature, CARP, NTP, certificates, activity, Kea, network diagnostics, NetFlow, PF stats, NDP) may require additional API endpoint permissions beyond this list. If a collector logs permission errors, grant the corresponding permission in OPNsense.
 
+!!! warning "Page-level ACLs include write endpoints"
+    OPNsense ACLs are page-level: each GUI permission grants access to *all* of that page's API endpoints, including its write endpoints -- there is no read-only variant. Use a dedicated monitoring user so a leaked key's blast radius is limited to the pages listed above.
+
 ## TLS configuration
 
 ### Using OPNsense with HTTPS
@@ -97,6 +100,8 @@ tls_server_config:
   cert_file: /path/to/cert.pem
   key_file: /path/to/key.pem
 ```
+
+Avoid enabling the exporter toolkit's `rate_limit` option in the web config on listeners reachable by untrusted peers: it is a single pre-authentication global bucket, so any one client can exhaust it and starve legitimate Prometheus scrapes.
 
 ## File-based secrets
 
@@ -164,3 +169,5 @@ The official container image follows security best practices:
 - **Read-only root filesystem** -- supported in Kubernetes and Docker
 - **No capabilities** -- all Linux capabilities are dropped in the Kubernetes deployment manifest
 - **Static binary** -- no runtime dependencies, CGO disabled
+
+The `/metrics` endpoint requires no authentication by default, so restrict who can reach it at the network layer. On Kubernetes, a sample [NetworkPolicy](deployment/kubernetes.md#restrict-access-with-a-networkpolicy) limiting ingress on the metrics port to Prometheus is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense-exporter/blob/main/deploy/k8s/networkpolicy.yaml).

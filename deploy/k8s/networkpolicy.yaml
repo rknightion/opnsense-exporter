@@ -1,0 +1,36 @@
+---
+# Restricts ingress to the opnsense-exporter pod so that only Prometheus can
+# reach the metrics port. The /metrics endpoint requires no authentication by
+# default, so network-layer restriction is recommended.
+#
+# Adjust the namespaceSelector/podSelector placeholders below to match where
+# your Prometheus (or other scraper) runs, then apply alongside deployment.yaml.
+# Note: NetworkPolicy is only enforced if your CNI supports it (Calico,
+# Cilium, ...).
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: opnsense-exporter
+spec:
+  podSelector:
+    # Must match the pod labels in deployment.yaml
+    matchLabels:
+      app.kubernetes.io/name: opnsense-exporter
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              # Placeholder: the namespace your monitoring stack runs in
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              # Placeholder: the labels on your Prometheus pods
+              # (e.g. kube-prometheus-stack uses app.kubernetes.io/name: prometheus)
+              app.kubernetes.io/name: prometheus
+      ports:
+        # Default value for --web.listen-address= is 8080; must match the
+        # metrics-http containerPort in deployment.yaml
+        - protocol: TCP
+          port: 8080

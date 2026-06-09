@@ -303,8 +303,22 @@ func (c *Client) readResponse(path EndpointPath, resp *http.Response, responseSt
 	return nil
 }
 
-// truncateBody bounds a response body destined for an error message.
+// sensitiveJSONField matches JSON key/value pairs whose key contains a
+// credential-like word (password, secret, token, api key, private key),
+// including OPNsense's "%"-prefixed field variants, so the value (string,
+// number or null) can be redacted before the body reaches an error message.
+var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
+
+// redactSensitiveFields replaces the values of credential-like JSON fields
+// with "[REDACTED]". Non-JSON bodies pass through unchanged.
+func redactSensitiveFields(b []byte) []byte {
+	return sensitiveJSONField.ReplaceAll(b, []byte(`${1}"[REDACTED]"`))
+}
+
+// truncateBody redacts credential-like field values from a response body
+// destined for an error message, then bounds its length.
 func truncateBody(b []byte) []byte {
+	b = redactSensitiveFields(b)
 	if len(b) <= maxErrorBodyBytes {
 		return b
 	}

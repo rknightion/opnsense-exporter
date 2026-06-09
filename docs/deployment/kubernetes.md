@@ -217,6 +217,45 @@ The deployment manifest follows security best practices:
 !!! tip "Self-signed certificates"
     If your OPNsense uses a self-signed certificate, add `OPNSENSE_EXPORTER_OPS_INSECURE: "true"` to the env section. For production, consider adding the CA certificate to the container's trust store instead.
 
+## Restrict access with a NetworkPolicy
+
+The `/metrics` endpoint requires no authentication by default, so restrict which pods can reach it. A sample manifest is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense-exporter/blob/main/deploy/k8s/networkpolicy.yaml):
+
+```yaml title="networkpolicy.yaml"
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: opnsense-exporter
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opnsense-exporter
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              # Placeholder: the namespace your monitoring stack runs in
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              # Placeholder: the labels on your Prometheus pods
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+```
+
+Adjust the `namespaceSelector` and `podSelector` placeholders to match where your Prometheus runs, then apply:
+
+```bash
+kubectl apply -f networkpolicy.yaml
+```
+
+!!! note
+    NetworkPolicy is only enforced if your cluster's CNI supports it (Calico, Cilium, and similar). On clusters without a policy-capable CNI the manifest is accepted but has no effect.
+
 ## Disabling collectors
 
 Add disable flags to the `args` array in the Deployment:

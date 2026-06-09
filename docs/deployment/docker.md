@@ -19,16 +19,19 @@ ghcr.io/rknightion/opnsense-exporter:latest
 The simplest way to start the exporter:
 
 ```bash
-docker run -p 8080:8080 ghcr.io/rknightion/opnsense-exporter:latest \
+docker run -p 8080:8080 \
+  -e OPNSENSE_EXPORTER_OPS_API_KEY=YOUR_API_KEY \
+  -e OPNSENSE_EXPORTER_OPS_API_SECRET=YOUR_API_SECRET \
+  ghcr.io/rknightion/opnsense-exporter:latest \
   --opnsense.protocol=https \
   --opnsense.address=opnsense.example.com \
-  --opnsense.api-key=YOUR_API_KEY \
-  --opnsense.api-secret=YOUR_API_SECRET \
   --exporter.instance-label=my-firewall \
   --web.listen-address=:8080 \
   --log.level=info \
   --log.format=json
 ```
+
+For production, prefer the [file-based secrets](#docker-compose-with-file-based-secrets) (`OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE`) shown below over plain environment variables.
 
 ## Docker Compose with environment variables
 

@@ -277,6 +277,113 @@ func TestDo_RetryResendsPOSTBody(t *testing.T) {
 	}
 }
 
+func TestTruncateBody_RedactsSensitiveFields(t *testing.T) {
+	body := []byte(`{"username":"dyndns-user","interface":"wan",` +
+		`"password":"$2y$10$hash","%password":"***","new.password":"x","token":12345}`)
+
+	got := string(truncateBody(body))
+
+	for _, secret := range []string{"$2y$10$hash", "***", `:"x"`, "12345"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("expected sensitive value %q to be redacted, got: %s", secret, got)
+		}
+	}
+	if !strings.Contains(got, `"password":"[REDACTED]"`) {
+		t.Errorf("expected password value to read [REDACTED], got: %s", got)
+	}
+	if !strings.Contains(got, `"%password":"[REDACTED]"`) {
+		t.Errorf("expected %%password value to read [REDACTED], got: %s", got)
+	}
+	if !strings.Contains(got, `"new.password":"[REDACTED]"`) {
+		t.Errorf("expected new.password value to read [REDACTED], got: %s", got)
+	}
+	if !strings.Contains(got, `"token":"[REDACTED]"`) {
+		t.Errorf("expected numeric token value to read [REDACTED], got: %s", got)
+	}
+	if !strings.Contains(got, `"username":"dyndns-user"`) {
+		t.Errorf("expected benign username value to be untouched, got: %s", got)
+	}
+	if !strings.Contains(got, `"interface":"wan"`) {
+		t.Errorf("expected benign interface value to be untouched, got: %s", got)
+	}
+}
+
+func TestTruncateBody_RedactsBeforeTruncating(t *testing.T) {
+	body := []byte(`{"apikey":"supersecret","pad":"` + strings.Repeat("a", maxErrorBodyBytes) + `"}`)
+
+	got := string(truncateBody(body))
+
+	if strings.Contains(got, "supersecret") {
+		t.Errorf("expected apikey value to be redacted in oversized body, got prefix: %.100s", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Errorf("expected [REDACTED] marker in oversized body, got prefix: %.100s", got)
+	}
+	if !strings.HasSuffix(got, "... (truncated)") {
+		t.Error("expected oversized body to carry the truncation suffix")
+	}
+	if len(got) > maxErrorBodyBytes+len("... (truncated)") {
+		t.Errorf("expected body bounded to %d bytes plus suffix, got %d", maxErrorBodyBytes, len(got))
+	}
+}
+
+func TestTruncateBody_NonJSONPassesThrough(t *testing.T) {
+	body := []byte("<html><body>plain error page</body></html>")
+
+	got := string(truncateBody(body))
+
+	if got != string(body) {
+		t.Errorf("expected non-JSON body to pass through unchanged, got: %s", got)
+	}
+}
+
+func TestDo_InvalidJSONRedactsSecrets(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Unmarshalable (unterminated) JSON carrying a credential.
+		w.Write([]byte(`{"password":"hunter2","rows":`))
+	})
+	defer server.Close()
+
+	var result struct {
+		Name string `json:"name"`
+	}
+
+	err := client.do("GET", "api/core/service/search", nil, &result)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if strings.Contains(err.Message, "hunter2") {
+		t.Errorf("expected password value to be redacted from error message, got: %s", err.Message)
+	}
+	if !strings.Contains(err.Message, "[REDACTED]") {
+		t.Errorf("expected [REDACTED] marker in error message, got: %s", err.Message)
+	}
+}
+
+func TestDo_NonSuccessStatusRedactsSecrets(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"message":"auth failed","api_key":"hunter2"}`))
+	})
+	defer server.Close()
+
+	var result map[string]any
+	err := client.do("GET", "api/core/service/search", nil, &result)
+	if err == nil {
+		t.Fatal("expected error for non-success status")
+	}
+	if strings.Contains(err.Message, "hunter2") {
+		t.Errorf("expected api_key value to be redacted from error message, got: %s", err.Message)
+	}
+	if !strings.Contains(err.Message, "[REDACTED]") {
+		t.Errorf("expected [REDACTED] marker in error message, got: %s", err.Message)
+	}
+	if !strings.Contains(err.Message, "auth failed") {
+		t.Errorf("expected benign message field to be untouched, got: %s", err.Message)
+	}
+}
+
 func TestDo_OversizedGzipResponseRejected(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// A small compressed payload that inflates past the response size cap.

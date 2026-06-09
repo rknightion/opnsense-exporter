@@ -33,11 +33,12 @@ Get the OPNsense Exporter up and running in under five minutes.
 === "Docker"
 
     ```bash
-    docker run -p 8080:8080 ghcr.io/rknightion/opnsense-exporter:latest \
+    docker run -p 8080:8080 \
+      -e OPNSENSE_EXPORTER_OPS_API_KEY=YOUR_API_KEY \
+      -e OPNSENSE_EXPORTER_OPS_API_SECRET=YOUR_API_SECRET \
+      ghcr.io/rknightion/opnsense-exporter:latest \
       --opnsense.protocol=https \
       --opnsense.address=opnsense.example.com \
-      --opnsense.api-key=YOUR_API_KEY \
-      --opnsense.api-secret=YOUR_API_SECRET \
       --exporter.instance-label=my-firewall \
       --web.listen-address=:8080
     ```
@@ -66,13 +67,17 @@ Get the OPNsense Exporter up and running in under five minutes.
     Download the latest release from [GitHub Releases](https://github.com/rknightion/opnsense-exporter/releases), then run:
 
     ```bash
+    export OPNSENSE_EXPORTER_OPS_API_KEY=YOUR_API_KEY
+    export OPNSENSE_EXPORTER_OPS_API_SECRET=YOUR_API_SECRET
+
     ./opnsense-exporter \
       --opnsense.protocol=https \
       --opnsense.address=opnsense.example.com \
-      --opnsense.api-key=YOUR_API_KEY \
-      --opnsense.api-secret=YOUR_API_SECRET \
       --exporter.instance-label=my-firewall
     ```
+
+!!! tip "Production credentials"
+    Avoid passing credentials as command-line flags -- they are visible in the process list. For production, prefer file-based secrets via `OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE` (see [Security: File-based secrets](security.md#file-based-secrets)).
 
 ## Step 3: Verify metrics
 
