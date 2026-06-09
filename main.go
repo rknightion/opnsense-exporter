@@ -3,13 +3,11 @@ package main
 import (
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	_ "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
 	"github.com/prometheus/client_golang/prometheus"
 	promcollectors "github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -17,6 +15,7 @@ import (
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense-exporter/internal/profiling"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -229,6 +228,36 @@ func main() {
 		}
 	}
 
+	// Continuous profiling is opt-in: enabled only when a Pyroscope server
+	// address is configured. An invalid configuration is fatal; a transient
+	// start failure is logged but non-fatal so the exporter keeps serving
+	// metrics. A stopProfiling closure (rather than a *pyroscope.Profiler) keeps
+	// the SDK out of main's imports.
+	pyroCfg, pyroEnabled, err := options.Pyroscope()
+	if err != nil {
+		logger.Error("invalid pyroscope configuration", "err", err)
+		os.Exit(1)
+	}
+	var stopProfiling func()
+	if pyroEnabled {
+		profiler, perr := profiling.Start(pyroCfg, instanceLabel, version, logger)
+		if perr != nil {
+			logger.Error("failed to start pyroscope profiling", "err", perr)
+		} else {
+			stopProfiling = func() {
+				if err := profiler.Stop(); err != nil {
+					logger.Error("failed to flush final pyroscope profile", "err", err)
+				}
+			}
+			logger.Info(
+				"pyroscope continuous profiling enabled",
+				"server", pyroCfg.ServerAddress,
+				"application", pyroCfg.ApplicationName,
+				"mutex_block", pyroCfg.EnableMutexBlock,
+			)
+		}
+	}
+
 	collectorInstance, err := collector.New(&opnsenseClient, logger, instanceLabel, collectorOptionFuncs...)
 	if err != nil {
 		logger.Error("failed to construct the collecotr", "err", err)
@@ -275,6 +304,9 @@ func main() {
 		select {
 		case <-term:
 			logger.Info("Received SIGTERM, exiting gracefully...")
+			if stopProfiling != nil {
+				stopProfiling()
+			}
 			os.Exit(0)
 		case <-srvClose:
 			os.Exit(1)
