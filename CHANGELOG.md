@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0](https://github.com/rknightion/opnsense-exporter/compare/v0.3.0...v0.4.0) (2026-06-09)
+
+
+### Features
+
+* **options:** add pyroscope profiling configuration ([061d893](https://github.com/rknightion/opnsense-exporter/commit/061d89334cd0b4c557b97930aabd59c40085023d))
+* **profiling:** add pyroscope SDK integration package ([df888e5](https://github.com/rknightion/opnsense-exporter/commit/df888e53e72e46834ce403d69c313ec4988860e5))
+* push profiles to pyroscope and drop unauthenticated pprof endpoints ([99577df](https://github.com/rknightion/opnsense-exporter/commit/99577df7ad47289f930eb5e7bab32040a0ee625b))
+
+
+### Documentation
+
+* document pyroscope profiling and pprof removal ([16e6f84](https://github.com/rknightion/opnsense-exporter/commit/16e6f843d7dd515ea197419fafd0efe8e5955333))
+* remove stale pprof references from architecture and index ([a047bd6](https://github.com/rknightion/opnsense-exporter/commit/a047bd6a72f1a30e4c08ce475254b71cd49a912d))
+
+
+### Build & Infrastructure
+
+* tidy vendor after pyroscope integration ([78486ef](https://github.com/rknightion/opnsense-exporter/commit/78486ef3900c114e5a4dba8fe6c7abd0caae41fb))
+
 ## [0.3.0](https://github.com/rknightion/opnsense-exporter/compare/v0.2.2...v0.3.0) (2026-06-08)
 
 
