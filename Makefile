@@ -1,6 +1,6 @@
 BINARY_NAME=opnsense-exporter-local
 
-.PHONY: default docgen dashboard rules
+.PHONY: default docgen docs docs-check dashboard rules install-hooks
 default:
 	go build \
 	-tags osusergo,netgo \
@@ -36,8 +36,19 @@ lint:
 	gofmt -s -w $(shell find . -type f -name '*.go'| grep -v "/vendor/\|/.git/")
 	golangci-lint run --fix
 
-docgen:
+docs:
 	go run ./scripts/docgen
+
+# Back-compat alias
+docgen: docs
+
+docs-check:
+	go run ./scripts/docgen -check
+
+install-hooks:
+	cp scripts/hooks/pre-commit .git/hooks/pre-commit
+	chmod +x .git/hooks/pre-commit
+	@echo "pre-commit hook installed"
 
 dashboard:
 	cd grafana && python3 build_dashboard.py
