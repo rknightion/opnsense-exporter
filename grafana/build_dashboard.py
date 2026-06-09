@@ -21,6 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 METRICS_MD = os.path.join(REPO, "docs", "metrics", "metrics.md")
 OUT = os.path.join(HERE, "dashboard.json")
+STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
 
 # Metrics intentionally NOT charted on a panel (covered structurally / not useful as a
 # series). Keep this list short and justified — the coverage gate flags everything else.
@@ -233,6 +234,10 @@ def main():
             json.dump(manifest, f, indent=2)
             f.write("\n")
         print(f"wrote {OUT}", file=sys.stderr)
+        with open(STATS_PATH, "w") as f:
+            json.dump({"metrics": total, "panels": len(b.elements), "tabs": len(b.tabs)}, f, indent=2)
+            f.write("\n")
+        print(f"wrote {STATS_PATH}", file=sys.stderr)
 
     if check_only and missing:
         sys.exit(1)
