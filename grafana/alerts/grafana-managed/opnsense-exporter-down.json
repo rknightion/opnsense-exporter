@@ -14,7 +14,7 @@
     "title": "OPNsenseExporterDown",
     "noDataState": "Alerting",
     "execErrState": "Error",
-    "for": "5m0s",
+    "for": "15m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -23,7 +23,7 @@
     },
     "annotations": {
       "summary": "OPNsense exporter/box down ({{ $labels.opnsense_instance }})",
-      "description": "opnsense_up has been 0 (or the target has been unreachable / NoData) for 5m.",
+      "description": "opnsense_up has been 0 (or the target has been unreachable / NoData) for 15m. The 15m window tolerates a router reboot (typically <10m) without paging.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {

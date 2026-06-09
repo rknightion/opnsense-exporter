@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-gateway-down",
+    "name": "opnsense-gw-down-failover",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,19 +11,19 @@
     }
   },
   "spec": {
-    "title": "OPNsenseGatewayDown",
+    "title": "OPNsenseGatewayDownFailover",
     "noDataState": "OK",
     "execErrState": "Error",
-    "for": "5m0s",
+    "for": "15m0s",
     "trigger": {
       "interval": "1m"
     },
     "labels": {
-      "severity": "critical"
+      "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense PRIMARY gateway {{ $labels.name }} is offline",
-      "description": "Primary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 5m.",
+      "summary": "OPNsense FAILOVER gateway {{ $labels.name }} is offline",
+      "description": "Failover/secondary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 15m. Lower urgency \u2014 primary WAN unaffected. The 15m window tolerates a router reboot / slow secondary-WAN re-establish.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_gateways_status{default_gateway=\"true\"}",
+          "expr": "opnsense_gateways_status{default_gateway=\"false\"}",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

@@ -5,12 +5,12 @@ groups:
     rules:
       - alert: "OPNsenseExporterDown"
         expr: "opnsense_up < 1"
-        for: "5m"
+        for: "15m"
         labels:
           severity: "critical"
         annotations:
           summary: "OPNsense exporter/box down ({{ $labels.opnsense_instance }})"
-          description: "opnsense_up has been 0 (or the target has been unreachable / NoData) for 5m."
+          description: "opnsense_up has been 0 (or the target has been unreachable / NoData) for 15m. The 15m window tolerates a router reboot (typically <10m) without paging."
           runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
       - alert: "OPNsenseFirewallUnhealthy"
         expr: "opnsense_firewall_status < 1"
@@ -32,20 +32,30 @@ groups:
           runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
       - alert: "OPNsenseEndpointErrors"
         expr: "sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[15m])) > 0"
+        for: "15m"
         labels:
           severity: "warning"
         annotations:
           summary: "OPNsense exporter endpoint errors ({{ $labels.endpoint }})"
-          description: "The {{ $labels.endpoint }} API endpoint returned errors in the last 15m. One alert per endpoint."
+          description: "The {{ $labels.endpoint }} API endpoint has returned errors continuously for 15m. The 15m for-duration filters out transient errors during a router reboot / brief WAN loss. One alert per endpoint."
           runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
       - alert: "OPNsenseGatewayDown"
-        expr: "opnsense_gateways_status < 1"
+        expr: "opnsense_gateways_status{default_gateway=\"true\"} < 1"
         for: "5m"
         labels:
           severity: "critical"
         annotations:
-          summary: "OPNsense gateway {{ $labels.name }} is offline"
-          description: "Gateway {{ $labels.name }} ({{ $labels.address }}) has been offline (status 0) for 5m."
+          summary: "OPNsense PRIMARY gateway {{ $labels.name }} is offline"
+          description: "Primary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 5m."
+          runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      - alert: "OPNsenseGatewayDownFailover"
+        expr: "opnsense_gateways_status{default_gateway=\"false\"} < 1"
+        for: "15m"
+        labels:
+          severity: "warning"
+        annotations:
+          summary: "OPNsense FAILOVER gateway {{ $labels.name }} is offline"
+          description: "Failover/secondary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 15m. Lower urgency \u2014 primary WAN unaffected. The 15m window tolerates a router reboot / slow secondary-WAN re-establish."
           runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
       - alert: "OPNsenseGatewayHighLoss"
         expr: "opnsense_gateways_loss_percentage > 20"
@@ -136,13 +146,13 @@ groups:
           description: "Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 3 days."
           runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
       - alert: "OPNsenseServiceDown"
-        expr: "opnsense_services_status < 1"
+        expr: "opnsense_services_status{name!=\"iperf\"} < 1"
         for: "10m"
         labels:
           severity: "warning"
         annotations:
           summary: "OPNsense service {{ $labels.name }} stopped"
-          description: "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. One alert per service."
+          description: "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. On-demand services (e.g. iperf) are excluded. One alert per service."
           runbook_url: "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
       - alert: "OPNsenseNTPPeerUnreachable"
         expr: "opnsense_ntp_peer_reach < 1"

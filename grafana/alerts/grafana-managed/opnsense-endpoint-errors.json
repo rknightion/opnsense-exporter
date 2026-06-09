@@ -14,7 +14,7 @@
     "title": "OPNsenseEndpointErrors",
     "noDataState": "OK",
     "execErrState": "Error",
-    "for": "0s",
+    "for": "15m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -23,7 +23,7 @@
     },
     "annotations": {
       "summary": "OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-      "description": "The {{ $labels.endpoint }} API endpoint returned errors in the last 15m. One alert per endpoint.",
+      "description": "The {{ $labels.endpoint }} API endpoint has returned errors continuously for 15m. The 15m for-duration filters out transient errors during a router reboot / brief WAN loss. One alert per endpoint.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {

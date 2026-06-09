@@ -23,7 +23,7 @@
     },
     "annotations": {
       "summary": "OPNsense service {{ $labels.name }} stopped",
-      "description": "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. One alert per service.",
+      "description": "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. On-demand services (e.g. iperf) are excluded. One alert per service.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_services_status",
+          "expr": "opnsense_services_status{name!=\"iperf\"}",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

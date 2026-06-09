@@ -32,10 +32,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # summary, description. op in {gt, lt, within_range, outside_range}.
 RULES = [
     dict(name="opnsense-exporter-down", title="OPNsenseExporterDown",
-         A="opnsense_up", op="lt", params=[1, 0], for_min=5, severity="critical",
+         A="opnsense_up", op="lt", params=[1, 0], for_min=15, severity="critical",
          nodata="Alerting",
          summary="OPNsense exporter/box down ({{ $labels.opnsense_instance }})",
-         description="opnsense_up has been 0 (or the target has been unreachable / NoData) for 5m."),
+         description="opnsense_up has been 0 (or the target has been unreachable / NoData) for 15m. "
+                     "The 15m window tolerates a router reboot (typically <10m) without paging."),
     dict(name="opnsense-firewall-unhealthy", title="OPNsenseFirewallUnhealthy",
          A="opnsense_firewall_status", op="lt", params=[1, 0], for_min=10, severity="warning",
          summary="OPNsense firewall health check failing ({{ $labels.opnsense_instance }})",
@@ -46,13 +47,23 @@ RULES = [
          description="opnsense_crash_reporter_status is 0 — one or more crash reports are present."),
     dict(name="opnsense-endpoint-errors", title="OPNsenseEndpointErrors",
          A="sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[15m]))",
-         op="gt", params=[0, 0], for_min=0, severity="warning",
+         op="gt", params=[0, 0], for_min=15, severity="warning",
          summary="OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-         description="The {{ $labels.endpoint }} API endpoint returned errors in the last 15m. One alert per endpoint."),
+         description="The {{ $labels.endpoint }} API endpoint has returned errors continuously for 15m. "
+                     "The 15m for-duration filters out transient errors during a router reboot / brief WAN loss. One alert per endpoint."),
+    # Split primary vs failover: the default (primary) WAN reconverges in <1m after a reboot, so it
+    # keeps a tight for=5m + critical/page. A secondary/failover WAN can take ~7-10m to re-establish
+    # (DHCP + dpinger convergence) after a reboot, so it gets for=15m + warning (no page) to avoid
+    # false pages during reboots. Requires the default_gateway label (opnsense-exporter >=0.x).
     dict(name="opnsense-gateway-down", title="OPNsenseGatewayDown",
-         A="opnsense_gateways_status", op="lt", params=[1, 0], for_min=5, severity="critical",
-         summary="OPNsense gateway {{ $labels.name }} is offline",
-         description="Gateway {{ $labels.name }} ({{ $labels.address }}) has been offline (status 0) for 5m."),
+         A='opnsense_gateways_status{default_gateway="true"}', op="lt", params=[1, 0], for_min=5, severity="critical",
+         summary="OPNsense PRIMARY gateway {{ $labels.name }} is offline",
+         description="Primary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 5m."),
+    dict(name="opnsense-gw-down-failover", title="OPNsenseGatewayDownFailover",
+         A='opnsense_gateways_status{default_gateway="false"}', op="lt", params=[1, 0], for_min=15, severity="warning",
+         summary="OPNsense FAILOVER gateway {{ $labels.name }} is offline",
+         description="Failover/secondary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 15m. "
+                     "Lower urgency — primary WAN unaffected. The 15m window tolerates a router reboot / slow secondary-WAN re-establish."),
     dict(name="opnsense-gateway-high-loss", title="OPNsenseGatewayHighLoss",
          A="opnsense_gateways_loss_percentage", op="gt", params=[20, 0], for_min=10, severity="warning",
          summary="OPNsense gateway {{ $labels.name }} high packet loss",
@@ -98,10 +109,13 @@ RULES = [
          op="within_range", params=[0, 3], for_min=0, severity="critical",
          summary="OPNsense certificate expiring imminently: {{ $labels.commonname }}",
          description="Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 3 days."),
+    # Exclude on-demand services that are expected to be stopped (e.g. iperf, which only runs during
+    # an explicit performance test). Add other expected-down service names to the exclusion as needed.
     dict(name="opnsense-service-down", title="OPNsenseServiceDown",
-         A="opnsense_services_status", op="lt", params=[1, 0], for_min=10, severity="warning",
+         A='opnsense_services_status{name!="iperf"}', op="lt", params=[1, 0], for_min=10, severity="warning",
          summary="OPNsense service {{ $labels.name }} stopped",
-         description="Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. One alert per service."),
+         description="Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. "
+                     "On-demand services (e.g. iperf) are excluded. One alert per service."),
     dict(name="opnsense-ntp-unsynced", title="OPNsenseNTPPeerUnreachable",
          A="opnsense_ntp_peer_reach", op="lt", params=[1, 0], for_min=15, severity="warning",
          summary="OPNsense NTP peer {{ $labels.server }} unreachable",
