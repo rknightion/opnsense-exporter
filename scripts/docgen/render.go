@@ -45,6 +45,10 @@ func renderFlagTables(flags []FlagDoc) map[string]string {
 	}
 
 	std := func(group []FlagDoc) string {
+		// Sort by name: kingpin registration order is platform-dependent
+		// (web.systemd-socket registers only on Linux), and alphabetical
+		// order keeps generated output deterministic everywhere.
+		sort.Slice(group, func(i, j int) bool { return group[i].Name < group[j].Name })
 		var b strings.Builder
 		b.WriteString("| Flag | Env Var | Default | Description |\n")
 		b.WriteString("|------|---------|---------|-------------|\n")

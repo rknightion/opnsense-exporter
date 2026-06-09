@@ -5,3 +5,5 @@ runtime.gomaxprocs
 # "--exporter.disable-<name>"; the token regex captures the stem.
 exporter.disable
 exporter.enable
+# Tutorial placeholder in docs/development/adding-collector.md:
+OPNSENSE_EXPORTER_DISABLE_EXAMPLE

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -12,6 +13,32 @@ import (
 
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 )
+
+// output collects generated file contents. In check mode nothing is written;
+// any difference from disk is recorded and reported as drift.
+type output struct {
+	checkMode bool
+	repoRoot  string
+	stale     []string
+}
+
+func (o *output) write(path string, content []byte) {
+	if !o.checkMode {
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			fatal("writing %s: %v", path, err)
+		}
+		fmt.Fprintf(os.Stderr, "docgen: wrote %s\n", path)
+		return
+	}
+	existing, err := os.ReadFile(path)
+	if err != nil || string(existing) != string(content) {
+		rel, relErr := filepath.Rel(o.repoRoot, path)
+		if relErr != nil {
+			rel = path
+		}
+		o.stale = append(o.stale, rel)
+	}
+}
 
 // MetricInfo holds parsed information about a single Prometheus metric.
 type MetricInfo struct {
@@ -41,7 +68,11 @@ type FlagInfo struct {
 }
 
 func main() {
+	checkMode := flag.Bool("check", false, "verify generated docs are current; write nothing, exit non-zero on drift")
+	flag.Parse()
+
 	repoRoot := findRepoRoot()
+	out := &output{checkMode: *checkMode, repoRoot: repoRoot}
 
 	fmt.Fprintf(os.Stderr, "docgen: repo root = %s\n", repoRoot)
 
@@ -52,7 +83,8 @@ func main() {
 	fmt.Fprintf(os.Stderr, "docgen: parsed %d subsystem constants\n", len(subsystemConstants))
 
 	// Step 2: Derive flag mappings from kingpin model + options.CollectorFlags.
-	flagsBySubsystem := collectorFlagInfo(collectAllFlags())
+	allFlags := collectAllFlags()
+	flagsBySubsystem := collectorFlagInfo(allFlags)
 	fmt.Fprintf(os.Stderr, "docgen: parsed %d flag mappings\n", len(flagsBySubsystem))
 
 	// Step 3: Parse top-level metrics from collector.go
@@ -62,6 +94,13 @@ func main() {
 	// Step 4: Parse all collector files for buildPrometheusDesc calls
 	collectors := parseAllCollectors(collectorDir, subsystemConstants)
 	fmt.Fprintf(os.Stderr, "docgen: parsed %d collectors\n", len(collectors))
+
+	// Gate: every metric the live collectors describe must be present in the
+	// AST-parsed set, or the generated docs are missing real metrics.
+	if err := verifyMetricsAgainstRegistry(collectors); err != nil {
+		fatal("%v", err)
+	}
+	fmt.Fprintf(os.Stderr, "docgen: registry verification passed\n")
 
 	// Attach flag info to collectors
 	for i, c := range collectors {
@@ -107,14 +146,62 @@ func main() {
 		fatal("creating docs/collectors dir: %v", err)
 	}
 
-	generateMetricsDoc(filepath.Join(repoRoot, "docs", "metrics", "metrics.md"),
+	generateMetricsDoc(out, filepath.Join(repoRoot, "docs", "metrics", "metrics.md"),
 		topLevelMetrics, collectors, totalMetrics, totalGauges, totalCounters)
 
-	generateCollectorReference(filepath.Join(repoRoot, "docs", "collectors", "reference.md"),
+	generateCollectorReference(out, filepath.Join(repoRoot, "docs", "collectors", "reference.md"),
 		collectors)
+
+	// Step 6: Inject generated flag tables into docs/configuration.md.
+	injectConfigurationDoc(out, allFlags)
+
+	// Step 7: Pin metric/collector/dashboard counts across prose and config.
+	dashMetrics, dashTabs := loadDashboardStats(repoRoot)
+	applyStatRules(out, statRules(docStats{
+		Metrics:     totalMetrics,
+		Collectors:  len(collectors),
+		DashMetrics: dashMetrics,
+		DashTabs:    dashTabs,
+	}))
+
+	// Step 8: Lint every flag/env-var token in prose docs against the model.
+	if problems := runDoclint(repoRoot, allFlags); len(problems) > 0 {
+		fatal("doclint found %d problems:\n  %s", len(problems), strings.Join(problems, "\n  "))
+	}
+	fmt.Fprintf(os.Stderr, "docgen: doclint passed\n")
+
+	if *checkMode {
+		if len(out.stale) > 0 {
+			fatal("generated docs are stale, run 'make docs':\n  %s", strings.Join(out.stale, "\n  "))
+		}
+		fmt.Fprintf(os.Stderr, "docgen: check passed — all generated docs current\n")
+	}
 
 	fmt.Fprintf(os.Stderr, "docgen: done! Total metrics: %d (Gauges: %d, Counters: %d)\n",
 		totalMetrics, totalGauges, totalCounters)
+}
+
+// injectConfigurationDoc fills every docgen marker region in
+// docs/configuration.md with tables rendered from the kingpin model.
+func injectConfigurationDoc(out *output, allFlags []FlagDoc) {
+	tables := renderFlagTables(allFlags)
+	configPath := filepath.Join(out.repoRoot, "docs", "configuration.md")
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		fatal("reading %s: %v", configPath, err)
+	}
+	doc := string(raw)
+	for _, region := range []string{
+		"flags-connection", "flags-exporter", "flags-pyroscope", "flags-otlp",
+		"flags-collectors-default-on", "flags-collectors-opt-in",
+		"flags-collectors-details", "flags-full-reference",
+	} {
+		doc, err = injectRegion(doc, region, tables[region])
+		if err != nil {
+			fatal("%v", err)
+		}
+	}
+	out.write(configPath, []byte(doc))
 }
 
 func findRepoRoot() string {
@@ -674,7 +761,7 @@ func formatLabels(labels []string) string {
 	return strings.Join(labels, ", ")
 }
 
-func generateMetricsDoc(path string, topLevel []MetricInfo, collectors []CollectorInfo, totalMetrics, totalGauges, totalCounters int) {
+func generateMetricsDoc(out *output, path string, topLevel []MetricInfo, collectors []CollectorInfo, totalMetrics, totalGauges, totalCounters int) {
 	var b strings.Builder
 
 	b.WriteString("<!-- This file is auto-generated by scripts/docgen. Do not edit manually. Run 'make docgen' to regenerate. -->\n\n")
@@ -723,13 +810,10 @@ func generateMetricsDoc(path string, topLevel []MetricInfo, collectors []Collect
 		b.WriteString("\n")
 	}
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
-		fatal("writing %s: %v", path, err)
-	}
-	fmt.Fprintf(os.Stderr, "docgen: wrote %s\n", path)
+	out.write(path, []byte(b.String()))
 }
 
-func generateCollectorReference(path string, collectors []CollectorInfo) {
+func generateCollectorReference(out *output, path string, collectors []CollectorInfo) {
 	var b strings.Builder
 
 	b.WriteString("<!-- This file is auto-generated by scripts/docgen. Do not edit manually. Run 'make docgen' to regenerate. -->\n\n")
@@ -756,8 +840,5 @@ func generateCollectorReference(path string, collectors []CollectorInfo) {
 	}
 	b.WriteString("\n")
 
-	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
-		fatal("writing %s: %v", path, err)
-	}
-	fmt.Fprintf(os.Stderr, "docgen: wrote %s\n", path)
+	out.write(path, []byte(b.String()))
 }
