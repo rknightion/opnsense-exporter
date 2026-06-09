@@ -1,0 +1,93 @@
+// Package profiling wires the pyroscope-go SDK so the exporter pushes
+// continuous profiles to Grafana Cloud Pyroscope. It is the only package that
+// imports the SDK; configuration is assembled in internal/options.
+package profiling
+
+import (
+	"fmt"
+	"log/slog"
+	"runtime"
+
+	"github.com/grafana/pyroscope-go"
+	"github.com/rknightion/opnsense-exporter/internal/options"
+)
+
+// Sampling settings applied when goroutine/mutex/block profiling is enabled.
+// Fixed, low-overhead defaults; not user-configurable. Note the two have
+// different units (see runtime.SetMutexProfileFraction / SetBlockProfileRate).
+const (
+	// mutexProfileFraction reports 1/N of mutex contention events.
+	mutexProfileFraction = 5
+	// blockProfileRate is a nanosecond threshold: record blocking events that
+	// last on average at least this long. 100µs keeps overhead modest while
+	// still surfacing meaningful contention (a value like 5 would sample almost
+	// everything).
+	blockProfileRate = 100_000
+)
+
+// profileTypes returns the set of profiles to collect. The default set is
+// zero-overhead; mutex/block adds goroutine/mutex/block profiles.
+func profileTypes(enableMutexBlock bool) []pyroscope.ProfileType {
+	types := []pyroscope.ProfileType{
+		pyroscope.ProfileCPU,
+		pyroscope.ProfileAllocObjects,
+		pyroscope.ProfileAllocSpace,
+		pyroscope.ProfileInuseObjects,
+		pyroscope.ProfileInuseSpace,
+	}
+	if enableMutexBlock {
+		types = append(types,
+			pyroscope.ProfileGoroutines,
+			pyroscope.ProfileMutexCount,
+			pyroscope.ProfileMutexDuration,
+			pyroscope.ProfileBlockCount,
+			pyroscope.ProfileBlockDuration,
+		)
+	}
+	return types
+}
+
+// loggerAdapter adapts the exporter's *slog.Logger to pyroscope.Logger.
+type loggerAdapter struct{ logger *slog.Logger }
+
+func (l loggerAdapter) Infof(format string, args ...any) {
+	l.logger.Info(fmt.Sprintf(format, args...))
+}
+func (l loggerAdapter) Debugf(format string, args ...any) {
+	l.logger.Debug(fmt.Sprintf(format, args...))
+}
+func (l loggerAdapter) Errorf(format string, args ...any) {
+	l.logger.Error(fmt.Sprintf(format, args...))
+}
+
+// Start begins continuous profiling and returns the running profiler. Callers
+// should Stop() it on shutdown to flush the final profile. instance and version
+// are attached as tags.
+func Start(cfg *options.PyroscopeConfig, instance, version string, logger *slog.Logger) (*pyroscope.Profiler, error) {
+	profiler, err := pyroscope.Start(pyroscope.Config{
+		ApplicationName:   cfg.ApplicationName,
+		ServerAddress:     cfg.ServerAddress,
+		BasicAuthUser:     cfg.AuthUser,
+		BasicAuthPassword: cfg.AuthPassword,
+		TenantID:          cfg.TenantID,
+		Logger:            loggerAdapter{logger: logger},
+		ProfileTypes:      profileTypes(cfg.EnableMutexBlock),
+		Tags: map[string]string{
+			"instance": instance,
+			"version":  version,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Enable the process-global mutex/block sampling only after the profiler is
+	// running, so a failed start does not leave these runtime knobs permanently
+	// on with nothing consuming the samples.
+	if cfg.EnableMutexBlock {
+		runtime.SetMutexProfileFraction(mutexProfileFraction)
+		runtime.SetBlockProfileRate(blockProfileRate)
+	}
+
+	return profiler, nil
+}
