@@ -109,7 +109,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_NDP").Default("false").Bool()
 	dhcpv4CollectorDisabled = kingpin.Flag(
 		"exporter.disable-dhcpv4",
-		"Disable the scraping of ISC DHCPv4 leases",
+		"Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_DHCPV4").Default("false").Bool()
 	dhcpv4DetailsEnabled = kingpin.Flag(
 		"exporter.enable-dhcpv4-details",
@@ -117,7 +117,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS").Default("false").Bool()
 	acmeCollectorDisabled = kingpin.Flag(
 		"exporter.disable-acme",
-		"Disable the scraping of ACME client certificate renewal status and expiry metrics",
+		"Disable the scraping of ACME client certificate renewal status and expiry metrics (silent when the os-acme-client plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ACME").Default("false").Bool()
 	smartCollectorDisabled = kingpin.Flag(
 		"exporter.disable-smart",
@@ -125,11 +125,11 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_SMART").Default("false").Bool()
 	dyndnsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-dyndns",
-		"Disable the scraping of DynDNS (ddclient) account update status metrics",
+		"Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_DYNDNS").Default("false").Bool()
 	gatewaysCollectorDisabled = kingpin.Flag(
 		"exporter.disable-gateways",
-		"Disable the scraping of gateway status metrics",
+		"Disable the scraping of gateway status metrics (RTT, packet loss, gateway state)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_GATEWAYS").Default("false").Bool()
 )
 
@@ -205,4 +205,54 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		DynDNS:               !*dyndnsCollectorDisabled,
 		Gateways:             !*gatewaysCollectorDisabled,
 	}
+}
+
+// CollectorFlag binds a collector switch flag to the collector subsystem it
+// controls. scripts/docgen consumes this to group and label generated
+// documentation; TestCollectorFlagsCoverAllSwitchFlags fails when a new
+// exporter.disable-*/enable-* flag is added without an entry here.
+type CollectorFlag struct {
+	Flag      string // kingpin flag name without leading --
+	Subsystem string // collector.XxxSubsystem constant
+	Detail    bool   // true when the flag toggles extra detail metrics rather than the collector itself
+}
+
+// CollectorFlags lists every collector switch flag.
+// The Subsystem values must match the XxxSubsystem constants in internal/collector/collector.go.
+// (collector cannot be imported here: opnsense/client.go already imports options, which
+// would create a cycle. The concurrent lane adding SubsystemDisplayNames to collector.go
+// does not break that existing chain.)
+var CollectorFlags = []CollectorFlag{
+	{Flag: "exporter.disable-arp-table", Subsystem: "arp_table"},
+	{Flag: "exporter.disable-cron-table", Subsystem: "cron"},
+	{Flag: "exporter.disable-wireguard", Subsystem: "wireguard"},
+	{Flag: "exporter.disable-ipsec", Subsystem: "ipsec"},
+	{Flag: "exporter.disable-unbound", Subsystem: "unbound_dns"},
+	{Flag: "exporter.disable-openvpn", Subsystem: "openvpn"},
+	{Flag: "exporter.enable-openvpn-details", Subsystem: "openvpn", Detail: true},
+	{Flag: "exporter.disable-firewall", Subsystem: "firewall"},
+	{Flag: "exporter.disable-firmware", Subsystem: "firmware"},
+	{Flag: "exporter.disable-system", Subsystem: "system"},
+	{Flag: "exporter.disable-temperature", Subsystem: "temperature"},
+	{Flag: "exporter.disable-dnsmasq", Subsystem: "dnsmasq"},
+	{Flag: "exporter.enable-dnsmasq-details", Subsystem: "dnsmasq", Detail: true},
+	{Flag: "exporter.disable-firewall-rules", Subsystem: "firewall_rule"},
+	{Flag: "exporter.enable-firewall-rules-details", Subsystem: "firewall_rule", Detail: true},
+	{Flag: "exporter.disable-mbuf", Subsystem: "mbuf"},
+	{Flag: "exporter.disable-ntp", Subsystem: "ntp"},
+	{Flag: "exporter.disable-certificates", Subsystem: "certificate"},
+	{Flag: "exporter.disable-carp", Subsystem: "carp"},
+	{Flag: "exporter.disable-activity", Subsystem: "activity"},
+	{Flag: "exporter.disable-kea", Subsystem: "kea"},
+	{Flag: "exporter.enable-kea-details", Subsystem: "kea", Detail: true},
+	{Flag: "exporter.enable-network-diagnostics", Subsystem: "network_diag"},
+	{Flag: "exporter.enable-netflow", Subsystem: "netflow"},
+	{Flag: "exporter.disable-pf-stats", Subsystem: "pf_stats"},
+	{Flag: "exporter.disable-ndp", Subsystem: "ndp"},
+	{Flag: "exporter.disable-dhcpv4", Subsystem: "dhcpv4"},
+	{Flag: "exporter.enable-dhcpv4-details", Subsystem: "dhcpv4", Detail: true},
+	{Flag: "exporter.disable-acme", Subsystem: "acme"},
+	{Flag: "exporter.disable-smart", Subsystem: "smart"},
+	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
+	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
 }
