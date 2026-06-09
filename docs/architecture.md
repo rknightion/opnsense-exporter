@@ -188,12 +188,17 @@ All metrics use the `opnsense` namespace prefix. The subsystem constants define 
 
 ## Profiling
 
-The exporter includes built-in profiling support via Go's `net/http/pprof` and [godeltaprof](https://github.com/grafana/pyroscope-go) (Pyroscope). Profiling endpoints are available at `/debug/pprof/*` and support:
+The exporter supports opt-in continuous profiling that **pushes** profiles to [Grafana Cloud Pyroscope](https://grafana.com/products/cloud/profiles-for-continuous-profiling/) via the [pyroscope-go](https://github.com/grafana/pyroscope-go) SDK. It is disabled by default and activates only when `--pyroscope.server-address` is set; see [Configuration → Continuous profiling (Pyroscope)](configuration.md#continuous-profiling-pyroscope) for the flags and authentication.
+
+Profiles collected by default:
 
 - CPU profiling
-- Memory (heap) profiling
+- Memory (heap) profiling — alloc/inuse, objects/space
+
+With `--pyroscope.enable-mutex-block` the exporter additionally collects:
+
+- Goroutine profiling
 - Mutex contention profiling
 - Block profiling
-- Goroutine dumps
 
-This is compatible with Grafana Alloy pull-mode scraping for continuous profiling.
+There are **no** unauthenticated `/debug/pprof/*` HTTP endpoints; the previously always-on pprof/godeltaprof handlers have been removed in favour of authenticated push.

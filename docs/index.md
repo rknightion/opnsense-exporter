@@ -86,7 +86,7 @@ Key highlights:
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail
 - **File-based secrets** for secure credential management in containers
-- **Profiling endpoints** via pprof and godeltaprof for operational visibility
+- **Continuous profiling** (opt-in) pushed to Grafana Cloud Pyroscope for operational visibility
 
 !!! info "Fork notice"
     This is a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter). Full credit to the original authors for building the foundation. This fork includes significant additions -- 14 new collectors, enhanced existing collectors, modernized build infrastructure, and many bug fixes -- that go beyond the scope of the upstream project.
