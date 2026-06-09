@@ -1,6 +1,6 @@
 ---
 title: Collectors
-description: Overview of all 26 OPNsense Exporter collectors, their auto-registration pattern, and configuration options
+description: Overview of all 30 OPNsense Exporter collectors, their auto-registration pattern, and configuration options
 tags:
   - Monitoring
   - Configuration
