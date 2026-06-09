@@ -168,3 +168,25 @@ services:
 - **User:** Runs as nonroot (UID 65534)
 - **Architectures:** `linux/amd64`, `linux/arm64`
 - **Build flags:** Static binary with `-trimpath`, `-mod=vendor`, CGO disabled
+
+## Custom CA certificates
+
+If your OPNsense web UI uses a certificate from a private CA, mount the CA bundle
+and point Go's TLS stack at it with `SSL_CERT_FILE` (the runtime image is distroless,
+so there is no `update-ca-certificates`):
+
+```yaml
+services:
+  opnsense-exporter:
+    image: ghcr.io/rknightion/opnsense-exporter:latest
+    command:
+      - --opnsense.protocol=https
+      - --opnsense.address=ops.example.com
+    environment:
+      SSL_CERT_FILE: /certs/private-ca.pem
+    volumes:
+      - ./private-ca.pem:/certs/private-ca.pem:ro
+```
+
+Avoid `--opnsense.insecure` outside of testing — it disables certificate
+verification entirely.

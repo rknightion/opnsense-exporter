@@ -14,9 +14,9 @@ nav = [
       "deployment.md",
       { "Docker & Compose" = "deployment/docker.md" },
       { "Kubernetes" = "deployment/kubernetes.md" },
-      { "Systemd" = "deployment/systemd.md" },
-      { Security = "security.md" }
+      { "Systemd" = "deployment/systemd.md" }
     ] },
+  { Security = "security.md" },
   { Collectors = [
       "collectors/index.md",
       { Reference = "collectors/reference.md" }
@@ -27,6 +27,8 @@ nav = [
       { "Complete Reference" = "metrics/metrics.md" }
     ] },
   { "Integration & Dashboards" = "integration-dashboards.md" },
+  { Troubleshooting = "troubleshooting.md" },
+  { Upgrading = "upgrading.md" },
   { Architecture = "architecture.md" },
   { Changelog = "changelog.md" },
   { Development = [
