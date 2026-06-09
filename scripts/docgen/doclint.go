@@ -85,7 +85,7 @@ func loadAllowlist(repoRoot string) map[string]bool {
 
 // lintTargets returns every prose/config file that may mention flags/env vars.
 func lintTargets(repoRoot string) []string {
-	targets := []string{"README.md", "CONTRIBUTING.md", "Makefile", "grafana/README.md"}
+	targets := []string{"README.md", "CONTRIBUTING.md", "CLAUDE.md", "Makefile", "grafana/README.md"}
 	for _, dir := range []string{"docs", "deploy"} {
 		_ = filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, d os.DirEntry, err error) error {
 			if err != nil {

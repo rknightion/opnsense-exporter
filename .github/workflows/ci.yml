@@ -81,7 +81,7 @@ jobs:
           cache-to: type=gha,scope=build-verify,mode=max
 
   docker-build-main:
-    needs: [tests, docker-build-verify]
+    needs: [tests, docker-build-verify, docs]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     permissions:
