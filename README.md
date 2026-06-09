@@ -102,6 +102,7 @@ This fork diverges from [AthennaMind/opnsense-exporter](https://github.com/Athen
 - **Dockerfile modernization** — Alpine-based builder (smaller pulls), BuildKit cache mounts for faster rebuilds, `-trimpath` and `-mod=vendor` flags for reproducibility, distroless debian13 nonroot runtime image pinned by digest.
 - **Fully off Docker Hub** — The Go toolchain build stage now pulls from Google's `mirror.gcr.io/library/golang` mirror instead of `docker.io`, eliminating the last Docker Hub dependency (and the anonymous-pull rate-limit/gateway-timeout failures it caused in CI). Both build and runtime base images are now served from Google infrastructure.
 - **Removed GOMAXPROCS flag** — Removed the `--runtime.gomaxprocs` flag (previously defaulting to 2). Go's runtime now auto-detects available CPUs, which is the correct default for this I/O-bound exporter.
+- **Security hardening** — The metrics HTTP server now sets `ReadHeaderTimeout`/`IdleTimeout` (Slowloris protection); API responses are capped at 64 MiB after decompression (decompression-bomb protection); successful API response bodies are no longer logged at debug level (error responses still carry a bounded body excerpt for debugging); API POST requests now correctly resend their body on retry; release workflow permissions are scoped per-job and CI build-telemetry secrets are no longer injected into PR-triggered builds.
 
 ### Documentation
 

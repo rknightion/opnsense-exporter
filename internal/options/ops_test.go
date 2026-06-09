@@ -206,3 +206,58 @@ func TestGetLineFromFile_MultipleLines(t *testing.T) {
 		t.Errorf("expected 'first-line', got %q", result)
 	}
 }
+
+// resetOpsFlags saves the package-global credential flag values and restores
+// them when the test finishes, so tests can mutate them safely.
+func resetOpsFlags(t *testing.T) {
+	t.Helper()
+	savedKey, savedSecret := *opnsenseAPIKey, *opnsenseAPISecret
+	t.Cleanup(func() {
+		*opnsenseAPIKey = savedKey
+		*opnsenseAPISecret = savedSecret
+	})
+}
+
+func TestOpsAPISecret_ChecksSecretFlag(t *testing.T) {
+	resetOpsFlags(t)
+
+	// Secret unset must error even when the key IS set.
+	*opnsenseAPIKey = "some-key"
+	*opnsenseAPISecret = ""
+	if _, err := opsAPISecret(); err == nil {
+		t.Fatal("expected error when api-secret is unset, got nil")
+	}
+
+	// Secret set must resolve even when the key is NOT set.
+	*opnsenseAPIKey = ""
+	*opnsenseAPISecret = "s3cret"
+	got, err := opsAPISecret()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got != "s3cret" {
+		t.Errorf("expected 's3cret', got %q", got)
+	}
+}
+
+func TestOpsAPIKey_ChecksKeyFlag(t *testing.T) {
+	resetOpsFlags(t)
+
+	// Key unset must error even when the secret IS set.
+	*opnsenseAPIKey = ""
+	*opnsenseAPISecret = "some-secret"
+	if _, err := opsAPIKey(); err == nil {
+		t.Fatal("expected error when api-key is unset, got nil")
+	}
+
+	// Key set must resolve even when the secret is NOT set.
+	*opnsenseAPIKey = "the-key"
+	*opnsenseAPISecret = ""
+	got, err := opsAPIKey()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got != "the-key" {
+		t.Errorf("expected 'the-key', got %q", got)
+	}
+}

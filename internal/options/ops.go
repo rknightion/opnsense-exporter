@@ -56,15 +56,15 @@ func getLineFromFile(filePath string) (string, error) {
 
 func opsAPISecret() (string, error) {
 	if env, ok := os.LookupEnv("OPS_API_SECRET_FILE"); ok {
-		apiKey, err := getLineFromFile(env)
+		apiSecret, err := getLineFromFile(env)
 		if err != nil {
 			return "", errors.Join(fmt.Errorf("failed to read OPS_API_SECRET_FILE"), err)
 		}
-		if len(apiKey) > 0 {
-			return apiKey, nil
+		if len(apiSecret) > 0 {
+			return apiSecret, nil
 		}
 	}
-	if *opnsenseAPIKey == "" {
+	if *opnsenseAPISecret == "" {
 		return "", fmt.Errorf("opnsense.api-secret or OPS_API_SECRET_FILE must be set")
 	}
 
@@ -73,15 +73,15 @@ func opsAPISecret() (string, error) {
 
 func opsAPIKey() (string, error) {
 	if env, ok := os.LookupEnv("OPS_API_KEY_FILE"); ok {
-		apiSecret, err := getLineFromFile(env)
+		apiKey, err := getLineFromFile(env)
 		if err != nil {
 			return "", errors.Join(fmt.Errorf("failed to read OPS_API_KEY_FILE"), err)
 		}
-		if len(apiSecret) > 0 {
-			return apiSecret, nil
+		if len(apiKey) > 0 {
+			return apiKey, nil
 		}
 	}
-	if *opnsenseAPISecret == "" {
+	if *opnsenseAPIKey == "" {
 		return "", fmt.Errorf("opnsense.api-key or OPS_API_KEY_FILE must be set")
 	}
 

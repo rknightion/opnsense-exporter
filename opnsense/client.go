@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"crypto/x509"
@@ -22,6 +23,16 @@ import (
 // MaxRetries is the maximum number of retries
 // when a request to the OPNsense API fails
 const MaxRetries = 3
+
+// maxResponseBodyBytes caps how much of an API response body the client reads
+// (after any gzip decompression), so a compromised or misbehaving OPNsense box
+// cannot exhaust the exporter's memory with an oversized or maliciously
+// compressed response.
+const maxResponseBodyBytes = 64 << 20 // 64 MiB
+
+// maxErrorBodyBytes caps how much of a non-2xx response body is propagated
+// into APICallError messages (and from there into logs).
+const maxErrorBodyBytes = 4 << 10 // 4 KiB
 
 // EndpointName is the custom type for name of an endpoint definition
 type EndpointName string
@@ -175,29 +186,48 @@ func (c *Client) doForm(path EndpointPath, form url.Values, responseStruct any) 
 func (c *Client) doWithContentType(method string, path EndpointPath, body io.Reader, contentType string, responseStruct any) *APICallError {
 	reqURL := fmt.Sprintf("%s/%s", c.baseURL, string(path))
 
-	req, err := http.NewRequest(method, reqURL, body)
-	if err != nil {
-		return &APICallError{
-			Endpoint:   string(path),
-			Message:    err.Error(),
-			StatusCode: 0,
+	// Buffer the request body so every retry attempt sends it from the start;
+	// the transport consumes a request's body even when the attempt fails.
+	var bodyBytes []byte
+	if body != nil {
+		b, err := io.ReadAll(body)
+		if err != nil {
+			return &APICallError{
+				Endpoint:   string(path),
+				Message:    fmt.Sprintf("failed to read request body: %s", err.Error()),
+				StatusCode: 0,
+			}
 		}
-	}
-
-	req.SetBasicAuth(c.key, c.secret)
-
-	for k, v := range c.headers {
-		req.Header.Add(k, v)
-	}
-
-	if method == "POST" {
-		req.Header.Add("Content-Type", contentType)
+		bodyBytes = b
 	}
 
 	c.log.Debug("fetching data", "component", "opnsense-client", "url", reqURL, "method", method)
 
 	// Retry the request up to MaxRetries times
 	for range MaxRetries {
+		var reqBody io.Reader
+		if bodyBytes != nil {
+			reqBody = bytes.NewReader(bodyBytes)
+		}
+		req, err := http.NewRequest(method, reqURL, reqBody)
+		if err != nil {
+			return &APICallError{
+				Endpoint:   string(path),
+				Message:    err.Error(),
+				StatusCode: 0,
+			}
+		}
+
+		req.SetBasicAuth(c.key, c.secret)
+
+		for k, v := range c.headers {
+			req.Header.Add(k, v)
+		}
+
+		if method == "POST" {
+			req.Header.Add("Content-Type", contentType)
+		}
+
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			c.log.Error("failed to send request; retrying",
@@ -206,59 +236,77 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 			time.Sleep(25 * time.Millisecond)
 			continue
 		}
-		defer resp.Body.Close()
 
-		var reader io.ReadCloser
-		switch resp.Header.Get("Content-Encoding") {
-		case "gzip":
-			reader, err = gzip.NewReader(resp.Body)
-			if err != nil {
-				return &APICallError{
-					Endpoint:   string(path),
-					Message:    fmt.Sprintf("failed to decompress gzip response body: %s", err.Error()),
-					StatusCode: resp.StatusCode,
-				}
-			}
-		default:
-			reader = resp.Body
-		}
-
-		respBody, err := io.ReadAll(reader)
-		if err != nil {
-			return &APICallError{
-				Endpoint:   string(path),
-				Message:    fmt.Sprintf("failed to read response body: %s", err.Error()),
-				StatusCode: resp.StatusCode,
-			}
-		}
-
-		reader.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			err := json.Unmarshal(respBody, &responseStruct)
-			if err != nil {
-				return &APICallError{
-					Endpoint:   string(path),
-					Message:    fmt.Sprintf("failed to unmarshal response body: %s", err.Error()),
-					StatusCode: resp.StatusCode,
-				}
-			}
-
-			c.log.Debug("returned data", "component", "opnsense-client", "url", reqURL, "data", string(respBody))
-
-			return nil
-		} else {
-			return &APICallError{
-				Endpoint:   string(path),
-				Message:    string(respBody),
-				StatusCode: resp.StatusCode,
-			}
-		}
-
+		return c.readResponse(path, resp, responseStruct)
 	}
 	return &APICallError{
 		Endpoint:   string(path),
 		Message:    fmt.Sprintf("max retries of %d times reached", MaxRetries),
 		StatusCode: 0,
 	}
+}
+
+// readResponse decompresses, size-limits and unmarshals an API response into
+// responseStruct, closing the response body. Non-2xx responses and unmarshal
+// failures carry a bounded slice of the body in the returned error, which is
+// where response payloads are surfaced for debugging; successful responses are
+// never logged.
+func (c *Client) readResponse(path EndpointPath, resp *http.Response, responseStruct any) *APICallError {
+	defer resp.Body.Close()
+
+	var reader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return &APICallError{
+				Endpoint:   string(path),
+				Message:    fmt.Sprintf("failed to decompress gzip response body: %s", err.Error()),
+				StatusCode: resp.StatusCode,
+			}
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
+	respBody, err := io.ReadAll(io.LimitReader(reader, maxResponseBodyBytes+1))
+	if err != nil {
+		return &APICallError{
+			Endpoint:   string(path),
+			Message:    fmt.Sprintf("failed to read response body: %s", err.Error()),
+			StatusCode: resp.StatusCode,
+		}
+	}
+	if len(respBody) > maxResponseBodyBytes {
+		return &APICallError{
+			Endpoint:   string(path),
+			Message:    fmt.Sprintf("response body exceeds %d byte limit", maxResponseBodyBytes),
+			StatusCode: resp.StatusCode,
+		}
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &APICallError{
+			Endpoint:   string(path),
+			Message:    string(truncateBody(respBody)),
+			StatusCode: resp.StatusCode,
+		}
+	}
+
+	if err := json.Unmarshal(respBody, &responseStruct); err != nil {
+		return &APICallError{
+			Endpoint:   string(path),
+			Message:    fmt.Sprintf("failed to unmarshal response body: %s; body: %s", err.Error(), truncateBody(respBody)),
+			StatusCode: resp.StatusCode,
+		}
+	}
+
+	return nil
+}
+
+// truncateBody bounds a response body destined for an error message.
+func truncateBody(b []byte) []byte {
+	if len(b) <= maxErrorBodyBytes {
+		return b
+	}
+	return append(b[:maxErrorBodyBytes:maxErrorBodyBytes], "... (truncated)"...)
 }

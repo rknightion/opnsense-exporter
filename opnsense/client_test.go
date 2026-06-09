@@ -3,6 +3,7 @@ package opnsense
 import (
 	"bytes"
 	"compress/gzip"
+	"io"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -236,5 +237,67 @@ func TestDo_InvalidJSON(t *testing.T) {
 	}
 	if !strings.Contains(err.Message, "unmarshal") {
 		t.Errorf("expected unmarshal error, got: %s", err.Message)
+	}
+}
+
+func TestDo_RetryResendsPOSTBody(t *testing.T) {
+	var attempts atomic.Int32
+	const payload = `{"key":"value"}`
+
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		count := attempts.Add(1)
+		if count == 1 {
+			// Close the connection to simulate a network error
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("server doesn't support hijacking")
+			}
+			conn, _, _ := hj.Hijack()
+			conn.Close()
+			return
+		}
+		got, _ := io.ReadAll(r.Body)
+		if string(got) != payload {
+			t.Errorf("retry attempt %d: expected body %q, got %q", count, payload, string(got))
+		}
+		w.Write([]byte(`{"ok":true}`))
+	})
+	defer server.Close()
+
+	var result struct {
+		OK bool `json:"ok"`
+	}
+
+	err := client.do("POST", "api/core/service/search", strings.NewReader(payload), &result)
+	if err != nil {
+		t.Fatalf("expected success after retry, got: %v", err)
+	}
+	if !result.OK {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestDo_OversizedGzipResponseRejected(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		// A small compressed payload that inflates past the response size cap.
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		chunk := make([]byte, 1<<20)
+		for written := 0; written <= maxResponseBodyBytes; written += len(chunk) {
+			if _, err := gz.Write(chunk); err != nil {
+				return
+			}
+		}
+	})
+	defer server.Close()
+
+	var result map[string]any
+	err := client.do("GET", "api/core/service/search", nil, &result)
+	if err == nil {
+		t.Fatal("expected error for oversized response body")
+	}
+	if !strings.Contains(err.Message, "exceeds") {
+		t.Errorf("expected size limit error, got: %s", err.Message)
 	}
 }

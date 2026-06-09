@@ -332,7 +332,13 @@ func main() {
 	srvClose := make(chan struct{})
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
 
-	srv := &http.Server{}
+	// ReadHeaderTimeout protects the metrics port against Slowloris-style
+	// connection exhaustion; IdleTimeout reaps abandoned keep-alive connections.
+	// WriteTimeout stays unset so large scrape responses are never cut short.
+	srv := &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	go func() {
 		if err := web.ListenAndServe(srv, options.WebConfig, logger); err != nil {
 			logger.Error("Error received from the HTTP server", "err", err)
