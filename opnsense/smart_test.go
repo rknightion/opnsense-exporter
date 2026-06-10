@@ -239,6 +239,117 @@ func TestFetchSMARTDevices_ListServerError(t *testing.T) {
 	}
 }
 
+func TestFetchSMARTDevices_AttributesAndNVMe(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices":["ada0","nvme0"]}`))
+	})
+
+	mux.HandleFunc("/api/smart/service/info", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("failed to parse form: %v", err)
+		}
+		switch r.FormValue("device") {
+		case "ada0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Samsung SSD 870 QVO 1TB",
+					"serial_number": "REDACTED-SERIAL-1",
+					"smart_status": {"passed": true},
+					"temperature": {"current": 38},
+					"power_on_time": {"hours": 38343},
+					"ata_smart_attributes": {
+						"revision": 1,
+						"table": [
+							{"id": 5, "name": "Reallocated_Sector_Ct", "value": 100, "worst": 100, "thresh": 10, "when_failed": "", "raw": {"value": 0, "string": "0"}},
+							{"id": 241, "name": "Total_LBAs_Written", "value": 99, "worst": 99, "thresh": 0, "when_failed": "", "raw": {"value": 199317943456, "string": "199317943456"}}
+						]
+					}
+				}
+			}`))
+		case "nvme0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Samsung SSD 970",
+					"serial_number": "REDACTED-SERIAL-2",
+					"smart_status": {"passed": true},
+					"temperature": {"current": 45},
+					"power_on_time": {"hours": 5000},
+					"nvme_smart_health_information_log": {
+						"critical_warning": 0,
+						"temperature": 45,
+						"available_spare": 100,
+						"available_spare_threshold": 10,
+						"percentage_used": 2,
+						"data_units_read": 12345678,
+						"data_units_written": 87654321,
+						"power_cycles": 15,
+						"power_on_hours": 5000,
+						"unsafe_shutdowns": 3,
+						"media_errors": 0,
+						"num_err_log_entries": 0
+					}
+				}
+			}`))
+		default:
+			t.Errorf("unexpected device %q", r.FormValue("device"))
+		}
+	})
+
+	data, err := client.FetchSMARTDevices()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(data.Devices))
+	}
+
+	ada0 := data.Devices[0]
+	if len(ada0.Attributes) != 2 {
+		t.Fatalf("expected 2 SATA attributes for ada0, got %d", len(ada0.Attributes))
+	}
+	a0 := ada0.Attributes[0]
+	if a0.ID != 5 || a0.Name != "Reallocated_Sector_Ct" || a0.Value != 100 || a0.Worst != 100 || a0.Threshold != 10 || a0.Raw != 0 {
+		t.Errorf("unexpected attribute 0: %+v", a0)
+	}
+	a1 := ada0.Attributes[1]
+	if a1.ID != 241 || a1.Raw != 199317943456 {
+		t.Errorf("unexpected attribute 1: %+v", a1)
+	}
+	if ada0.NVMe != nil {
+		t.Error("expected no NVMe health log for ada0")
+	}
+
+	nvme0 := data.Devices[1]
+	if len(nvme0.Attributes) != 0 {
+		t.Errorf("expected no SATA attributes for nvme0, got %d", len(nvme0.Attributes))
+	}
+	if nvme0.NVMe == nil {
+		t.Fatal("expected NVMe health log for nvme0")
+	}
+	checks := []struct {
+		name string
+		got  *float64
+		want float64
+	}{
+		{"AvailableSpare", nvme0.NVMe.AvailableSpare, 100},
+		{"PercentageUsed", nvme0.NVMe.PercentageUsed, 2},
+		{"MediaErrors", nvme0.NVMe.MediaErrors, 0},
+		{"UnsafeShutdowns", nvme0.NVMe.UnsafeShutdowns, 3},
+		{"DataUnitsRead", nvme0.NVMe.DataUnitsRead, 12345678},
+		{"DataUnitsWritten", nvme0.NVMe.DataUnitsWritten, 87654321},
+	}
+	for _, c := range checks {
+		if c.got == nil {
+			t.Errorf("expected %s to be non-nil", c.name)
+		} else if *c.got != c.want {
+			t.Errorf("expected %s=%v, got %v", c.name, c.want, *c.got)
+		}
+	}
+}
+
 func TestFetchSMARTDevices_PartialFields(t *testing.T) {
 	// Some drives may not report temperature or power-on hours (e.g. USB attached).
 	// The returned SMARTDevice should have nil for missing fields.

@@ -265,3 +265,124 @@ func TestSMARTCollector_Name(t *testing.T) {
 		t.Errorf("expected %s, got %s", SMARTSubsystem, c.Name())
 	}
 }
+
+func TestSMARTCollector_Update_AttributesAndNVMe(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices":["ada0","nvme0"]}`))
+	})
+	mux.HandleFunc("/api/smart/service/info", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		switch r.FormValue("device") {
+		case "ada0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Samsung SSD 870 QVO 1TB",
+					"serial_number": "REDACTED-SERIAL-1",
+					"smart_status": {"passed": true},
+					"temperature": {"current": 38},
+					"power_on_time": {"hours": 38343},
+					"ata_smart_attributes": {
+						"table": [
+							{"id": 5, "name": "Reallocated_Sector_Ct", "value": 100, "worst": 100, "thresh": 10, "raw": {"value": 0}},
+							{"id": 241, "name": "Total_LBAs_Written", "value": 99, "worst": 99, "thresh": 0, "raw": {"value": 199317943456}}
+						]
+					}
+				}
+			}`))
+		case "nvme0":
+			w.Write([]byte(`{
+				"output": {
+					"model_name": "Samsung SSD 970",
+					"serial_number": "REDACTED-SERIAL-2",
+					"smart_status": {"passed": true},
+					"temperature": {"current": 45},
+					"power_on_time": {"hours": 5000},
+					"nvme_smart_health_information_log": {
+						"available_spare": 100,
+						"percentage_used": 2,
+						"data_units_read": 12345678,
+						"data_units_written": 87654321,
+						"unsafe_shutdowns": 3,
+						"media_errors": 0
+					}
+				}
+			}`))
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &smartCollector{subsystem: SMARTSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	// devices_total(1) + ada0 base(3) + 2 attrs × 4 series(8) + nvme0 base(3) + nvme(6) = 21
+	if expected := 21; len(metrics) != expected {
+		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
+	}
+
+	// attribute_raw for Total_LBAs_Written carries name+id labels and the raw value.
+	foundRaw := false
+	for _, m := range metrics {
+		if !strings.Contains(m.Desc().String(), "attribute_raw") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if labels["device"] == "ada0" && labels["attribute_id"] == "241" {
+			foundRaw = true
+			if labels["attribute_name"] != "Total_LBAs_Written" {
+				t.Errorf("expected attribute_name=Total_LBAs_Written, got %q", labels["attribute_name"])
+			}
+			if got := getMetricValue(m); got != 199317943456 {
+				t.Errorf("expected raw=199317943456, got %v", got)
+			}
+		}
+	}
+	if !foundRaw {
+		t.Error("expected attribute_raw metric for ada0 id=241")
+	}
+
+	// attribute_threshold for id=5 is 10.
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "attribute_threshold") {
+			labels := getMetricLabels(m)
+			if labels["attribute_id"] == "5" && getMetricValue(m) != 10 {
+				t.Errorf("expected threshold=10 for id=5, got %v", getMetricValue(m))
+			}
+		}
+	}
+
+	// NVMe series carry only the device label.
+	nvmeChecks := map[string]float64{
+		"nvme_available_spare_percent":  100,
+		"nvme_percentage_used":          2,
+		"nvme_media_errors_total":       0,
+		"nvme_unsafe_shutdowns_total":   3,
+		"nvme_data_units_read_total":    12345678,
+		"nvme_data_units_written_total": 87654321,
+	}
+	for needle, want := range nvmeChecks {
+		found := false
+		for _, m := range metrics {
+			if !strings.Contains(m.Desc().String(), needle) {
+				continue
+			}
+			found = true
+			labels := getMetricLabels(m)
+			if labels["device"] != "nvme0" {
+				t.Errorf("%s: expected device=nvme0, got %q", needle, labels["device"])
+			}
+			if got := getMetricValue(m); got != want {
+				t.Errorf("%s: expected %v, got %v", needle, want, got)
+			}
+		}
+		if !found {
+			t.Errorf("expected metric %s", needle)
+		}
+	}
+}

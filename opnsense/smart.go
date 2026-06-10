@@ -21,11 +21,40 @@ type smartInfoResponse struct {
 // smartInfoOutput mirrors the stable fields from a smartctl -a -j JSON response.
 // All fields are pointers because they may be absent for some drive types.
 type smartInfoOutput struct {
-	ModelName    *string           `json:"model_name"`
-	SerialNumber *string           `json:"serial_number"`
-	SmartStatus  *smartStatus      `json:"smart_status"`
-	Temperature  *smartTemp        `json:"temperature"`
-	PowerOnTime  *smartPowerOnTime `json:"power_on_time"`
+	ModelName          *string             `json:"model_name"`
+	SerialNumber       *string             `json:"serial_number"`
+	SmartStatus        *smartStatus        `json:"smart_status"`
+	Temperature        *smartTemp          `json:"temperature"`
+	PowerOnTime        *smartPowerOnTime   `json:"power_on_time"`
+	AtaSmartAttributes *smartAtaAttributes `json:"ata_smart_attributes"`
+	NVMeHealth         *smartNVMeHealthLog `json:"nvme_smart_health_information_log"`
+}
+
+// smartAtaAttributes mirrors the smartctl -a -j SATA attribute table.
+type smartAtaAttributes struct {
+	Table []smartAtaAttribute `json:"table"`
+}
+
+type smartAtaAttribute struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Value  int64  `json:"value"`
+	Worst  int64  `json:"worst"`
+	Thresh int64  `json:"thresh"`
+	Raw    struct {
+		Value float64 `json:"value"`
+	} `json:"raw"`
+}
+
+// smartNVMeHealthLog mirrors the smartctl -a -j NVMe health information log.
+// Pointers: absent fields stay nil and emit no metric.
+type smartNVMeHealthLog struct {
+	AvailableSpare   *float64 `json:"available_spare"`
+	PercentageUsed   *float64 `json:"percentage_used"`
+	MediaErrors      *float64 `json:"media_errors"`
+	UnsafeShutdowns  *float64 `json:"unsafe_shutdowns"`
+	DataUnitsRead    *float64 `json:"data_units_read"`
+	DataUnitsWritten *float64 `json:"data_units_written"`
 }
 
 type smartStatus struct {
@@ -38,6 +67,24 @@ type smartTemp struct {
 
 type smartPowerOnTime struct {
 	Hours *float64 `json:"hours"`
+}
+
+// SMARTAttribute is one row of a SATA drive's SMART attribute table.
+type SMARTAttribute struct {
+	ID        int64
+	Value     int64
+	Worst     int64
+	Threshold int64
+	Name      string
+	// Raw is the raw attribute value; float64 because values like
+	// Total_LBAs_Written exceed int32 (and float64 precision is ample).
+	Raw float64
+}
+
+// SMARTNVMe holds the NVMe health information log fields we export.
+type SMARTNVMe struct {
+	AvailableSpare, PercentageUsed, MediaErrors,
+	UnsafeShutdowns, DataUnitsRead, DataUnitsWritten *float64
 }
 
 // SMARTDevice is the normalised representation of one disk's SMART data.
@@ -59,6 +106,12 @@ type SMARTDevice struct {
 
 	// PowerOnHours is nil when power-on time was not available.
 	PowerOnHours *float64
+
+	// Attributes is the SATA SMART attribute table (empty for NVMe drives).
+	Attributes []SMARTAttribute
+
+	// NVMe is the NVMe health log (nil for SATA drives).
+	NVMe *SMARTNVMe
 }
 
 // SMARTDevices holds the aggregated result of FetchSMARTDevices.
@@ -99,7 +152,11 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 		}
 	}
 
-	// Step 1: list devices via empty form POST.
+	// Step 1: list devices via empty form POST. The os-smart plugin requires
+	// POST for every action: a GET returns HTTP 200 with
+	// {"message":"Unable to run list action"} and no devices (verified against
+	// os-smart 2.4 plugin source and a live 26.1 box) — do not "simplify" this
+	// to a GET.
 	var listResp smartListResponse
 	if err := c.doForm(listURL, url.Values{}, &listResp); err != nil {
 		// os-smart plugin not installed → endpoint 404s. Treat as "feature
@@ -150,6 +207,28 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 			if out.PowerOnTime != nil && out.PowerOnTime.Hours != nil {
 				hours := *out.PowerOnTime.Hours
 				dev.PowerOnHours = &hours
+			}
+			if out.AtaSmartAttributes != nil {
+				for _, a := range out.AtaSmartAttributes.Table {
+					dev.Attributes = append(dev.Attributes, SMARTAttribute{
+						ID:        a.ID,
+						Name:      a.Name,
+						Value:     a.Value,
+						Worst:     a.Worst,
+						Threshold: a.Thresh,
+						Raw:       a.Raw.Value,
+					})
+				}
+			}
+			if n := out.NVMeHealth; n != nil {
+				dev.NVMe = &SMARTNVMe{
+					AvailableSpare:   n.AvailableSpare,
+					PercentageUsed:   n.PercentageUsed,
+					MediaErrors:      n.MediaErrors,
+					UnsafeShutdowns:  n.UnsafeShutdowns,
+					DataUnitsRead:    n.DataUnitsRead,
+					DataUnitsWritten: n.DataUnitsWritten,
+				}
 			}
 		}
 
