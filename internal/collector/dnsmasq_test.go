@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/common/promslog"
@@ -64,6 +65,12 @@ func TestDnsmasqCollector_Update_NoDetails(t *testing.T) {
 	mux.HandleFunc("/api/dnsmasq/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status": "running"}`))
 	})
+	mux.HandleFunc("/api/dnsmasq/settings/searchRange", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[
+			{"uuid":"u1","interface":"igb1","%interface":"LAN","start_addr":"192.168.1.100","end_addr":"192.168.1.200"},
+			{"uuid":"u2","interface":"igb2","%interface":"IOT","start_addr":"10.0.0.100","end_addr":"10.0.0.150"}
+		],"rowCount":2,"total":2,"current":1}`))
+	})
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -76,8 +83,8 @@ func TestDnsmasqCollector_Update_NoDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 2 leasesByIface (LAN, IOT) + 1 serviceRunning = 6
-	expectedCount := 6
+	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 2 leasesByIface (LAN, IOT) + 1 serviceRunning + 2 pool_size (LAN, IOT) = 8
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -126,6 +133,11 @@ func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
 	mux.HandleFunc("/api/dnsmasq/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status": "running"}`))
 	})
+	mux.HandleFunc("/api/dnsmasq/settings/searchRange", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[
+			{"uuid":"u1","interface":"igb1","%interface":"LAN","start_addr":"192.168.1.100","end_addr":"192.168.1.200"}
+		],"rowCount":1,"total":1,"current":1}`))
+	})
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -138,8 +150,8 @@ func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) + 2 leaseInfo + 1 serviceRunning = 7
-	expectedCount := 7
+	// 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) + 2 leaseInfo + 1 serviceRunning + 1 pool_size (LAN) = 8
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -149,5 +161,43 @@ func TestDnsmasqCollector_Name(t *testing.T) {
 	c := &dnsmasqCollector{subsystem: DnsmasqSubsystem}
 	if c.Name() != DnsmasqSubsystem {
 		t.Errorf("expected %s, got %s", DnsmasqSubsystem, c.Name())
+	}
+}
+
+func TestDnsmasqCollector_PoolSize(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/dnsmasq/leases/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/dnsmasq/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	mux.HandleFunc("/api/dnsmasq/settings/searchRange", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[
+			{"uuid":"u1","interface":"lan","%interface":"LAN","start_addr":"10.0.0.110","end_addr":"10.0.0.240"},
+			{"uuid":"u2","interface":"lan","%interface":"LAN","start_addr":"10.0.0.50","end_addr":"10.0.0.59"}
+		],"rowCount":2,"total":2,"current":1}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &dnsmasqCollector{subsystem: DnsmasqSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	var sawPool bool
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "dnsmasq_pool_size") {
+			sawPool = true
+			labels := getMetricLabels(m)
+			// two LAN ranges summed: 131 + 10 = 141
+			if labels["interface"] != "LAN" || getMetricValue(m) != 141 {
+				t.Errorf("bad pool_size: value=%v labels=%v", getMetricValue(m), labels)
+			}
+		}
+	}
+	if !sawPool {
+		t.Error("missing dnsmasq_pool_size metric")
 	}
 }

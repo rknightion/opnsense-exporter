@@ -85,3 +85,59 @@ func (c *Client) FetchKeaLeases4() (KeaLeases, *APICallError) {
 func (c *Client) FetchKeaLeases6() (KeaLeases, *APICallError) {
 	return c.fetchKeaLeases("keaLeases6")
 }
+
+// keaSubnetRow mirrors api/kea/dhcpv4|dhcpv6/searchSubnet bootgrid rows.
+// %interface carries the display name (e.g. "MGMT") that matches the
+// if_descr labels used by the lease metrics, enabling PromQL joins.
+type keaSubnetRow struct {
+	Subnet    string `json:"subnet"`
+	Pools     string `json:"pools"`
+	Interface string `json:"%interface"`
+}
+
+type keaSubnetResponse struct {
+	Rows []keaSubnetRow `json:"rows"`
+}
+
+// KeaSubnet is one configured Kea subnet with its computed pool size.
+type KeaSubnet struct {
+	Subnet    string
+	Interface string
+	PoolSize  float64
+}
+
+func (c *Client) fetchKeaSubnets(endpointName EndpointName) ([]KeaSubnet, *APICallError) {
+	var resp keaSubnetResponse
+
+	url, ok := c.endpoints[endpointName]
+	if !ok {
+		return nil, &APICallError{
+			Endpoint:   string(endpointName),
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	subnets := make([]KeaSubnet, 0, len(resp.Rows))
+	for _, row := range resp.Rows {
+		subnets = append(subnets, KeaSubnet{
+			Subnet:    row.Subnet,
+			Interface: row.Interface,
+			PoolSize:  c.poolSpecSize(row.Pools),
+		})
+	}
+	return subnets, nil
+}
+
+// FetchKeaSubnets4 returns the configured Kea DHCPv4 subnets.
+func (c *Client) FetchKeaSubnets4() ([]KeaSubnet, *APICallError) {
+	return c.fetchKeaSubnets("keaSubnets4")
+}
+
+// FetchKeaSubnets6 returns the configured Kea DHCPv6 subnets.
+func (c *Client) FetchKeaSubnets6() ([]KeaSubnet, *APICallError) {
+	return c.fetchKeaSubnets("keaSubnets6")
+}

@@ -17,6 +17,7 @@ type dnsmasqCollector struct {
 	dynamicTotal   *prometheus.Desc
 	leaseInfo      *prometheus.Desc
 	serviceRunning *prometheus.Desc
+	poolSize       *prometheus.Desc
 
 	subsystem      string
 	instance       string
@@ -63,6 +64,11 @@ func (c *dnsmasqCollector) Register(namespace, instanceLabel string, log *slog.L
 		"Whether the service is running (1 = running, 0 = stopped/disabled)",
 		nil,
 	)
+
+	c.poolSize = buildPrometheusDesc(c.subsystem, "pool_size",
+		"Number of addresses in the configured dnsmasq DHCP ranges per interface",
+		[]string{"interface"},
+	)
 }
 
 func (c *dnsmasqCollector) SetDetailsEnabled(enabled bool) {
@@ -76,6 +82,7 @@ func (c *dnsmasqCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dynamicTotal
 	ch <- c.leaseInfo
 	ch <- c.serviceRunning
+	ch <- c.poolSize
 }
 
 func (c *dnsmasqCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -126,6 +133,22 @@ func (c *dnsmasqCollector) Update(ctx context.Context, client *opnsense.Client, 
 				c.instance,
 			)
 		}
+	}
+
+	ranges, rErr := client.FetchDnsmasqRanges()
+	if rErr != nil {
+		// Lease metrics are already emitted; surface the ranges failure as the
+		// collector error so endpoint error counters increment.
+		c.log.Error("failed to fetch dnsmasq DHCP ranges", "err", rErr)
+		return rErr
+	}
+	poolByIface := make(map[string]float64)
+	for _, r := range ranges {
+		poolByIface[r.Interface] += r.PoolSize
+	}
+	for iface, size := range poolByIface {
+		ch <- prometheus.MustNewConstMetric(c.poolSize, prometheus.GaugeValue,
+			size, iface, c.instance)
 	}
 
 	status, sErr := client.FetchServiceStatus("dnsmasqServiceStatus")

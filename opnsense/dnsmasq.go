@@ -39,6 +39,56 @@ type DnsmasqLeases struct {
 	LeasesByInterface map[string]int
 }
 
+// dnsmasqRangeRow mirrors api/dnsmasq/settings/searchRange bootgrid rows.
+// %interface carries the display name matching lease if_descr labels.
+type dnsmasqRangeRow struct {
+	Interface string `json:"%interface"`
+	StartAddr string `json:"start_addr"`
+	EndAddr   string `json:"end_addr"`
+}
+
+type dnsmasqRangeResponse struct {
+	Rows []dnsmasqRangeRow `json:"rows"`
+}
+
+// DnsmasqRange is one configured dnsmasq DHCP range with its computed size.
+type DnsmasqRange struct {
+	Interface string
+	PoolSize  float64
+}
+
+// FetchDnsmasqRanges returns configured dnsmasq DHCP ranges. Rows without a
+// parseable start/end pair (e.g. constructor/SLAAC v6 ranges) are skipped —
+// their pool size is not statically known.
+func (c *Client) FetchDnsmasqRanges() ([]DnsmasqRange, *APICallError) {
+	var resp dnsmasqRangeResponse
+
+	url, ok := c.endpoints["dnsmasqRanges"]
+	if !ok {
+		return nil, &APICallError{
+			Endpoint:   "dnsmasqRanges",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return nil, err
+	}
+
+	var ranges []DnsmasqRange
+	for _, row := range resp.Rows {
+		size, ok := ipRangeSize(row.StartAddr, row.EndAddr)
+		if !ok {
+			continue
+		}
+		ranges = append(ranges, DnsmasqRange{
+			Interface: row.Interface,
+			PoolSize:  size,
+		})
+	}
+	return ranges, nil
+}
+
 func (c *Client) FetchDnsmasqLeases() (DnsmasqLeases, *APICallError) {
 	var resp dnsmasqLeaseResponse
 	var data DnsmasqLeases

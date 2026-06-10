@@ -18,6 +18,16 @@ func keaTestMux(t *testing.T, v4Response, v6Response string) *http.ServeMux {
 	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(v6Response))
 	})
+	// Stubs for new pool-size and service-status endpoints (empty rows / running).
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
 	return mux
 }
 
@@ -77,8 +87,8 @@ func TestKeaCollector_Update(t *testing.T) {
 
 	// v4: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) = 4
 	// v6: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) = 4
-	// Total = 8
-	expectedCount := 8
+	// + 1 kea_service_running = 9
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -169,8 +179,8 @@ func TestKeaCollector_Update_WithDetails(t *testing.T) {
 
 	// v4: 3 summary + 1 leasesByIface (LAN) + 2 leaseInfo = 6
 	// v6: 3 summary + 1 leasesByIface (LAN) + 1 leaseInfo = 5
-	// Total = 11
-	expectedCount := 11
+	// + 1 kea_service_running = 12
+	expectedCount := 12
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -220,17 +230,22 @@ func TestKeaCollector_Update_Empty(t *testing.T) {
 
 	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
 	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
-	// Total = 6
-	expectedCount := 6
+	// + 1 kea_service_running = 7
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
-	// Verify all values are 0
+	// Verify all values are 0 — service stub returns "running" (value=1);
+	// all lease-based metrics are 0; service_running itself is 1 so skip it
 	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "kea_service_running") {
+			continue
+		}
 		value := getMetricValue(m)
 		if value != 0 {
-			t.Errorf("expected metric value 0, got %v", value)
+			t.Errorf("expected metric value 0, got %v for %s", value, desc)
 		}
 	}
 }
@@ -246,7 +261,24 @@ func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
 		"interfaces": []
 	}`
 
-	mux := keaTestMux(t, keaDisabledResponse, keaDisabledResponse)
+	// Build mux manually (not via keaTestMux) so we can set service status to
+	// "stopped" — all emitted metric values should be zero.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(keaDisabledResponse))
+	})
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(keaDisabledResponse))
+	})
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"stopped"}`))
+	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -259,8 +291,8 @@ func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
 
 	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
 	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
-	// Total = 6
-	expectedCount := 6
+	// + 1 kea_service_running (value=0, stopped) = 7
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -277,5 +309,52 @@ func TestKeaCollector_Name(t *testing.T) {
 	c := &keaCollector{subsystem: KeaSubsystem}
 	if c.Name() != KeaSubsystem {
 		t.Errorf("expected %s, got %s", KeaSubsystem, c.Name())
+	}
+}
+
+func TestKeaCollector_PoolAndService(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"u1","subnet":"10.0.0.0/24","pools":"10.0.0.110 - 10.0.0.240","interface":"lan","%interface":"LAN"}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	var sawPool, sawService bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "kea_dhcp4_pool_size") {
+			sawPool = true
+			labels := getMetricLabels(m)
+			if labels["subnet"] != "10.0.0.0/24" || labels["interface"] != "LAN" || getMetricValue(m) != 131 {
+				t.Errorf("bad pool_size: value=%v labels=%v", getMetricValue(m), labels)
+			}
+		}
+		if strings.Contains(desc, "kea_service_running") {
+			sawService = true
+			if getMetricValue(m) != 1 {
+				t.Errorf("expected service_running=1, got %v", getMetricValue(m))
+			}
+		}
+	}
+	if !sawPool || !sawService {
+		t.Errorf("missing metrics: pool=%v service=%v", sawPool, sawService)
 	}
 }

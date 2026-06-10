@@ -253,3 +253,31 @@ func TestFetchDnsmasqLeases_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchDnsmasqRanges_Success(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/dnsmasq/settings/searchRange", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"uuid":"ff727ea1","interface":"lan","%interface":"LAN","start_addr":"10.0.0.110","end_addr":"10.0.0.240","subnet_mask":"","constructor":"","mode":"","prefix_len":"","lease_time":"21600","domain":"example.net","description":""},
+				{"uuid":"9fa2ada0","interface":"opt2","%interface":"IOT","start_addr":"10.0.50.110","end_addr":"10.0.50.240","subnet_mask":"","constructor":"","mode":"","prefix_len":"","lease_time":"21600","domain":"iot.example.net","description":""},
+				{"uuid":"deadbeef","interface":"opt9","%interface":"V6RA","start_addr":"","end_addr":"","subnet_mask":"","constructor":"opt9","mode":"slaac","prefix_len":"64","lease_time":"","domain":"","description":"constructed v6 range"}
+			],
+			"rowCount": 3, "total": 3, "current": 1
+		}`))
+	})
+
+	ranges, err := client.FetchDnsmasqRanges()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// constructed v6 row has no parseable start/end -> skipped
+	if len(ranges) != 2 {
+		t.Fatalf("expected 2 ranges, got %d", len(ranges))
+	}
+	if ranges[0].Interface != "LAN" || ranges[0].PoolSize != 131 {
+		t.Errorf("unexpected range[0]: %+v", ranges[0])
+	}
+}

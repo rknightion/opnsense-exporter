@@ -368,3 +368,29 @@ func TestFetchKeaLeases4_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchKeaSubnets6_Success(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"uuid":"99d70a8d","subnet":"2001:db8:100::/64","pools":"2001:db8:100::1000 - 2001:db8:100::1fff","interface":"opt3","%interface":"MGMT"},
+				{"uuid":"0c511ead","subnet":"2001:db8::/64","pools":"2001:db8::1000 - 2001:db8::1fff","interface":"lan","%interface":"LAN"}
+			],
+			"rowCount": 2, "total": 2, "current": 1
+		}`))
+	})
+
+	subnets, err := client.FetchKeaSubnets6()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(subnets) != 2 {
+		t.Fatalf("expected 2 subnets, got %d", len(subnets))
+	}
+	if subnets[0].Subnet != "2001:db8:100::/64" || subnets[0].Interface != "MGMT" || subnets[0].PoolSize != 4096 {
+		t.Errorf("unexpected subnet[0]: %+v", subnets[0])
+	}
+}

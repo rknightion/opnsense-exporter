@@ -23,6 +23,10 @@ type keaCollector struct {
 	dhcp6DynamicTotal  *prometheus.Desc
 	dhcp6LeaseInfo     *prometheus.Desc
 
+	serviceRunning *prometheus.Desc
+	dhcp4PoolSize  *prometheus.Desc
+	dhcp6PoolSize  *prometheus.Desc
+
 	subsystem      string
 	instance       string
 	detailsEnabled bool
@@ -86,6 +90,19 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set.",
 		[]string{"address", "hostname", "hwaddr", "interface"},
 	)
+
+	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
+		"Whether the Kea DHCP service is running (1 = running, 0 = stopped/disabled)",
+		nil,
+	)
+	c.dhcp4PoolSize = buildPrometheusDesc(c.subsystem, "dhcp4_pool_size",
+		"Number of addresses in the configured Kea DHCPv4 pools for this subnet",
+		[]string{"subnet", "interface"},
+	)
+	c.dhcp6PoolSize = buildPrometheusDesc(c.subsystem, "dhcp6_pool_size",
+		"Number of addresses in the configured Kea DHCPv6 pools for this subnet",
+		[]string{"subnet", "interface"},
+	)
 }
 
 func (c *keaCollector) SetDetailsEnabled(enabled bool) {
@@ -104,6 +121,10 @@ func (c *keaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp6ReservedTotal
 	ch <- c.dhcp6DynamicTotal
 	ch <- c.dhcp6LeaseInfo
+
+	ch <- c.serviceRunning
+	ch <- c.dhcp4PoolSize
+	ch <- c.dhcp6PoolSize
 }
 
 func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -139,6 +160,42 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			c.dhcp6LeasesByIface,
 			c.dhcp6LeaseInfo,
 		)
+	}
+
+	// Pool sizes (joinable with *_leases_by_interface on the interface label).
+	if subnets4, sErr := client.FetchKeaSubnets4(); sErr != nil {
+		if firstErr == nil {
+			firstErr = sErr
+		}
+		c.log.Error("failed to fetch Kea DHCPv4 subnets", "err", sErr)
+	} else {
+		for _, s := range subnets4 {
+			ch <- prometheus.MustNewConstMetric(c.dhcp4PoolSize, prometheus.GaugeValue,
+				s.PoolSize, s.Subnet, s.Interface, c.instance)
+		}
+	}
+	if subnets6, sErr := client.FetchKeaSubnets6(); sErr != nil {
+		if firstErr == nil {
+			firstErr = sErr
+		}
+		c.log.Error("failed to fetch Kea DHCPv6 subnets", "err", sErr)
+	} else {
+		for _, s := range subnets6 {
+			ch <- prometheus.MustNewConstMetric(c.dhcp6PoolSize, prometheus.GaugeValue,
+				s.PoolSize, s.Subnet, s.Interface, c.instance)
+		}
+	}
+
+	status, sErr := client.FetchServiceStatus("keaServiceStatus")
+	if sErr != nil {
+		c.log.Warn("failed to fetch kea service status", "err", sErr)
+	} else {
+		val := 0.0
+		if status == "running" {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(c.serviceRunning, prometheus.GaugeValue,
+			val, c.instance)
 	}
 
 	return firstErr
