@@ -34,16 +34,17 @@ spec:
             # Default value for --web.listen-address= is 8080
             - name: metrics-http
               containerPort: 8080
-          # If /metrics returns 200/OK, we can assume pod is OK to take traffic
-          # Note: this will NOT catch issues with exporter/config itself.
-          # e.g.: exporter comes up with _some_ metrics even if invalid API key...
+          # /-/healthy: process liveness only — no firewall dependency. Do NOT
+          # point readinessProbe at /-/ready here: when Prometheus scrapes via
+          # Service endpoints, a not-ready pod stops being scraped and the
+          # opnsense_up=0 signal is lost exactly when the firewall is down.
           livenessProbe:
             httpGet:
-              path: /
+              path: /-/healthy
               port: metrics-http
           readinessProbe:
             httpGet:
-              path: /
+              path: /-/healthy
               port: metrics-http
           # See main readme; some configuration options can be set via env-vars
           ##

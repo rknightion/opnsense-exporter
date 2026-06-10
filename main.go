@@ -11,12 +11,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	promcollectors "github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
+	"github.com/rknightion/opnsense-exporter/internal/server"
 	"github.com/rknightion/opnsense-exporter/internal/telemetry"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -31,6 +31,12 @@ const instanceLabelLookupTimeout = 5 * time.Second
 // otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
 // export endpoint cannot hang process exit.
 const otlpShutdownTimeout = 10 * time.Second
+
+// readyCacheTTL caches /-/ready probe results (success and failure). 10s
+// matches the default kubelet probe period, bounding upstream health calls to
+// roughly one per probe period regardless of how many probers hit the
+// endpoint, while keeping readiness staleness within a single probe cycle.
+const readyCacheTTL = 10 * time.Second
 
 func main() {
 	options.Init()
@@ -56,13 +62,15 @@ func main() {
 
 	logger.Debug(fmt.Sprintf("OPNsense registered endpoints %s", opnsenseClient.Endpoints()))
 
-	registry := prometheus.NewRegistry()
+	// selfMetricsRegistry holds exporter self-metrics (process_*, go_*). It is
+	// gathered on every /metrics request alongside the per-request collector view.
+	selfMetricsRegistry := prometheus.NewRegistry()
 
 	if !*options.DisableExporterMetrics {
-		registry.MustRegister(
+		selfMetricsRegistry.MustRegister(
 			promcollectors.NewProcessCollector(promcollectors.ProcessCollectorOpts{}),
 		)
-		registry.MustRegister(promcollectors.NewGoCollector())
+		selfMetricsRegistry.MustRegister(promcollectors.NewGoCollector())
 	}
 
 	collectorsSwitches := options.CollectorsSwitches()
@@ -286,7 +294,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	registry.MustRegister(collectorInstance)
+	// collectorRegistry holds the default (unfiltered, no-deadline) view of the
+	// collector. It is never served over HTTP — /metrics builds a per-request
+	// ScrapeView — but the OTLP bridge gathers it on its own export interval.
+	collectorRegistry := prometheus.NewRegistry()
+	collectorRegistry.MustRegister(collectorInstance)
 
 	// OTLP metrics export is opt-in (--otlp.enabled). It pushes the exact metrics
 	// exposed at /metrics to an OTLP endpoint via a Prometheus bridge producer over
@@ -301,7 +313,7 @@ func main() {
 	}
 	var stopOTLP func()
 	if otlpEnabled {
-		shutdown, terr := telemetry.Start(context.Background(), registry, otlpCfg, version, instanceLabel, logger)
+		shutdown, terr := telemetry.Start(context.Background(), prometheus.Gatherers{selfMetricsRegistry, collectorRegistry}, otlpCfg, version, instanceLabel, logger)
 		if terr != nil {
 			logger.Error("failed to start otlp metrics export", "err", terr)
 		} else {
@@ -321,8 +333,21 @@ func main() {
 		}
 	}
 
-	handler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
-	http.Handle(*options.MetricsPath, handler)
+	metricsHandler := server.NewMetricsHandler(
+		collectorInstance,
+		selfMetricsRegistry,
+		*options.ScrapeTimeoutOffset,
+		logger,
+	)
+	http.Handle(*options.MetricsPath, metricsHandler)
+
+	http.Handle("/-/healthy", server.Healthy())
+	http.Handle("/-/ready", server.NewReady(func(ctx context.Context) error {
+		if _, err := opnsenseClient.WithContext(ctx).HealthCheck(); err != nil {
+			return err
+		}
+		return nil
+	}, readyCacheTTL, logger))
 
 	if *options.MetricsPath != "/" && *options.MetricsPath != "" {
 		landingConfig := web.LandingConfig{
@@ -333,6 +358,14 @@ func main() {
 				{
 					Address: *options.MetricsPath,
 					Text:    "Metrics",
+				},
+				{
+					Address: "/-/healthy",
+					Text:    "Healthy",
+				},
+				{
+					Address: "/-/ready",
+					Text:    "Ready",
 				},
 			},
 		}

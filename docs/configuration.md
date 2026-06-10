@@ -58,6 +58,31 @@ For secure credential management in containers and orchestrated environments, cr
 | `--web.telemetry-path` | -- | `/metrics` | Path under which to expose metrics. |
 <!-- docgen:end:flags-exporter -->
 
+## Health endpoints & scrape filtering
+
+The exporter serves two probe endpoints alongside `/metrics`:
+
+| Path | Behavior |
+|------|----------|
+| `/-/healthy` | Liveness: always `200 OK` while the process is serving. No upstream dependency. |
+| `/-/ready` | Readiness: `200 OK` when the OPNsense API health check succeeds, `503` otherwise. Results (including failures) are cached for 10 seconds so Kubernetes probes cannot hammer the firewall API; each upstream probe is bounded to 5 seconds and detached from the prober's own request timeout. |
+
+!!! warning "Kubernetes: do not gate readiness on the firewall"
+    `/-/ready` depends on the OPNsense API. If Prometheus discovers the exporter via Kubernetes Service endpoints, a not-ready pod drops out of the endpoints list — so an unreachable firewall would stop the exporter being scraped and you would lose the `opnsense_up=0` signal exactly when the firewall is down. **Do not use `/-/ready` as a `readinessProbe` in that setup — use `/-/healthy` for both probes** (as the bundled `deploy/k8s/deployment.yaml` does). `/-/ready` is intended for ordered startup and manual/external checks.
+
+Note: if you configure `basic_auth_users` in the exporter-toolkit web config file (`--web.config.file`), authentication applies to **all** endpoints including `/-/healthy` and `/-/ready` — Kubernetes probes cannot easily send basic-auth credentials, so prefer network-level protection over basic auth when probes are in use.
+
+`/metrics` supports node_exporter-style per-scrape collector filtering:
+
+```
+curl 'http://localhost:8080/metrics?collect[]=gateways&collect[]=interfaces'
+curl 'http://localhost:8080/metrics?exclude[]=firewall_rule'
+```
+
+`collect[]` and `exclude[]` are mutually exclusive (`400` if both are given); unknown collector names return `400` listing the valid names (the subsystem names of the collectors enabled in this instance). The always-on metrics (`opnsense_up`, health/status, `opnsense_exporter_*`) are emitted regardless of filtering.
+
+The exporter also honors the `X-Prometheus-Scrape-Timeout-Seconds` header sent by Prometheus: the collector fan-out runs under a deadline of the header value minus `--exporter.scrape-timeout-offset`, so a slow firewall endpoint produces a partial-but-successful scrape (with the affected collector's `opnsense_exporter_scrape_collector_success` = 0) instead of a wholesale scrape failure.
+
 ## Continuous profiling (Pyroscope)
 
 The exporter can push continuous profiles to Grafana Cloud Pyroscope using the
