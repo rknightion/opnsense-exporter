@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/common/promslog"
@@ -345,5 +346,135 @@ func TestIPsecCollector_Name(t *testing.T) {
 	c := &ipsecCollector{subsystem: IPsecSubsystem}
 	if c.Name() != IPsecSubsystem {
 		t.Errorf("expected %s, got %s", IPsecSubsystem, c.Name())
+	}
+}
+
+func TestIPsecCollector_Update_Pools(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"phase1desc": "Site-to-Site Tunnel",
+					"connected": true,
+					"ikeid": "1",
+					"name": "con1",
+					"install-time": "120",
+					"bytes-in": 10240,
+					"bytes-out": 20480,
+					"packets-in": 100,
+					"packets-out": 200
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows": []}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/leases/pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"pools": {
+				"defaultv4": {"name": "defaultv4", "net": "10.18.0.0/24", "online": 1, "offline": 2, "size": 254}
+			},
+			"leases": []
+		}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &ipsecCollector{subsystem: IPsecSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// Phase1: 6 metrics + serviceRunning: 1 + pools: 3 (online, offline, size)
+	// No phase2 rows => 0 phase2 metrics
+	expectedCount := 6 + 1 + 3
+	if len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	// Spot-check pool metrics
+	foundOnline, foundOffline, foundSize := false, false, false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		val := getMetricValue(m)
+		switch {
+		case strings.Contains(desc, "ipsec_pool_leases_online"):
+			foundOnline = true
+			if labels["pool"] != "defaultv4" || labels["net"] != "10.18.0.0/24" || val != 1 {
+				t.Errorf("pool_leases_online wrong: labels=%v val=%v", labels, val)
+			}
+		case strings.Contains(desc, "ipsec_pool_leases_offline"):
+			foundOffline = true
+			if labels["pool"] != "defaultv4" || val != 2 {
+				t.Errorf("pool_leases_offline wrong: labels=%v val=%v", labels, val)
+			}
+		case strings.Contains(desc, "ipsec_pool_size"):
+			foundSize = true
+			if labels["pool"] != "defaultv4" || val != 254 {
+				t.Errorf("pool_size wrong: labels=%v val=%v", labels, val)
+			}
+		}
+	}
+	if !foundOnline {
+		t.Error("expected ipsec_pool_leases_online metric to be emitted")
+	}
+	if !foundOffline {
+		t.Error("expected ipsec_pool_leases_offline metric to be emitted")
+	}
+	if !foundSize {
+		t.Error("expected ipsec_pool_size metric to be emitted")
+	}
+}
+
+func TestIPsecCollector_Update_PoolsUnconfigured(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows": [], "rowCount": 0, "total": 0, "current": 1}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows": []}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	// Pools endpoint returns unconfigured (array) response
+	mux.HandleFunc("/api/ipsec/leases/pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"pools": []}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &ipsecCollector{subsystem: IPsecSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// No phase1, no phase2, no pools; only serviceRunning
+	expectedCount := 1
+	if len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics (serviceRunning only), got %d", expectedCount, len(metrics))
 	}
 }

@@ -25,6 +25,9 @@ type ipsecCollector struct {
 	phase2_rekey_time   *prometheus.Desc
 	phase2_life_time    *prometheus.Desc
 	serviceRunning      *prometheus.Desc
+	poolOnline          *prometheus.Desc
+	poolOffline         *prometheus.Desc
+	poolSize            *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -104,6 +107,20 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"Whether the service is running (1 = running, 0 = stopped/disabled)",
 		nil,
 	)
+
+	poolLabels := []string{"pool", "net"}
+	c.poolOnline = buildPrometheusDesc(c.subsystem, "pool_leases_online",
+		"Number of online leases in the IPsec mode-cfg pool",
+		poolLabels,
+	)
+	c.poolOffline = buildPrometheusDesc(c.subsystem, "pool_leases_offline",
+		"Number of offline leases in the IPsec mode-cfg pool",
+		poolLabels,
+	)
+	c.poolSize = buildPrometheusDesc(c.subsystem, "pool_size",
+		"Total size (address capacity) of the IPsec mode-cfg pool",
+		poolLabels,
+	)
 }
 
 func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -122,6 +139,9 @@ func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.phase2_rekey_time
 	ch <- c.phase2_life_time
 	ch <- c.serviceRunning
+	ch <- c.poolOnline
+	ch <- c.poolOffline
+	ch <- c.poolSize
 }
 
 func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -276,6 +296,27 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 			c.serviceRunning, prometheus.GaugeValue,
 			val, c.instance,
 		)
+	}
+
+	// Pool utilisation — partial-failure tolerance: on error, log and continue.
+	pools, poolErr := client.FetchIPsecPools()
+	if poolErr != nil {
+		c.log.Warn("failed to fetch ipsec pools", "err", poolErr)
+	} else {
+		for _, pool := range pools.Pools {
+			ch <- prometheus.MustNewConstMetric(
+				c.poolOnline, prometheus.GaugeValue,
+				pool.Online, pool.Name, pool.Net, c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.poolOffline, prometheus.GaugeValue,
+				pool.Offline, pool.Name, pool.Net, c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.poolSize, prometheus.GaugeValue,
+				pool.Size, pool.Name, pool.Net, c.instance,
+			)
+		}
 	}
 
 	return nil

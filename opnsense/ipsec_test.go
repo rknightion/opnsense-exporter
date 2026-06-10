@@ -210,3 +210,82 @@ func TestFetchIPsecPhase2_Success(t *testing.T) {
 		t.Errorf("expected Phase2desc 'Tunnel A', got %q", data.Rows[0].Phase2desc)
 	}
 }
+
+// IPsec mode-cfg pool tests
+
+const ipsecPoolsPopulatedFixture = `{
+	"pools": {
+		"defaultv4": {"name": "defaultv4", "net": "10.18.0.0/24", "online": 1, "offline": 2, "size": 254}
+	},
+	"leases": []
+}`
+
+const ipsecPoolsUnconfiguredFixture = `{"pools": []}`
+
+func TestFetchIPsecPools_Normal(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/leases/pools", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(ipsecPoolsPopulatedFixture))
+	})
+
+	data, err := client.FetchIPsecPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(data.Pools))
+	}
+	p := data.Pools[0]
+	if p.Name != "defaultv4" {
+		t.Errorf("expected pool name 'defaultv4', got %q", p.Name)
+	}
+	if p.Net != "10.18.0.0/24" {
+		t.Errorf("expected net '10.18.0.0/24', got %q", p.Net)
+	}
+	if p.Online != 1 {
+		t.Errorf("expected Online=1, got %v", p.Online)
+	}
+	if p.Offline != 2 {
+		t.Errorf("expected Offline=2, got %v", p.Offline)
+	}
+	if p.Size != 254 {
+		t.Errorf("expected Size=254, got %v", p.Size)
+	}
+}
+
+func TestFetchIPsecPools_UnconfiguredArray(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/leases/pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ipsecPoolsUnconfiguredFixture))
+	})
+
+	data, err := client.FetchIPsecPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Pools) != 0 {
+		t.Errorf("expected 0 pools for unconfigured (array) response, got %d", len(data.Pools))
+	}
+}
+
+func TestFetchIPsecPools_404(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	defer server.Close()
+
+	data, err := client.FetchIPsecPools()
+	if err != nil {
+		t.Fatalf("expected nil error on 404 (feature absent), got: %v", err)
+	}
+	if len(data.Pools) != 0 {
+		t.Errorf("expected 0 pools on 404, got %d", len(data.Pools))
+	}
+}

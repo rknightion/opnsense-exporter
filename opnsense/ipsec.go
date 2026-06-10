@@ -2,6 +2,8 @@ package opnsense
 
 import (
 	"encoding/json"
+	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -180,6 +182,89 @@ func (c *Client) FetchIPsecPhase1() (IPsecPhase1, *APICallError) {
 			Phase2:      phase2Rows,
 		})
 	}
+
+	return data, nil
+}
+
+// ipsecPoolRow mirrors one entry in the api/ipsec/leases/pools `pools` object
+// map. Numbers are real JSON integers (Python ujson), not strings.
+//
+// VERIFICATION: endpoint is OPNsense core (LeasesController.php::poolsAction +
+// scripts/ipsec/list_leases.py). Live-verification against the real box is
+// encouraged; the populated fixture is derived from the controller source.
+type ipsecPoolRow struct {
+	Name    string  `json:"name"`
+	Net     string  `json:"net"`
+	Online  float64 `json:"online"`
+	Offline float64 `json:"offline"`
+	Size    float64 `json:"size"`
+}
+
+// IPsecPool is the normalised per-pool data.
+type IPsecPool struct {
+	Name    string
+	Net     string
+	Online  float64
+	Offline float64
+	Size    float64
+}
+
+// IPsecPools holds all configured mode-cfg pools returned by FetchIPsecPools.
+type IPsecPools struct {
+	Pools []IPsecPool // sorted by Name
+}
+
+// ipsecPoolsResponse captures the top-level api/ipsec/leases/pools object.
+// The `pools` field is a JSON array when unconfigured but an object map when
+// pools exist — use json.RawMessage and try both.
+type ipsecPoolsResponse struct {
+	Pools json.RawMessage `json:"pools"`
+}
+
+// FetchIPsecPools fetches IPsec mode-cfg pool utilisation data.
+//
+// When no pools are configured, the API returns `{"pools": []}` (an array);
+// when pools exist, `pools` is an object map keyed by pool name. A 404 is
+// treated as "feature absent" — empty data, no error.
+func (c *Client) FetchIPsecPools() (IPsecPools, *APICallError) {
+	var data IPsecPools
+
+	url, ok := c.endpoints["ipsecPools"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "ipsecPools",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var resp ipsecPoolsResponse
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil // defensive: feature absent
+		}
+		return data, err
+	}
+
+	// pools is an array when unconfigured, an object map when populated.
+	// Try to unmarshal as a map; on failure (e.g. empty array) return empty.
+	var poolMap map[string]ipsecPoolRow
+	if err := json.Unmarshal(resp.Pools, &poolMap); err != nil || len(poolMap) == 0 {
+		return data, nil
+	}
+
+	for _, row := range poolMap {
+		data.Pools = append(data.Pools, IPsecPool{
+			Name:    row.Name,
+			Net:     row.Net,
+			Online:  row.Online,
+			Offline: row.Offline,
+			Size:    row.Size,
+		})
+	}
+	sort.Slice(data.Pools, func(i, j int) bool {
+		return data.Pools[i].Name < data.Pools[j].Name
+	})
 
 	return data, nil
 }
