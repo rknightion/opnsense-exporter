@@ -144,5 +144,18 @@ func testEndpoints() map[EndpointName]EndpointPath {
 		"keaServiceStatus":        "api/kea/service/status",
 		"dnsmasqRanges":           "api/dnsmasq/settings/searchRange",
 		"caCertificates":          "api/trust/ca/search",
+		"haproxyCounters":         "api/haproxy/statistics/counters",
+		"haproxyInfo":             "api/haproxy/statistics/info",
+		"haproxyServiceStatus":    "api/haproxy/service/status",
+		"nginxVts":                "api/nginx/service/vts",
+		"nginxServiceStatus":      "api/nginx/service/status",
+		"quaggaBgpSummary":        "api/quagga/diagnostics/bgpsummary",
+		"quaggaOspfOverview":      "api/quagga/diagnostics/ospfoverview",
+		"quaggaOspfNeighbors":     "api/quagga/diagnostics/searchOspfneighbor",
+		"quaggaBfdNeighbors":      "api/quagga/diagnostics/bfdneighbors",
+		"quaggaBfdCounters":       "api/quagga/diagnostics/bfdcounters",
+		"quaggaServiceStatus":     "api/quagga/service/status",
+		"monitStatus":             "api/monit/status/get/xml",
+		"monitServiceStatus":      "api/monit/service/status",
 	}
 }

@@ -58,6 +58,10 @@ const (
 	QFeedsSubsystem        = "qfeeds"
 	TailscaleSubsystem     = "tailscale"
 	AliasSubsystem         = "alias"
+	HAProxySubsystem       = "haproxy"
+	NginxSubsystem         = "nginx"
+	FRRSubsystem           = "frr"
+	MonitSubsystem         = "monit"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
