@@ -94,7 +94,7 @@ The complete, generated flag and collector reference lives in the
 > **Minimum Grafana version: 13+** — the dashboard uses the v2 dynamic schema
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
-A single dynamic dashboard covers all 322 metrics across 16 tabs, auto-hiding
+A single dynamic dashboard covers all 324 metrics across 16 tabs, auto-hiding
 tabs and rows for collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or
 GitOps. Alert and recording rules ship alongside it in

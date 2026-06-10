@@ -56,7 +56,7 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 !!! warning "Minimum Grafana version: 13+"
     The dashboard uses the v2 dynamic schema (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`, which require **Grafana 13 or later**.
 
-A single comprehensive Grafana dashboard covers **all 322 metrics across 16 tabs** (Overview, System & Resources, Interfaces, Firewall & PF, Gateways & WAN, DNS — Unbound, DHCP, VPN, Routing & Neighbors, Protocol Stats, NTP, Certificates, Services/Cron/DynDNS, NetFlow, CARP/HA, Diagnostics). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
+A single comprehensive Grafana dashboard covers **all 324 metrics across 16 tabs** (Overview, System & Resources, Interfaces, Firewall & PF, Gateways & WAN, DNS — Unbound, DHCP, VPN, Routing & Neighbors, Protocol Stats, NTP, Certificates, Services/Cron/DynDNS, NetFlow, CARP/HA, Diagnostics). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 
 ### Import the dashboard
 

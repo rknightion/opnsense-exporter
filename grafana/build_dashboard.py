@@ -139,6 +139,14 @@ def build_diagnostics(b: Builder):
                           {"0": ("Disabled", "red"), "1": ("Enabled", "green")}, w=12, h=8,
                           desc="opnsense_exporter_collector_enabled: which collectors are on.")
 
+    scrape_dur = b.ts("Collector Scrape Duration",
+                      [(sel("opnsense_exporter_scrape_collector_duration_seconds"), "{{collector}}")],
+                      unit="s", w=12, h=8)
+    scrape_ok = b.statetimeline("Collector Scrape Success",
+                                [(sel("opnsense_exporter_scrape_collector_success"), "{{collector}}")],
+                                OKERR, w=12, h=8,
+                                desc="1 = sub-collector scraped cleanly, 0 = error or panic.")
+
     go_goro = b.ts("Exporter Goroutines", [("go_goroutines{job=\"opnsense-exporter\"}", "goroutines")],
                    w=8, h=6)
     go_mem = b.ts("Exporter Memory", [("process_resident_memory_bytes{job=\"opnsense-exporter\"}", "RSS"),
@@ -149,6 +157,7 @@ def build_diagnostics(b: Builder):
 
     b.tab("Diagnostics", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
+        b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
         b.row("Exporter Build & Collectors", [build, cov]),
         b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),

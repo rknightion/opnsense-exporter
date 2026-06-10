@@ -28391,6 +28391,203 @@
         "kind": "Panel",
         "spec": {
           "id": 252,
+          "title": "Collector Scrape Duration",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "opnsense_exporter_scrape_collector_duration_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-253": {
+        "kind": "Panel",
+        "spec": {
+          "id": 253,
+          "title": "Collector Scrape Success",
+          "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "opnsense_exporter_scrape_collector_success{opnsense_instance=~\"$opnsense_instance\"}",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "1m",
+                "maxDataPoints": 300
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "state-timeline",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Error",
+                          "color": "red",
+                          "index": 0
+                        },
+                        "1": {
+                          "text": "OK",
+                          "color": "green",
+                          "index": 1
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": null
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showValue": "never",
+                "alignValue": "left",
+                "rowHeight": 0.9,
+                "fillOpacity": 80,
+                "mergeValues": true,
+                "legend": {
+                  "displayMode": "list",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "single",
+                  "sort": "none"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-254": {
+        "kind": "Panel",
+        "spec": {
+          "id": 254,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -28476,10 +28673,10 @@
           }
         }
       },
-      "panel-253": {
+      "panel-255": {
         "kind": "Panel",
         "spec": {
-          "id": 253,
+          "id": 255,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -28591,10 +28788,10 @@
           }
         }
       },
-      "panel-254": {
+      "panel-256": {
         "kind": "Panel",
         "spec": {
-          "id": 254,
+          "id": 256,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -33682,6 +33879,46 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
+                        "title": "Per-Collector Scrapes",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-252"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-253"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
                         "title": "Exporter Build & Collectors",
                         "collapse": false,
                         "layout": {
@@ -33737,7 +33974,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-252"
+                                    "name": "panel-254"
                                   }
                                 }
                               },
@@ -33750,7 +33987,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-253"
+                                    "name": "panel-255"
                                   }
                                 }
                               },
@@ -33763,7 +34000,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-254"
+                                    "name": "panel-256"
                                   }
                                 }
                               }
