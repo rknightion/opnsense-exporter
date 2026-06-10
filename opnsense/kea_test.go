@@ -303,6 +303,54 @@ func TestFetchKeaLeases6_IsReservedArray(t *testing.T) {
 	}
 }
 
+// Some OPNsense/Kea versions return expire as a quoted string (upstream #105,
+// open PR #109). The whole response must still decode.
+func TestFetchKeaLeases4_StringExpireVariant(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{
+					"address": "10.0.0.50",
+					"hwaddr": "aa:bb:cc:dd:ee:ff",
+					"hostname": "stringy",
+					"expire": "1750000000",
+					"if_descr": "LAN",
+					"is_reserved": "1"
+				},
+				{
+					"address": "10.0.0.51",
+					"hwaddr": "11:22:33:44:55:66",
+					"hostname": "inty",
+					"expire": 1750000001,
+					"if_descr": "LAN",
+					"is_reserved": []
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	}
+	if data.Leases[0].Expire != 1750000000 {
+		t.Errorf("expected string expire parsed to 1750000000, got %d", data.Leases[0].Expire)
+	}
+	if !data.Leases[0].IsReserved {
+		t.Error("expected first lease reserved")
+	}
+	if data.Leases[1].Expire != 1750000001 {
+		t.Errorf("expected numeric expire 1750000001, got %d", data.Leases[1].Expire)
+	}
+}
+
 func TestFetchKeaLeases4_ServerError(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()

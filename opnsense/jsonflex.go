@@ -3,6 +3,7 @@ package opnsense
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -75,6 +76,36 @@ func (f *flexBool) UnmarshalJSON(data []byte) error {
 		// JSON true, any non-zero number, or a non-empty string like "1".
 		*f = true
 	}
+	return nil
+}
+
+// flexInt is an int type whose JSON unmarshaling tolerates the shapes
+// OPNsense API variants use for numeric fields: a JSON number (123), a quoted
+// numeric string ("123"), a float, null, an empty string, or an empty array.
+// Unparseable values decode to 0 rather than failing the whole response
+// (observed on Kea lease "expire" across OPNsense versions — upstream #105).
+type flexInt int
+
+// Int returns the underlying int value.
+func (f flexInt) Int() int { return int(f) }
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (f *flexInt) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(string(data))
+	s = strings.Trim(s, `"`)
+	if s == "" || s == "null" || s == "[]" {
+		*f = 0
+		return nil
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		*f = flexInt(n)
+		return nil
+	}
+	if fl, err := strconv.ParseFloat(s, 64); err == nil {
+		*f = flexInt(int(fl))
+		return nil
+	}
+	*f = 0
 	return nil
 }
 

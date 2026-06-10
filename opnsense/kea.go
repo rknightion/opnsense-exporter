@@ -4,7 +4,7 @@ type keaLeaseRow struct {
 	Address    string   `json:"address"`
 	HWAddr     string   `json:"hwaddr"`
 	Hostname   string   `json:"hostname"`
-	Expire     int      `json:"expire"`
+	Expire     flexInt  `json:"expire"`
 	IfDescr    string   `json:"if_descr"`
 	IsReserved flexBool `json:"is_reserved"`
 }
@@ -61,7 +61,7 @@ func (c *Client) fetchKeaLeases(endpointName EndpointName) (KeaLeases, *APICallE
 			HWAddr:     row.HWAddr,
 			Hostname:   row.Hostname,
 			IsReserved: reserved,
-			Expire:     row.Expire,
+			Expire:     row.Expire.Int(),
 			IfDescr:    row.IfDescr,
 		}
 

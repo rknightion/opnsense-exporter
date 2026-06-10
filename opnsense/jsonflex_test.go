@@ -135,6 +135,33 @@ func TestFlexStringMap_EmptyObject(t *testing.T) {
 	}
 }
 
+func TestFlexInt_UnmarshalJSON(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"number", `12345`, 12345},
+		{"quoted number", `"12345"`, 12345},
+		{"float number", `1750000000.0`, 1750000000},
+		{"null", `null`, 0},
+		{"empty string", `""`, 0},
+		{"empty array", `[]`, 0},
+		{"garbage string", `"never"`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var f flexInt
+			if err := json.Unmarshal([]byte(tt.in), &f); err != nil {
+				t.Fatalf("flexInt must never fail on OPNsense shapes, got error: %v", err)
+			}
+			if f.Int() != tt.want {
+				t.Errorf("flexInt(%s) = %d, want %d", tt.in, f.Int(), tt.want)
+			}
+		})
+	}
+}
+
 func TestFlexBool_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name  string
