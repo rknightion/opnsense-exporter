@@ -40,6 +40,10 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 
 1. Create `internal/collector/<subsystem>.go` implementing `CollectorInstance` with an `init()` that appends to `collectorInstances`
 2. Add a `Fetch<Subsystem>()` method in `opnsense/` with data structs, register its endpoint(s) in the `endpoints` map in `opnsense/client.go`, and add the endpoint name(s) to `testEndpoints()` in `opnsense/testhelpers_test.go` (and bump the count in `opnsense/client_test.go`). For plugin-gated endpoints, treat a 404 as "feature absent" (return empty data + `nil`, mirroring `FetchACMECertificates`) so the collector stays silent when the plugin is missing.
+2a. If the new endpoint is called with POST (`c.do("POST", ...)` or `c.doForm(...)`), add its
+    endpoint-name key to `postEndpoints` in `opnsense/contract.go` and bump the golden POST count in
+    `opnsense/contract_test.go`. GET endpoints need no change — the contract manifest derives them
+    automatically. The `cmd/apicontract` canary cross-checks every endpoint against OPNsense source.
 3. Add a `<Subsystem>Subsystem` const and a `Without<Subsystem>Collector()` option in `internal/collector/collector.go`
 4. Add the flag + `CollectorsDisableSwitch` field + switch entry in `internal/options/collectors.go`. Use `exporter.disable-*` (default-on) for low-cardinality collectors; reserve `exporter.enable-*` (default-off) for collectors with extra per-scrape API cost or high cardinality
 5. Wire it in `main.go` (`if !collectorsSwitches.<X> { ... WithoutXCollector() }`)
