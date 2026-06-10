@@ -1,0 +1,62 @@
+name: API Contract Drift Enrichment
+
+on:
+  issues:
+    types: [opened, labeled]
+
+# A label-on-create can fire both `opened` and `labeled`; coalesce per issue so we
+# don't run the agent (and potentially open a PR) twice for the same issue.
+concurrency:
+  group: api-contract-enrich-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+# Only act on the canary's own drift issues.
+jobs:
+  enrich:
+    if: contains(github.event.issue.labels.*.name, 'api-drift')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: anthropics/claude-code-action@b47fd721da662d48c5680e154ad16a73ed74d2e0 # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+            TITLE: ${{ github.event.issue.title }}
+            BODY:
+            ${{ github.event.issue.body }}
+
+            This issue was filed by our OPNsense API contract canary. Each row names an
+            exporter endpoint that no longer matches OPNsense source (missing endpoint) or
+            whose HTTP method may have changed (verb drift), per branch.
+
+            For EACH reported endpoint:
+            1. Confirm the drift by inspecting OPNsense source at the named ref. Use
+               `gh api repos/opnsense/core/contents/<path>?ref=<ref>` or
+               `gh api repos/opnsense/plugins/...` (or WebFetch on raw.githubusercontent.com)
+               to find the controller under
+               `src/opnsense/mvc/app/controllers/OPNsense/<Module>/Api/<Controller>Controller.php`
+               and check whether the `<command>Action` method still exists / changed verb.
+            2. If confirmed, identify the corresponding entry in `opnsense/client.go`
+               (the `defaultEndpoints()` map) and the affected `Fetch*` method, and work out
+               the correct new path or verb.
+            3. Post a comment on the issue summarising, per endpoint: confirmed/not-confirmed,
+               the evidence (file + ref), and the suggested fix.
+            4. If (and only if) the fix is mechanical — a path rename in `defaultEndpoints()`
+               and/or a verb change (moving an endpoint in/out of `postEndpoints` in
+               `opnsense/contract.go`) — open a PR that makes the change, updates
+               `opnsense/testhelpers_test.go` and the count in `opnsense/client_test.go` if the
+               path changed, runs `make docs`, and runs `CGO_ENABLED=0 go test ./...`. Do NOT
+               attempt struct/field reshaping; flag those for a human instead.
+
+          claude_args: |
+            --allowedTools "Bash(gh:*),Bash(go test:*),Bash(go build:*),Bash(make docs:*),Bash(make docs-check:*),Edit,Write,WebFetch"

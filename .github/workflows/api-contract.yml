@@ -1,0 +1,153 @@
+name: OPNsense API Contract
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      extra_refs:
+        description: 'Space-separated extra core/plugins refs to also check (e.g. a beta tag)'
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - 'opnsense/client.go'
+      - 'opnsense/contract.go'
+      - 'cmd/apicontract/**'
+      - 'tools/opnsense_api_contract/**'
+      - '.github/workflows/api-contract.yml'
+
+permissions:
+  contents: read
+
+# The docs repo supplies the PHP parser. `master` tracks parser improvements; the
+# `--min` floor below catches catastrophic parser breakage. Pin this to a specific
+# commit SHA once the tooling is validated if you want byte-for-byte reproducibility.
+env:
+  OPNSENSE_DOCS_REF: master
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install parser dependencies
+        run: python -m pip install --quiet phply jinja2 pydantic
+
+      - name: Clone opnsense/docs (parser)
+        run: git clone --depth 1 --branch "$OPNSENSE_DOCS_REF" https://github.com/opnsense/docs upstream/docs
+
+      - name: Determine refs to check
+        id: refs
+        env:
+          EXTRA_REFS: ${{ github.event.inputs.extra_refs }}
+        run: |
+          set -euo pipefail
+          # latest stable/* branch by CalVer
+          latest_stable=$(git ls-remote --heads https://github.com/opnsense/core 'refs/heads/stable/*' \
+            | sed 's#.*refs/heads/##' | sort -V | tail -n1)
+          refs="master ${latest_stable}"
+          if [ -n "$EXTRA_REFS" ]; then
+            refs="${refs} ${EXTRA_REFS}"
+          fi
+          echo "list=${refs}" >> "$GITHUB_OUTPUT"
+          echo "Checking refs: ${refs}"
+
+      - name: Extract upstream endpoints per ref
+        env:
+          REFS_LIST: ${{ steps.refs.outputs.list }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          go build -o /tmp/apicontract ./cmd/apicontract
+          args=()
+          for ref in $REFS_LIST; do
+            safe=$(echo "$ref" | tr '/' '-')
+            rm -rf upstream/src
+            mkdir -p upstream/src
+            # core at the target ref; plugins at the same ref if it exists, else default branch.
+            git clone --depth 1 --branch "$ref" https://github.com/opnsense/core "upstream/src/core"
+            if ! git clone --depth 1 --branch "$ref" https://github.com/opnsense/plugins "upstream/src/plugins" 2>/dev/null; then
+              echo "plugins has no '$ref' branch; using its default branch"
+              git clone --depth 1 https://github.com/opnsense/plugins "upstream/src/plugins"
+            fi
+            # Real clones (not symlinks): os.walk does not follow symlinked dirs.
+            python tools/opnsense_api_contract/extract.py \
+              --docs upstream/docs --source upstream/src --min 200 \
+              > "out/upstream-${safe}.json"
+            args+=(--ref "${ref}=out/upstream-${safe}.json")
+          done
+          # Persist the arg list for the next step.
+          printf '%s\n' "${args[@]}" > out/args.txt
+
+      - name: Run contract diff
+        id: diff
+        run: |
+          set -euo pipefail
+          mapfile -t args < out/args.txt
+          # Exit 0 = clean; exit 1 = missing-endpoint drift (breaking); other = error.
+          if /tmp/apicontract "${args[@]}" --out out/report.md; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          else
+            code=$?
+            if [ "$code" -ne 1 ]; then
+              echo "apicontract failed with code $code" >&2
+              exit "$code"
+            fi
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          fi
+          # Always surface the report (incl. non-failing verb warnings) in the run summary.
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+          cat out/report.md
+
+      - name: Ensure api-drift label exists
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create api-drift --color B60205 \
+            --description "OPNsense API contract drift detected by CI" 2>/dev/null || true
+
+      - name: Open or update drift issue
+        if: steps.diff.outputs.drift == 'true' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="OPNsense API contract drift"
+          existing=$(gh issue list --label api-drift --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file out/report.md
+          else
+            gh issue create --title "$title" --label api-drift --body-file out/report.md
+          fi
+
+      - name: Close drift issue when clean
+        if: steps.diff.outputs.drift == 'false' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --label api-drift --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "API contract drift cleared on the latest scheduled run. Closing."
+            gh issue close "$existing"
+          fi
+
+      - name: Fail the job on drift
+        if: steps.diff.outputs.drift == 'true'
+        run: |
+          echo "API contract drift detected (see the run summary / the api-drift issue)." >&2
+          exit 1
