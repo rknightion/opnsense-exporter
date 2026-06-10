@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 324
-- **Gauges:** 181
-- **Counters:** 143
+- **Total metrics:** 371
+- **Gauges:** 210
+- **Counters:** 161
 
 ## General
 
@@ -77,6 +77,9 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_certificate_valid_to_seconds | Gauge | description, commonname, cert_type, in_use | Certificate valid to (expiry) timestamp in seconds since epoch | --exporter.disable-certificates |
 | opnsense_certificate_info | Gauge | description, commonname, cert_type, in_use | Certificate information (value is always 1) | --exporter.disable-certificates |
 | opnsense_certificate_total | Gauge | --- | Total number of certificates | --exporter.disable-certificates |
+| opnsense_certificate_ca_valid_from_seconds | Gauge | description, commonname | Certificate authority valid from timestamp in seconds since epoch | --exporter.disable-certificates |
+| opnsense_certificate_ca_valid_to_seconds | Gauge | description, commonname | Certificate authority valid to (expiry) timestamp in seconds since epoch | --exporter.disable-certificates |
+| opnsense_certificate_ca_total | Counter | --- | Total number of certificate authorities | --exporter.disable-certificates |
 
 ## Cron
 
@@ -94,6 +97,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_dnsmasq_leases_dynamic_total | Counter | --- | Total number of dynamic DHCP leases | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_lease_info | Gauge | address, hostname, hwaddr, interface | Per-lease information (value is expire timestamp). Only emitted when --exporter.enable-dnsmasq-details is set. | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-dnsmasq |
+| opnsense_dnsmasq_pool_size | Gauge | interface | Number of addresses in the configured dnsmasq DHCP ranges per interface | --exporter.disable-dnsmasq |
 
 ## DynDNS
 
@@ -128,6 +132,18 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firewall_pf_states_current | Gauge | --- | Current number of active PF states | --exporter.disable-firewall |
 | opnsense_firewall_pf_states_limit | Gauge | --- | Maximum number of PF states allowed | --exporter.disable-firewall |
 | opnsense_firewall_interface_hits_total | Counter | interface | Total number of firewall rule matches per interface | --exporter.disable-firewall |
+
+## Firewall Aliases
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_alias_tables_total | Counter | --- | Total number of pf alias tables | --exporter.disable-alias |
+| opnsense_alias_table_entries | Gauge | table | Current number of entries in this pf alias table | --exporter.disable-alias |
+| opnsense_alias_table_entries_used | Gauge | --- | Number of pf table-entries slots currently in use (global) | --exporter.disable-alias |
+| opnsense_alias_table_entries_limit | Gauge | --- | Maximum number of pf table-entries slots (global) | --exporter.disable-alias |
+| opnsense_alias_table_evaluations_total | Counter | table, result | Packet evaluations against this alias table since last reset | --exporter.disable-alias |
+| opnsense_alias_table_packets_total | Counter | table, direction, action | Packets matched against this alias table since last reset | --exporter.disable-alias |
+| opnsense_alias_table_bytes_total | Counter | table, direction, action | Bytes matched against this alias table since last reset | --exporter.disable-alias |
 
 ## Firewall Rules
 
@@ -242,6 +258,9 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_kea_dhcp6_leases_reserved_total | Counter | --- | Total number of reserved (static) Kea DHCPv6 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_dynamic_total | Counter | --- | Total number of dynamic Kea DHCPv6 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp6_lease_info | Gauge | address, hostname, hwaddr, interface | Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. | --exporter.disable-kea |
+| opnsense_kea_service_running | Gauge | --- | Whether the Kea DHCP service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-kea |
+| opnsense_kea_dhcp4_pool_size | Gauge | subnet, interface | Number of addresses in the configured Kea DHCPv4 pools for this subnet | --exporter.disable-kea |
+| opnsense_kea_dhcp6_pool_size | Gauge | subnet, interface | Number of addresses in the configured Kea DHCPv6 pools for this subnet | --exporter.disable-kea |
 
 ## Mbuf
 
@@ -391,6 +410,24 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_protocol_ip_sent_fragments_total | Counter | --- | Total IP fragments sent | --- |
 | opnsense_protocol_arp_dropped_duplicate_address_total | Counter | --- | Total ARP packets dropped due to duplicate address | --- |
 
+## Q-Feeds
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_qfeeds_feeds_total | Counter | --- | Total number of configured Q-Feeds threat intelligence feeds | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feed_entries | Gauge | feed | Current number of entries in this Q-Feeds feed | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feed_packets_blocked_total | Counter | feed | Packets blocked by this Q-Feeds feed since last reset | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feed_bytes_blocked_total | Counter | feed | Bytes blocked by this Q-Feeds feed since last reset | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feed_addresses_blocked | Gauge | feed | Current number of addresses blocked by this Q-Feeds feed | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feed_last_update_timestamp_seconds | Gauge | feed | Unix timestamp of the last update for this Q-Feeds feed | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feed_next_update_timestamp_seconds | Gauge | feed | Unix timestamp of the next scheduled update for this Q-Feeds feed | --exporter.disable-qfeeds |
+| opnsense_qfeeds_entries | Gauge | --- | Total current entries across all Q-Feeds feeds | --exporter.disable-qfeeds |
+| opnsense_qfeeds_packets_blocked_total | Counter | --- | Total packets blocked across all Q-Feeds feeds since last reset | --exporter.disable-qfeeds |
+| opnsense_qfeeds_bytes_blocked_total | Counter | --- | Total bytes blocked across all Q-Feeds feeds since last reset | --exporter.disable-qfeeds |
+| opnsense_qfeeds_addresses_blocked | Gauge | --- | Total current addresses blocked across all Q-Feeds feeds | --exporter.disable-qfeeds |
+| opnsense_qfeeds_license_info | Gauge | license | Q-Feeds license information (value is always 1; see labels) | --exporter.disable-qfeeds |
+| opnsense_qfeeds_license_expiry_timestamp_seconds | Gauge | --- | Unix timestamp of the Q-Feeds license expiry | --exporter.disable-qfeeds |
+
 ## SMART Disk Health
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -418,6 +455,21 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_services_running_total | Counter | --- | Total number of running services | --- |
 | opnsense_services_stopped_total | Counter | --- | Total number of stopped services | --- |
 
+## Syslog
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_syslog_processed_total | Counter | source_name, source_id, source_instance | Messages processed by this syslog-ng object since stats reset | --exporter.disable-syslog |
+| opnsense_syslog_dropped_total | Counter | source_name, source_id, source_instance | Messages dropped by this syslog-ng object since stats reset | --exporter.disable-syslog |
+| opnsense_syslog_written_total | Counter | source_name, source_id, source_instance | Messages written by this syslog-ng object since stats reset | --exporter.disable-syslog |
+| opnsense_syslog_queued | Gauge | source_name, source_id, source_instance | Messages currently queued in this syslog-ng object | --exporter.disable-syslog |
+| opnsense_syslog_truncated_messages_total | Counter | source_name, source_id, source_instance | Messages truncated by this syslog-ng object since stats reset | --exporter.disable-syslog |
+| opnsense_syslog_truncated_bytes_total | Counter | source_name, source_id, source_instance | Bytes truncated by this syslog-ng object since stats reset | --exporter.disable-syslog |
+| opnsense_syslog_memory_usage_bytes | Gauge | source_name, source_id, source_instance | Current memory usage of this syslog-ng object in bytes | --exporter.disable-syslog |
+| opnsense_syslog_events_per_second | Gauge | --- | syslog-ng events per second over the labelled window (1h, 24h, since_start) | --exporter.disable-syslog |
+| opnsense_syslog_message_size_bytes | Gauge | --- | syslog-ng message size in bytes (stat = avg or max) | --exporter.disable-syslog |
+| opnsense_syslog_service_running | Gauge | --- | Whether the syslog-ng service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-syslog |
+
 ## System
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -434,6 +486,21 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_system_swap_total_bytes | Gauge | device | Total swap space in bytes | --exporter.disable-system |
 | opnsense_system_swap_used_bytes | Gauge | device | Used swap space in bytes | --exporter.disable-system |
 | opnsense_system_info | Gauge | hostname, opnsense_version, freebsd_version, openssl_version, cpu_model, cpu_cores, cpu_threads | System information with hostname, OS versions, and CPU details (value is always 1) | --exporter.disable-system |
+
+## Tailscale
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_tailscale_service_running | Gauge | --- | Whether the Tailscale plugin service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-tailscale |
+| opnsense_tailscale_backend_running | Gauge | --- | Whether the tailscaled backend state is Running (1 = Running, 0 = anything else) | --exporter.disable-tailscale |
+| opnsense_tailscale_info | Gauge | version, relay | Tailscale node information (value is always 1; see labels) | --exporter.disable-tailscale |
+| opnsense_tailscale_peers_total | Counter | --- | Number of tailnet peers known to this node | --exporter.disable-tailscale |
+| opnsense_tailscale_peers_with_active_session | Gauge | --- | Number of tailnet peers with an established WireGuard session from this node (derived from local last-handshake presence, not coordination-server online state) | --exporter.disable-tailscale |
+| opnsense_tailscale_peer_session_active | Gauge | peer | Whether this node has an established WireGuard session with the peer (1 = a handshake has been recorded since tailscaled start). Node-local; deliberately not the coordination-server online flag. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
+| opnsense_tailscale_peer_direct | Gauge | peer | Whether the established session to the peer uses a direct (non-relayed) path (1 = direct, 0 = DERP-relayed). Only emitted for peers with a WireGuard session and when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
+| opnsense_tailscale_peer_rx_bytes_total | Counter | peer | Bytes received from this peer by this node since tailscaled start. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
+| opnsense_tailscale_peer_tx_bytes_total | Counter | peer | Bytes sent to this peer by this node since tailscaled start. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
+| opnsense_tailscale_peer_last_handshake_timestamp_seconds | Gauge | peer | Unix timestamp of the last WireGuard handshake with this peer from this node. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 
 ## Temperature
 

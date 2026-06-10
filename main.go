@@ -216,6 +216,30 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDynDNSCollector())
 		logger.Info("dyndns collector disabled")
 	}
+	if !collectorsSwitches.Syslog {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSyslogCollector())
+		logger.Info("syslog collector disabled")
+	}
+	if !collectorsSwitches.QFeeds {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutQFeedsCollector())
+		logger.Info("qfeeds collector disabled")
+	}
+	if !collectorsSwitches.Tailscale {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutTailscaleCollector())
+		logger.Info("tailscale collector disabled")
+	}
+	if collectorsSwitches.TailscalePeerDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithTailscalePeerDetails())
+		logger.Info("tailscale per-peer details enabled")
+	}
+	if !collectorsSwitches.Alias {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutAliasCollector())
+		logger.Info("alias collector disabled")
+	}
+	if collectorsSwitches.AliasDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithAliasDetails())
+		logger.Info("alias per-table details enabled")
+	}
 
 	// Resolve the instance label. When the user does not set one, default to the
 	// OPNsense hostname reported by the API so single-instance deployments work

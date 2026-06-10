@@ -139,6 +139,30 @@ var (
 		"exporter.disable-gateways",
 		"Disable the scraping of gateway status metrics (RTT, packet loss, gateway state)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_GATEWAYS").Default("false").Bool()
+	syslogCollectorDisabled = kingpin.Flag(
+		"exporter.disable-syslog",
+		"Disable the scraping of syslog-ng statistics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_SYSLOG").Default("false").Bool()
+	qfeedsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-qfeeds",
+		"Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_QFEEDS").Default("false").Bool()
+	tailscaleCollectorDisabled = kingpin.Flag(
+		"exporter.disable-tailscale",
+		"Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_TAILSCALE").Default("false").Bool()
+	tailscalePeerDetailsEnabled = kingpin.Flag(
+		"exporter.enable-tailscale-peer-details",
+		"Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer hostname labels)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS").Default("false").Bool()
+	aliasCollectorDisabled = kingpin.Flag(
+		"exporter.disable-alias",
+		"Disable the scraping of firewall alias table sizes",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_ALIAS").Default("false").Bool()
+	aliasDetailsEnabled = kingpin.Flag(
+		"exporter.enable-alias-details",
+		"Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -177,6 +201,12 @@ type CollectorsDisableSwitch struct {
 	SMART                  bool
 	DynDNS                 bool
 	Gateways               bool
+	Syslog                 bool
+	QFeeds                 bool
+	Tailscale              bool
+	TailscalePeerDetails   bool
+	Alias                  bool
+	AliasDetails           bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -216,6 +246,12 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		SMART:                  !*smartCollectorDisabled,
 		DynDNS:                 !*dyndnsCollectorDisabled,
 		Gateways:               !*gatewaysCollectorDisabled,
+		Syslog:                 !*syslogCollectorDisabled,
+		QFeeds:                 !*qfeedsCollectorDisabled,
+		Tailscale:              !*tailscaleCollectorDisabled,
+		TailscalePeerDetails:   *tailscalePeerDetailsEnabled,
+		Alias:                  !*aliasCollectorDisabled,
+		AliasDetails:           *aliasDetailsEnabled,
 	}
 }
 
@@ -269,4 +305,10 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-smart", Subsystem: "smart"},
 	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
 	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
+	{Flag: "exporter.disable-syslog", Subsystem: "syslog"},
+	{Flag: "exporter.disable-qfeeds", Subsystem: "qfeeds"},
+	{Flag: "exporter.disable-tailscale", Subsystem: "tailscale"},
+	{Flag: "exporter.enable-tailscale-peer-details", Subsystem: "tailscale", Detail: true},
+	{Flag: "exporter.disable-alias", Subsystem: "alias"},
+	{Flag: "exporter.enable-alias-details", Subsystem: "alias", Detail: true},
 }

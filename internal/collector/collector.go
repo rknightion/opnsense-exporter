@@ -95,6 +95,10 @@ var SubsystemDisplayNames = map[string]string{
 	ACMESubsystem:          "ACME Client",
 	SMARTSubsystem:         "SMART Disk Health",
 	DynDNSSubsystem:        "DynDNS",
+	SyslogSubsystem:        "Syslog",
+	QFeedsSubsystem:        "Q-Feeds",
+	TailscaleSubsystem:     "Tailscale",
+	AliasSubsystem:         "Firewall Aliases",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -319,6 +323,30 @@ func WithoutGatewaysCollector() Option {
 	return withoutCollectorInstance(GatewaysSubsystem)
 }
 
+// WithoutSyslogCollector Option
+// removes the syslog collector from the list of collectors
+func WithoutSyslogCollector() Option {
+	return withoutCollectorInstance(SyslogSubsystem)
+}
+
+// WithoutQFeedsCollector Option
+// removes the qfeeds collector from the list of collectors
+func WithoutQFeedsCollector() Option {
+	return withoutCollectorInstance(QFeedsSubsystem)
+}
+
+// WithoutTailscaleCollector Option
+// removes the tailscale collector from the list of collectors
+func WithoutTailscaleCollector() Option {
+	return withoutCollectorInstance(TailscaleSubsystem)
+}
+
+// WithoutAliasCollector Option
+// removes the alias collector from the list of collectors
+func WithoutAliasCollector() Option {
+	return withoutCollectorInstance(AliasSubsystem)
+}
+
 // WithFirmwarePackageDetails enables per-package detail metrics for the
 // firmware collector (pending package updates + installed plugin inventory).
 func WithFirmwarePackageDetails() Option {
@@ -405,6 +433,32 @@ func WithUnboundInfra() Option {
 		for _, c := range o.collectors {
 			if uc, ok := c.(*unboundDNSCollector); ok {
 				uc.SetInfraEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithTailscalePeerDetails enables per-peer detail metrics for the tailscale collector
+func WithTailscalePeerDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if tc, ok := c.(*tailscaleCollector); ok {
+				tc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithAliasDetails enables per-table pf counter metrics for the alias collector
+func WithAliasDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if ac, ok := c.(*aliasCollector); ok {
+				ac.SetDetailsEnabled(true)
 				return nil
 			}
 		}
