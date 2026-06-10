@@ -172,6 +172,8 @@ func TestParseLastCheckTimestamp(t *testing.T) {
 		{"Undefined", "undefined", 0},
 		{"Empty string", "", 0},
 		{"Garbage", "garbage", 0},
+		{"UnixDate BST", "Tue Jun  9 10:13:17 BST 2026", 1780999997},
+		{"UnixDate UTC", "Tue Jun  9 10:13:17 UTC 2026", 1780999997},
 	}
 
 	for _, tc := range tests {
@@ -181,5 +183,142 @@ func TestParseLastCheckTimestamp(t *testing.T) {
 				t.Errorf("parseLastCheckTimestamp(%q) = %v; want %v", tc.input, got, tc.expected)
 			}
 		})
+	}
+}
+
+func TestFetchFirmwareStatus_UpgradePackageDetails(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"last_check": "2026-06-09T10:13:17",
+			"needs_reboot": "0",
+			"os_version": "FreeBSD 14.3-RELEASE-p14",
+			"product_id": "opnsense",
+			"product_version": "26.1.9",
+			"product_abi": "26.1",
+			"new_packages": [],
+			"upgrade_packages": [
+				{"name": "curl", "repository": "OPNsense", "current_version": "8.8.0", "new_version": "8.9.1"},
+				{"name": "openssl", "repository": "OPNsense", "current_version": "3.0.13", "new_version": "3.0.14"}
+			],
+			"product": {
+				"product_check": {
+					"upgrade_needs_reboot": "0"
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(firmware.UpgradePackageDetails) != 2 {
+		t.Fatalf("expected 2 upgrade package details, got %d", len(firmware.UpgradePackageDetails))
+	}
+	first := firmware.UpgradePackageDetails[0]
+	if first.Name != "curl" || first.CurrentVersion != "8.8.0" || first.NewVersion != "8.9.1" {
+		t.Errorf("unexpected first upgrade detail: %+v", first)
+	}
+}
+
+func TestFetchFirmwareInfo_Success(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{
+			"product_id": "opnsense",
+			"product_version": "26.1.9",
+			"package": [
+				{"name": "abseil", "version": "20250127.1_1", "installed": "0"},
+				{"name": "curl", "version": "8.9.1", "installed": "1"}
+			],
+			"plugin": [
+				{"name": "os-ddclient", "version": "1.31", "installed": "1"},
+				{"name": "os-acme-client", "version": "4.10", "installed": "0"},
+				{"name": "os-tailscale", "version": "1.10", "installed": "1"}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	info, err := client.FetchFirmwareInfo()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.ProductID != "opnsense" {
+		t.Errorf("expected ProductID 'opnsense', got %q", info.ProductID)
+	}
+	if info.ProductVersion != "26.1.9" {
+		t.Errorf("expected ProductVersion '26.1.9', got %q", info.ProductVersion)
+	}
+	if len(info.InstalledPlugins) != 2 {
+		t.Fatalf("expected 2 installed plugins (installed==\"1\" only), got %d", len(info.InstalledPlugins))
+	}
+	if info.InstalledPlugins[0].Name != "os-ddclient" || info.InstalledPlugins[0].Version != "1.31" {
+		t.Errorf("unexpected first plugin: %+v", info.InstalledPlugins[0])
+	}
+	if info.InstalledPlugins[1].Name != "os-tailscale" {
+		t.Errorf("expected second plugin os-tailscale, got %q", info.InstalledPlugins[1].Name)
+	}
+}
+
+func TestFetchFirmwareInfo_ServerError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	defer server.Close()
+
+	_, err := client.FetchFirmwareInfo()
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+	if err.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
+
+// OPNsense >= 25.x leaves status at "none" even when firmware data is valid;
+// last_check is the validity signal (upstream PR #101). Verified live on
+// 26.1.9: status "none" + last_check "Tue Jun  9 10:13:17 BST 2026".
+func TestFetchFirmwareStatus_StatusNoneWithLastCheck(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "none",
+			"last_check": "Tue Jun  9 10:13:17 BST 2026",
+			"needs_reboot": "0",
+			"os_version": "FreeBSD 14.3-RELEASE-p14",
+			"product_id": "opnsense",
+			"product_version": "26.1.9",
+			"product_abi": "26.1",
+			"new_packages": [],
+			"upgrade_packages": [],
+			"product": {
+				"product_check": {
+					"upgrade_needs_reboot": "0"
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.OsVersion != "FreeBSD 14.3-RELEASE-p14" {
+		t.Errorf("expected real OsVersion despite status=none, got %q", firmware.OsVersion)
+	}
+	if firmware.ProductVersion != "26.1.9" {
+		t.Errorf("expected ProductVersion '26.1.9', got %q", firmware.ProductVersion)
+	}
+	// "Tue Jun  9 10:13:17 BST 2026" — parsed with ParseInLocation(..., UTC),
+	// so the abbreviation gets offset 0 and the wall-clock time is treated as
+	// UTC deterministically on every host: 1780999997.
+	if firmware.LastCheckTimestamp != 1780999997 {
+		t.Errorf("expected LastCheckTimestamp 1780999997, got %v", firmware.LastCheckTimestamp)
 	}
 }

@@ -30,16 +30,17 @@ type firmwareStatusResponse struct {
 }
 
 type FirmwareStatus struct {
-	LastCheck          string
-	NeedsReboot        bool
-	NewPackages        int
-	OsVersion          string
-	ProductABI         string
-	ProductId          string
-	ProductVersion     string
-	UpgradePackages    int
-	UpgradeNeedsReboot bool
-	LastCheckTimestamp float64
+	LastCheck             string
+	NeedsReboot           bool
+	NewPackages           int
+	OsVersion             string
+	ProductABI            string
+	ProductId             string
+	ProductVersion        string
+	UpgradePackages       int
+	UpgradeNeedsReboot    bool
+	LastCheckTimestamp    float64
+	UpgradePackageDetails []FirmwarePackageUpgrade
 }
 
 func NewFirmwareStatus() FirmwareStatus {
@@ -69,6 +70,16 @@ func parseLastCheckTimestamp(raw string) float64 {
 	if err == nil {
 		return float64(t.UTC().Unix())
 	}
+	// OPNsense 25.x+ emits e.g. "Tue Jun  9 10:13:17 BST 2026" (time.UnixDate).
+	// ParseInLocation with UTC keeps the result deterministic regardless of
+	// the host's timezone (plain time.Parse resolves abbreviations like "BST"
+	// against the local zone). Zone abbreviations therefore parse with a zero
+	// offset, so the value can be off by the box's zone offset — acceptable
+	// for a last-check age.
+	t, err = time.ParseInLocation(time.UnixDate, raw, time.UTC)
+	if err == nil {
+		return float64(t.Unix())
+	}
 	return 0
 }
 
@@ -90,7 +101,10 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		return data, err
 	}
 
-	if resp.Status != "none" {
+	// OPNsense >= 25.x no longer flips the status field; a populated
+	// last_check is the signal that an update check has run and the rest of
+	// the payload is meaningful (upstream PR #101 / issue #100).
+	if resp.LastCheck != "" {
 		data.OsVersion = resp.OsVersion
 		data.ProductABI = resp.ProductAbi
 		data.ProductId = resp.ProductID
@@ -101,6 +115,81 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		data.LastCheckTimestamp = parseLastCheckTimestamp(resp.LastCheck)
 		data.NewPackages = len(resp.NewPackages)
 		data.UpgradePackages = len(resp.UpgradePackages)
+		for _, p := range resp.UpgradePackages {
+			data.UpgradePackageDetails = append(data.UpgradePackageDetails, FirmwarePackageUpgrade{
+				Name:           p.Name,
+				CurrentVersion: p.CurrentVersion,
+				NewVersion:     p.NewVersion,
+			})
+		}
+	}
+	return data, nil
+}
+
+// FirmwarePackageUpgrade describes one package with a pending upgrade, from
+// the firmware status "upgrade_packages" list.
+type FirmwarePackageUpgrade struct {
+	Name           string
+	CurrentVersion string
+	NewVersion     string
+}
+
+type firmwareInfoResponse struct {
+	ProductID      string `json:"product_id"`
+	ProductVersion string `json:"product_version"`
+	Plugin         []struct {
+		Name      string `json:"name"`
+		Version   string `json:"version"`
+		Installed string `json:"installed"`
+	} `json:"plugin"`
+}
+
+// FirmwarePlugin is one installed OPNsense plugin (os-*) from core/firmware/info.
+type FirmwarePlugin struct {
+	Name    string
+	Version string
+}
+
+// FirmwareInfo is the parsed subset of api/core/firmware/info the exporter
+// uses: product identity plus installed plugins.
+type FirmwareInfo struct {
+	ProductID        string
+	ProductVersion   string
+	InstalledPlugins []FirmwarePlugin
+}
+
+// FetchFirmwareInfo fetches api/core/firmware/info and returns the product
+// identity plus the list of installed plugins. The 900+ entry "package"
+// catalogue in the response is deliberately not decoded — only the plugin
+// list (~100 entries, ~15 installed on a typical box) is used, filtered to
+// installed == "1", to keep metric cardinality bounded.
+func (c *Client) FetchFirmwareInfo() (FirmwareInfo, *APICallError) {
+	var resp firmwareInfoResponse
+	var data FirmwareInfo
+
+	url, ok := c.endpoints["firmwareInfo"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "firmwareInfo",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return data, err
+	}
+
+	data.ProductID = resp.ProductID
+	data.ProductVersion = resp.ProductVersion
+	for _, p := range resp.Plugin {
+		if p.Installed != "1" {
+			continue
+		}
+		data.InstalledPlugins = append(data.InstalledPlugins, FirmwarePlugin{
+			Name:    p.Name,
+			Version: p.Version,
+		})
 	}
 	return data, nil
 }
