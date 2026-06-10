@@ -169,5 +169,16 @@ func testEndpoints() map[EndpointName]EndpointPath {
 		"captivePortalSessions":      "api/captiveportal/session/search",
 		"captivePortalZones":         "api/captiveportal/session/zones",
 		"captivePortalServiceStatus": "api/captiveportal/service/status",
+		"trafficShaperStatistics":    "api/trafficshaper/service/statistics",
+		"ipsecPools":                 "api/ipsec/leases/pools",
+		"hasyncVersion":              "api/core/hasync_status/version",
+		"hasyncServices":             "api/core/hasync_status/services",
+		"chronyTracking":             "api/chrony/service/chronytracking",
+		"chronySources":              "api/chrony/service/chronysources",
+		"chronySourceStats":          "api/chrony/service/chronysourcestats",
+		"chronyServiceStatus":        "api/chrony/service/status",
+		"dhcpv6Leases":               "api/dhcpv6/leases/searchLease",
+		"dhcpv6Prefixes":             "api/dhcpv6/leases/searchPrefix",
+		"bpfStatistics":              "api/diagnostics/interface/get_bpf_statistics",
 	}
 }

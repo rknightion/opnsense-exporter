@@ -66,6 +66,11 @@ const (
 	NUTSubsystem           = "nut"
 	ApcupsdSubsystem       = "apcupsd"
 	CaptivePortalSubsystem = "captiveportal"
+	TrafficShaperSubsystem = "trafficshaper"
+	HasyncSubsystem        = "hasync"
+	ChronySubsystem        = "chrony"
+	Dhcpv6Subsystem        = "dhcpv6"
+	BPFSubsystem           = "bpf"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable

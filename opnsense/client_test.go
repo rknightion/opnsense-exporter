@@ -30,8 +30,8 @@ func TestNewClient_EndpointCount(t *testing.T) {
 	}
 
 	endpoints := client.Endpoints()
-	if len(endpoints) != 96 {
-		t.Errorf("expected 96 endpoints, got %d", len(endpoints))
+	if len(endpoints) != 107 {
+		t.Errorf("expected 107 endpoints, got %d", len(endpoints))
 	}
 }
 
