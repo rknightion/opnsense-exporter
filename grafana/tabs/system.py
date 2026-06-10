@@ -312,6 +312,39 @@ def build(b: Builder):
     row_firmware = b.row("Firmware", [fw_info, fw_needs_reboot, fw_upgrade_reboot, fw_last_check, fw_new_pkgs, fw_upgrade_pkgs])
 
     # =========================================================================
+    # Row: Firmware Packages (gated — requires --exporter.enable-firmware-package-details)
+    # =========================================================================
+    b.sentinel("has_firmware_details",
+               "label_values(opnsense_firmware_plugin_installed, __name__)")
+    fw_pending_updates = b.table(
+        "Pending Package Updates",
+        [sel("opnsense_firmware_package_update_available")],
+        w=12, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "name": "Package",
+            "installed_version": "Installed",
+            "new_version": "Available",
+        },
+        sort_by="Package",
+        desc="opnsense_firmware_package_update_available: one row per package with a pending update. Requires --exporter.enable-firmware-package-details.",
+    )
+    fw_plugins = b.table(
+        "Installed Plugins",
+        [sel("opnsense_firmware_plugin_installed")],
+        w=12, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "name": "Plugin",
+            "version": "Version",
+        },
+        sort_by="Plugin",
+        desc="opnsense_firmware_plugin_installed: installed os-* plugin inventory. Requires --exporter.enable-firmware-package-details.",
+    )
+    row_firmware_details = b.row("Firmware Packages", [fw_pending_updates, fw_plugins],
+                                 present="has_firmware_details")
+
+    # =========================================================================
     # Row: Temperature (gated)
     # =========================================================================
     temp_ts = b.ts(
@@ -486,6 +519,7 @@ def build(b: Builder):
         row_cpu,
         row_disk,
         row_firmware,
+        row_firmware_details,
         row_temp,
         row_smart,
         row_mbuf,

@@ -37,7 +37,9 @@ OKERR = {"0": ("Error", "red"), "1": ("OK", "green")}
 YESNO = {"0": ("No", "green"), "1": ("Yes", "orange")}
 ENABLED = {"0": ("Disabled", "red"), "1": ("Enabled", "green")}
 GW_STATUS = {"0": ("Offline", "red"), "1": ("Online", "green"),
-             "2": ("Unknown", "orange"), "3": ("Pending", "yellow")}
+             "2": ("Unknown", "orange"), "3": ("Pending", "yellow"),
+             "4": ("Packetloss", "orange"), "5": ("Latency", "yellow"),
+             "6": ("Offline (forced)", "red")}
 
 
 class Builder:

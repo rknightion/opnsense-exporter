@@ -17,7 +17,7 @@ def build(b: Builder):
         "Gateway Status",
         [(sel("opnsense_gateways_status"), "{{name}} ({{address}})")],
         GW_STATUS, w=24, h=8,
-        desc="0=Offline, 1=Online, 2=Unknown, 3=Pending. Label default_gateway is included in series.",
+        desc="0=Offline, 1=Online, 2=Unknown, 3=Pending, 4=Packetloss, 5=Latency, 6=Offline (forced). Label default_gateway is included in series.",
     )
     rtt = b.ts(
         "Gateway RTT",

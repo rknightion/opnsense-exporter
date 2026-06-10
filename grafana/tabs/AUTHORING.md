@@ -72,7 +72,7 @@ Grid is 24 cols; widths in a row should sum to ≤24 (helper auto-wraps). Common
 
 `UPDOWN` {0:Down/red,1:Up/green} · `RUNSTOP` {0:Stopped,1:Running} · `OKERR` {0:Error,1:OK} ·
 `YESNO` {0:No/green,1:Yes/orange} · `ENABLED` {0:Disabled,1:Enabled} ·
-`GW_STATUS` {0:Offline,1:Online,2:Unknown,3:Pending}. Build a custom one as a dict
+`GW_STATUS` {0:Offline,1:Online,2:Unknown,3:Pending,4:Packetloss,5:Latency,6:Offline (forced)}. Build a custom one as a dict
 `{"value": ("Text", "color"), ...}` and pass to `mappings=`.
 
 ## Sentinel queries (use EXACTLY these — corrected for real emission behaviour)
@@ -105,6 +105,7 @@ Register with `b.sentinel(name, query)` then gate the tab/row with `present=name
 | has_kea4_details | `label_values(opnsense_kea_dhcp4_lease_info, __name__)` |
 | has_kea6_details | `label_values(opnsense_kea_dhcp6_lease_info, __name__)` |
 | has_dhcpv4_details | `label_values(opnsense_dhcpv4_lease_info, __name__)` |
+| has_firmware_details | `label_values(opnsense_firmware_plugin_installed, __name__)` |
 
 ## Self-test before finishing
 
