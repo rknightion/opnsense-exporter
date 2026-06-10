@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 307
-- **Gauges:** 168
-- **Counters:** 139
+- **Total metrics:** 322
+- **Gauges:** 179
+- **Counters:** 143
 
 ## General
 
@@ -137,6 +137,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firewall_rule_bytes_total | Counter | uuid, description, action, interface, direction | Total number of bytes matched per firewall rule | --exporter.disable-firewall-rules |
 | opnsense_firewall_rule_states | Gauge | uuid, description, action, interface, direction | Current number of active states per firewall rule | --exporter.disable-firewall-rules |
 | opnsense_firewall_rule_pf_rules | Gauge | uuid, description, action, interface, direction | Number of PF rules generated per firewall rule | --exporter.disable-firewall-rules |
+| opnsense_firewall_rule_configured_rules | Gauge | enabled | Number of configured firewall filter rules by enabled state. Only emitted when --exporter.enable-firewall-rules-details is set. | --exporter.disable-firewall-rules |
 
 ## Firmware
 
@@ -222,6 +223,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_interfaces_input_queue_drops_total | Counter | interface, device, type | Input queue drops on this interface by interface name and device | --- |
 | opnsense_interfaces_link_state | Gauge | interface, device, type | Link state of this interface (1=up, 0=down) by interface name and device | --- |
 | opnsense_interfaces_line_rate_bits | Gauge | interface, device, type | Line rate in bits per second on this interface by interface name and device | --- |
+| opnsense_interfaces_admin_up | Gauge | interface, device | Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices. | --- |
+| opnsense_interfaces_info | Gauge | interface, device, identifier, media, link_type, vlan_tag, vlan_parent, physical | Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series. | --- |
 
 ## Kea DHCP
 
@@ -312,7 +315,7 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_openvpn_instances | Gauge | uuid, role, description, device_type | OpenVPN instances (1 = enabled, 0 = disabled) by role (server, client) | --exporter.disable-openvpn |
-| opnsense_openvpn_sessions | Gauge | description, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_sessions | Gauge | description, real_address, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_total | Counter | --- | Total number of OpenVPN sessions | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_by_instance | Gauge | description | Number of OpenVPN sessions per instance | --exporter.disable-openvpn |
 
@@ -394,6 +397,16 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_smart_device_health | Gauge | device, model, serial | SMART overall health assessment (1 = passed, 0 = failed) | --exporter.disable-smart |
 | opnsense_smart_device_temperature_celsius | Gauge | device | Current drive temperature in degrees Celsius | --exporter.disable-smart |
 | opnsense_smart_device_power_on_hours | Gauge | device | Total power-on hours reported by the drive | --exporter.disable-smart |
+| opnsense_smart_attribute_value | Gauge | device, attribute_name, attribute_id | Normalised current value of a SATA SMART attribute | --exporter.disable-smart |
+| opnsense_smart_attribute_worst | Gauge | device, attribute_name, attribute_id | Worst recorded normalised value of a SATA SMART attribute | --exporter.disable-smart |
+| opnsense_smart_attribute_threshold | Gauge | device, attribute_name, attribute_id | Failure threshold of a SATA SMART attribute (normalised value at/below this indicates failure) | --exporter.disable-smart |
+| opnsense_smart_attribute_raw | Gauge | device, attribute_name, attribute_id | Raw value of a SATA SMART attribute (e.g. reallocated sector count, total LBAs written) | --exporter.disable-smart |
+| opnsense_smart_nvme_available_spare_percent | Gauge | device | NVMe remaining spare capacity as a percentage | --exporter.disable-smart |
+| opnsense_smart_nvme_percentage_used | Gauge | device | NVMe vendor estimate of device life used as a percentage (may exceed 100) | --exporter.disable-smart |
+| opnsense_smart_nvme_media_errors_total | Counter | device | NVMe count of unrecovered data-integrity errors | --exporter.disable-smart |
+| opnsense_smart_nvme_unsafe_shutdowns_total | Counter | device | NVMe count of unsafe shutdowns | --exporter.disable-smart |
+| opnsense_smart_nvme_data_units_read_total | Counter | device | NVMe data units read (1 unit = 1000 × 512 bytes) | --exporter.disable-smart |
+| opnsense_smart_nvme_data_units_written_total | Counter | device | NVMe data units written (1 unit = 1000 × 512 bytes) | --exporter.disable-smart |
 
 ## Services
 
@@ -460,6 +473,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_unbound_dns_tcp_usage_ratio | Gauge | --- | TCP connection usage ratio for the DNS resolver (0.0 to 1.0) | --exporter.disable-unbound |
 | opnsense_unbound_dns_blocklist_enabled | Gauge | --- | Whether the DNS blocklist is enabled (1 = enabled, 0 = disabled) | --exporter.disable-unbound |
 | opnsense_unbound_dns_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-unbound |
+| opnsense_unbound_dns_infra_rtt_seconds | Gauge | ip, host | Smoothed round-trip time to an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set. | --exporter.disable-unbound |
+| opnsense_unbound_dns_infra_rto_seconds | Gauge | ip, host | Retransmission timeout for an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set. | --exporter.disable-unbound |
 
 ## Wireguard
 
