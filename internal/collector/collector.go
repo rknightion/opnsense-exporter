@@ -62,6 +62,10 @@ const (
 	NginxSubsystem         = "nginx"
 	FRRSubsystem           = "frr"
 	MonitSubsystem         = "monit"
+	CrowdSecSubsystem      = "crowdsec"
+	NUTSubsystem           = "nut"
+	ApcupsdSubsystem       = "apcupsd"
+	CaptivePortalSubsystem = "captiveportal"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
