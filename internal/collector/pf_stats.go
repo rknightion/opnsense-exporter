@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -89,7 +90,7 @@ func (c *pfStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.timeoutSeconds
 }
 
-func (c *pfStatsCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *pfStatsCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchPFStatistics()
 	if err != nil {
 		return err

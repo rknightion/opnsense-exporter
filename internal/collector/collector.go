@@ -1,12 +1,15 @@
 package collector
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/opnsense"
@@ -101,7 +104,7 @@ type CollectorInstance interface {
 	Register(namespace, isntance string, log *slog.Logger)
 	Name() string
 	Describe(ch chan<- *prometheus.Desc)
-	Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError
+	Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError
 }
 
 // collectorInstances is a list of collectorInstances that will be registered
@@ -129,6 +132,11 @@ type Collector struct {
 	collectorStates  map[string]bool
 	buildInfo        *prometheus.Desc
 	collectorEnabled *prometheus.Desc
+	// scrapeDuration / scrapeSuccess mirror node_exporter's per-collector
+	// scrape instrumentation (node_scrape_collector_*), emitted as const
+	// metrics around every sub-collector Update.
+	scrapeDuration *prometheus.Desc
+	scrapeSuccess  *prometheus.Desc
 }
 
 type Option func(*Collector) error
@@ -497,6 +505,20 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		nil,
 	)
 
+	c.scrapeDuration = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "scrape_collector_duration_seconds"),
+		"Duration of a sub-collector scrape in seconds",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.scrapeSuccess = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "scrape_collector_success"),
+		"Whether a sub-collector scrape succeeded (1 = ok, 0 = error or panic)",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
 	for _, collector := range c.collectors {
 		collector.Register(namespace, instanceName, c.log)
 	}
@@ -568,6 +590,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.isUp.Describe(ch)
 	ch <- c.buildInfo
 	ch <- c.collectorEnabled
+	ch <- c.scrapeDuration
+	ch <- c.scrapeSuccess
 
 	for _, collector := range c.collectors {
 		collector.Describe(ch)
@@ -594,8 +618,8 @@ func (c *Collector) collectExporterInfo(ch chan<- prometheus.Metric) {
 	}
 }
 
-func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
-	systemStatus, err := c.Client.HealthCheck()
+func (c *Collector) collectHealthMetrics(client *opnsense.Client, ch chan<- prometheus.Metric) error {
+	systemStatus, err := client.HealthCheck()
 	if err != nil {
 		c.isUp.Set(0)
 		c.systemStatusCode.Set(0)
@@ -642,44 +666,91 @@ func (c *Collector) collectHealthMetrics(ch chan<- prometheus.Metric) error {
 	return nil
 }
 
-// Collect implements the prometheus.Collector interface.
+// execute runs one sub-collector Update, records duration/success around it,
+// and shields the scrape from panics (node_exporter's per-collector pattern).
+func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client *opnsense.Client, ch chan<- prometheus.Metric) {
+	begin := time.Now()
+	success := 1.0
+	defer func() {
+		if r := recover(); r != nil {
+			c.log.Error(
+				"panic in collector goroutine; skipping",
+				"component", "collector",
+				"collector_name", coll.Name(),
+				"panic", fmt.Sprintf("%v", r),
+			)
+			c.endpointErrors.WithLabelValues(coll.Name(), c.instanceLabel).Inc()
+			success = 0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.scrapeDuration, prometheus.GaugeValue,
+			time.Since(begin).Seconds(), coll.Name(), c.instanceLabel,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.scrapeSuccess, prometheus.GaugeValue,
+			success, coll.Name(), c.instanceLabel,
+		)
+	}()
+
+	if err := coll.Update(ctx, client, ch); err != nil {
+		c.log.Error(
+			"failed to update",
+			"component", "collector",
+			"collector_name", coll.Name(),
+			"err", err,
+		)
+		c.endpointErrors.WithLabelValues(err.Endpoint, c.instanceLabel).Inc()
+		success = 0
+	}
+}
+
+// Collect implements the prometheus.Collector interface. Registry-driven
+// callers with no HTTP request (e.g. the OTLP bridge) scrape everything with
+// no deadline; /metrics goes through ScrapeView instead.
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
+	c.collect(context.Background(), ch, nil)
+}
+
+// collect runs one scrape. include==nil selects every enabled collector; a
+// non-nil map (even an empty one) restricts the fan-out to the named
+// sub-collectors. The always-on metrics (up, health, build_info,
+// collector_enabled, scrape counters) are emitted regardless of filtering.
+func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, include map[string]bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	if err := c.collectHealthMetrics(ch); err != nil {
+	// A scrape queued behind a slow one can acquire the lock after its own
+	// deadline expired. Fanning out every sub-collector against a dead context
+	// would error every endpoint (endpoint_errors_total spike, success=0 across
+	// the board — indistinguishable from a firewall outage), so emit only the
+	// always-on exporter metrics and bail.
+	if ctx.Err() != nil {
+		c.log.Warn("scrape deadline expired before collection started; skipping sub-collectors", "err", ctx.Err())
+		c.scrapes.WithLabelValues(c.instanceLabel).Inc()
+		c.scrapes.Collect(ch)
+		c.endpointErrors.Collect(ch)
+		c.collectExporterInfo(ch)
+		return
+	}
+
+	client := c.Client.WithContext(ctx)
+
+	if err := c.collectHealthMetrics(client, ch); err != nil {
 		c.log.Error(
 			"failed to fetch system health status; skipping other metrics",
 			"err", err,
 		)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(c.collectors))
+	selected := c.selectedCollectors(include)
 
-	for _, collector := range c.collectors {
+	var wg sync.WaitGroup
+	wg.Add(len(selected))
+
+	for _, collector := range selected {
 		go func(coll CollectorInstance) {
 			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					c.log.Error(
-						"panic in collector goroutine; skipping",
-						"component", "collector",
-						"collector_name", coll.Name(),
-						"panic", fmt.Sprintf("%v", r),
-					)
-					c.endpointErrors.WithLabelValues(coll.Name(), c.instanceLabel).Inc()
-				}
-			}()
-			if err := coll.Update(c.Client, ch); err != nil {
-				c.log.Error(
-					"failed to update",
-					"component", "collector",
-					"collector_name", coll.Name(),
-					"err", err,
-				)
-				c.endpointErrors.WithLabelValues(err.Endpoint, c.instanceLabel).Inc()
-			}
+			c.execute(ctx, coll, client, ch)
 		}(collector)
 	}
 	wg.Wait()
@@ -688,4 +759,51 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	c.scrapes.Collect(ch)
 	c.endpointErrors.Collect(ch)
 	c.collectExporterInfo(ch)
+}
+
+// selectedCollectors returns the sub-collectors to run for this scrape.
+func (c *Collector) selectedCollectors(include map[string]bool) []CollectorInstance {
+	if include == nil {
+		return c.collectors
+	}
+	selected := make([]CollectorInstance, 0, len(include))
+	for _, coll := range c.collectors {
+		if include[coll.Name()] {
+			selected = append(selected, coll)
+		}
+	}
+	return selected
+}
+
+// EnabledCollectorNames returns the sorted subsystem names of the
+// sub-collectors enabled in this exporter instance — the valid values for the
+// /metrics collect[]/exclude[] query parameters.
+func (c *Collector) EnabledCollectorNames() []string {
+	names := make([]string, 0, len(c.collectors))
+	for _, coll := range c.collectors {
+		names = append(names, coll.Name())
+	}
+	sort.Strings(names)
+	return names
+}
+
+// scrapeView is a per-request prometheus.Collector adapter over the shared
+// Collector. It carries the request-scoped context (scrape deadline) and the
+// collect[]/exclude[]-derived include set. Nothing is re-registered per
+// request: sub-collector descriptors were built once at startup (Register in
+// New); the view only subsets the fan-out. Storing ctx in the struct is the
+// http.Request.WithContext pattern — the view lives for exactly one request.
+type scrapeView struct {
+	c       *Collector
+	ctx     context.Context
+	include map[string]bool
+}
+
+func (v *scrapeView) Describe(ch chan<- *prometheus.Desc) { v.c.Describe(ch) }
+func (v *scrapeView) Collect(ch chan<- prometheus.Metric) { v.c.collect(v.ctx, ch, v.include) }
+
+// ScrapeView returns a single-request view of this collector bound to ctx and
+// optionally filtered to the named sub-collectors (nil = all enabled).
+func (c *Collector) ScrapeView(ctx context.Context, include map[string]bool) prometheus.Collector {
+	return &scrapeView{c: c, ctx: ctx, include: include}
 }

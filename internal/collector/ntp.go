@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -89,7 +90,7 @@ func (c *ntpCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.peersTotal
 }
 
-func (c *ntpCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *ntpCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchNTPStatus()
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -105,7 +106,7 @@ func (c *keaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp6LeaseInfo
 }
 
-func (c *keaCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	var firstErr *opnsense.APICallError
 
 	// Fetch and emit DHCPv4 metrics

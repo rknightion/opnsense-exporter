@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -151,7 +152,7 @@ func (c *interfacesCollector) update(ch chan<- prometheus.Metric, desc *promethe
 	)
 }
 
-func (c *interfacesCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchInterfaces()
 	if err != nil {
 		return err

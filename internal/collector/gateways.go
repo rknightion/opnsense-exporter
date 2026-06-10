@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 	"strconv"
 
@@ -143,7 +144,7 @@ func (c *gatewaysCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.priority
 }
 
-func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchGateways()
 	if err != nil {
 		return err

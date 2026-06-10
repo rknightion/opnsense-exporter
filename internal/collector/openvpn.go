@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -64,7 +65,7 @@ func (c *openVPNCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.sessionsByInstance
 }
 
-func (c *openVPNCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *openVPNCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	instances, err := client.FetchOpenVPNInstances()
 	if err != nil {
 		return err

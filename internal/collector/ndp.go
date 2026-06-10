@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -40,7 +41,7 @@ func (c *ndpCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.entries
 }
 
-func (c *ndpCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *ndpCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchNDPTable()
 	if err != nil {
 		return err

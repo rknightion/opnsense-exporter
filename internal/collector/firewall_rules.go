@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -80,7 +81,7 @@ func (c *firewallRulesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.configuredRules
 }
 
-func (c *firewallRulesCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *firewallRulesCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchFirewallRuleStats(c.detailsEnabled)
 	if err != nil {
 		return err

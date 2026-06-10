@@ -1,6 +1,11 @@
 package collector
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -326,5 +331,260 @@ func TestSubsystemDisplayNamesComplete(t *testing.T) {
 		if !registered[subsystem] {
 			t.Errorf("SubsystemDisplayNames entry %q matches no registered collector", subsystem)
 		}
+	}
+}
+
+// fakeCollectorInstance is a controllable CollectorInstance for fan-out tests.
+type fakeCollectorInstance struct {
+	name   string
+	err    *opnsense.APICallError
+	panics bool
+	calls  int
+	gotCtx context.Context
+}
+
+func (f *fakeCollectorInstance) Register(_, _ string, _ *slog.Logger) {}
+func (f *fakeCollectorInstance) Name() string                         { return f.name }
+func (f *fakeCollectorInstance) Describe(_ chan<- *prometheus.Desc)   {}
+func (f *fakeCollectorInstance) Update(ctx context.Context, _ *opnsense.Client, _ chan<- prometheus.Metric) *opnsense.APICallError {
+	f.calls++
+	f.gotCtx = ctx
+	if f.panics {
+		panic("boom")
+	}
+	return f.err
+}
+
+// newScrapeTestCollector builds a Collector via struct literal (NOT New(), which
+// registers on the global prometheus registry) with every field the collect
+// path touches initialized. The gauges/countervecs use _test-suffixed names and
+// are never registered, so there are no registry collisions.
+func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...CollectorInstance) *Collector {
+	t.Helper()
+	c := &Collector{
+		Client:          client,
+		log:             promslog.NewNopLogger(),
+		instanceLabel:   "test",
+		collectors:      instances,
+		collectorStates: map[string]bool{},
+	}
+	c.buildInfo = prometheus.NewDesc(
+		"opnsense_exporter_build_info", "help",
+		[]string{"version", "goversion", instanceLabelName}, nil,
+	)
+	c.collectorEnabled = prometheus.NewDesc(
+		"opnsense_exporter_collector_enabled", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.scrapeDuration = prometheus.NewDesc(
+		"opnsense_exporter_scrape_collector_duration_seconds", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.scrapeSuccess = prometheus.NewDesc(
+		"opnsense_exporter_scrape_collector_success", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.isUp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_up_test", Help: "h"})
+	c.firewallHealthStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_firewall_status_test", Help: "h"})
+	c.crashReporterStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_crash_reporter_status_test", Help: "h"})
+	c.systemStatusCode = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_system_status_code_test", Help: "h"})
+	c.scrapes = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "opnsense_exporter_scrapes_total_test", Help: "h"},
+		[]string{"opnsense_instance"},
+	)
+	c.endpointErrors = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "opnsense_exporter_endpoint_errors_total_test", Help: "h"},
+		[]string{"endpoint", "opnsense_instance"},
+	)
+	return c
+}
+
+func counterValue(t *testing.T, counter prometheus.Counter) float64 {
+	t.Helper()
+	d := &dto.Metric{}
+	if err := counter.Write(d); err != nil {
+		t.Fatalf("failed to read counter: %v", err)
+	}
+	return d.GetCounter().GetValue()
+}
+
+func TestExecuteRecordsScrapeMetrics(t *testing.T) {
+	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
+	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+
+	cases := []struct {
+		name        string
+		fake        *fakeCollectorInstance
+		wantSuccess float64
+		wantErrInc  string // endpoint label expected to be incremented; "" = none
+	}{
+		{"success", &fakeCollectorInstance{name: "fake_ok"}, 1, ""},
+		{"api error", &fakeCollectorInstance{name: "fake_err", err: &opnsense.APICallError{Endpoint: "fake_endpoint", Message: "boom"}}, 0, "fake_endpoint"},
+		{"panic", &fakeCollectorInstance{name: "fake_panic", panics: true}, 0, "fake_panic"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newScrapeTestCollector(t, &client)
+			ch := make(chan prometheus.Metric, 10)
+			c.execute(context.Background(), tc.fake, &client, ch)
+			close(ch)
+
+			var gotSuccess, gotDuration *float64
+			for m := range ch {
+				desc := m.Desc().String()
+				v := getMetricValue(m)
+				labels := getMetricLabels(m)
+				if labels["collector"] != tc.fake.name {
+					t.Errorf("collector label = %q, want %q", labels["collector"], tc.fake.name)
+				}
+				if labels[instanceLabelName] != "test" {
+					t.Errorf("%s label = %q, want test", instanceLabelName, labels[instanceLabelName])
+				}
+				switch {
+				case strings.Contains(desc, "scrape_collector_success"):
+					gotSuccess = &v
+				case strings.Contains(desc, "scrape_collector_duration_seconds"):
+					gotDuration = &v
+				}
+			}
+			if gotSuccess == nil || gotDuration == nil {
+				t.Fatal("expected both scrape_collector_duration_seconds and scrape_collector_success to be emitted")
+			}
+			if *gotSuccess != tc.wantSuccess {
+				t.Errorf("success = %v, want %v", *gotSuccess, tc.wantSuccess)
+			}
+			if *gotDuration < 0 {
+				t.Errorf("duration = %v, want >= 0", *gotDuration)
+			}
+			if tc.wantErrInc != "" {
+				if got := counterValue(t, c.endpointErrors.WithLabelValues(tc.wantErrInc, "test")); got != 1 {
+					t.Errorf("endpointErrors{endpoint=%q} = %v, want 1", tc.wantErrInc, got)
+				}
+			}
+		})
+	}
+}
+
+// healthOKServer serves a minimal OK health-check payload for any path, so
+// collect()'s collectHealthMetrics succeeds fast and deterministically.
+func healthOKServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"system":{"status":"OK"}}`)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestEnabledCollectorNames(t *testing.T) {
+	c := &Collector{collectors: []CollectorInstance{
+		&fakeCollectorInstance{name: "zeta"},
+		&fakeCollectorInstance{name: "alpha"},
+	}}
+	got := c.EnabledCollectorNames()
+	if len(got) != 2 || got[0] != "alpha" || got[1] != "zeta" {
+		t.Errorf("EnabledCollectorNames() = %v, want [alpha zeta] (sorted)", got)
+	}
+}
+
+func TestScrapeViewFiltersCollectors(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+
+	a := &fakeCollectorInstance{name: "fake_a"}
+	b := &fakeCollectorInstance{name: "fake_b"}
+	c := newScrapeTestCollector(t, client, a, b)
+
+	ch := make(chan prometheus.Metric, 100)
+	c.ScrapeView(context.Background(), map[string]bool{"fake_a": true}).Collect(ch)
+	close(ch)
+
+	if a.calls != 1 {
+		t.Errorf("fake_a calls = %d, want 1", a.calls)
+	}
+	if b.calls != 0 {
+		t.Errorf("fake_b calls = %d, want 0 (excluded by filter)", b.calls)
+	}
+
+	// Always-on metrics must survive filtering.
+	var sawUp, sawBuildInfo bool
+	for m := range ch {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "opnsense_up_test") {
+			sawUp = true
+		}
+		if strings.Contains(desc, "opnsense_exporter_build_info") {
+			sawBuildInfo = true
+		}
+	}
+	if !sawUp {
+		t.Error("expected up metric to be emitted despite filtering")
+	}
+	if !sawBuildInfo {
+		t.Error("expected build_info metric to be emitted despite filtering")
+	}
+}
+
+func TestScrapeViewEmptyIncludeRunsNoSubCollectors(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	a := &fakeCollectorInstance{name: "fake_a"}
+	c := newScrapeTestCollector(t, client, a)
+
+	ch := make(chan prometheus.Metric, 100)
+	c.ScrapeView(context.Background(), map[string]bool{}).Collect(ch)
+	close(ch)
+
+	if a.calls != 0 {
+		t.Errorf("fake_a calls = %d, want 0 (empty non-nil include)", a.calls)
+	}
+}
+
+func TestCollectSkipsFanOutWhenDeadlineExpired(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	a := &fakeCollectorInstance{name: "fake_a"}
+	c := newScrapeTestCollector(t, client, a)
+
+	// A scrape queued behind a slow one can acquire the lock after its own
+	// deadline already expired; fanning out against a dead context must not
+	// happen (it would error every endpoint and look like a firewall outage).
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ch := make(chan prometheus.Metric, 100)
+	c.ScrapeView(ctx, nil).Collect(ch)
+	close(ch)
+
+	if a.calls != 0 {
+		t.Errorf("fake_a calls = %d, want 0 (dead context must skip the fan-out)", a.calls)
+	}
+	var sawBuildInfo bool
+	for m := range ch {
+		if strings.Contains(m.Desc().String(), "opnsense_exporter_build_info") {
+			sawBuildInfo = true
+		}
+	}
+	if !sawBuildInfo {
+		t.Error("expected always-on exporter info metrics even with a dead context")
+	}
+}
+
+type scrapeCtxKey struct{}
+
+func TestScrapeViewPropagatesContext(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	a := &fakeCollectorInstance{name: "fake_a"}
+	c := newScrapeTestCollector(t, client, a)
+
+	ctx := context.WithValue(context.Background(), scrapeCtxKey{}, "marker")
+	ch := make(chan prometheus.Metric, 100)
+	c.ScrapeView(ctx, nil).Collect(ch)
+	close(ch)
+
+	if a.gotCtx == nil || a.gotCtx.Value(scrapeCtxKey{}) != "marker" {
+		t.Error("expected the request context to reach sub-collector Update")
 	}
 }

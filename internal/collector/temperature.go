@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 	"strconv"
 
@@ -42,7 +43,7 @@ func (c *temperatureCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.celsius
 }
 
-func (c *temperatureCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *temperatureCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	readings, err := client.FetchTemperatures()
 	if err != nil {
 		return err

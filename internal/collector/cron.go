@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -40,7 +41,7 @@ func (c *cronCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.jobsStatus
 }
 
-func (c *cronCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *cronCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	crons, err := client.FetchCronTable()
 	if err != nil {
 		return err

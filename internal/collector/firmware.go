@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -84,7 +85,7 @@ func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pluginInstalled
 }
 
-func (c *firmwareCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *firmwareCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchFirmwareStatus()
 	if err != nil {
 		return err

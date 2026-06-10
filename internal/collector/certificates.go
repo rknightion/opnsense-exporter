@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,7 +62,7 @@ func (c *certificatesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.certificateTotal
 }
 
-func (c *certificatesCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchCertificates()
 	if err != nil {
 		return err

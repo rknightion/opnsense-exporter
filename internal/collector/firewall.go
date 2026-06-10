@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -176,7 +177,7 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.interfaceHitsTotal
 }
 
-func (c *firewallCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchPFStatsByInterface()
 	if err != nil {
 		return err

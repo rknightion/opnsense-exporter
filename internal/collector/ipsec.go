@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -123,7 +124,7 @@ func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.serviceRunning
 }
 
-func (c *ipsecCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	phase1s, err := client.FetchIPsecPhase1()
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -84,7 +85,7 @@ func (c *netflowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.cacheDstIPAddresses
 }
 
-func (c *netflowCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *netflowCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	enabledData, err := client.FetchNetflowIsEnabled()
 	if err != nil {
 		return err

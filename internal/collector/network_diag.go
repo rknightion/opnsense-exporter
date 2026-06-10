@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -124,7 +125,7 @@ func (c *networkDiagCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pfsyncNodeInfo
 }
 
-func (c *networkDiagCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *networkDiagCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	// Fetch netisr statistics
 	netisrData, err := client.FetchNetisrStatistics()
 	if err != nil {

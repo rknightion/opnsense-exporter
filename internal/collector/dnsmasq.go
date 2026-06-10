@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -77,7 +78,7 @@ func (c *dnsmasqCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.serviceRunning
 }
 
-func (c *dnsmasqCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *dnsmasqCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchDnsmasqLeases()
 	if err != nil {
 		return err

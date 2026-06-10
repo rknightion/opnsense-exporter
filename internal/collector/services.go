@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,7 +55,7 @@ func (c *servicesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.servicesStopped
 }
 
-func (c *servicesCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *servicesCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	services, err := client.FetchServices()
 	if err != nil {
 		return err

@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -41,7 +42,7 @@ func (c *arpTableCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.entries
 }
 
-func (c *arpTableCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *arpTableCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchArpTable()
 	if err != nil {
 		return err

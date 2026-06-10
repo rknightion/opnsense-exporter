@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -96,7 +97,7 @@ func (c *WireguardCollector) update(ch chan<- prometheus.Metric, desc *prometheu
 	)
 }
 
-func (c *WireguardCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *WireguardCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchWireguardConfig()
 	if err != nil {
 		return err

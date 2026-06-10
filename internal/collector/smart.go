@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"log/slog"
 	"strconv"
 
@@ -124,7 +125,7 @@ func (c *smartCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.nvmeDataUnitsWritten
 }
 
-func (c *smartCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+func (c *smartCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchSMARTDevices()
 	if err != nil {
 		return err

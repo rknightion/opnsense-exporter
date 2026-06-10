@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"net/http/httptest"
 	"net/url"
 	"testing"
@@ -31,7 +32,7 @@ func newCollectorTestClient(t *testing.T, server *httptest.Server) *opnsense.Cli
 func collectMetrics(t *testing.T, instance CollectorInstance, client *opnsense.Client) []prometheus.Metric {
 	t.Helper()
 	ch := make(chan prometheus.Metric, 500)
-	err := instance.Update(client, ch)
+	err := instance.Update(context.Background(), client, ch)
 	close(ch)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
