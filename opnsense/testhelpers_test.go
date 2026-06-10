@@ -131,5 +131,7 @@ func testEndpoints() map[EndpointName]EndpointPath {
 		"smartInfo":               "api/smart/service/info",
 		"dyndnsAccounts":          "api/dyndns/accounts/searchItem",
 		"dyndnsServiceStatus":     "api/dyndns/service/status",
+		"interfacesOverview":      "api/interfaces/overview/interfaces_info",
+		"unboundInfra":            "api/unbound/diagnostics/dumpinfra",
 	}
 }
