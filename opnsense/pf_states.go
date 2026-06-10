@@ -6,8 +6,8 @@ type pfStatesResponse struct {
 }
 
 type PFStates struct {
-	Current int
-	Limit   int
+	Current int64
+	Limit   int64
 }
 
 func (c *Client) FetchPFStates() (PFStates, *APICallError) {

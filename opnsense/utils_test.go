@@ -72,7 +72,7 @@ func TestParsePercentage(t *testing.T) {
 
 func TestSliceIntToMapStringInt(t *testing.T) {
 	input := []string{"1", "2", "3"}
-	expected := map[string]int{"1": 1, "2": 2, "3": 3}
+	expected := map[string]int64{"1": 1, "2": 2, "3": 3}
 
 	result, _ := sliceIntToMapStringInt(input, "test")
 
@@ -94,7 +94,7 @@ func TestParseStringToInt(t *testing.T) {
 	tests := []struct {
 		name      string
 		value     string
-		expected  int
+		expected  int64 // was: int
 		wantError bool
 	}{
 		{"Valid integer", "123", 123, false},
@@ -125,7 +125,7 @@ func TestSafeAtoi(t *testing.T) {
 	tests := []struct {
 		name     string
 		value    string
-		expected int
+		expected int64 // was: int
 	}{
 		{"Valid", "42", 42},
 		{"Zero", "0", 0},
@@ -203,7 +203,7 @@ func TestParseLineRateBits(t *testing.T) {
 	tests := []struct {
 		name     string
 		value    string
-		expected int
+		expected int64
 	}{
 		{"Valid with suffix", "1000 bit/s", 1000},
 		{"With extra spaces", " 500 bit/s ", 500},
@@ -219,6 +219,30 @@ func TestParseLineRateBits(t *testing.T) {
 				t.Errorf("parseLineRateBits(%q) = %d; want %d", tc.value, result, tc.expected)
 			}
 		})
+	}
+}
+
+func TestParseStringToIntInt64(t *testing.T) {
+	// Interface byte counters exceed 2^31; the parser must return int64 on
+	// every architecture (would compile-fail or range-error with plain int
+	// on 32-bit platforms).
+	var want int64 = 199317943456
+	got, err := parseStringToInt("199317943456", "test")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Errorf("expected %d, got %d", want, got)
+	}
+}
+
+func TestParseLineRateBits10G(t *testing.T) {
+	// 10 Gbit line rates exceed int32; safeAtoi/parseLineRateBits must be
+	// int64 so 32-bit source builds don't silently report 0 (live ixl0
+	// reports exactly this value).
+	var want int64 = 10000000000
+	if got := parseLineRateBits("10000000000 bit/s"); got != want {
+		t.Errorf("expected %d, got %d", want, got)
 	}
 }
 

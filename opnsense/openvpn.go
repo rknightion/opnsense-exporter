@@ -35,7 +35,7 @@ type OpenVPN struct {
 	Description string
 	Role        string
 	DevType     string
-	Enabled     int
+	Enabled     int64
 }
 type OpenVPNInstances struct {
 	Rows []OpenVPN

@@ -198,55 +198,55 @@ type UnboundDNSOverview struct {
 	UptimeSeconds float64
 
 	// Query totals (from data.total.num)
-	QueriesTotal         int
-	CacheHits            int
-	CacheMiss            int
-	Prefetch             int
-	QueriesTimedOut      int
-	ExpiredTotal         int
-	RecursiveReplies     int
-	QueriesIPRateLimited int
+	QueriesTotal         int64
+	CacheHits            int64
+	CacheMiss            int64
+	Prefetch             int64
+	QueriesTimedOut      int64
+	ExpiredTotal         int64
+	RecursiveReplies     int64
+	QueriesIPRateLimited int64
 
 	// Query types (from data.num.query.type) - map label->count
-	QueryTypesByType map[string]int
+	QueryTypesByType map[string]int64
 
 	// Query protocols
-	QueryTCP    int
-	QueryTCPOut int
-	QueryUDPOut int
-	QueryTLS    int
-	QueryIPv6   int
-	QueryHTTPS  int
+	QueryTCP    int64
+	QueryTCPOut int64
+	QueryUDPOut int64
+	QueryTLS    int64
+	QueryIPv6   int64
+	QueryHTTPS  int64
 
 	// Answer rcodes - map label->count
-	AnswerRcodesByRcode map[string]int
+	AnswerRcodesByRcode map[string]int64
 
 	// DNSSEC
-	AnswerSecureTotal int
-	AnswerBogusTotal  int
-	RrsetBogusTotal   int
+	AnswerSecureTotal int64
+	AnswerBogusTotal  int64
+	RrsetBogusTotal   int64
 
 	// Cache entry counts
-	CacheRrsetCount   int
-	CacheMessageCount int
-	CacheInfraCount   int
-	CacheKeyCount     int
+	CacheRrsetCount   int64
+	CacheMessageCount int64
+	CacheInfraCount   int64
+	CacheKeyCount     int64
 
 	// Memory in bytes
-	MemCacheRrset   int
-	MemCacheMessage int
-	MemModIterator  int
-	MemModValidator int
-	MemModRespip    int
-	MemStreamwait   int
+	MemCacheRrset   int64
+	MemCacheMessage int64
+	MemModIterator  int64
+	MemModValidator int64
+	MemModRespip    int64
+	MemStreamwait   int64
 
 	// Request list
 	RequestListAvg         float64
-	RequestListMax         int
-	RequestListOverwritten int
-	RequestListExceeded    int
-	RequestListCurrentAll  int
-	RequestListCurrentUser int
+	RequestListMax         int64
+	RequestListOverwritten int64
+	RequestListExceeded    int64
+	RequestListCurrentAll  int64
+	RequestListCurrentUser int64
 
 	// Recursion time
 	RecursionTimeAvg    float64
@@ -256,15 +256,15 @@ type UnboundDNSOverview struct {
 	TCPUsage float64
 
 	// Query flags - map label->count
-	FlagsByFlag map[string]int
+	FlagsByFlag map[string]int64
 
 	// EDNS
-	EdnsPresent int
-	EdnsDO      int
+	EdnsPresent int64
+	EdnsDO      int64
 
 	// Unwanted
-	UnwantedQueries int
-	UnwantedReplies int
+	UnwantedQueries int64
+	UnwantedReplies int64
 }
 
 func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
@@ -299,7 +299,7 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.QueriesIPRateLimited = safeAtoi(response.Data.Total.Num.QueriesIPRatelimited)
 
 	// Query types
-	data.QueryTypesByType = map[string]int{
+	data.QueryTypesByType = map[string]int64{
 		"A":      safeAtoi(response.Data.Num.Query.Type.A),
 		"AAAA":   safeAtoi(response.Data.Num.Query.Type.Aaaa),
 		"SOA":    safeAtoi(response.Data.Num.Query.Type.Soa),
@@ -325,7 +325,7 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.QueryHTTPS = safeAtoi(response.Data.Num.Query.HTTPS)
 
 	// Answer rcodes
-	data.AnswerRcodesByRcode = map[string]int{
+	data.AnswerRcodesByRcode = map[string]int64{
 		"NOERROR":  safeAtoi(response.Data.Num.Answer.Rcode.Noerror),
 		"FORMERR":  safeAtoi(response.Data.Num.Answer.Rcode.Formerr),
 		"SERVFAIL": safeAtoi(response.Data.Num.Answer.Rcode.Servfail),
@@ -370,7 +370,7 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.TCPUsage = safeParseFloat(response.Data.Total.Tcpusage)
 
 	// Query flags
-	data.FlagsByFlag = map[string]int{
+	data.FlagsByFlag = map[string]int64{
 		"QR": safeAtoi(response.Data.Num.Query.Flags.Qr),
 		"AA": safeAtoi(response.Data.Num.Query.Flags.Aa),
 		"TC": safeAtoi(response.Data.Num.Query.Flags.Tc),

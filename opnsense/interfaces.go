@@ -49,22 +49,22 @@ type Interface struct {
 	Name                  string
 	Device                string
 	Type                  string
-	MTU                   int
-	PacketsReceived       int
-	PacketsTransmitted    int
-	BytesReceived         int
-	BytesTransmitted      int
-	MulticastsReceived    int
-	MulticastsTransmitted int
-	InputErrors           int
-	OutputErrors          int
-	Collisions            int
-	SendQueueLength       int
-	SendQueueMaxLength    int
-	SendQueueDrops        int
-	InputQueueDrops       int
-	LinkState             int // 1=up, 0=down
-	LineRate              int // bits per second
+	MTU                   int64
+	PacketsReceived       int64
+	PacketsTransmitted    int64
+	BytesReceived         int64
+	BytesTransmitted      int64
+	MulticastsReceived    int64
+	MulticastsTransmitted int64
+	InputErrors           int64
+	OutputErrors          int64
+	Collisions            int64
+	SendQueueLength       int64
+	SendQueueMaxLength    int64
+	SendQueueDrops        int64
+	InputQueueDrops       int64
+	LinkState             int   // 1=up, 0=down — derived 0/1 enum, cannot overflow; stays int
+	LineRate              int64 // bits per second (10 Gbit > int32)
 }
 
 type Interfaces struct {

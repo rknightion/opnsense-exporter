@@ -27,7 +27,7 @@ type NTPPeer struct {
 	Server       string
 	RefID        string
 	Type         string
-	Stratum      int
+	Stratum      int64
 	WhenSeconds  float64
 	PollSeconds  float64
 	Reach        int

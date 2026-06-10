@@ -331,7 +331,7 @@ func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- promethe
 	}
 
 	// Queries by protocol
-	protocols := map[string]int{
+	protocols := map[string]int64{
 		"tcp":    data.QueryTCP,
 		"tcpout": data.QueryTCPOut,
 		"udpout": data.QueryUDPOut,
@@ -401,7 +401,7 @@ func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- promethe
 	)
 
 	// Cache counts
-	caches := map[string]int{
+	caches := map[string]int64{
 		"rrset":   data.CacheRrsetCount,
 		"message": data.CacheMessageCount,
 		"infra":   data.CacheInfraCount,
@@ -415,7 +415,7 @@ func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- promethe
 	}
 
 	// Memory bytes
-	memComponents := map[string]int{
+	memComponents := map[string]int64{
 		"rrset_cache":   data.MemCacheRrset,
 		"message_cache": data.MemCacheMessage,
 		"iterator":      data.MemModIterator,

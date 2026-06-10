@@ -28,7 +28,7 @@ type carpStatusResponse struct {
 // CARPStatus holds the parsed CARP/VIP status data.
 type CARPStatus struct {
 	VIPs            []CARPVIP
-	Demotion        int
+	Demotion        int64
 	Allow           bool
 	MaintenanceMode bool
 }
@@ -39,8 +39,8 @@ type CARPVIP struct {
 	VHID      string
 	VIP       string
 	Status    int
-	Advbase   int
-	Advskew   int
+	Advbase   int64
+	Advskew   int64
 }
 
 // parseCARPStatus converts a CARP status string to an integer.

@@ -8,11 +8,13 @@ import (
 	"strings"
 )
 
-// parseStringToInt parses a string value to an int value.
+// parseStringToInt parses a string value to an int64 value.
+// int64 (not int) so that large counters — e.g. interface byte counters or
+// SMART raw values — parse correctly on 32-bit architectures too.
 // The endpoint is used to identify the EndpointPath that the caller used.
 // so we can propagate in the *APICallError.
-func parseStringToInt(value string, endpoint EndpointPath) (int, *APICallError) {
-	intValue, err := strconv.Atoi(value)
+func parseStringToInt(value string, endpoint EndpointPath) (int64, *APICallError) {
+	intValue, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return 0, &APICallError{
 			Endpoint:   string(endpoint),
@@ -46,14 +48,14 @@ func parseStringToFloatWithReplace(value string, regex *regexp.Regexp, replacePa
 	return -1.0
 }
 
-// sliceIntToMapStringInt is a helper function to convert a slice of strings to a map of string:int
+// sliceIntToMapStringInt is a helper function to convert a slice of strings to a map of string:int64
 // The key of the map is the string value in the slice and
-// the value of the map is the int value of the string.
+// the value of the map is the int64 value of the string.
 // The endpoint is used to identify the EndpointPath that the caller used.
 // so we can propagate in the *APICallError.
-// Fails if any of the string values in the slice cannot be parsed to an int.
-func sliceIntToMapStringInt(strings []string, url EndpointPath) (map[string]int, *APICallError) {
-	ints := make(map[string]int)
+// Fails if any of the string values in the slice cannot be parsed to an int64.
+func sliceIntToMapStringInt(strings []string, url EndpointPath) (map[string]int64, *APICallError) {
+	ints := make(map[string]int64)
 
 	for _, str := range strings {
 		value, err := parseStringToInt(str, url)
@@ -97,11 +99,12 @@ func parseOpenVPNsessionStatusToInt(status string) int {
 	}
 }
 
-// safeAtoi parses a string to int, returning 0 on any error — including
-// out-of-range values, where strconv would otherwise hand back a saturated
-// partial result. Useful for OPNsense API fields that may be empty or missing.
-func safeAtoi(s string) int {
-	v, err := strconv.Atoi(s)
+// safeAtoi parses a string to int64, returning 0 on any error — including
+// out-of-range values. int64 (not int) so large counters (10 Gbit line
+// rates, cumulative DNS counters) survive 32-bit source builds.
+// Useful for OPNsense API fields that may be empty or missing.
+func safeAtoi(s string) int64 {
+	v, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0
 	}
@@ -120,8 +123,8 @@ func safeParseFloat(s string) float64 {
 }
 
 // parseLineRateBits strips the "bit/s" suffix from OPNsense line rate strings
-// and returns the numeric value as an int.
-func parseLineRateBits(v string) int {
+// and returns the numeric value as an int64 (10 Gbit rates exceed int32).
+func parseLineRateBits(v string) int64 {
 	v = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(v), "bit/s"))
 	return safeAtoi(v)
 }
