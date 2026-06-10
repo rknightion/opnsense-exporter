@@ -307,6 +307,20 @@ func WithoutGatewaysCollector() Option {
 	return withoutCollectorInstance(GatewaysSubsystem)
 }
 
+// WithFirmwarePackageDetails enables per-package detail metrics for the
+// firmware collector (pending package updates + installed plugin inventory).
+func WithFirmwarePackageDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if fc, ok := c.(*firmwareCollector); ok {
+				fc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithKeaDetails enables per-lease detail metrics for the kea collector
 func WithKeaDetails() Option {
 	return func(o *Collector) error {

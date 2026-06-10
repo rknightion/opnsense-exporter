@@ -39,6 +39,10 @@ var (
 		"exporter.disable-firmware",
 		"Disable the scraping of the firmware metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FIRMWARE").Default("false").Bool()
+	firmwarePackageDetailsEnabled = kingpin.Flag(
+		"exporter.enable-firmware-package-details",
+		"Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS").Default("false").Bool()
 	systemCollectorDisabled = kingpin.Flag(
 		"exporter.disable-system",
 		"Disable the scraping of system resource metrics (memory, uptime, disk, swap)",
@@ -135,75 +139,77 @@ var (
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
 type CollectorsDisableSwitch struct {
-	ARP                  bool
-	Cron                 bool
-	Wireguard            bool
-	IPsec                bool
-	Unbound              bool
-	OpenVPN              bool
-	OpenVPNDetails       bool
-	Firewall             bool
-	Firmware             bool
-	Dnsmasq              bool
-	DnsmasqDetails       bool
-	FirewallRules        bool
-	FirewallRulesDetails bool
-	System               bool
-	Temperature          bool
-	Mbuf                 bool
-	NTP                  bool
-	Certificates         bool
-	CARP                 bool
-	Activity             bool
-	Kea                  bool
-	KeaDetails           bool
-	NetworkDiagnostics   bool
-	Netflow              bool
-	PFStats              bool
-	NDP                  bool
-	Dhcpv4               bool
-	Dhcpv4Details        bool
-	ACME                 bool
-	SMART                bool
-	DynDNS               bool
-	Gateways             bool
+	ARP                    bool
+	Cron                   bool
+	Wireguard              bool
+	IPsec                  bool
+	Unbound                bool
+	OpenVPN                bool
+	OpenVPNDetails         bool
+	Firewall               bool
+	Firmware               bool
+	FirmwarePackageDetails bool
+	Dnsmasq                bool
+	DnsmasqDetails         bool
+	FirewallRules          bool
+	FirewallRulesDetails   bool
+	System                 bool
+	Temperature            bool
+	Mbuf                   bool
+	NTP                    bool
+	Certificates           bool
+	CARP                   bool
+	Activity               bool
+	Kea                    bool
+	KeaDetails             bool
+	NetworkDiagnostics     bool
+	Netflow                bool
+	PFStats                bool
+	NDP                    bool
+	Dhcpv4                 bool
+	Dhcpv4Details          bool
+	ACME                   bool
+	SMART                  bool
+	DynDNS                 bool
+	Gateways               bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
 func CollectorsSwitches() CollectorsDisableSwitch {
 	return CollectorsDisableSwitch{
-		ARP:                  !*arpTableCollectorDisabled,
-		Cron:                 !*cronTableCollectorDisabled,
-		Wireguard:            !*wireguardCollectorDisabled,
-		IPsec:                !*ipsecCollectorDisabled,
-		Unbound:              !*unboundCollectorDisabled,
-		OpenVPN:              !*openVPNCollectorDisabled,
-		OpenVPNDetails:       *openVPNDetailsEnabled,
-		Firewall:             !*firewallCollectorDisabled,
-		Firmware:             !*firmwareCollectorDisabled,
-		Dnsmasq:              !*dnsmasqCollectorDisabled,
-		DnsmasqDetails:       *dnsmasqDetailsEnabled,
-		FirewallRules:        !*firewallRulesCollectorDisabled,
-		FirewallRulesDetails: *firewallRulesDetailsEnabled,
-		System:               !*systemCollectorDisabled,
-		Temperature:          !*temperatureCollectorDisabled,
-		Mbuf:                 !*mbufCollectorDisabled,
-		NTP:                  !*ntpCollectorDisabled,
-		Certificates:         !*certificatesCollectorDisabled,
-		CARP:                 !*carpCollectorDisabled,
-		Activity:             !*activityCollectorDisabled,
-		Kea:                  !*keaCollectorDisabled,
-		KeaDetails:           *keaDetailsEnabled,
-		NetworkDiagnostics:   *networkDiagnosticsEnabled,
-		Netflow:              *netflowEnabled,
-		PFStats:              !*pfStatsCollectorDisabled,
-		NDP:                  !*ndpCollectorDisabled,
-		Dhcpv4:               !*dhcpv4CollectorDisabled,
-		Dhcpv4Details:        *dhcpv4DetailsEnabled,
-		ACME:                 !*acmeCollectorDisabled,
-		SMART:                !*smartCollectorDisabled,
-		DynDNS:               !*dyndnsCollectorDisabled,
-		Gateways:             !*gatewaysCollectorDisabled,
+		ARP:                    !*arpTableCollectorDisabled,
+		Cron:                   !*cronTableCollectorDisabled,
+		Wireguard:              !*wireguardCollectorDisabled,
+		IPsec:                  !*ipsecCollectorDisabled,
+		Unbound:                !*unboundCollectorDisabled,
+		OpenVPN:                !*openVPNCollectorDisabled,
+		OpenVPNDetails:         *openVPNDetailsEnabled,
+		Firewall:               !*firewallCollectorDisabled,
+		Firmware:               !*firmwareCollectorDisabled,
+		FirmwarePackageDetails: *firmwarePackageDetailsEnabled,
+		Dnsmasq:                !*dnsmasqCollectorDisabled,
+		DnsmasqDetails:         *dnsmasqDetailsEnabled,
+		FirewallRules:          !*firewallRulesCollectorDisabled,
+		FirewallRulesDetails:   *firewallRulesDetailsEnabled,
+		System:                 !*systemCollectorDisabled,
+		Temperature:            !*temperatureCollectorDisabled,
+		Mbuf:                   !*mbufCollectorDisabled,
+		NTP:                    !*ntpCollectorDisabled,
+		Certificates:           !*certificatesCollectorDisabled,
+		CARP:                   !*carpCollectorDisabled,
+		Activity:               !*activityCollectorDisabled,
+		Kea:                    !*keaCollectorDisabled,
+		KeaDetails:             *keaDetailsEnabled,
+		NetworkDiagnostics:     *networkDiagnosticsEnabled,
+		Netflow:                *netflowEnabled,
+		PFStats:                !*pfStatsCollectorDisabled,
+		NDP:                    !*ndpCollectorDisabled,
+		Dhcpv4:                 !*dhcpv4CollectorDisabled,
+		Dhcpv4Details:          *dhcpv4DetailsEnabled,
+		ACME:                   !*acmeCollectorDisabled,
+		SMART:                  !*smartCollectorDisabled,
+		DynDNS:                 !*dyndnsCollectorDisabled,
+		Gateways:               !*gatewaysCollectorDisabled,
 	}
 }
 
@@ -232,6 +238,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-openvpn-details", Subsystem: "openvpn", Detail: true},
 	{Flag: "exporter.disable-firewall", Subsystem: "firewall"},
 	{Flag: "exporter.disable-firmware", Subsystem: "firmware"},
+	{Flag: "exporter.enable-firmware-package-details", Subsystem: "firmware", Detail: true},
 	{Flag: "exporter.disable-system", Subsystem: "system"},
 	{Flag: "exporter.disable-temperature", Subsystem: "temperature"},
 	{Flag: "exporter.disable-dnsmasq", Subsystem: "dnsmasq"},

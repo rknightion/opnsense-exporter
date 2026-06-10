@@ -102,6 +102,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirmwareCollector())
 		logger.Info("firmware collector disabled")
 	}
+	if collectorsSwitches.FirmwarePackageDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithFirmwarePackageDetails())
+		logger.Info("firmware per-package details enabled")
+	}
 	if !collectorsSwitches.OpenVPN {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutOpenVPNCollector())
 		logger.Info("openvpn collector disabled")
