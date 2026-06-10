@@ -425,6 +425,95 @@ def build(b: Builder):
     row_smart = b.row("SMART", [smart_total, smart_health, smart_temp, smart_hours], present="has_smart")
 
     # =========================================================================
+    # Row: SMART Attributes & NVMe (gated)
+    # =========================================================================
+    # NOTE: with multiple exprs the merge transformation names the value
+    # columns "Value #A".."Value #D" (by refId, in exprs order) — rename
+    # THOSE, not the metric names.
+    smart_attr_table = b.table(
+        "SMART Attributes (SATA)",
+        [
+            sel("opnsense_smart_attribute_value"),      # -> Value #A
+            sel("opnsense_smart_attribute_worst"),      # -> Value #B
+            sel("opnsense_smart_attribute_threshold"),  # -> Value #C
+            sel("opnsense_smart_attribute_raw"),        # -> Value #D
+        ],
+        w=16, h=10,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "device": "Device",
+            "attribute_id": "ID",
+            "attribute_name": "Attribute",
+            "Value #A": "Value",
+            "Value #B": "Worst",
+            "Value #C": "Threshold",
+            "Value #D": "Raw",
+        },
+        sort_by="Device",
+        desc="opnsense_smart_attribute_value/worst/threshold/raw per SATA SMART attribute. "
+             "Raw values of IDs 5/187/197/198 indicate failing media when non-zero.",
+    )
+    smart_attr_critical = b.ts(
+        "Critical Attribute Raw Values",
+        [(sel("opnsense_smart_attribute_raw",
+              'attribute_id=~"5|187|197|198|199"'),
+          "{{device}} {{attribute_name}}")],
+        unit="short", w=8, h=10,
+        desc="opnsense_smart_attribute_raw for reallocated/uncorrectable/pending/"
+             "offline-uncorrectable/CRC error counters. Any sustained rise is a failing disk.",
+    )
+
+    nvme_spare = b.gauge(
+        "NVMe Available Spare",
+        sel("opnsense_smart_nvme_available_spare_percent"),
+        unit="percent", w=4, h=6,
+        thresholds=[
+            {"color": "red", "value": None},
+            {"color": "yellow", "value": 10},
+            {"color": "green", "value": 50},
+        ],
+    )
+    nvme_used = b.gauge(
+        "NVMe Life Used",
+        sel("opnsense_smart_nvme_percentage_used"),
+        unit="percent", w=4, h=6, mx=120,
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 80},
+            {"color": "red", "value": 100},
+        ],
+    )
+    nvme_errors = b.ts(
+        "NVMe Errors & Unsafe Shutdowns",
+        [
+            (f'rate({sel("opnsense_smart_nvme_media_errors_total")}[{RATE}])',
+             "{{device}} media errors/s"),
+            (f'rate({sel("opnsense_smart_nvme_unsafe_shutdowns_total")}[{RATE}])',
+             "{{device}} unsafe shutdowns/s"),
+        ],
+        unit="short", w=8, h=6,
+        desc="Rates of opnsense_smart_nvme_media_errors_total and "
+             "opnsense_smart_nvme_unsafe_shutdowns_total.",
+    )
+    nvme_throughput = b.ts(
+        "NVMe Data Units Read/Written",
+        [
+            (f'rate({sel("opnsense_smart_nvme_data_units_read_total")}[{RATE}]) * 512000',
+             "{{device}} read B/s"),
+            (f'rate({sel("opnsense_smart_nvme_data_units_written_total")}[{RATE}]) * 512000',
+             "{{device}} written B/s"),
+        ],
+        unit="Bps", w=8, h=6,
+        desc="1 data unit = 1000 x 512 bytes, hence x 512000 for bytes/s.",
+    )
+
+    row_smart_detail = b.row(
+        "SMART Attributes & NVMe",
+        [smart_attr_table, smart_attr_critical, nvme_spare, nvme_used, nvme_errors, nvme_throughput],
+        present="has_smart",
+    )
+
+    # =========================================================================
     # Row: mbuf
     # =========================================================================
     mbuf_ts = b.ts(
@@ -522,5 +611,6 @@ def build(b: Builder):
         row_firmware_details,
         row_temp,
         row_smart,
+        row_smart_detail,
         row_mbuf,
     ])

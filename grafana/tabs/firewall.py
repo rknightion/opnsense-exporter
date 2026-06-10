@@ -242,6 +242,12 @@ def build(b: Builder):
         desc="Total number of firewall rules with statistics (instantaneous count, not a rate).",
     )
 
+    rules_configured = b.piechart(
+        "Configured Rules (enabled vs disabled)",
+        [(sel("opnsense_firewall_rule_configured_rules"), "enabled={{enabled}}")],
+        unit="short", w=4, h=6,
+    )
+
     fw_rule_evals = b.table(
         "Top 20 Rules — Evaluations/s",
         [
@@ -334,7 +340,7 @@ def build(b: Builder):
         b.row("PF Memory & Timeouts",
               [pf_memory, pf_timeouts]),
         b.row("Firewall Rules (top 20)",
-              [fw_rules_count, fw_rule_evals,
+              [fw_rules_count, rules_configured, fw_rule_evals,
                fw_rule_pkts, fw_rule_bytes,
                fw_rule_states, fw_rule_pf],
               present="has_firewall_rules"),

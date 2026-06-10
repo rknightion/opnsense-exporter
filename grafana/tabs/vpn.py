@@ -173,6 +173,7 @@ def build(b: Builder):
         excludes=["__name__", "job", "instance"],
         renames={
             "description": "Instance",
+            "real_address": "Real Address",
             "virtual_address": "Virtual Address",
             "username": "Username",
             "Value": "OK",

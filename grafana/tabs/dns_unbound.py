@@ -14,6 +14,8 @@ from builder import Builder, sel, RATE, RUNSTOP, ENABLED
 
 def build(b: Builder):
     b.sentinel("has_unbound", "label_values(opnsense_unbound_dns_uptime_seconds, __name__)")
+    b.sentinel("has_unbound_infra",
+               "label_values(opnsense_unbound_dns_infra_rtt_seconds, __name__)")
 
     # ---- convenience shorthands -----------------------------------------
     def u(metric, extra=""):
@@ -236,10 +238,30 @@ def build(b: Builder):
     row_cache_mem = b.row("Cache & Memory", [cache_count, memory_bytes, tcp_usage])
 
     # =====================================================================
+    # Row 6: Upstream Infra Cache (opt-in, gated on has_unbound_infra)
+    # =====================================================================
+    infra_rtt = b.ts(
+        "Upstream RTT (infra cache, top 20)",
+        [(f'topk(20, {u("infra_rtt_seconds")})', "{{ip}} {{host}}")],
+        unit="s", w=12, h=8,
+        desc="opnsense_unbound_dns_infra_rtt_seconds: smoothed RTT per upstream "
+             "server/zone from Unbound's infra cache (requires --exporter.enable-unbound-infra).",
+    )
+    infra_rto = b.ts(
+        "Upstream RTO (infra cache, top 20)",
+        [(f'topk(20, {u("infra_rto_seconds")})', "{{ip}} {{host}}")],
+        unit="s", w=12, h=8,
+        desc="opnsense_unbound_dns_infra_rto_seconds: retransmission timeout per "
+             "upstream server/zone.",
+    )
+
+    row_infra = b.row("Upstream Infra Cache", [infra_rtt, infra_rto], present="has_unbound_infra")
+
+    # =====================================================================
     # Assemble the tab
     # =====================================================================
     b.tab(
         "DNS — Unbound",
-        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem],
+        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra],
         present="has_unbound",
     )

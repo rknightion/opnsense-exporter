@@ -133,9 +133,38 @@ def build(b: Builder):
         desc="Static per-interface properties: MTU, negotiated line rate, OS device name, and type.",
     )
 
+    # ---- Row 5: Admin state & identity -------------------------------------
+    admin_state = b.statetimeline(
+        "Admin Status",
+        [(sel("opnsense_interfaces_admin_up", iface), "{{interface}} ({{device}})")],
+        UPDOWN, w=24, h=6,
+        desc="opnsense_interfaces_admin_up: 1 = administratively up (ifconfig UP flag), "
+             "0 = admin down. Admin up + Link State down = no carrier.",
+    )
+    iface_identity = b.table(
+        "Interface Identity (media / VLAN / link type)",
+        [sel("opnsense_interfaces_info", iface)],
+        w=24, h=10,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "interface": "Interface",
+            "device": "Device",
+            "identifier": "Identifier",
+            "media": "Media",
+            "link_type": "Link Type",
+            "vlan_tag": "VLAN Tag",
+            "vlan_parent": "VLAN Parent",
+            "physical": "Physical",
+        },
+        sort_by="Interface",
+        desc="opnsense_interfaces_info: interface identity from the overview API "
+             "(media/duplex, link type, VLAN topology).",
+    )
+
     b.tab("Interfaces", [
         b.row("Throughput", [rx_bps, tx_bps]),
         b.row("Packets & Errors", [rx_pkts, tx_pkts, multicasts, errors, collisions]),
         b.row("Queues", [queue_len, queue_drops]),
         b.row("Link State & Rates", [link_state, iface_info]),
+        b.row("Admin State & Identity", [admin_state, iface_identity]),
     ])
