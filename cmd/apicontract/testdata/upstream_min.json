@@ -1,0 +1,6 @@
+[
+  {"module": "core", "controller": "service", "command": "search", "methods": ["GET"], "path": "api/core/service/search"},
+  {"module": "diagnostics", "controller": "firewall", "command": "pf_states", "methods": ["GET"], "path": "api/diagnostics/firewall/pf_states"},
+  {"module": "firewall", "controller": "filter", "command": "search_rule", "methods": ["POST"], "path": "api/firewall/filter/search_rule"},
+  {"module": "firewall", "controller": "filter", "command": "search", "methods": ["GET"], "path": "api/firewall/filter/search"}
+]
