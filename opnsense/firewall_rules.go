@@ -50,6 +50,13 @@ type FirewallRuleStats struct {
 
 type FirewallRulesData struct {
 	Rules []FirewallRuleStats
+
+	// ConfiguredRulesEnabled/Disabled count the user-configured filter rules
+	// returned by api/firewall/filter/search_rule by enabled state. Only
+	// populated when FetchFirewallRuleStats is called with detailsEnabled —
+	// the search response is not fetched otherwise.
+	ConfiguredRulesEnabled  int
+	ConfiguredRulesDisabled int
 }
 
 const fetchFirewallRulesPayload = `{"current":1,"rowCount":-1,"sort":{},"searchPhrase":""}`
@@ -105,6 +112,12 @@ func (c *Client) FetchFirewallRuleStats(detailsEnabled bool) (FirewallRulesData,
 	ruleMap := make(map[string]firewallRule, len(searchResp.Rows))
 	for _, rule := range searchResp.Rows {
 		ruleMap[rule.UUID] = rule
+		// Only an explicit "1" counts as enabled; missing/empty/other → disabled.
+		if rule.Enabled == "1" {
+			data.ConfiguredRulesEnabled++
+		} else {
+			data.ConfiguredRulesDisabled++
+		}
 	}
 
 	data.Rules = make([]FirewallRuleStats, 0, len(statsResp.Stats))

@@ -243,3 +243,61 @@ func TestFetchFirewallRuleStats_RulesEndpointError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchFirewallRuleStats_ConfiguredCounts(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/firewall/filter_util/rule_stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"stats": {
+				"uuid-1": {"pf_rules": 1, "evaluations": 10, "packets": 5, "bytes": 500, "states": 2}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/firewall/filter/search_rule", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 4, "rowCount": 4, "current": 1,
+			"rows": [
+				{"uuid": "uuid-1", "description": "allow lan", "action": "pass", "interface": "lan", "%interface": "LAN", "direction": "in", "protocol": "any", "enabled": "1"},
+				{"uuid": "uuid-2", "description": "old rule", "action": "block", "interface": "wan", "%interface": "WAN", "direction": "in", "protocol": "any", "enabled": "0"},
+				{"uuid": "uuid-3", "description": "allow mgmt", "action": "pass", "interface": "opt3", "%interface": "MGMT", "direction": "in", "protocol": "any", "enabled": "1"},
+				{"uuid": "uuid-4", "description": "no enabled field", "action": "pass", "interface": "lan", "%interface": "LAN", "direction": "in", "protocol": "any", "enabled": ""}
+			]
+		}`))
+	})
+
+	data, err := client.FetchFirewallRuleStats(true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ConfiguredRulesEnabled != 2 {
+		t.Errorf("expected 2 enabled configured rules, got %d", data.ConfiguredRulesEnabled)
+	}
+	// uuid-2 (enabled "0") AND uuid-4 (empty enabled): only an explicit "1"
+	// counts as enabled — parseStringToBool("") would wrongly return true.
+	if data.ConfiguredRulesDisabled != 2 {
+		t.Errorf("expected 2 disabled configured rules, got %d", data.ConfiguredRulesDisabled)
+	}
+}
+
+func TestFetchFirewallRuleStats_NoConfiguredCountsWithoutDetails(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/firewall/filter_util/rule_stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "ok", "stats": {}}`))
+	})
+	mux.HandleFunc("/api/firewall/filter/search_rule", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("search_rule must not be called when details are disabled")
+	})
+
+	data, err := client.FetchFirewallRuleStats(false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ConfiguredRulesEnabled != 0 || data.ConfiguredRulesDisabled != 0 {
+		t.Errorf("expected zero configured counts without details, got %+v", data)
+	}
+}

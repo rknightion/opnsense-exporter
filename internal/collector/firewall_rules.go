@@ -15,6 +15,7 @@ type firewallRulesCollector struct {
 	bytesTotal       *prometheus.Desc
 	states           *prometheus.Desc
 	pfRules          *prometheus.Desc
+	configuredRules  *prometheus.Desc
 	subsystem        string
 	instance         string
 	detailsEnabled   bool
@@ -59,6 +60,10 @@ func (c *firewallRulesCollector) Register(namespace, instanceLabel string, log *
 		"Number of PF rules generated per firewall rule",
 		[]string{"uuid", "description", "action", "interface", "direction"},
 	)
+	c.configuredRules = buildPrometheusDesc(c.subsystem, "configured_rules",
+		"Number of configured firewall filter rules by enabled state. Only emitted when --exporter.enable-firewall-rules-details is set.",
+		[]string{"enabled"},
+	)
 }
 
 func (c *firewallRulesCollector) SetDetailsEnabled(enabled bool) {
@@ -72,6 +77,7 @@ func (c *firewallRulesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.bytesTotal
 	ch <- c.states
 	ch <- c.pfRules
+	ch <- c.configuredRules
 }
 
 func (c *firewallRulesCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -88,6 +94,15 @@ func (c *firewallRulesCollector) Update(client *opnsense.Client, ch chan<- prome
 	)
 
 	if c.detailsEnabled {
+		ch <- prometheus.MustNewConstMetric(
+			c.configuredRules, prometheus.GaugeValue,
+			float64(data.ConfiguredRulesEnabled), "true", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.configuredRules, prometheus.GaugeValue,
+			float64(data.ConfiguredRulesDisabled), "false", c.instance,
+		)
+
 		for _, rule := range data.Rules {
 			ch <- prometheus.MustNewConstMetric(
 				c.evaluationsTotal,
