@@ -1,7 +1,11 @@
 package opnsense
 
 import (
+	"bytes"
+	"io"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -315,6 +319,122 @@ func TestFetchGateways_ServerError(t *testing.T) {
 	}
 	if err.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
+
+func TestParseGatewayStatus(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tests := []struct {
+		name string
+		in   string
+		want GatewayStatusType
+	}{
+		{"online", "Online", GatewayStatusOnline},
+		{"offline", "Offline", GatewayStatusOffline},
+		{"pending", "Pending", GatewayStatusPeding},
+		{"packetloss", "Packetloss", GatewayStatusLoss},
+		{"latency", "Latency", GatewayStatusLatency},
+		{"forced", "Offline (forced)", GatewayStatusForcedDown},
+		{"combined latency packetloss", "Latency, Packetloss", GatewayStatusLoss},
+		{"combined online latency", "Online, Latency", GatewayStatusLatency},
+		{"unknown", "Mystery", GatewayStatusUnknown},
+		{"empty", "", GatewayStatusUnknown},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseGatewayStatus(tt.in, logger, tt.in)
+			if got != tt.want {
+				t.Errorf("parseGatewayStatus(%q) = %d, want %d", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// A monitored gateway can report "~" for delay/stddev/loss while dpinger has
+// no data yet (upstream issue #106) — must parse to the -1 sentinel WITHOUT
+// logging a warning. force_down can be JSON null (seen live on 26.1.9) — must
+// parse to false.
+func TestFetchGateways_ProbeUnavailableAndNullForceDown(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{
+					"disabled": false,
+					"name": "WARMUP_GW",
+					"descr": "",
+					"interface": "igb0",
+					"ipprotocol": "inet",
+					"gateway": "10.0.0.1",
+					"defaultgw": true,
+					"fargw": "",
+					"monitor_disable": "0",
+					"monitor_noroute": "0",
+					"monitor": "8.8.8.8",
+					"force_down": null,
+					"priority": 255,
+					"weight": "1",
+					"latencylow": "200",
+					"current_latencylow": "200",
+					"latencyhigh": "500",
+					"current_latencyhigh": "500",
+					"losslow": "10",
+					"current_losslow": "10",
+					"losshigh": "20",
+					"current_losshigh": "20",
+					"interval": "500",
+					"current_interval": "500",
+					"time_period": "60",
+					"current_time_period": "60",
+					"loss_interval": "2500",
+					"current_loss_interval": "2500",
+					"data_length": "0",
+					"current_data_length": "0",
+					"uuid": "uuid-warmup",
+					"if": "wan",
+					"attribute": 1,
+					"dynamic": false,
+					"virtual": false,
+					"upstream": true,
+					"interface_descr": "WAN",
+					"status": "Online",
+					"delay": "~",
+					"stddev": "~",
+					"loss": "~",
+					"label_class": "success"
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	var logBuf bytes.Buffer
+	client.log = slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	data, err := client.FetchGateways()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	gw := data.Gateways[0]
+	if !gw.MonitorEnabled {
+		t.Fatal("expected MonitorEnabled=true")
+	}
+	if gw.Delay != -1.0 {
+		t.Errorf("expected Delay=-1.0 for '~', got %f", gw.Delay)
+	}
+	if gw.StdDev != -1.0 {
+		t.Errorf("expected StdDev=-1.0 for '~', got %f", gw.StdDev)
+	}
+	if gw.Loss != -1.0 {
+		t.Errorf("expected Loss=-1.0 for '~', got %f", gw.Loss)
+	}
+	if gw.ForceDown {
+		t.Error("expected ForceDown=false for JSON null force_down")
+	}
+	if logged := logBuf.String(); strings.Contains(logged, "failed") {
+		t.Errorf("expected no parse warnings for '~' values, got log output: %s", logged)
 	}
 }
 

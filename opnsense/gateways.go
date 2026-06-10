@@ -2,7 +2,9 @@ package opnsense
 
 import (
 	"log/slog"
+	"regexp"
 	"strconv"
+	"strings"
 )
 
 // GatewayStatus is the custom type that represents the status of a gateway
@@ -13,6 +15,9 @@ const (
 	GatewayStatusOnline
 	GatewayStatusUnknown
 	GatewayStatusPeding
+	GatewayStatusLoss       // 4 = Packetloss
+	GatewayStatusLatency    // 5 = Latency
+	GatewayStatusForcedDown // 6 = Offline (forced)
 )
 
 // gatewayConfigurationResponse is the response from the OPNsense API that contains the gateways configuration details
@@ -121,19 +126,63 @@ func convertPriorityToString(priority any) string {
 	}
 }
 
-// parseGatewayStatus parses a string status to a GatewayStatus type.
+// parseGatewayStatus parses a translated status string to a GatewayStatusType.
+// OPNsense may report combined statuses such as "Latency, Packetloss"; the
+// worst component wins (Offline > Offline (forced) > Packetloss > Latency >
+// Pending > Online). Ported from upstream PR #103.
 func parseGatewayStatus(statusTranslated string, logger *slog.Logger, originalStatus string) GatewayStatusType {
-	switch statusTranslated {
-	case "Online":
-		return GatewayStatusOnline
-	case "Offline":
-		return GatewayStatusOffline
-	case "Pending":
-		return GatewayStatusPeding
-	default:
-		logger.Warn("unknown gateway status detected", "status", originalStatus)
-		return GatewayStatusUnknown
+	worst := GatewayStatusUnknown
+	worstRank := -1
+	rank := map[GatewayStatusType]int{
+		GatewayStatusOnline:     0,
+		GatewayStatusPeding:     1,
+		GatewayStatusLatency:    2,
+		GatewayStatusLoss:       3,
+		GatewayStatusForcedDown: 4,
+		GatewayStatusOffline:    5,
 	}
+	for _, part := range strings.Split(statusTranslated, ",") {
+		var s GatewayStatusType
+		switch strings.TrimSpace(part) {
+		case "Online":
+			s = GatewayStatusOnline
+		case "Offline":
+			s = GatewayStatusOffline
+		case "Pending":
+			s = GatewayStatusPeding
+		case "Packetloss":
+			s = GatewayStatusLoss
+		case "Latency":
+			s = GatewayStatusLatency
+		case "Offline (forced)":
+			s = GatewayStatusForcedDown
+		default:
+			logger.Warn("unknown gateway status detected", "status", originalStatus)
+			return GatewayStatusUnknown
+		}
+		if r := rank[s]; r > worstRank {
+			worstRank = r
+			worst = s
+		}
+	}
+	return worst
+}
+
+// gatewayProbeUnavailable is the placeholder OPNsense/dpinger report for
+// delay/stddev/loss when no probe data is available — e.g. during dpinger
+// warm-up or when the monitor address is unreachable (upstream issue #106).
+const gatewayProbeUnavailable = "~"
+
+// parseGatewayProbeValue parses a dpinger probe value ("6.1 ms", "0.0 %") to
+// float64. The "~" placeholder and empty values mean "no data yet" and return
+// the -1 sentinel silently, without the warning that
+// parseStringToFloatWithReplace would log on every scrape.
+func parseGatewayProbeValue(value string, regex *regexp.Regexp, replacePattern string, valueTypeName string, logger *slog.Logger) float64 {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == gatewayProbeUnavailable || trimmed == "" {
+		return -1.0
+	}
+	return parseStringToFloatWithReplace(value, regex, replacePattern, valueTypeName, logger)
 }
 
 // FetchGateways fetches the gateways status details from the OPNsense API
@@ -160,24 +209,26 @@ func (c *Client) FetchGateways() (Gateways, *APICallError) {
 		stdDev := -1.0
 		loss := -1.0
 		if !v.Disabled && !parseStringToBool(v.MonitorDisable) {
-			delay = parseStringToFloatWithReplace(v.Delay, c.gatewayRTTRegex, " ms", "rtt", c.log)
-			stdDev = parseStringToFloatWithReplace(v.StdDev, c.gatewayRTTRegex, " ms", "rttd", c.log)
-			loss = parseStringToFloatWithReplace(v.Loss, c.gatewayLossRegex, " %", "loss", c.log)
+			delay = parseGatewayProbeValue(v.Delay, c.gatewayRTTRegex, " ms", "rtt", c.log)
+			stdDev = parseGatewayProbeValue(v.StdDev, c.gatewayRTTRegex, " ms", "rttd", c.log)
+			loss = parseGatewayProbeValue(v.Loss, c.gatewayLossRegex, " %", "loss", c.log)
 		}
 
 		g := Gateway{
-			Name:                 v.Name,
-			Description:          v.Description,
-			Enabled:              !v.Disabled,
-			HardwareInterface:    v.HardwareInterface,
-			IPProtocol:           v.IPProtocol,
-			Gateway:              v.Gateway,
-			DefaultGateway:       v.DefaultGateway,
-			FarGateway:           v.FarGateway,
-			MonitorEnabled:       !parseStringToBool(v.MonitorDisable),
-			MonitorNoRoute:       parseStringToBool(v.MonitorNoRoute),
-			Monitor:              v.Monitor,
-			ForceDown:            parseStringToBool(v.ForceDown),
+			Name:              v.Name,
+			Description:       v.Description,
+			Enabled:           !v.Disabled,
+			HardwareInterface: v.HardwareInterface,
+			IPProtocol:        v.IPProtocol,
+			Gateway:           v.Gateway,
+			DefaultGateway:    v.DefaultGateway,
+			FarGateway:        v.FarGateway,
+			MonitorEnabled:    !parseStringToBool(v.MonitorDisable),
+			MonitorNoRoute:    parseStringToBool(v.MonitorNoRoute),
+			Monitor:           v.Monitor,
+			// force_down can be JSON null (decodes to ""); parseStringToBool
+			// would treat "" as true. Only the explicit "1" means forced down.
+			ForceDown:            v.ForceDown == "1",
 			Priority:             convertPriorityToString(v.Priority),
 			Weight:               v.Weight,
 			LatencyLow:           v.LatencyLow,
