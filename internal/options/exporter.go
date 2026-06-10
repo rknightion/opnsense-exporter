@@ -23,5 +23,10 @@ var (
 			"(falling back to the configured OPNsense address if that lookup fails).",
 	).Envar("OPNSENSE_EXPORTER_INSTANCE_LABEL").Default("").String()
 
+	ScrapeTimeoutOffset = kingpin.Flag(
+		"exporter.scrape-timeout-offset",
+		"Duration subtracted from Prometheus' X-Prometheus-Scrape-Timeout-Seconds header when deriving the scrape deadline, so the exporter finishes and responds before Prometheus gives up. If the offset would consume the whole budget, the raw header timeout is used.",
+	).Envar("OPNSENSE_EXPORTER_SCRAPE_TIMEOUT_OFFSET").Default("500ms").Duration()
+
 	WebConfig = kingpinflag.AddFlags(kingpin.CommandLine, ":8080")
 )
