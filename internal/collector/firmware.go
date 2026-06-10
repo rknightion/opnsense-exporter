@@ -10,15 +10,18 @@ import (
 type firmwareCollector struct {
 	log *slog.Logger
 
-	info                 *prometheus.Desc
-	needsReboot          *prometheus.Desc
-	upgradeNeedsReboot   *prometheus.Desc
-	lastCheckTimestamp   *prometheus.Desc
-	newPackagesCount     *prometheus.Desc
-	upgradePackagesCount *prometheus.Desc
+	info                   *prometheus.Desc
+	needsReboot            *prometheus.Desc
+	upgradeNeedsReboot     *prometheus.Desc
+	lastCheckTimestamp     *prometheus.Desc
+	newPackagesCount       *prometheus.Desc
+	upgradePackagesCount   *prometheus.Desc
+	packageUpdateAvailable *prometheus.Desc
+	pluginInstalled        *prometheus.Desc
 
-	subsystem string
-	instance  string
+	subsystem      string
+	instance       string
+	detailsEnabled bool
 }
 
 func init() {
@@ -54,6 +57,20 @@ func (c *firmwareCollector) Register(namespace, instanceLabel string, log *slog.
 
 	c.upgradePackagesCount = buildPrometheusDesc(c.subsystem, "upgrade_packages_count",
 		"Number of packages with available upgrades", nil)
+
+	c.packageUpdateAvailable = buildPrometheusDesc(c.subsystem, "package_update_available",
+		"Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set.",
+		[]string{"name", "installed_version", "new_version"})
+
+	c.pluginInstalled = buildPrometheusDesc(c.subsystem, "plugin_installed",
+		"Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set.",
+		[]string{"name", "version"})
+}
+
+// SetDetailsEnabled toggles the per-package detail metrics
+// (package_update_available, plugin_installed).
+func (c *firmwareCollector) SetDetailsEnabled(enabled bool) {
+	c.detailsEnabled = enabled
 }
 
 func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -63,6 +80,8 @@ func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.lastCheckTimestamp
 	ch <- c.newPackagesCount
 	ch <- c.upgradePackagesCount
+	ch <- c.packageUpdateAvailable
+	ch <- c.pluginInstalled
 }
 
 func (c *firmwareCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -91,6 +110,22 @@ func (c *firmwareCollector) Update(client *opnsense.Client, ch chan<- prometheus
 	ch <- prometheus.MustNewConstMetric(c.newPackagesCount, prometheus.GaugeValue, float64(data.NewPackages), c.instance)
 
 	ch <- prometheus.MustNewConstMetric(c.upgradePackagesCount, prometheus.GaugeValue, float64(data.UpgradePackages), c.instance)
+
+	if c.detailsEnabled {
+		for _, p := range data.UpgradePackageDetails {
+			ch <- prometheus.MustNewConstMetric(c.packageUpdateAvailable, prometheus.GaugeValue, 1,
+				p.Name, p.CurrentVersion, p.NewVersion, c.instance)
+		}
+
+		info, infoErr := client.FetchFirmwareInfo()
+		if infoErr != nil {
+			return infoErr
+		}
+		for _, p := range info.InstalledPlugins {
+			ch <- prometheus.MustNewConstMetric(c.pluginInstalled, prometheus.GaugeValue, 1,
+				p.Name, p.Version, c.instance)
+		}
+	}
 
 	return nil
 }
