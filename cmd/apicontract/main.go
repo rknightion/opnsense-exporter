@@ -19,12 +19,24 @@ import (
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
-// exemptEndpoints are never flagged as missing. OPNsense's parser skips
-// FirmwareController (EXCLUDE_CONTROLLERS), so our firmware endpoints would
-// otherwise always read as "missing".
+// exemptEndpoints are never flagged as missing because OPNsense's source parser
+// structurally cannot see them — they are parser blind spots, not drift:
+//
+//   - firmware/firmwareInfo: OPNsense's docs parser hard-excludes
+//     Core/Api/FirmwareController.php (EXCLUDE_CONTROLLERS), so these never appear.
+//   - keaLeases4/keaLeases6: the real routes are served by Kea\Api\Leases4Controller
+//     and Leases6Controller, which add no methods of their own — they inherit
+//     searchAction() from the abstract LeasesController base. The parser only reads
+//     methods literally defined in each file, so it emits the (non-routable) abstract
+//     base as kea/leases/search and nothing for the concrete leases4/leases6 routes.
+//     Verified against a live 26.1 box: kea/leases4/search and kea/leases6/search
+//     return 200 while kea/leases/search returns 404. Real removal of these would be
+//     caught by the live-box stage (P3), not the source parser.
 var exemptEndpoints = map[string]bool{
 	"firmware":     true,
 	"firmwareInfo": true,
+	"keaLeases4":   true,
+	"keaLeases6":   true,
 }
 
 type refFlag struct {
