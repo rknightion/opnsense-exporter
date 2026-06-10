@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 458
-- **Gauges:** 252
-- **Counters:** 206
+- **Total metrics:** 500
+- **Gauges:** 287
+- **Counters:** 213
 
 ## General
 
@@ -36,6 +36,25 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_acme_certificate_status_last_update_timestamp_seconds | Gauge | name, description | Unix timestamp of the last ACME client run for this certificate (0 = never run) | --exporter.disable-acme |
 | opnsense_acme_certificate_enabled | Gauge | name, description | Whether this ACME-managed certificate is enabled (1 = enabled, 0 = disabled) | --exporter.disable-acme |
 | opnsense_acme_certificate_info | Gauge | name, description, alt_names | ACME certificate information (value is always 1; use labels) | --exporter.disable-acme |
+
+## APC UPS (apcupsd)
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_apcupsd_service_running | Gauge | --- | Whether the apcupsd service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_ups_info | Gauge | model, status | UPS information (value is always 1; see model and status labels) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_battery_charge_percent | Gauge | --- | UPS battery charge percentage (BCHARGE) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_battery_runtime_seconds | Gauge | --- | Estimated UPS battery runtime in seconds (TIMELEFT minutes × 60) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_battery_voltage_volts | Gauge | --- | UPS battery voltage in volts (BATTV) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_input_voltage_volts | Gauge | --- | UPS input line voltage in volts (LINEV) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_output_voltage_volts | Gauge | --- | UPS output voltage in volts (OUTPUTV) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_load_percent | Gauge | --- | UPS load percentage (LOADPCT) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_time_on_battery_seconds | Gauge | --- | Elapsed time on battery power in seconds (TONBATT) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_transfers_total | Counter | --- | Cumulative number of transfers to battery (NUMXFERS) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_nominal_power_watts | Gauge | --- | UPS nominal output power in watts (NOMPOWER) | --exporter.disable-apcupsd |
+| opnsense_apcupsd_status_online | Gauge | --- | 1 when UPS status contains ONLINE | --exporter.disable-apcupsd |
+| opnsense_apcupsd_status_on_battery | Gauge | --- | 1 when UPS status contains ONBATT | --exporter.disable-apcupsd |
+| opnsense_apcupsd_status_low_battery | Gauge | --- | 1 when UPS status contains LOWBATT | --exporter.disable-apcupsd |
 
 ## ARP Table
 
@@ -69,6 +88,15 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_carp_vip_advbase_seconds | Gauge | interface, vhid, vip | CARP VIP advertisement base interval in seconds | --exporter.disable-carp |
 | opnsense_carp_vip_advskew | Gauge | interface, vhid, vip | CARP VIP advertisement skew | --exporter.disable-carp |
 
+## Captive Portal
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_captiveportal_service_running | Gauge | --- | Whether the captive portal service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-captiveportal |
+| opnsense_captiveportal_zones_total | Counter | --- | Number of configured captive portal zones (including disabled zones) | --exporter.disable-captiveportal |
+| opnsense_captiveportal_sessions_total | Counter | --- | Total number of active captive portal sessions across all zones | --exporter.disable-captiveportal |
+| opnsense_captiveportal_zone_sessions | Gauge | zone_id, zone_description | Number of active captive portal sessions in this zone | --exporter.disable-captiveportal |
+
 ## Certificates
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -86,6 +114,20 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_cron_job_status | Gauge | schedule, description, command, origin | Cron job status by name and description (1 = enabled, 0 = disabled) | --exporter.disable-cron-table |
+
+## CrowdSec
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_crowdsec_service_running | Gauge | --- | Whether the CrowdSec service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_alerts_total | Counter | --- | Total number of CrowdSec alerts (count-only, no per-type breakdown) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_decisions_total | Counter | --- | Total number of active CrowdSec decisions (count-only, no per-type breakdown) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_bouncers_total | Counter | --- | Total number of registered CrowdSec bouncers | --exporter.disable-crowdsec |
+| opnsense_crowdsec_bouncer_valid | Gauge | name, type | Whether the bouncer API key is valid (1 = valid, 0 = invalid) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_bouncer_last_pull_timestamp_seconds | Gauge | name, type | Unix timestamp of the last pull by this bouncer (omitted when never pulled) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_machines_total | Counter | --- | Total number of registered CrowdSec machines (agents) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_machine_validated | Gauge | name | Whether the machine registration has been validated (1 = validated, 0 = pending) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_machine_last_heartbeat_timestamp_seconds | Gauge | name | Unix timestamp of the last heartbeat from this machine (omitted when absent) | --exporter.disable-crowdsec |
 
 ## Dnsmasq DHCP
 
@@ -381,6 +423,26 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ntp_peer_offset_milliseconds | Gauge | server | Clock offset relative to the NTP peer in milliseconds | --exporter.disable-ntp |
 | opnsense_ntp_peer_jitter_milliseconds | Gauge | server | Dispersion jitter of the NTP peer in milliseconds | --exporter.disable-ntp |
 | opnsense_ntp_peers_total | Counter | --- | Total number of NTP peers | --exporter.disable-ntp |
+
+## NUT UPS
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_nut_service_running | Gauge | --- | Whether the NUT service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-nut |
+| opnsense_nut_ups_info | Gauge | model, status | UPS device information (always 1) | --exporter.disable-nut |
+| opnsense_nut_battery_charge_percent | Gauge | --- | Battery charge percentage (battery.charge) | --exporter.disable-nut |
+| opnsense_nut_battery_runtime_seconds | Gauge | --- | Estimated battery runtime in seconds (battery.runtime) | --exporter.disable-nut |
+| opnsense_nut_battery_voltage_volts | Gauge | --- | Battery voltage in volts (battery.voltage) | --exporter.disable-nut |
+| opnsense_nut_input_voltage_volts | Gauge | --- | Input (mains) voltage in volts (input.voltage) | --exporter.disable-nut |
+| opnsense_nut_output_voltage_volts | Gauge | --- | Output voltage in volts (output.voltage) | --exporter.disable-nut |
+| opnsense_nut_load_percent | Gauge | --- | UPS load percentage (ups.load) | --exporter.disable-nut |
+| opnsense_nut_temperature_celsius | Gauge | --- | UPS temperature in degrees Celsius (ups.temperature) | --exporter.disable-nut |
+| opnsense_nut_input_frequency_hertz | Gauge | --- | Input frequency in Hertz (input.frequency) | --exporter.disable-nut |
+| opnsense_nut_status_online | Gauge | --- | 1 when UPS is online (OL flag in ups.status) | --exporter.disable-nut |
+| opnsense_nut_status_on_battery | Gauge | --- | 1 when UPS is running on battery (OB flag in ups.status) | --exporter.disable-nut |
+| opnsense_nut_status_low_battery | Gauge | --- | 1 when battery is low (LB flag in ups.status) | --exporter.disable-nut |
+| opnsense_nut_status_charging | Gauge | --- | 1 when battery is charging (CHRG flag in ups.status) | --exporter.disable-nut |
+| opnsense_nut_status_replace_battery | Gauge | --- | 1 when battery replacement is recommended (RB flag in ups.status) | --exporter.disable-nut |
 
 ## NetFlow
 

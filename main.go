@@ -256,6 +256,22 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutMonitCollector())
 		logger.Info("monit collector disabled")
 	}
+	if !collectorsSwitches.CrowdSec {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCrowdSecCollector())
+		logger.Info("crowdsec collector disabled")
+	}
+	if !collectorsSwitches.NUT {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNUTCollector())
+		logger.Info("nut collector disabled")
+	}
+	if !collectorsSwitches.Apcupsd {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutApcupsdCollector())
+		logger.Info("apcupsd collector disabled")
+	}
+	if !collectorsSwitches.CaptivePortal {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCaptivePortalCollector())
+		logger.Info("captiveportal collector disabled")
+	}
 
 	// Resolve the instance label. When the user does not set one, default to the
 	// OPNsense hostname reported by the API so single-instance deployments work

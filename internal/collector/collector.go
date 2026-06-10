@@ -111,6 +111,10 @@ var SubsystemDisplayNames = map[string]string{
 	NginxSubsystem:         "Nginx",
 	FRRSubsystem:           "FRR Routing (BGP/OSPF/BFD)",
 	MonitSubsystem:         "Monit",
+	CrowdSecSubsystem:      "CrowdSec",
+	NUTSubsystem:           "NUT UPS",
+	ApcupsdSubsystem:       "APC UPS (apcupsd)",
+	CaptivePortalSubsystem: "Captive Portal",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -381,6 +385,30 @@ func WithoutFRRCollector() Option {
 // removes the monit collector from the list of collectors
 func WithoutMonitCollector() Option {
 	return withoutCollectorInstance(MonitSubsystem)
+}
+
+// WithoutCrowdSecCollector Option
+// removes the crowdsec collector from the list of collectors
+func WithoutCrowdSecCollector() Option {
+	return withoutCollectorInstance(CrowdSecSubsystem)
+}
+
+// WithoutNUTCollector Option
+// removes the nut collector from the list of collectors
+func WithoutNUTCollector() Option {
+	return withoutCollectorInstance(NUTSubsystem)
+}
+
+// WithoutApcupsdCollector Option
+// removes the apcupsd collector from the list of collectors
+func WithoutApcupsdCollector() Option {
+	return withoutCollectorInstance(ApcupsdSubsystem)
+}
+
+// WithoutCaptivePortalCollector Option
+// removes the captiveportal collector from the list of collectors
+func WithoutCaptivePortalCollector() Option {
+	return withoutCollectorInstance(CaptivePortalSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

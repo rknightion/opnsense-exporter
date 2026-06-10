@@ -7,11 +7,14 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Collector | Subsystem | Metrics | Default | Flag | Environment Variable |
 |-----------|-----------|---------|---------|------|---------------------|
 | ACME Client | acme | 6 | Enabled | --exporter.disable-acme | OPNSENSE_EXPORTER_DISABLE_ACME |
+| APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPNSENSE_EXPORTER_DISABLE_APCUPSD |
 | ARP Table | arp_table | 1 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
 | Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
+| Captive Portal | captiveportal | 4 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
+| CrowdSec | crowdsec | 9 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
 | FRR Routing (BGP/OSPF/BFD) | frr | 23 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
@@ -29,6 +32,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Monit | monit | 5 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
 | NDP | ndp | 1 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
 | NTP | ntp | 9 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
+| NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPNSENSE_EXPORTER_DISABLE_NUT |
 | NetFlow | netflow | 7 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
 | Network Diagnostics | network_diag | 13 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
 | Nginx | nginx | 21 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |

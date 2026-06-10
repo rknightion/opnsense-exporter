@@ -179,6 +179,22 @@ var (
 		"exporter.disable-monit",
 		"Disable the scraping of Monit service check status (silent when Monit is not running)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_MONIT").Default("false").Bool()
+	crowdsecCollectorDisabled = kingpin.Flag(
+		"exporter.disable-crowdsec",
+		"Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CROWDSEC").Default("false").Bool()
+	nutCollectorDisabled = kingpin.Flag(
+		"exporter.disable-nut",
+		"Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_NUT").Default("false").Bool()
+	apcupsdCollectorDisabled = kingpin.Flag(
+		"exporter.disable-apcupsd",
+		"Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_APCUPSD").Default("false").Bool()
+	captivePortalCollectorDisabled = kingpin.Flag(
+		"exporter.disable-captiveportal",
+		"Disable the scraping of captive portal zone/session metrics (silent when no zones are configured)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -227,6 +243,10 @@ type CollectorsDisableSwitch struct {
 	Nginx                  bool
 	FRR                    bool
 	Monit                  bool
+	CrowdSec               bool
+	NUT                    bool
+	Apcupsd                bool
+	CaptivePortal          bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -276,6 +296,10 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Nginx:                  !*nginxCollectorDisabled,
 		FRR:                    !*frrCollectorDisabled,
 		Monit:                  !*monitCollectorDisabled,
+		CrowdSec:               !*crowdsecCollectorDisabled,
+		NUT:                    !*nutCollectorDisabled,
+		Apcupsd:                !*apcupsdCollectorDisabled,
+		CaptivePortal:          !*captivePortalCollectorDisabled,
 	}
 }
 
@@ -339,4 +363,8 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-nginx", Subsystem: "nginx"},
 	{Flag: "exporter.disable-frr", Subsystem: "frr"},
 	{Flag: "exporter.disable-monit", Subsystem: "monit"},
+	{Flag: "exporter.disable-crowdsec", Subsystem: "crowdsec"},
+	{Flag: "exporter.disable-nut", Subsystem: "nut"},
+	{Flag: "exporter.disable-apcupsd", Subsystem: "apcupsd"},
+	{Flag: "exporter.disable-captiveportal", Subsystem: "captiveportal"},
 }

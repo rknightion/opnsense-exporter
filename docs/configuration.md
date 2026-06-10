@@ -180,11 +180,14 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | Flag | Env Var | Collector | Description |
 |------|---------|-----------|-------------|
 | `--exporter.disable-acme` | `OPNSENSE_EXPORTER_DISABLE_ACME` | ACME Client | Disable the scraping of ACME client certificate renewal status and expiry metrics (silent when the os-acme-client plugin is absent) |
+| `--exporter.disable-apcupsd` | `OPNSENSE_EXPORTER_DISABLE_APCUPSD` | APC UPS (apcupsd) | Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent) |
 | `--exporter.disable-arp-table` | `OPNSENSE_EXPORTER_DISABLE_ARP_TABLE` | ARP Table | Disable the scraping of the ARP table |
 | `--exporter.disable-activity` | `OPNSENSE_EXPORTER_DISABLE_ACTIVITY` | Activity | Disable the scraping of system activity metrics (CPU percentages, thread counts) |
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | CARP | Disable the scraping of CARP/VIP status metrics |
+| `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | Captive Portal | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | Certificates | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | Cron | Disable the scraping of the cron table |
+| `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | CrowdSec | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | Dnsmasq DHCP | Disable the scraping of Dnsmasq DHCP leases |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
 | `--exporter.disable-frr` | `OPNSENSE_EXPORTER_DISABLE_FRR` | FRR Routing (BGP/OSPF/BFD) | Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent) |
@@ -201,6 +204,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | Monit | Disable the scraping of Monit service check status (silent when Monit is not running) |
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | NDP | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
 | `--exporter.disable-ntp` | `OPNSENSE_EXPORTER_DISABLE_NTP` | NTP | Disable the scraping of NTP peer metrics |
+| `--exporter.disable-nut` | `OPNSENSE_EXPORTER_DISABLE_NUT` | NUT UPS | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
 | `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | Nginx | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | OpenVPN | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF Statistics | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
@@ -261,10 +265,13 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-acme` | `OPNSENSE_EXPORTER_DISABLE_ACME` | `false` | Disable the scraping of ACME client certificate renewal status and expiry metrics (silent when the os-acme-client plugin is absent) |
 | `--exporter.disable-activity` | `OPNSENSE_EXPORTER_DISABLE_ACTIVITY` | `false` | Disable the scraping of system activity metrics (CPU percentages, thread counts) |
 | `--exporter.disable-alias` | `OPNSENSE_EXPORTER_DISABLE_ALIAS` | `false` | Disable the scraping of firewall alias table sizes |
+| `--exporter.disable-apcupsd` | `OPNSENSE_EXPORTER_DISABLE_APCUPSD` | `false` | Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent) |
 | `--exporter.disable-arp-table` | `OPNSENSE_EXPORTER_DISABLE_ARP_TABLE` | `false` | Disable the scraping of the ARP table |
+| `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | `false` | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | `false` | Disable the scraping of CARP/VIP status metrics |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | `false` | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | `false` | Disable the scraping of the cron table |
+| `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | `false` | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | `false` | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | `false` | Disable the scraping of Dnsmasq DHCP leases |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | `false` | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
@@ -281,6 +288,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | `false` | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
 | `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | `false` | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-ntp` | `OPNSENSE_EXPORTER_DISABLE_NTP` | `false` | Disable the scraping of NTP peer metrics |
+| `--exporter.disable-nut` | `OPNSENSE_EXPORTER_DISABLE_NUT` | `false` | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | `false` | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | `false` | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | `false` | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
