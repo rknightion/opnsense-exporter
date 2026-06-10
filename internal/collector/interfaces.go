@@ -27,6 +27,9 @@ type interfacesCollector struct {
 	linkState             *prometheus.Desc
 	lineRate              *prometheus.Desc
 
+	adminUp *prometheus.Desc
+	info    *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -111,6 +114,14 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		"Line rate in bits per second on this interface by interface name and device",
 		[]string{"interface", "device", "type"},
 	)
+	c.adminUp = buildPrometheusDesc(c.subsystem, "admin_up",
+		"Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices.",
+		[]string{"interface", "device"},
+	)
+	c.info = buildPrometheusDesc(c.subsystem, "info",
+		"Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series.",
+		[]string{"interface", "device", "identifier", "media", "link_type", "vlan_tag", "vlan_parent", "physical"},
+	)
 }
 
 func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -130,6 +141,8 @@ func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.inputQueueDrops
 	ch <- c.linkState
 	ch <- c.lineRate
+	ch <- c.adminUp
+	ch <- c.info
 }
 
 func (c *interfacesCollector) update(ch chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType, value float64, labelValues ...string) {
@@ -161,6 +174,31 @@ func (c *interfacesCollector) Update(client *opnsense.Client, ch chan<- promethe
 		c.update(ch, c.inputQueueDrops, prometheus.CounterValue, float64(iface.InputQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.linkState, prometheus.GaugeValue, float64(iface.LinkState), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.lineRate, prometheus.GaugeValue, float64(iface.LineRate), iface.Name, iface.Device, iface.Type, c.instance)
+	}
+
+	overview, oerr := client.FetchInterfacesOverview()
+	if oerr != nil {
+		// Non-fatal: keep the traffic metrics flowing even if the overview
+		// endpoint is unavailable.
+		c.log.Warn("failed to fetch interfaces overview; skipping interface info metrics", "err", oerr)
+		return nil
+	}
+
+	for _, iface := range overview.Interfaces {
+		adminVal := 0.0
+		if iface.AdminUp {
+			adminVal = 1.0
+		}
+		c.update(ch, c.adminUp, prometheus.GaugeValue, adminVal,
+			iface.Description, iface.Device, c.instance)
+
+		physical := "false"
+		if iface.Physical {
+			physical = "true"
+		}
+		c.update(ch, c.info, prometheus.GaugeValue, 1,
+			iface.Description, iface.Device, iface.Identifier, iface.Media,
+			iface.LinkType, iface.VlanTag, iface.VlanParent, physical, c.instance)
 	}
 
 	return nil
