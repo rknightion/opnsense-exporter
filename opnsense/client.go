@@ -94,6 +94,7 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"ipsecPhase2":             "api/ipsec/sessions/search_phase2",
 			"healthCheck":             "api/core/system/status",
 			"firmware":                "api/core/firmware/status",
+			"firmwareInfo":            "api/core/firmware/info",
 			"dnsmasqLeases":           "api/dnsmasq/leases/search",
 			"systemResources":         "api/diagnostics/system/systemResources",
 			"systemTime":              "api/diagnostics/system/systemTime",
