@@ -120,6 +120,11 @@ var SubsystemDisplayNames = map[string]string{
 	NUTSubsystem:           "NUT UPS",
 	ApcupsdSubsystem:       "APC UPS (apcupsd)",
 	CaptivePortalSubsystem: "Captive Portal",
+	TrafficShaperSubsystem: "Traffic Shaper",
+	HasyncSubsystem:        "HA Sync Status",
+	ChronySubsystem:        "Chrony",
+	Dhcpv6Subsystem:        "ISC DHCPv6",
+	BPFSubsystem:           "BPF Statistics",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -416,6 +421,36 @@ func WithoutCaptivePortalCollector() Option {
 	return withoutCollectorInstance(CaptivePortalSubsystem)
 }
 
+// WithoutTrafficShaperCollector Option
+// removes the trafficshaper collector from the list of collectors
+func WithoutTrafficShaperCollector() Option {
+	return withoutCollectorInstance(TrafficShaperSubsystem)
+}
+
+// WithoutHasyncCollector Option
+// removes the hasync collector from the list of collectors
+func WithoutHasyncCollector() Option {
+	return withoutCollectorInstance(HasyncSubsystem)
+}
+
+// WithoutChronyCollector Option
+// removes the chrony collector from the list of collectors
+func WithoutChronyCollector() Option {
+	return withoutCollectorInstance(ChronySubsystem)
+}
+
+// WithoutDhcpv6Collector Option
+// removes the dhcpv6 collector from the list of collectors
+func WithoutDhcpv6Collector() Option {
+	return withoutCollectorInstance(Dhcpv6Subsystem)
+}
+
+// WithoutBPFCollector Option
+// removes the bpf collector from the list of collectors
+func WithoutBPFCollector() Option {
+	return withoutCollectorInstance(BPFSubsystem)
+}
+
 // WithFirmwarePackageDetails enables per-package detail metrics for the
 // firmware collector (pending package updates + installed plugin inventory).
 func WithFirmwarePackageDetails() Option {
@@ -515,6 +550,19 @@ func WithTailscalePeerDetails() Option {
 		for _, c := range o.collectors {
 			if tc, ok := c.(*tailscaleCollector); ok {
 				tc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithDhcpv6Details enables per-lease detail metrics for the dhcpv6 collector
+func WithDhcpv6Details() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if dc, ok := c.(*dhcpv6Collector); ok {
+				dc.SetDetailsEnabled(true)
 				return nil
 			}
 		}

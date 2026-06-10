@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 500
-- **Gauges:** 287
-- **Counters:** 213
+- **Total metrics:** 556
+- **Gauges:** 329
+- **Counters:** 227
 
 ## General
 
@@ -76,6 +76,17 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_activity_cpu_interrupt_percent | Gauge | --- | CPU interrupt usage percentage | --exporter.disable-activity |
 | opnsense_activity_cpu_idle_percent | Gauge | --- | CPU idle percentage | --exporter.disable-activity |
 
+## BPF Statistics
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_bpf_listeners_total | Counter | --- | Total number of active BPF listeners (raw entry count before aggregation) | --exporter.disable-bpf |
+| opnsense_bpf_received_packets_total | Counter | process, interface | Cumulative packets received by BPF listeners for this process/interface pair | --exporter.disable-bpf |
+| opnsense_bpf_dropped_packets_total | Counter | process, interface | Cumulative packets dropped by BPF listeners for this process/interface pair | --exporter.disable-bpf |
+| opnsense_bpf_matched_packets_total | Counter | process, interface | Cumulative packets matched by BPF filter for this process/interface pair | --exporter.disable-bpf |
+| opnsense_bpf_store_buffer_bytes | Gauge | process, interface | Current store buffer length in bytes for this process/interface pair | --exporter.disable-bpf |
+| opnsense_bpf_hold_buffer_bytes | Gauge | process, interface | Current hold buffer length in bytes for this process/interface pair | --exporter.disable-bpf |
+
 ## CARP
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -108,6 +119,32 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_certificate_ca_valid_from_seconds | Gauge | description, commonname | Certificate authority valid from timestamp in seconds since epoch | --exporter.disable-certificates |
 | opnsense_certificate_ca_valid_to_seconds | Gauge | description, commonname | Certificate authority valid to (expiry) timestamp in seconds since epoch | --exporter.disable-certificates |
 | opnsense_certificate_ca_total | Counter | --- | Total number of certificate authorities | --exporter.disable-certificates |
+
+## Chrony
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_chrony_service_running | Gauge | --- | Whether the Chrony service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-chrony |
+| opnsense_chrony_stratum | Gauge | --- | Stratum of the NTP source chrony is currently tracking | --exporter.disable-chrony |
+| opnsense_chrony_system_time_offset_seconds | Gauge | --- | Current system time offset relative to NTP time in seconds (fast = positive, slow = negative) | --exporter.disable-chrony |
+| opnsense_chrony_last_offset_seconds | Gauge | --- | Estimated local offset on the last clock update in seconds | --exporter.disable-chrony |
+| opnsense_chrony_rms_offset_seconds | Gauge | --- | Long-term average of the offset values in seconds | --exporter.disable-chrony |
+| opnsense_chrony_frequency_ppm | Gauge | --- | Rate at which the system clock would be wrong if chrony was not correcting it (ppm) | --exporter.disable-chrony |
+| opnsense_chrony_residual_frequency_ppm | Gauge | --- | Residual frequency offset of the NTP source (ppm) | --exporter.disable-chrony |
+| opnsense_chrony_skew_ppm | Gauge | --- | Estimated error bound on the frequency (ppm) | --exporter.disable-chrony |
+| opnsense_chrony_root_delay_seconds | Gauge | --- | Total of the network path delays to the stratum-1 NTP server (seconds) | --exporter.disable-chrony |
+| opnsense_chrony_root_dispersion_seconds | Gauge | --- | Total dispersion accumulated through all NTP servers back to stratum-1 (seconds) | --exporter.disable-chrony |
+| opnsense_chrony_update_interval_seconds | Gauge | --- | Interval between the last two clock updates (seconds) | --exporter.disable-chrony |
+| opnsense_chrony_leap_status | Gauge | --- | Leap second status (0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised) | --exporter.disable-chrony |
+| opnsense_chrony_tracking_info | Gauge | reference_id, reference_name, leap_status | Chrony tracking info label gauge (always 1) — pool-rotation note: source labels churn with pool directives; use instant queries/tables | --exporter.disable-chrony |
+| opnsense_chrony_sources_total | Counter | --- | Total number of NTP sources chrony is currently tracking | --exporter.disable-chrony |
+| opnsense_chrony_source_selected | Gauge | source, mode | Whether this source is currently selected as the best available (1 = selected) | --exporter.disable-chrony |
+| opnsense_chrony_source_stratum | Gauge | source, mode | Stratum of this NTP source | --exporter.disable-chrony |
+| opnsense_chrony_source_reachability | Gauge | source, mode | Source reachability register (0–255; 255 means all 8 last polls succeeded) | --exporter.disable-chrony |
+| opnsense_chrony_source_last_rx_seconds | Gauge | source, mode | Time since the last packet was received from this source (seconds) | --exporter.disable-chrony |
+| opnsense_chrony_source_offset_seconds | Gauge | source, mode | Measured offset of the source (seconds) | --exporter.disable-chrony |
+| opnsense_chrony_source_offset_stddev_seconds | Gauge | source | Estimated standard deviation of the source offset (seconds) | --exporter.disable-chrony |
+| opnsense_chrony_source_samples | Gauge | source | Number of samples currently held in the regression (sourcestats) | --exporter.disable-chrony |
 
 ## Cron
 
@@ -262,6 +299,16 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_priority | Gauge | name, address | Gateway priority (lower value = higher priority) | --exporter.disable-gateways |
 
+## HA Sync Status
+
+| Metric Name | Type | Labels | Description | Enable Flag |
+|-------------|------|--------|-------------|-------------|
+| opnsense_hasync_remote_reachable | Gauge | --- | Whether the HA sync remote peer is reachable (1 = reachable, 0 = unreachable/unconfigured) | --exporter.enable-hasync |
+| opnsense_hasync_remote_version_match | Gauge | --- | Whether the remote peer firmware version matches the local version (1 = match, 0 = mismatch) | --exporter.enable-hasync |
+| opnsense_hasync_remote_version_info | Gauge | remote_version, local_version | HA sync firmware version information (value is always 1; see labels) | --exporter.enable-hasync |
+| opnsense_hasync_remote_services_total | Counter | --- | Total number of services in the cached remote HA peer service list | --exporter.enable-hasync |
+| opnsense_hasync_remote_service_running | Gauge | service, id | Whether a service is running on the remote HA peer (1 = running, 0 = stopped) | --exporter.enable-hasync |
+
 ## HAProxy
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -323,6 +370,9 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ipsec_phase2_rekey_time | Gauge | description, name, phase1_name | IPsec phase2 rekey time | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_life_time | Gauge | description, name, phase1_name | IPsec phase2 life time | --exporter.disable-ipsec |
 | opnsense_ipsec_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-ipsec |
+| opnsense_ipsec_pool_leases_online | Gauge | pool, net | Number of online leases in the IPsec mode-cfg pool | --exporter.disable-ipsec |
+| opnsense_ipsec_pool_leases_offline | Gauge | pool, net | Number of offline leases in the IPsec mode-cfg pool | --exporter.disable-ipsec |
+| opnsense_ipsec_pool_size | Gauge | pool, net | Total size (address capacity) of the IPsec mode-cfg pool | --exporter.disable-ipsec |
 
 ## ISC DHCPv4
 
@@ -333,6 +383,18 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_dhcpv4_leases_reserved_total | Counter | --- | Total number of reserved (static) ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
 | opnsense_dhcpv4_leases_dynamic_total | Counter | --- | Total number of dynamic ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
 | opnsense_dhcpv4_lease_info | Gauge | address, hostname, mac, interface, type, state, status | Per-lease ISC DHCPv4 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv4-details is set. | --exporter.disable-dhcpv4 |
+
+## ISC DHCPv6
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_dhcpv6_leases_total | Counter | --- | Total number of ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_leases_by_interface | Gauge | interface | Number of ISC DHCPv6 leases per interface | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_leases_reserved_total | Counter | --- | Total number of reserved (static) ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_leases_dynamic_total | Counter | --- | Total number of dynamic ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_lease_info | Gauge | address, mac, duid, if_descr, state, status, type | Per-lease ISC DHCPv6 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv6-details is set. | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_pd_prefixes_total | Counter | --- | Total number of ISC DHCPv6 prefix delegation entries | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_pd_prefixes_active | Gauge | --- | Number of active ISC DHCPv6 prefix delegation entries | --exporter.disable-dhcpv6 |
 
 ## Interfaces
 
@@ -676,6 +738,25 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_temperature_celsius | Gauge | device, type, device_seq | Temperature reading in Celsius | --exporter.disable-temperature |
+
+## Traffic Shaper
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_trafficshaper_pipes_total | Counter | --- | Total number of configured traffic shaper pipes | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queues_total | Counter | --- | Total number of configured traffic shaper queues (excluding template queues) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_pipe_active_flows | Gauge | pipe, description | Number of currently active flows on this pipe | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_pipe_packets | Gauge | pipe, description | Total packets processed by this pipe (gauge: flow stats expire with idle flows) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_pipe_bytes | Gauge | pipe, description | Total bytes processed by this pipe (gauge: flow stats expire with idle flows) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_pipe_drop_packets | Gauge | pipe, description | Total packets dropped by this pipe (gauge) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_pipe_drop_bytes | Gauge | pipe, description | Total bytes dropped by this pipe (gauge) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queue_active_flows | Gauge | queue, pipe, description | Number of currently active flows on this queue | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queue_packets | Gauge | queue, pipe, description | Total packets processed by this queue (gauge) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queue_bytes | Gauge | queue, pipe, description | Total bytes processed by this queue (gauge) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queue_drop_packets | Gauge | queue, pipe, description | Total packets dropped by this queue (gauge) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queue_drop_bytes | Gauge | queue, pipe, description | Total bytes dropped by this queue (gauge) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_rule_packets_total | Counter | rule, attached_to, target_type, description | Cumulative packets matched by this traffic shaper rule | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_rule_bytes_total | Counter | rule, attached_to, target_type, description | Cumulative bytes matched by this traffic shaper rule | --exporter.disable-trafficshaper |
 
 ## Unbound DNS
 

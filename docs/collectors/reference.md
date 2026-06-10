@@ -10,9 +10,11 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPNSENSE_EXPORTER_DISABLE_APCUPSD |
 | ARP Table | arp_table | 1 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
 | Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
+| BPF Statistics | bpf | 6 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
 | Captive Portal | captiveportal | 4 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
+| Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
 | CrowdSec | crowdsec | 9 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
@@ -23,9 +25,11 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 8 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
+| HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
 | HAProxy | haproxy | 38 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
-| IPsec | ipsec | 14 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
+| IPsec | ipsec | 17 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
+| ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
 | Interfaces | interfaces | 18 | Enabled | --- | --- |
 | Kea DHCP | kea | 13 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
@@ -46,6 +50,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | System | system | 12 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
 | Tailscale | tailscale | 10 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
+| Traffic Shaper | trafficshaper | 14 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
 | Unbound DNS | unbound_dns | 32 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
 

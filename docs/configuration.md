@@ -183,9 +183,11 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-apcupsd` | `OPNSENSE_EXPORTER_DISABLE_APCUPSD` | APC UPS (apcupsd) | Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent) |
 | `--exporter.disable-arp-table` | `OPNSENSE_EXPORTER_DISABLE_ARP_TABLE` | ARP Table | Disable the scraping of the ARP table |
 | `--exporter.disable-activity` | `OPNSENSE_EXPORTER_DISABLE_ACTIVITY` | Activity | Disable the scraping of system activity metrics (CPU percentages, thread counts) |
+| `--exporter.disable-bpf` | `OPNSENSE_EXPORTER_DISABLE_BPF` | BPF Statistics | Disable the scraping of BPF listener statistics |
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | CARP | Disable the scraping of CARP/VIP status metrics |
 | `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | Captive Portal | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | Certificates | Disable the scraping of certificate expiry metrics |
+| `--exporter.disable-chrony` | `OPNSENSE_EXPORTER_DISABLE_CHRONY` | Chrony | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | Cron | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | CrowdSec | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | Dnsmasq DHCP | Disable the scraping of Dnsmasq DHCP leases |
@@ -199,6 +201,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-haproxy` | `OPNSENSE_EXPORTER_DISABLE_HAPROXY` | HAProxy | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | IPsec | Disable the scraping of IPSec service |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | ISC DHCPv4 | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |
+| `--exporter.disable-dhcpv6` | `OPNSENSE_EXPORTER_DISABLE_DHCPV6` | ISC DHCPv6 | Disable the scraping of ISC DHCPv6 leases and delegated prefixes (silent when the legacy ISC DHCP backend is absent) |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | Kea DHCP | Disable the scraping of Kea DHCP lease metrics |
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | Mbuf | Disable the scraping of mbuf statistics |
 | `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | Monit | Disable the scraping of Monit service check status (silent when Monit is not running) |
@@ -214,6 +217,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | System | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | Tailscale | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
 | `--exporter.disable-temperature` | `OPNSENSE_EXPORTER_DISABLE_TEMPERATURE` | Temperature | Disable the scraping of temperature metrics |
+| `--exporter.disable-trafficshaper` | `OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER` | Traffic Shaper | Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured) |
 | `--exporter.disable-unbound` | `OPNSENSE_EXPORTER_DISABLE_UNBOUND` | Unbound DNS | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPNSENSE_EXPORTER_DISABLE_WIREGUARD` | Wireguard | Disable the scraping of Wireguard service |
 <!-- docgen:end:flags-collectors-default-on -->
@@ -229,6 +233,7 @@ These collectors are disabled by default because they make additional API calls 
 <!-- docgen:begin:flags-collectors-opt-in -->
 | Flag | Env Var | Collector | Description |
 |------|---------|-----------|-------------|
+| `--exporter.enable-hasync` | `OPNSENSE_EXPORTER_ENABLE_HASYNC` | HA Sync Status | Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scrape). Disabled by default. |
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | NetFlow | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | Network Diagnostics | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |
 <!-- docgen:end:flags-collectors-opt-in -->
@@ -248,6 +253,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Firewall Rules | Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets) |
 | `--exporter.enable-firmware-package-details` | `OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS` | Firmware | Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape) |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | ISC DHCPv4 | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
+| `--exporter.enable-dhcpv6-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS` | ISC DHCPv6 | Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks) |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Kea DHCP | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | OpenVPN | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |
 | `--exporter.enable-tailscale-peer-details` | `OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS` | Tailscale | Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer hostname labels) |
@@ -267,12 +273,15 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-alias` | `OPNSENSE_EXPORTER_DISABLE_ALIAS` | `false` | Disable the scraping of firewall alias table sizes |
 | `--exporter.disable-apcupsd` | `OPNSENSE_EXPORTER_DISABLE_APCUPSD` | `false` | Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent) |
 | `--exporter.disable-arp-table` | `OPNSENSE_EXPORTER_DISABLE_ARP_TABLE` | `false` | Disable the scraping of the ARP table |
+| `--exporter.disable-bpf` | `OPNSENSE_EXPORTER_DISABLE_BPF` | `false` | Disable the scraping of BPF listener statistics |
 | `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | `false` | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | `false` | Disable the scraping of CARP/VIP status metrics |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | `false` | Disable the scraping of certificate expiry metrics |
+| `--exporter.disable-chrony` | `OPNSENSE_EXPORTER_DISABLE_CHRONY` | `false` | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | `false` | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | `false` | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | `false` | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |
+| `--exporter.disable-dhcpv6` | `OPNSENSE_EXPORTER_DISABLE_DHCPV6` | `false` | Disable the scraping of ISC DHCPv6 leases and delegated prefixes (silent when the legacy ISC DHCP backend is absent) |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | `false` | Disable the scraping of Dnsmasq DHCP leases |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | `false` | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
 | `--exporter.disable-firewall` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL` | `false` | Disable the scraping of the firewall (pf) metrics |
@@ -297,13 +306,16 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | `false` | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | `false` | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
 | `--exporter.disable-temperature` | `OPNSENSE_EXPORTER_DISABLE_TEMPERATURE` | `false` | Disable the scraping of temperature metrics |
+| `--exporter.disable-trafficshaper` | `OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER` | `false` | Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured) |
 | `--exporter.disable-unbound` | `OPNSENSE_EXPORTER_DISABLE_UNBOUND` | `false` | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPNSENSE_EXPORTER_DISABLE_WIREGUARD` | `false` | Disable the scraping of Wireguard service |
 | `--exporter.enable-alias-details` | `OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS` | `false` | Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table) |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
+| `--exporter.enable-dhcpv6-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks) |
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | `false` | Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks) |
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | `false` | Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets) |
 | `--exporter.enable-firmware-package-details` | `OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS` | `false` | Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape) |
+| `--exporter.enable-hasync` | `OPNSENSE_EXPORTER_ENABLE_HASYNC` | `false` | Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scrape). Disabled by default. |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | `false` | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | `false` | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | `false` | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |

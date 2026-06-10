@@ -14,6 +14,7 @@ Rows:
                             instances table, per-session details table (opt-in metric)
   5. IPsec Tunnels         gated has_ipsec_tunnels: phase1 statetimeline + ts,
                             phase2 tables + ts
+  6. IPsec Pools           gated has_ipsec_pools: mode-cfg pool utilization
 """
 
 from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
@@ -38,6 +39,8 @@ def build(b: Builder):
                "label_values(opnsense_ipsec_service_running, __name__)")
     b.sentinel("has_ipsec_tunnels",
                "label_values(opnsense_ipsec_phase1_status, __name__)")
+    b.sentinel("has_ipsec_pools",
+               "label_values(opnsense_ipsec_pool_size, __name__)")
 
     # ================================================================
     # Row 1: VPN Services (always visible)
@@ -288,6 +291,28 @@ def build(b: Builder):
     )
 
     # ================================================================
+    # Row 6: IPsec Pools (mode-cfg address pool utilization)
+    # ================================================================
+    pool_online = b.ts(
+        "IPsec Pool Leases Online",
+        [(sel("opnsense_ipsec_pool_leases_online"), "{{pool}} ({{net}})")],
+        unit="short", w=8, h=8,
+        desc="Number of mode-cfg leases currently online per pool.",
+    )
+    pool_offline = b.ts(
+        "IPsec Pool Leases Offline",
+        [(sel("opnsense_ipsec_pool_leases_offline"), "{{pool}} ({{net}})")],
+        unit="short", w=8, h=8,
+        desc="Number of mode-cfg leases currently offline per pool.",
+    )
+    pool_size = b.bargauge(
+        "IPsec Pool Size",
+        [(sel("opnsense_ipsec_pool_size"), "{{pool}} {{net}}")],
+        unit="short", w=8, h=8, orient="horizontal",
+        desc="Total address space size of each mode-cfg pool.",
+    )
+
+    # ================================================================
     # Tab assembly
     # ================================================================
     b.tab("VPN", [
@@ -310,4 +335,7 @@ def build(b: Builder):
         b.row("IPsec Phase 2",
               [ipsec_p2_install, ipsec_p2_throughput, ipsec_p2_pkts, ipsec_p2_times],
               present="has_ipsec_tunnels"),
+        b.row("IPsec Mode-CFG Pools",
+              [pool_online, pool_offline, pool_size],
+              present="has_ipsec_pools"),
     ])

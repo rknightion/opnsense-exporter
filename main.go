@@ -272,6 +272,30 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCaptivePortalCollector())
 		logger.Info("captiveportal collector disabled")
 	}
+	if !collectorsSwitches.TrafficShaper {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutTrafficShaperCollector())
+		logger.Info("trafficshaper collector disabled")
+	}
+	if !collectorsSwitches.Hasync {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutHasyncCollector())
+		logger.Info("hasync collector disabled (opt-in via --exporter.enable-hasync)")
+	}
+	if !collectorsSwitches.Chrony {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutChronyCollector())
+		logger.Info("chrony collector disabled")
+	}
+	if !collectorsSwitches.Dhcpv6 {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDhcpv6Collector())
+		logger.Info("dhcpv6 collector disabled")
+	}
+	if collectorsSwitches.Dhcpv6Details {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDhcpv6Details())
+		logger.Info("dhcpv6 per-lease details enabled")
+	}
+	if !collectorsSwitches.BPF {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutBPFCollector())
+		logger.Info("bpf collector disabled")
+	}
 
 	// Resolve the instance label. When the user does not set one, default to the
 	// OPNsense hostname reported by the API so single-instance deployments work

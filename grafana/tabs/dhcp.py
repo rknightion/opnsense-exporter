@@ -1,5 +1,5 @@
 """
-DHCP tab — covers all dnsmasq, Kea DHCPv4/v6, and ISC DHCPv4 metrics.
+DHCP tab — covers all dnsmasq, Kea DHCPv4/v6, ISC DHCPv4, and ISC DHCPv6 metrics.
 
 The host may run at most one DHCP backend at a time; each row is gated on a
 presence sentinel so unused backends stay hidden. Detail lease tables live in
@@ -18,6 +18,9 @@ Rows:
   ISC DHCPv4:
     6. ISC DHCPv4 summary    — gated has_dhcpv4_isc: leases totals + by_iface
     7. ISC DHCPv4 details    — gated has_dhcpv4_details: dhcpv4_lease_info table
+  ISC DHCPv6:
+    8. ISC DHCPv6 summary    — gated has_dhcpv6_isc: leases totals + by_iface + PD prefixes
+    9. ISC DHCPv6 details    — gated has_dhcpv6_details: dhcpv6_lease_info table
 """
 
 from builder import Builder, sel, RUNSTOP
@@ -39,6 +42,10 @@ def build(b: Builder):
                "query_result(opnsense_dhcpv4_leases_total > 0)")
     b.sentinel("has_dhcpv4_details",
                "label_values(opnsense_dhcpv4_lease_info, __name__)")
+    b.sentinel("has_dhcpv6_isc",
+               "query_result(opnsense_dhcpv6_leases_total > 0)")
+    b.sentinel("has_dhcpv6_details",
+               "label_values(opnsense_dhcpv6_lease_info, __name__)")
 
     # ================================================================
     # DNSMASQ — Row 1: summary
@@ -298,6 +305,70 @@ def build(b: Builder):
     )
 
     # ================================================================
+    # ISC DHCPv6 — Row 8: summary
+    # ================================================================
+    dhcpv6_total = b.stat(
+        "ISC DHCPv6 Leases",
+        sel("opnsense_dhcpv6_leases_total"),
+        unit="short", w=4, h=4,
+        desc="Total ISC DHCPv6 leases (instantaneous count).",
+    )
+    dhcpv6_reserved = b.stat(
+        "ISC DHCPv6 Reserved",
+        sel("opnsense_dhcpv6_leases_reserved_total"),
+        unit="short", w=4, h=4,
+        desc="Reserved (static) ISC DHCPv6 leases.",
+    )
+    dhcpv6_dynamic = b.stat(
+        "ISC DHCPv6 Dynamic",
+        sel("opnsense_dhcpv6_leases_dynamic_total"),
+        unit="short", w=4, h=4,
+        desc="Dynamic ISC DHCPv6 leases.",
+    )
+    dhcpv6_by_iface = b.bargauge(
+        "ISC DHCPv6 Leases by Interface",
+        [(sel("opnsense_dhcpv6_leases_by_interface"), "{{interface}}")],
+        unit="short", w=12, h=4, orient="horizontal",
+        desc="ISC DHCPv6 leases active per interface.",
+    )
+    dhcpv6_pd_total = b.stat(
+        "PD Prefixes Total",
+        sel("opnsense_dhcpv6_pd_prefixes_total"),
+        unit="short", w=4, h=4,
+        desc="Total number of delegated prefixes (pd_prefixes_total — instantaneous count).",
+    )
+    dhcpv6_pd_active = b.stat(
+        "PD Prefixes Active",
+        sel("opnsense_dhcpv6_pd_prefixes_active"),
+        unit="short", w=4, h=4,
+        desc="Active (state=active) delegated prefixes.",
+    )
+
+    # ================================================================
+    # ISC DHCPv6 — Row 9: lease detail table
+    # ================================================================
+    dhcpv6_lease_table = b.table(
+        "ISC DHCPv6 Lease Details",
+        [sel("opnsense_dhcpv6_lease_info")],
+        w=24, h=10,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "address": "IPv6 Address",
+            "mac": "MAC Address",
+            "duid": "DUID",
+            "if_descr": "Interface",
+            "state": "State",
+            "status": "Status",
+            "type": "Type",
+        },
+        sort_by="Interface",
+        desc=(
+            "Per-lease ISC DHCPv6 detail (value is always 1; use label columns). "
+            "Only emitted with --exporter.enable-dhcpv6-details."
+        ),
+    )
+
+    # ================================================================
     # Tab assembly
     # ================================================================
     b.tab("DHCP", [
@@ -325,4 +396,11 @@ def build(b: Builder):
         b.row("ISC DHCPv4 Lease Details",
               [dhcpv4_lease_table],
               present="has_dhcpv4_details"),
+        b.row("ISC DHCPv6",
+              [dhcpv6_total, dhcpv6_reserved, dhcpv6_dynamic, dhcpv6_by_iface,
+               dhcpv6_pd_total, dhcpv6_pd_active],
+              present="has_dhcpv6_isc"),
+        b.row("ISC DHCPv6 Lease Details",
+              [dhcpv6_lease_table],
+              present="has_dhcpv6_details"),
     ])

@@ -1,5 +1,5 @@
 """
-Protocol Stats tab — covers all 51 opnsense_protocol_* metrics.
+Protocol Stats tab — covers all 51 opnsense_protocol_* metrics plus BPF statistics.
 
 Rows:
   TCP Traffic         — sent/received packets rate ts
@@ -14,6 +14,8 @@ Rows:
   ICMP                — calls/sent rate ts + dropped-by-reason table
   CARP Protocol       — recv/sent rate ts + dropped-by-reason table
   pfsync Protocol     — recv/sent rate ts + dropped-by-reason table + send-errors ts
+  BPF Statistics      — listeners_total stat; per-(process,interface) packet counters rate ts;
+                         buffer size gauges ts (always visible — core endpoint)
 """
 
 from builder import Builder, sel, RATE
@@ -352,6 +354,49 @@ def build(b: Builder):
     )
 
     # -------------------------------------------------------------------------
+    # BPF Statistics (core endpoint — always present, no sentinel gate)
+    # -------------------------------------------------------------------------
+    bpf_listeners = b.stat(
+        "BPF Listeners",
+        sel("opnsense_bpf_listeners_total"),
+        unit="short", w=6, h=4,
+        desc=(
+            "Total number of BPF listener entries before aggregation. "
+            "Aggregated by (process, interface) per D9."
+        ),
+    )
+    bpf_pkts = b.ts(
+        "BPF Packet Counters (rate)",
+        [
+            (f'rate({sel("opnsense_bpf_received_packets_total")}[{RATE}])',
+             "{{process}}/{{interface}} received"),
+            (f'rate({sel("opnsense_bpf_dropped_packets_total")}[{RATE}])',
+             "{{process}}/{{interface}} dropped"),
+            (f'rate({sel("opnsense_bpf_matched_packets_total")}[{RATE}])',
+             "{{process}}/{{interface}} matched"),
+        ],
+        unit="pps", w=18, h=8,
+        desc=(
+            "BPF packet counters (cumulative) per (process, interface) aggregation. "
+            "Aggregation sums entries with the same process+interface labels."
+        ),
+    )
+    bpf_buffers = b.ts(
+        "BPF Buffer Sizes",
+        [
+            (sel("opnsense_bpf_store_buffer_bytes"),
+             "{{process}}/{{interface}} store"),
+            (sel("opnsense_bpf_hold_buffer_bytes"),
+             "{{process}}/{{interface}} hold"),
+        ],
+        unit="bytes", w=24, h=8,
+        desc=(
+            "BPF store and hold buffer sizes in bytes per (process, interface). "
+            "These are gauges — the kernel may resize them dynamically."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
     # Assemble the tab
     # -------------------------------------------------------------------------
     b.tab("Protocol Stats", [
@@ -365,4 +410,5 @@ def build(b: Builder):
         b.row("ICMP", [icmp_traffic, icmp_drops]),
         b.row("CARP Protocol", [carp_traffic, carp_drops]),
         b.row("pfsync Protocol", [pfsync_traffic, pfsync_errors, pfsync_drops]),
+        b.row("BPF Statistics", [bpf_listeners, bpf_pkts, bpf_buffers]),
     ])

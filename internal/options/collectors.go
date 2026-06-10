@@ -195,6 +195,30 @@ var (
 		"exporter.disable-captiveportal",
 		"Disable the scraping of captive portal zone/session metrics (silent when no zones are configured)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL").Default("false").Bool()
+	trafficShaperCollectorDisabled = kingpin.Flag(
+		"exporter.disable-trafficshaper",
+		"Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER").Default("false").Bool()
+	hasyncEnabled = kingpin.Flag(
+		"exporter.enable-hasync",
+		"Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scrape). Disabled by default.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_HASYNC").Default("false").Bool()
+	chronyCollectorDisabled = kingpin.Flag(
+		"exporter.disable-chrony",
+		"Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CHRONY").Default("false").Bool()
+	dhcpv6CollectorDisabled = kingpin.Flag(
+		"exporter.disable-dhcpv6",
+		"Disable the scraping of ISC DHCPv6 leases and delegated prefixes (silent when the legacy ISC DHCP backend is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_DHCPV6").Default("false").Bool()
+	dhcpv6DetailsEnabled = kingpin.Flag(
+		"exporter.enable-dhcpv6-details",
+		"Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS").Default("false").Bool()
+	bpfCollectorDisabled = kingpin.Flag(
+		"exporter.disable-bpf",
+		"Disable the scraping of BPF listener statistics",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_BPF").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -247,6 +271,12 @@ type CollectorsDisableSwitch struct {
 	NUT                    bool
 	Apcupsd                bool
 	CaptivePortal          bool
+	TrafficShaper          bool
+	Hasync                 bool
+	Chrony                 bool
+	Dhcpv6                 bool
+	Dhcpv6Details          bool
+	BPF                    bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -300,6 +330,12 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		NUT:                    !*nutCollectorDisabled,
 		Apcupsd:                !*apcupsdCollectorDisabled,
 		CaptivePortal:          !*captivePortalCollectorDisabled,
+		TrafficShaper:          !*trafficShaperCollectorDisabled,
+		Hasync:                 *hasyncEnabled,
+		Chrony:                 !*chronyCollectorDisabled,
+		Dhcpv6:                 !*dhcpv6CollectorDisabled,
+		Dhcpv6Details:          *dhcpv6DetailsEnabled,
+		BPF:                    !*bpfCollectorDisabled,
 	}
 }
 
@@ -367,4 +403,10 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-nut", Subsystem: "nut"},
 	{Flag: "exporter.disable-apcupsd", Subsystem: "apcupsd"},
 	{Flag: "exporter.disable-captiveportal", Subsystem: "captiveportal"},
+	{Flag: "exporter.disable-trafficshaper", Subsystem: "trafficshaper"},
+	{Flag: "exporter.enable-hasync", Subsystem: "hasync"},
+	{Flag: "exporter.disable-chrony", Subsystem: "chrony"},
+	{Flag: "exporter.disable-dhcpv6", Subsystem: "dhcpv6"},
+	{Flag: "exporter.enable-dhcpv6-details", Subsystem: "dhcpv6", Detail: true},
+	{Flag: "exporter.disable-bpf", Subsystem: "bpf"},
 }

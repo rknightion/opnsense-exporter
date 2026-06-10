@@ -209,6 +209,7 @@ def register_subsystem_tabs(b: Builder):
         "services_cron", "syslog", "qfeeds", "netflow", "carp",
         "haproxy", "nginx", "frr", "monit",
         "crowdsec", "ups", "captiveportal",
+        "trafficshaper", "hasync", "chrony",
     ]
     import importlib
     for mod in order:
