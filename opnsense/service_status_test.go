@@ -64,3 +64,45 @@ func TestFetchServiceStatus_UnknownEndpoint(t *testing.T) {
 		t.Errorf("expected status 0 for client error, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchServiceStatusOptional_Running(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	defer server.Close()
+
+	status, ok, err := client.FetchServiceStatusOptional("dyndnsServiceStatus")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok || status != "running" {
+		t.Errorf("expected (running, true), got (%q, %v)", status, ok)
+	}
+}
+
+func TestFetchServiceStatusOptional_404IsAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	defer server.Close()
+
+	status, ok, err := client.FetchServiceStatusOptional("dyndnsServiceStatus")
+	if err != nil {
+		t.Fatalf("expected nil error on 404, got: %v", err)
+	}
+	if ok || status != "" {
+		t.Errorf("expected (\"\", false), got (%q, %v)", status, ok)
+	}
+}
+
+func TestFetchServiceStatusOptional_ServerErrorPropagates(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	defer server.Close()
+
+	_, _, err := client.FetchServiceStatusOptional("dyndnsServiceStatus")
+	if err == nil {
+		t.Fatal("expected error on 500")
+	}
+}
