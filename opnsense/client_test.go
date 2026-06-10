@@ -311,6 +311,22 @@ func TestTruncateBody_RedactsSensitiveFields(t *testing.T) {
 	}
 }
 
+func TestTruncateBody_RedactsCAPrivateKey(t *testing.T) {
+	body := []byte(`{"descr":"OPNsense-CA","prv":"LS0tLS1CRUdJTiBQUklWQVRF","prv_payload":"-----BEGIN PRIVATE KEY-----\nMIIE","crt":"keep"}`)
+
+	got := string(truncateBody(body))
+
+	if strings.Contains(got, "LS0tLS1CRUdJTiBQUklWQVRF") || strings.Contains(got, "BEGIN PRIVATE KEY") {
+		t.Errorf("expected private key material to be redacted, got: %s", got)
+	}
+	if !strings.Contains(got, `"prv":"[REDACTED]"`) || !strings.Contains(got, `"prv_payload":"[REDACTED]"`) {
+		t.Errorf("expected prv fields to read [REDACTED], got: %s", got)
+	}
+	if !strings.Contains(got, `"descr":"OPNsense-CA"`) {
+		t.Errorf("expected benign descr value to be untouched, got: %s", got)
+	}
+}
+
 func TestTruncateBody_RedactsBeforeTruncating(t *testing.T) {
 	body := []byte(`{"apikey":"supersecret","pad":"` + strings.Repeat("a", maxErrorBodyBytes) + `"}`)
 

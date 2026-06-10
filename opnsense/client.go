@@ -337,7 +337,7 @@ func (c *Client) readResponse(path EndpointPath, resp *http.Response, responseSt
 // credential-like word (password, secret, token, api key, private key),
 // including OPNsense's "%"-prefixed field variants, so the value (string,
 // number or null) can be redacted before the body reaches an error message.
-var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
+var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key|prv)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
 
 // redactSensitiveFields replaces the values of credential-like JSON fields
 // with "[REDACTED]". Non-JSON bodies pass through unchanged.
