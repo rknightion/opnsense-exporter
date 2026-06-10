@@ -3,11 +3,14 @@ package opnsense
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/prometheus/common/promslog"
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -406,5 +409,56 @@ func TestDo_OversizedGzipResponseRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Message, "exceeds") {
 		t.Errorf("expected size limit error, got: %s", err.Message)
+	}
+}
+
+func TestWithContextCancelsSlowRequest(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+	})
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	bound := client.WithContext(ctx)
+
+	start := time.Now()
+	var out map[string]any
+	apiErr := bound.do("GET", "api/test/slow", nil, &out)
+	elapsed := time.Since(start)
+
+	if apiErr == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("request was not aborted promptly; took %s", elapsed)
+	}
+	if !strings.Contains(apiErr.Message, "request aborted") {
+		t.Errorf("expected 'request aborted' in error message, got %q", apiErr.Message)
+	}
+	if strings.Contains(apiErr.Message, "max retries") {
+		t.Errorf("cancelled context must not burn the retry budget, got %q", apiErr.Message)
+	}
+}
+
+func TestWithContextBackgroundStillWorks(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true}`)
+	})
+	defer server.Close()
+
+	bound := client.WithContext(context.Background())
+
+	var out map[string]any
+	if apiErr := bound.do("GET", "api/test/ok", nil, &out); apiErr != nil {
+		t.Fatalf("expected success, got %v", apiErr)
+	}
+	if out["ok"] != true {
+		t.Errorf("expected ok=true in response, got %v", out)
 	}
 }

@@ -3,6 +3,7 @@ package opnsense
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -52,6 +53,11 @@ type Client struct {
 	key              string
 	secret           string
 	sslInsecure      bool
+	// reqCtx, when set via WithContext, bounds every request issued by this
+	// client (scrape deadline / cancellation). Storing a context in a struct is
+	// deliberate here: the clone is request-scoped, mirroring the
+	// http.Request.WithContext pattern. nil means context.Background().
+	reqCtx context.Context
 }
 
 // NewClient creates a new OPNsense API Client
@@ -170,6 +176,15 @@ func (c *Client) Endpoints() map[EndpointName]EndpointPath {
 	return c.endpoints
 }
 
+// WithContext returns a shallow copy of the client whose requests are bound to
+// ctx (deadline and cancellation). The clone shares the underlying http.Client,
+// endpoint table and credentials; only the request context differs.
+func (c *Client) WithContext(ctx context.Context) *Client {
+	clone := *c
+	clone.reqCtx = ctx
+	return &clone
+}
+
 // do sends a request to the OPNsense API.
 // The response is unmarshalled into responseStruct.
 // For POST requests, Content-Type is set to application/json;charset=utf-8.
@@ -206,13 +221,18 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 
 	c.log.Debug("fetching data", "component", "opnsense-client", "url", reqURL, "method", method)
 
+	ctx := c.reqCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	// Retry the request up to MaxRetries times
 	for range MaxRetries {
 		var reqBody io.Reader
 		if bodyBytes != nil {
 			reqBody = bytes.NewReader(bodyBytes)
 		}
-		req, err := http.NewRequest(method, reqURL, reqBody)
+		req, err := http.NewRequestWithContext(ctx, method, reqURL, reqBody)
 		if err != nil {
 			return &APICallError{
 				Endpoint:   string(path),
@@ -233,6 +253,13 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			if ctx.Err() != nil {
+				return &APICallError{
+					Endpoint:   string(path),
+					Message:    fmt.Sprintf("request aborted: %s", ctx.Err()),
+					StatusCode: 0,
+				}
+			}
 			c.log.Error("failed to send request; retrying",
 				"component", "opnsense-client",
 				"err", err.Error())
