@@ -187,17 +187,21 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | Cron | Disable the scraping of the cron table |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | Dnsmasq DHCP | Disable the scraping of Dnsmasq DHCP leases |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
+| `--exporter.disable-frr` | `OPNSENSE_EXPORTER_DISABLE_FRR` | FRR Routing (BGP/OSPF/BFD) | Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent) |
 | `--exporter.disable-firewall` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL` | Firewall | Disable the scraping of the firewall (pf) metrics |
 | `--exporter.disable-alias` | `OPNSENSE_EXPORTER_DISABLE_ALIAS` | Firewall Aliases | Disable the scraping of firewall alias table sizes |
 | `--exporter.disable-firewall-rules` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` | Firewall Rules | Disable the scraping of firewall rule statistics |
 | `--exporter.disable-firmware` | `OPNSENSE_EXPORTER_DISABLE_FIRMWARE` | Firmware | Disable the scraping of the firmware metrics |
 | `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | Gateways | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
+| `--exporter.disable-haproxy` | `OPNSENSE_EXPORTER_DISABLE_HAPROXY` | HAProxy | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | IPsec | Disable the scraping of IPSec service |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | ISC DHCPv4 | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | Kea DHCP | Disable the scraping of Kea DHCP lease metrics |
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | Mbuf | Disable the scraping of mbuf statistics |
+| `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | Monit | Disable the scraping of Monit service check status (silent when Monit is not running) |
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | NDP | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
 | `--exporter.disable-ntp` | `OPNSENSE_EXPORTER_DISABLE_NTP` | NTP | Disable the scraping of NTP peer metrics |
+| `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | Nginx | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | OpenVPN | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF Statistics | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | Q-Feeds | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
@@ -267,11 +271,15 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-firewall` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL` | `false` | Disable the scraping of the firewall (pf) metrics |
 | `--exporter.disable-firewall-rules` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` | `false` | Disable the scraping of firewall rule statistics |
 | `--exporter.disable-firmware` | `OPNSENSE_EXPORTER_DISABLE_FIRMWARE` | `false` | Disable the scraping of the firmware metrics |
+| `--exporter.disable-frr` | `OPNSENSE_EXPORTER_DISABLE_FRR` | `false` | Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent) |
 | `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | `false` | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
+| `--exporter.disable-haproxy` | `OPNSENSE_EXPORTER_DISABLE_HAPROXY` | `false` | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | `false` | Disable the scraping of IPSec service |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | `false` | Disable the scraping of Kea DHCP lease metrics |
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | `false` | Disable the scraping of mbuf statistics |
+| `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | `false` | Disable the scraping of Monit service check status (silent when Monit is not running) |
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | `false` | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
+| `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | `false` | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-ntp` | `OPNSENSE_EXPORTER_DISABLE_NTP` | `false` | Disable the scraping of NTP peer metrics |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | `false` | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | `false` | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |

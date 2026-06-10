@@ -103,6 +103,10 @@ var SubsystemDisplayNames = map[string]string{
 	QFeedsSubsystem:        "Q-Feeds",
 	TailscaleSubsystem:     "Tailscale",
 	AliasSubsystem:         "Firewall Aliases",
+	HAProxySubsystem:       "HAProxy",
+	NginxSubsystem:         "Nginx",
+	FRRSubsystem:           "FRR Routing (BGP/OSPF/BFD)",
+	MonitSubsystem:         "Monit",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -349,6 +353,30 @@ func WithoutTailscaleCollector() Option {
 // removes the alias collector from the list of collectors
 func WithoutAliasCollector() Option {
 	return withoutCollectorInstance(AliasSubsystem)
+}
+
+// WithoutHAProxyCollector Option
+// removes the haproxy collector from the list of collectors
+func WithoutHAProxyCollector() Option {
+	return withoutCollectorInstance(HAProxySubsystem)
+}
+
+// WithoutNginxCollector Option
+// removes the nginx collector from the list of collectors
+func WithoutNginxCollector() Option {
+	return withoutCollectorInstance(NginxSubsystem)
+}
+
+// WithoutFRRCollector Option
+// removes the frr collector from the list of collectors
+func WithoutFRRCollector() Option {
+	return withoutCollectorInstance(FRRSubsystem)
+}
+
+// WithoutMonitCollector Option
+// removes the monit collector from the list of collectors
+func WithoutMonitCollector() Option {
+	return withoutCollectorInstance(MonitSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

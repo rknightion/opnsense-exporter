@@ -163,6 +163,22 @@ var (
 		"exporter.enable-alias-details",
 		"Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table)",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS").Default("false").Bool()
+	haproxyCollectorDisabled = kingpin.Flag(
+		"exporter.disable-haproxy",
+		"Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_HAPROXY").Default("false").Bool()
+	nginxCollectorDisabled = kingpin.Flag(
+		"exporter.disable-nginx",
+		"Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_NGINX").Default("false").Bool()
+	frrCollectorDisabled = kingpin.Flag(
+		"exporter.disable-frr",
+		"Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_FRR").Default("false").Bool()
+	monitCollectorDisabled = kingpin.Flag(
+		"exporter.disable-monit",
+		"Disable the scraping of Monit service check status (silent when Monit is not running)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_MONIT").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -207,6 +223,10 @@ type CollectorsDisableSwitch struct {
 	TailscalePeerDetails   bool
 	Alias                  bool
 	AliasDetails           bool
+	HAProxy                bool
+	Nginx                  bool
+	FRR                    bool
+	Monit                  bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -252,6 +272,10 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		TailscalePeerDetails:   *tailscalePeerDetailsEnabled,
 		Alias:                  !*aliasCollectorDisabled,
 		AliasDetails:           *aliasDetailsEnabled,
+		HAProxy:                !*haproxyCollectorDisabled,
+		Nginx:                  !*nginxCollectorDisabled,
+		FRR:                    !*frrCollectorDisabled,
+		Monit:                  !*monitCollectorDisabled,
 	}
 }
 
@@ -311,4 +335,8 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-tailscale-peer-details", Subsystem: "tailscale", Detail: true},
 	{Flag: "exporter.disable-alias", Subsystem: "alias"},
 	{Flag: "exporter.enable-alias-details", Subsystem: "alias", Detail: true},
+	{Flag: "exporter.disable-haproxy", Subsystem: "haproxy"},
+	{Flag: "exporter.disable-nginx", Subsystem: "nginx"},
+	{Flag: "exporter.disable-frr", Subsystem: "frr"},
+	{Flag: "exporter.disable-monit", Subsystem: "monit"},
 }

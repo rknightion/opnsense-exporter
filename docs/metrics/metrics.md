@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 371
-- **Gauges:** 210
-- **Counters:** 161
+- **Total metrics:** 458
+- **Gauges:** 252
+- **Counters:** 206
 
 ## General
 
@@ -109,6 +109,34 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_dyndns_account_info | Gauge | description, service, hostnames, zone, interface, current_ip | DynDNS account information (value is always 1; use labels) | --exporter.disable-dyndns |
 | opnsense_dyndns_service_running | Gauge | --- | Whether the DynDNS service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-dyndns |
 
+## FRR Routing (BGP/OSPF/BFD)
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_frr_service_running | Gauge | --- | Whether the FRR (quagga) service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-frr |
+| opnsense_frr_bgp_peers_total | Counter | af | Total number of configured BGP peers for this address family | --exporter.disable-frr |
+| opnsense_frr_bgp_failed_peers | Gauge | af | Number of BGP peers in a failed state for this address family | --exporter.disable-frr |
+| opnsense_frr_bgp_rib_entries | Gauge | af | Number of RIB entries for this address family | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_up | Gauge | peer, remote_as, af | Whether this BGP peer session is established (1 = Established, 0 = otherwise) | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_prefixes_received | Gauge | peer, remote_as, af | Number of prefixes received from this BGP peer | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_prefixes_sent | Gauge | peer, remote_as, af | Number of prefixes sent to this BGP peer | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_uptime_seconds | Gauge | peer, remote_as, af | Uptime of this BGP peer session in seconds | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_messages_received_total | Counter | peer, remote_as, af | Cumulative BGP messages received from this peer | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_messages_sent_total | Counter | peer, remote_as, af | Cumulative BGP messages sent to this peer | --exporter.disable-frr |
+| opnsense_frr_ospf_neighbors_total | Counter | --- | Total number of OSPF neighbors | --exporter.disable-frr |
+| opnsense_frr_ospf_neighbor_adjacency | Gauge | neighbor_id, address, interface | Whether this OSPF neighbor is in Full adjacency state (1 = Full, 0 = otherwise) | --exporter.disable-frr |
+| opnsense_frr_ospf_area_interfaces_active | Gauge | area | Number of active interfaces in this OSPF area | --exporter.disable-frr |
+| opnsense_frr_ospf_area_neighbors_full_adjacent | Gauge | area | Number of neighbors in Full adjacency state in this OSPF area | --exporter.disable-frr |
+| opnsense_frr_ospf_area_lsa_count | Gauge | area | Number of LSAs in this OSPF area | --exporter.disable-frr |
+| opnsense_frr_ospf_area_spf_executed_total | Counter | area | Cumulative number of SPF calculations executed in this OSPF area | --exporter.disable-frr |
+| opnsense_frr_bfd_peers_total | Counter | --- | Total number of configured BFD peers | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_up | Gauge | peer, interface | Whether this BFD peer session is up (1 = up, 0 = down) | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_uptime_seconds | Gauge | peer | Uptime of this BFD peer session in seconds | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_control_packets_received_total | Counter | peer | Cumulative BFD control packets received from this peer | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_control_packets_sent_total | Counter | peer | Cumulative BFD control packets sent to this peer | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_session_up_events_total | Counter | peer | Cumulative BFD session-up events for this peer | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_session_down_events_total | Counter | peer | Cumulative BFD session-down events for this peer | --exporter.disable-frr |
+
 ## Firewall
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -191,6 +219,49 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_gateways_virtual | Gauge | name, address | 1 if the gateway is virtual, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_priority | Gauge | name, address | Gateway priority (lower value = higher priority) | --exporter.disable-gateways |
+
+## HAProxy
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_haproxy_service_running | Gauge | --- | Whether the HAProxy service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-haproxy |
+| opnsense_haproxy_process_uptime_seconds | Gauge | --- | HAProxy process uptime in seconds | --exporter.disable-haproxy |
+| opnsense_haproxy_process_current_connections | Gauge | --- | Current number of connections on the HAProxy process | --exporter.disable-haproxy |
+| opnsense_haproxy_process_connections_total | Counter | --- | Cumulative connections accepted by the HAProxy process | --exporter.disable-haproxy |
+| opnsense_haproxy_process_requests_total | Counter | --- | Cumulative HTTP requests processed by the HAProxy process | --exporter.disable-haproxy |
+| opnsense_haproxy_process_idle_time_percent | Gauge | --- | HAProxy process idle time percentage | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_status | Gauge | frontend | HAProxy frontend status (1 = OPEN, 0 = otherwise) | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_current_sessions | Gauge | frontend | Current sessions on this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_sessions_total | Counter | frontend | Cumulative sessions on this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_bytes_in_total | Counter | frontend | Cumulative bytes received by this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_bytes_out_total | Counter | frontend | Cumulative bytes sent by this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_request_errors_total | Counter | frontend | Cumulative request errors on this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_requests_denied_total | Counter | frontend | Cumulative requests denied by security rules on this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_http_responses_total | Counter | frontend, code | Cumulative HTTP responses by status code class on this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_status | Gauge | backend | HAProxy backend status (1 = UP, 0 = otherwise) | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_current_sessions | Gauge | backend | Current sessions on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_sessions_total | Counter | backend | Cumulative sessions on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_bytes_in_total | Counter | backend | Cumulative bytes received by this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_bytes_out_total | Counter | backend | Cumulative bytes sent by this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_queue_current | Gauge | backend | Current requests queued on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_connection_errors_total | Counter | backend | Cumulative connection errors on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_response_errors_total | Counter | backend | Cumulative response errors on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_retries_total | Counter | backend | Cumulative connection retries on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_redispatches_total | Counter | backend | Cumulative request redispatches on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_active_servers | Gauge | backend | Number of active servers on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_backup_servers | Gauge | backend | Number of backup servers on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_http_responses_total | Counter | backend, code | Cumulative HTTP responses by status code class on this backend | --exporter.disable-haproxy |
+| opnsense_haproxy_server_status | Gauge | backend, server | HAProxy server status (1 = UP, 0 = otherwise) | --exporter.disable-haproxy |
+| opnsense_haproxy_server_current_sessions | Gauge | backend, server | Current sessions on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_sessions_total | Counter | backend, server | Cumulative sessions on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_bytes_in_total | Counter | backend, server | Cumulative bytes received by this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_bytes_out_total | Counter | backend, server | Cumulative bytes sent by this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_queue_current | Gauge | backend, server | Current requests queued on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_connection_errors_total | Counter | backend, server | Cumulative connection errors on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_response_errors_total | Counter | backend, server | Cumulative response errors on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_check_failures_total | Counter | backend, server | Cumulative failed health checks on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_downtime_seconds_total | Counter | backend, server | Cumulative downtime of this server in seconds | --exporter.disable-haproxy |
+| opnsense_haproxy_server_weight | Gauge | backend, server | Current effective weight of this server | --exporter.disable-haproxy |
 
 ## IPsec
 
@@ -281,6 +352,16 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_mbuf_sendfile_io_total | Counter | --- | Total number of sendfile I/O operations | --exporter.disable-mbuf |
 | opnsense_mbuf_sendfile_pages_sent_total | Counter | --- | Total number of pages sent via sendfile | --exporter.disable-mbuf |
 
+## Monit
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_monit_service_running | Gauge | --- | Whether the Monit service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-monit |
+| opnsense_monit_status_ok | Gauge | --- | Whether the monit httpd was reachable and returned a valid status (1 = ok, 0 = failed/unreachable) | --exporter.disable-monit |
+| opnsense_monit_checks_total | Counter | --- | Total number of service checks configured in monit | --exporter.disable-monit |
+| opnsense_monit_check_status | Gauge | name, type | Whether a monit check reports no errors (1 = status field is 0, 0 = error) | --exporter.disable-monit |
+| opnsense_monit_check_monitored | Gauge | name, type | Whether a monit check is actively monitored (1 = monitored, 0 = not monitored) | --exporter.disable-monit |
+
 ## NDP
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -330,6 +411,32 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_network_diag_routes_total | Counter | proto | Number of routing table entries by protocol | --exporter.enable-network-diagnostics |
 | opnsense_network_diag_pfsync_nodes_total | Counter | --- | Total number of pfsync cluster nodes | --exporter.enable-network-diagnostics |
 | opnsense_network_diag_pfsync_node_info | Gauge | creatorid, is_local | PFSync node information (value is always 1) | --exporter.enable-network-diagnostics |
+
+## Nginx
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_nginx_service_running | Gauge | --- | Whether the nginx service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-nginx |
+| opnsense_nginx_connections_active | Gauge | --- | Current active connections | --exporter.disable-nginx |
+| opnsense_nginx_connections_reading | Gauge | --- | Current connections reading request headers | --exporter.disable-nginx |
+| opnsense_nginx_connections_writing | Gauge | --- | Current connections writing responses | --exporter.disable-nginx |
+| opnsense_nginx_connections_waiting | Gauge | --- | Current idle (keep-alive) connections | --exporter.disable-nginx |
+| opnsense_nginx_connections_accepted_total | Counter | --- | Cumulative accepted connections | --exporter.disable-nginx |
+| opnsense_nginx_connections_handled_total | Counter | --- | Cumulative handled connections | --exporter.disable-nginx |
+| opnsense_nginx_requests_total | Counter | --- | Cumulative total requests | --exporter.disable-nginx |
+| opnsense_nginx_shared_memory_max_bytes | Gauge | --- | Maximum size of the VTS shared memory zone in bytes | --exporter.disable-nginx |
+| opnsense_nginx_shared_memory_used_bytes | Gauge | --- | Currently used bytes of the VTS shared memory zone | --exporter.disable-nginx |
+| opnsense_nginx_shared_memory_used_nodes | Gauge | --- | Number of nodes in use in the VTS shared memory zone | --exporter.disable-nginx |
+| opnsense_nginx_server_zone_requests_total | Counter | zone | Cumulative requests to this server zone | --exporter.disable-nginx |
+| opnsense_nginx_server_zone_bytes_in_total | Counter | zone | Cumulative bytes received by this server zone | --exporter.disable-nginx |
+| opnsense_nginx_server_zone_bytes_out_total | Counter | zone | Cumulative bytes sent by this server zone | --exporter.disable-nginx |
+| opnsense_nginx_server_zone_responses_total | Counter | zone, code | Cumulative responses by HTTP status code class for this server zone | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_requests_total | Counter | upstream, server | Cumulative requests forwarded to this upstream server | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_bytes_in_total | Counter | upstream, server | Cumulative bytes received from this upstream server | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_bytes_out_total | Counter | upstream, server | Cumulative bytes sent to this upstream server | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_responses_total | Counter | upstream, server, code | Cumulative responses from this upstream server by HTTP status code class | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_down | Gauge | upstream, server | Whether this upstream server is marked down (1 = down, 0 = up) | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_response_time_seconds | Gauge | upstream, server | Average response time of this upstream server in seconds | --exporter.disable-nginx |
 
 ## OpenVPN
 

@@ -14,20 +14,24 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
+| FRR Routing (BGP/OSPF/BFD) | frr | 23 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
 | Firewall | firewall | 19 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 8 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
+| HAProxy | haproxy | 38 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
 | IPsec | ipsec | 14 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | Interfaces | interfaces | 18 | Enabled | --- | --- |
 | Kea DHCP | kea | 13 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
+| Monit | monit | 5 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
 | NDP | ndp | 1 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
 | NTP | ntp | 9 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
 | NetFlow | netflow | 7 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
 | Network Diagnostics | network_diag | 13 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
+| Nginx | nginx | 21 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
 | OpenVPN | openvpn | 4 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 51 | Enabled | --- | --- |

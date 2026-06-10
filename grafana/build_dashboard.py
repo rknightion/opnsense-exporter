@@ -207,6 +207,7 @@ def register_subsystem_tabs(b: Builder):
         "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound",
         "dhcp", "vpn", "tailscale", "routing", "protocols", "ntp", "certificates",
         "services_cron", "syslog", "qfeeds", "netflow", "carp",
+        "haproxy", "nginx", "frr", "monit",
     ]
     import importlib
     for mod in order:

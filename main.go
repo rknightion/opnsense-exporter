@@ -240,6 +240,22 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithAliasDetails())
 		logger.Info("alias per-table details enabled")
 	}
+	if !collectorsSwitches.HAProxy {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutHAProxyCollector())
+		logger.Info("haproxy collector disabled")
+	}
+	if !collectorsSwitches.Nginx {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNginxCollector())
+		logger.Info("nginx collector disabled")
+	}
+	if !collectorsSwitches.FRR {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFRRCollector())
+		logger.Info("frr collector disabled")
+	}
+	if !collectorsSwitches.Monit {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutMonitCollector())
+		logger.Info("monit collector disabled")
+	}
 
 	// Resolve the instance label. When the user does not set one, default to the
 	// OPNsense hostname reported by the API so single-instance deployments work
