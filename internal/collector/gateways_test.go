@@ -495,6 +495,84 @@ func TestGatewaysCollector_Update_Priority_Empty(t *testing.T) {
 	}
 }
 
+// When dpinger has no data yet ("~"), the opnsense layer returns -1 sentinels;
+// the collector must skip rtt/rttd/loss instead of emitting -1.
+func TestGatewaysCollector_Update_ProbeUnavailableSkipped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{
+					"disabled": false,
+					"name": "WARMUP_GW",
+					"descr": "Warming up",
+					"interface": "igb0",
+					"ipprotocol": "inet",
+					"gateway": "1.2.3.4",
+					"defaultgw": true,
+					"fargw": "",
+					"monitor_disable": "0",
+					"monitor_noroute": "0",
+					"monitor": "1.1.1.1",
+					"force_down": "0",
+					"priority": 255,
+					"weight": "1",
+					"latencylow": "200",
+					"current_latencylow": "",
+					"latencyhigh": "500",
+					"current_latencyhigh": "",
+					"losslow": "10",
+					"current_losslow": "",
+					"losshigh": "20",
+					"current_losshigh": "",
+					"interval": "1",
+					"current_interval": "",
+					"time_period": "60",
+					"current_time_period": "",
+					"loss_interval": "4",
+					"current_loss_interval": "",
+					"data_length": "",
+					"current_data_length": "",
+					"uuid": "abc-123",
+					"if": "wan",
+					"attribute": 1,
+					"dynamic": false,
+					"virtual": false,
+					"upstream": true,
+					"interface_descr": "WAN",
+					"status": "Online",
+					"delay": "~",
+					"stddev": "~",
+					"loss": "~",
+					"label_class": "success"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// Same shape as TestGatewaysCollector_Update_EnabledWithMonitor (17 metrics)
+	// minus rtt, rttd and loss_percentage (skipped): 14.
+	expectedCount := 14
+	if len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics (rtt/rttd/loss skipped), got %d", expectedCount, len(metrics))
+	}
+	for i, m := range metrics {
+		if v := getMetricValue(m); v == -1.0 {
+			t.Errorf("metric %d has sentinel value -1; it should have been skipped", i)
+		}
+	}
+}
+
 func TestGatewaysCollector_Name(t *testing.T) {
 	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
 	if c.Name() != GatewaysSubsystem {

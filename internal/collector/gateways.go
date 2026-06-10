@@ -108,7 +108,7 @@ func (c *gatewaysCollector) Register(namespace, instanceLabel string, log *slog.
 		[]string{"name", "address"},
 	)
 	c.status = buildPrometheusDesc(c.subsystem, "status",
-		"Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending)",
+		"Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending, 4 = Packetloss, 5 = Latency, 6 = Offline (forced))",
 		[]string{"name", "address", "default_gateway"},
 	)
 	c.forceDown = buildPrometheusDesc(
@@ -247,22 +247,26 @@ func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus
 				c.instance,
 			)
 			if v.MonitorEnabled {
-				ch <- prometheus.MustNewConstMetric(
-					c.rtt,
-					prometheus.GaugeValue,
-					v.Delay,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					c.rttd,
-					prometheus.GaugeValue,
-					v.StdDev,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
+				if v.Delay >= 0 {
+					ch <- prometheus.MustNewConstMetric(
+						c.rtt,
+						prometheus.GaugeValue,
+						v.Delay,
+						v.Name,
+						v.Monitor,
+						c.instance,
+					)
+				}
+				if v.StdDev >= 0 {
+					ch <- prometheus.MustNewConstMetric(
+						c.rttd,
+						prometheus.GaugeValue,
+						v.StdDev,
+						v.Name,
+						v.Monitor,
+						c.instance,
+					)
+				}
 				f64, _ := strconv.ParseFloat(v.LatencyLow, 64)
 				ch <- prometheus.MustNewConstMetric(
 					c.rttLow,
@@ -281,14 +285,16 @@ func (c *gatewaysCollector) Update(client *opnsense.Client, ch chan<- prometheus
 					v.Monitor,
 					c.instance,
 				)
-				ch <- prometheus.MustNewConstMetric(
-					c.lossPercentage,
-					prometheus.GaugeValue,
-					v.Loss,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
+				if v.Loss >= 0 {
+					ch <- prometheus.MustNewConstMetric(
+						c.lossPercentage,
+						prometheus.GaugeValue,
+						v.Loss,
+						v.Name,
+						v.Monitor,
+						c.instance,
+					)
+				}
 				f64, _ = strconv.ParseFloat(v.LossLow, 64)
 				ch <- prometheus.MustNewConstMetric(
 					c.lossLow,
