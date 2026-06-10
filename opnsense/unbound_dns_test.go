@@ -475,3 +475,63 @@ func TestFetchUnboundBlockListStatus_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchUnboundInfra_Success(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": [
+				{
+					"ip": "127.0.0.1@53053", "host": "10.in-addr.arpa.",
+					"ttl": "765", "ping": "0", "var": "24", "rtt": "96", "rto": "96",
+					"tA": "0", "tAAAA": "0", "tother": "0", "ednsknown": "1",
+					"edns": "0", "delay": "0", "lame": true, "dnssec": "0",
+					"rec": "0", "A": "0", "other": "0"
+				},
+				{
+					"ip": "203.0.113.53@853", "host": ".",
+					"ttl": "626", "ping": "53", "var": "43", "rtt": "225", "rto": "225",
+					"tA": "0", "tAAAA": "0", "tother": "0", "ednsknown": "0",
+					"edns": "0", "delay": "0", "lame": true, "dnssec": "0",
+					"rec": "0", "A": "0", "other": "0"
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundInfra()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Hosts) != 2 {
+		t.Fatalf("expected 2 infra hosts, got %d", len(data.Hosts))
+	}
+	h0 := data.Hosts[0]
+	if h0.IP != "127.0.0.1@53053" || h0.Host != "10.in-addr.arpa." {
+		t.Errorf("unexpected host identity: %+v", h0)
+	}
+	if h0.RTTMilliseconds != 96 || h0.RTOMilliseconds != 96 {
+		t.Errorf("expected rtt/rto 96/96, got %v/%v", h0.RTTMilliseconds, h0.RTOMilliseconds)
+	}
+	h1 := data.Hosts[1]
+	if h1.RTTMilliseconds != 225 {
+		t.Errorf("expected rtt 225, got %v", h1.RTTMilliseconds)
+	}
+}
+
+func TestFetchUnboundInfra_ServerError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	defer server.Close()
+
+	_, err := client.FetchUnboundInfra()
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+}

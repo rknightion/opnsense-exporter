@@ -52,6 +52,12 @@ type unboundDNSCollector struct {
 	blocklistEnabled *prometheus.Desc
 	serviceRunning   *prometheus.Desc
 
+	// Infra cache descriptors — only emitted when infraEnabled.
+	infraRTT *prometheus.Desc
+	infraRTO *prometheus.Desc
+
+	infraEnabled bool
+
 	subsystem string
 	instance  string
 }
@@ -204,6 +210,21 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		"Whether the service is running (1 = running, 0 = stopped/disabled)",
 		nil,
 	)
+
+	c.infraRTT = buildPrometheusDesc(c.subsystem, "infra_rtt_seconds",
+		"Smoothed round-trip time to an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set.",
+		[]string{"ip", "host"},
+	)
+	c.infraRTO = buildPrometheusDesc(c.subsystem, "infra_rto_seconds",
+		"Retransmission timeout for an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set.",
+		[]string{"ip", "host"},
+	)
+}
+
+// SetInfraEnabled toggles the per-upstream infra cache metrics
+// (--exporter.enable-unbound-infra).
+func (c *unboundDNSCollector) SetInfraEnabled(enabled bool) {
+	c.infraEnabled = enabled
 }
 
 func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -237,6 +258,8 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.tcpUsage
 	ch <- c.blocklistEnabled
 	ch <- c.serviceRunning
+	ch <- c.infraRTT
+	ch <- c.infraRTO
 }
 
 func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -458,6 +481,24 @@ func (c *unboundDNSCollector) Update(client *opnsense.Client, ch chan<- promethe
 			c.serviceRunning, prometheus.GaugeValue,
 			val, c.instance,
 		)
+	}
+
+	if c.infraEnabled {
+		infra, ierr := client.FetchUnboundInfra()
+		if ierr != nil {
+			c.log.Warn("failed to fetch unbound infra cache", "err", ierr)
+		} else {
+			for _, h := range infra.Hosts {
+				ch <- prometheus.MustNewConstMetric(
+					c.infraRTT, prometheus.GaugeValue,
+					h.RTTMilliseconds/1000.0, h.IP, h.Host, c.instance,
+				)
+				ch <- prometheus.MustNewConstMetric(
+					c.infraRTO, prometheus.GaugeValue,
+					h.RTOMilliseconds/1000.0, h.IP, h.Host, c.instance,
+				)
+			}
+		}
 	}
 
 	return nil

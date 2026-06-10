@@ -118,6 +118,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithOpenVPNDetails())
 		logger.Info("openvpn per-session details enabled")
 	}
+	if collectorsSwitches.UnboundInfra {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithUnboundInfra())
+		logger.Info("unbound per-upstream infra cache metrics enabled")
+	}
 	if !collectorsSwitches.Dnsmasq {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDnsmasqCollector())
 		logger.Info("dnsmasq collector disabled")

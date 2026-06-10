@@ -392,6 +392,66 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	return data, nil
 }
 
+// unboundInfraResponse is the JSON returned by api/unbound/diagnostics/dumpinfra.
+// Numeric values arrive as strings; only the fields we export are modelled.
+type unboundInfraResponse struct {
+	Status string `json:"status"`
+	Data   []struct {
+		IP   string `json:"ip"`
+		Host string `json:"host"`
+		RTT  string `json:"rtt"`
+		RTO  string `json:"rto"`
+	} `json:"data"`
+}
+
+// UnboundInfraHost is one entry of Unbound's infra cache (one upstream
+// server IP / zone pair) with its smoothed RTT and retransmission timeout.
+type UnboundInfraHost struct {
+	IP              string
+	Host            string
+	RTTMilliseconds float64
+	RTOMilliseconds float64
+}
+
+// UnboundInfra holds the parsed dumpinfra output. The number of entries
+// scales with the resolver's infra cache (infra-cache-numhosts, default
+// 10000 on recursive resolvers), which is why the corresponding collector
+// metrics are opt-in.
+type UnboundInfra struct {
+	Hosts []UnboundInfraHost
+}
+
+// FetchUnboundInfra calls api/unbound/diagnostics/dumpinfra and returns
+// per-upstream RTT/RTO data from Unbound's infra cache.
+func (c *Client) FetchUnboundInfra() (UnboundInfra, *APICallError) {
+	var resp unboundInfraResponse
+	var data UnboundInfra
+
+	url, ok := c.endpoints["unboundInfra"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "unboundInfra",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		return data, err
+	}
+
+	for _, h := range resp.Data {
+		data.Hosts = append(data.Hosts, UnboundInfraHost{
+			IP:              h.IP,
+			Host:            h.Host,
+			RTTMilliseconds: safeParseFloat(h.RTT),
+			RTOMilliseconds: safeParseFloat(h.RTO),
+		})
+	}
+
+	return data, nil
+}
+
 type unboundBlockListResponse struct {
 	Enabled bool `json:"enabled"`
 }

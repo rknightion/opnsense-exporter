@@ -386,6 +386,20 @@ func WithOpenVPNDetails() Option {
 	}
 }
 
+// WithUnboundInfra enables per-upstream infra cache RTT metrics for the
+// unbound_dns collector
+func WithUnboundInfra() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if uc, ok := c.(*unboundDNSCollector); ok {
+				uc.SetInfraEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithBuildInfo sets the exporter build version surfaced via
 // opnsense_exporter_build_info.
 func WithBuildInfo(version string) Option {

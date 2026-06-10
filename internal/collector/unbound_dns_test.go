@@ -8,7 +8,10 @@ import (
 	"github.com/prometheus/common/promslog"
 )
 
-func TestUnboundDNSCollector_Update(t *testing.T) {
+// unboundTestMux registers the stats, blocklist and service-status handlers
+// shared by all unbound collector tests.
+func unboundTestMux(t *testing.T) *http.ServeMux {
+	t.Helper()
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/unbound/diagnostics/stats", func(w http.ResponseWriter, r *http.Request) {
@@ -148,6 +151,12 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 		w.Write([]byte(`{"status": "running"}`))
 	})
 
+	return mux
+}
+
+func TestUnboundDNSCollector_Update(t *testing.T) {
+	mux := unboundTestMux(t)
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -187,5 +196,63 @@ func TestUnboundDNSCollector_Name(t *testing.T) {
 	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
 	if c.Name() != UnboundDNSSubsystem {
 		t.Errorf("expected %s, got %s", UnboundDNSSubsystem, c.Name())
+	}
+}
+
+func TestUnboundDNSCollector_Update_InfraEnabled(t *testing.T) {
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/diagnostics/dumpinfra", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": [
+				{"ip": "203.0.113.53@853", "host": ".", "rtt": "225", "rto": "450", "ttl": "626", "lame": true}
+			]
+		}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetInfraEnabled(true)
+	metrics := collectMetrics(t, c, client)
+
+	rtts := metricsByDesc(metrics, "opnsense_unbound_dns_infra_rtt_seconds")
+	if len(rtts) != 1 {
+		t.Fatalf("expected 1 infra rtt metric, got %d", len(rtts))
+	}
+	labels := getMetricLabels(rtts[0])
+	if labels["ip"] != "203.0.113.53@853" || labels["host"] != "." {
+		t.Errorf("unexpected labels: %v", labels)
+	}
+	if got := getMetricValue(rtts[0]); got != 0.225 {
+		t.Errorf("expected rtt 0.225s, got %v", got)
+	}
+
+	rtos := metricsByDesc(metrics, "opnsense_unbound_dns_infra_rto_seconds")
+	if len(rtos) != 1 {
+		t.Fatalf("expected 1 infra rto metric, got %d", len(rtos))
+	}
+	if got := getMetricValue(rtos[0]); got != 0.45 {
+		t.Errorf("expected rto 0.45s, got %v", got)
+	}
+}
+
+func TestUnboundDNSCollector_Update_InfraDisabledByDefault(t *testing.T) {
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/diagnostics/dumpinfra", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("dumpinfra must not be called when infra metrics are disabled")
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	if got := metricsByDesc(metrics, "opnsense_unbound_dns_infra_rtt_seconds"); len(got) != 0 {
+		t.Errorf("expected no infra metrics by default, got %d", len(got))
 	}
 }
