@@ -121,6 +121,7 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 				{
 					"description": "Road Warrior VPN",
 					"username": "user1",
+					"real_address": "203.0.113.10:51820",
 					"virtual_address": "10.8.0.2",
 					"status": "ok"
 				},
@@ -160,6 +161,9 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 	}
 	if s1.VirtualAddress != "10.8.0.2" {
 		t.Errorf("expected virtual address '10.8.0.2', got %q", s1.VirtualAddress)
+	}
+	if s1.RealAddress != "203.0.113.10:51820" {
+		t.Errorf("expected real address '203.0.113.10:51820', got %q", s1.RealAddress)
 	}
 	if s1.Status != 1 {
 		t.Errorf("expected Status=1 for 'ok', got %d", s1.Status)

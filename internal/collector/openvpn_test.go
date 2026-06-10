@@ -52,18 +52,21 @@ const openVPNTestSessions = `{
 		{
 			"description": "Site-to-Site VPN",
 			"username": "user1",
+			"real_address": "203.0.113.10:51820",
 			"virtual_address": "10.0.0.2",
 			"status": "ok"
 		},
 		{
 			"description": "Site-to-Site VPN",
 			"username": "user2",
+			"real_address": "203.0.113.11:51820",
 			"virtual_address": "10.0.0.3",
 			"status": "ok"
 		},
 		{
 			"description": "Road Warrior",
 			"username": "user3",
+			"real_address": "198.51.100.7:1194",
 			"virtual_address": "10.0.1.2",
 			"status": "ok"
 		}
@@ -145,12 +148,14 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 	found := false
 	for _, m := range sessions {
 		labels := getMetricLabels(m)
-		if labels["username"] == "user1" && labels["virtual_address"] == "10.0.0.2" {
+		if labels["username"] == "user1" &&
+			labels["virtual_address"] == "10.0.0.2" &&
+			labels["real_address"] == "203.0.113.10:51820" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected a per-session metric with username=user1 and virtual_address=10.0.0.2")
+		t.Error("expected a per-session metric with username=user1, virtual_address=10.0.0.2 and real_address=203.0.113.10:51820")
 	}
 
 	// Aggregates still emitted alongside details.
