@@ -204,9 +204,9 @@ def register_subsystem_tabs(b: Builder):
     are listed here in display order. Missing modules are skipped (lets the dashboard
     build incrementally during development)."""
     order = [
-        "system", "interfaces", "firewall", "gateways", "dns_unbound",
-        "dhcp", "vpn", "routing", "protocols", "ntp", "certificates",
-        "services_cron", "netflow", "carp",
+        "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound",
+        "dhcp", "vpn", "tailscale", "routing", "protocols", "ntp", "certificates",
+        "services_cron", "syslog", "qfeeds", "netflow", "carp",
     ]
     import importlib
     for mod in order:

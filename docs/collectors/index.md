@@ -83,6 +83,10 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 | ACME client | `acme` | ACME certificate renewal status and expiry (silent when `os-acme-client` is absent) | `--exporter.disable-acme` |
 | SMART disk health | `smart` | Per-disk SMART health, temperature, power-on hours (silent when `os-smart` is absent) | `--exporter.disable-smart` |
 | DynDNS | `dyndns` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) | `--exporter.disable-dyndns` |
+| Syslog | `syslog` | syslog-ng per-destination processed/dropped/queued/written stats, truncation, memory, events-per-second | `--exporter.disable-syslog` |
+| Q-Feeds | `qfeeds` | Q-Feeds threat-intel feed entries, blocked packets/bytes/addresses, license expiry (silent when `os-q-feeds-connector` is absent) | `--exporter.disable-qfeeds` |
+| Tailscale | `tailscale` | Node-local Tailscale state: service/backend status, peer counts; opt-in per-peer details (silent when `os-tailscale` is absent) | `--exporter.disable-tailscale` |
+| Firewall aliases | `alias` | pf alias table entry counts and global table used/limit; opt-in per-table pf counters | `--exporter.disable-alias` |
 
 ### Disabled by default (opt-in)
 
@@ -101,6 +105,8 @@ These produce one time series per item and should be evaluated carefully before 
 | Firewall per-rule details | Firewall rules | `--exporter.enable-firewall-rules-details` |
 | Kea per-lease details | Kea DHCP | `--exporter.enable-kea-details` |
 | ISC DHCPv4 per-lease details | ISC DHCPv4 | `--exporter.enable-dhcpv4-details` |
+| Tailscale per-peer details | Tailscale | `--exporter.enable-tailscale-peer-details` |
+| Alias per-table pf counters | Firewall aliases | `--exporter.enable-alias-details` |
 
 !!! warning "Cardinality impact"
     Each active DHCP lease or firewall rule generates multiple time series when detail metrics are enabled. On a firewall with 500 DHCP leases, enabling Dnsmasq details creates approximately 500 additional time series. Monitor your Prometheus storage after enabling.
@@ -113,3 +119,22 @@ Several collectors include a `service_running` gauge (1 = running, 0 = stopped/d
 - Dnsmasq: `opnsense_dnsmasq_service_running`
 - IPsec: `opnsense_ipsec_service_running`
 - WireGuard: `opnsense_wireguard_service_running`
+- Syslog: `opnsense_syslog_service_running`
+- Tailscale: `opnsense_tailscale_service_running`
+- Kea: `opnsense_kea_service_running`
+
+## Tailscale collector scope
+
+The Tailscale collector is **complementary to
+[tailscale2otel](https://github.com/rknightion/tailscale2otel)**, which covers
+control-plane/fleet data from the Tailscale API. This exporter deliberately
+emits only signals that exist solely on the firewall itself: per-peer
+rx/tx traffic as seen from this node, and local WireGuard session state
+derived purely from handshakes (`peer_session_active`,
+`peers_with_active_session`, direct-vs-DERP path for established sessions,
+last-handshake timestamps), plus the plugin/backend service state. The
+coordination-server `Online` flag is intentionally **never parsed or
+exported** — it is fleet data relayed to the node, not a local observation,
+and it lives in tailscale2otel along with peer last-seen and exit-node
+inventory. Per-peer metrics are opt-in via
+`--exporter.enable-tailscale-peer-details`.

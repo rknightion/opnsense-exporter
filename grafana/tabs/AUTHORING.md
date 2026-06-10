@@ -35,7 +35,9 @@ in `build_dashboard.py` — mirror their style. The full API is in `builder.py` 
    `opnsense_carp_vips_total`, `opnsense_*_leases_total/_reserved_total/_dynamic_total`,
    `opnsense_*_peers_total`, `opnsense_acme_certificates_total`, `opnsense_mbuf_cluster_total`,
    `opnsense_mbuf_bytes_total`, `opnsense_activity_threads_total`, `opnsense_dyndns_accounts_total`,
-   `opnsense_network_diag_*_total` socket/route/pfsync counts, `opnsense_firewall_rule_rules_total`.
+   `opnsense_network_diag_*_total` socket/route/pfsync counts, `opnsense_firewall_rule_rules_total`,
+   `opnsense_qfeeds_feeds_total`, `opnsense_alias_tables_total`, `opnsense_certificate_ca_total`
+   (`opnsense_tailscale_peers_total` is covered by the `opnsense_*_peers_total` pattern above).
    When unsure, treat a "current count" as RAW and a "things-that-happened" as rate.
 5. **Firewall pass/block packet & byte metrics** (`opnsense_firewall_in/out_ipv4/6_*`) are
    cumulative pf counters → use `rate(...[{RATE}])` for pps / throughput (×8 for bits).
@@ -106,6 +108,12 @@ Register with `b.sentinel(name, query)` then gate the tab/row with `present=name
 | has_kea6_details | `label_values(opnsense_kea_dhcp6_lease_info, __name__)` |
 | has_dhcpv4_details | `label_values(opnsense_dhcpv4_lease_info, __name__)` |
 | has_firmware_details | `label_values(opnsense_firmware_plugin_installed, __name__)` |
+| has_syslog | `label_values(opnsense_syslog_service_running, __name__)` |
+| has_qfeeds | `label_values(opnsense_qfeeds_feeds_total, __name__)` |
+| has_tailscale | `label_values(opnsense_tailscale_service_running, __name__)` |
+| has_tailscale_peers | `label_values(opnsense_tailscale_peer_session_active, __name__)` |
+| has_alias | `label_values(opnsense_alias_tables_total, __name__)` |
+| has_alias_details | `label_values(opnsense_alias_table_packets_total, __name__)` |
 
 ## Self-test before finishing
 

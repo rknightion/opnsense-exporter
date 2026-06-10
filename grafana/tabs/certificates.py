@@ -18,7 +18,7 @@ Covers all 10 opnsense_certificate_* and opnsense_acme_certificate* metrics:
     • acme_certificate_info table
 """
 
-from builder import Builder, sel, ENABLED
+from builder import Builder, sel
 
 
 def build(b: Builder):
@@ -98,9 +98,39 @@ def build(b: Builder):
         desc="Total number of certificates managed by OPNsense.",
     )
 
+    # CA certificate panels
+    ca_total = b.stat(
+        "Certificate Authorities",
+        sel("opnsense_certificate_ca_total"),
+        unit="short", w=4, h=4,
+        thresholds=[{"color": "blue", "value": None}],
+        desc="Total number of CA certificates managed by OPNsense.",
+    )
+    ca_expiry = b.table(
+        "CA Expiry",
+        [f'({sel("opnsense_certificate_ca_valid_to_seconds")} - time()) / 86400'],
+        w=10, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"description": "Description", "commonname": "Common Name",
+                 "Value": "Days Left"},
+        unit_overrides={"Days Left": "d"},
+        sort_by="Days Left", sort_desc=False,
+        desc="Days remaining until each CA certificate expires (sorted ascending).",
+    )
+    ca_valid_from = b.table(
+        "CA Validity Start",
+        [sel("opnsense_certificate_ca_valid_from_seconds")],
+        w=10, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"description": "Description", "commonname": "Common Name"},
+        unit_overrides={"Value": "dateTimeAsIso"},
+        desc="CA certificate issuance (not-before) date.",
+    )
+
     row_certs = b.row(
         "Certificates",
-        [cert_expiry, cert_valid_from, cert_total, cert_info],
+        [cert_expiry, cert_valid_from, cert_total, cert_info,
+         ca_total, ca_expiry, ca_valid_from],
     )
 
     # =====================================================================

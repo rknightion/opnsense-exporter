@@ -76,6 +76,22 @@ def build(b: Builder):
         desc="1 = running, 0 = stopped/disabled.",
     )
 
+    dnsmasq_pool = b.bargauge(
+        "Dnsmasq Pool Size by Interface",
+        [(sel("opnsense_dnsmasq_pool_size"), "{{interface}}")],
+        unit="short", w=8, h=8, orient="horizontal",
+        desc="Configured address pool size per interface (sum of range sizes).",
+    )
+    dnsmasq_util = b.ts(
+        "Dnsmasq Pool Utilization %",
+        [(f'100 * {sel("opnsense_dnsmasq_leases_by_interface")} '
+          f'/ on(interface, opnsense_instance) '
+          f'{sel("opnsense_dnsmasq_pool_size")}',
+          "{{interface}}")],
+        unit="percent", w=8, h=8,
+        desc="DHCP pool utilization per interface (leases / pool size).",
+    )
+
     # ================================================================
     # DNSMASQ — Row 2: lease detail table (opt-in, high-cardinality)
     # ================================================================
@@ -149,6 +165,40 @@ def build(b: Builder):
         [(sel("opnsense_kea_dhcp6_leases_by_interface"), "{{interface}}")],
         unit="short", w=12, h=4, orient="horizontal",
         desc="Kea DHCPv6 leases active per interface.",
+    )
+
+    kea_svc = b.stat(
+        "Kea Service",
+        sel("opnsense_kea_service_running"),
+        mappings=RUNSTOP, color_mode="background",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        w=4, h=4,
+        desc="1 = running, 0 = stopped/disabled.",
+    )
+    kea4_pool = b.bargauge(
+        "DHCPv4 Pool Size by Subnet",
+        [(sel("opnsense_kea_dhcp4_pool_size"), "{{subnet}} ({{interface}})")],
+        unit="short", w=8, h=8, orient="horizontal",
+        desc="Configured DHCPv4 address pool size per subnet.",
+    )
+    kea6_pool = b.bargauge(
+        "DHCPv6 Pool Size by Subnet",
+        [(sel("opnsense_kea_dhcp6_pool_size"), "{{subnet}} ({{interface}})")],
+        unit="short", w=8, h=8, orient="horizontal",
+        desc="Configured DHCPv6 address pool size per subnet.",
+    )
+    kea_util = b.ts(
+        "Kea Pool Utilization % by Interface",
+        [(f'100 * {sel("opnsense_kea_dhcp4_leases_by_interface")} '
+          f'/ on(interface, opnsense_instance) group_left() '
+          f'sum by(interface, opnsense_instance)({sel("opnsense_kea_dhcp4_pool_size")})',
+          "v4 {{interface}}"),
+         (f'100 * {sel("opnsense_kea_dhcp6_leases_by_interface")} '
+          f'/ on(interface, opnsense_instance) group_left() '
+          f'sum by(interface, opnsense_instance)({sel("opnsense_kea_dhcp6_pool_size")})',
+          "v6 {{interface}}")],
+        unit="percent", w=8, h=8,
+        desc="Kea DHCP pool utilization per interface (leases / pool size).",
     )
 
     # ================================================================
@@ -253,14 +303,15 @@ def build(b: Builder):
     b.tab("DHCP", [
         b.row("Dnsmasq DHCP",
               [dnsmasq_total, dnsmasq_reserved, dnsmasq_dynamic,
-               dnsmasq_by_iface, dnsmasq_svc],
+               dnsmasq_by_iface, dnsmasq_svc, dnsmasq_pool, dnsmasq_util],
               present="has_dnsmasq"),
         b.row("Dnsmasq Lease Details",
               [dnsmasq_lease_table],
               present="has_dnsmasq_details"),
         b.row("Kea DHCP",
               [kea4_total, kea4_reserved, kea4_dynamic, kea4_by_iface,
-               kea6_total, kea6_reserved, kea6_dynamic, kea6_by_iface],
+               kea6_total, kea6_reserved, kea6_dynamic, kea6_by_iface,
+               kea_svc, kea4_pool, kea6_pool, kea_util],
               present="has_kea"),
         b.row("Kea DHCPv4 Lease Details",
               [kea4_lease_table],
