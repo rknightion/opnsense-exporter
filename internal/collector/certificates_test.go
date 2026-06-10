@@ -3,13 +3,15 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/common/promslog"
 )
 
 func TestCertificatesCollector_Update(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/trust/cert/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
 			"total": 2,
 			"rows": [
@@ -33,7 +35,11 @@ func TestCertificatesCollector_Update(t *testing.T) {
 				}
 			]
 		}`))
-	}))
+	})
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	client := newCollectorTestClient(t, server)
@@ -43,20 +49,25 @@ func TestCertificatesCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 certificateTotal + 2 certs * 3 metrics each (validFrom, validTo, info) = 1 + 6 = 7
-	expectedCount := 7
+	// 1 certificateTotal + 2 certs * 3 metrics each (validFrom, validTo, info) + 1 caTotal = 8
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 }
 
 func TestCertificatesCollector_Update_Empty(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/trust/cert/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
 			"total": 0,
 			"rows": []
 		}`))
-	}))
+	})
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	client := newCollectorTestClient(t, server)
@@ -66,14 +77,33 @@ func TestCertificatesCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Only 1 certificateTotal with value 0
-	expectedCount := 1
+	// 1 certificateTotal (value 0) + 1 caTotal (value 0) = 2
+	expectedCount := 2
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
-	if getMetricValue(metrics[0]) != 0 {
-		t.Errorf("expected certificateTotal=0, got %f", getMetricValue(metrics[0]))
+	// Use name-matched lookup instead of positional — channel order not guaranteed.
+	var certTotal, caTotal *float64
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		v := getMetricValue(m)
+		switch {
+		case strings.Contains(desc, "certificate_ca_total"):
+			caTotal = &v
+		case strings.Contains(desc, "certificate_total") && !strings.Contains(desc, "certificate_ca_total"):
+			certTotal = &v
+		}
+	}
+	if certTotal == nil {
+		t.Error("expected certificate_total metric to be emitted")
+	} else if *certTotal != 0 {
+		t.Errorf("expected certificate_total=0, got %f", *certTotal)
+	}
+	if caTotal == nil {
+		t.Error("expected certificate_ca_total metric to be emitted")
+	} else if *caTotal != 0 {
+		t.Errorf("expected certificate_ca_total=0, got %f", *caTotal)
 	}
 }
 
@@ -81,5 +111,43 @@ func TestCertificatesCollector_Name(t *testing.T) {
 	c := &certificatesCollector{subsystem: CertificatesSubsystem}
 	if c.Name() != CertificatesSubsystem {
 		t.Errorf("expected %s, got %s", CertificatesSubsystem, c.Name())
+	}
+}
+
+func TestCertificatesCollector_CAMetrics(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/trust/cert/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"u1","descr":"OPNsense-CA","commonname":"OPNsense-CA","valid_from":"1643140565","valid_to":"1958500565","prv":"x"}],"rowCount":1,"total":1,"current":1}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &certificatesCollector{subsystem: CertificatesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	var sawCATotal, sawCAValidTo bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "certificate_ca_total") {
+			sawCATotal = true
+			if getMetricValue(m) != 1 {
+				t.Errorf("expected ca_total=1, got %v", getMetricValue(m))
+			}
+		}
+		if strings.Contains(desc, "certificate_ca_valid_to_seconds") {
+			sawCAValidTo = true
+			labels := getMetricLabels(m)
+			if labels["commonname"] != "OPNsense-CA" || getMetricValue(m) != 1958500565 {
+				t.Errorf("bad ca_valid_to: value=%v labels=%v", getMetricValue(m), labels)
+			}
+		}
+	}
+	if !sawCATotal || !sawCAValidTo {
+		t.Errorf("missing CA metrics: total=%v valid_to=%v", sawCATotal, sawCAValidTo)
 	}
 }

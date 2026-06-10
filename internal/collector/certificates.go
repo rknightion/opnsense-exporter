@@ -16,6 +16,10 @@ type certificatesCollector struct {
 	info             *prometheus.Desc
 	certificateTotal *prometheus.Desc
 
+	caValidFrom *prometheus.Desc
+	caValidTo   *prometheus.Desc
+	caTotal     *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -53,6 +57,21 @@ func (c *certificatesCollector) Register(namespace, instanceLabel string, log *s
 		"Total number of certificates",
 		nil,
 	)
+
+	caLabels := []string{"description", "commonname"}
+
+	c.caValidFrom = buildPrometheusDesc(c.subsystem, "ca_valid_from_seconds",
+		"Certificate authority valid from timestamp in seconds since epoch",
+		caLabels,
+	)
+	c.caValidTo = buildPrometheusDesc(c.subsystem, "ca_valid_to_seconds",
+		"Certificate authority valid to (expiry) timestamp in seconds since epoch",
+		caLabels,
+	)
+	c.caTotal = buildPrometheusDesc(c.subsystem, "ca_total",
+		"Total number of certificate authorities",
+		nil,
+	)
 }
 
 func (c *certificatesCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -60,6 +79,9 @@ func (c *certificatesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.validTo
 	ch <- c.info
 	ch <- c.certificateTotal
+	ch <- c.caValidFrom
+	ch <- c.caValidTo
+	ch <- c.caTotal
 }
 
 func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -106,6 +128,21 @@ func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Cli
 			cert.InUse,
 			c.instance,
 		)
+	}
+
+	caData, caErr := client.FetchCACertificates()
+	if caErr != nil {
+		// Leaf-cert metrics already emitted; report the CA failure.
+		return caErr
+	}
+
+	ch <- prometheus.MustNewConstMetric(c.caTotal, prometheus.GaugeValue,
+		float64(caData.Total), c.instance)
+	for _, ca := range caData.CAs {
+		ch <- prometheus.MustNewConstMetric(c.caValidFrom, prometheus.GaugeValue,
+			ca.ValidFrom, ca.Description, ca.CommonName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.caValidTo, prometheus.GaugeValue,
+			ca.ValidTo, ca.Description, ca.CommonName, c.instance)
 	}
 
 	return nil

@@ -103,3 +103,53 @@ func TestFetchCertificates_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+func TestFetchCACertificates_Success(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"uuid": "02030146-47b3-4ecb-8eae-c45b218161c8",
+					"refid": "61f055d56326f",
+					"descr": "OPNsense-CA",
+					"commonname": "OPNsense-CA",
+					"serial": "2",
+					"refcount": "1",
+					"valid_from": "1643140565",
+					"valid_to": "1958500565",
+					"crt": "IGNORED",
+					"prv": "MUST-NEVER-BE-PARSED",
+					"crt_payload": "IGNORED",
+					"prv_payload": "MUST-NEVER-BE-PARSED"
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+
+	data, err := client.FetchCACertificates()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.Total != 1 {
+		t.Errorf("expected Total=1, got %d", data.Total)
+	}
+	if len(data.CAs) != 1 {
+		t.Fatalf("expected 1 CA, got %d", len(data.CAs))
+	}
+	ca := data.CAs[0]
+	if ca.Description != "OPNsense-CA" || ca.CommonName != "OPNsense-CA" {
+		t.Errorf("unexpected CA names: %+v", ca)
+	}
+	if ca.ValidFrom != 1643140565 || ca.ValidTo != 1958500565 {
+		t.Errorf("unexpected CA validity: %+v", ca)
+	}
+}
