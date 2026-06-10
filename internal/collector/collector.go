@@ -54,6 +54,10 @@ const (
 	ACMESubsystem          = "acme"
 	SMARTSubsystem         = "smart"
 	DynDNSSubsystem        = "dyndns"
+	SyslogSubsystem        = "syslog"
+	QFeedsSubsystem        = "qfeeds"
+	TailscaleSubsystem     = "tailscale"
+	AliasSubsystem         = "alias"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
