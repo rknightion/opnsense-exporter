@@ -5,7 +5,7 @@
 ![GitHub go.mod Go version (branch)](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
 
 A Prometheus exporter for [OPNsense](https://opnsense.org/) firewalls. It polls the
-OPNsense REST API and exposes 305 metrics across 30 collectors — firewall and PF
+OPNsense REST API and exposes 307 metrics across 30 collectors — firewall and PF
 statistics, interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq,
 ISC), Unbound DNS, certificates and ACME, hardware temperatures, SMART disk health,
 system resources, and more. Metrics are served at `/metrics` and can optionally be

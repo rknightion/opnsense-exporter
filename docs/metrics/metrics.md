@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 305
-- **Gauges:** 166
+- **Total metrics:** 307
+- **Gauges:** 168
 - **Counters:** 139
 
 ## General
@@ -148,6 +148,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firmware_last_check_timestamp_seconds | Gauge | --- | Unix timestamp of the last firmware update check | --exporter.disable-firmware |
 | opnsense_firmware_new_packages_count | Gauge | --- | Number of new packages available | --exporter.disable-firmware |
 | opnsense_firmware_upgrade_packages_count | Gauge | --- | Number of packages with available upgrades | --exporter.disable-firmware |
+| opnsense_firmware_package_update_available | Gauge | name, installed_version, new_version | Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
+| opnsense_firmware_plugin_installed | Gauge | name, version | Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 
 ## Gateways
 
@@ -165,7 +167,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_gateways_probe_interval_seconds | Gauge | name, address | Gateway probe interval | --exporter.disable-gateways |
 | opnsense_gateways_probe_period_seconds | Gauge | name, address | Gateway probe period | --exporter.disable-gateways |
 | opnsense_gateways_probe_timeout_seconds | Gauge | name, address | Gateway probe timeout | --exporter.disable-gateways |
-| opnsense_gateways_status | Gauge | name, address, default_gateway | Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending) | --exporter.disable-gateways |
+| opnsense_gateways_status | Gauge | name, address, default_gateway | Status of the gateway by name and address (0 = Offline, 1 = Online, 2 = Unknown, 3 = Pending, 4 = Packetloss, 5 = Latency, 6 = Offline (forced)) | --exporter.disable-gateways |
 | opnsense_gateways_force_down | Gauge | name, address | 1 if the gateway is administratively forced down, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_virtual | Gauge | name, address | 1 if the gateway is virtual, 0 otherwise | --exporter.disable-gateways |
 | opnsense_gateways_dynamic | Gauge | name, address | 1 if the gateway is dynamically configured, 0 otherwise | --exporter.disable-gateways |

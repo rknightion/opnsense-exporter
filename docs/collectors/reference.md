@@ -16,7 +16,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
 | Firewall | firewall | 19 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
 | Firewall Rules | firewall_rule | 6 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
-| Firmware | firmware | 6 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
+| Firmware | firmware | 8 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | IPsec | ipsec | 14 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |

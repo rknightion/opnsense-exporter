@@ -207,6 +207,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 |------|---------|-----------|-------------|
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | Dnsmasq DHCP | Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks) |
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Firewall Rules | Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets) |
+| `--exporter.enable-firmware-package-details` | `OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS` | Firmware | Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape) |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | ISC DHCPv4 | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Kea DHCP | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | OpenVPN | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |
@@ -248,6 +249,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | `false` | Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks) |
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | `false` | Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets) |
+| `--exporter.enable-firmware-package-details` | `OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS` | `false` | Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape) |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | `false` | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | `false` | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | `false` | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |
