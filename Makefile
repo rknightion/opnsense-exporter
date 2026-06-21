@@ -1,6 +1,6 @@
 BINARY_NAME=opnsense-exporter-local
 
-.PHONY: default docgen docs docs-check dashboard rules install-hooks
+.PHONY: default docgen docs docs-check dashboard rules install-hooks capture
 default:
 	go build \
 	-tags osusergo,netgo \
@@ -55,3 +55,14 @@ dashboard:
 
 rules:
 	cd grafana/alerts && python3 build_rules.py
+
+# Capture live-box responses for the response-shape canary (cmd/apicapture).
+# Writes to the gitignored opnsense/testdata/captures/ scratch dir; then run
+# `go test ./opnsense/ -run TestResponseContracts` to validate them. Reuses the
+# same OPS_* vars as local-run; set OPS_INSECURE=1 for self-signed certs.
+capture:
+	go run ./cmd/apicapture \
+		--base-url "$(or $(OPS_BASE_URL),https://$(OPS_ADDRESS))" \
+		--api-key "$(OPS_API_KEY)" \
+		--api-secret "$(OPS_API_SECRET)" \
+		$(if $(OPS_INSECURE),--insecure) $(CAPTURE_ARGS)
