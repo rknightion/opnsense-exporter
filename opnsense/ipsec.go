@@ -254,13 +254,7 @@ func (c *Client) FetchIPsecPools() (IPsecPools, *APICallError) {
 	}
 
 	for _, row := range poolMap {
-		data.Pools = append(data.Pools, IPsecPool{
-			Name:    row.Name,
-			Net:     row.Net,
-			Online:  row.Online,
-			Offline: row.Offline,
-			Size:    row.Size,
-		})
+		data.Pools = append(data.Pools, IPsecPool(row))
 	}
 	sort.Slice(data.Pools, func(i, j int) bool {
 		return data.Pools[i].Name < data.Pools[j].Name
