@@ -19,10 +19,10 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_exporter_collector_enabled | Gauge | collector | Whether a collector is enabled (1) or disabled (0) in this exporter instance, by subsystem |
 | opnsense_exporter_scrape_collector_duration_seconds | Gauge | collector | Duration of a sub-collector scrape in seconds |
 | opnsense_exporter_scrape_collector_success | Gauge | collector | Whether a sub-collector scrape succeeded (1 = ok, 0 = error or panic) |
-| opnsense_up | Gauge | --- | Was the last scrape of OPNsense successful. (1 = yes, 0 = no) |
+| opnsense_up | Gauge | --- | Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics. |
 | opnsense_firewall_status | Gauge | --- | Status of the firewall reported by the system health check (1 = ok, 0 = errors) |
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |
-| opnsense_system_status_code | Gauge | --- | Numeric system status code from health check (2 = OK for OPNsense >= 25.1) |
+| opnsense_system_status_code | Gauge | --- | Numeric OPNsense system status code from the health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1) |
 | opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics. |
 | opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching |
 

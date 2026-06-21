@@ -15,10 +15,8 @@ The OPNsense Exporter runs 47 sub-collectors concurrently via goroutines, each t
 ```mermaid
 graph LR
     A[Prometheus scrape] --> B[Collector.Collect]
-    B --> C[Health check]
-    C --> D{opnsense_up?}
-    D -->|Yes| E[Fan out to sub-collectors]
-    D -->|No| F[Return opnsense_up=0]
+    B --> C[Health check: emit opnsense_up + status gauges]
+    C --> E[Fan out to sub-collectors]
     E --> G1[ARP table]
     E --> G2[Gateways]
     E --> G3[Interfaces]
@@ -42,10 +40,10 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `opnsense_up` | Gauge | Was the last scrape successful (1 = yes, 0 = no) |
-| `opnsense_firewall_status` | Gauge | Firewall health status from system health check (1 = ok, 0 = errors) |
+| `opnsense_up` | Gauge | Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable but degraded box stays 1 — see `opnsense_system_status_code` |
+| `opnsense_firewall_status` | Gauge | Firewall health status from system health check (1 = ok, 0 = errors); absent when OPNsense is unreachable |
 | `opnsense_crash_reporter_status` | Gauge | Crash reporter status (1 = ok/no crash reports, 0 = crash reports present); absent when OPNsense is unreachable |
-| `opnsense_system_status_code` | Gauge | Numeric system status code from health check (2 = OK for OPNsense >= 25.1) |
+| `opnsense_system_status_code` | Gauge | Numeric OPNsense system status code from health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1); absent when unreachable |
 | `opnsense_exporter_scrapes_total` | Counter | Total number of scrapes performed |
 | `opnsense_exporter_endpoint_errors_total` | Counter | Total API errors by endpoint |
 

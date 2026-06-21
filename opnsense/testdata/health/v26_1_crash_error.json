@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "system": { "status": "ERROR", "message": "No pending messages", "title": "System" },
+    "translations": {},
+    "subsystems": []
+  },
+  "subsystems": {
+    "crashreporter": {
+      "title": "Crash Reporter",
+      "statusCode": -1,
+      "message": "An issue was detected and can be reviewed using the firmware crash reporter.",
+      "location": "/crash_reporter.php",
+      "timestamp": 1782048070,
+      "persistent": false,
+      "isBanner": false,
+      "priority": 10,
+      "status": "ERROR",
+      "age": "1 hour ago"
+    }
+  }
+}

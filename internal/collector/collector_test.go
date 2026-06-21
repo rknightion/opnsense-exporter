@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -586,5 +588,122 @@ func TestScrapeViewPropagatesContext(t *testing.T) {
 
 	if a.gotCtx == nil || a.gotCtx.Value(scrapeCtxKey{}) != "marker" {
 		t.Error("expected the request context to reach sub-collector Update")
+	}
+}
+
+// newHealthTestCollector builds a Collector with just the health gauges (real
+// metric names, not registered on the global registry) pointed at the given client.
+func newHealthTestCollector(client *opnsense.Client) *Collector {
+	g := func(name string) prometheus.Gauge {
+		return prometheus.NewGauge(prometheus.GaugeOpts{Namespace: namespace, Name: name})
+	}
+	return &Collector{
+		Client:               client,
+		log:                  promslog.NewNopLogger(),
+		instanceLabel:        "test",
+		isUp:                 g("up"),
+		firewallHealthStatus: g("firewall_status"),
+		crashReporterStatus:  g("crash_reporter_status"),
+		systemStatusCode:     g("system_status_code"),
+	}
+}
+
+// healthServer serves body with the given HTTP status for any path.
+func healthServer(t *testing.T, status int, body []byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// gatherHealthGauges drains the channel into a name->value map of the health gauges.
+func gatherHealthGauges(ch chan prometheus.Metric) map[string]float64 {
+	out := map[string]float64{}
+	for m := range ch {
+		desc := m.Desc().String()
+		for _, name := range []string{"opnsense_up", "opnsense_firewall_status", "opnsense_crash_reporter_status", "opnsense_system_status_code"} {
+			if strings.Contains(desc, `fqName: "`+name+`"`) {
+				out[name] = getMetricValue(m)
+			}
+		}
+	}
+	return out
+}
+
+// TestCollectHealthMetrics_Reachable verifies the cross-version health parsing and
+// the opnsense_up contract end-to-end through collectHealthMetrics: a reachable box
+// is always up=1 (even when a subsystem is degraded), with degraded state surfaced
+// via system_status_code and the per-subsystem gauges.
+func TestCollectHealthMetrics_Reachable(t *testing.T) {
+	cases := []struct {
+		fixture      string
+		wantUp       float64
+		wantSysCode  float64
+		wantCrash    float64
+		wantFirewall float64
+	}{
+		{"v26_1_ok.json", 1, 2, 1, 1},
+		{"v26_1_ok_empty_map.json", 1, 2, 1, 1},
+		{"v26_1_crash_error.json", 1, -1, 0, 1},
+		{"v26_1_firewall_error.json", 1, -1, 1, 0},
+		{"v25_1_ok.json", 1, 2, 1, 1},
+		{"v25_1_crash_error.json", 1, -1, 0, 1},
+		{"pre25_ok.json", 1, 2, 1, 1},
+		{"pre25_crash_error.json", 1, -1, 0, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.fixture, func(t *testing.T) {
+			body, err := os.ReadFile(filepath.Join("..", "..", "opnsense", "testdata", "health", tc.fixture))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			client := newCollectorTestClient(t, healthServer(t, http.StatusOK, body))
+			c := newHealthTestCollector(client)
+			ch := make(chan prometheus.Metric, 16)
+			if err := c.collectHealthMetrics(client, ch); err != nil {
+				t.Fatalf("collectHealthMetrics returned error: %v", err)
+			}
+			close(ch)
+			got := gatherHealthGauges(ch)
+
+			if got["opnsense_up"] != tc.wantUp {
+				t.Errorf("opnsense_up = %v, want %v", got["opnsense_up"], tc.wantUp)
+			}
+			if got["opnsense_system_status_code"] != tc.wantSysCode {
+				t.Errorf("opnsense_system_status_code = %v, want %v", got["opnsense_system_status_code"], tc.wantSysCode)
+			}
+			if got["opnsense_crash_reporter_status"] != tc.wantCrash {
+				t.Errorf("opnsense_crash_reporter_status = %v, want %v", got["opnsense_crash_reporter_status"], tc.wantCrash)
+			}
+			if got["opnsense_firewall_status"] != tc.wantFirewall {
+				t.Errorf("opnsense_firewall_status = %v, want %v", got["opnsense_firewall_status"], tc.wantFirewall)
+			}
+		})
+	}
+}
+
+// TestCollectHealthMetrics_Unreachable verifies opnsense_up = 0 only when the API
+// call itself fails, and that the per-subsystem and status-code gauges are left
+// absent rather than emitting a misleading 0.
+func TestCollectHealthMetrics_Unreachable(t *testing.T) {
+	client := newCollectorTestClient(t, healthServer(t, http.StatusInternalServerError, []byte("boom")))
+	c := newHealthTestCollector(client)
+	ch := make(chan prometheus.Metric, 16)
+	if err := c.collectHealthMetrics(client, ch); err == nil {
+		t.Fatal("expected error from collectHealthMetrics on API failure")
+	}
+	close(ch)
+	got := gatherHealthGauges(ch)
+
+	if got["opnsense_up"] != 0 {
+		t.Errorf("opnsense_up = %v, want 0", got["opnsense_up"])
+	}
+	for _, absent := range []string{"opnsense_system_status_code", "opnsense_crash_reporter_status", "opnsense_firewall_status"} {
+		if _, ok := got[absent]; ok {
+			t.Errorf("%s should be absent when unreachable, got %v", absent, got[absent])
+		}
 	}
 }

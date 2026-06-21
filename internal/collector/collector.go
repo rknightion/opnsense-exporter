@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"runtime"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -599,33 +598,7 @@ func WithBuildInfo(version string) Option {
 // — otherwise opnsense_firewall_status reads 0 on a perfectly healthy firewall. The metadata
 // status may arrive as a JSON number (e.g. 2), a string ("OK"), or be absent.
 func firewallIsHealthy(resp opnsense.HealthCheckResponse) bool {
-	// Legacy format: explicit string status that is present and not "OK".
-	if s := resp.Firewall.Status; s != "" && s != opnsense.HealthCheckStatusOK {
-		return false
-	}
-	// 25.1+ metadata format: only flag unhealthy when a status is actually reported.
-	switch s := resp.Metadata.Firewall.Status.(type) {
-	case string:
-		if s == "" || s == opnsense.HealthCheckStatusOK {
-			// healthy
-		} else if i, err := strconv.Atoi(s); err == nil {
-			// OPNsense 25.1+ can return the numeric status as a string (e.g. "2").
-			if i != opnsense.HealthCheckStatusOK_v25_1 {
-				return false
-			}
-		} else {
-			return false
-		}
-	case float64:
-		if int(s) != opnsense.HealthCheckStatusOK_v25_1 {
-			return false
-		}
-	case int:
-		if s != opnsense.HealthCheckStatusOK_v25_1 {
-			return false
-		}
-	}
-	return true
+	return resp.FirewallIsHealthy()
 }
 
 // deriveCollectorStates maps every registered collector subsystem name to whether
@@ -701,7 +674,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.isUp = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "up",
-		Help:      "Was the last scrape of OPNsense successful. (1 = yes, 0 = no)",
+		Help:      "Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics.",
 		ConstLabels: prometheus.Labels{
 			instanceLabelName: instanceName,
 		},
@@ -728,7 +701,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.systemStatusCode = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "system_status_code",
-		Help:      "Numeric system status code from health check (2 = OK for OPNsense >= 25.1)",
+		Help:      "Numeric OPNsense system status code from the health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1)",
 		ConstLabels: prometheus.Labels{
 			instanceLabelName: instanceName,
 		},
@@ -793,52 +766,45 @@ func (c *Collector) collectExporterInfo(ch chan<- prometheus.Metric) {
 	}
 }
 
+// collectHealthMetrics emits opnsense_up plus the per-subsystem health gauges.
+//
+// opnsense_up reflects API REACHABILITY only: 1 whenever the system-status endpoint
+// is reached and parsed, 0 only when the call itself fails (network error, auth
+// failure, HTTP error). A reachable box that self-reports a degraded subsystem (e.g.
+// a leftover crash report) stays up=1 — that state is surfaced via the lower-severity
+// opnsense_system_status_code and the per-subsystem opnsense_{firewall,crash_reporter}_status
+// gauges, NOT by flipping opnsense_up. This keeps the critical "exporter/box down"
+// page distinct from a benign degraded-subsystem notice. On the unreachable path the
+// per-subsystem and status-code gauges are left absent rather than emitting a
+// misleading 0 (0 is the WARNING status code, not "unknown").
 func (c *Collector) collectHealthMetrics(client *opnsense.Client, ch chan<- prometheus.Metric) error {
 	systemStatus, err := client.HealthCheck()
 	if err != nil {
 		c.isUp.Set(0)
-		c.systemStatusCode.Set(0)
 		c.isUp.Collect(ch)
-		c.systemStatusCode.Collect(ch)
 		return err
 	}
 
+	// Reachable and parsed: the box is "up" regardless of its rolled-up health.
+	c.isUp.Set(1)
 	c.systemStatusCode.Set(float64(systemStatus.GetMetadataSystemStatus()))
 
-	// Crash reporter health: healthy by default, flagged 0 only if either the
-	// top-level or metadata CrashReporter status is present and not OK. A valid
-	// health response is required to populate this, so it is left absent on the
-	// unreachable path above rather than emitting a misleading 0.
-	crashHealthy := 1.0
-	if s := systemStatus.CrashReporter.Status; s != "" && s != opnsense.HealthCheckStatusOK {
-		crashHealthy = 0
-	}
-	if s := systemStatus.Metadata.CrashReporter.Status; s != "" && s != opnsense.HealthCheckStatusOK {
-		crashHealthy = 0
-	}
-	c.crashReporterStatus.Set(crashHealthy)
-
-	if systemStatus.System.Status != opnsense.HealthCheckStatusOK &&
-		systemStatus.GetMetadataSystemStatus() != opnsense.HealthCheckStatusOK_v25_1 {
-		c.isUp.Set(0)
-		c.isUp.Collect(ch)
-		c.systemStatusCode.Collect(ch)
-		c.crashReporterStatus.Collect(ch)
-		return nil
-	}
-
-	c.isUp.Set(1)
-	c.firewallHealthStatus.Set(1)
-
-	if !firewallIsHealthy(systemStatus) {
-		c.firewallHealthStatus.Set(0)
-	}
+	c.crashReporterStatus.Set(boolToGauge(systemStatus.CrashReporterIsHealthy()))
+	c.firewallHealthStatus.Set(boolToGauge(firewallIsHealthy(systemStatus)))
 
 	c.isUp.Collect(ch)
 	c.firewallHealthStatus.Collect(ch)
 	c.crashReporterStatus.Collect(ch)
 	c.systemStatusCode.Collect(ch)
 	return nil
+}
+
+// boolToGauge maps a health predicate to the 1 (ok) / 0 (problem) gauge convention.
+func boolToGauge(ok bool) float64 {
+	if ok {
+		return 1
+	}
+	return 0
 }
 
 // execute runs one sub-collector Update, records duration/success around it,

@@ -1,0 +1,5 @@
+{
+  "System": { "status": "Error" },
+  "CrashReporter": { "message": "An issue was detected", "status": "Error", "statusCode": 1 },
+  "Firewall": { "message": "Firewall is running", "status": "OK", "statusCode": 0 }
+}
