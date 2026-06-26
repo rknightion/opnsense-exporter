@@ -36,6 +36,9 @@ local.docker-compose.yml
 
 /opnsense-exporter
 /docgen
+# Stray dev binaries from `go build ./cmd/...`
+/apicapture
+/apicontract
 
 # Python (grafana dashboard/rules builders)
 __pycache__/
@@ -44,3 +47,8 @@ __pycache__/
 # Superpowers scratch (specs/plans) + local roadmap — never committed
 docs/superpowers/
 /roadmap.md
+
+# Response-shape canary captures (make capture) — scratch real-box payloads.
+# Review one (it may contain host/network data) and promote it into a curated
+# fixture (opnsense/testdata/health/...) to make it a permanent CI gate.
+/opnsense/testdata/captures/

@@ -138,14 +138,14 @@ sequenceDiagram
 
 1. Prometheus sends `GET /metrics`.
 2. The `Collector.Collect()` method acquires a mutex and runs a health check against the OPNsense system status API.
-3. If the health check fails, `opnsense_up` is set to 0 and no sub-collectors run.
-4. If healthy, all enabled sub-collectors are launched concurrently as goroutines.
+3. The health check populates `opnsense_up` (API reachability), `opnsense_system_status_code`, and the per-subsystem `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges. `opnsense_up` is 0 only when the API call itself fails; a reachable but degraded box stays `opnsense_up=1`.
+4. All enabled sub-collectors are launched concurrently as goroutines **regardless of the health-check outcome** — a failed health check sets `opnsense_up=0` but does not stop the sub-collectors.
 5. Each sub-collector calls its `Update()` method, which invokes one or more `Fetch*()` methods on the API client and emits metrics to the shared channel.
 6. The main collector waits for all goroutines to complete, then increments the scrape counter and emits endpoint error counters.
 
 ### Error handling
 
-- **Health check failure:** Sets `opnsense_up=0`, skips all sub-collectors.
+- **Health check failure:** Sets `opnsense_up=0` (the only condition that does so). Sub-collectors still run; each surfaces its own reachability via `opnsense_exporter_endpoint_errors_total`.
 - **Sub-collector failure:** Logs the error, increments `opnsense_exporter_endpoint_errors_total` for the failing endpoint. Other sub-collectors continue unaffected.
 - **Partial failure tolerance:** Several collectors (system info, mbuf memory stats, firewall interface hits, network diagnostics pfsync) are partially failure tolerant -- if an optional supplementary API call fails, the collector still emits metrics from successful calls.
 

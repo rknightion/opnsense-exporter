@@ -1,0 +1,10 @@
+{
+  "metadata": {
+    "System": { "status": -1 },
+    "CrashReporter": {
+      "message": "An issue was detected and can be reviewed using the firmware crash reporter.",
+      "status": "Error",
+      "statusCode": -1
+    }
+  }
+}

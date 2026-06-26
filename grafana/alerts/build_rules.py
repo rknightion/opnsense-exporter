@@ -35,8 +35,12 @@ RULES = [
          A="opnsense_up", op="lt", params=[1, 0], for_min=15, severity="critical",
          nodata="Alerting",
          summary="OPNsense exporter/box down ({{ $labels.opnsense_instance }})",
-         description="opnsense_up has been 0 (or the target has been unreachable / NoData) for 15m. "
-                     "The 15m window tolerates a router reboot (typically <10m) without paging."),
+         description="opnsense_up has been 0 (the OPNsense API was unreachable / the scrape failed) "
+                     "or the target produced NoData for 15m. opnsense_up reflects API reachability ONLY - "
+                     "a reachable box reporting a degraded subsystem (e.g. a crash report) stays up=1 and is "
+                     "covered by the lower-severity OPNsenseCrashReports / OPNsenseFirewallUnhealthy alerts, "
+                     "so this critical/page fires on genuine unreachability only. The 15m window tolerates a "
+                     "router reboot (typically <10m) without paging."),
     dict(name="opnsense-firewall-unhealthy", title="OPNsenseFirewallUnhealthy",
          A="opnsense_firewall_status", op="lt", params=[1, 0], for_min=10, severity="warning",
          summary="OPNsense firewall health check failing ({{ $labels.opnsense_instance }})",

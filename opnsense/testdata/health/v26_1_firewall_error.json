@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "system": { "status": "ERROR", "message": "No pending messages", "title": "System" },
+    "translations": {},
+    "subsystems": []
+  },
+  "subsystems": {
+    "firewall": {
+      "title": "Firewall",
+      "statusCode": -1,
+      "message": "The firewall ruleset failed to load.",
+      "status": "ERROR"
+    }
+  }
+}

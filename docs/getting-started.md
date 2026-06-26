@@ -90,12 +90,12 @@ curl http://localhost:8080/metrics
 You should see output containing lines like:
 
 ```text
-# HELP opnsense_up Was the last scrape of OPNsense successful. (1 = yes, 0 = no)
+# HELP opnsense_up Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics.
 # TYPE opnsense_up gauge
 opnsense_up{opnsense_instance="my-firewall"} 1
 ```
 
-If `opnsense_up` is `0`, check the exporter logs for connection or authentication errors.
+`opnsense_up` reflects whether the OPNsense API was reachable, not whether the box is healthy. If it is `0`, check the exporter logs for connection or authentication errors. A reachable box that OPNsense itself reports as degraded (e.g. a leftover crash report) keeps `opnsense_up=1` — inspect `opnsense_system_status_code` (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) and `opnsense_crash_reporter_status` / `opnsense_firewall_status` instead.
 
 ## Step 4: Configure Prometheus
 

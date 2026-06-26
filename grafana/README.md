@@ -103,7 +103,7 @@ target a specific Grafana folder.
 
 | Alert | Severity | Fires when |
 |-------|----------|-----------|
-| OPNsenseExporterDown | critical | `opnsense_up` 0 / target unreachable for 5m |
+| OPNsenseExporterDown | critical | `opnsense_up` 0 (API unreachable / scrape failed) or NoData for 15m |
 | OPNsenseFirewallUnhealthy | warning | firewall health check reports errors for 10m |
 | OPNsenseCrashReports | warning | crash reports present |
 | OPNsenseEndpointErrors | warning | an API endpoint returned errors in 15m |
@@ -125,6 +125,18 @@ target a specific Grafana folder.
 Thresholds are conservative defaults — tune them in `build_rules.py` (or the YAML) for your
 environment. Note: `OPNsenseEndpointErrors` and `OPNsenseServiceDown` emit one alert per
 endpoint/service.
+
+**`opnsense_up` is reachability-only.** It is 1 whenever the exporter reaches and parses the
+OPNsense system-status API, and 0 only when that call fails (unreachable / auth / HTTP error).
+A reachable box that self-reports a degraded subsystem — e.g. a leftover crash report puts
+OPNsense's *own* overall status into ERROR — keeps `opnsense_up = 1`; that state surfaces via
+`opnsense_system_status_code` (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) and the per-subsystem
+`opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, which drive the
+lower-severity warnings above. So `OPNsenseExporterDown` (critical/page) fires only on genuine
+unreachability, not on a benign degraded-subsystem notice. **Operators upgrading from an exporter
+build before this change:** `opnsense_up` no longer flips to 0 for a degraded-but-reachable box,
+so a leftover crash report now pages as a warning (`OPNsenseCrashReports`) instead of a critical
+(`OPNsenseExporterDown`).
 
 ### Recording rules
 
