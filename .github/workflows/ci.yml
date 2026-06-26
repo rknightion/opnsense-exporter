@@ -181,3 +181,21 @@ jobs:
           docker buildx imagetools create \
             -t ghcr.io/${{ github.repository }}:main \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+
+  # Single required status check. Branch protection on `main` requires ONLY this job, so the gate's
+  # jobs (tests / docs / docker build-verify) can be added or renamed without re-touching protection.
+  # It fails if any required job failed or was cancelled; the main-only publish jobs aren't depended on
+  # here, so a PR (where they're skipped) still passes. Renovate's automerge waits for this to go green.
+  ci-success:
+    name: ci-success
+    runs-on: ubuntu-24.04
+    if: always()
+    needs: [tests, docs, docker-build-verify]
+    steps:
+      - name: Fail if any required job did not pass
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "A required job failed or was cancelled: ${{ join(needs.*.result, ', ') }}"
+          exit 1
+      - name: All required jobs passed
+        run: echo "ci-success — ${{ join(needs.*.result, ', ') }}"
