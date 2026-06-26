@@ -29,6 +29,10 @@ jobs:
           ISSUE_NUMBER: ${{ inputs.issue_number }}
         run: |
           set -euo pipefail
+          if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "ISSUE_NUMBER must be a numeric GitHub issue number." >&2
+            exit 1
+          fi
           issue=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}")
           title=$(jq -r '.title // ""' <<<"$issue")
           author=$(jq -r '.user.login // ""' <<<"$issue")
