@@ -127,7 +127,9 @@ jobs:
         run: |
           set -euo pipefail
           title="OPNsense API contract drift"
-          existing=$(gh issue list --label api-drift --state open --json number --jq '.[0].number // empty')
+          existing=$(gh issue list --label api-drift --state open --json number,title,author \
+            --jq '.[] | select(.title == "OPNsense API contract drift" and .author.login == "github-actions[bot]") | .number' \
+            | head -n1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file out/report.md
           else
@@ -140,7 +142,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          existing=$(gh issue list --label api-drift --state open --json number --jq '.[0].number // empty')
+          existing=$(gh issue list --label api-drift --state open --json number,title,author \
+            --jq '.[] | select(.title == "OPNsense API contract drift" and .author.login == "github-actions[bot]") | .number' \
+            | head -n1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "API contract drift cleared on the latest scheduled run. Closing."
             gh issue close "$existing"
