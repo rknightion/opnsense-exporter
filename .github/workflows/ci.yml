@@ -102,7 +102,7 @@ jobs:
           persist-credentials: false
 
       - name: Prepare platform pair
-        run: echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+        run: echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
         env:
           platform: ${{ matrix.platform }}
 
@@ -178,6 +178,7 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
+          # shellcheck disable=SC2046 # printf produces multiple digest args; word-splitting is intentional
           docker buildx imagetools create \
             -t ghcr.io/${{ github.repository }}:main \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
