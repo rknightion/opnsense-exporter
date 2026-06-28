@@ -9,7 +9,8 @@
 .release-please-manifest.json
 Dockerfile
 Makefile
-LICENSE
+# LICENSE is intentionally NOT ignored: the image build bakes it into /licenses/LICENSE
+# (OCI license convention) alongside the generated THIRD_PARTY_NOTICES.md.
 *.md
 *.txt
 deploy/

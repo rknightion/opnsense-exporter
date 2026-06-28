@@ -1,6 +1,15 @@
 BINARY_NAME=opnsense-exporter-local
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: default docgen docs docs-check dashboard rules install-hooks capture
+# ── pinned release-tooling versions (override via env) ────────────────────────
+GO_LICENSES_VERSION ?= v1.6.0
+SYFT_VERSION        ?= v1.18.1
+
+TOOLS_DIR := $(CURDIR)/.tools
+export PATH := $(TOOLS_DIR):$(PATH)
+
+.PHONY: default docgen docs docs-check dashboard rules install-hooks capture \
+        coverage notices sbom tools-licensing tools-sbom
 default:
 	go build \
 	-tags osusergo,netgo \
@@ -26,6 +35,39 @@ local-run: default
 
 test:
 	go test ./...
+
+# coverage: atomic coverage profile over the full test scope. Uploaded to Codacy by
+# the ci.yml `coverage` job (non-blocking). Locally: `go tool cover -html=coverage.out`.
+# coverage.out is gitignored (*.out).
+coverage:
+	go test -covermode=atomic -coverprofile=coverage.out ./...
+
+# ── third-party license notices + SBOM (RELEASE ARTIFACTS; not committed/gated) ────
+# THIRD_PARTY_NOTICES.md and the SBOMs change on every dependency bump, so they are
+# regenerated at release time rather than committed: the image build bakes notices into
+# /licenses/, and release-please.yml attaches notices + both SBOMs to the GitHub Release.
+# They are deliberately NOT part of any gate — committing+gating a deps-derived file would
+# block hosted-Renovate automerge (it can't self-regenerate it).
+tools-licensing:
+	@mkdir -p $(TOOLS_DIR)
+	@{ test -x $(TOOLS_DIR)/go-licenses && $(TOOLS_DIR)/go-licenses --help >/dev/null 2>&1; } || \
+	  GOBIN=$(TOOLS_DIR) go install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+tools-sbom:
+	@mkdir -p $(TOOLS_DIR)
+	@{ test -x $(TOOLS_DIR)/syft && $(TOOLS_DIR)/syft version >/dev/null 2>&1; } || \
+	  GOBIN=$(TOOLS_DIR) go install github.com/anchore/syft/cmd/syft@$(SYFT_VERSION)
+
+# Regenerate THIRD_PARTY_NOTICES.md (LICENSE + NOTICE texts) from the binary's import graph.
+notices: tools-licensing
+	GO_LICENSES=$(TOOLS_DIR)/go-licenses bash scripts/notices.sh
+
+# Generate SPDX + CycloneDX SBOMs into dist/sbom/. Builds a static binary (CGO disabled,
+# so no external linker — works on macOS too) and scans it so the SBOM reflects exactly the
+# linked modules. Override SBOM_TARGET (e.g. an image ref) to scan something else.
+sbom: tools-sbom
+	CGO_ENABLED=0 go build -mod=vendor -tags osusergo,netgo -trimpath \
+	  -ldflags "-s -w -X main.version=$(VERSION)" -o bin/opnsense-exporter .
+	SYFT=$(TOOLS_DIR)/syft bash scripts/sbom.sh
 
 clean:
 	gofmt -s -w $(shell find . -type f -name '*.go'| grep -v "/vendor/\|/.git/")

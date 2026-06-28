@@ -18,6 +18,15 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   -ldflags "-s -w -X main.version=${Version}" \
   -o /usr/bin/opnsense-exporter .
 
+# Third-party notices (LICENSE + NOTICE texts of the linked modules) baked into /licenses/
+# below. Runs once on the BUILDPLATFORM (not per target arch); pinned go-licenses. See
+# scripts/notices.sh, which forces module mode + `go mod download` (network required here).
+ARG GO_LICENSES_VERSION=v1.6.0
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  apk add --no-cache bash && \
+  GOBIN=/usr/local/bin go install github.com/google/go-licenses@${GO_LICENSES_VERSION} && \
+  GO_LICENSES=go-licenses OUT=/THIRD_PARTY_NOTICES.md bash scripts/notices.sh
+
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:963fa6c544fe5ce420f1f54fb88b6fb01479f054c8056d0f74cc2c6000df5240
 
 ARG Version
@@ -27,8 +36,12 @@ LABEL org.opencontainers.image.version=${Version}
 LABEL org.opencontainers.image.authors="rknightion"
 LABEL org.opencontainers.image.title="OPNsense Prometheus Exporter"
 LABEL org.opencontainers.image.description="Prometheus exporter for OPNsense"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=build /usr/bin/opnsense-exporter /
+# License compliance travels with the image (OCI /licenses convention): Apache text + third-party notices.
+COPY --from=build /go/src/github.com/rknightion/opnsense-exporter/LICENSE /licenses/LICENSE
+COPY --from=build /THIRD_PARTY_NOTICES.md /licenses/THIRD_PARTY_NOTICES.md
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/opnsense-exporter"]

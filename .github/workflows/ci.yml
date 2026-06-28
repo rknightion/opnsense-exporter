@@ -183,10 +183,42 @@ jobs:
             -t ghcr.io/${{ github.repository }}:main \
             $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
 
+  # Test coverage -> Codacy. Deliberately NOT in ci-success's `needs`: coverage reporting is
+  # informational, so a Codacy outage — or a fork PR with no secret — must never block merges or
+  # Renovate automerge. Generates an atomic coverage profile and uploads via the pinned official
+  # reporter action (no curl|bash, which zizmor flags). The action derives provider/owner/repo from
+  # the GitHub context, so the account token is the only Codacy input needed.
+  coverage:
+    name: Coverage to Codacy
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    env:
+      CODACY_API_TOKEN: ${{ secrets.CODACY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26"
+
+      - name: Generate coverage profile
+        run: make coverage
+
+      - name: Upload coverage to Codacy
+        if: ${{ env.CODACY_API_TOKEN != '' }}   # skip on fork PRs (secret unavailable)
+        uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699 # v1.3.0
+        with:
+          api-token: ${{ env.CODACY_API_TOKEN }}
+          coverage-reports: coverage.out
+          force-coverage-parser: go
+
   # Single required status check. Branch protection on `main` requires ONLY this job, so the gate's
   # jobs (tests / docs / docker build-verify) can be added or renamed without re-touching protection.
   # It fails if any required job failed or was cancelled; the main-only publish jobs aren't depended on
   # here, so a PR (where they're skipped) still passes. Renovate's automerge waits for this to go green.
+  # NOTE: `coverage` is intentionally absent from `needs` — see its comment above.
   ci-success:
     name: ci-success
     runs-on: ubuntu-24.04

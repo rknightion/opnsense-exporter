@@ -40,6 +40,13 @@ local.docker-compose.yml
 /apicapture
 /apicontract
 
+# Release-artifact tooling + outputs (regenerated at release time; never committed):
+# pinned tool binaries, built binary, SBOMs, third-party notices.
+/.tools/
+/bin/
+/dist/
+/THIRD_PARTY_NOTICES.md
+
 # Python (grafana dashboard/rules builders)
 __pycache__/
 *.pyc
