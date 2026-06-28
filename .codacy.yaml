@@ -6,3 +6,5 @@ exclude_paths:
   - "vendor/**"
   - "tools/**/testdata/**"
   - "docs/superpowers/**"
+# Note: repo-level path excludes also neutralise default-on tools (e.g.
+# PHP_CodeSniffer) that run even when not listed in the org coding standard.
