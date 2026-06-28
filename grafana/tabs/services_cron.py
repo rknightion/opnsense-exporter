@@ -19,7 +19,7 @@ Covers all metrics across three rows:
     • dyndns_service_running stat (RUNSTOP)
 """
 
-from builder import Builder, sel, RUNSTOP, ENABLED
+from builder import Builder, sel, RUNSTOP
 
 
 def build(b: Builder):

@@ -1,4 +1,5 @@
 /* Custom JavaScript for OPNsense Exporter documentation */
+/* global gtag, mermaid */
 
 // Enhanced search functionality
 document.addEventListener('DOMContentLoaded', function() {

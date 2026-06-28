@@ -20,7 +20,6 @@ function addStructuredData() {
     "url": "https://m7kni.io/opnsense-exporter/",
     "downloadUrl": "https://github.com/rknightion/opnsense-exporter",
     "softwareVersion": "latest",
-    "programmingLanguage": "Go",
     "license": "https://github.com/rknightion/opnsense-exporter/blob/main/LICENSE",
     "author": {
       "@type": "Person",

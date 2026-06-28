@@ -6,7 +6,7 @@ Covers all 9 opnsense_ntp_* metrics across two rows:
   2. Timing  — delay/offset/jitter timeseries, when/poll stats
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel
 
 
 def build(b: Builder):
