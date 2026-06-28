@@ -1,0 +1,16 @@
+# Snyk (https://snyk.io) policy file.
+# Path exclusions for Snyk Code (SAST) and other scans.
+exclude:
+  global:
+    # Vendored third-party dependencies are not our code to fix; vulnerabilities
+    # in them are tracked by Snyk Open Source (SCA) against go.mod, not by SAST.
+    # Excludes Snyk Code's MD5/SHA1 "insecure hash" findings in google/uuid
+    # (RFC 4122 name-based UUID generation, not password hashing).
+    - vendor/**
+    # Offline, build-time-only developer/CI tools (not built into the shipped
+    # exporter image, whose entrypoint builds from the repo root). The SAST
+    # "SSRF"/"path traversal" findings here are the operator pointing the tool
+    # at their own OPNsense box URL and choosing the output path on their own
+    # machine — no attacker/trust boundary, so they are not exploitable.
+    - cmd/apicapture/**
+    - cmd/apicontract/**
