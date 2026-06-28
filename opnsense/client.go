@@ -209,6 +209,7 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
+					MinVersion:         tls.VersionTLS12,
 					InsecureSkipVerify: cfg.Insecure,
 					RootCAs:            sslPool,
 				},

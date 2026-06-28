@@ -43,7 +43,7 @@ func main() {
 	httpClient := &http.Client{
 		Timeout: 20 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: *insecure}, //nolint:gosec // opt-in for self-signed boxes
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: *insecure}, //nolint:gosec // opt-in for self-signed boxes
 		},
 	}
 
