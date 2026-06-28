@@ -8,7 +8,7 @@ Rows:
   4. Probe Config       — probe interval/period/timeout table + priority table
 """
 
-from builder import Builder, sel, GW_STATUS, YESNO
+from builder import Builder, sel, GW_STATUS
 
 
 def build(b: Builder):

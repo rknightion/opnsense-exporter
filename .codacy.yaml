@@ -1,0 +1,8 @@
+---
+# Codacy repository configuration.
+# Exclude generated, vendored, and scratch/test-fixture paths from analysis so
+# tools don't flag code we don't own or maintain by hand.
+exclude_paths:
+  - "vendor/**"
+  - "tools/**/testdata/**"
+  - "docs/superpowers/**"
