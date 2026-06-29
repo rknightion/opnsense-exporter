@@ -1,0 +1,50 @@
+name: publish
+on:
+  workflow_call:
+    inputs:
+      release_tag: { required: false, type: string, default: "" }
+  workflow_dispatch:
+    inputs:
+      release_tag: { description: "vX.Y.Z; empty = edge :main test", required: false, type: string, default: "" }
+permissions:
+  contents: read
+jobs:
+  image:
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    uses: rknightion/.github/.github/workflows/container-publish.yml@main # zizmor: ignore[unpinned-uses]
+    with:
+      release-tag: ${{ inputs.release_tag }}
+  notices:
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.release_tag }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # Only go-licenses notices here; the shared reusable already generates +
+      # attaches the image SPDX+CycloneDX SBOMs (same filenames — don't double-upload).
+      - name: Generate + attach third-party notices
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          make notices
+          gh release upload "${RELEASE_TAG}" THIRD_PARTY_NOTICES.md --clobber
