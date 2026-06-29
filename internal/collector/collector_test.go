@@ -707,3 +707,23 @@ func TestCollectHealthMetrics_Unreachable(t *testing.T) {
 		}
 	}
 }
+
+// TestNew_Idempotent verifies New does not register metrics on the global
+// default prometheus registry: the exporter's own up/scrapes/endpoint-errors
+// metrics reach /metrics through the Collector's Describe/Collect, so a second
+// New in the same process must not panic on duplicate registration. Two
+// Collectors against the default registry is a supported configuration (e.g.
+// the test binary itself, or future multi-instance use).
+func TestNew_Idempotent(t *testing.T) {
+	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
+	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("failed to build client: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if _, err := New(&client, promslog.NewNopLogger(), "test-idempotent"); err != nil {
+			t.Fatalf("New call #%d returned error: %v", i+1, err)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -569,6 +570,152 @@ func TestGatewaysCollector_Update_ProbeUnavailableSkipped(t *testing.T) {
 	for i, m := range metrics {
 		if v := getMetricValue(m); v == -1.0 {
 			t.Errorf("metric %d has sentinel value -1; it should have been skipped", i)
+		}
+	}
+}
+
+// TestGatewaysCollector_Describe_CoversUpdateMetrics ensures Describe emits a
+// descriptor for every metric Update can produce. A descriptor missing from
+// Describe is invisible to docgen/-check and to strict prometheus registries.
+func TestGatewaysCollector_Describe_CoversUpdateMetrics(t *testing.T) {
+	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	ch := make(chan *prometheus.Desc, 64)
+	c.Describe(ch)
+	close(ch)
+
+	described := make([]string, 0, 32)
+	for d := range ch {
+		described = append(described, d.String())
+	}
+
+	wantNames := []string{
+		"opnsense_gateways_info",
+		"opnsense_gateways_monitor_info",
+		"opnsense_gateways_rtt_milliseconds",
+		"opnsense_gateways_rttd_milliseconds",
+		"opnsense_gateways_rtt_low_milliseconds",
+		"opnsense_gateways_rtt_high_milliseconds",
+		"opnsense_gateways_loss_percentage",
+		"opnsense_gateways_loss_low_percentage",
+		"opnsense_gateways_loss_high_percentage",
+		"opnsense_gateways_probe_interval_seconds",
+		"opnsense_gateways_probe_period_seconds",
+		"opnsense_gateways_probe_timeout_seconds",
+		"opnsense_gateways_status",
+		"opnsense_gateways_force_down",
+		"opnsense_gateways_virtual",
+		"opnsense_gateways_dynamic",
+		"opnsense_gateways_priority",
+	}
+
+	for _, name := range wantNames {
+		found := false
+		for _, desc := range described {
+			if strings.Contains(desc, `fqName: "`+name+`"`) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Describe() does not emit descriptor for %s", name)
+		}
+	}
+	if len(described) != len(wantNames) {
+		t.Errorf("Describe() emitted %d descriptors, want %d", len(described), len(wantNames))
+	}
+}
+
+// TestGatewaysCollector_Update_ThresholdInvalidSkipped verifies that empty or
+// unparseable threshold/probe configuration values are skipped (with a debug
+// log) rather than emitted as a misleading 0.
+func TestGatewaysCollector_Update_ThresholdInvalidSkipped(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{
+					"disabled": false,
+					"name": "WAN_GW",
+					"descr": "WAN Gateway",
+					"interface": "igb0",
+					"ipprotocol": "inet",
+					"gateway": "1.2.3.4",
+					"defaultgw": true,
+					"fargw": "",
+					"monitor_disable": "0",
+					"monitor_noroute": "0",
+					"monitor": "1.1.1.1",
+					"force_down": "0",
+					"priority": 255,
+					"weight": "1",
+					"latencylow": "abc",
+					"current_latencylow": "",
+					"latencyhigh": "",
+					"current_latencyhigh": "",
+					"losslow": "",
+					"current_losslow": "",
+					"losshigh": "",
+					"current_losshigh": "",
+					"interval": "",
+					"current_interval": "",
+					"time_period": "",
+					"current_time_period": "",
+					"loss_interval": "",
+					"current_loss_interval": "",
+					"data_length": "",
+					"current_data_length": "",
+					"uuid": "abc-123",
+					"if": "wan",
+					"attribute": 1,
+					"dynamic": false,
+					"virtual": false,
+					"upstream": true,
+					"interface_descr": "WAN",
+					"status": "Online",
+					"delay": "1.2 ms",
+					"stddev": "0.3 ms",
+					"loss": "0.0 %",
+					"label_class": "success"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// All 7 threshold metrics (rttLow/rttHigh/lossLow/lossHigh/interval/period/
+	// timeout) are skipped because their values are empty or unparseable:
+	// 17 (full monitor case) - 7 = 10.
+	expectedCount := 10
+	if len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics (invalid thresholds skipped), got %d", expectedCount, len(metrics))
+	}
+
+	// None of the emitted threshold-related descriptors should be present.
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		for _, skipped := range []string{
+			"opnsense_gateways_rtt_low_milliseconds",
+			"opnsense_gateways_rtt_high_milliseconds",
+			"opnsense_gateways_loss_low_percentage",
+			"opnsense_gateways_loss_high_percentage",
+			"opnsense_gateways_probe_interval_seconds",
+			"opnsense_gateways_probe_period_seconds",
+			"opnsense_gateways_probe_timeout_seconds",
+		} {
+			if strings.Contains(desc, `fqName: "`+skipped+`"`) {
+				t.Errorf("threshold metric %s should have been skipped for invalid/empty value", skipped)
+			}
 		}
 	}
 }

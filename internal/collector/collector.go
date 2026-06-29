@@ -719,10 +719,12 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		Help:      "Total number of errors by endpoint returned by the OPNsense API during data fetching",
 	}, []string{"endpoint", "opnsense_instance"})
 
-	for _, metric := range []prometheus.Collector{c.isUp, c.scrapes, c.endpointErrors} {
-		prometheus.MustRegister(metric)
-	}
-
+	// isUp, scrapes and endpointErrors are exposed through this Collector's own
+	// Describe/Collect (see Describe and collect), so they reach /metrics via the
+	// registry the Collector is registered on. They are deliberately NOT registered
+	// on the global default registry: doing so exposed them twice and made New
+	// non-idempotent (a second New panicked on duplicate registration), which is
+	// why several tests previously avoided calling New.
 	c.scrapes.WithLabelValues(c.instanceLabel).Add(0)
 
 	for _, path := range c.Client.Endpoints() {
@@ -878,7 +880,7 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 
 	if err := c.collectHealthMetrics(client, ch); err != nil {
 		c.log.Error(
-			"failed to fetch system health status; skipping other metrics",
+			"failed to fetch system health status; continuing with sub-collectors",
 			"err", err,
 		)
 	}

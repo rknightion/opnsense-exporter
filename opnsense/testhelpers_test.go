@@ -26,7 +26,7 @@ func newTestClientWithServer(t *testing.T, handler http.HandlerFunc) (*httptest.
 		headers: map[string]string{
 			"Accept":          "application/json",
 			"User-Agent":      "prometheus-opnsense-exporter/test",
-			"Accept-Encoding": "gzip, deflate, br",
+			"Accept-Encoding": "gzip",
 		},
 		endpoints: testEndpoints(),
 	}
@@ -52,7 +52,7 @@ func newTestClientWithMux(t *testing.T) (*httptest.Server, *http.ServeMux, *Clie
 		headers: map[string]string{
 			"Accept":          "application/json",
 			"User-Agent":      "prometheus-opnsense-exporter/test",
-			"Accept-Encoding": "gzip, deflate, br",
+			"Accept-Encoding": "gzip",
 		},
 		endpoints: testEndpoints(),
 	}

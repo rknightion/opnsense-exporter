@@ -84,8 +84,10 @@ func TestDo_Headers(t *testing.T) {
 		if got := r.Header.Get("User-Agent"); !strings.HasPrefix(got, "prometheus-opnsense-exporter/") {
 			t.Errorf("expected User-Agent prefix, got %q", got)
 		}
-		if got := r.Header.Get("Accept-Encoding"); !strings.Contains(got, "gzip") {
-			t.Errorf("expected Accept-Encoding to contain gzip, got %q", got)
+		// Only gzip is advertised: readResponse can decode gzip but not
+		// deflate/br, so unsupported encodings must not be requested.
+		if got := r.Header.Get("Accept-Encoding"); got != "gzip" {
+			t.Errorf("expected Accept-Encoding to be exactly %q, got %q", "gzip", got)
 		}
 		w.Write([]byte(`{}`))
 	})

@@ -200,9 +200,12 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 		gatewayRTTRegex:  gatewayRTTRegex,
 		endpoints:        defaultEndpoints(),
 		headers: map[string]string{
-			"Accept":          "application/json",
-			"User-Agent":      fmt.Sprintf("prometheus-opnsense-exporter/%s", userAgentVersion),
-			"Accept-Encoding": "gzip, deflate, br",
+			"Accept":     "application/json",
+			"User-Agent": fmt.Sprintf("prometheus-opnsense-exporter/%s", userAgentVersion),
+			// Only advertise encodings readResponse can actually decode. The client
+			// decompresses gzip (see readResponse); deflate/br are not handled, so
+			// advertising them would risk an undecodable body.
+			"Accept-Encoding": "gzip",
 		},
 		sslInsecure: cfg.Insecure,
 		httpClient: &http.Client{

@@ -88,7 +88,7 @@ func main() {
 	}
 	if !collectorsSwitches.IPsec {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutIPsecCollector())
-		logger.Info("ipesc collector disabled")
+		logger.Info("ipsec collector disabled")
 	}
 	if !collectorsSwitches.Cron {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCronCollector())
@@ -370,7 +370,7 @@ func main() {
 
 	collectorInstance, err := collector.New(&opnsenseClient, logger, instanceLabel, collectorOptionFuncs...)
 	if err != nil {
-		logger.Error("failed to construct the collecotr", "err", err)
+		logger.Error("failed to construct the collector", "err", err)
 		os.Exit(1)
 	}
 

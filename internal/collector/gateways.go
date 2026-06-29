@@ -135,13 +135,42 @@ func (c *gatewaysCollector) Register(namespace, instanceLabel string, log *slog.
 }
 
 func (c *gatewaysCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.status
-	ch <- c.lossPercentage
+	ch <- c.info
+	ch <- c.monitor
 	ch <- c.rtt
+	ch <- c.rttd
+	ch <- c.rttLow
+	ch <- c.rttHigh
+	ch <- c.lossPercentage
+	ch <- c.lossLow
+	ch <- c.lossHigh
+	ch <- c.interval
+	ch <- c.period
+	ch <- c.timeout
+	ch <- c.status
 	ch <- c.forceDown
 	ch <- c.virtual
 	ch <- c.dynamic
 	ch <- c.priority
+}
+
+// emitThreshold parses a string gateway threshold/probe value (e.g. latency or
+// loss limits, probe interval/period/timeout) and emits it as a gauge. An empty
+// or unparseable value is skipped with a debug log rather than emitted as a
+// misleading 0, since these OPNsense fields are configuration strings that are
+// legitimately blank when a gateway has no monitor configuration set.
+func (c *gatewaysCollector) emitThreshold(ch chan<- prometheus.Metric, desc *prometheus.Desc, field, raw, name, monitor string) {
+	if raw == "" {
+		c.log.Debug("skipping gateway threshold metric: empty value", "gateway", name, "field", field)
+		return
+	}
+	f64, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		c.log.Debug("skipping gateway threshold metric: unparseable value",
+			"gateway", name, "field", field, "value", raw, "error", err)
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, f64, name, monitor, c.instance)
 }
 
 func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -268,24 +297,8 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 						c.instance,
 					)
 				}
-				f64, _ := strconv.ParseFloat(v.LatencyLow, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.rttLow,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
-				f64, _ = strconv.ParseFloat(v.LatencyHigh, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.rttHigh,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
+				c.emitThreshold(ch, c.rttLow, "latencylow", v.LatencyLow, v.Name, v.Monitor)
+				c.emitThreshold(ch, c.rttHigh, "latencyhigh", v.LatencyHigh, v.Name, v.Monitor)
 				if v.Loss >= 0 {
 					ch <- prometheus.MustNewConstMetric(
 						c.lossPercentage,
@@ -296,51 +309,11 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 						c.instance,
 					)
 				}
-				f64, _ = strconv.ParseFloat(v.LossLow, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.lossLow,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
-				f64, _ = strconv.ParseFloat(v.LossHigh, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.lossHigh,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
-				f64, _ = strconv.ParseFloat(v.Interval, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.interval,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
-				f64, _ = strconv.ParseFloat(v.TimePeriod, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.period,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
-				f64, _ = strconv.ParseFloat(v.LossInterval, 64)
-				ch <- prometheus.MustNewConstMetric(
-					c.timeout,
-					prometheus.GaugeValue,
-					f64,
-					v.Name,
-					v.Monitor,
-					c.instance,
-				)
+				c.emitThreshold(ch, c.lossLow, "losslow", v.LossLow, v.Name, v.Monitor)
+				c.emitThreshold(ch, c.lossHigh, "losshigh", v.LossHigh, v.Name, v.Monitor)
+				c.emitThreshold(ch, c.interval, "interval", v.Interval, v.Name, v.Monitor)
+				c.emitThreshold(ch, c.period, "time_period", v.TimePeriod, v.Name, v.Monitor)
+				c.emitThreshold(ch, c.timeout, "loss_interval", v.LossInterval, v.Name, v.Monitor)
 				ch <- prometheus.MustNewConstMetric(
 					c.status,
 					prometheus.GaugeValue,
