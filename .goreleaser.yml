@@ -25,7 +25,7 @@ builds:
       - -X main.version={{ .Version }}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -34,14 +34,33 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+# Per-archive SBOMs (syft must be on PATH — installed by the binaries reusable's pre-cmd).
+sboms:
+  - id: archives
+    artifacts: archive
+
+# Keyless cosign signature over the checksums file (GitHub OIDC). Requires id-token: write
+# and cosign on PATH (the binaries reusable's install-cosign: true). The checksums file
+# cryptographically commits to every archive, so one signature covers the whole release.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   disable: true
