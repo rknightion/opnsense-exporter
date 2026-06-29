@@ -27,31 +27,19 @@ jobs:
           # PAT (not GITHUB_TOKEN): bot-authored release PRs need a non-default-token author for CI to run without manual approval
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
-  goreleaser:
+  # Binaries via the shared GoReleaser reusable (cross-compiled binaries + checksums,
+  # uploaded to the release-please release). The image is published by the publish job.
+  binaries:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
-    runs-on: ubuntu-24.04
     permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: "1.26"
-          cache: false
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          distribution: goreleaser
-          version: v2.16.0 # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      contents: write # upload release assets
+      id-token: write
+      packages: write
+    uses: rknightion/.github/.github/workflows/binaries.yml@9eaba495bc5f41c780ea4508e52ea1a20330c04f # v1.2.0
+    with:
+      release-tag: ${{ needs.release-please.outputs.tag_name }}
+      go-version: "1.26"
 
   # Build, sign, attest, and publish the container image; attach third-party notices + SBOMs.
   # Delegates image work to the shared reusable; the notices job runs make notices sbom locally.
