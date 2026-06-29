@@ -193,7 +193,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event_name == 'pull_request'
     env:
-      CODACY_API_TOKEN: ${{ secrets.CODACY_API_TOKEN }}
+      CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -207,10 +207,10 @@ jobs:
         run: make coverage
 
       - name: Upload coverage to Codacy
-        if: ${{ env.CODACY_API_TOKEN != '' }}   # skip on fork PRs (secret unavailable)
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}   # skip on fork PRs (secret unavailable)
         uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699 # v1.3.0
         with:
-          api-token: ${{ env.CODACY_API_TOKEN }}
+          project-token: ${{ env.CODACY_PROJECT_TOKEN }}
           coverage-reports: coverage.out
           force-coverage-parser: go
 

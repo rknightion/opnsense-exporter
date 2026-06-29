@@ -1,10 +1,13 @@
 ---
 # Codacy repository configuration.
-# Exclude generated, vendored, and scratch/test-fixture paths from analysis so
-# tools don't flag code we don't own or maintain by hand.
+# Exclude generated, vendored, and test/fixture paths from analysis so tools
+# don't flag code we don't own or maintain by hand. Codacy Cloud reads this file
+# from the default branch; the same excludes apply to local codacy-analysis runs.
 exclude_paths:
-  - "vendor/**"
-  - "tools/**/testdata/**"
-  - "docs/superpowers/**"
+  - "docs/**"            # generated docs + site assets (docgen, JS/CSS, superpowers scratch)
+  - "test/**"            # test trees (convention; mirrors other rknightion repos)
+  - "**/*_test.go"       # Go test files
+  - "**/testdata/**"     # generated API-capture fixtures + golden test data
+  - "vendor/**"          # committed Go vendor tree (third-party, not hand-maintained)
 # Note: repo-level path excludes also neutralise default-on tools (e.g.
 # PHP_CodeSniffer) that run even when not listed in the org coding standard.
