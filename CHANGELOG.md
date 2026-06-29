@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.0.1](https://github.com/rknightion/opnsense-exporter/compare/v1.0.0...v1.0.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* resolve review findings in gateway collector, client, and registration ([8f1ba70](https://github.com/rknightion/opnsense-exporter/commit/8f1ba70f7329c657fc2620a30e729ccac84b5418))
+
+
+### Miscellaneous
+
+* **deps:** update golangci/golangci-lint-action action to v9.3.0 ([#59](https://github.com/rknightion/opnsense-exporter/issues/59)) ([7d46c39](https://github.com/rknightion/opnsense-exporter/commit/7d46c39c2ad1542d78842419b1cd6dd16a2c2e55))
+* **deps:** update goreleaser/goreleaser-action action to v7.2.3 ([#57](https://github.com/rknightion/opnsense-exporter/issues/57)) ([763504e](https://github.com/rknightion/opnsense-exporter/commit/763504ec0ef0e15a802d21f37427a4f4fa100c9c))
+* **renovate:** group lockstep dependency families ([cbef9d7](https://github.com/rknightion/opnsense-exporter/commit/cbef9d78586f039325ad862ef322b0656b3b043e))
+
+
+### CI/CD
+
+* add Snyk -&gt; Snyk Cloud monitor (SCA/SAST/IaC/container) ([2109b7e](https://github.com/rknightion/opnsense-exporter/commit/2109b7eb0fea5186bd684df7e232f17eee02b72b))
+* build release binaries via shared binaries reusable ([35396fc](https://github.com/rknightion/opnsense-exporter/commit/35396fc8b20f2269c5b9c61bc2e75997a0ba4aca))
+* **codacy:** align exclude_paths convention; use project token for coverage ([df73e81](https://github.com/rknightion/opnsense-exporter/commit/df73e811e9e05aa283e5e213909b29d006ae3b4e))
+* open the release-please PR under a PAT so CI runs without manual approval ([8471e9c](https://github.com/rknightion/opnsense-exporter/commit/8471e9c5d0f375a97f8741e714adf077bafee4dd))
+* pin shared rknightion reusables to v1.0.0 ([3d3d6e9](https://github.com/rknightion/opnsense-exporter/commit/3d3d6e98e9a63cccb1a842e9a5726a329efa5e24))
+* publish image via shared container-publish reusable ([a0a680b](https://github.com/rknightion/opnsense-exporter/commit/a0a680b7dffb359d192609c35f612e0e3ad34690))
+* sign release binaries + emit archive SBOMs (supply-chain parity) ([ece4d2b](https://github.com/rknightion/opnsense-exporter/commit/ece4d2b606816176d006ffe3af0b6088b77c463b))
+
 ## [1.0.0](https://github.com/rknightion/opnsense-exporter/compare/v0.4.0...v1.0.0) (2026-06-28)
 
 
