@@ -45,6 +45,10 @@ func statRules(s docStats) []statRule {
 	allPromRepl := fmt.Sprintf("all %d Prometheus metrics", s.Metrics)
 	subCollectors := regexp.MustCompile(`\d+ sub-collectors`)
 	subCollectorsRepl := fmt.Sprintf("%d sub-collectors", s.Collectors)
+	allCollectors := regexp.MustCompile(`all \d+ collectors`)
+	allCollectorsRepl := fmt.Sprintf("all %d collectors", s.Collectors)
+	approxCollectors := regexp.MustCompile(`~\d+ collectors`)
+	approxCollectorsRepl := fmt.Sprintf("~%d collectors", s.Collectors)
 	dash := regexp.MustCompile(`all \d+ metrics across \d+ tabs`)
 	dashRepl := fmt.Sprintf("all %d metrics across %d tabs", s.DashMetrics, s.DashTabs)
 
@@ -66,6 +70,13 @@ func statRules(s docStats) []statRule {
 			Replace: fmt.Sprintf("all %d OPNsense Exporter collectors", s.Collectors), MinHits: 1},
 		{File: "docs/collectors/index.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
 		{File: "docs/architecture.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
+		// CLAUDE.md + these three docs pages sat outside the pin allowlist and drifted to a stale
+		// "30 collectors" while the real count grew to 47 (#117). Pin them so make docs-check fails
+		// on future drift.
+		{File: "CLAUDE.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
+		{File: "docs/404.md", Pattern: allCollectors, Replace: allCollectorsRepl, MinHits: 1},
+		{File: "docs/getting-started.md", Pattern: allCollectors, Replace: allCollectorsRepl, MinHits: 1},
+		{File: "docs/troubleshooting.md", Pattern: approxCollectors, Replace: approxCollectorsRepl, MinHits: 1},
 		{File: "README.md", Pattern: across, Replace: acrossRepl, MinHits: 1},
 		{File: "README.md", Pattern: dash, Replace: dashRepl, MinHits: 1},
 		{File: "docs/integration-dashboards.md", Pattern: dash, Replace: dashRepl, MinHits: 1},

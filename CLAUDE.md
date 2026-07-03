@@ -28,9 +28,9 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 
 - **`opnsense/`** — API client. Each subsystem has a dedicated `Fetch*()` method (e.g., `FetchGateways()`, `FetchWireguardConfig()`). The client handles TLS, basic auth, retries (max 3), and gzip decompression. Data structs for JSON unmarshaling live here too.
 
-- **`internal/collector/`** — Prometheus collector implementations. `collector.go` holds the top-level `Collector` struct that runs 30 sub-collectors concurrently via goroutines. Each sub-collector (one file per subsystem) implements `CollectorInstance` with `Name()`, `Register()`, `Describe()`, and `Update()`. **Sub-collectors register themselves via `init()` functions** appending to the global `collectorInstances` slice — adding a new collector requires only creating the file with an `init()` function.
+- **`internal/collector/`** — Prometheus collector implementations. `collector.go` holds the top-level `Collector` struct that runs 47 sub-collectors concurrently via goroutines. Each sub-collector (one file per subsystem) implements `CollectorInstance` with `Name()`, `Register()`, `Describe()`, and `Update()`. **Sub-collectors register themselves via `init()` functions** appending to the global `collectorInstances` slice — adding a new collector requires only creating the file with an `init()` function.
 
-- **`internal/options/`** — Configuration via kingpin CLI flags and env vars. `ops.go` handles OPNsense connection config; `exporter.go` handles server config; `collectors.go` has per-collector disable switches. All env vars are prefixed `OPNSENSE_EXPORTER_`.
+- **`internal/options/`** — Configuration via kingpin CLI flags and env vars. `ops.go` handles OPNsense connection config; `exporter.go` handles server config; `collectors.go` has per-collector disable switches; `otlp.go` and `pyroscope.go` configure the opt-in OTLP-tracing and Pyroscope-profiling telemetry families; `log.go` handles logging config and `init.go` wires the flag registration. All env vars are prefixed `OPNSENSE_EXPORTER_`.
 
 **Data flow:** `main.go` → builds API client + options → creates `Collector` → registers with Prometheus registry → serves HTTP. On each scrape, `Collector.Collect()` fans out to all enabled sub-collectors in parallel.
 
