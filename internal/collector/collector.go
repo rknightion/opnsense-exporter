@@ -174,9 +174,40 @@ type Collector struct {
 	// metrics around every sub-collector Update.
 	scrapeDuration *prometheus.Desc
 	scrapeSuccess  *prometheus.Desc
+
+	// maxScrapeDuration bounds a collection whose caller supplied no deadline (a
+	// header-less /metrics scrape or a registry gather), so a stalled firewall can't
+	// hold the shared mutex unbounded. Zero means use defaultMaxScrapeDuration (#128).
+	maxScrapeDuration time.Duration
+	// otlpGatherTimeout, when > 0, is the deadline applied to the OTLP-bridge gather
+	// path (Collect), derived from the OTLP export interval. Zero means Collect falls
+	// back to the maxScrapeDuration default inside collect().
+	otlpGatherTimeout time.Duration
 }
 
+// defaultMaxScrapeDuration is the fallback bound applied to a no-deadline collection
+// when --exporter.max-scrape-duration is unset (e.g. tests that build a Collector
+// directly rather than via New with the flag wired in).
+const defaultMaxScrapeDuration = 50 * time.Second
+
 type Option func(*Collector) error
+
+// WithMaxScrapeDuration sets the bound applied to no-deadline collections (#128).
+func WithMaxScrapeDuration(d time.Duration) Option {
+	return func(o *Collector) error {
+		o.maxScrapeDuration = d
+		return nil
+	}
+}
+
+// WithOTLPGatherTimeout sets the deadline applied to the OTLP-bridge gather path,
+// derived by the caller from the OTLP export interval (#128).
+func WithOTLPGatherTimeout(d time.Duration) Option {
+	return func(o *Collector) error {
+		o.otlpGatherTimeout = d
+		return nil
+	}
+}
 
 // withoutCollectorInstance removes a collector by given name from the list of collectors
 // that are registered from their init functions.
@@ -900,9 +931,18 @@ func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client 
 
 // Collect implements the prometheus.Collector interface. Registry-driven
 // callers with no HTTP request (e.g. the OTLP bridge) scrape everything with
-// no deadline; /metrics goes through ScrapeView instead.
+// no per-request deadline; /metrics goes through ScrapeView instead. A deadline
+// derived from the OTLP export interval (otlpGatherTimeout) is applied here so a
+// stalled firewall can't make the periodic gather hold the shared mutex unbounded;
+// if unset, collect() applies the maxScrapeDuration fallback (#128).
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	c.collect(context.Background(), ch, nil)
+	ctx := context.Background()
+	if c.otlpGatherTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.otlpGatherTimeout)
+		defer cancel()
+	}
+	c.collect(ctx, ch, nil)
 }
 
 // collectAlwaysOn emits the cumulative exporter-meta metrics that every scrape path
@@ -923,6 +963,22 @@ func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 // sub-collectors. The always-on metrics (up, health, build_info,
 // collector_enabled, scrape counters) are emitted regardless of filtering.
 func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, include map[string]bool) {
+	// Apply a default deadline when the caller supplied none (a header-less /metrics
+	// scrape or a registry/OTLP gather with no derived timeout). Without this, a
+	// blackholed firewall makes each API call run its full ~45s retry budget and holds
+	// the shared mutex below for minutes, timing out every concurrent deadline-bound
+	// scrape. Bounding it here keeps the lock-hold — and thus the blast radius — finite
+	// (#128). A caller-supplied deadline (Prometheus scrape header, OTLP interval) wins.
+	if _, ok := ctx.Deadline(); !ok {
+		d := c.maxScrapeDuration
+		if d <= 0 {
+			d = defaultMaxScrapeDuration
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, d)
+		defer cancel()
+	}
+
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 

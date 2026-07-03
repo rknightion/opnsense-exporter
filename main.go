@@ -373,6 +373,26 @@ func main() {
 		}
 	}
 
+	// Assemble the OTLP config before building the collector so the OTLP export
+	// interval can bound the OTLP-bridge gather path. An invalid configuration is fatal.
+	otlpCfg, otlpEnabled, err := options.OTLP()
+	if err != nil {
+		logger.Error("invalid otlp configuration", "err", err)
+		os.Exit(1)
+	}
+
+	// Bound no-deadline collections so a stalled firewall can't hold the shared collector
+	// lock unbounded and black out every concurrent deadline-bound scrape (#128). The
+	// OTLP gather uses the smaller of the export interval and max-scrape-duration.
+	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithMaxScrapeDuration(*options.MaxScrapeDuration))
+	if otlpEnabled {
+		gatherTimeout := *options.MaxScrapeDuration
+		if otlpCfg.ExportInterval > 0 && otlpCfg.ExportInterval < gatherTimeout {
+			gatherTimeout = otlpCfg.ExportInterval
+		}
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithOTLPGatherTimeout(gatherTimeout))
+	}
+
 	collectorInstance, err := collector.New(&opnsenseClient, logger, instanceLabel, collectorOptionFuncs...)
 	if err != nil {
 		logger.Error("failed to construct the collector", "err", err)
@@ -387,15 +407,11 @@ func main() {
 
 	// OTLP metrics export is opt-in (--otlp.enabled). It pushes the exact metrics
 	// exposed at /metrics to an OTLP endpoint via a Prometheus bridge producer over
-	// the same registry, so names, labels and values stay in parity. An invalid
-	// configuration is fatal; a transient start/export failure is logged but
-	// non-fatal so the exporter keeps serving /metrics. A stopOTLP closure (rather
-	// than the MeterProvider) keeps the OTEL SDK out of main's imports beyond Start.
-	otlpCfg, otlpEnabled, err := options.OTLP()
-	if err != nil {
-		logger.Error("invalid otlp configuration", "err", err)
-		os.Exit(1)
-	}
+	// the same registry, so names, labels and values stay in parity. A transient
+	// start/export failure is logged but non-fatal so the exporter keeps serving
+	// /metrics. A stopOTLP closure (rather than the MeterProvider) keeps the OTEL SDK
+	// out of main's imports beyond Start. (otlpCfg/otlpEnabled were assembled above so
+	// the export interval could bound the OTLP-bridge gather.)
 	var stopOTLP func()
 	if otlpEnabled {
 		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, collectorRegistry}, otlpCfg, version, instanceLabel, logger)

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -338,11 +339,12 @@ func TestSubsystemDisplayNamesComplete(t *testing.T) {
 
 // fakeCollectorInstance is a controllable CollectorInstance for fan-out tests.
 type fakeCollectorInstance struct {
-	name   string
-	err    *opnsense.APICallError
-	panics bool
-	calls  int
-	gotCtx context.Context
+	name       string
+	err        *opnsense.APICallError
+	panics     bool
+	blockOnCtx bool // if set, Update blocks until the context is done (models a stalled API call)
+	calls      int
+	gotCtx     context.Context
 }
 
 func (f *fakeCollectorInstance) Register(_, _ string, _ *slog.Logger) {}
@@ -353,6 +355,9 @@ func (f *fakeCollectorInstance) Update(ctx context.Context, _ *opnsense.Client, 
 	f.gotCtx = ctx
 	if f.panics {
 		panic("boom")
+	}
+	if f.blockOnCtx {
+		<-ctx.Done()
 	}
 	return f.err
 }
@@ -610,6 +615,98 @@ func TestCollectShortCircuitsWhenFirewallUnreachable(t *testing.T) {
 	// skipped, so a single unreachable scrape produces zero ERROR lines (was ~223).
 	if n := strings.Count(buf.String(), "level=ERROR"); n != 0 {
 		t.Errorf("expected 0 ERROR log lines on an unreachable scrape, got %d:\n%s", n, buf.String())
+	}
+}
+
+// healthyServer returns a server that answers every request with 200 `{}`, so the
+// health check succeeds and collect() proceeds to the sub-collector fan-out.
+func healthyServer(t *testing.T) (*opnsense.Client, func()) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	return newCollectorTestClient(t, srv), srv.Close
+}
+
+// TestCollectAppliesDefaultDeadline covers #128: a no-deadline collect must apply the
+// default max-scrape-duration, so sub-collectors run against a bounded context rather
+// than context.Background().
+func TestCollectAppliesDefaultDeadline(t *testing.T) {
+	client, closeSrv := healthyServer(t)
+	defer closeSrv()
+	fake := &fakeCollectorInstance{name: "fake"}
+	c := newScrapeTestCollector(t, client, fake)
+
+	ch := make(chan prometheus.Metric, 128)
+	c.collect(context.Background(), ch, nil) // background = no deadline
+	close(ch)
+
+	if fake.calls != 1 {
+		t.Fatalf("sub-collector should have run once, got %d", fake.calls)
+	}
+	if _, ok := fake.gotCtx.Deadline(); !ok {
+		t.Error("a no-deadline collect must apply a default deadline before fanning out")
+	}
+}
+
+// TestCollectBoundedByMaxScrapeDuration covers #128 acceptance #2/#5: a stalled
+// sub-collector under the default-deadline path must let collect() return (releasing
+// the mutex) at ~max-scrape-duration, not run unbounded.
+func TestCollectBoundedByMaxScrapeDuration(t *testing.T) {
+	client, closeSrv := healthyServer(t)
+	defer closeSrv()
+	fake := &fakeCollectorInstance{name: "fake", blockOnCtx: true}
+	c := newScrapeTestCollector(t, client, fake)
+	c.maxScrapeDuration = 150 * time.Millisecond
+
+	start := time.Now()
+	ch := make(chan prometheus.Metric, 128)
+	c.collect(context.Background(), ch, nil)
+	close(ch)
+	elapsed := time.Since(start)
+
+	if elapsed > time.Second {
+		t.Errorf("collect held for %v; expected it to return near max-scrape-duration (150ms)", elapsed)
+	}
+
+	// The mutex is released: a second collect acquires it promptly.
+	done := make(chan struct{})
+	go func() {
+		fake2 := &fakeCollectorInstance{name: "fake2"}
+		c.collectors = []CollectorInstance{fake2}
+		c2ch := make(chan prometheus.Metric, 128)
+		c.collect(context.Background(), c2ch, nil)
+		close(c2ch)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("second collect did not acquire the mutex promptly after the first timed out")
+	}
+}
+
+// TestOTLPCollectDerivesDeadlineFromInterval covers #128 acceptance #3: the OTLP-bridge
+// gather path (Collector.Collect) applies a deadline from otlpGatherTimeout, not
+// context.Background().
+func TestOTLPCollectDerivesDeadlineFromInterval(t *testing.T) {
+	client, closeSrv := healthyServer(t)
+	defer closeSrv()
+	fake := &fakeCollectorInstance{name: "fake"}
+	c := newScrapeTestCollector(t, client, fake)
+	c.otlpGatherTimeout = 5 * time.Second
+
+	ch := make(chan prometheus.Metric, 128)
+	c.Collect(ch) // the OTLP/registry entry point
+	close(ch)
+
+	dl, ok := fake.gotCtx.Deadline()
+	if !ok {
+		t.Fatal("OTLP Collect must apply a deadline, not use context.Background()")
+	}
+	if remaining := time.Until(dl); remaining > 5*time.Second {
+		t.Errorf("deadline %v exceeds the OTLP gather timeout (5s)", remaining)
 	}
 }
 
