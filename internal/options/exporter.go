@@ -1,6 +1,9 @@
 package options
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/exporter-toolkit/web/kingpinflag"
 )
@@ -38,3 +41,17 @@ var (
 
 	WebConfig = kingpinflag.AddFlags(kingpin.CommandLine, ":8080")
 )
+
+// ValidateMetricsPath checks the resolved --web.telemetry-path value. An empty or
+// non-"/"-prefixed value would make net/http.ServeMux.register panic with a raw stack
+// trace (e.g. when a Helm/env template renders the flag blank); reject it here so the
+// caller can exit via the normal logged config-error path instead of crash-looping.
+func ValidateMetricsPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("--web.telemetry-path (OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH) must not be empty")
+	}
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("--web.telemetry-path must start with '/', got %q", path)
+	}
+	return nil
+}

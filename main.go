@@ -418,6 +418,14 @@ func main() {
 		}
 	}
 
+	// Validate the metrics path before registering it: net/http.ServeMux panics on an
+	// empty/invalid pattern, so a templated-blank --web.telemetry-path would crash the
+	// process with a raw stack trace. Fail through the normal logged config-error path.
+	if err := options.ValidateMetricsPath(*options.MetricsPath); err != nil {
+		logger.Error("invalid metrics path", "err", err)
+		os.Exit(1)
+	}
+
 	metricsHandler := server.NewMetricsHandler(
 		collectorInstance,
 		selfMetricsRegistry,
