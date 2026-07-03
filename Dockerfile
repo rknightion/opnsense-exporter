@@ -4,7 +4,7 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
-ARG Version
+ARG VERSION
 
 WORKDIR /go/src/github.com/rknightion/opnsense-exporter
 COPY . .
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   -mod=vendor \
   -tags osusergo,netgo \
   -trimpath \
-  -ldflags "-s -w -X main.version=${Version}" \
+  -ldflags "-s -w -X main.version=${VERSION}" \
   -o /usr/bin/opnsense-exporter .
 
 # Third-party notices (LICENSE + NOTICE texts of the linked modules) baked into /licenses/
@@ -29,10 +29,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:963fa6c544fe5ce420f1f54fb88b6fb01479f054c8056d0f74cc2c6000df5240
 
-ARG Version
+ARG VERSION
 
 LABEL org.opencontainers.image.source=https://github.com/rknightion/opnsense-exporter
-LABEL org.opencontainers.image.version=${Version}
+LABEL org.opencontainers.image.version=${VERSION}
 LABEL org.opencontainers.image.authors="rknightion"
 LABEL org.opencontainers.image.title="OPNsense Prometheus Exporter"
 LABEL org.opencontainers.image.description="Prometheus exporter for OPNsense"

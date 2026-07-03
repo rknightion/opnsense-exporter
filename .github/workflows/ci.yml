@@ -79,12 +79,25 @@ jobs:
           push: false
           load: true
           tags: opnsense-exporter:ci-test
+          # VERSION (all-caps) MUST match the build-arg name the real publish
+          # pipeline supplies (rknightion/.github container-publish passes
+          # VERSION=...). Docker build-arg names are case-sensitive, so a
+          # mismatch here would silently ship images with an empty version (#79).
           build-args: |
-            Version=ci-test
+            VERSION=ci-test
           cache-from: |
             type=gha,scope=build-verify
             type=gha,scope=build-linux-amd64
           cache-to: type=gha,scope=build-verify,mode=max
+
+      - name: Verify built image embeds the version
+        run: |
+          got="$(docker run --rm opnsense-exporter:ci-test --version 2>&1 | head -n1)"
+          echo "image reported version: '${got}'"
+          if [ "${got}" != "ci-test" ]; then
+            echo "::error::image did not embed the build-arg VERSION (got '${got}', want 'ci-test') — Dockerfile ARG casing regression, see #79"
+            exit 1
+          fi
 
   # Test coverage -> Codacy. Deliberately NOT in ci-success's `needs`: coverage reporting is
   # informational, so a Codacy outage — or a fork PR with no secret — must never block merges or

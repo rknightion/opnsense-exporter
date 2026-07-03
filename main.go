@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	promcollectors "github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/promslog"
@@ -39,6 +40,10 @@ const otlpShutdownTimeout = 10 * time.Second
 const readyCacheTTL = 10 * time.Second
 
 func main() {
+	// Register --version before flag parsing so `opnsense-exporter --version`
+	// prints the ldflags-embedded version and exits — used by the publish/CI
+	// smoke check to prove the built image embeds a real version (see #79).
+	kingpin.Version(version)
 	options.Init()
 	logger := promslog.New(options.PromLogConfig)
 
