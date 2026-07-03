@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -15,6 +16,34 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
+
+// TestNewClient_InsecureWarns covers #159: NewClient must emit a Warn when TLS
+// verification is disabled, and stay silent otherwise.
+func TestNewClient_InsecureWarns(t *testing.T) {
+	const wantMsg = "TLS certificate verification disabled (opnsense.insecure); API credentials and data are exposed to MITM risk"
+
+	for _, tc := range []struct {
+		name     string
+		insecure bool
+		wantWarn bool
+	}{
+		{"insecure warns", true, true},
+		{"secure silent", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			cfg := options.OPNSenseConfig{Protocol: "https", Host: "fw", APIKey: "k", APISecret: "s", Insecure: tc.insecure}
+			if _, err := NewClient(cfg, "test", log); err != nil {
+				t.Fatalf("NewClient: %v", err)
+			}
+			got := strings.Contains(buf.String(), wantMsg)
+			if got != tc.wantWarn {
+				t.Errorf("warn emitted=%v, want %v; log=%q", got, tc.wantWarn, buf.String())
+			}
+		})
+	}
+}
 
 func TestNewClient_EndpointCount(t *testing.T) {
 	cfg := options.OPNSenseConfig{

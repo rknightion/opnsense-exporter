@@ -292,6 +292,15 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 		},
 	}
 
+	// Surface an insecure-TLS config at runtime, not just in docs/security.md: an
+	// operator who sets --opnsense.insecure (e.g. copied from a sample manifest) and
+	// forgets gets no other signal that cert verification is off (#159). Mirrors
+	// node_exporter/blackbox_exporter behaviour.
+	if cfg.Insecure {
+		log.Warn("TLS certificate verification disabled (opnsense.insecure); API credentials and data are exposed to MITM risk",
+			"component", "opnsense-client")
+	}
+
 	return client, nil
 }
 

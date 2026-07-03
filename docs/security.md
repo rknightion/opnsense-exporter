@@ -83,7 +83,7 @@ OPNSENSE_EXPORTER_OPS_INSECURE=true
 ```
 
 !!! warning
-    Disabling TLS verification exposes the API key and secret to potential man-in-the-middle attacks. Only use this for testing or on trusted networks.
+    Disabling TLS verification exposes the API key and secret to potential man-in-the-middle attacks. Only use this for testing or on trusted networks. When enabled, the exporter logs a startup warning: `TLS certificate verification disabled (opnsense.insecure); API credentials and data are exposed to MITM risk`.
 
 ### Exporter TLS (web config)
 
