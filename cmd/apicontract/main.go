@@ -32,8 +32,15 @@ import (
 //     methods literally defined in each file, so it emits the (non-routable) abstract
 //     base as kea/leases/search and nothing for the concrete leases4/leases6 routes.
 //     Verified against a live 26.1 box: kea/leases4/search and kea/leases6/search
-//     return 200 while kea/leases/search returns 404. Real removal of these would be
-//     caught by the live-box stage (P3), not the source parser.
+//     return 200 while kea/leases/search returns 404.
+//
+// Coverage gap (acknowledged): these four endpoints have NO automated drift detection.
+// The source-diff canary is exempt for them by design, and there is no automated
+// live-box stage that re-validates them — the only live-box tooling (cmd/apicapture,
+// `make capture`) is a manual, local action that captures response contracts
+// (opnsense/response_contract.go), not these manifest endpoints. A future OPNsense
+// rename/removal of firmware/status, firmware/info, or the Kea leases4/leases6 search
+// routes would surface only as broken collectors on user installs, not as a CI signal.
 var exemptEndpoints = map[string]bool{
 	"firmware":     true,
 	"firmwareInfo": true,
