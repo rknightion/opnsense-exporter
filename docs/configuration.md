@@ -139,7 +139,7 @@ flags take precedence over those env vars.
 | `--otlp.grafana-cloud-token` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN` | -- | Grafana Cloud Access Policy token. This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set. |
 | `--otlp.headers` | `OPNSENSE_EXPORTER_OTLP_HEADERS` | -- | OTLP headers as comma-separated key=value pairs (e.g. X-Scope-OrgID=1,Authorization=Bearer x). When set, replaces OTEL_EXPORTER_OTLP_HEADERS entirely; when empty, that env var is used. |
 | `--otlp.insecure` | `OPNSENSE_EXPORTER_OTLP_INSECURE` | `false` | Disable TLS for the OTLP connection (plaintext). |
-| `--otlp.protocol` | `OPNSENSE_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | OTLP transport protocol: grpc or http/protobuf. When empty, OTEL_EXPORTER_OTLP_PROTOCOL is used. |
+| `--otlp.protocol` | `OPNSENSE_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | OTLP transport protocol: grpc or http/protobuf. Defaults to http/protobuf; an empty value is rejected. |
 | `--otlp.service-name` | `OPNSENSE_EXPORTER_OTLP_SERVICE_NAME` | `opnsense-exporter` | service.name resource attribute for exported metrics. |
 | `--otlp.tls-ca-file` | `OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE` | -- | Path to a CA certificate file used to verify the OTLP server. |
 | `--otlp.tls-cert-file` | `OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE` | -- | Path to a client certificate file for OTLP mutual TLS (requires --otlp.tls-key-file). |
@@ -341,7 +341,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--otlp.grafana-cloud-token` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN` | -- | Grafana Cloud Access Policy token. This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set. |
 | `--otlp.headers` | `OPNSENSE_EXPORTER_OTLP_HEADERS` | -- | OTLP headers as comma-separated key=value pairs (e.g. X-Scope-OrgID=1,Authorization=Bearer x). When set, replaces OTEL_EXPORTER_OTLP_HEADERS entirely; when empty, that env var is used. |
 | `--otlp.insecure` | `OPNSENSE_EXPORTER_OTLP_INSECURE` | `false` | Disable TLS for the OTLP connection (plaintext). |
-| `--otlp.protocol` | `OPNSENSE_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | OTLP transport protocol: grpc or http/protobuf. When empty, OTEL_EXPORTER_OTLP_PROTOCOL is used. |
+| `--otlp.protocol` | `OPNSENSE_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | OTLP transport protocol: grpc or http/protobuf. Defaults to http/protobuf; an empty value is rejected. |
 | `--otlp.service-name` | `OPNSENSE_EXPORTER_OTLP_SERVICE_NAME` | `opnsense-exporter` | service.name resource attribute for exported metrics. |
 | `--otlp.tls-ca-file` | `OPNSENSE_EXPORTER_OTLP_TLS_CA_FILE` | -- | Path to a CA certificate file used to verify the OTLP server. |
 | `--otlp.tls-cert-file` | `OPNSENSE_EXPORTER_OTLP_TLS_CERT_FILE` | -- | Path to a client certificate file for OTLP mutual TLS (requires --otlp.tls-key-file). |

@@ -29,7 +29,9 @@ func TestOTLPConfig_Validate(t *testing.T) {
 		{"valid", func(*OTLPConfig) {}, false},
 		{"valid grpc", func(c *OTLPConfig) { c.Protocol = "grpc" }, false},
 		{"bad protocol", func(c *OTLPConfig) { c.Protocol = "thrift" }, true},
-		{"empty protocol ok (sdk fallthrough)", func(c *OTLPConfig) { c.Protocol = "" }, false},
+		// The OTel Go SDK never reads OTEL_EXPORTER_OTLP_PROTOCOL, so an empty
+		// protocol has no fallthrough — it is a config error, not a silent default (#92).
+		{"empty protocol rejected (no sdk fallthrough)", func(c *OTLPConfig) { c.Protocol = "" }, true},
 		{"zero interval", func(c *OTLPConfig) { c.ExportInterval = 0 }, true},
 		{"negative interval", func(c *OTLPConfig) { c.ExportInterval = -time.Second }, true},
 		{"cert without key", func(c *OTLPConfig) { c.TLSCertFile = "c.pem" }, true},
@@ -38,6 +40,18 @@ func TestOTLPConfig_Validate(t *testing.T) {
 		{"insecure with ca file", func(c *OTLPConfig) { c.Insecure = true; c.TLSCAFile = "ca.pem" }, true},
 		{"insecure with cert+key", func(c *OTLPConfig) { c.Insecure = true; c.TLSCertFile = "c.pem"; c.TLSKeyFile = "k.pem" }, true},
 		{"insecure alone ok", func(c *OTLPConfig) { c.Insecure = true }, false},
+		// http/protobuf: a non-https endpoint is treated as insecure-by-scheme by the SDK,
+		// which then rejects TLS material at construction. Catch it up front (#92).
+		{"http endpoint + ca file rejected", func(c *OTLPConfig) { c.Endpoint = "http://collector:4318"; c.TLSCAFile = "ca.pem" }, true},
+		{"http endpoint + cert+key rejected", func(c *OTLPConfig) {
+			c.Endpoint = "http://collector:4318"
+			c.TLSCertFile = "c.pem"
+			c.TLSKeyFile = "k.pem"
+		}, true},
+		{"https endpoint + ca ok", func(c *OTLPConfig) { c.Endpoint = "https://collector:4318"; c.TLSCAFile = "ca.pem" }, false},
+		// grpc's oconf prioritizes TLS credentials over scheme-derived insecurity, so the
+		// same http endpoint + TLS is fine there — the scheme guard must not fire.
+		{"grpc http endpoint + ca unaffected", func(c *OTLPConfig) { c.Protocol = "grpc"; c.Endpoint = "http://collector:4317"; c.TLSCAFile = "ca.pem" }, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -78,6 +92,40 @@ func TestAssembleOTLP_HeadersParsing(t *testing.T) {
 	}
 	if cfg.Headers["Authorization"] != "Bearer abc" {
 		t.Errorf("auth header = %q", cfg.Headers["Authorization"])
+	}
+}
+
+func TestAssembleOTLP_MalformedHeadersRejected(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers string
+	}{
+		{"missing '=' (colon typo)", "Authorization: Bearer x"},
+		{"empty key", "=value"},
+		{"only separators parses to zero pairs", ",, ,"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := validRaw()
+			in.headers = tt.headers
+			if _, _, err := assembleOTLP(in); err == nil {
+				t.Errorf("expected fatal error for malformed headers %q, got nil", tt.headers)
+			}
+		})
+	}
+}
+
+func TestAssembleOTLP_EmptyHeadersOK(t *testing.T) {
+	// An empty --otlp.headers is legitimate (defers to OTEL_EXPORTER_OTLP_HEADERS);
+	// it must not be treated as a malformed value.
+	in := validRaw()
+	in.headers = ""
+	cfg, enabled, err := assembleOTLP(in)
+	if err != nil || !enabled {
+		t.Fatalf("empty headers should be valid: enabled=%v err=%v", enabled, err)
+	}
+	if cfg.Headers != nil {
+		t.Errorf("empty headers should yield nil map, got %v", cfg.Headers)
 	}
 }
 

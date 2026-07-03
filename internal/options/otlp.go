@@ -3,6 +3,7 @@ package options
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_OTLP_ENDPOINT").Default("").String()
 	otlpProtocol = kingpin.Flag(
 		"otlp.protocol",
-		"OTLP transport protocol: grpc or http/protobuf. When empty, OTEL_EXPORTER_OTLP_PROTOCOL is used.",
+		"OTLP transport protocol: grpc or http/protobuf. Defaults to http/protobuf; an empty value is rejected.",
 	).Envar("OPNSENSE_EXPORTER_OTLP_PROTOCOL").Default("http/protobuf").String()
 	otlpInsecure = kingpin.Flag(
 		"otlp.insecure",
@@ -77,7 +78,7 @@ var (
 // temporality selector cannot re-aggregate producer-supplied metrics anyway.
 type OTLPConfig struct {
 	Endpoint       string
-	Protocol       string // "grpc" | "http/protobuf" | "" (defer to OTEL_* env)
+	Protocol       string // "grpc" | "http/protobuf" (empty is rejected: no OTEL_* env fallthrough exists)
 	Insecure       bool
 	Headers        map[string]string
 	ExportInterval time.Duration
@@ -89,8 +90,11 @@ type OTLPConfig struct {
 
 // Validate checks an enabled OTLP configuration for internal consistency.
 func (c *OTLPConfig) Validate() error {
+	// The OTel Go SDK selects protocol by which exporter package is imported, not from
+	// OTEL_EXPORTER_OTLP_PROTOCOL (which it never reads), so an empty value has no
+	// fallthrough — reject it as a config error rather than silently defaulting.
 	switch c.Protocol {
-	case "", "grpc", "http/protobuf":
+	case "grpc", "http/protobuf":
 	default:
 		return fmt.Errorf("otlp protocol must be grpc or http/protobuf, got %q", c.Protocol)
 	}
@@ -100,12 +104,23 @@ func (c *OTLPConfig) Validate() error {
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
 		return fmt.Errorf("otlp mutual TLS requires both --otlp.tls-cert-file and --otlp.tls-key-file")
 	}
+	hasTLSMaterial := c.TLSCAFile != "" || c.TLSCertFile != "" || c.TLSKeyFile != ""
 	// --otlp.insecure means plaintext, which is mutually exclusive with TLS
 	// material. The http exporter rejects this at construction (a non-fatal start
 	// failure that would silently disable export); the grpc exporter silently
 	// ignores insecure. Reject it up front so it is a fatal, obvious config error.
-	if c.Insecure && (c.TLSCAFile != "" || c.TLSCertFile != "" || c.TLSKeyFile != "") {
+	if c.Insecure && hasTLSMaterial {
 		return fmt.Errorf("otlp --otlp.insecure cannot be combined with --otlp.tls-ca-file/--otlp.tls-cert-file/--otlp.tls-key-file")
+	}
+	// For http/protobuf the SDK derives insecurity from the endpoint URL scheme in
+	// WithEndpointURL (non-https ⇒ insecure), independent of --otlp.insecure, then
+	// rejects TLS material at construction with errInsecureEndpointWithTLS — another
+	// silent, non-fatal export failure. Catch it here. grpc is unaffected: its oconf
+	// prioritizes TLS credentials over scheme-derived insecurity.
+	if c.Protocol == "http/protobuf" && hasTLSMaterial && c.Endpoint != "" {
+		if u, err := url.Parse(c.Endpoint); err == nil && u.Scheme != "" && u.Scheme != "https" {
+			return fmt.Errorf("otlp http/protobuf endpoint %q uses a non-https scheme (treated as insecure by the SDK) but TLS files are set; use an https:// endpoint or drop the TLS files", c.Endpoint)
+		}
 	}
 	return nil
 }
@@ -132,8 +147,12 @@ type otlpRawInputs struct {
 
 // parseHeaders parses "k=v,k2=v2" into a map. Whitespace around keys, values and
 // separators is trimmed. Only the first '=' is treated as the separator so header
-// values may themselves contain '='. Empty segments are skipped.
-func parseHeaders(s string) map[string]string {
+// values may themselves contain '='. Empty segments (from leading/trailing/repeated
+// commas) are skipped. A segment missing '=' or with an empty key is a fatal error,
+// as is a non-empty input that yields zero pairs: silently dropping these would let a
+// malformed --otlp.headers fall back to OTEL_EXPORTER_OTLP_HEADERS, inverting the
+// documented "when set, replaces it entirely" contract (#92).
+func parseHeaders(s string) (map[string]string, error) {
 	out := map[string]string{}
 	for pair := range strings.SplitSeq(s, ",") {
 		pair = strings.TrimSpace(pair)
@@ -142,15 +161,18 @@ func parseHeaders(s string) map[string]string {
 		}
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok {
-			continue
+			return nil, fmt.Errorf("otlp header %q is missing '='; expected key=value", pair)
 		}
 		k = strings.TrimSpace(k)
 		if k == "" {
-			continue
+			return nil, fmt.Errorf("otlp header %q has an empty key", pair)
 		}
 		out[k] = strings.TrimSpace(v)
 	}
-	return out
+	if strings.TrimSpace(s) != "" && len(out) == 0 {
+		return nil, fmt.Errorf("otlp headers %q parsed to zero valid key=value pairs", s)
+	}
+	return out, nil
 }
 
 // assembleOTLP applies precedence and the Grafana Cloud shortcut to raw inputs,
@@ -163,7 +185,10 @@ func assembleOTLP(in otlpRawInputs) (*OTLPConfig, bool, error) {
 		return nil, false, nil
 	}
 
-	headers := parseHeaders(in.headers)
+	headers, err := parseHeaders(in.headers)
+	if err != nil {
+		return nil, false, err
+	}
 
 	// Grafana Cloud shortcut: both id and token required; synthesize basic-auth and
 	// (when no explicit endpoint is set) the endpoint. Explicit values always win.
