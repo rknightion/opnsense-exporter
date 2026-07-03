@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"runtime"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -156,6 +157,8 @@ type Collector struct {
 	scrapes              prometheus.CounterVec
 	scrapeSkips          prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
+	apiRequests          prometheus.CounterVec
+	apiRequestDuration   prometheus.HistogramVec
 	instanceLabel        string
 	collectors           []CollectorInstance
 
@@ -726,6 +729,19 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		Help:      "Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead.",
 	}, []string{"endpoint", "opnsense_instance"})
 
+	c.apiRequests = *prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "exporter_api_requests_total",
+		Help:      "Total number of OPNsense API requests made, by endpoint (api/* path) and HTTP response code (0 = no response, e.g. network error or context cancellation). Provides the denominator for a per-endpoint error rate alongside opnsense_exporter_endpoint_errors_total.",
+	}, []string{"endpoint", "code", "opnsense_instance"})
+
+	c.apiRequestDuration = *prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: namespace,
+		Name:      "exporter_api_request_duration_seconds",
+		Help:      "Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scrape duration spikes.",
+		Buckets:   []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15},
+	}, []string{"endpoint", "opnsense_instance"})
+
 	// isUp, scrapes and endpointErrors are exposed through this Collector's own
 	// Describe/Collect (see Describe and collect), so they reach /metrics via the
 	// registry the Collector is registered on. They are deliberately NOT registered
@@ -737,8 +753,28 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	for _, path := range c.Client.Endpoints() {
 		c.endpointErrors.WithLabelValues(string(path), c.instanceLabel).Add(0)
+		// Pre-create the per-endpoint duration histogram (zero observations) so the
+		// series exists before the first request, mirroring endpointErrors. The
+		// api_requests counter is not pre-initialised — its `code` label is unknown
+		// until a real response arrives.
+		c.apiRequestDuration.WithLabelValues(string(path), c.instanceLabel)
 	}
+
+	// Install this Collector as the client's per-request observer so api_requests_total
+	// / api_request_duration_seconds are recorded at the single request choke point.
+	// &c is the pointer returned below, and the client is shared across every scrape
+	// (WithContext clones copy the observer field), so the wiring outlives New (#126).
+	c.Client.SetRequestObserver(&c)
 	return &c, nil
+}
+
+// ObserveAPIRequest implements opnsense.RequestObserver: it records one API call's
+// count (by endpoint + HTTP code) and duration (by endpoint) into this Collector's
+// self-metrics. Called from the client choke point on every request, concurrently
+// across sub-collector goroutines — the prometheus vecs are safe for concurrent use.
+func (c *Collector) ObserveAPIRequest(endpoint string, statusCode int, duration time.Duration) {
+	c.apiRequests.WithLabelValues(endpoint, strconv.Itoa(statusCode), c.instanceLabel).Inc()
+	c.apiRequestDuration.WithLabelValues(endpoint, c.instanceLabel).Observe(duration.Seconds())
 }
 
 // Describe implements the prometheus.Collector interface.
@@ -746,6 +782,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapes.Describe(ch)
 	c.scrapeSkips.Describe(ch)
 	c.endpointErrors.Describe(ch)
+	c.apiRequests.Describe(ch)
+	c.apiRequestDuration.Describe(ch)
 	c.isUp.Describe(ch)
 	ch <- c.buildInfo
 	ch <- c.collectorEnabled
@@ -890,6 +928,8 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 		c.scrapeSkips.Collect(ch)
 		c.scrapes.Collect(ch)
 		c.endpointErrors.Collect(ch)
+		c.apiRequests.Collect(ch)
+		c.apiRequestDuration.Collect(ch)
 		c.collectExporterInfo(ch)
 		return
 	}
@@ -922,6 +962,8 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 	// is always present — an alert/dashboard on it works without waiting for a skip.
 	c.scrapeSkips.Collect(ch)
 	c.endpointErrors.Collect(ch)
+	c.apiRequests.Collect(ch)
+	c.apiRequestDuration.Collect(ch)
 	c.collectExporterInfo(ch)
 }
 

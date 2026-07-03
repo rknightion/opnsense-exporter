@@ -402,6 +402,14 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 		prometheus.CounterOpts{Name: "opnsense_exporter_endpoint_errors_total_test", Help: "h"},
 		[]string{"endpoint", "opnsense_instance"},
 	)
+	c.apiRequests = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "opnsense_exporter_api_requests_total_test", Help: "h"},
+		[]string{"endpoint", "code", "opnsense_instance"},
+	)
+	c.apiRequestDuration = *prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{Name: "opnsense_exporter_api_request_duration_seconds_test", Help: "h"},
+		[]string{"endpoint", "opnsense_instance"},
+	)
 	return c
 }
 

@@ -290,8 +290,8 @@ func parseSubsystemConstants(filePath string) map[string]string {
 // so both prometheus.X and promauto.X match) that parseTopLevelMetrics does NOT know how to turn
 // into doc entries. Encountering one in New() is fatal rather than silently skipped (#119).
 var unparsedMetricConstructors = map[string]bool{
-	"NewHistogram": true, "NewHistogramVec": true,
-	"NewSummary": true, "NewSummaryVec": true,
+	"NewHistogram": true,
+	"NewSummary":   true, "NewSummaryVec": true,
 	"NewGaugeFunc": true, "NewCounterFunc": true, "NewUntypedFunc": true,
 	"NewConstHistogram": true, "NewConstSummary": true,
 }
@@ -364,6 +364,14 @@ func parseTopLevelMetrics(filePath string) []MetricInfo {
 					m := parseCounterVecOpts(call)
 					if m != nil {
 						m.Type = "Counter"
+						metrics = append(metrics, *m)
+					}
+				case "prometheus.NewHistogramVec", "NewHistogramVec":
+					// HistogramOpts has the same Namespace/Name/Help fields as CounterOpts
+					// (plus Buckets, which the docs don't render); (opts, labels) shape too.
+					m := parseCounterVecOpts(call)
+					if m != nil {
+						m.Type = "Histogram"
 						metrics = append(metrics, *m)
 					}
 				case "prometheus.NewDesc", "NewDesc":

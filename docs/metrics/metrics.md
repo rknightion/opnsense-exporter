@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 557
-- **Gauges:** 366
-- **Counters:** 191
+- **Total metrics:** 559
+- **Gauges:** 367
+- **Counters:** 192
 
 ## General
 
@@ -26,6 +26,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics (completed scrapes only; scrapes skipped because the deadline expired before the collector lock was acquired are counted by opnsense_exporter_scrape_skips_total instead). |
 | opnsense_exporter_scrape_skips_total | Counter | --- | Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics — opnsense_up and the per-collector series are absent — so this counter is the signal to distinguish a skipped scrape from a completed one. |
 | opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead. |
+| opnsense_exporter_api_requests_total | Counter | endpoint, code | Total number of OPNsense API requests made, by endpoint (api/* path) and HTTP response code (0 = no response, e.g. network error or context cancellation). Provides the denominator for a per-endpoint error rate alongside opnsense_exporter_endpoint_errors_total. |
+| opnsense_exporter_api_request_duration_seconds | Histogram | endpoint | Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scrape duration spikes. |
 
 ## ACME Client
 

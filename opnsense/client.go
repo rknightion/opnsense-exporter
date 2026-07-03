@@ -173,6 +173,26 @@ type Client struct {
 	// deliberate here: the clone is request-scoped, mirroring the
 	// http.Request.WithContext pattern. nil means context.Background().
 	reqCtx context.Context
+	// observer, when set, is notified once per API call passing through the request
+	// choke point (doWithContentType). It lets the collector layer record per-endpoint
+	// request-count/duration self-metrics without coupling this package to Prometheus.
+	// nil means no instrumentation.
+	observer RequestObserver
+}
+
+// RequestObserver is notified after every API request that passes through the client's
+// request choke point, with the endpoint path, the HTTP status code (0 when no response
+// was received, e.g. a network error or context cancellation), and the elapsed wall
+// time for the whole call (including retries). Implemented by the collector layer to
+// record self-metrics; kept as an interface here so opnsense/ stays Prometheus-free.
+type RequestObserver interface {
+	ObserveAPIRequest(endpoint string, statusCode int, duration time.Duration)
+}
+
+// SetRequestObserver installs o as the per-request observer for this client (and any
+// request-scoped clone made afterwards via WithContext, since the clone is shallow).
+func (c *Client) SetRequestObserver(o RequestObserver) {
+	c.observer = o
 }
 
 // NewClient creates a new OPNsense API Client
@@ -259,8 +279,25 @@ func (c *Client) doForm(path EndpointPath, form url.Values, responseStruct any) 
 // doWithContentType sends a request to the OPNsense API with the specified
 // Content-Type header (only set for POST). The response is unmarshalled into
 // responseStruct. This is the underlying implementation used by do and doForm.
-func (c *Client) doWithContentType(method string, path EndpointPath, body io.Reader, contentType string, responseStruct any) *APICallError {
+func (c *Client) doWithContentType(method string, path EndpointPath, body io.Reader, contentType string, responseStruct any) (apiErr *APICallError) {
 	reqURL := fmt.Sprintf("%s/%s", c.baseURL, string(path))
+
+	// Record one self-metric observation per logical API call (not per retry): total
+	// wall time and the final HTTP status code. statusCode is a stack-local (the client
+	// clone is shared across concurrent sub-collector goroutines, so per-call state must
+	// not live on the struct); it is set on the response path below, and a returned
+	// APICallError's StatusCode (if non-zero) takes precedence in the deferred emit (#126).
+	var statusCode int
+	if c.observer != nil {
+		start := time.Now()
+		defer func() {
+			code := statusCode
+			if apiErr != nil && apiErr.StatusCode != 0 {
+				code = apiErr.StatusCode
+			}
+			c.observer.ObserveAPIRequest(string(path), code, time.Since(start))
+		}()
+	}
 
 	// Buffer the request body so every retry attempt sends it from the start;
 	// the transport consumes a request's body even when the attempt fails.
@@ -325,6 +362,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 			continue
 		}
 
+		statusCode = resp.StatusCode
 		return c.readResponse(path, resp, responseStruct)
 	}
 	return &APICallError{

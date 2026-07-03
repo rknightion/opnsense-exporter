@@ -25,7 +25,12 @@ STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
 
 # Metrics intentionally NOT charted on a panel (covered structurally / not useful as a
 # series). Keep this list short and justified — the coverage gate flags everything else.
-COVERAGE_EXEMPT = set()
+# Histogram base names cannot satisfy the word-boundary coverage substring gate: they
+# are only ever queried via their _bucket/_sum/_count series (e.g.
+# opnsense_exporter_api_request_duration_seconds_bucket), never the bare base name. The
+# metric IS paneled (see build_diagnostics), so exempt only the base name from the
+# substring check (#126).
+COVERAGE_EXEMPT = {"opnsense_exporter_api_request_duration_seconds"}
 
 # The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's
 # Prometheus scrape config sets. The docs use `job_name: opnsense` (getting-started,
@@ -183,9 +188,24 @@ def build_diagnostics(b: Builder):
     go_cpu = b.ts("Exporter CPU", [(f"rate(process_cpu_seconds_total{{{JOB}}}[{RATE}])",
                   "cpu")], unit="percentunit", w=8, h=6)
 
+    # Per-endpoint API request rate + p95 latency, sourced from the client choke-point
+    # self-metrics (#126). api_requests_total gives the denominator for a per-endpoint
+    # error rate; the duration histogram shows which endpoint regressed when a
+    # collector's scrape duration spikes.
+    api_rate = b.ts("API Request Rate (by endpoint)",
+                    [(f'sum by (endpoint) (rate({sel("opnsense_exporter_api_requests_total")}[{RATE}]))',
+                      "{{endpoint}}")], unit="reqps", w=12, h=7)
+    api_p95 = b.ts("API Request p95 Latency (by endpoint)",
+                   [(f'histogram_quantile(0.95, sum by (le, endpoint) '
+                     f'(rate(opnsense_exporter_api_request_duration_seconds_bucket'
+                     f'{{opnsense_instance=~"$opnsense_instance"}}[{RATE}])))', "{{endpoint}}")],
+                   unit="s", w=12, h=7,
+                   desc="p95 of opnsense_exporter_api_request_duration_seconds by endpoint.")
+
     b.tab("Diagnostics", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
+        b.row("API Requests (per endpoint)", [api_rate, api_p95]),
         b.row("Exporter Build & Collectors", [build, cov]),
         b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),
