@@ -434,8 +434,10 @@ func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client,
 		c.icmpSentPackets, prometheus.CounterValue, float64(data.ICMPSentPackets), c.instance,
 	)
 	for reason, count := range data.ICMPDroppedByReason {
+		// Cumulative BSD netstat drop counter (reset only on reboot) — CounterValue
+		// to match the carp/pfsync/ip drop-reason siblings (#106).
 		ch <- prometheus.MustNewConstMetric(
-			c.icmpDroppedByReason, prometheus.GaugeValue, float64(count), reason, c.instance,
+			c.icmpDroppedByReason, prometheus.CounterValue, float64(count), reason, c.instance,
 		)
 	}
 	ch <- prometheus.MustNewConstMetric(
@@ -448,8 +450,10 @@ func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client,
 		c.udpReceivedDatagrams, prometheus.CounterValue, float64(data.UDPReceivedDatagrams), c.instance,
 	)
 	for reason, count := range data.UDPDroppedByReason {
+		// Cumulative BSD netstat drop counter (reset only on reboot) — CounterValue
+		// to match the carp/pfsync/ip drop-reason siblings (#106).
 		ch <- prometheus.MustNewConstMetric(
-			c.udpDroppedByReason, prometheus.GaugeValue, float64(count), reason, c.instance,
+			c.udpDroppedByReason, prometheus.CounterValue, float64(count), reason, c.instance,
 		)
 	}
 

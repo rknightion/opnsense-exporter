@@ -166,9 +166,12 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 			phase1.Name,
 			c.instance,
 		)
+		// Phase1 bytes/packets are cumulative counters (the aggregated sums of the
+		// phase2 child-SA counters, which are already CounterValue). Emit as
+		// CounterValue so the same quantity isn't typed two different ways (#106).
 		ch <- prometheus.MustNewConstMetric(
 			c.phase1_bytes_in,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(phase1.BytesIn),
 			phase1.Phase1desc,
 			phase1.Name,
@@ -176,7 +179,7 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		)
 		ch <- prometheus.MustNewConstMetric(
 			c.phase1_bytes_out,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(phase1.BytesOut),
 			phase1.Phase1desc,
 			phase1.Name,
@@ -184,7 +187,7 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		)
 		ch <- prometheus.MustNewConstMetric(
 			c.phase1_packets_in,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(phase1.PacketsIn),
 			phase1.Phase1desc,
 			phase1.Name,
@@ -192,7 +195,7 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		)
 		ch <- prometheus.MustNewConstMetric(
 			c.phase1_packets_out,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(phase1.PacketsOut),
 			phase1.Phase1desc,
 			phase1.Name,

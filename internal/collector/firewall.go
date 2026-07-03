@@ -211,9 +211,12 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 			c.outIPv6BlockBytes:   v.Out6BlockBytes,
 		}
 		for metric, value := range metricsValueMapping {
+			// These pf pass/block byte and packet totals are cumulative,
+			// reset-on-reboot counters — emit as CounterValue so rate()/increase()
+			// and TYPE-aware tooling handle them correctly (#106).
 			ch <- prometheus.MustNewConstMetric(
 				metric,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				float64(value),
 				v.InterfaceName,
 				c.instance,

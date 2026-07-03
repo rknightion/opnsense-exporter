@@ -75,6 +75,14 @@ func TestIPsecCollector_Update(t *testing.T) {
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
+
+	// #106: phase1 bytes/packets are cumulative counters (matching phase2).
+	assertMetricsAreCounters(t, metrics,
+		"opnsense_ipsec_phase1_bytes_in",
+		"opnsense_ipsec_phase1_bytes_out",
+		"opnsense_ipsec_phase1_packets_in",
+		"opnsense_ipsec_phase1_packets_out",
+	)
 }
 
 func TestIPsecCollector_Update_NoPhase2(t *testing.T) {

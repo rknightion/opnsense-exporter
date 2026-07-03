@@ -258,6 +258,12 @@ func TestProtocolCollector_Update(t *testing.T) {
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
+
+	// #106: icmp/udp drop-reason counters are cumulative, matching carp/pfsync/ip.
+	assertMetricsAreCounters(t, metrics,
+		"opnsense_protocol_icmp_dropped_by_reason_total",
+		"opnsense_protocol_udp_dropped_by_reason_total",
+	)
 }
 
 func TestProtocolCollector_Name(t *testing.T) {

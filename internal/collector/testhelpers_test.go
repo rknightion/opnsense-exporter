@@ -37,6 +37,33 @@ func assertNoDuplicateSeries(t *testing.T, metrics []prometheus.Metric) {
 	}
 }
 
+// assertMetricsAreCounters fails if any collected metric whose descriptor
+// mentions one of nameSubstrings is not emitted with CounterValue. Guards against
+// cumulative counters regressing to GaugeValue (#106).
+func assertMetricsAreCounters(t *testing.T, metrics []prometheus.Metric, nameSubstrings ...string) {
+	t.Helper()
+	found := map[string]bool{}
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		for _, sub := range nameSubstrings {
+			if !strings.Contains(desc, `fqName: "`+sub+`"`) {
+				continue
+			}
+			found[sub] = true
+			d := &dto.Metric{}
+			_ = m.Write(d)
+			if d.Counter == nil {
+				t.Errorf("%s must be emitted as CounterValue (TYPE counter), got %v", sub, d)
+			}
+		}
+	}
+	for _, sub := range nameSubstrings {
+		if !found[sub] {
+			t.Errorf("expected a metric named %q to be emitted", sub)
+		}
+	}
+}
+
 func newCollectorTestClient(t *testing.T, server *httptest.Server) *opnsense.Client {
 	t.Helper()
 	u, _ := url.Parse(server.URL)
