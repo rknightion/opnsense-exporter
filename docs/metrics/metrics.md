@@ -674,22 +674,22 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## SMART Disk Health
 
-| Metric Name | Type | Labels | Description | Disable Flag |
-|-------------|------|--------|-------------|--------------|
-| opnsense_smart_devices_total | Gauge | --- | Number of SMART-monitored devices enumerated by the os-smart plugin | --exporter.disable-smart |
-| opnsense_smart_device_health | Gauge | device, model, serial | SMART overall health assessment (1 = passed, 0 = failed) | --exporter.disable-smart |
-| opnsense_smart_device_temperature_celsius | Gauge | device | Current drive temperature in degrees Celsius | --exporter.disable-smart |
-| opnsense_smart_device_power_on_hours | Gauge | device | Total power-on hours reported by the drive | --exporter.disable-smart |
-| opnsense_smart_attribute_value | Gauge | device, attribute_name, attribute_id | Normalised current value of a SATA SMART attribute | --exporter.disable-smart |
-| opnsense_smart_attribute_worst | Gauge | device, attribute_name, attribute_id | Worst recorded normalised value of a SATA SMART attribute | --exporter.disable-smart |
-| opnsense_smart_attribute_threshold | Gauge | device, attribute_name, attribute_id | Failure threshold of a SATA SMART attribute (normalised value at/below this indicates failure) | --exporter.disable-smart |
-| opnsense_smart_attribute_raw | Gauge | device, attribute_name, attribute_id | Raw value of a SATA SMART attribute (e.g. reallocated sector count, total LBAs written) | --exporter.disable-smart |
-| opnsense_smart_nvme_available_spare_percent | Gauge | device | NVMe remaining spare capacity as a percentage | --exporter.disable-smart |
-| opnsense_smart_nvme_percentage_used | Gauge | device | NVMe vendor estimate of device life used as a percentage (may exceed 100) | --exporter.disable-smart |
-| opnsense_smart_nvme_media_errors_total | Counter | device | NVMe count of unrecovered data-integrity errors | --exporter.disable-smart |
-| opnsense_smart_nvme_unsafe_shutdowns_total | Counter | device | NVMe count of unsafe shutdowns | --exporter.disable-smart |
-| opnsense_smart_nvme_data_units_read_total | Counter | device | NVMe data units read (1 unit = 1000 × 512 bytes) | --exporter.disable-smart |
-| opnsense_smart_nvme_data_units_written_total | Counter | device | NVMe data units written (1 unit = 1000 × 512 bytes) | --exporter.disable-smart |
+| Metric Name | Type | Labels | Description | Enable Flag |
+|-------------|------|--------|-------------|-------------|
+| opnsense_smart_devices_total | Gauge | --- | Number of SMART-monitored devices enumerated by the os-smart plugin | --exporter.enable-smart |
+| opnsense_smart_device_health | Gauge | device, model, serial | SMART overall health assessment (1 = passed, 0 = failed) | --exporter.enable-smart |
+| opnsense_smart_device_temperature_celsius | Gauge | device | Current drive temperature in degrees Celsius | --exporter.enable-smart |
+| opnsense_smart_device_power_on_hours | Gauge | device | Total power-on hours reported by the drive | --exporter.enable-smart |
+| opnsense_smart_attribute_value | Gauge | device, attribute_name, attribute_id | Normalised current value of a SATA SMART attribute | --exporter.enable-smart |
+| opnsense_smart_attribute_worst | Gauge | device, attribute_name, attribute_id | Worst recorded normalised value of a SATA SMART attribute | --exporter.enable-smart |
+| opnsense_smart_attribute_threshold | Gauge | device, attribute_name, attribute_id | Failure threshold of a SATA SMART attribute (normalised value at/below this indicates failure) | --exporter.enable-smart |
+| opnsense_smart_attribute_raw | Gauge | device, attribute_name, attribute_id | Raw value of a SATA SMART attribute (e.g. reallocated sector count, total LBAs written) | --exporter.enable-smart |
+| opnsense_smart_nvme_available_spare_percent | Gauge | device | NVMe remaining spare capacity as a percentage | --exporter.enable-smart |
+| opnsense_smart_nvme_percentage_used | Gauge | device | NVMe vendor estimate of device life used as a percentage (may exceed 100) | --exporter.enable-smart |
+| opnsense_smart_nvme_media_errors_total | Counter | device | NVMe count of unrecovered data-integrity errors | --exporter.enable-smart |
+| opnsense_smart_nvme_unsafe_shutdowns_total | Counter | device | NVMe count of unsafe shutdowns | --exporter.enable-smart |
+| opnsense_smart_nvme_data_units_read_total | Counter | device | NVMe data units read (1 unit = 1000 × 512 bytes) | --exporter.enable-smart |
+| opnsense_smart_nvme_data_units_written_total | Counter | device | NVMe data units written (1 unit = 1000 × 512 bytes) | --exporter.enable-smart |
 
 ## Services
 

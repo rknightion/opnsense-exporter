@@ -214,7 +214,6 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | OpenVPN | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF Statistics | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | Q-Feeds | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
-| `--exporter.disable-smart` | `OPNSENSE_EXPORTER_DISABLE_SMART` | SMART Disk Health | Disable the SMART disk health collector (per-disk POST fanout; silent when the os-smart plugin is absent) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | Syslog | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | System | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | Tailscale | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
@@ -238,6 +237,7 @@ These collectors are disabled by default because they make additional API calls 
 | `--exporter.enable-hasync` | `OPNSENSE_EXPORTER_ENABLE_HASYNC` | HA Sync Status | Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scrape). Disabled by default. |
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | NetFlow | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | Network Diagnostics | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |
+| `--exporter.enable-smart` | `OPNSENSE_EXPORTER_ENABLE_SMART` | SMART Disk Health | Enable the SMART disk health collector. Off by default: each scrape does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent. |
 <!-- docgen:end:flags-collectors-opt-in -->
 
 ### High-cardinality detail options
@@ -305,7 +305,6 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | `false` | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | `false` | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | `false` | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
-| `--exporter.disable-smart` | `OPNSENSE_EXPORTER_DISABLE_SMART` | `false` | Disable the SMART disk health collector (per-disk POST fanout; silent when the os-smart plugin is absent) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | `false` | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | `false` | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | `false` | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
@@ -326,6 +325,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | `false` | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | `false` | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | `false` | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |
+| `--exporter.enable-smart` | `OPNSENSE_EXPORTER_ENABLE_SMART` | `false` | Enable the SMART disk health collector. Off by default: each scrape does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent. |
 | `--exporter.enable-tailscale-peer-details` | `OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS` | `false` | Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer hostname labels) |
 | `--exporter.enable-unbound-infra` | `OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA` | `false` | Enable per-upstream infra cache RTT metrics from Unbound (cardinality scales with the resolver's infra cache; one series pair per upstream ip/host) |
 | `--exporter.instance-label` | `OPNSENSE_EXPORTER_INSTANCE_LABEL` | -- | Label to use to identify the instance in every metric. If you have multiple instances of the exporter, you can differentiate them by using different value in this flag, that represents the instance of the target OPNsense. If left empty, it defaults to the configured OPNsense address (deterministic). Set --exporter.instance-use-hostname to derive it from the OPNsense hostname instead. |

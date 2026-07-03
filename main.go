@@ -244,7 +244,7 @@ func main() {
 	}
 	if !collectorsSwitches.SMART {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSMARTCollector())
-		logger.Info("smart collector disabled")
+		logger.Info("smart collector disabled (opt-in via --exporter.enable-smart)")
 	}
 	if !collectorsSwitches.DynDNS {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDynDNSCollector())

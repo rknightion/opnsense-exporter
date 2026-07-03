@@ -44,7 +44,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 59 | Enabled | --- | --- |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
-| SMART Disk Health | smart | 14 | Enabled | --exporter.disable-smart | OPNSENSE_EXPORTER_DISABLE_SMART |
+| SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
 | Services | services | 3 | Enabled | --- | --- |
 | Syslog | syslog | 10 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
 | System | system | 12 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |

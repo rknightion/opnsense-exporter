@@ -45,8 +45,9 @@ the slowest OPNsense API endpoint. If scrapes approach your Prometheus
 `scrape_timeout`:
 
 - Disable collectors you don't need (`--exporter.disable-*`).
-- The SMART collector performs one POST per disk per scrape; disable it
-  (`--exporter.disable-smart`) if your hardware is slow to answer.
+- The SMART collector performs one POST per disk per scrape (running `smartctl`
+  on the firewall); it is opt-in (`--exporter.enable-smart`) — leave it off if
+  your hardware is slow to answer or you use spun-down disks.
 - Raise `scrape_timeout`/`scrape_interval` in your Prometheus job (30s+ intervals are
   fine for firewall metrics).
 

@@ -135,10 +135,15 @@ var (
 		"exporter.disable-acme",
 		"Disable the scraping of ACME client certificate renewal status and expiry metrics (silent when the os-acme-client plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ACME").Default("false").Bool()
-	smartCollectorDisabled = kingpin.Flag(
-		"exporter.disable-smart",
-		"Disable the SMART disk health collector (per-disk POST fanout; silent when the os-smart plugin is absent)",
-	).Envar("OPNSENSE_EXPORTER_DISABLE_SMART").Default("false").Bool()
+	// SMART is opt-in (default-off): each scrape does a per-disk POST fanout that makes
+	// OPNsense shell out `smartctl -a` per disk, with no standby guard — so a default-on
+	// collector would spin up power-saving disks every scrape interval. This matches the
+	// CLAUDE.md convention that reserves enable-* for collectors with extra per-scrape API
+	// cost (#139).
+	smartEnabled = kingpin.Flag(
+		"exporter.enable-smart",
+		"Enable the SMART disk health collector. Off by default: each scrape does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").Bool()
 	dyndnsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-dyndns",
 		"Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent)",
@@ -325,7 +330,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Dhcpv4:                 !*dhcpv4CollectorDisabled,
 		Dhcpv4Details:          *dhcpv4DetailsEnabled,
 		ACME:                   !*acmeCollectorDisabled,
-		SMART:                  !*smartCollectorDisabled,
+		SMART:                  *smartEnabled,
 		DynDNS:                 !*dyndnsCollectorDisabled,
 		Gateways:               !*gatewaysCollectorDisabled,
 		Syslog:                 !*syslogCollectorDisabled,
@@ -400,7 +405,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-dhcpv4", Subsystem: "dhcpv4"},
 	{Flag: "exporter.enable-dhcpv4-details", Subsystem: "dhcpv4", Detail: true},
 	{Flag: "exporter.disable-acme", Subsystem: "acme"},
-	{Flag: "exporter.disable-smart", Subsystem: "smart"},
+	{Flag: "exporter.enable-smart", Subsystem: "smart"},
 	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
 	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
 	{Flag: "exporter.disable-syslog", Subsystem: "syslog"},

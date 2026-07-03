@@ -79,7 +79,7 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 | NDP | `ndp` | IPv6 neighbor discovery table entries | `--exporter.disable-ndp` |
 | ISC DHCPv4 | `dhcpv4` | ISC DHCPv4 lease metrics (silent when the legacy ISC DHCP backend is absent) | `--exporter.disable-dhcpv4` |
 | ACME client | `acme` | ACME certificate renewal status and expiry (silent when `os-acme-client` is absent) | `--exporter.disable-acme` |
-| SMART disk health | `smart` | Per-disk SMART health, temperature, power-on hours (silent when `os-smart` is absent) | `--exporter.disable-smart` |
+| SMART disk health | `smart` | Per-disk SMART health, temperature, power-on hours (silent when `os-smart` is absent) | `--exporter.enable-smart` |
 | DynDNS | `dyndns` | DynDNS (ddclient) account update status (silent when `os-ddclient` is absent) | `--exporter.disable-dyndns` |
 | Syslog | `syslog` | syslog-ng per-destination processed/dropped/queued/written stats, truncation, memory, events-per-second | `--exporter.disable-syslog` |
 | Q-Feeds | `qfeeds` | Q-Feeds threat-intel feed entries, blocked packets/bytes/addresses, license expiry (silent when `os-q-feeds-connector` is absent) | `--exporter.disable-qfeeds` |
