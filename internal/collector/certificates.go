@@ -112,26 +112,34 @@ func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Cli
 		}
 		seenLeaf[key] = true
 
-		ch <- prometheus.MustNewConstMetric(
-			c.validFrom,
-			prometheus.GaugeValue,
-			cert.ValidFrom,
-			cert.Description,
-			cert.CommonName,
-			cert.CertType,
-			cert.InUse,
-			c.instance,
-		)
-		ch <- prometheus.MustNewConstMetric(
-			c.validTo,
-			prometheus.GaugeValue,
-			cert.ValidTo,
-			cert.Description,
-			cert.CommonName,
-			cert.CertType,
-			cert.InUse,
-			c.instance,
-		)
+		// Skip valid_from/valid_to for rows with no real expiry data (pending CSR
+		// or unparseable blob) rather than emitting epoch 0, which reads as
+		// "expired since 1970" and false-fires expiry alerts. The info metric is
+		// still emitted for visibility (#167).
+		if cert.HasValidFrom {
+			ch <- prometheus.MustNewConstMetric(
+				c.validFrom,
+				prometheus.GaugeValue,
+				cert.ValidFrom,
+				cert.Description,
+				cert.CommonName,
+				cert.CertType,
+				cert.InUse,
+				c.instance,
+			)
+		}
+		if cert.HasValidTo {
+			ch <- prometheus.MustNewConstMetric(
+				c.validTo,
+				prometheus.GaugeValue,
+				cert.ValidTo,
+				cert.Description,
+				cert.CommonName,
+				cert.CertType,
+				cert.InUse,
+				c.instance,
+			)
+		}
 		ch <- prometheus.MustNewConstMetric(
 			c.info,
 			prometheus.GaugeValue,
@@ -161,10 +169,14 @@ func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Cli
 			continue
 		}
 		seenCA[key] = true
-		ch <- prometheus.MustNewConstMetric(c.caValidFrom, prometheus.GaugeValue,
-			ca.ValidFrom, ca.Description, ca.CommonName, c.instance)
-		ch <- prometheus.MustNewConstMetric(c.caValidTo, prometheus.GaugeValue,
-			ca.ValidTo, ca.Description, ca.CommonName, c.instance)
+		if ca.HasValidFrom {
+			ch <- prometheus.MustNewConstMetric(c.caValidFrom, prometheus.GaugeValue,
+				ca.ValidFrom, ca.Description, ca.CommonName, c.instance)
+		}
+		if ca.HasValidTo {
+			ch <- prometheus.MustNewConstMetric(c.caValidTo, prometheus.GaugeValue,
+				ca.ValidTo, ca.Description, ca.CommonName, c.instance)
+		}
 	}
 
 	return nil

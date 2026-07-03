@@ -78,13 +78,18 @@ func TestFetchCertificates_Success(t *testing.T) {
 		t.Errorf("expected CertType='server', got %q", c1.CertType)
 	}
 
-	// Third cert: empty valid_from/valid_to -> safeParseFloat returns 0
+	// Third cert: empty valid_from/valid_to (a pending CSR / unparseable blob)
+	// must be flagged as absent, distinct from a genuine epoch 0 (#167).
 	c3 := data.Certificates[2]
-	if c3.ValidFrom != 0 {
-		t.Errorf("expected ValidFrom=0 for empty string, got %f", c3.ValidFrom)
+	if c3.HasValidFrom {
+		t.Error("expected HasValidFrom=false for empty valid_from")
 	}
-	if c3.ValidTo != 0 {
-		t.Errorf("expected ValidTo=0 for empty string, got %f", c3.ValidTo)
+	if c3.HasValidTo {
+		t.Error("expected HasValidTo=false for empty valid_to")
+	}
+	// A populated cert must still report HasValidFrom/HasValidTo=true.
+	if !c1.HasValidFrom || !c1.HasValidTo {
+		t.Error("expected populated cert to have HasValidFrom/HasValidTo=true")
 	}
 }
 

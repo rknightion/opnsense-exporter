@@ -122,6 +122,17 @@ func safeParseFloat(s string) float64 {
 	return v
 }
 
+// safeParseFloatOK is like safeParseFloat but also reports whether the parse
+// succeeded, so callers can distinguish an absent/empty field from a genuine 0
+// (e.g. a pending-CSR certificate with no valid_from/valid_to vs. epoch 0).
+func safeParseFloatOK(s string) (float64, bool) {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
 // parseLineRateBits strips the "bit/s" suffix from OPNsense line rate strings
 // and returns the numeric value as an int64 (10 Gbit rates exceed int32).
 func parseLineRateBits(v string) int64 {

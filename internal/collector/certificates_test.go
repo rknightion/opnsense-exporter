@@ -107,6 +107,43 @@ func TestCertificatesCollector_Update_Empty(t *testing.T) {
 	}
 }
 
+// TestCertificatesCollector_Update_PendingCSR guards #167: a pending-CSR row
+// (empty valid_from/valid_to) must not emit valid_from_seconds/valid_to_seconds
+// (which would read as epoch 0 = expired 1970), while info is still emitted.
+func TestCertificatesCollector_Update_PendingCSR(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/trust/cert/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":1,"rows":[
+			{"uuid":"csr-1","descr":"Pending CSR","commonname":"new.example.com","valid_from":"","valid_to":"","in_use":"","%cert_type":"server"}
+		]}`))
+	})
+	mux.HandleFunc("/api/trust/ca/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &certificatesCollector{subsystem: CertificatesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	sawInfo := false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "certificate_valid_from_seconds") || strings.Contains(desc, "certificate_valid_to_seconds") {
+			t.Errorf("pending-CSR row must not emit an expiry metric: %s", desc)
+		}
+		if strings.Contains(desc, "certificate_info") {
+			sawInfo = true
+		}
+	}
+	if !sawInfo {
+		t.Error("expected the info metric to still be emitted for a pending-CSR row")
+	}
+}
+
 func TestCertificatesCollector_Name(t *testing.T) {
 	c := &certificatesCollector{subsystem: CertificatesSubsystem}
 	if c.Name() != CertificatesSubsystem {

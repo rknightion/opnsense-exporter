@@ -20,10 +20,12 @@ type caSearchResponse struct {
 
 // CACertificate is one certificate authority's validity window.
 type CACertificate struct {
-	Description string
-	CommonName  string
-	ValidFrom   float64
-	ValidTo     float64
+	Description  string
+	CommonName   string
+	ValidFrom    float64
+	HasValidFrom bool
+	ValidTo      float64
+	HasValidTo   bool
 }
 
 // CACertificates holds the result of FetchCACertificates.
@@ -54,11 +56,15 @@ func (c *Client) FetchCACertificates() (CACertificates, *APICallError) {
 
 	data.Total = len(resp.Rows)
 	for _, row := range resp.Rows {
+		validFrom, hasFrom := safeParseFloatOK(row.ValidFrom)
+		validTo, hasTo := safeParseFloatOK(row.ValidTo)
 		data.CAs = append(data.CAs, CACertificate{
-			Description: row.Descr,
-			CommonName:  row.CommonName,
-			ValidFrom:   safeParseFloat(row.ValidFrom),
-			ValidTo:     safeParseFloat(row.ValidTo),
+			Description:  row.Descr,
+			CommonName:   row.CommonName,
+			ValidFrom:    validFrom,
+			HasValidFrom: hasFrom,
+			ValidTo:      validTo,
+			HasValidTo:   hasTo,
 		})
 	}
 	return data, nil
@@ -80,12 +86,14 @@ type certificateSearchResponse struct {
 }
 
 type Certificate struct {
-	Description string
-	CommonName  string
-	CertType    string
-	InUse       string
-	ValidFrom   float64
-	ValidTo     float64
+	Description  string
+	CommonName   string
+	CertType     string
+	InUse        string
+	ValidFrom    float64
+	HasValidFrom bool
+	ValidTo      float64
+	HasValidTo   bool
 }
 
 type CertificateStatus struct {
@@ -113,13 +121,21 @@ func (c *Client) FetchCertificates() (CertificateStatus, *APICallError) {
 	data.Total = resp.Total
 
 	for _, row := range resp.Rows {
+		// A pending CSR (crt empty, csr populated) or an unparseable cert blob
+		// leaves valid_from/valid_to as empty strings — track whether they parsed
+		// so the collector can skip the expiry metric rather than emit epoch 0,
+		// which reads as "expired since 1970" (#167).
+		validFrom, hasFrom := safeParseFloatOK(row.ValidFrom)
+		validTo, hasTo := safeParseFloatOK(row.ValidTo)
 		cert := Certificate{
-			Description: row.Descr,
-			CommonName:  row.CommonName,
-			CertType:    row.CertType,
-			InUse:       row.InUse,
-			ValidFrom:   safeParseFloat(row.ValidFrom),
-			ValidTo:     safeParseFloat(row.ValidTo),
+			Description:  row.Descr,
+			CommonName:   row.CommonName,
+			CertType:     row.CertType,
+			InUse:        row.InUse,
+			ValidFrom:    validFrom,
+			HasValidFrom: hasFrom,
+			ValidTo:      validTo,
+			HasValidTo:   hasTo,
 		}
 
 		data.Certificates = append(data.Certificates, cert)
