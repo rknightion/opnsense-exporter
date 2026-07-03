@@ -129,8 +129,13 @@ jobs:
         run: |
           set -euo pipefail
           title="OPNsense API contract drift"
-          existing=$(gh issue list --label api-drift --state open --json number,title,author \
-            --jq '.[] | select(.title == "OPNsense API contract drift" and .author.login == "github-actions[bot]") | .number' \
+          # Match on the api-drift label (already filtered) + exact title only. The
+          # author filter previously required .author.login == "github-actions[bot]",
+          # but gh >=2.50 reports a bot author as {"login":"app/github-actions"}, so it
+          # never matched and every run created a duplicate. Label+title is unique to
+          # this workflow's own issues and is robust to future gh login-shape changes (#83).
+          existing=$(gh issue list --label api-drift --state open --json number,title \
+            --jq '.[] | select(.title == "OPNsense API contract drift") | .number' \
             | head -n1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file out/report.md
@@ -144,8 +149,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          existing=$(gh issue list --label api-drift --state open --json number,title,author \
-            --jq '.[] | select(.title == "OPNsense API contract drift" and .author.login == "github-actions[bot]") | .number' \
+          # Match on the api-drift label (already filtered) + exact title only. The
+          # author filter previously required .author.login == "github-actions[bot]",
+          # but gh >=2.50 reports a bot author as {"login":"app/github-actions"}, so it
+          # never matched and every run created a duplicate. Label+title is unique to
+          # this workflow's own issues and is robust to future gh login-shape changes (#83).
+          existing=$(gh issue list --label api-drift --state open --json number,title \
+            --jq '.[] | select(.title == "OPNsense API contract drift") | .number' \
             | head -n1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "API contract drift cleared on the latest scheduled run. Closing."
