@@ -41,6 +41,17 @@ in `build_dashboard.py` — mirror their style. The full API is in `builder.py` 
    When unsure, treat a "current count" as RAW and a "things-that-happened" as rate.
 5. **Firewall pass/block packet & byte metrics** (`opnsense_firewall_in/out_ipv4/6_*`) are
    cumulative pf counters → use `rate(...[{RATE}])` for pps / throughput (×8 for bits).
+   **⚠ Two disjoint `interface` label spaces — pick the matching variable (#98).** The same
+   `interface` label name is populated from *different* identifiers by different collectors:
+   * **description space** — `LAN`, `IOT`, `MGMT` (the configured description). Used by the
+     `opnsense_interfaces_*` family and `opnsense_firewall_interface_log_entries_recent`.
+     Filter these with **`$interface`**.
+   * **device-name space** — `igb0`, `ixl0_vlan25`, `pppoe0` (the kernel device). Used by the
+     pf-traffic counters (`opnsense_firewall_in/out_ipv4/6_{pass,block}_{packets,bytes_total}`)
+     and the netflow cache metrics (`opnsense_netflow_cache_*`). Filter these with **`$device`**
+     (module constant `DEV = 'interface=~"$device"'` in firewall.py).
+   The two value sets never overlap, so applying `$interface` to a device-space metric silently
+   blanks the panel whenever a specific interface is selected. Never cross the spaces.
 6. **Cardinality.** For high-series metrics use `topk(20, ...)` in tables/timeseries and put
    detail tables in their own row gated behind a `*_details`/presence sentinel. Known big ones:
    arp_table (~106), ndp (~67), firewall_rule (~129), dnsmasq lease_info (~91). For "count"

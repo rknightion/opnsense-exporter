@@ -45,6 +45,9 @@ def add_core_variables(b: Builder):
         "refresh": "onDashboardLoad", "regex": "", "sort": "alphabeticalAsc",
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
         "allowCustomValue": True, "skipUrlSync": False}})
+    # $interface enumerates the DESCRIPTION-space interface label (LAN, IOT, ...) from the
+    # interfaces collector — use it for interface metrics and the description-based firewall
+    # log-entries panel.
     b.variables.append({"kind": "QueryVariable", "spec": {
         "name": "interface", "label": "Interface",
         "current": {"text": "All", "value": "$__all"}, "options": [],
@@ -52,6 +55,19 @@ def add_core_variables(b: Builder):
                   "datasource": {"name": "${datasource}"},
                   "spec": {"query": 'label_values(opnsense_interfaces_link_state{opnsense_instance=~"$opnsense_instance"}, interface)',
                            "refId": "interface"}},
+        "refresh": "onTimeRangeChanged", "regex": "", "sort": "alphabeticalAsc",
+        "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
+        "allowCustomValue": True, "skipUrlSync": False}})
+    # $device enumerates the kernel DEVICE-name interface label (igb0, ixl0_vlan25, pppoe0)
+    # from the pf-traffic / netflow collectors — a DISJOINT label space from $interface (#98).
+    # Sourced from a firewall pf-traffic metric so it lists exactly the devices those panels plot.
+    b.variables.append({"kind": "QueryVariable", "spec": {
+        "name": "device", "label": "Device (pf/netflow)",
+        "current": {"text": "All", "value": "$__all"}, "options": [],
+        "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
+                  "datasource": {"name": "${datasource}"},
+                  "spec": {"query": 'label_values(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~"$opnsense_instance"}, interface)',
+                           "refId": "device"}},
         "refresh": "onTimeRangeChanged", "regex": "", "sort": "alphabeticalAsc",
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
         "allowCustomValue": True, "skipUrlSync": False}})

@@ -126,6 +126,39 @@
       {
         "kind": "QueryVariable",
         "spec": {
+          "name": "device",
+          "label": "Device (pf/netflow)",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "options": [],
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\"}, interface)",
+              "refId": "device"
+            }
+          },
+          "refresh": "onTimeRangeChanged",
+          "regex": "",
+          "sort": "alphabeticalAsc",
+          "hide": "dontHide",
+          "includeAll": true,
+          "multi": true,
+          "allValue": ".+",
+          "allowCustomValue": true,
+          "skipUrlSync": false
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
           "name": "has_temperature",
           "label": "has_temperature",
           "hide": "hideVariable",
@@ -9323,7 +9356,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 pass-in",
                         "instant": false,
@@ -9349,7 +9382,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv6_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv6_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 pass-in",
                         "instant": false,
@@ -9438,7 +9471,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv4_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv4_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 block-in",
                         "instant": false,
@@ -9464,7 +9497,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv6_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv6_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 block-in",
                         "instant": false,
@@ -9553,7 +9586,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 pass-out",
                         "instant": false,
@@ -9579,7 +9612,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv6_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv6_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 pass-out",
                         "instant": false,
@@ -9668,7 +9701,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv4_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv4_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 block-out",
                         "instant": false,
@@ -9694,7 +9727,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv6_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv6_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 block-out",
                         "instant": false,
@@ -9783,7 +9816,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv4_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv4_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 pass-in",
                         "instant": false,
@@ -9809,7 +9842,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv6_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv6_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 pass-in",
                         "instant": false,
@@ -9898,7 +9931,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv4_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv4_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 block-in",
                         "instant": false,
@@ -9924,7 +9957,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_in_ipv6_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_in_ipv6_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 block-in",
                         "instant": false,
@@ -10013,7 +10046,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv4_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv4_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 pass-out",
                         "instant": false,
@@ -10039,7 +10072,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv6_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv6_pass_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 pass-out",
                         "instant": false,
@@ -10128,7 +10161,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv4_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv4_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 block-out",
                         "instant": false,
@@ -10154,7 +10187,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_firewall_out_ipv6_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_firewall_out_ipv6_block_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 block-out",
                         "instant": false,
@@ -33172,7 +33205,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(opnsense_netflow_cache_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}[$__rate_interval])",
+                        "expr": "rate(opnsense_netflow_cache_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "{{interface}}",
                         "instant": false,
@@ -33261,7 +33294,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_netflow_cache_source_ip_addresses{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}",
+                        "expr": "opnsense_netflow_cache_source_ip_addresses{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}",
                         "refId": "A",
                         "legendFormat": "{{interface}}",
                         "instant": false,
@@ -33350,7 +33383,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_netflow_cache_destination_ip_addresses{opnsense_instance=~\"$opnsense_instance\",interface=~\"$interface\"}",
+                        "expr": "opnsense_netflow_cache_destination_ip_addresses{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}",
                         "refId": "A",
                         "legendFormat": "{{interface}}",
                         "instant": false,

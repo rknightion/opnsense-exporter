@@ -80,7 +80,10 @@ def build(b: Builder):
     # ======================================================================
     # Row 2 – NetFlow Cache
     # ======================================================================
-    iface = 'interface=~"$interface"'
+    # NetFlow cache metrics label `interface` with the kernel DEVICE name (pppoe0,
+    # ixl0_vlan25), not the configured description — so filter on $device, not the
+    # description-space $interface variable (#98).
+    iface = 'interface=~"$device"'
     nf_packets_ts = b.ts(
         "Cache Packets (rate)",
         [(f'rate({sel("opnsense_netflow_cache_packets_total", iface)}[{RATE}])',
