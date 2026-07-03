@@ -46,6 +46,16 @@ type protocolCollector struct {
 	ipFragmentsReceived  *prometheus.Desc
 	ipReassembledPackets *prometheus.Desc
 
+	// IPv6 / ICMPv6 (#165) — the ip_*/icmp_* series above are IPv4-only.
+	ip6ReceivedPackets    *prometheus.Desc
+	ip6ForwardedPackets   *prometheus.Desc
+	ip6SentPackets        *prometheus.Desc
+	ip6DroppedByReason    *prometheus.Desc
+	ip6FragmentsReceived  *prometheus.Desc
+	ip6ReassembledPackets *prometheus.Desc
+	icmp6Calls            *prometheus.Desc
+	icmp6DroppedByReason  *prometheus.Desc
+
 	// Detailed TCP
 	tcpConnectionRequests     *prometheus.Desc
 	tcpConnectionAccepts      *prometheus.Desc
@@ -215,6 +225,24 @@ func (c *protocolCollector) Register(namespace, instanceLabel string, log *slog.
 		nil,
 	)
 
+	// IPv6 (the ip_* series above are IPv4-only; see #165)
+	c.ip6ReceivedPackets = buildPrometheusDesc(c.subsystem, "ip6_received_packets_total",
+		"Number of received IPv6 packets", nil)
+	c.ip6ForwardedPackets = buildPrometheusDesc(c.subsystem, "ip6_forwarded_packets_total",
+		"Number of forwarded IPv6 packets", nil)
+	c.ip6SentPackets = buildPrometheusDesc(c.subsystem, "ip6_sent_packets_total",
+		"Number of sent IPv6 packets", nil)
+	c.ip6DroppedByReason = buildPrometheusDesc(c.subsystem, "ip6_dropped_by_reason_total",
+		"Number of dropped IPv6 packets by reason", []string{"reason"})
+	c.ip6FragmentsReceived = buildPrometheusDesc(c.subsystem, "ip6_fragments_received_total",
+		"Number of received IPv6 fragments", nil)
+	c.ip6ReassembledPackets = buildPrometheusDesc(c.subsystem, "ip6_reassembled_packets_total",
+		"Number of reassembled IPv6 packets", nil)
+	c.icmp6Calls = buildPrometheusDesc(c.subsystem, "icmp6_calls_total",
+		"Number of ICMPv6 calls", nil)
+	c.icmp6DroppedByReason = buildPrometheusDesc(c.subsystem, "icmp6_dropped_by_reason_total",
+		"Number of dropped ICMPv6 packets by reason", []string{"reason"})
+
 	// Detailed TCP
 	c.tcpConnectionRequests = buildPrometheusDesc(c.subsystem, "tcp_connection_requests_total",
 		"Number of TCP connection requests",
@@ -362,6 +390,16 @@ func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ipDroppedByReason
 	ch <- c.ipFragmentsReceived
 	ch <- c.ipReassembledPackets
+
+	// IPv6 / ICMPv6
+	ch <- c.ip6ReceivedPackets
+	ch <- c.ip6ForwardedPackets
+	ch <- c.ip6SentPackets
+	ch <- c.ip6DroppedByReason
+	ch <- c.ip6FragmentsReceived
+	ch <- c.ip6ReassembledPackets
+	ch <- c.icmp6Calls
+	ch <- c.icmp6DroppedByReason
 
 	// Detailed TCP
 	ch <- c.tcpConnectionRequests
@@ -519,6 +557,36 @@ func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client,
 	ch <- prometheus.MustNewConstMetric(
 		c.ipReassembledPackets, prometheus.CounterValue, float64(data.IPReassembledPackets), c.instance,
 	)
+
+	// IPv6 / ICMPv6 (#165)
+	ch <- prometheus.MustNewConstMetric(
+		c.ip6ReceivedPackets, prometheus.CounterValue, float64(data.IP6ReceivedPackets), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.ip6ForwardedPackets, prometheus.CounterValue, float64(data.IP6ForwardedPackets), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.ip6SentPackets, prometheus.CounterValue, float64(data.IP6SentPackets), c.instance,
+	)
+	for reason, count := range data.IP6DroppedByReason {
+		ch <- prometheus.MustNewConstMetric(
+			c.ip6DroppedByReason, prometheus.CounterValue, float64(count), reason, c.instance,
+		)
+	}
+	ch <- prometheus.MustNewConstMetric(
+		c.ip6FragmentsReceived, prometheus.CounterValue, float64(data.IP6ReceivedFragments), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.ip6ReassembledPackets, prometheus.CounterValue, float64(data.IP6ReassembledPackets), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.icmp6Calls, prometheus.CounterValue, float64(data.ICMP6Calls), c.instance,
+	)
+	for reason, count := range data.ICMP6DroppedByReason {
+		ch <- prometheus.MustNewConstMetric(
+			c.icmp6DroppedByReason, prometheus.CounterValue, float64(count), reason, c.instance,
+		)
+	}
 
 	// Detailed TCP
 	ch <- prometheus.MustNewConstMetric(

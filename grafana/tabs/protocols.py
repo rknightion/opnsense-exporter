@@ -217,6 +217,52 @@ def build(b: Builder):
     )
 
     # -------------------------------------------------------------------------
+    # IPv6 / ICMPv6 (#165) — the ip_*/icmp_* panels above are IPv4-only.
+    # -------------------------------------------------------------------------
+    ip6_traffic = b.ts(
+        "IPv6 Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_ip6_received_packets_total')}[{RATE}])", "received"),
+            (f"rate({sel('opnsense_protocol_ip6_forwarded_packets_total')}[{RATE}])", "forwarded"),
+            (f"rate({sel('opnsense_protocol_ip6_sent_packets_total')}[{RATE}])", "sent"),
+        ],
+        unit="pps", w=12, h=8,
+        desc="Rate of IPv6 packets received, forwarded, and sent (dual-stack visibility, #165).",
+    )
+    ip6_frags = b.ts(
+        "IPv6 Fragmentation (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_ip6_fragments_received_total')}[{RATE}])", "fragments received"),
+            (f"rate({sel('opnsense_protocol_ip6_reassembled_packets_total')}[{RATE}])", "reassembled"),
+        ],
+        unit="pps", w=12, h=8,
+        desc="Rate of IPv6 fragment reception and reassembly.",
+    )
+    ip6_drops = b.table(
+        "IPv6 Dropped by Reason",
+        [f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_ip6_dropped_by_reason_total")}[5m])))'],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)", w=12, h=8,
+        desc="IPv6 drops broken down by reason (5-minute average rate).",
+    )
+    icmp6_traffic = b.ts(
+        "ICMPv6 Calls (rate)",
+        [(f"rate({sel('opnsense_protocol_icmp6_calls_total')}[{RATE}])", "calls")],
+        unit="pps", w=12, h=8, desc="Rate of ICMPv6 calls.",
+    )
+    icmp6_drops = b.table(
+        "ICMPv6 Dropped by Reason",
+        [f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_icmp6_dropped_by_reason_total")}[5m])))'],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
+        excludes=["opnsense_instance"],
+        unit_overrides={"Drop rate (5m avg)": "pps"},
+        sort_by="Drop rate (5m avg)", w=12, h=8,
+        desc="ICMPv6 drops broken down by reason (5-minute average rate).",
+    )
+
+    # -------------------------------------------------------------------------
     # ARP
     # -------------------------------------------------------------------------
     arp_activity = b.ts(
@@ -406,8 +452,10 @@ def build(b: Builder):
         b.row("TCP Connection State", [tcp_state_tl]),
         b.row("UDP", [udp_traffic, udp_drops]),
         b.row("IP", [ip_traffic, ip_frags, ip_drops]),
+        b.row("IPv6", [ip6_traffic, ip6_frags, ip6_drops]),
         b.row("ARP", [arp_activity, arp_errors]),
         b.row("ICMP", [icmp_traffic, icmp_drops]),
+        b.row("ICMPv6", [icmp6_traffic, icmp6_drops]),
         b.row("CARP Protocol", [carp_traffic, carp_drops]),
         b.row("pfsync Protocol", [pfsync_traffic, pfsync_errors, pfsync_drops]),
         b.row("BPF Statistics", [bpf_listeners, bpf_pkts, bpf_buffers]),

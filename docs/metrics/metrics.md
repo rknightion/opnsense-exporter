@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 559
+- **Total metrics:** 567
 - **Gauges:** 367
-- **Counters:** 192
+- **Counters:** 200
 
 ## General
 
@@ -617,6 +617,14 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_protocol_ip_dropped_by_reason_total | Counter | reason | Number of dropped IP packets by reason | --- |
 | opnsense_protocol_ip_fragments_received_total | Counter | --- | Number of received IP fragments | --- |
 | opnsense_protocol_ip_reassembled_packets_total | Counter | --- | Number of reassembled IP packets | --- |
+| opnsense_protocol_ip6_received_packets_total | Counter | --- | Number of received IPv6 packets | --- |
+| opnsense_protocol_ip6_forwarded_packets_total | Counter | --- | Number of forwarded IPv6 packets | --- |
+| opnsense_protocol_ip6_sent_packets_total | Counter | --- | Number of sent IPv6 packets | --- |
+| opnsense_protocol_ip6_dropped_by_reason_total | Counter | reason | Number of dropped IPv6 packets by reason | --- |
+| opnsense_protocol_ip6_fragments_received_total | Counter | --- | Number of received IPv6 fragments | --- |
+| opnsense_protocol_ip6_reassembled_packets_total | Counter | --- | Number of reassembled IPv6 packets | --- |
+| opnsense_protocol_icmp6_calls_total | Counter | --- | Number of ICMPv6 calls | --- |
+| opnsense_protocol_icmp6_dropped_by_reason_total | Counter | reason | Number of dropped ICMPv6 packets by reason | --- |
 | opnsense_protocol_tcp_connection_requests_total | Counter | --- | Number of TCP connection requests | --- |
 | opnsense_protocol_tcp_connection_accepts_total | Counter | --- | Number of TCP connection accepts | --- |
 | opnsense_protocol_tcp_connections_established_total | Counter | --- | Number of TCP connections established | --- |

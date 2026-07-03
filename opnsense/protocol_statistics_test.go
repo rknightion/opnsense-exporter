@@ -5,6 +5,49 @@ import (
 	"testing"
 )
 
+// TestFetchProtocolStatistics_IPv6 covers #165: the ip6/icmp6 blocks (previously
+// undeclared and silently dropped) are decoded, with both stacks attributed correctly.
+func TestFetchProtocolStatistics_IPv6(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"statistics": {
+				"ip": {"received-packets": 1000, "forwarded-packets": 800, "packets-cannot-forward": 5},
+				"icmp": {"icmp-calls": 10},
+				"ip6": {
+					"received-packets": 47042625, "forwarded-packets": 45452086,
+					"sent-packets": 1922226, "received-fragments": 3, "reassembled-packets": 2,
+					"packets-not-forwardable": 17828, "discard-no-route": 7, "dropped-header-too-long": 1
+				},
+				"icmp6": {"icmp6-calls": 672, "dropped-no-entry": 2107, "dropped-bad-checksum": 4}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchProtocolStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// IPv4 still attributed correctly.
+	if data.IPReceivedPackets != 1000 || data.IPForwardedPackets != 800 {
+		t.Errorf("IPv4 mis-attributed: received=%d forwarded=%d", data.IPReceivedPackets, data.IPForwardedPackets)
+	}
+	// IPv6 no longer dropped.
+	if data.IP6ReceivedPackets != 47042625 || data.IP6ForwardedPackets != 45452086 || data.IP6SentPackets != 1922226 {
+		t.Errorf("IPv6 counters wrong: recv=%d fwd=%d sent=%d",
+			data.IP6ReceivedPackets, data.IP6ForwardedPackets, data.IP6SentPackets)
+	}
+	if data.IP6ReceivedFragments != 3 || data.IP6ReassembledPackets != 2 {
+		t.Errorf("IPv6 fragment counters wrong: recv=%d reasm=%d", data.IP6ReceivedFragments, data.IP6ReassembledPackets)
+	}
+	if data.IP6DroppedByReason["CANNOT_FORWARD"] != 17828 || data.IP6DroppedByReason["NO_ROUTE"] != 7 || data.IP6DroppedByReason["HEADER_TOO_LONG"] != 1 {
+		t.Errorf("IPv6 drop reasons wrong: %v", data.IP6DroppedByReason)
+	}
+	if data.ICMP6Calls != 672 || data.ICMP6DroppedByReason["NO_ENTRY"] != 2107 || data.ICMP6DroppedByReason["BAD_CHECKSUM"] != 4 {
+		t.Errorf("ICMPv6 wrong: calls=%d drops=%v", data.ICMP6Calls, data.ICMP6DroppedByReason)
+	}
+}
+
 func TestFetchProtocolStatistics_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {

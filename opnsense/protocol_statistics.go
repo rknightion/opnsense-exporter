@@ -262,6 +262,34 @@ type protocolStatisticsResponse struct {
 			EntriesTimeout          json.Number `json:"entries-timeout"`
 			DroppedDuplicateAddress json.Number `json:"dropped-duplicate-address"`
 		} `json:"arp"`
+		// IPv6 / ICMPv6 blocks (#165): previously undeclared, so encoding/json silently
+		// dropped them — undercounting a dual-stack box's forwarded traffic by ~20%.
+		// Field names are the FreeBSD netstat --libxo tags for ip6/icmp6 (verified live).
+		IP6 struct {
+			ReceivedPackets         json.Number `json:"received-packets"`
+			DroppedBelowMinimumSize json.Number `json:"dropped-below-minimum-size"`
+			DroppedShortPackets     json.Number `json:"dropped-short-packets"`
+			DroppedBadOptions       json.Number `json:"dropped-bad-options"`
+			DroppedBadVersion       json.Number `json:"dropped-bad-version"`
+			ReceivedFragments       json.Number `json:"received-fragments"`
+			ReassembledPackets      json.Number `json:"reassembled-packets"`
+			ForwardedPackets        json.Number `json:"forwarded-packets"`
+			PacketsNotForwardable   json.Number `json:"packets-not-forwardable"`
+			SentPackets             json.Number `json:"sent-packets"`
+			DiscardNoMbufs          json.Number `json:"discard-no-mbufs"`
+			DiscardNoRoute          json.Number `json:"discard-no-route"`
+			DiscardCannotFragment   json.Number `json:"discard-cannot-fragment"`
+			DroppedHeaderTooLong    json.Number `json:"dropped-header-too-long"`
+			DroppedTooManyHeaders   json.Number `json:"dropped-too-many-headers"`
+		} `json:"ip6"`
+		Icmp6 struct {
+			IcmpCalls          json.Number `json:"icmp6-calls"`
+			DroppedBadCode     json.Number `json:"dropped-bad-code"`
+			DroppedTooShort    json.Number `json:"dropped-too-short"`
+			DroppedBadChecksum json.Number `json:"dropped-bad-checksum"`
+			DroppedBadLength   json.Number `json:"dropped-bad-length"`
+			DroppedNoEntry     json.Number `json:"dropped-no-entry"`
+		} `json:"icmp6"`
 	} `json:"statistics"`
 }
 
@@ -306,6 +334,16 @@ type ProtocolStatistics struct {
 	IPReceivedFragments    int64
 	IPReassembledPackets   int64
 	IPSentFragments        int64
+
+	// IPv6 / ICMPv6 (#165)
+	IP6ReceivedPackets    int64
+	IP6ForwardedPackets   int64
+	IP6SentPackets        int64
+	IP6ReceivedFragments  int64
+	IP6ReassembledPackets int64
+	IP6DroppedByReason    map[string]int64
+	ICMP6Calls            int64
+	ICMP6DroppedByReason  map[string]int64
 
 	// Detailed TCP
 	TCPRetransmitTimeouts            int64
@@ -452,6 +490,32 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		IPReceivedFragments:  numToInt(resp.Statistics.IP.ReceivedFragments),
 		IPReassembledPackets: numToInt(resp.Statistics.IP.ReassembledPackets),
 		IPSentFragments:      numToInt(resp.Statistics.IP.SentFragments),
+
+		IP6ReceivedPackets:    numToInt(resp.Statistics.IP6.ReceivedPackets),
+		IP6ForwardedPackets:   numToInt(resp.Statistics.IP6.ForwardedPackets),
+		IP6SentPackets:        numToInt(resp.Statistics.IP6.SentPackets),
+		IP6ReceivedFragments:  numToInt(resp.Statistics.IP6.ReceivedFragments),
+		IP6ReassembledPackets: numToInt(resp.Statistics.IP6.ReassembledPackets),
+		IP6DroppedByReason: map[string]int64{
+			"BELOW_MINIMUM_SIZE": numToInt(resp.Statistics.IP6.DroppedBelowMinimumSize),
+			"SHORT_PACKETS":      numToInt(resp.Statistics.IP6.DroppedShortPackets),
+			"BAD_OPTIONS":        numToInt(resp.Statistics.IP6.DroppedBadOptions),
+			"BAD_VERSION":        numToInt(resp.Statistics.IP6.DroppedBadVersion),
+			"CANNOT_FORWARD":     numToInt(resp.Statistics.IP6.PacketsNotForwardable),
+			"NO_MBUFS":           numToInt(resp.Statistics.IP6.DiscardNoMbufs),
+			"NO_ROUTE":           numToInt(resp.Statistics.IP6.DiscardNoRoute),
+			"CANNOT_FRAGMENT":    numToInt(resp.Statistics.IP6.DiscardCannotFragment),
+			"HEADER_TOO_LONG":    numToInt(resp.Statistics.IP6.DroppedHeaderTooLong),
+			"TOO_MANY_HEADERS":   numToInt(resp.Statistics.IP6.DroppedTooManyHeaders),
+		},
+		ICMP6Calls: numToInt(resp.Statistics.Icmp6.IcmpCalls),
+		ICMP6DroppedByReason: map[string]int64{
+			"BAD_CODE":     numToInt(resp.Statistics.Icmp6.DroppedBadCode),
+			"TOO_SHORT":    numToInt(resp.Statistics.Icmp6.DroppedTooShort),
+			"BAD_CHECKSUM": numToInt(resp.Statistics.Icmp6.DroppedBadChecksum),
+			"BAD_LENGTH":   numToInt(resp.Statistics.Icmp6.DroppedBadLength),
+			"NO_ENTRY":     numToInt(resp.Statistics.Icmp6.DroppedNoEntry),
+		},
 
 		// Detailed TCP
 		TCPRetransmitTimeouts:            numToInt(resp.Statistics.TCP.RetransmitTimeouts),

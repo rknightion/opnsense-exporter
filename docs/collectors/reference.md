@@ -42,7 +42,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Nginx | nginx | 21 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
 | OpenVPN | openvpn | 4 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
-| Protocol Statistics | protocol | 51 | Enabled | --- | --- |
+| Protocol Statistics | protocol | 59 | Enabled | --- | --- |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
 | SMART Disk Health | smart | 14 | Enabled | --exporter.disable-smart | OPNSENSE_EXPORTER_DISABLE_SMART |
 | Services | services | 3 | Enabled | --- | --- |

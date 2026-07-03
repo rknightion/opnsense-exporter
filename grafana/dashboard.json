@@ -26212,6 +26212,597 @@
         "kind": "Panel",
         "spec": {
           "id": 230,
+          "title": "IPv6 Packets (rate)",
+          "description": "Rate of IPv6 packets received, forwarded, and sent (dual-stack visibility, #165).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_protocol_ip6_received_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "A",
+                        "legendFormat": "received",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_protocol_ip6_forwarded_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "B",
+                        "legendFormat": "forwarded",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "C",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_protocol_ip6_sent_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "C",
+                        "legendFormat": "sent",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "pps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-231": {
+        "kind": "Panel",
+        "spec": {
+          "id": 231,
+          "title": "IPv6 Fragmentation (rate)",
+          "description": "Rate of IPv6 fragment reception and reassembly.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_protocol_ip6_fragments_received_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "A",
+                        "legendFormat": "fragments received",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_protocol_ip6_reassembled_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "B",
+                        "legendFormat": "reassembled",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "pps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-232": {
+        "kind": "Panel",
+        "spec": {
+          "id": 232,
+          "title": "IPv6 Dropped by Reason",
+          "description": "IPv6 drops broken down by reason (5-minute average rate).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sort_desc(sum by (reason) (rate(opnsense_protocol_ip6_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m])))",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true,
+                        "opnsense_instance": true
+                      },
+                      "renameByName": {
+                        "Value": "Drop rate (5m avg)",
+                        "reason": "Reason"
+                      },
+                      "indexByName": {}
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Drop rate (5m avg)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "pps"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Drop rate (5m avg)",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-233": {
+        "kind": "Panel",
+        "spec": {
+          "id": 233,
+          "title": "ICMPv6 Calls (rate)",
+          "description": "Rate of ICMPv6 calls.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_protocol_icmp6_calls_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "A",
+                        "legendFormat": "calls",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "pps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-234": {
+        "kind": "Panel",
+        "spec": {
+          "id": 234,
+          "title": "ICMPv6 Dropped by Reason",
+          "description": "ICMPv6 drops broken down by reason (5-minute average rate).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sort_desc(sum by (reason) (rate(opnsense_protocol_icmp6_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m])))",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true,
+                        "opnsense_instance": true
+                      },
+                      "renameByName": {
+                        "Value": "Drop rate (5m avg)",
+                        "reason": "Reason"
+                      },
+                      "indexByName": {}
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Drop rate (5m avg)"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "pps"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Drop rate (5m avg)",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-235": {
+        "kind": "Panel",
+        "spec": {
+          "id": 235,
           "title": "ARP Activity (rate)",
           "description": "Rate of ARP requests, replies, and packets.",
           "links": [],
@@ -26401,10 +26992,10 @@
           }
         }
       },
-      "panel-231": {
+      "panel-236": {
         "kind": "Panel",
         "spec": {
-          "id": 231,
+          "id": 236,
           "title": "ARP Errors & Aging (rate)",
           "description": "Rate of ARP errors, drops, and aging events.",
           "links": [],
@@ -26568,10 +27159,10 @@
           }
         }
       },
-      "panel-232": {
+      "panel-237": {
         "kind": "Panel",
         "spec": {
-          "id": 232,
+          "id": 237,
           "title": "ICMP (rate)",
           "description": "Rate of ICMP calls and sent packets.",
           "links": [],
@@ -26683,10 +27274,10 @@
           }
         }
       },
-      "panel-233": {
+      "panel-238": {
         "kind": "Panel",
         "spec": {
-          "id": 233,
+          "id": 238,
           "title": "ICMP Dropped by Reason",
           "description": "ICMP drops broken down by reason (5-minute average rate).",
           "links": [],
@@ -26806,10 +27397,10 @@
           }
         }
       },
-      "panel-234": {
+      "panel-239": {
         "kind": "Panel",
         "spec": {
-          "id": 234,
+          "id": 239,
           "title": "CARP Packets (rate)",
           "description": "Rate of CARP packets received and sent, by address family.",
           "links": [],
@@ -26921,10 +27512,10 @@
           }
         }
       },
-      "panel-235": {
+      "panel-240": {
         "kind": "Panel",
         "spec": {
-          "id": 235,
+          "id": 240,
           "title": "CARP Dropped by Reason",
           "description": "CARP drops broken down by reason (5-minute average rate).",
           "links": [],
@@ -27044,10 +27635,10 @@
           }
         }
       },
-      "panel-236": {
+      "panel-241": {
         "kind": "Panel",
         "spec": {
-          "id": 236,
+          "id": 241,
           "title": "pfsync Packets (rate)",
           "description": "Rate of pfsync packets received and sent, by address family.",
           "links": [],
@@ -27159,10 +27750,10 @@
           }
         }
       },
-      "panel-237": {
+      "panel-242": {
         "kind": "Panel",
         "spec": {
-          "id": 237,
+          "id": 242,
           "title": "pfsync Send Errors (rate)",
           "description": "Rate of pfsync send errors.",
           "links": [],
@@ -27248,10 +27839,10 @@
           }
         }
       },
-      "panel-238": {
+      "panel-243": {
         "kind": "Panel",
         "spec": {
-          "id": 238,
+          "id": 243,
           "title": "pfsync Dropped by Reason",
           "description": "pfsync drops broken down by reason (5-minute average rate).",
           "links": [],
@@ -27371,10 +27962,10 @@
           }
         }
       },
-      "panel-239": {
+      "panel-244": {
         "kind": "Panel",
         "spec": {
-          "id": 239,
+          "id": 244,
           "title": "BPF Listeners",
           "description": "Total number of BPF listener entries before aggregation. Aggregated by (process, interface) per D9.",
           "links": [],
@@ -27456,10 +28047,10 @@
           }
         }
       },
-      "panel-240": {
+      "panel-245": {
         "kind": "Panel",
         "spec": {
-          "id": 240,
+          "id": 245,
           "title": "BPF Packet Counters (rate)",
           "description": "BPF packet counters (cumulative) per (process, interface) aggregation. Aggregation sums entries with the same process+interface labels.",
           "links": [],
@@ -27597,10 +28188,10 @@
           }
         }
       },
-      "panel-241": {
+      "panel-246": {
         "kind": "Panel",
         "spec": {
-          "id": 241,
+          "id": 246,
           "title": "BPF Buffer Sizes",
           "description": "BPF store and hold buffer sizes in bytes per (process, interface). These are gauges \u2014 the kernel may resize them dynamically.",
           "links": [],
@@ -27712,10 +28303,10 @@
           }
         }
       },
-      "panel-242": {
+      "panel-247": {
         "kind": "Panel",
         "spec": {
-          "id": 242,
+          "id": 247,
           "title": "NTP Peer Info",
           "description": "NTP peer information: server address, reference ID, type and status (info metric).",
           "links": [],
@@ -27827,10 +28418,10 @@
           }
         }
       },
-      "panel-243": {
+      "panel-248": {
         "kind": "Panel",
         "spec": {
-          "id": 243,
+          "id": 248,
           "title": "Peer Stratum",
           "description": "NTP stratum level per peer (1 = primary reference, higher = further from source).",
           "links": [],
@@ -27939,10 +28530,10 @@
           }
         }
       },
-      "panel-244": {
+      "panel-249": {
         "kind": "Panel",
         "spec": {
-          "id": 244,
+          "id": 249,
           "title": "Peer Reachability Register",
           "description": "NTP reachability shift-register (0\u2013255). 255 = all 8 recent polls answered. Shows the maximum across all peers.",
           "links": [],
@@ -28031,10 +28622,10 @@
           }
         }
       },
-      "panel-245": {
+      "panel-250": {
         "kind": "Panel",
         "spec": {
-          "id": 245,
+          "id": 250,
           "title": "Peer Reachability %",
           "description": "Derived reachability percentage: 100 \u00d7 max(reach) / 255. 100 % means every recent poll was answered.",
           "links": [],
@@ -28125,10 +28716,10 @@
           }
         }
       },
-      "panel-246": {
+      "panel-251": {
         "kind": "Panel",
         "spec": {
-          "id": 246,
+          "id": 251,
           "title": "Peers Total",
           "description": "Total number of configured NTP peers.",
           "links": [],
@@ -28210,10 +28801,10 @@
           }
         }
       },
-      "panel-247": {
+      "panel-252": {
         "kind": "Panel",
         "spec": {
-          "id": 247,
+          "id": 252,
           "title": "Peer Timing (delay / offset / jitter)",
           "description": "Per-peer round-trip delay, clock offset, and dispersion jitter in milliseconds.",
           "links": [],
@@ -28350,10 +28941,10 @@
           }
         }
       },
-      "panel-248": {
+      "panel-253": {
         "kind": "Panel",
         "spec": {
-          "id": 248,
+          "id": 253,
           "title": "Last Response (max)",
           "description": "Seconds since the most-recent NTP peer last responded (worst peer shown).",
           "links": [],
@@ -28444,10 +29035,10 @@
           }
         }
       },
-      "panel-249": {
+      "panel-254": {
         "kind": "Panel",
         "spec": {
-          "id": 249,
+          "id": 254,
           "title": "Poll Interval (max)",
           "description": "Maximum poll interval in seconds across all peers.",
           "links": [],
@@ -28530,10 +29121,10 @@
           }
         }
       },
-      "panel-250": {
+      "panel-255": {
         "kind": "Panel",
         "spec": {
-          "id": 250,
+          "id": 255,
           "title": "Certificate Expiry (days left)",
           "description": "Days remaining until each certificate expires (sorted ascending \u2014 soonest expiry first). Negative = already expired.",
           "links": [],
@@ -28658,10 +29249,10 @@
           }
         }
       },
-      "panel-251": {
+      "panel-256": {
         "kind": "Panel",
         "spec": {
-          "id": 251,
+          "id": 256,
           "title": "Certificate Valid From",
           "description": "Certificate issuance (not-before) date.",
           "links": [],
@@ -28786,10 +29377,10 @@
           }
         }
       },
-      "panel-252": {
+      "panel-257": {
         "kind": "Panel",
         "spec": {
-          "id": 252,
+          "id": 257,
           "title": "Certificate Info",
           "description": "Certificate metadata (info metric \u2014 value is always 1; use labels).",
           "links": [],
@@ -28901,10 +29492,10 @@
           }
         }
       },
-      "panel-253": {
+      "panel-258": {
         "kind": "Panel",
         "spec": {
-          "id": 253,
+          "id": 258,
           "title": "Certificates Total",
           "description": "Total number of certificates managed by OPNsense.",
           "links": [],
@@ -28986,10 +29577,10 @@
           }
         }
       },
-      "panel-254": {
+      "panel-259": {
         "kind": "Panel",
         "spec": {
-          "id": 254,
+          "id": 259,
           "title": "Certificate Authorities",
           "description": "Total number of CA certificates managed by OPNsense.",
           "links": [],
@@ -29071,10 +29662,10 @@
           }
         }
       },
-      "panel-255": {
+      "panel-260": {
         "kind": "Panel",
         "spec": {
-          "id": 255,
+          "id": 260,
           "title": "CA Expiry",
           "description": "Days remaining until each CA certificate expires (sorted ascending).",
           "links": [],
@@ -29196,10 +29787,10 @@
           }
         }
       },
-      "panel-256": {
+      "panel-261": {
         "kind": "Panel",
         "spec": {
-          "id": 256,
+          "id": 261,
           "title": "CA Validity Start",
           "description": "CA certificate issuance (not-before) date.",
           "links": [],
@@ -29314,10 +29905,10 @@
           }
         }
       },
-      "panel-257": {
+      "panel-262": {
         "kind": "Panel",
         "spec": {
-          "id": 257,
+          "id": 262,
           "title": "ACME Certificates",
           "description": "Total number of ACME-managed certificates.",
           "links": [],
@@ -29399,10 +29990,10 @@
           }
         }
       },
-      "panel-258": {
+      "panel-263": {
         "kind": "Panel",
         "spec": {
-          "id": 258,
+          "id": 263,
           "title": "ACME Last Renewal",
           "description": "Unix timestamp of the last successful ACME certificate issue or renewal (0 = never).",
           "links": [],
@@ -29525,10 +30116,10 @@
           }
         }
       },
-      "panel-259": {
+      "panel-264": {
         "kind": "Panel",
         "spec": {
-          "id": 259,
+          "id": 264,
           "title": "ACME Status Code",
           "description": "Numeric ACME operation status code from the last run (100 = default/unknown).",
           "links": [],
@@ -29638,10 +30229,10 @@
           }
         }
       },
-      "panel-260": {
+      "panel-265": {
         "kind": "Panel",
         "spec": {
-          "id": 260,
+          "id": 265,
           "title": "ACME Status Last Run",
           "description": "Unix timestamp of the last ACME client run for this certificate (0 = never run).",
           "links": [],
@@ -29764,10 +30355,10 @@
           }
         }
       },
-      "panel-261": {
+      "panel-266": {
         "kind": "Panel",
         "spec": {
-          "id": 261,
+          "id": 266,
           "title": "ACME Certificate Enabled",
           "description": "Whether each ACME-managed certificate is enabled (1 = enabled, 0 = disabled).",
           "links": [],
@@ -29877,10 +30468,10 @@
           }
         }
       },
-      "panel-262": {
+      "panel-267": {
         "kind": "Panel",
         "spec": {
-          "id": 262,
+          "id": 267,
           "title": "ACME Certificate Info",
           "description": "ACME certificate details including subject alternative names (info metric).",
           "links": [],
@@ -29991,10 +30582,10 @@
           }
         }
       },
-      "panel-263": {
+      "panel-268": {
         "kind": "Panel",
         "spec": {
-          "id": 263,
+          "id": 268,
           "title": "Service Status",
           "description": "Running/stopped state over time for all OPNsense services.",
           "links": [],
@@ -30099,10 +30690,10 @@
           }
         }
       },
-      "panel-264": {
+      "panel-269": {
         "kind": "Panel",
         "spec": {
-          "id": 264,
+          "id": 269,
           "title": "Service Status (current)",
           "description": "Current service status (1 = running, 0 = stopped).",
           "links": [],
@@ -30212,10 +30803,10 @@
           }
         }
       },
-      "panel-265": {
+      "panel-270": {
         "kind": "Panel",
         "spec": {
-          "id": 265,
+          "id": 270,
           "title": "Services Running",
           "description": "Number of services currently running.",
           "links": [],
@@ -30297,10 +30888,10 @@
           }
         }
       },
-      "panel-266": {
+      "panel-271": {
         "kind": "Panel",
         "spec": {
-          "id": 266,
+          "id": 271,
           "title": "Services Stopped",
           "description": "Number of services currently stopped. Orange = at least one service is down.",
           "links": [],
@@ -30386,10 +30977,10 @@
           }
         }
       },
-      "panel-267": {
+      "panel-272": {
         "kind": "Panel",
         "spec": {
-          "id": 267,
+          "id": 272,
           "title": "Cron Jobs",
           "description": "Cron job configuration and enabled state (1 = enabled, 0 = disabled).",
           "links": [],
@@ -30501,10 +31092,10 @@
           }
         }
       },
-      "panel-268": {
+      "panel-273": {
         "kind": "Panel",
         "spec": {
-          "id": 268,
+          "id": 273,
           "title": "DynDNS Accounts",
           "description": "Total number of configured DynDNS accounts.",
           "links": [],
@@ -30586,10 +31177,10 @@
           }
         }
       },
-      "panel-269": {
+      "panel-274": {
         "kind": "Panel",
         "spec": {
-          "id": 269,
+          "id": 274,
           "title": "DynDNS Service",
           "description": "Whether the DynDNS service is running (1 = running, 0 = stopped).",
           "links": [],
@@ -30692,10 +31283,10 @@
           }
         }
       },
-      "panel-270": {
+      "panel-275": {
         "kind": "Panel",
         "spec": {
-          "id": 270,
+          "id": 275,
           "title": "DynDNS Account Enabled",
           "description": "Whether each DynDNS account is enabled (1 = enabled, 0 = disabled).",
           "links": [],
@@ -30807,10 +31398,10 @@
           }
         }
       },
-      "panel-271": {
+      "panel-276": {
         "kind": "Panel",
         "spec": {
-          "id": 271,
+          "id": 276,
           "title": "DynDNS Last Update",
           "description": "Unix timestamp of the last successful DynDNS IP update for each account.",
           "links": [],
@@ -30934,10 +31525,10 @@
           }
         }
       },
-      "panel-272": {
+      "panel-277": {
         "kind": "Panel",
         "spec": {
-          "id": 272,
+          "id": 277,
           "title": "DynDNS Account Info",
           "description": "DynDNS account details including current IP address (info metric).",
           "links": [],
@@ -31051,10 +31642,10 @@
           }
         }
       },
-      "panel-273": {
+      "panel-278": {
         "kind": "Panel",
         "spec": {
-          "id": 273,
+          "id": 278,
           "title": "Syslog Service",
           "description": "syslog-ng service status.",
           "links": [],
@@ -31153,10 +31744,10 @@
           }
         }
       },
-      "panel-274": {
+      "panel-279": {
         "kind": "Panel",
         "spec": {
-          "id": 274,
+          "id": 279,
           "title": "Events/s (syslog-ng centre)",
           "description": "syslog-ng events per second per reporting window.",
           "links": [],
@@ -31242,10 +31833,10 @@
           }
         }
       },
-      "panel-275": {
+      "panel-280": {
         "kind": "Panel",
         "spec": {
-          "id": 275,
+          "id": 280,
           "title": "Queued Messages",
           "description": "",
           "links": [],
@@ -31331,10 +31922,10 @@
           }
         }
       },
-      "panel-276": {
+      "panel-281": {
         "kind": "Panel",
         "spec": {
-          "id": 276,
+          "id": 281,
           "title": "Processed Rate by Destination",
           "description": "",
           "links": [],
@@ -31420,10 +32011,10 @@
           }
         }
       },
-      "panel-277": {
+      "panel-282": {
         "kind": "Panel",
         "spec": {
-          "id": 277,
+          "id": 282,
           "title": "Dropped / Truncated Rates",
           "description": "",
           "links": [],
@@ -31561,10 +32152,10 @@
           }
         }
       },
-      "panel-278": {
+      "panel-283": {
         "kind": "Panel",
         "spec": {
-          "id": 278,
+          "id": 283,
           "title": "Written Rate",
           "description": "",
           "links": [],
@@ -31650,10 +32241,10 @@
           }
         }
       },
-      "panel-279": {
+      "panel-284": {
         "kind": "Panel",
         "spec": {
-          "id": 279,
+          "id": 284,
           "title": "Memory Usage",
           "description": "",
           "links": [],
@@ -31739,10 +32330,10 @@
           }
         }
       },
-      "panel-280": {
+      "panel-285": {
         "kind": "Panel",
         "spec": {
-          "id": 280,
+          "id": 285,
           "title": "Message Size",
           "description": "",
           "links": [],
@@ -31828,10 +32419,10 @@
           }
         }
       },
-      "panel-281": {
+      "panel-286": {
         "kind": "Panel",
         "spec": {
-          "id": 281,
+          "id": 286,
           "title": "Configured Feeds",
           "description": "",
           "links": [],
@@ -31913,10 +32504,10 @@
           }
         }
       },
-      "panel-282": {
+      "panel-287": {
         "kind": "Panel",
         "spec": {
-          "id": 282,
+          "id": 287,
           "title": "Total Entries",
           "description": "",
           "links": [],
@@ -31998,10 +32589,10 @@
           }
         }
       },
-      "panel-283": {
+      "panel-288": {
         "kind": "Panel",
         "spec": {
-          "id": 283,
+          "id": 288,
           "title": "Addresses Blocked",
           "description": "",
           "links": [],
@@ -32083,10 +32674,10 @@
           }
         }
       },
-      "panel-284": {
+      "panel-289": {
         "kind": "Panel",
         "spec": {
-          "id": 284,
+          "id": 289,
           "title": "License Days Left",
           "description": "",
           "links": [],
@@ -32177,10 +32768,10 @@
           }
         }
       },
-      "panel-285": {
+      "panel-290": {
         "kind": "Panel",
         "spec": {
-          "id": 285,
+          "id": 290,
           "title": "License",
           "description": "",
           "links": [],
@@ -32282,10 +32873,10 @@
           }
         }
       },
-      "panel-286": {
+      "panel-291": {
         "kind": "Panel",
         "spec": {
-          "id": 286,
+          "id": 291,
           "title": "Blocked Packet Rate",
           "description": "",
           "links": [],
@@ -32397,10 +32988,10 @@
           }
         }
       },
-      "panel-287": {
+      "panel-292": {
         "kind": "Panel",
         "spec": {
-          "id": 287,
+          "id": 292,
           "title": "Blocked Byte Rate",
           "description": "",
           "links": [],
@@ -32512,10 +33103,10 @@
           }
         }
       },
-      "panel-288": {
+      "panel-293": {
         "kind": "Panel",
         "spec": {
-          "id": 288,
+          "id": 293,
           "title": "Feed Entries / Addresses Blocked",
           "description": "",
           "links": [],
@@ -32627,10 +33218,10 @@
           }
         }
       },
-      "panel-289": {
+      "panel-294": {
         "kind": "Panel",
         "spec": {
-          "id": 289,
+          "id": 294,
           "title": "Feed Update Schedule",
           "description": "",
           "links": [],
@@ -32782,10 +33373,10 @@
           }
         }
       },
-      "panel-290": {
+      "panel-295": {
         "kind": "Panel",
         "spec": {
-          "id": 290,
+          "id": 295,
           "title": "NetFlow Capture",
           "description": "Whether NetFlow packet capture is enabled (1=Enabled, 0=Disabled).",
           "links": [],
@@ -32885,10 +33476,10 @@
           }
         }
       },
-      "panel-291": {
+      "panel-296": {
         "kind": "Panel",
         "spec": {
-          "id": 291,
+          "id": 296,
           "title": "Local Collection",
           "description": "Whether local NetFlow collection is enabled (1=Enabled, 0=Disabled).",
           "links": [],
@@ -32988,10 +33579,10 @@
           }
         }
       },
-      "panel-292": {
+      "panel-297": {
         "kind": "Panel",
         "spec": {
-          "id": 292,
+          "id": 297,
           "title": "NetFlow Service",
           "description": "Whether the NetFlow service is currently active (1=Active, 0=Inactive).",
           "links": [],
@@ -33091,10 +33682,10 @@
           }
         }
       },
-      "panel-293": {
+      "panel-298": {
         "kind": "Panel",
         "spec": {
-          "id": 293,
+          "id": 298,
           "title": "Collectors",
           "description": "Number of active NetFlow collector destinations configured.",
           "links": [],
@@ -33177,10 +33768,10 @@
           }
         }
       },
-      "panel-294": {
+      "panel-299": {
         "kind": "Panel",
         "spec": {
-          "id": 294,
+          "id": 299,
           "title": "Cache Packets (rate)",
           "description": "NetFlow cache packets observed per second by interface.",
           "links": [],
@@ -33266,10 +33857,10 @@
           }
         }
       },
-      "panel-295": {
+      "panel-300": {
         "kind": "Panel",
         "spec": {
-          "id": 295,
+          "id": 300,
           "title": "Unique Source IPs in Cache",
           "description": "Number of unique source IP addresses currently tracked in the NetFlow cache by interface.",
           "links": [],
@@ -33355,10 +33946,10 @@
           }
         }
       },
-      "panel-296": {
+      "panel-301": {
         "kind": "Panel",
         "spec": {
-          "id": 296,
+          "id": 301,
           "title": "Unique Destination IPs in Cache",
           "description": "Number of unique destination IP addresses currently tracked in the NetFlow cache by interface.",
           "links": [],
@@ -33444,10 +34035,10 @@
           }
         }
       },
-      "panel-297": {
+      "panel-302": {
         "kind": "Panel",
         "spec": {
-          "id": 297,
+          "id": 302,
           "title": "CARP Demotion Level",
           "description": "CARP demotion level; 0 = normal priority, higher values reduce election preference.",
           "links": [],
@@ -33537,10 +34128,10 @@
           }
         }
       },
-      "panel-298": {
+      "panel-303": {
         "kind": "Panel",
         "spec": {
-          "id": 298,
+          "id": 303,
           "title": "CARP Allowed",
           "description": "Whether CARP is globally allowed on this node (1 = allowed).",
           "links": [],
@@ -33639,10 +34230,10 @@
           }
         }
       },
-      "panel-299": {
+      "panel-304": {
         "kind": "Panel",
         "spec": {
-          "id": 299,
+          "id": 304,
           "title": "CARP Maintenance Mode",
           "description": "Whether CARP maintenance mode is active; in maintenance mode the node demotes itself.",
           "links": [],
@@ -33741,10 +34332,10 @@
           }
         }
       },
-      "panel-300": {
+      "panel-305": {
         "kind": "Panel",
         "spec": {
-          "id": 300,
+          "id": 305,
           "title": "CARP VIPs Total",
           "description": "Total number of configured CARP Virtual IPs (instantaneous count).",
           "links": [],
@@ -33826,10 +34417,10 @@
           }
         }
       },
-      "panel-301": {
+      "panel-306": {
         "kind": "Panel",
         "spec": {
-          "id": 301,
+          "id": 306,
           "title": "CARP VIP Status",
           "description": "CARP VIP state over time: MASTER, BACKUP, INIT, or Unknown.",
           "links": [],
@@ -33944,10 +34535,10 @@
           }
         }
       },
-      "panel-302": {
+      "panel-307": {
         "kind": "Panel",
         "spec": {
-          "id": 302,
+          "id": 307,
           "title": "VIP Advertisement Parameters",
           "description": "CARP VIP advertisement base interval (advbase) and advertisement skew (advskew) for each virtual IP.",
           "links": [],
@@ -34085,10 +34676,10 @@
           }
         }
       },
-      "panel-303": {
+      "panel-308": {
         "kind": "Panel",
         "spec": {
-          "id": 303,
+          "id": 308,
           "title": "HAProxy Service",
           "description": "HAProxy service state (1 = running, 0 = stopped).",
           "links": [],
@@ -34191,10 +34782,10 @@
           }
         }
       },
-      "panel-304": {
+      "panel-309": {
         "kind": "Panel",
         "spec": {
-          "id": 304,
+          "id": 309,
           "title": "Process Uptime",
           "description": "HAProxy process uptime in seconds.",
           "links": [],
@@ -34276,10 +34867,10 @@
           }
         }
       },
-      "panel-305": {
+      "panel-310": {
         "kind": "Panel",
         "spec": {
-          "id": 305,
+          "id": 310,
           "title": "Current Connections",
           "description": "Current number of connections on the HAProxy process.",
           "links": [],
@@ -34361,10 +34952,10 @@
           }
         }
       },
-      "panel-306": {
+      "panel-311": {
         "kind": "Panel",
         "spec": {
-          "id": 306,
+          "id": 311,
           "title": "Idle Time %",
           "description": "HAProxy process idle time percentage (higher = less loaded).",
           "links": [],
@@ -34454,10 +35045,10 @@
           }
         }
       },
-      "panel-307": {
+      "panel-312": {
         "kind": "Panel",
         "spec": {
-          "id": 307,
+          "id": 312,
           "title": "Connection & Request Rate",
           "description": "HAProxy process-level connection and HTTP request rates.",
           "links": [],
@@ -34569,10 +35160,10 @@
           }
         }
       },
-      "panel-308": {
+      "panel-313": {
         "kind": "Panel",
         "spec": {
-          "id": 308,
+          "id": 313,
           "title": "Frontend Status",
           "description": "HAProxy frontend status over time (1 = OPEN, 0 = otherwise).",
           "links": [],
@@ -34677,10 +35268,10 @@
           }
         }
       },
-      "panel-309": {
+      "panel-314": {
         "kind": "Panel",
         "spec": {
-          "id": 309,
+          "id": 314,
           "title": "Frontend Session Rate",
           "description": "Cumulative sessions per second per frontend.",
           "links": [],
@@ -34766,10 +35357,10 @@
           }
         }
       },
-      "panel-310": {
+      "panel-315": {
         "kind": "Panel",
         "spec": {
-          "id": 310,
+          "id": 315,
           "title": "Frontend Current Sessions",
           "description": "Active sessions on each frontend.",
           "links": [],
@@ -34855,10 +35446,10 @@
           }
         }
       },
-      "panel-311": {
+      "panel-316": {
         "kind": "Panel",
         "spec": {
-          "id": 311,
+          "id": 316,
           "title": "Frontend Throughput",
           "description": "Frontend bytes in/out per second (\u00d78 for bits).",
           "links": [],
@@ -34970,10 +35561,10 @@
           }
         }
       },
-      "panel-312": {
+      "panel-317": {
         "kind": "Panel",
         "spec": {
-          "id": 312,
+          "id": 317,
           "title": "Frontend Errors & Denied",
           "description": "Frontend request errors and denied requests per second.",
           "links": [],
@@ -35085,10 +35676,10 @@
           }
         }
       },
-      "panel-313": {
+      "panel-318": {
         "kind": "Panel",
         "spec": {
-          "id": 313,
+          "id": 318,
           "title": "Frontend HTTP Responses by Code",
           "description": "Frontend HTTP response rate by status code class (1xx\u20135xx, other).",
           "links": [],
@@ -35174,10 +35765,10 @@
           }
         }
       },
-      "panel-314": {
+      "panel-319": {
         "kind": "Panel",
         "spec": {
-          "id": 314,
+          "id": 319,
           "title": "Backend Status",
           "description": "HAProxy backend status over time (1 = UP, 0 = otherwise).",
           "links": [],
@@ -35282,10 +35873,10 @@
           }
         }
       },
-      "panel-315": {
+      "panel-320": {
         "kind": "Panel",
         "spec": {
-          "id": 315,
+          "id": 320,
           "title": "Backend Session Rate",
           "description": "Cumulative sessions per second per backend.",
           "links": [],
@@ -35371,10 +35962,10 @@
           }
         }
       },
-      "panel-316": {
+      "panel-321": {
         "kind": "Panel",
         "spec": {
-          "id": 316,
+          "id": 321,
           "title": "Backend Current Sessions & Queue",
           "description": "Active sessions and queued requests on each backend.",
           "links": [],
@@ -35486,10 +36077,10 @@
           }
         }
       },
-      "panel-317": {
+      "panel-322": {
         "kind": "Panel",
         "spec": {
-          "id": 317,
+          "id": 322,
           "title": "Backend Throughput",
           "description": "Backend bytes in/out per second (\u00d78 for bits).",
           "links": [],
@@ -35601,10 +36192,10 @@
           }
         }
       },
-      "panel-318": {
+      "panel-323": {
         "kind": "Panel",
         "spec": {
-          "id": 318,
+          "id": 323,
           "title": "Backend Error & Retry Rates",
           "description": "Backend connection/response error rates, retries, and redispatches.",
           "links": [],
@@ -35768,10 +36359,10 @@
           }
         }
       },
-      "panel-319": {
+      "panel-324": {
         "kind": "Panel",
         "spec": {
-          "id": 319,
+          "id": 324,
           "title": "Backend Active/Backup Servers",
           "description": "Number of active and backup servers per backend.",
           "links": [],
@@ -35883,10 +36474,10 @@
           }
         }
       },
-      "panel-320": {
+      "panel-325": {
         "kind": "Panel",
         "spec": {
-          "id": 320,
+          "id": 325,
           "title": "Backend HTTP Responses by Code",
           "description": "Backend HTTP response rate by status code class (1xx\u20135xx, other).",
           "links": [],
@@ -35972,10 +36563,10 @@
           }
         }
       },
-      "panel-321": {
+      "panel-326": {
         "kind": "Panel",
         "spec": {
-          "id": 321,
+          "id": 326,
           "title": "Server Status",
           "description": "Individual server status over time (1 = UP, 0 = DOWN/MAINT/DRAIN).",
           "links": [],
@@ -36080,10 +36671,10 @@
           }
         }
       },
-      "panel-322": {
+      "panel-327": {
         "kind": "Panel",
         "spec": {
-          "id": 322,
+          "id": 327,
           "title": "Server Details",
           "description": "Per-server status, weight, active sessions and queue depth.",
           "links": [],
@@ -36273,10 +36864,10 @@
           }
         }
       },
-      "panel-323": {
+      "panel-328": {
         "kind": "Panel",
         "spec": {
-          "id": 323,
+          "id": 328,
           "title": "Server Session Rate",
           "description": "Sessions per second per server.",
           "links": [],
@@ -36362,10 +36953,10 @@
           }
         }
       },
-      "panel-324": {
+      "panel-329": {
         "kind": "Panel",
         "spec": {
-          "id": 324,
+          "id": 329,
           "title": "Server Throughput",
           "description": "Server bytes in/out per second (\u00d78 for bits).",
           "links": [],
@@ -36477,10 +37068,10 @@
           }
         }
       },
-      "panel-325": {
+      "panel-330": {
         "kind": "Panel",
         "spec": {
-          "id": 325,
+          "id": 330,
           "title": "Server Error & Downtime Rates",
           "description": "Server-level error rates, check failures, and downtime accumulation rate.",
           "links": [],
@@ -36644,10 +37235,10 @@
           }
         }
       },
-      "panel-326": {
+      "panel-331": {
         "kind": "Panel",
         "spec": {
-          "id": 326,
+          "id": 331,
           "title": "Nginx Service",
           "description": "Nginx service state (1 = running, 0 = stopped).",
           "links": [],
@@ -36750,10 +37341,10 @@
           }
         }
       },
-      "panel-327": {
+      "panel-332": {
         "kind": "Panel",
         "spec": {
-          "id": 327,
+          "id": 332,
           "title": "Active Connections",
           "description": "Total number of active connections (including reading/writing/waiting).",
           "links": [],
@@ -36835,10 +37426,10 @@
           }
         }
       },
-      "panel-328": {
+      "panel-333": {
         "kind": "Panel",
         "spec": {
-          "id": 328,
+          "id": 333,
           "title": "Request Rate",
           "description": "Total HTTP request rate across all server zones.",
           "links": [],
@@ -36924,10 +37515,10 @@
           }
         }
       },
-      "panel-329": {
+      "panel-334": {
         "kind": "Panel",
         "spec": {
-          "id": 329,
+          "id": 334,
           "title": "Connection States",
           "description": "Current reading/writing/waiting connection states.",
           "links": [],
@@ -37065,10 +37656,10 @@
           }
         }
       },
-      "panel-330": {
+      "panel-335": {
         "kind": "Panel",
         "spec": {
-          "id": 330,
+          "id": 335,
           "title": "Connection Accept/Handle Rate",
           "description": "Connection accept and handle rates (accepted - handled = dropped).",
           "links": [],
@@ -37180,10 +37771,10 @@
           }
         }
       },
-      "panel-331": {
+      "panel-336": {
         "kind": "Panel",
         "spec": {
-          "id": 331,
+          "id": 336,
           "title": "Shared Memory Max",
           "description": "Maximum VTS shared memory zone size in bytes.",
           "links": [],
@@ -37265,10 +37856,10 @@
           }
         }
       },
-      "panel-332": {
+      "panel-337": {
         "kind": "Panel",
         "spec": {
-          "id": 332,
+          "id": 337,
           "title": "Shared Memory Used",
           "description": "Current VTS shared memory usage in bytes.",
           "links": [],
@@ -37350,10 +37941,10 @@
           }
         }
       },
-      "panel-333": {
+      "panel-338": {
         "kind": "Panel",
         "spec": {
-          "id": 333,
+          "id": 338,
           "title": "Shared Memory Nodes",
           "description": "Number of VTS shared memory nodes in use.",
           "links": [],
@@ -37435,10 +38026,10 @@
           }
         }
       },
-      "panel-334": {
+      "panel-339": {
         "kind": "Panel",
         "spec": {
-          "id": 334,
+          "id": 339,
           "title": "Shared Memory Utilization",
           "description": "",
           "links": [],
@@ -37526,10 +38117,10 @@
           }
         }
       },
-      "panel-335": {
+      "panel-340": {
         "kind": "Panel",
         "spec": {
-          "id": 335,
+          "id": 340,
           "title": "Server Zone Request Rate",
           "description": "HTTP request rate per server zone (aggregate zone '*' excluded).",
           "links": [],
@@ -37615,10 +38206,10 @@
           }
         }
       },
-      "panel-336": {
+      "panel-341": {
         "kind": "Panel",
         "spec": {
-          "id": 336,
+          "id": 341,
           "title": "Server Zone Throughput",
           "description": "Server zone bytes in/out per second (\u00d78 for bits).",
           "links": [],
@@ -37730,10 +38321,10 @@
           }
         }
       },
-      "panel-337": {
+      "panel-342": {
         "kind": "Panel",
         "spec": {
-          "id": 337,
+          "id": 342,
           "title": "Server Zone Responses by Code",
           "description": "HTTP response rate by status code class (1xx\u20135xx) per server zone.",
           "links": [],
@@ -37819,10 +38410,10 @@
           }
         }
       },
-      "panel-338": {
+      "panel-343": {
         "kind": "Panel",
         "spec": {
-          "id": 338,
+          "id": 343,
           "title": "Upstream Server Down",
           "description": "Upstream server down flag over time (1 = down, 0 = up).",
           "links": [],
@@ -37927,10 +38518,10 @@
           }
         }
       },
-      "panel-339": {
+      "panel-344": {
         "kind": "Panel",
         "spec": {
-          "id": 339,
+          "id": 344,
           "title": "Upstream Server Request Rate",
           "description": "Request rate per upstream server.",
           "links": [],
@@ -38016,10 +38607,10 @@
           }
         }
       },
-      "panel-340": {
+      "panel-345": {
         "kind": "Panel",
         "spec": {
-          "id": 340,
+          "id": 345,
           "title": "Upstream Server Throughput",
           "description": "Upstream server bytes in/out per second (\u00d78 for bits).",
           "links": [],
@@ -38131,10 +38722,10 @@
           }
         }
       },
-      "panel-341": {
+      "panel-346": {
         "kind": "Panel",
         "spec": {
-          "id": 341,
+          "id": 346,
           "title": "Upstream Server Response Time",
           "description": "Average response time in seconds per upstream server.",
           "links": [],
@@ -38220,10 +38811,10 @@
           }
         }
       },
-      "panel-342": {
+      "panel-347": {
         "kind": "Panel",
         "spec": {
-          "id": 342,
+          "id": 347,
           "title": "Upstream Server Responses by Code",
           "description": "Upstream server HTTP response rate by status code class.",
           "links": [],
@@ -38309,10 +38900,10 @@
           }
         }
       },
-      "panel-343": {
+      "panel-348": {
         "kind": "Panel",
         "spec": {
-          "id": 343,
+          "id": 348,
           "title": "FRR Service",
           "description": "FRR (quagga) routing service state (1 = running, 0 = stopped).",
           "links": [],
@@ -38415,10 +39006,10 @@
           }
         }
       },
-      "panel-344": {
+      "panel-349": {
         "kind": "Panel",
         "spec": {
-          "id": 344,
+          "id": 349,
           "title": "BGP Peers",
           "description": "Total BGP peers configured (by address family).",
           "links": [],
@@ -38500,10 +39091,10 @@
           }
         }
       },
-      "panel-345": {
+      "panel-350": {
         "kind": "Panel",
         "spec": {
-          "id": 345,
+          "id": 350,
           "title": "BGP Failed Peers",
           "description": "Number of BGP peers in a failed/non-Established state.",
           "links": [],
@@ -38593,10 +39184,10 @@
           }
         }
       },
-      "panel-346": {
+      "panel-351": {
         "kind": "Panel",
         "spec": {
-          "id": 346,
+          "id": 351,
           "title": "OSPF Neighbors",
           "description": "Total number of OSPF neighbors.",
           "links": [],
@@ -38678,10 +39269,10 @@
           }
         }
       },
-      "panel-347": {
+      "panel-352": {
         "kind": "Panel",
         "spec": {
-          "id": 347,
+          "id": 352,
           "title": "BFD Peers",
           "description": "Total number of configured BFD peers.",
           "links": [],
@@ -38763,10 +39354,10 @@
           }
         }
       },
-      "panel-348": {
+      "panel-353": {
         "kind": "Panel",
         "spec": {
-          "id": 348,
+          "id": 353,
           "title": "BGP RIB Entries",
           "description": "BGP RIB (routing information base) entry count by address family.",
           "links": [],
@@ -38852,10 +39443,10 @@
           }
         }
       },
-      "panel-349": {
+      "panel-354": {
         "kind": "Panel",
         "spec": {
-          "id": 349,
+          "id": 354,
           "title": "BGP Peer Status",
           "description": "BGP peer up/down state over time (1 = Established, 0 = not Established).",
           "links": [],
@@ -38960,10 +39551,10 @@
           }
         }
       },
-      "panel-350": {
+      "panel-355": {
         "kind": "Panel",
         "spec": {
-          "id": 350,
+          "id": 355,
           "title": "BGP Prefixes Received",
           "description": "Number of prefixes received from each BGP peer.",
           "links": [],
@@ -39049,10 +39640,10 @@
           }
         }
       },
-      "panel-351": {
+      "panel-356": {
         "kind": "Panel",
         "spec": {
-          "id": 351,
+          "id": 356,
           "title": "BGP Prefixes Sent",
           "description": "Number of prefixes advertised to each BGP peer.",
           "links": [],
@@ -39138,10 +39729,10 @@
           }
         }
       },
-      "panel-352": {
+      "panel-357": {
         "kind": "Panel",
         "spec": {
-          "id": 352,
+          "id": 357,
           "title": "BGP Peer Uptime",
           "description": "BGP session uptime in seconds per peer.",
           "links": [],
@@ -39227,10 +39818,10 @@
           }
         }
       },
-      "panel-353": {
+      "panel-358": {
         "kind": "Panel",
         "spec": {
-          "id": 353,
+          "id": 358,
           "title": "BGP Message Rate",
           "description": "BGP UPDATE/KEEPALIVE/NOTIFICATION message rate per peer.",
           "links": [],
@@ -39342,10 +39933,10 @@
           }
         }
       },
-      "panel-354": {
+      "panel-359": {
         "kind": "Panel",
         "spec": {
-          "id": 354,
+          "id": 359,
           "title": "OSPF Neighbor Adjacency",
           "description": "OSPF neighbor adjacency state over time (1 = Full, 0 = not Full).",
           "links": [],
@@ -39450,10 +40041,10 @@
           }
         }
       },
-      "panel-355": {
+      "panel-360": {
         "kind": "Panel",
         "spec": {
-          "id": 355,
+          "id": 360,
           "title": "OSPF Area Active Interfaces",
           "description": "Number of active interfaces per OSPF area.",
           "links": [],
@@ -39539,10 +40130,10 @@
           }
         }
       },
-      "panel-356": {
+      "panel-361": {
         "kind": "Panel",
         "spec": {
-          "id": 356,
+          "id": 361,
           "title": "OSPF Area Full-Adjacent Neighbors",
           "description": "Number of fully-adjacent (Full state) neighbors per OSPF area.",
           "links": [],
@@ -39628,10 +40219,10 @@
           }
         }
       },
-      "panel-357": {
+      "panel-362": {
         "kind": "Panel",
         "spec": {
-          "id": 357,
+          "id": 362,
           "title": "OSPF Area LSA Count",
           "description": "Number of LSAs in the LSDB per OSPF area.",
           "links": [],
@@ -39717,10 +40308,10 @@
           }
         }
       },
-      "panel-358": {
+      "panel-363": {
         "kind": "Panel",
         "spec": {
-          "id": 358,
+          "id": 363,
           "title": "OSPF SPF Execution Rate",
           "description": "OSPF SPF (shortest path first) execution rate per area.",
           "links": [],
@@ -39806,10 +40397,10 @@
           }
         }
       },
-      "panel-359": {
+      "panel-364": {
         "kind": "Panel",
         "spec": {
-          "id": 359,
+          "id": 364,
           "title": "BFD Peer Status",
           "description": "BFD peer up/down state over time (1 = up, 0 = down).",
           "links": [],
@@ -39914,10 +40505,10 @@
           }
         }
       },
-      "panel-360": {
+      "panel-365": {
         "kind": "Panel",
         "spec": {
-          "id": 360,
+          "id": 365,
           "title": "BFD Peer Uptime",
           "description": "BFD session uptime in seconds per peer.",
           "links": [],
@@ -40003,10 +40594,10 @@
           }
         }
       },
-      "panel-361": {
+      "panel-366": {
         "kind": "Panel",
         "spec": {
-          "id": 361,
+          "id": 366,
           "title": "BFD Control Packet Rate",
           "description": "BFD control packet receive/send rates per peer.",
           "links": [],
@@ -40118,10 +40709,10 @@
           }
         }
       },
-      "panel-362": {
+      "panel-367": {
         "kind": "Panel",
         "spec": {
-          "id": 362,
+          "id": 367,
           "title": "BFD Session Up/Down Events",
           "description": "BFD session state-change event rates per peer.",
           "links": [],
@@ -40233,10 +40824,10 @@
           }
         }
       },
-      "panel-363": {
+      "panel-368": {
         "kind": "Panel",
         "spec": {
-          "id": 363,
+          "id": 368,
           "title": "Monit Service",
           "description": "Monit service state (1 = running, 0 = stopped).",
           "links": [],
@@ -40339,10 +40930,10 @@
           }
         }
       },
-      "panel-364": {
+      "panel-369": {
         "kind": "Panel",
         "spec": {
-          "id": 364,
+          "id": 369,
           "title": "Monit Status Reachable",
           "description": "1 when the monit httpd is reachable and returned a valid status XML. 0 when monit is unreachable or returned an error payload.",
           "links": [],
@@ -40445,10 +41036,10 @@
           }
         }
       },
-      "panel-365": {
+      "panel-370": {
         "kind": "Panel",
         "spec": {
-          "id": 365,
+          "id": 370,
           "title": "Checks Configured",
           "description": "Total number of configured monit checks.",
           "links": [],
@@ -40530,10 +41121,10 @@
           }
         }
       },
-      "panel-366": {
+      "panel-371": {
         "kind": "Panel",
         "spec": {
-          "id": 366,
+          "id": 371,
           "title": "Checks OK",
           "description": "Number of monit checks currently in OK state (status field == 0).",
           "links": [],
@@ -40619,10 +41210,10 @@
           }
         }
       },
-      "panel-367": {
+      "panel-372": {
         "kind": "Panel",
         "spec": {
-          "id": 367,
+          "id": 372,
           "title": "Checks Monitored",
           "description": "Number of monit checks actively being monitored (monitor != 0).",
           "links": [],
@@ -40704,10 +41295,10 @@
           }
         }
       },
-      "panel-368": {
+      "panel-373": {
         "kind": "Panel",
         "spec": {
-          "id": 368,
+          "id": 373,
           "title": "Check Status Over Time",
           "description": "Monit check status over time per check. 1 = OK (monit status field == 0), 0 = failed/error.",
           "links": [],
@@ -40812,10 +41403,10 @@
           }
         }
       },
-      "panel-369": {
+      "panel-374": {
         "kind": "Panel",
         "spec": {
-          "id": 369,
+          "id": 374,
           "title": "Check Monitored State",
           "description": "Whether each check is actively monitored over time. 1 = monitored (monitor != 0), 0 = unmonitored.",
           "links": [],
@@ -40920,10 +41511,10 @@
           }
         }
       },
-      "panel-370": {
+      "panel-375": {
         "kind": "Panel",
         "spec": {
-          "id": 370,
+          "id": 375,
           "title": "Check Details",
           "description": "Current status and monitored state for all configured monit checks.",
           "links": [],
@@ -41059,10 +41650,10 @@
           }
         }
       },
-      "panel-371": {
+      "panel-376": {
         "kind": "Panel",
         "spec": {
-          "id": 371,
+          "id": 376,
           "title": "CrowdSec Service",
           "description": "CrowdSec service state (1 = running, 0 = stopped).",
           "links": [],
@@ -41165,10 +41756,10 @@
           }
         }
       },
-      "panel-372": {
+      "panel-377": {
         "kind": "Panel",
         "spec": {
-          "id": 372,
+          "id": 377,
           "title": "Active Alerts",
           "description": "Total number of active CrowdSec alerts.",
           "links": [],
@@ -41258,10 +41849,10 @@
           }
         }
       },
-      "panel-373": {
+      "panel-378": {
         "kind": "Panel",
         "spec": {
-          "id": 373,
+          "id": 378,
           "title": "Active Decisions",
           "description": "Total number of active CrowdSec decisions (bans/captchas etc.).",
           "links": [],
@@ -41347,10 +41938,10 @@
           }
         }
       },
-      "panel-374": {
+      "panel-379": {
         "kind": "Panel",
         "spec": {
-          "id": 374,
+          "id": 379,
           "title": "Bouncers",
           "description": "Total number of registered CrowdSec bouncers.",
           "links": [],
@@ -41432,10 +42023,10 @@
           }
         }
       },
-      "panel-375": {
+      "panel-380": {
         "kind": "Panel",
         "spec": {
-          "id": 375,
+          "id": 380,
           "title": "Machines",
           "description": "Total number of registered CrowdSec machines.",
           "links": [],
@@ -41517,10 +42108,10 @@
           }
         }
       },
-      "panel-376": {
+      "panel-381": {
         "kind": "Panel",
         "spec": {
-          "id": 376,
+          "id": 381,
           "title": "Bouncer Valid State",
           "description": "Whether each bouncer is in a valid state over time.",
           "links": [],
@@ -41625,10 +42216,10 @@
           }
         }
       },
-      "panel-377": {
+      "panel-382": {
         "kind": "Panel",
         "spec": {
-          "id": 377,
+          "id": 382,
           "title": "Bouncer Details",
           "description": "Per-bouncer validity and age since last pull. Last Pull Age is seconds since the bouncer last contacted the LAPI.",
           "links": [],
@@ -41764,10 +42355,10 @@
           }
         }
       },
-      "panel-378": {
+      "panel-383": {
         "kind": "Panel",
         "spec": {
-          "id": 378,
+          "id": 383,
           "title": "Machine Validated State",
           "description": "Whether each machine is validated over time.",
           "links": [],
@@ -41872,10 +42463,10 @@
           }
         }
       },
-      "panel-379": {
+      "panel-384": {
         "kind": "Panel",
         "spec": {
-          "id": 379,
+          "id": 384,
           "title": "Machine Details",
           "description": "Per-machine validation status and age since last heartbeat. Last Heartbeat Age is seconds since the machine last checked in.",
           "links": [],
@@ -42010,10 +42601,10 @@
           }
         }
       },
-      "panel-380": {
+      "panel-385": {
         "kind": "Panel",
         "spec": {
-          "id": 380,
+          "id": 385,
           "title": "NUT Service",
           "description": "NUT (Network UPS Tools) service state (1 = running, 0 = stopped).",
           "links": [],
@@ -42116,10 +42707,10 @@
           }
         }
       },
-      "panel-381": {
+      "panel-386": {
         "kind": "Panel",
         "spec": {
-          "id": 381,
+          "id": 386,
           "title": "NUT Battery Charge",
           "description": "",
           "links": [],
@@ -42208,10 +42799,10 @@
           }
         }
       },
-      "panel-382": {
+      "panel-387": {
         "kind": "Panel",
         "spec": {
-          "id": 382,
+          "id": 387,
           "title": "NUT Load",
           "description": "",
           "links": [],
@@ -42300,10 +42891,10 @@
           }
         }
       },
-      "panel-383": {
+      "panel-388": {
         "kind": "Panel",
         "spec": {
-          "id": 383,
+          "id": 388,
           "title": "NUT Battery Runtime",
           "description": "Estimated battery runtime remaining in seconds.",
           "links": [],
@@ -42393,10 +42984,10 @@
           }
         }
       },
-      "panel-384": {
+      "panel-389": {
         "kind": "Panel",
         "spec": {
-          "id": 384,
+          "id": 389,
           "title": "NUT Temperature",
           "description": "UPS temperature in Celsius (omitted when variable absent).",
           "links": [],
@@ -42486,10 +43077,10 @@
           }
         }
       },
-      "panel-385": {
+      "panel-390": {
         "kind": "Panel",
         "spec": {
-          "id": 385,
+          "id": 390,
           "title": "NUT Voltage",
           "description": "NUT battery, input, and output voltages.",
           "links": [],
@@ -42627,10 +43218,10 @@
           }
         }
       },
-      "panel-386": {
+      "panel-391": {
         "kind": "Panel",
         "spec": {
-          "id": 386,
+          "id": 391,
           "title": "NUT Input Frequency",
           "description": "NUT input AC frequency in Hz.",
           "links": [],
@@ -42716,10 +43307,10 @@
           }
         }
       },
-      "panel-387": {
+      "panel-392": {
         "kind": "Panel",
         "spec": {
-          "id": 387,
+          "id": 392,
           "title": "NUT Status Flags",
           "description": "NUT UPS status flags over time.",
           "links": [],
@@ -42928,10 +43519,10 @@
           }
         }
       },
-      "panel-388": {
+      "panel-393": {
         "kind": "Panel",
         "spec": {
-          "id": 388,
+          "id": 393,
           "title": "NUT UPS Info",
           "description": "NUT UPS identity labels (ups_info is always 1; labels carry the data).",
           "links": [],
@@ -43034,10 +43625,10 @@
           }
         }
       },
-      "panel-389": {
+      "panel-394": {
         "kind": "Panel",
         "spec": {
-          "id": 389,
+          "id": 394,
           "title": "apcupsd Service",
           "description": "apcupsd service state (1 = running, 0 = stopped).",
           "links": [],
@@ -43140,10 +43731,10 @@
           }
         }
       },
-      "panel-390": {
+      "panel-395": {
         "kind": "Panel",
         "spec": {
-          "id": 390,
+          "id": 395,
           "title": "APC Battery Charge",
           "description": "",
           "links": [],
@@ -43232,10 +43823,10 @@
           }
         }
       },
-      "panel-391": {
+      "panel-396": {
         "kind": "Panel",
         "spec": {
-          "id": 391,
+          "id": 396,
           "title": "APC Load",
           "description": "",
           "links": [],
@@ -43324,10 +43915,10 @@
           }
         }
       },
-      "panel-392": {
+      "panel-397": {
         "kind": "Panel",
         "spec": {
-          "id": 392,
+          "id": 397,
           "title": "APC Battery Runtime",
           "description": "Estimated battery runtime remaining in seconds (TIMELEFT \u00d7 60).",
           "links": [],
@@ -43417,10 +44008,10 @@
           }
         }
       },
-      "panel-393": {
+      "panel-398": {
         "kind": "Panel",
         "spec": {
-          "id": 393,
+          "id": 398,
           "title": "APC Nominal Power",
           "description": "Nominal UPS power output in watts.",
           "links": [],
@@ -43502,10 +44093,10 @@
           }
         }
       },
-      "panel-394": {
+      "panel-399": {
         "kind": "Panel",
         "spec": {
-          "id": 394,
+          "id": 399,
           "title": "APC Time on Battery",
           "description": "Cumulative seconds on battery power since last mains transfer.",
           "links": [],
@@ -43595,10 +44186,10 @@
           }
         }
       },
-      "panel-395": {
+      "panel-400": {
         "kind": "Panel",
         "spec": {
-          "id": 395,
+          "id": 400,
           "title": "APC Voltage",
           "description": "apcupsd battery, input, and output voltages.",
           "links": [],
@@ -43736,10 +44327,10 @@
           }
         }
       },
-      "panel-396": {
+      "panel-401": {
         "kind": "Panel",
         "spec": {
-          "id": 396,
+          "id": 401,
           "title": "APC Mains Transfer Rate",
           "description": "Rate of mains-to-battery transfers (counter, use rate()).",
           "links": [],
@@ -43825,10 +44416,10 @@
           }
         }
       },
-      "panel-397": {
+      "panel-402": {
         "kind": "Panel",
         "spec": {
-          "id": 397,
+          "id": 402,
           "title": "APC Status Flags",
           "description": "apcupsd UPS status flags over time.",
           "links": [],
@@ -43985,10 +44576,10 @@
           }
         }
       },
-      "panel-398": {
+      "panel-403": {
         "kind": "Panel",
         "spec": {
-          "id": 398,
+          "id": 403,
           "title": "APC UPS Info",
           "description": "apcupsd UPS identity labels (ups_info is always 1; labels carry the data).",
           "links": [],
@@ -44091,10 +44682,10 @@
           }
         }
       },
-      "panel-399": {
+      "panel-404": {
         "kind": "Panel",
         "spec": {
-          "id": 399,
+          "id": 404,
           "title": "Captive Portal Service",
           "description": "Captive portal service state (1 = running, 0 = stopped).",
           "links": [],
@@ -44197,10 +44788,10 @@
           }
         }
       },
-      "panel-400": {
+      "panel-405": {
         "kind": "Panel",
         "spec": {
-          "id": 400,
+          "id": 405,
           "title": "Zones Configured",
           "description": "Total number of configured captive portal zones.",
           "links": [],
@@ -44282,10 +44873,10 @@
           }
         }
       },
-      "panel-401": {
+      "panel-406": {
         "kind": "Panel",
         "spec": {
-          "id": 401,
+          "id": 406,
           "title": "Total Sessions",
           "description": "Total active sessions across all captive portal zones.",
           "links": [],
@@ -44375,10 +44966,10 @@
           }
         }
       },
-      "panel-402": {
+      "panel-407": {
         "kind": "Panel",
         "spec": {
-          "id": 402,
+          "id": 407,
           "title": "Sessions per Zone",
           "description": "Active session count per captive portal zone over time.",
           "links": [],
@@ -44464,10 +45055,10 @@
           }
         }
       },
-      "panel-403": {
+      "panel-408": {
         "kind": "Panel",
         "spec": {
-          "id": 403,
+          "id": 408,
           "title": "Zone Session Counts",
           "description": "Current session count per captive portal zone.",
           "links": [],
@@ -44576,10 +45167,10 @@
           }
         }
       },
-      "panel-404": {
+      "panel-409": {
         "kind": "Panel",
         "spec": {
-          "id": 404,
+          "id": 409,
           "title": "Configured Pipes",
           "description": "Number of configured dummynet pipes (gauge \u2014 instantaneous count).",
           "links": [],
@@ -44661,10 +45252,10 @@
           }
         }
       },
-      "panel-405": {
+      "panel-410": {
         "kind": "Panel",
         "spec": {
-          "id": 405,
+          "id": 410,
           "title": "Configured Queues",
           "description": "Number of configured dummynet queues (gauge \u2014 instantaneous count).",
           "links": [],
@@ -44746,10 +45337,10 @@
           }
         }
       },
-      "panel-406": {
+      "panel-411": {
         "kind": "Panel",
         "spec": {
-          "id": 406,
+          "id": 411,
           "title": "Pipe Active Flows",
           "description": "Current number of active flows per dummynet pipe (gauge).",
           "links": [],
@@ -44835,10 +45426,10 @@
           }
         }
       },
-      "panel-407": {
+      "panel-412": {
         "kind": "Panel",
         "spec": {
-          "id": 407,
+          "id": 412,
           "title": "Pipe Bytes",
           "description": "Current byte counts per pipe (gauge \u2014 dummynet flow buckets can decrease when idle flows expire).",
           "links": [],
@@ -44950,10 +45541,10 @@
           }
         }
       },
-      "panel-408": {
+      "panel-413": {
         "kind": "Panel",
         "spec": {
-          "id": 408,
+          "id": 413,
           "title": "Pipe Packets",
           "description": "Current packet counts per pipe (gauge).",
           "links": [],
@@ -45065,10 +45656,10 @@
           }
         }
       },
-      "panel-409": {
+      "panel-414": {
         "kind": "Panel",
         "spec": {
-          "id": 409,
+          "id": 414,
           "title": "Queue Active Flows",
           "description": "Current number of active flows per dummynet queue (gauge).",
           "links": [],
@@ -45154,10 +45745,10 @@
           }
         }
       },
-      "panel-410": {
+      "panel-415": {
         "kind": "Panel",
         "spec": {
-          "id": 410,
+          "id": 415,
           "title": "Queue Bytes",
           "description": "Current byte counts per queue (gauge).",
           "links": [],
@@ -45269,10 +45860,10 @@
           }
         }
       },
-      "panel-411": {
+      "panel-416": {
         "kind": "Panel",
         "spec": {
-          "id": 411,
+          "id": 416,
           "title": "Queue Packets",
           "description": "Current packet counts per queue (gauge).",
           "links": [],
@@ -45384,10 +45975,10 @@
           }
         }
       },
-      "panel-412": {
+      "panel-417": {
         "kind": "Panel",
         "spec": {
-          "id": 412,
+          "id": 417,
           "title": "Rule Throughput (rate)",
           "description": "Bytes per second matched by each traffic shaper rule.",
           "links": [],
@@ -45473,10 +46064,10 @@
           }
         }
       },
-      "panel-413": {
+      "panel-418": {
         "kind": "Panel",
         "spec": {
-          "id": 413,
+          "id": 418,
           "title": "Rule Packets (rate)",
           "description": "Packets per second matched by each traffic shaper rule.",
           "links": [],
@@ -45562,10 +46153,10 @@
           }
         }
       },
-      "panel-414": {
+      "panel-419": {
         "kind": "Panel",
         "spec": {
-          "id": 414,
+          "id": 419,
           "title": "Remote Reachable",
           "description": "1 = HA peer is reachable via XML-RPC, 0 = unreachable.",
           "links": [],
@@ -45668,10 +46259,10 @@
           }
         }
       },
-      "panel-415": {
+      "panel-420": {
         "kind": "Panel",
         "spec": {
-          "id": 415,
+          "id": 420,
           "title": "Version Match",
           "description": "1 = remote firmware version matches local version. A mismatch indicates an in-progress upgrade.",
           "links": [],
@@ -45774,10 +46365,10 @@
           }
         }
       },
-      "panel-416": {
+      "panel-421": {
         "kind": "Panel",
         "spec": {
-          "id": 416,
+          "id": 421,
           "title": "HA Sync Version Info",
           "description": "Remote and local firmware version labels (value always 1).",
           "links": [],
@@ -45886,10 +46477,10 @@
           }
         }
       },
-      "panel-417": {
+      "panel-422": {
         "kind": "Panel",
         "spec": {
-          "id": 417,
+          "id": 422,
           "title": "Remote Services",
           "description": "Number of services reported by the HA peer.",
           "links": [],
@@ -45971,10 +46562,10 @@
           }
         }
       },
-      "panel-418": {
+      "panel-423": {
         "kind": "Panel",
         "spec": {
-          "id": 418,
+          "id": 423,
           "title": "Remote Service Status",
           "description": "Running state of each service on the HA peer over time.",
           "links": [],
@@ -46079,10 +46670,10 @@
           }
         }
       },
-      "panel-419": {
+      "panel-424": {
         "kind": "Panel",
         "spec": {
-          "id": 419,
+          "id": 424,
           "title": "Chrony Service",
           "description": "1 = chrony service is running, 0 = stopped/disabled.",
           "links": [],
@@ -46185,10 +46776,10 @@
           }
         }
       },
-      "panel-420": {
+      "panel-425": {
         "kind": "Panel",
         "spec": {
-          "id": 420,
+          "id": 425,
           "title": "Stratum",
           "description": "Current NTP stratum. Lower is better (1 = GPS/atomic, 16 = unsynchronised).",
           "links": [],
@@ -46278,10 +46869,10 @@
           }
         }
       },
-      "panel-421": {
+      "panel-426": {
         "kind": "Panel",
         "spec": {
-          "id": 421,
+          "id": 426,
           "title": "Leap Status",
           "description": "chronyc Leap Status: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised.",
           "links": [],
@@ -46394,10 +46985,10 @@
           }
         }
       },
-      "panel-422": {
+      "panel-427": {
         "kind": "Panel",
         "spec": {
-          "id": 422,
+          "id": 427,
           "title": "Sources",
           "description": "Total number of NTP sources configured in chrony.",
           "links": [],
@@ -46479,10 +47070,10 @@
           }
         }
       },
-      "panel-423": {
+      "panel-428": {
         "kind": "Panel",
         "spec": {
-          "id": 423,
+          "id": 428,
           "title": "Chrony Tracking Info",
           "description": "Current chrony reference info (value always 1).",
           "links": [],
@@ -46592,10 +47183,10 @@
           }
         }
       },
-      "panel-424": {
+      "panel-429": {
         "kind": "Panel",
         "spec": {
-          "id": 424,
+          "id": 429,
           "title": "System Time Offset",
           "description": "System clock offset from NTP time. Negative = slow; rms_offset is the long-term root-mean-square.",
           "links": [],
@@ -46733,10 +47324,10 @@
           }
         }
       },
-      "panel-425": {
+      "panel-430": {
         "kind": "Panel",
         "spec": {
-          "id": 425,
+          "id": 430,
           "title": "Frequency Error (ppm)",
           "description": "chrony frequency error metrics in parts per million.",
           "links": [],
@@ -46874,10 +47465,10 @@
           }
         }
       },
-      "panel-426": {
+      "panel-431": {
         "kind": "Panel",
         "spec": {
-          "id": 426,
+          "id": 431,
           "title": "Root Delay & Dispersion",
           "description": "Root delay = total round-trip to the reference clock. Root dispersion = accumulated error from the reference.",
           "links": [],
@@ -46989,10 +47580,10 @@
           }
         }
       },
-      "panel-427": {
+      "panel-432": {
         "kind": "Panel",
         "spec": {
-          "id": 427,
+          "id": 432,
           "title": "Tracking Update Interval",
           "description": "Interval between the last two clock updates.",
           "links": [],
@@ -47078,10 +47669,10 @@
           }
         }
       },
-      "panel-428": {
+      "panel-433": {
         "kind": "Panel",
         "spec": {
-          "id": 428,
+          "id": 433,
           "title": "Source Status",
           "description": "Per-source NTP status. Selected=1 means this is the active reference. Reachability is an 8-bit shift register (255=fully reachable). Last RX = seconds since the last valid packet was received.",
           "links": [],
@@ -47284,10 +47875,10 @@
           }
         }
       },
-      "panel-429": {
+      "panel-434": {
         "kind": "Panel",
         "spec": {
-          "id": 429,
+          "id": 434,
           "title": "Source Offset",
           "description": "Measured time offset from each NTP source. Note: source label set may churn with a pool directive.",
           "links": [],
@@ -47373,10 +47964,10 @@
           }
         }
       },
-      "panel-430": {
+      "panel-435": {
         "kind": "Panel",
         "spec": {
-          "id": 430,
+          "id": 435,
           "title": "Source Statistics",
           "description": "Per-source regression statistics from chronyc sourcestats. Std Dev measures dispersion of recent offset samples.",
           "links": [],
@@ -47524,10 +48115,10 @@
           }
         }
       },
-      "panel-431": {
+      "panel-436": {
         "kind": "Panel",
         "spec": {
-          "id": 431,
+          "id": 436,
           "title": "Scrape Success (opnsense_up)",
           "description": "",
           "links": [],
@@ -47625,10 +48216,10 @@
           }
         }
       },
-      "panel-432": {
+      "panel-437": {
         "kind": "Panel",
         "spec": {
-          "id": 432,
+          "id": 437,
           "title": "Scrape & Skip Rate",
           "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
@@ -47740,10 +48331,10 @@
           }
         }
       },
-      "panel-433": {
+      "panel-438": {
         "kind": "Panel",
         "spec": {
-          "id": 433,
+          "id": 438,
           "title": "Endpoint Errors (rate)",
           "description": "",
           "links": [],
@@ -47829,10 +48420,10 @@
           }
         }
       },
-      "panel-434": {
+      "panel-439": {
         "kind": "Panel",
         "spec": {
-          "id": 434,
+          "id": 439,
           "title": "Endpoint Errors (total)",
           "description": "",
           "links": [],
@@ -47933,10 +48524,10 @@
           }
         }
       },
-      "panel-435": {
+      "panel-440": {
         "kind": "Panel",
         "spec": {
-          "id": 435,
+          "id": 440,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -48040,10 +48631,10 @@
           }
         }
       },
-      "panel-436": {
+      "panel-441": {
         "kind": "Panel",
         "spec": {
-          "id": 436,
+          "id": 441,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -48148,10 +48739,10 @@
           }
         }
       },
-      "panel-437": {
+      "panel-442": {
         "kind": "Panel",
         "spec": {
-          "id": 437,
+          "id": 442,
           "title": "Collector Scrape Duration",
           "description": "",
           "links": [],
@@ -48237,10 +48828,10 @@
           }
         }
       },
-      "panel-438": {
+      "panel-443": {
         "kind": "Panel",
         "spec": {
-          "id": 438,
+          "id": 443,
           "title": "Collector Scrape Success",
           "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
           "links": [],
@@ -48345,10 +48936,10 @@
           }
         }
       },
-      "panel-439": {
+      "panel-444": {
         "kind": "Panel",
         "spec": {
-          "id": 439,
+          "id": 444,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -48434,10 +49025,10 @@
           }
         }
       },
-      "panel-440": {
+      "panel-445": {
         "kind": "Panel",
         "spec": {
-          "id": 440,
+          "id": 445,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -48549,10 +49140,10 @@
           }
         }
       },
-      "panel-441": {
+      "panel-446": {
         "kind": "Panel",
         "spec": {
-          "id": 441,
+          "id": 446,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -48638,10 +49229,10 @@
           }
         }
       },
-      "panel-442": {
+      "panel-447": {
         "kind": "Panel",
         "spec": {
-          "id": 442,
+          "id": 447,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -48727,10 +49318,10 @@
           }
         }
       },
-      "panel-443": {
+      "panel-448": {
         "kind": "Panel",
         "spec": {
-          "id": 443,
+          "id": 448,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -53397,7 +53988,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "ARP",
+                        "title": "IPv6",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -53428,6 +54019,59 @@
                                     "name": "panel-231"
                                   }
                                 }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 8,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-232"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "ARP",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-235"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-236"
+                                  }
+                                }
                               }
                             ]
                           }
@@ -53452,7 +54096,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-232"
+                                    "name": "panel-237"
                                   }
                                 }
                               },
@@ -53465,7 +54109,47 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
+                                    "name": "panel-238"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "ICMPv6",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
                                     "name": "panel-233"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-234"
                                   }
                                 }
                               }
@@ -53492,7 +54176,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-234"
+                                    "name": "panel-239"
                                   }
                                 }
                               },
@@ -53505,7 +54189,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-235"
+                                    "name": "panel-240"
                                   }
                                 }
                               }
@@ -53532,7 +54216,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-236"
+                                    "name": "panel-241"
                                   }
                                 }
                               },
@@ -53545,7 +54229,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-237"
+                                    "name": "panel-242"
                                   }
                                 }
                               },
@@ -53558,7 +54242,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-238"
+                                    "name": "panel-243"
                                   }
                                 }
                               }
@@ -53585,7 +54269,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-239"
+                                    "name": "panel-244"
                                   }
                                 }
                               },
@@ -53598,7 +54282,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-240"
+                                    "name": "panel-245"
                                   }
                                 }
                               },
@@ -53611,7 +54295,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-241"
+                                    "name": "panel-246"
                                   }
                                 }
                               }
@@ -53651,7 +54335,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-242"
+                                    "name": "panel-247"
                                   }
                                 }
                               },
@@ -53664,7 +54348,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-243"
+                                    "name": "panel-248"
                                   }
                                 }
                               },
@@ -53677,7 +54361,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-244"
+                                    "name": "panel-249"
                                   }
                                 }
                               },
@@ -53690,7 +54374,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-245"
+                                    "name": "panel-250"
                                   }
                                 }
                               },
@@ -53703,7 +54387,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-246"
+                                    "name": "panel-251"
                                   }
                                 }
                               }
@@ -53730,7 +54414,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-247"
+                                    "name": "panel-252"
                                   }
                                 }
                               },
@@ -53743,7 +54427,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-248"
+                                    "name": "panel-253"
                                   }
                                 }
                               },
@@ -53756,7 +54440,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-249"
+                                    "name": "panel-254"
                                   }
                                 }
                               }
@@ -53813,7 +54497,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-250"
+                                    "name": "panel-255"
                                   }
                                 }
                               },
@@ -53826,7 +54510,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-251"
+                                    "name": "panel-256"
                                   }
                                 }
                               },
@@ -53839,7 +54523,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-253"
+                                    "name": "panel-258"
                                   }
                                 }
                               },
@@ -53852,7 +54536,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-252"
+                                    "name": "panel-257"
                                   }
                                 }
                               },
@@ -53865,7 +54549,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-254"
+                                    "name": "panel-259"
                                   }
                                 }
                               },
@@ -53878,7 +54562,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-255"
+                                    "name": "panel-260"
                                   }
                                 }
                               },
@@ -53891,7 +54575,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-256"
+                                    "name": "panel-261"
                                   }
                                 }
                               }
@@ -53918,7 +54602,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-257"
+                                    "name": "panel-262"
                                   }
                                 }
                               },
@@ -53931,7 +54615,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-258"
+                                    "name": "panel-263"
                                   }
                                 }
                               },
@@ -53944,7 +54628,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-259"
+                                    "name": "panel-264"
                                   }
                                 }
                               },
@@ -53957,7 +54641,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-260"
+                                    "name": "panel-265"
                                   }
                                 }
                               },
@@ -53970,7 +54654,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-261"
+                                    "name": "panel-266"
                                   }
                                 }
                               },
@@ -53983,7 +54667,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-262"
+                                    "name": "panel-267"
                                   }
                                 }
                               }
@@ -54040,7 +54724,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-263"
+                                    "name": "panel-268"
                                   }
                                 }
                               },
@@ -54053,7 +54737,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-264"
+                                    "name": "panel-269"
                                   }
                                 }
                               },
@@ -54066,7 +54750,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-265"
+                                    "name": "panel-270"
                                   }
                                 }
                               },
@@ -54079,7 +54763,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-266"
+                                    "name": "panel-271"
                                   }
                                 }
                               }
@@ -54106,7 +54790,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-267"
+                                    "name": "panel-272"
                                   }
                                 }
                               }
@@ -54133,7 +54817,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-268"
+                                    "name": "panel-273"
                                   }
                                 }
                               },
@@ -54146,7 +54830,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-269"
+                                    "name": "panel-274"
                                   }
                                 }
                               },
@@ -54159,7 +54843,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-270"
+                                    "name": "panel-275"
                                   }
                                 }
                               },
@@ -54172,7 +54856,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-271"
+                                    "name": "panel-276"
                                   }
                                 }
                               },
@@ -54185,7 +54869,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-272"
+                                    "name": "panel-277"
                                   }
                                 }
                               }
@@ -54242,7 +54926,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-273"
+                                    "name": "panel-278"
                                   }
                                 }
                               },
@@ -54255,7 +54939,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-274"
+                                    "name": "panel-279"
                                   }
                                 }
                               },
@@ -54268,7 +54952,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-275"
+                                    "name": "panel-280"
                                   }
                                 }
                               }
@@ -54312,7 +54996,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-276"
+                                    "name": "panel-281"
                                   }
                                 }
                               },
@@ -54325,7 +55009,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-277"
+                                    "name": "panel-282"
                                   }
                                 }
                               },
@@ -54338,7 +55022,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-278"
+                                    "name": "panel-283"
                                   }
                                 }
                               },
@@ -54351,7 +55035,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-279"
+                                    "name": "panel-284"
                                   }
                                 }
                               },
@@ -54364,7 +55048,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-280"
+                                    "name": "panel-285"
                                   }
                                 }
                               }
@@ -54421,7 +55105,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-281"
+                                    "name": "panel-286"
                                   }
                                 }
                               },
@@ -54434,7 +55118,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-282"
+                                    "name": "panel-287"
                                   }
                                 }
                               },
@@ -54447,7 +55131,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-283"
+                                    "name": "panel-288"
                                   }
                                 }
                               },
@@ -54460,7 +55144,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-284"
+                                    "name": "panel-289"
                                   }
                                 }
                               },
@@ -54473,7 +55157,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-285"
+                                    "name": "panel-290"
                                   }
                                 }
                               }
@@ -54517,7 +55201,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-286"
+                                    "name": "panel-291"
                                   }
                                 }
                               },
@@ -54530,7 +55214,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-287"
+                                    "name": "panel-292"
                                   }
                                 }
                               },
@@ -54543,7 +55227,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-288"
+                                    "name": "panel-293"
                                   }
                                 }
                               },
@@ -54556,7 +55240,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-289"
+                                    "name": "panel-294"
                                   }
                                 }
                               }
@@ -54613,7 +55297,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-290"
+                                    "name": "panel-295"
                                   }
                                 }
                               },
@@ -54626,7 +55310,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-291"
+                                    "name": "panel-296"
                                   }
                                 }
                               },
@@ -54639,7 +55323,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-292"
+                                    "name": "panel-297"
                                   }
                                 }
                               },
@@ -54652,7 +55336,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-293"
+                                    "name": "panel-298"
                                   }
                                 }
                               }
@@ -54679,7 +55363,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-294"
+                                    "name": "panel-299"
                                   }
                                 }
                               },
@@ -54692,7 +55376,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-295"
+                                    "name": "panel-300"
                                   }
                                 }
                               },
@@ -54705,7 +55389,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-296"
+                                    "name": "panel-301"
                                   }
                                 }
                               }
@@ -54762,7 +55446,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-297"
+                                    "name": "panel-302"
                                   }
                                 }
                               },
@@ -54775,7 +55459,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-298"
+                                    "name": "panel-303"
                                   }
                                 }
                               },
@@ -54788,7 +55472,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-299"
+                                    "name": "panel-304"
                                   }
                                 }
                               },
@@ -54801,7 +55485,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-300"
+                                    "name": "panel-305"
                                   }
                                 }
                               }
@@ -54828,7 +55512,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-301"
+                                    "name": "panel-306"
                                   }
                                 }
                               },
@@ -54841,7 +55525,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-302"
+                                    "name": "panel-307"
                                   }
                                 }
                               }
@@ -54915,7 +55599,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-303"
+                                    "name": "panel-308"
                                   }
                                 }
                               },
@@ -54928,7 +55612,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-304"
+                                    "name": "panel-309"
                                   }
                                 }
                               },
@@ -54941,7 +55625,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-305"
+                                    "name": "panel-310"
                                   }
                                 }
                               },
@@ -54954,7 +55638,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-306"
+                                    "name": "panel-311"
                                   }
                                 }
                               },
@@ -54967,7 +55651,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-307"
+                                    "name": "panel-312"
                                   }
                                 }
                               }
@@ -55011,7 +55695,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-308"
+                                    "name": "panel-313"
                                   }
                                 }
                               },
@@ -55024,7 +55708,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-309"
+                                    "name": "panel-314"
                                   }
                                 }
                               },
@@ -55037,7 +55721,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-310"
+                                    "name": "panel-315"
                                   }
                                 }
                               },
@@ -55050,7 +55734,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-311"
+                                    "name": "panel-316"
                                   }
                                 }
                               },
@@ -55063,7 +55747,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-312"
+                                    "name": "panel-317"
                                   }
                                 }
                               },
@@ -55076,7 +55760,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-313"
+                                    "name": "panel-318"
                                   }
                                 }
                               }
@@ -55120,7 +55804,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-314"
+                                    "name": "panel-319"
                                   }
                                 }
                               },
@@ -55133,7 +55817,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-315"
+                                    "name": "panel-320"
                                   }
                                 }
                               },
@@ -55146,7 +55830,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-316"
+                                    "name": "panel-321"
                                   }
                                 }
                               },
@@ -55159,7 +55843,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-317"
+                                    "name": "panel-322"
                                   }
                                 }
                               },
@@ -55172,7 +55856,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-318"
+                                    "name": "panel-323"
                                   }
                                 }
                               },
@@ -55185,7 +55869,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-319"
+                                    "name": "panel-324"
                                   }
                                 }
                               },
@@ -55198,7 +55882,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-320"
+                                    "name": "panel-325"
                                   }
                                 }
                               }
@@ -55242,7 +55926,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-321"
+                                    "name": "panel-326"
                                   }
                                 }
                               },
@@ -55255,7 +55939,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-322"
+                                    "name": "panel-327"
                                   }
                                 }
                               },
@@ -55268,7 +55952,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-323"
+                                    "name": "panel-328"
                                   }
                                 }
                               },
@@ -55281,7 +55965,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-324"
+                                    "name": "panel-329"
                                   }
                                 }
                               },
@@ -55294,7 +55978,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-325"
+                                    "name": "panel-330"
                                   }
                                 }
                               }
@@ -55351,7 +56035,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-326"
+                                    "name": "panel-331"
                                   }
                                 }
                               },
@@ -55364,7 +56048,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-327"
+                                    "name": "panel-332"
                                   }
                                 }
                               },
@@ -55377,7 +56061,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-328"
+                                    "name": "panel-333"
                                   }
                                 }
                               },
@@ -55390,7 +56074,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-329"
+                                    "name": "panel-334"
                                   }
                                 }
                               },
@@ -55403,7 +56087,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-330"
+                                    "name": "panel-335"
                                   }
                                 }
                               }
@@ -55447,7 +56131,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-331"
+                                    "name": "panel-336"
                                   }
                                 }
                               },
@@ -55460,7 +56144,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-332"
+                                    "name": "panel-337"
                                   }
                                 }
                               },
@@ -55473,7 +56157,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-333"
+                                    "name": "panel-338"
                                   }
                                 }
                               },
@@ -55486,7 +56170,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-334"
+                                    "name": "panel-339"
                                   }
                                 }
                               }
@@ -55530,7 +56214,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-335"
+                                    "name": "panel-340"
                                   }
                                 }
                               },
@@ -55543,7 +56227,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-336"
+                                    "name": "panel-341"
                                   }
                                 }
                               },
@@ -55556,7 +56240,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-337"
+                                    "name": "panel-342"
                                   }
                                 }
                               }
@@ -55600,7 +56284,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-338"
+                                    "name": "panel-343"
                                   }
                                 }
                               },
@@ -55613,7 +56297,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-339"
+                                    "name": "panel-344"
                                   }
                                 }
                               },
@@ -55626,7 +56310,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-340"
+                                    "name": "panel-345"
                                   }
                                 }
                               },
@@ -55639,7 +56323,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-341"
+                                    "name": "panel-346"
                                   }
                                 }
                               },
@@ -55652,7 +56336,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-342"
+                                    "name": "panel-347"
                                   }
                                 }
                               }
@@ -55709,7 +56393,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-343"
+                                    "name": "panel-348"
                                   }
                                 }
                               },
@@ -55722,7 +56406,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-344"
+                                    "name": "panel-349"
                                   }
                                 }
                               },
@@ -55735,7 +56419,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-345"
+                                    "name": "panel-350"
                                   }
                                 }
                               },
@@ -55748,7 +56432,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-346"
+                                    "name": "panel-351"
                                   }
                                 }
                               },
@@ -55761,7 +56445,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-347"
+                                    "name": "panel-352"
                                   }
                                 }
                               },
@@ -55774,7 +56458,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-348"
+                                    "name": "panel-353"
                                   }
                                 }
                               }
@@ -55818,7 +56502,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-349"
+                                    "name": "panel-354"
                                   }
                                 }
                               },
@@ -55831,7 +56515,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-350"
+                                    "name": "panel-355"
                                   }
                                 }
                               },
@@ -55844,7 +56528,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-351"
+                                    "name": "panel-356"
                                   }
                                 }
                               },
@@ -55857,7 +56541,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-352"
+                                    "name": "panel-357"
                                   }
                                 }
                               },
@@ -55870,7 +56554,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-353"
+                                    "name": "panel-358"
                                   }
                                 }
                               }
@@ -55914,7 +56598,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-354"
+                                    "name": "panel-359"
                                   }
                                 }
                               },
@@ -55927,7 +56611,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-355"
+                                    "name": "panel-360"
                                   }
                                 }
                               },
@@ -55940,7 +56624,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-356"
+                                    "name": "panel-361"
                                   }
                                 }
                               },
@@ -55953,7 +56637,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-357"
+                                    "name": "panel-362"
                                   }
                                 }
                               },
@@ -55966,7 +56650,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-358"
+                                    "name": "panel-363"
                                   }
                                 }
                               }
@@ -56010,7 +56694,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-359"
+                                    "name": "panel-364"
                                   }
                                 }
                               },
@@ -56023,7 +56707,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-360"
+                                    "name": "panel-365"
                                   }
                                 }
                               },
@@ -56036,7 +56720,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-361"
+                                    "name": "panel-366"
                                   }
                                 }
                               },
@@ -56049,7 +56733,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-362"
+                                    "name": "panel-367"
                                   }
                                 }
                               }
@@ -56106,7 +56790,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-363"
+                                    "name": "panel-368"
                                   }
                                 }
                               },
@@ -56119,7 +56803,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-364"
+                                    "name": "panel-369"
                                   }
                                 }
                               },
@@ -56132,7 +56816,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-365"
+                                    "name": "panel-370"
                                   }
                                 }
                               },
@@ -56145,7 +56829,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-366"
+                                    "name": "panel-371"
                                   }
                                 }
                               },
@@ -56158,7 +56842,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-367"
+                                    "name": "panel-372"
                                   }
                                 }
                               }
@@ -56202,7 +56886,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-368"
+                                    "name": "panel-373"
                                   }
                                 }
                               },
@@ -56215,7 +56899,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-369"
+                                    "name": "panel-374"
                                   }
                                 }
                               },
@@ -56228,7 +56912,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-370"
+                                    "name": "panel-375"
                                   }
                                 }
                               }
@@ -56285,7 +56969,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-371"
+                                    "name": "panel-376"
                                   }
                                 }
                               },
@@ -56298,7 +56982,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-372"
+                                    "name": "panel-377"
                                   }
                                 }
                               },
@@ -56311,7 +56995,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-373"
+                                    "name": "panel-378"
                                   }
                                 }
                               },
@@ -56324,7 +57008,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-374"
+                                    "name": "panel-379"
                                   }
                                 }
                               },
@@ -56337,7 +57021,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-375"
+                                    "name": "panel-380"
                                   }
                                 }
                               }
@@ -56381,7 +57065,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-376"
+                                    "name": "panel-381"
                                   }
                                 }
                               },
@@ -56394,7 +57078,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-377"
+                                    "name": "panel-382"
                                   }
                                 }
                               }
@@ -56438,7 +57122,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-378"
+                                    "name": "panel-383"
                                   }
                                 }
                               },
@@ -56451,7 +57135,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-379"
+                                    "name": "panel-384"
                                   }
                                 }
                               }
@@ -56508,7 +57192,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-380"
+                                    "name": "panel-385"
                                   }
                                 }
                               },
@@ -56521,7 +57205,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-381"
+                                    "name": "panel-386"
                                   }
                                 }
                               },
@@ -56534,7 +57218,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-382"
+                                    "name": "panel-387"
                                   }
                                 }
                               },
@@ -56547,7 +57231,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-383"
+                                    "name": "panel-388"
                                   }
                                 }
                               },
@@ -56560,7 +57244,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-384"
+                                    "name": "panel-389"
                                   }
                                 }
                               },
@@ -56573,7 +57257,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-385"
+                                    "name": "panel-390"
                                   }
                                 }
                               },
@@ -56586,7 +57270,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-386"
+                                    "name": "panel-391"
                                   }
                                 }
                               },
@@ -56599,7 +57283,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-387"
+                                    "name": "panel-392"
                                   }
                                 }
                               },
@@ -56612,7 +57296,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-388"
+                                    "name": "panel-393"
                                   }
                                 }
                               }
@@ -56656,7 +57340,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-389"
+                                    "name": "panel-394"
                                   }
                                 }
                               },
@@ -56669,7 +57353,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-390"
+                                    "name": "panel-395"
                                   }
                                 }
                               },
@@ -56682,7 +57366,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-391"
+                                    "name": "panel-396"
                                   }
                                 }
                               },
@@ -56695,7 +57379,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-392"
+                                    "name": "panel-397"
                                   }
                                 }
                               },
@@ -56708,7 +57392,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-393"
+                                    "name": "panel-398"
                                   }
                                 }
                               },
@@ -56721,7 +57405,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-394"
+                                    "name": "panel-399"
                                   }
                                 }
                               },
@@ -56734,7 +57418,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-395"
+                                    "name": "panel-400"
                                   }
                                 }
                               },
@@ -56747,7 +57431,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-396"
+                                    "name": "panel-401"
                                   }
                                 }
                               },
@@ -56760,7 +57444,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-397"
+                                    "name": "panel-402"
                                   }
                                 }
                               },
@@ -56773,7 +57457,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-398"
+                                    "name": "panel-403"
                                   }
                                 }
                               }
@@ -56830,7 +57514,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-399"
+                                    "name": "panel-404"
                                   }
                                 }
                               },
@@ -56843,7 +57527,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-400"
+                                    "name": "panel-405"
                                   }
                                 }
                               },
@@ -56856,7 +57540,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-401"
+                                    "name": "panel-406"
                                   }
                                 }
                               }
@@ -56900,7 +57584,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-402"
+                                    "name": "panel-407"
                                   }
                                 }
                               },
@@ -56913,7 +57597,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-403"
+                                    "name": "panel-408"
                                   }
                                 }
                               }
@@ -56970,7 +57654,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-404"
+                                    "name": "panel-409"
                                   }
                                 }
                               },
@@ -56983,7 +57667,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-405"
+                                    "name": "panel-410"
                                   }
                                 }
                               }
@@ -57027,7 +57711,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-406"
+                                    "name": "panel-411"
                                   }
                                 }
                               },
@@ -57040,7 +57724,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-407"
+                                    "name": "panel-412"
                                   }
                                 }
                               },
@@ -57053,7 +57737,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-408"
+                                    "name": "panel-413"
                                   }
                                 }
                               }
@@ -57097,7 +57781,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-409"
+                                    "name": "panel-414"
                                   }
                                 }
                               },
@@ -57110,7 +57794,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-410"
+                                    "name": "panel-415"
                                   }
                                 }
                               },
@@ -57123,7 +57807,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-411"
+                                    "name": "panel-416"
                                   }
                                 }
                               }
@@ -57167,7 +57851,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-412"
+                                    "name": "panel-417"
                                   }
                                 }
                               },
@@ -57180,7 +57864,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-413"
+                                    "name": "panel-418"
                                   }
                                 }
                               }
@@ -57237,7 +57921,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-414"
+                                    "name": "panel-419"
                                   }
                                 }
                               },
@@ -57250,7 +57934,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-415"
+                                    "name": "panel-420"
                                   }
                                 }
                               },
@@ -57263,7 +57947,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-416"
+                                    "name": "panel-421"
                                   }
                                 }
                               }
@@ -57307,7 +57991,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-417"
+                                    "name": "panel-422"
                                   }
                                 }
                               },
@@ -57320,7 +58004,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-418"
+                                    "name": "panel-423"
                                   }
                                 }
                               }
@@ -57377,7 +58061,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-419"
+                                    "name": "panel-424"
                                   }
                                 }
                               },
@@ -57390,7 +58074,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-420"
+                                    "name": "panel-425"
                                   }
                                 }
                               },
@@ -57403,7 +58087,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-421"
+                                    "name": "panel-426"
                                   }
                                 }
                               },
@@ -57416,7 +58100,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-422"
+                                    "name": "panel-427"
                                   }
                                 }
                               }
@@ -57460,7 +58144,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-423"
+                                    "name": "panel-428"
                                   }
                                 }
                               },
@@ -57473,7 +58157,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-424"
+                                    "name": "panel-429"
                                   }
                                 }
                               },
@@ -57486,7 +58170,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-425"
+                                    "name": "panel-430"
                                   }
                                 }
                               },
@@ -57499,7 +58183,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-426"
+                                    "name": "panel-431"
                                   }
                                 }
                               },
@@ -57512,7 +58196,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-427"
+                                    "name": "panel-432"
                                   }
                                 }
                               }
@@ -57556,7 +58240,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-428"
+                                    "name": "panel-433"
                                   }
                                 }
                               },
@@ -57569,7 +58253,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-429"
+                                    "name": "panel-434"
                                   }
                                 }
                               }
@@ -57613,7 +58297,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-430"
+                                    "name": "panel-435"
                                   }
                                 }
                               }
@@ -57670,7 +58354,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-431"
+                                    "name": "panel-436"
                                   }
                                 }
                               },
@@ -57683,7 +58367,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-432"
+                                    "name": "panel-437"
                                   }
                                 }
                               },
@@ -57696,7 +58380,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-433"
+                                    "name": "panel-438"
                                   }
                                 }
                               },
@@ -57709,7 +58393,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-434"
+                                    "name": "panel-439"
                                   }
                                 }
                               }
@@ -57736,7 +58420,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-437"
+                                    "name": "panel-442"
                                   }
                                 }
                               },
@@ -57749,7 +58433,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-438"
+                                    "name": "panel-443"
                                   }
                                 }
                               }
@@ -57776,7 +58460,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-442"
+                                    "name": "panel-447"
                                   }
                                 }
                               },
@@ -57789,7 +58473,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-443"
+                                    "name": "panel-448"
                                   }
                                 }
                               }
@@ -57816,7 +58500,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-435"
+                                    "name": "panel-440"
                                   }
                                 }
                               },
@@ -57829,7 +58513,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-436"
+                                    "name": "panel-441"
                                   }
                                 }
                               }
@@ -57856,7 +58540,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-439"
+                                    "name": "panel-444"
                                   }
                                 }
                               },
@@ -57869,7 +58553,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-440"
+                                    "name": "panel-445"
                                   }
                                 }
                               },
@@ -57882,7 +58566,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-441"
+                                    "name": "panel-446"
                                   }
                                 }
                               }

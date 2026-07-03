@@ -253,8 +253,12 @@ func TestProtocolCollector_Update(t *testing.T) {
 	// ARP detailed: 6 (sentFailures, sentReplies, receivedReplies, receivedPackets, droppedNoEntry, entriesTimeout)
 	// Expanded TCP: 9 (sentDataBytes, retransmittedPackets, retransmittedBytes, receivedInSequenceBytes, receivedDuplicateBytes, segmentsUpdatedRtt, badConnectionAttempts, keepaliveProbes, syncacheDropped)
 	// Expanded ARP: 1 (droppedDuplicateAddress)
-	// Total: 11+2+2+2+6+3+7+2+2+8+2+2+10+1+6+14+9+6+9+1 = 105
-	expectedCount := 105
+	// IPv6/ICMPv6 (#165): 21 = ip6 6 (received, forwarded, sent, fragments_received,
+	//   reassembled + 10 dropped_by_reason) → 5+10=15, plus icmp6 1 calls + 5
+	//   dropped_by_reason = 6; the dropped_by_reason maps are always emitted (fixed keys)
+	//   even when the fixture omits the ip6/icmp6 blocks (all zero).
+	// Total: 105 + 21 = 126
+	expectedCount := 126
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
