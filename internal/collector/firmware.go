@@ -45,10 +45,10 @@ func (c *firmwareCollector) Register(namespace, instanceLabel string, log *slog.
 		"OPNsense firmware information", []string{"os_version", "product_version", "product_id", "product_abi"})
 
 	c.needsReboot = buildPrometheusDesc(c.subsystem, "needs_reboot",
-		"Whether OPNsense needs a reboot (1 = yes, 0 = no)", nil)
+		"Whether applying the currently AVAILABLE update would require a reboot, or a plugin has set the reboot-required hook (1 = yes, 0 = no). This tracks update availability, NOT a completed-but-unapplied install — it can be 1 for days before anything is installed and is not cleared by rebooting. For the major-version-upgrade reboot signal see upgrade_needs_reboot.", nil)
 
 	c.upgradeNeedsReboot = buildPrometheusDesc(c.subsystem, "upgrade_needs_reboot",
-		"Whether the upgrade requires a reboot (1 = yes, 0 = no)", nil)
+		"Whether a pending major-version upgrade (product.product_check) requires a reboot to apply (1 = yes, 0 = no). Distinct from needs_reboot, which tracks base/kernel/plugin update availability.", nil)
 
 	c.lastCheckTimestamp = buildPrometheusDesc(c.subsystem, "last_check_timestamp_seconds",
 		"Unix timestamp of the last firmware update check", nil)

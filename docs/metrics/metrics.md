@@ -269,8 +269,8 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_firmware_info | Gauge | os_version, product_version, product_id, product_abi | OPNsense firmware information | --exporter.disable-firmware |
-| opnsense_firmware_needs_reboot | Gauge | --- | Whether OPNsense needs a reboot (1 = yes, 0 = no) | --exporter.disable-firmware |
-| opnsense_firmware_upgrade_needs_reboot | Gauge | --- | Whether the upgrade requires a reboot (1 = yes, 0 = no) | --exporter.disable-firmware |
+| opnsense_firmware_needs_reboot | Gauge | --- | Whether applying the currently AVAILABLE update would require a reboot, or a plugin has set the reboot-required hook (1 = yes, 0 = no). This tracks update availability, NOT a completed-but-unapplied install — it can be 1 for days before anything is installed and is not cleared by rebooting. For the major-version-upgrade reboot signal see upgrade_needs_reboot. | --exporter.disable-firmware |
+| opnsense_firmware_upgrade_needs_reboot | Gauge | --- | Whether a pending major-version upgrade (product.product_check) requires a reboot to apply (1 = yes, 0 = no). Distinct from needs_reboot, which tracks base/kernel/plugin update availability. | --exporter.disable-firmware |
 | opnsense_firmware_last_check_timestamp_seconds | Gauge | --- | Unix timestamp of the last firmware update check | --exporter.disable-firmware |
 | opnsense_firmware_new_packages_count | Gauge | --- | Number of new packages available | --exporter.disable-firmware |
 | opnsense_firmware_upgrade_packages_count | Gauge | --- | Number of packages with available upgrades | --exporter.disable-firmware |
