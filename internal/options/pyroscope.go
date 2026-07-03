@@ -3,6 +3,7 @@ package options
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -55,6 +56,16 @@ type PyroscopeConfig struct {
 func (c *PyroscopeConfig) Validate() error {
 	if c.ServerAddress == "" {
 		return fmt.Errorf("pyroscope server address must be set")
+	}
+	// Require a real http(s) URL. url.Parse is far too permissive on its own — a
+	// schemeless "host:4040" parses as Scheme="host", Host="" without error, so the
+	// pyroscope SDK starts cleanly but every upload then fails with "unsupported
+	// protocol scheme" ~every flush, forever. Fail fast instead (#142).
+	if u, err := url.Parse(c.ServerAddress); err != nil {
+		return fmt.Errorf("pyroscope server address %q is not a valid URL: %w", c.ServerAddress, err)
+	} else if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("pyroscope server address %q must be a full http(s) URL, e.g. https://host:4040 (got scheme %q, host %q)",
+			c.ServerAddress, u.Scheme, u.Host)
 	}
 	if c.AuthUser == "" {
 		return fmt.Errorf("pyroscope auth-user must be set when server address is configured")

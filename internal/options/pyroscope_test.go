@@ -37,6 +37,27 @@ func TestPyroscopeConfig_Validate(t *testing.T) {
 			cfg:     PyroscopeConfig{ServerAddress: "https://x:4040", AuthUser: "u", AuthPassword: "p"},
 			wantErr: true,
 		},
+		// #142: schemeless address parses as Scheme="host", Host="" — must be rejected.
+		{
+			name:    "schemeless address rejected",
+			cfg:     PyroscopeConfig{ServerAddress: "profiles-prod-011.grafana.net:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			wantErr: true,
+		},
+		{
+			name:    "scheme with empty host rejected",
+			cfg:     PyroscopeConfig{ServerAddress: "https://", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			wantErr: true,
+		},
+		{
+			name:    "http url accepted (self-hosted)",
+			cfg:     PyroscopeConfig{ServerAddress: "http://pyroscope.local:4040", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			wantErr: false,
+		},
+		{
+			name:    "https grafana cloud url accepted",
+			cfg:     PyroscopeConfig{ServerAddress: "https://profiles-prod-011.grafana.net:443", AuthUser: "u", AuthPassword: "p", ApplicationName: "opnsense-exporter"},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
