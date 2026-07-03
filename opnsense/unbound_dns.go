@@ -75,24 +75,12 @@ type unboundDNSStatusResponse struct {
 		} `json:"mem"`
 		Num struct {
 			Query struct {
-				Type struct {
-					A      string `json:"A"`
-					Soa    string `json:"SOA"`
-					Ptr    string `json:"PTR"`
-					Mx     string `json:"MX"`
-					Txt    string `json:"TXT"`
-					Aaaa   string `json:"AAAA"`
-					Srv    string `json:"SRV"`
-					Svcb   string `json:"SVCB"`
-					HTTPS  string `json:"HTTPS"`
-					NS     string `json:"NS"`
-					CNAME  string `json:"CNAME"`
-					NAPTR  string `json:"NAPTR"`
-					DNSKEY string `json:"DNSKEY"`
-					ANY    string `json:"ANY"`
-					LOC    string `json:"LOC"`
-					HINFO  string `json:"HINFO"`
-				} `json:"type"`
+				// data.num.query.type is dynamic: unbound-control emits a
+				// num.query.type.<T> key only for RR types actually queried, not a fixed
+				// schema. Decode as a map so every observed type is captured — a fixed
+				// struct silently dropped any type outside its named fields (#138).
+				// Cardinality is naturally bounded by the DNS RR-type space.
+				Type  map[string]string `json:"type"`
 				Class struct {
 					In string `json:"IN"`
 				} `json:"class"`
@@ -315,22 +303,11 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.RecursiveReplies = safeAtoi(response.Data.Total.Num.Recursivereplies)
 	data.QueriesIPRateLimited = safeAtoi(response.Data.Total.Num.QueriesIPRatelimited)
 
-	// Query types
-	data.QueryTypesByType = map[string]int64{
-		"A":      safeAtoi(response.Data.Num.Query.Type.A),
-		"AAAA":   safeAtoi(response.Data.Num.Query.Type.Aaaa),
-		"SOA":    safeAtoi(response.Data.Num.Query.Type.Soa),
-		"PTR":    safeAtoi(response.Data.Num.Query.Type.Ptr),
-		"MX":     safeAtoi(response.Data.Num.Query.Type.Mx),
-		"TXT":    safeAtoi(response.Data.Num.Query.Type.Txt),
-		"SRV":    safeAtoi(response.Data.Num.Query.Type.Srv),
-		"SVCB":   safeAtoi(response.Data.Num.Query.Type.Svcb),
-		"HTTPS":  safeAtoi(response.Data.Num.Query.Type.HTTPS),
-		"NS":     safeAtoi(response.Data.Num.Query.Type.NS),
-		"CNAME":  safeAtoi(response.Data.Num.Query.Type.CNAME),
-		"NAPTR":  safeAtoi(response.Data.Num.Query.Type.NAPTR),
-		"DNSKEY": safeAtoi(response.Data.Num.Query.Type.DNSKEY),
-		"ANY":    safeAtoi(response.Data.Num.Query.Type.ANY),
+	// Query types — capture every RR type the API reported (dynamic key set), so
+	// nothing is silently dropped for want of a named struct field (#138).
+	data.QueryTypesByType = make(map[string]int64, len(response.Data.Num.Query.Type))
+	for rrType, count := range response.Data.Num.Query.Type {
+		data.QueryTypesByType[rrType] = safeAtoi(count)
 	}
 
 	// Query protocols

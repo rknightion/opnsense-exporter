@@ -336,6 +336,41 @@ func TestFetchUnboundOverview_Success(t *testing.T) {
 	}
 }
 
+// TestFetchUnboundOverview_DynamicQueryTypes covers #138: the per-type breakdown must
+// capture LOC/HINFO (previously parsed but dropped from the exported map) AND RR types
+// outside the old fixed 16-field whitelist (CAA, DS), which encoding/json used to drop
+// silently against the fixed struct.
+func TestFetchUnboundOverview_DynamicQueryTypes(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {"num": {"queries": "100"}},
+				"time": {"up": "1"},
+				"num": {
+					"query": {"type": {"A": "50", "AAAA": "20", "LOC": "3", "HINFO": "2", "CAA": "7", "DS": "5"}},
+					"answer": {"rcode": {"NOERROR": "100"}}
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[string]int64{"A": 50, "AAAA": 20, "LOC": 3, "HINFO": 2, "CAA": 7, "DS": 5}
+	for rr, v := range want {
+		if got := data.QueryTypesByType[rr]; got != v {
+			t.Errorf("QueryTypesByType[%q] = %d, want %d (dropped RR type?)", rr, got, v)
+		}
+	}
+	if len(data.QueryTypesByType) != len(want) {
+		t.Errorf("QueryTypesByType has %d entries, want %d: %v", len(data.QueryTypesByType), len(want), data.QueryTypesByType)
+	}
+}
+
 func TestFetchUnboundOverview_EmptyUptime(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
