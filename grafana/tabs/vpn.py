@@ -17,7 +17,7 @@ Rows:
   6. IPsec Pools           gated has_ipsec_pools: mode-cfg pool utilization
 """
 
-from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
+from builder import Builder, sel, epoch_ms, RATE, RUNSTOP, UPDOWN
 
 
 # Custom peer-status mapping: 0=Down, 1=Up, 2=Unknown
@@ -109,7 +109,7 @@ def build(b: Builder):
     )
     wg_handshake_table = b.table(
         "WireGuard Last Handshake",
-        [sel("opnsense_wireguard_peer_last_handshake_seconds")],
+        [epoch_ms(sel("opnsense_wireguard_peer_last_handshake_seconds"))],
         w=16, h=8,
         excludes=["__name__", "job", "instance"],
         renames={

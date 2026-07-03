@@ -5,7 +5,7 @@ Blocked packets/bytes counters -> rate(). Entry/address counts, timestamps,
 license -> RAW/instant.
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, epoch_ms, RATE
 
 
 def build(b: Builder):
@@ -43,8 +43,8 @@ def build(b: Builder):
                          (sel("opnsense_qfeeds_feed_addresses_blocked"), "addresses blocked {{feed}}")],
                         unit="short", w=12, h=8)
     feed_updates = b.table("Feed Update Schedule",
-                           [sel("opnsense_qfeeds_feed_last_update_timestamp_seconds"),
-                            sel("opnsense_qfeeds_feed_next_update_timestamp_seconds")],
+                           [epoch_ms(sel("opnsense_qfeeds_feed_last_update_timestamp_seconds")),
+                            epoch_ms(sel("opnsense_qfeeds_feed_next_update_timestamp_seconds"))],
                            w=12, h=8,
                            excludes=["__name__", "job", "instance"],
                            renames={"feed": "Feed"},

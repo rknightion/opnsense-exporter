@@ -6,7 +6,7 @@ Complementary to tailscale2otel (fleet/control-plane — including peer
 from local WireGuard handshakes.
 """
 
-from builder import Builder, sel, RATE, RUNSTOP
+from builder import Builder, sel, epoch_ms, RATE, RUNSTOP
 
 
 def build(b: Builder):
@@ -49,7 +49,7 @@ def build(b: Builder):
                                             "1": ("Direct", "green")},
                                   w=12, h=8)
     peer_handshake = b.table("Last Handshake",
-                             [sel("opnsense_tailscale_peer_last_handshake_timestamp_seconds")],
+                             [epoch_ms(sel("opnsense_tailscale_peer_last_handshake_timestamp_seconds"))],
                              w=12, h=8,
                              excludes=["__name__", "job", "instance"],
                              renames={"peer": "Peer"},

@@ -10,7 +10,7 @@ Covers:
   - Firmware subsystem (6 metrics)
 """
 
-from builder import Builder, sel, RATE, YESNO
+from builder import Builder, sel, epoch_ms, RATE, YESNO
 
 
 def build(b: Builder):
@@ -82,7 +82,7 @@ def build(b: Builder):
 
     config_change = b.stat(
         "Config Last Changed",
-        sel("opnsense_system_config_last_change"),
+        epoch_ms(sel("opnsense_system_config_last_change")),
         unit="dateTimeAsIso",
         w=8,
         h=4,
@@ -280,7 +280,7 @@ def build(b: Builder):
 
     fw_last_check = b.stat(
         "Last Firmware Check",
-        sel("opnsense_firmware_last_check_timestamp_seconds"),
+        epoch_ms(sel("opnsense_firmware_last_check_timestamp_seconds")),
         unit="dateTimeAsIso",
         w=6,
         h=4,

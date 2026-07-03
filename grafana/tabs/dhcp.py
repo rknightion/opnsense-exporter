@@ -23,7 +23,7 @@ Rows:
     9. ISC DHCPv6 details    — gated has_dhcpv6_details: dhcpv6_lease_info table
 """
 
-from builder import Builder, sel, RUNSTOP
+from builder import Builder, sel, epoch_ms, RUNSTOP
 
 
 def build(b: Builder):
@@ -104,7 +104,7 @@ def build(b: Builder):
     # ================================================================
     dnsmasq_lease_table = b.table(
         "Dnsmasq Lease Details",
-        [sel("opnsense_dnsmasq_lease_info")],
+        [epoch_ms(sel("opnsense_dnsmasq_lease_info"))],
         w=24, h=10,
         excludes=["Value", "__name__", "job", "instance"],
         renames={
@@ -213,7 +213,7 @@ def build(b: Builder):
     # ================================================================
     kea4_lease_table = b.table(
         "Kea DHCPv4 Lease Details",
-        [sel("opnsense_kea_dhcp4_lease_info")],
+        [epoch_ms(sel("opnsense_kea_dhcp4_lease_info"))],
         w=24, h=10,
         excludes=["Value", "__name__", "job", "instance"],
         renames={
@@ -235,7 +235,7 @@ def build(b: Builder):
     # ================================================================
     kea6_lease_table = b.table(
         "Kea DHCPv6 Lease Details",
-        [sel("opnsense_kea_dhcp6_lease_info")],
+        [epoch_ms(sel("opnsense_kea_dhcp6_lease_info"))],
         w=24, h=10,
         excludes=["Value", "__name__", "job", "instance"],
         renames={

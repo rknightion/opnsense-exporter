@@ -234,6 +234,15 @@ def main():
         for n in missing:
             print(f"  - {n}", file=sys.stderr)
 
+    # Correctness gate: every dateTimeAsIso field must be fed epoch milliseconds
+    # (epoch seconds render as ~1970 dates otherwise). Fails the build in both
+    # modes — a stale dashboard.json can't ship without this being satisfied (#78).
+    if b._ts_violations:
+        print(f"dateTimeAsIso fields fed unscaled epoch seconds ({len(b._ts_violations)}):", file=sys.stderr)
+        for v in b._ts_violations:
+            print(f"  - {v}  (wrap the expr in epoch_ms())", file=sys.stderr)
+        sys.exit(1)
+
     if not check_only:
         manifest = b.manifest(
             title="OPNsense Exporter",

@@ -19,7 +19,7 @@ Covers all metrics across three rows:
     • dyndns_service_running stat (RUNSTOP)
 """
 
-from builder import Builder, sel, RUNSTOP
+from builder import Builder, sel, epoch_ms, RUNSTOP
 
 
 def build(b: Builder):
@@ -157,7 +157,7 @@ def build(b: Builder):
     # Last successful IP update timestamp
     dyndns_last_update = b.table(
         "DynDNS Last Update",
-        [sel("opnsense_dyndns_account_last_update_timestamp_seconds")],
+        [epoch_ms(sel("opnsense_dyndns_account_last_update_timestamp_seconds"))],
         w=24, h=8,
         excludes=["__name__", "job", "instance"],
         renames={

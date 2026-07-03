@@ -18,7 +18,7 @@ Covers all 10 opnsense_certificate_* and opnsense_acme_certificate* metrics:
     • acme_certificate_info table
 """
 
-from builder import Builder, sel
+from builder import Builder, sel, epoch_ms
 
 
 def build(b: Builder):
@@ -55,7 +55,7 @@ def build(b: Builder):
     # valid_from table (epoch timestamp)
     cert_valid_from = b.table(
         "Certificate Valid From",
-        [sel("opnsense_certificate_valid_from_seconds")],
+        [epoch_ms(sel("opnsense_certificate_valid_from_seconds"))],
         w=16, h=8,
         excludes=["__name__", "job", "instance"],
         renames={
@@ -119,7 +119,7 @@ def build(b: Builder):
     )
     ca_valid_from = b.table(
         "CA Validity Start",
-        [sel("opnsense_certificate_ca_valid_from_seconds")],
+        [epoch_ms(sel("opnsense_certificate_ca_valid_from_seconds"))],
         w=10, h=8,
         excludes=["__name__", "job", "instance"],
         renames={"description": "Description", "commonname": "Common Name"},
@@ -150,7 +150,7 @@ def build(b: Builder):
     # Last successful renewal timestamp
     acme_last_update = b.table(
         "ACME Last Renewal",
-        [sel("opnsense_acme_certificate_last_update_timestamp_seconds")],
+        [epoch_ms(sel("opnsense_acme_certificate_last_update_timestamp_seconds"))],
         w=12, h=8,
         excludes=["__name__", "job", "instance"],
         renames={
@@ -183,7 +183,7 @@ def build(b: Builder):
     # Timestamp of last ACME client run
     acme_status_ts = b.table(
         "ACME Status Last Run",
-        [sel("opnsense_acme_certificate_status_last_update_timestamp_seconds")],
+        [epoch_ms(sel("opnsense_acme_certificate_status_last_update_timestamp_seconds"))],
         w=12, h=8,
         excludes=["__name__", "job", "instance"],
         renames={

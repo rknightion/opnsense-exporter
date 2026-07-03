@@ -30,6 +30,14 @@ def sel(metric: str, more: str = "") -> str:
     return f"{metric}{{{inner}}}"
 
 
+def epoch_ms(expr: str) -> str:
+    """Scale an epoch-*seconds* PromQL expression to milliseconds for Grafana's
+    dateTime* value formats, which interpret the raw number as epoch ms. Without
+    this an epoch-seconds gauge renders as a ~1970 date (#78). The `* 1000`
+    suffix is also what the dateTimeAsIso build guard checks for."""
+    return f"({expr}) * 1000"
+
+
 # Shared value-mapping dictionaries: state value -> (display text, colour).
 UPDOWN = {"0": ("Down", "red"), "1": ("Up", "green")}
 RUNSTOP = {"0": ("Stopped", "red"), "1": ("Running", "green")}
@@ -51,6 +59,7 @@ class Builder:
         self._id = 0
         self.size: dict = {}      # element name -> (w, h)
         self._exprs: list = []    # every PromQL string emitted (for coverage)
+        self._ts_violations: list = []  # dateTimeAsIso fields fed unscaled epoch seconds (#78)
 
     # ---- low-level -------------------------------------------------------
     def _next(self) -> tuple[str, int]:
@@ -161,6 +170,8 @@ class Builder:
                             "justifyMode": "auto", "orientation": "auto",
                             "reduceOptions": {"calcs": [reducer], "fields": "", "values": False},
                             "textMode": text_mode, "wideLayout": True}}
+        if unit == "dateTimeAsIso" and "* 1000" not in expr:
+            self._ts_violations.append(f"stat {title!r}")
         q = [self._query(expr, instant=instant, legend=legend)]
         n = self._panel(title, "stat", spec, q, desc=desc)
         self.size[n] = (w, h)
@@ -222,6 +233,14 @@ class Builder:
         for field, unit in (unit_overrides or {}).items():
             overrides.append({"matcher": {"id": "byName", "options": field},
                               "properties": [{"id": "unit", "value": unit}]})
+            # A dateTimeAsIso column must be fed epoch *milliseconds* (#78). Resolve
+            # the display field back to its query expr and require the *1000 scaling.
+            if unit == "dateTimeAsIso":
+                orig = next((o for o, disp in (renames or {}).items() if disp == field), field)
+                idx = 0 if orig == "Value" else (
+                    ord(orig.split("#", 1)[1].strip()) - ord("A") if orig.startswith("Value #") else None)
+                if idx is None or not (0 <= idx < len(exprs)) or "* 1000" not in exprs[idx]:
+                    self._ts_violations.append(f"table {title!r} column {field!r}")
         opts = {"showHeader": True, "cellHeight": "sm",
                 "footer": {"show": footer, "reducer": ["sum"], "countRows": False, "fields": ""}}
         if sort_by:

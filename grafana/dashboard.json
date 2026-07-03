@@ -3825,7 +3825,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_system_config_last_change{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_system_config_last_change{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -5420,7 +5420,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_firmware_last_check_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_firmware_last_check_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -17001,7 +17001,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -18227,7 +18227,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -18354,7 +18354,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -20280,7 +20280,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_wireguard_peer_last_handshake_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_wireguard_peer_last_handshake_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -22935,7 +22935,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_tailscale_peer_last_handshake_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_tailscale_peer_last_handshake_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -28648,7 +28648,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_certificate_valid_from_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_certificate_valid_from_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -29186,7 +29186,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_certificate_ca_valid_from_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_certificate_ca_valid_from_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -29389,7 +29389,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_acme_certificate_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_acme_certificate_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -29628,7 +29628,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_acme_certificate_status_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_acme_certificate_status_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -30797,7 +30797,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_dyndns_account_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_dyndns_account_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -32617,7 +32617,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_qfeeds_feed_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_qfeeds_feed_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -32643,7 +32643,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "opnsense_qfeeds_feed_next_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "expr": "(opnsense_qfeeds_feed_next_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000",
                         "refId": "B",
                         "instant": true,
                         "range": false,
