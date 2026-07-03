@@ -716,7 +716,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.endpointErrors = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_endpoint_errors_total",
-		Help:      "Total number of errors by endpoint returned by the OPNsense API during data fetching",
+		Help:      "Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead.",
 	}, []string{"endpoint", "opnsense_instance"})
 
 	// isUp, scrapes and endpointErrors are exposed through this Collector's own
@@ -822,7 +822,11 @@ func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client 
 				"collector_name", coll.Name(),
 				"panic", fmt.Sprintf("%v", r),
 			)
-			c.endpointErrors.WithLabelValues(coll.Name(), c.instanceLabel).Inc()
+			// Label with a "panic:" sentinel, not a bare subsystem slug: the label's
+			// normal domain is api/* endpoint paths, and a slug masquerading as one
+			// misleads the endpoint-errors alert/dashboards. The sentinel can never
+			// collide with a Client.Endpoints() / APICallError.Endpoint value (#120).
+			c.endpointErrors.WithLabelValues("panic:"+coll.Name(), c.instanceLabel).Inc()
 			success = 0
 		}
 		ch <- prometheus.MustNewConstMetric(

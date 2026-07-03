@@ -24,7 +24,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |
 | opnsense_system_status_code | Gauge | --- | Numeric OPNsense system status code from the health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1) |
 | opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics. |
-| opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching |
+| opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead. |
 
 ## ACME Client
 

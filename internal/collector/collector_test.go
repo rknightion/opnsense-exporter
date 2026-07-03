@@ -425,7 +425,9 @@ func TestExecuteRecordsScrapeMetrics(t *testing.T) {
 	}{
 		{"success", &fakeCollectorInstance{name: "fake_ok"}, 1, ""},
 		{"api error", &fakeCollectorInstance{name: "fake_err", err: &opnsense.APICallError{Endpoint: "fake_endpoint", Message: "boom"}}, 0, "fake_endpoint"},
-		{"panic", &fakeCollectorInstance{name: "fake_panic", panics: true}, 0, "fake_panic"},
+		// A recovered panic must increment a "panic:"-sentinel endpoint label, never a
+		// bare subsystem slug — the label's normal domain is api/* paths (#120).
+		{"panic", &fakeCollectorInstance{name: "fake_panic", panics: true}, 0, "panic:fake_panic"},
 	}
 
 	for _, tc := range cases {
