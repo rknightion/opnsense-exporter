@@ -12,8 +12,9 @@ import (
 func captivePortalCollectorMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
+	// Real API shape for sequential-from-0 zoneids: a JSON array, not an object (#73).
 	mux.HandleFunc("/api/captiveportal/session/zones", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"0": "Guest WiFi", "1": "Lab"}`))
+		w.Write([]byte(`["Guest WiFi", "Lab"]`))
 	})
 	mux.HandleFunc("/api/captiveportal/session/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"total": 3, "rowCount": 3, "current": 1, "rows": [

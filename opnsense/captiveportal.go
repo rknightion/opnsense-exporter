@@ -1,10 +1,51 @@
 package opnsense
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 )
+
+// captivePortalZoneMap decodes the api/captiveportal/session/zones response.
+// zonesAction builds $response[(string)$zone->zoneid] = $zone->description, and
+// PHP's json_encode re-integerizes numeric string keys, so a zone set keyed
+// 0,1,2,… (the default for the first configured zone(s)) is serialized as a JSON
+// *array* (e.g. ["Guest WiFi"]) rather than an object — while a genuinely empty
+// map is []. A plain flexStringMap treats any array as empty and would silently
+// drop real zones (#73), so this type reconstructs {index: element} for a
+// non-empty array and preserves the empty-array→empty-map quirk.
+type captivePortalZoneMap map[string]string
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (z *captivePortalZoneMap) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		*z = make(captivePortalZoneMap)
+		return nil
+	}
+	if trimmed[0] == '[' {
+		var arr []string
+		if err := json.Unmarshal(trimmed, &arr); err != nil {
+			return fmt.Errorf("captivePortalZoneMap array: %w", err)
+		}
+		m := make(captivePortalZoneMap, len(arr))
+		for i, desc := range arr {
+			m[strconv.Itoa(i)] = desc
+		}
+		*z = m
+		return nil
+	}
+	m := make(map[string]string)
+	if err := json.Unmarshal(trimmed, &m); err != nil {
+		return fmt.Errorf("captivePortalZoneMap object: %w", err)
+	}
+	*z = m
+	return nil
+}
 
 // captivePortalSessionRow mirrors one row from api/captiveportal/session/search.
 // Only zoneid is decoded; PII fields (userName, macAddress, ipAddress) are
@@ -73,8 +114,9 @@ func (c *Client) FetchCaptivePortalSessions() (CaptivePortalSessions, *APICallEr
 		}
 	}
 
-	// Fetch zones: an empty/unconfigured portal returns PHP [] → flexStringMap decodes it as empty map.
-	var zones flexStringMap
+	// Fetch zones: an unconfigured portal returns PHP [] → empty map; zones keyed
+	// by sequential-from-0 zoneids arrive as a JSON array (see captivePortalZoneMap).
+	var zones captivePortalZoneMap
 	if err := c.do("GET", zonesURL, nil, &zones); err != nil {
 		if err.StatusCode == http.StatusNotFound {
 			return data, nil // feature absent

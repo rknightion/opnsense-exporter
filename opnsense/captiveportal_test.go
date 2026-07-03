@@ -7,7 +7,10 @@ import (
 	"testing"
 )
 
-const captivePortalZonesFixture = `{"0": "Guest WiFi", "1": "Lab"}`
+// Zoneids 0,1 are sequential-from-0, so the real PHP endpoint serializes the
+// zones map as a JSON *array*, not an object (#73). This fixture reflects that
+// real shape; captivePortalZoneMap reconstructs {"0":..,"1":..}.
+const captivePortalZonesFixture = `["Guest WiFi", "Lab"]`
 
 const captivePortalSessionsFixture = `{"total": 3, "rowCount": 3, "current": 1, "rows": [
   {"sessionId": "abc", "userName": "alice", "ipAddress": "192.0.2.10",
@@ -26,6 +29,36 @@ func captivePortalRegisterHandlers(t *testing.T, mux *http.ServeMux, zones, sess
 	mux.HandleFunc("/api/captiveportal/session/search", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(sessions))
 	})
+}
+
+func TestCaptivePortalZoneMap_Shapes(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want map[string]string
+	}{
+		{"sequential-from-0 array (the real default shape)", `["test"]`, map[string]string{"0": "test"}},
+		{"multi-element array", `["Guest WiFi", "Lab"]`, map[string]string{"0": "Guest WiFi", "1": "Lab"}},
+		{"non-sequential object still decodes", `{"3": "Lab"}`, map[string]string{"3": "Lab"}},
+		{"empty array is the empty-map quirk", `[]`, map[string]string{}},
+		{"null is an empty map", `null`, map[string]string{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var z captivePortalZoneMap
+			if err := z.UnmarshalJSON([]byte(tc.in)); err != nil {
+				t.Fatalf("UnmarshalJSON(%s) error: %v", tc.in, err)
+			}
+			if len(z) != len(tc.want) {
+				t.Fatalf("UnmarshalJSON(%s) = %v, want %v", tc.in, map[string]string(z), tc.want)
+			}
+			for k, v := range tc.want {
+				if z[k] != v {
+					t.Errorf("UnmarshalJSON(%s)[%q] = %q, want %q", tc.in, k, z[k], v)
+				}
+			}
+		})
+	}
 }
 
 func TestFetchCaptivePortalSessions_Normal(t *testing.T) {
