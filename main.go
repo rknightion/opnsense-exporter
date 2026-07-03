@@ -360,9 +360,9 @@ func main() {
 			logger.Error("failed to start pyroscope profiling", "err", perr)
 		} else {
 			stopProfiling = func() {
-				if err := profiler.Stop(); err != nil {
-					logger.Error("failed to flush final pyroscope profile", "err", err)
-				}
+				// Flush the final profiling window before stopping — profiler.Stop()
+				// alone drops the in-progress heap/alloc/mutex/block window (#121).
+				profiling.Stop(profiler, logger)
 			}
 			logger.Info(
 				"pyroscope continuous profiling enabled",

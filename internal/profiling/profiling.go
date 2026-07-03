@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"time"
 
 	"github.com/grafana/pyroscope-go"
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -60,9 +61,14 @@ func (l loggerAdapter) Errorf(format string, args ...any) {
 	l.logger.Error(fmt.Sprintf(format, args...))
 }
 
-// Start begins continuous profiling and returns the running profiler. Callers
-// should Stop() it on shutdown to flush the final profile. instance and version
-// are attached as tags.
+// stopFlushTimeout bounds the final synchronous flush on shutdown so a dead or
+// unreachable Pyroscope server (which would otherwise hold Flush for the SDK's ~30s
+// upload timeout) cannot hang exporter shutdown.
+const stopFlushTimeout = 10 * time.Second
+
+// Start begins continuous profiling and returns the running profiler. Callers should
+// pass it to Stop() on shutdown to flush the final profiling window. instance and
+// version are attached as tags.
 func Start(cfg *options.PyroscopeConfig, instance, version string, logger *slog.Logger) (*pyroscope.Profiler, error) {
 	profiler, err := pyroscope.Start(pyroscope.Config{
 		ApplicationName:   cfg.ApplicationName,
@@ -90,4 +96,35 @@ func Start(cfg *options.PyroscopeConfig, instance, version string, logger *slog.
 	}
 
 	return profiler, nil
+}
+
+// Stop flushes the in-progress profiling window and then stops the profiler on
+// shutdown. It calls the SDK's real flush primitive Flush(true) BEFORE Stop() because
+// Profiler.Stop() alone only uploads the CPU profile — it never resets/uploads the
+// current delta window for the non-CPU profile types (heap/alloc/inuse and, when
+// enabled, goroutine/mutex/block), silently dropping up to a full upload window of
+// data on every restart. Flush(true) is the only path that resets + uploads + waits
+// for those. It is safe only while CPU profiling stays in the profile set — the SDK
+// deadlocks in Flush if CPU profiling is disabled — which profileTypes guarantees
+// (ProfileCPU is always included). The flush is bounded by stopFlushTimeout so an
+// unreachable server cannot hang shutdown; Profiler.Stop() always returns nil, so
+// there is no meaningful error to surface from it (#121).
+func Stop(profiler *pyroscope.Profiler, logger *slog.Logger) {
+	if profiler == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		profiler.Flush(true)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(stopFlushTimeout):
+		logger.Warn(
+			"pyroscope final flush timed out; the final profiling window may be lost",
+			"timeout", stopFlushTimeout.String(),
+		)
+	}
+	_ = profiler.Stop()
 }
