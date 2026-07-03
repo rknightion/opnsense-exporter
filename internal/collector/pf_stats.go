@@ -96,36 +96,41 @@ func (c *pfStatsCollector) Update(ctx context.Context, client *opnsense.Client, 
 		return err
 	}
 
-	ch <- prometheus.MustNewConstMetric(
-		c.stateTableEntries,
-		prometheus.GaugeValue,
-		float64(data.StateTableEntries),
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.stateTableSearches,
-		prometheus.CounterValue,
-		data.StateTableSearches,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.stateTableInserts,
-		prometheus.CounterValue,
-		data.StateTableInserts,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.stateTableRemovals,
-		prometheus.CounterValue,
-		data.StateTableRemovals,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.sourceTrackingEntries,
-		prometheus.GaugeValue,
-		float64(data.SourceTrackingEntries),
-		c.instance,
-	)
+	// These five scalars come solely from the pfStatsInfo sub-call. Skip them when
+	// that call failed (partial fetch) rather than emitting fabricated zeros — a
+	// zero on the counters would look like a ~500M counter reset to rate() (#91).
+	if data.InfoAvailable {
+		ch <- prometheus.MustNewConstMetric(
+			c.stateTableEntries,
+			prometheus.GaugeValue,
+			float64(data.StateTableEntries),
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.stateTableSearches,
+			prometheus.CounterValue,
+			data.StateTableSearches,
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.stateTableInserts,
+			prometheus.CounterValue,
+			data.StateTableInserts,
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.stateTableRemovals,
+			prometheus.CounterValue,
+			data.StateTableRemovals,
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.sourceTrackingEntries,
+			prometheus.GaugeValue,
+			float64(data.SourceTrackingEntries),
+			c.instance,
+		)
+	}
 
 	for name, total := range data.Counters {
 		ch <- prometheus.MustNewConstMetric(

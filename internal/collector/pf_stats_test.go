@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/common/promslog"
@@ -121,5 +122,45 @@ func TestPFStatsCollector_Name(t *testing.T) {
 	c := &pfStatsCollector{subsystem: PFStatsSubsystem}
 	if c.Name() != PFStatsSubsystem {
 		t.Errorf("expected %s, got %s", PFStatsSubsystem, c.Name())
+	}
+}
+
+// TestPFStatsCollector_Update_InfoUnavailable guards #91: when the pfStatsInfo
+// sub-call fails (but memory/timeouts succeed), the five info-derived scalars must
+// NOT be emitted — emitting a zeroed counter would inject a phantom rate() reset.
+func TestPFStatsCollector_Update_InfoUnavailable(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/info", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/memory", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"memory": {"states": 1000}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/timeouts", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"timeouts": {"tcp.first": "3600s"}}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &pfStatsCollector{subsystem: PFStatsSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	for _, m := range metrics {
+		d := m.Desc().String()
+		for _, banned := range []string{"state_table_entries", "state_table_searches", "state_table_inserts", "state_table_removals", "source_tracking_entries"} {
+			if strings.Contains(d, banned) {
+				t.Errorf("info-derived scalar %q must not be emitted when pfStatsInfo failed", banned)
+			}
+		}
+	}
+	// memory + timeouts should still be present.
+	if len(metrics) == 0 {
+		t.Error("expected memory/timeout series to still be emitted on partial failure")
 	}
 }

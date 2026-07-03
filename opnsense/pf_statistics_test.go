@@ -283,6 +283,11 @@ func TestFetchPFStatistics_PartialFailure(t *testing.T) {
 	if data.Counters != nil {
 		t.Errorf("expected Counters to be nil when info endpoint fails")
 	}
+	// #91: the info sub-call failed, so the info-derived scalars must be flagged
+	// unavailable (so the collector skips them rather than emitting fabricated 0s).
+	if data.InfoAvailable {
+		t.Error("expected InfoAvailable=false when the pfStatsInfo sub-call fails")
+	}
 }
 
 func TestFetchPFStatistics_AllFail(t *testing.T) {

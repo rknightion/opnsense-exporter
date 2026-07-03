@@ -84,13 +84,22 @@ func (c *Client) FetchSystemHostname() (string, *APICallError) {
 // Public data structs.
 
 type SystemMemory struct {
-	Total  int64
-	Used   int64
-	Arc    int64
-	HasArc bool
+	// Available is true only when the systemResources sub-call succeeded. Total
+	// and Used come solely from that call, so the collector gates them on this to
+	// avoid emitting a fabricated 0 (which breaks used/total ratio panels) on a
+	// partial fetch (#91).
+	Available bool
+	Total     int64
+	Used      int64
+	Arc       int64
+	HasArc    bool
 }
 
 type SystemTime struct {
+	// Available is true only when the systemTime sub-call succeeded. Uptime and
+	// LoadAverage come solely from that call; the collector gates them on this so
+	// a partial fetch does not emit uptime=0 (reads as a host reboot) (#91).
+	Available        bool
 	Uptime           float64
 	LoadAverage      [3]float64
 	ConfigLastChange float64
@@ -181,6 +190,7 @@ func (c *Client) fetchSystemMemory(data *SystemResources) *APICallError {
 	total, _ := strconv.ParseInt(resp.Memory.Total, 10, 64)
 	used, _ := resp.Memory.Used.Int64()
 
+	data.Memory.Available = true
 	data.Memory.Total = total
 	data.Memory.Used = used
 
@@ -209,6 +219,7 @@ func (c *Client) fetchSystemTime(data *SystemResources) *APICallError {
 	if err := c.do("GET", url, nil, &resp); err != nil {
 		return err
 	}
+	data.Time.Available = true
 
 	// OPNsense reports these timestamps with only a timezone abbreviation
 	// (e.g. "BST"), which time.Parse cannot map to a UTC offset — it falls back

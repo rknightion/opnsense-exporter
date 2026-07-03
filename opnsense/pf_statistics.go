@@ -41,6 +41,12 @@ type pfStatsTimeoutsResponse struct {
 // Public data struct.
 
 type PFStatistics struct {
+	// InfoAvailable is true only when the pfStatsInfo sub-call succeeded. The
+	// scalar state-table / source-tracking fields below are populated solely by
+	// that one call, so the collector must gate them on this flag — emitting them
+	// as zero on a partial failure would fabricate a host value and, for the
+	// counters, inject a phantom rate() reset (#91).
+	InfoAvailable         bool
 	StateTableEntries     int
 	StateTableSearches    float64
 	StateTableInserts     float64
@@ -68,6 +74,7 @@ func (c *Client) fetchPFStatsInfo(data *PFStatistics) *APICallError {
 		return err
 	}
 
+	data.InfoAvailable = true
 	data.StateTableEntries = int(resp.Info.StateTable.CurrentEntries.Total)
 	data.StateTableSearches = resp.Info.StateTable.Searches.Total
 	data.StateTableInserts = resp.Info.StateTable.Inserts.Total

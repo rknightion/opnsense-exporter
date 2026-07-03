@@ -114,18 +114,23 @@ func (c *systemCollector) Update(ctx context.Context, client *opnsense.Client, c
 		return err
 	}
 
-	ch <- prometheus.MustNewConstMetric(
-		c.memoryTotalBytes,
-		prometheus.GaugeValue,
-		float64(data.Memory.Total),
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.memoryUsedBytes,
-		prometheus.GaugeValue,
-		float64(data.Memory.Used),
-		c.instance,
-	)
+	// Memory total/used come solely from the systemResources sub-call. Skip them
+	// when it failed (partial fetch) rather than emitting 0, which breaks
+	// used/total ratio panels (division by zero) (#91).
+	if data.Memory.Available {
+		ch <- prometheus.MustNewConstMetric(
+			c.memoryTotalBytes,
+			prometheus.GaugeValue,
+			float64(data.Memory.Total),
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.memoryUsedBytes,
+			prometheus.GaugeValue,
+			float64(data.Memory.Used),
+			c.instance,
+		)
+	}
 
 	if data.Memory.HasArc {
 		ch <- prometheus.MustNewConstMetric(
@@ -136,34 +141,39 @@ func (c *systemCollector) Update(ctx context.Context, client *opnsense.Client, c
 		)
 	}
 
-	ch <- prometheus.MustNewConstMetric(
-		c.uptimeSeconds,
-		prometheus.GaugeValue,
-		float64(data.Time.Uptime),
-		c.instance,
-	)
+	// Uptime and load average come solely from the systemTime sub-call. Skip them
+	// when it failed rather than emitting uptime=0, which reads as a host reboot
+	// and can fire false "host rebooted" alerts (#91).
+	if data.Time.Available {
+		ch <- prometheus.MustNewConstMetric(
+			c.uptimeSeconds,
+			prometheus.GaugeValue,
+			float64(data.Time.Uptime),
+			c.instance,
+		)
 
-	ch <- prometheus.MustNewConstMetric(
-		c.loadAverage,
-		prometheus.GaugeValue,
-		data.Time.LoadAverage[0],
-		"1",
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.loadAverage,
-		prometheus.GaugeValue,
-		data.Time.LoadAverage[1],
-		"5",
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.loadAverage,
-		prometheus.GaugeValue,
-		data.Time.LoadAverage[2],
-		"15",
-		c.instance,
-	)
+		ch <- prometheus.MustNewConstMetric(
+			c.loadAverage,
+			prometheus.GaugeValue,
+			data.Time.LoadAverage[0],
+			"1",
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.loadAverage,
+			prometheus.GaugeValue,
+			data.Time.LoadAverage[1],
+			"5",
+			c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.loadAverage,
+			prometheus.GaugeValue,
+			data.Time.LoadAverage[2],
+			"15",
+			c.instance,
+		)
+	}
 
 	if data.Time.ConfigLastChange > 0 {
 		ch <- prometheus.MustNewConstMetric(

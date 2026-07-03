@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,5 +207,56 @@ func TestSystemCollector_Name(t *testing.T) {
 	c := &systemCollector{subsystem: SystemSubsystem}
 	if c.Name() != SystemSubsystem {
 		t.Errorf("expected %s, got %s", SystemSubsystem, c.Name())
+	}
+}
+
+// TestSystemCollector_Update_TimeUnavailable guards #91: when the systemTime
+// sub-call fails (but systemResources succeeds), uptime_seconds and the three
+// load_average series must NOT be emitted (uptime=0 reads as a host reboot), while
+// memory series are still emitted.
+func TestSystemCollector_Update_TimeUnavailable(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/system/systemResources", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"memory": {"total": "4294967296", "used": 2147483648, "arc": ""}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemTime", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemDisk", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices": []}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemSwap", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"swap": []}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"name": "fw01", "versions": [], "updates": "0"}`))
+	})
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["CPU"]`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &systemCollector{subsystem: SystemSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	sawMemory := false
+	for _, m := range metrics {
+		d := m.Desc().String()
+		if strings.Contains(d, "uptime_seconds") || strings.Contains(d, "load_average") {
+			t.Errorf("time-derived series must not be emitted when systemTime failed: %s", d)
+		}
+		if strings.Contains(d, "memory_total_bytes") {
+			sawMemory = true
+		}
+	}
+	if !sawMemory {
+		t.Error("expected memory series to still be emitted when only systemTime failed")
 	}
 }

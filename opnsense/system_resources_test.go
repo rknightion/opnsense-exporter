@@ -286,6 +286,14 @@ func TestFetchSystemResources_PartialFailure(t *testing.T) {
 	if data.Memory.HasArc {
 		t.Error("expected Memory.HasArc=false for empty arc string")
 	}
+	// #91: memory sub-call succeeded, time sub-call failed → availability flags
+	// must reflect that so the collector skips only the time-derived series.
+	if !data.Memory.Available {
+		t.Error("expected Memory.Available=true when the systemResources sub-call succeeds")
+	}
+	if data.Time.Available {
+		t.Error("expected Time.Available=false when the systemTime sub-call fails")
+	}
 
 	// System info should still be populated despite time failure
 	if data.Info == nil {
