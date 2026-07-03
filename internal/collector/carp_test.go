@@ -19,8 +19,7 @@ func TestCarpCollector_Update_WithVIPs(t *testing.T) {
 					"advskew": "0",
 					"status": "MASTER",
 					"status_txt": "MASTER",
-					"vip": "10.0.0.1",
-					"subnet": "24"
+					"subnet": "10.0.0.1"
 				},
 				{
 					"interface": "WAN",
@@ -29,8 +28,7 @@ func TestCarpCollector_Update_WithVIPs(t *testing.T) {
 					"advskew": "100",
 					"status": "BACKUP",
 					"status_txt": "BACKUP",
-					"vip": "192.168.1.1",
-					"subnet": "24"
+					"subnet": "192.168.1.1"
 				}
 			],
 			"carp": {
@@ -137,6 +135,45 @@ func TestCarpCollector_Update_Empty(t *testing.T) {
 	// vips_total should be 0
 	if v := getMetricValue(metrics[3]); v != 0 {
 		t.Errorf("expected vips_total=0, got %f", v)
+	}
+}
+
+// TestCarpCollector_MultiAddressVHIDStaysDistinct reproduces the #166 duplicate:
+// getVipStatusAction emits one row per address (ipv4 + ipv6) for a vhid, sharing
+// interface/vhid. With the VIP address sourced from "subnet", the two rows keep
+// distinct (interface, vhid, vip) tuples instead of colliding on an empty vip and
+// 500-ing the whole scrape.
+func TestCarpCollector_MultiAddressVHIDStaysDistinct(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"interface":"LAN","vhid":"1","advbase":"1","advskew":"0","status":"MASTER","status_txt":"MASTER","subnet":"10.0.0.1"},
+				{"interface":"LAN","vhid":"1","advbase":"1","advskew":"0","status":"MASTER","status_txt":"MASTER","subnet":"fd00::1"}
+			],
+			"carp": {"demotion":"0","allow":"1","maintenancemode":false}
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &carpCollector{subsystem: CARPSubsystem}
+	c.Register("opnsense", "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	vips := map[string]bool{}
+	for _, m := range metrics {
+		l := getMetricLabels(m)
+		if v, ok := l["vip"]; ok {
+			if v == "" {
+				t.Errorf("expected a non-empty vip label (from subnet), got empty: %v", l)
+			}
+			vips[v] = true
+		}
+	}
+	if len(vips) != 2 {
+		t.Errorf("expected 2 distinct vip addresses, got %d: %v", len(vips), vips)
 	}
 }
 

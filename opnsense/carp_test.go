@@ -22,8 +22,7 @@ func TestFetchCARPStatus_WithVIPs(t *testing.T) {
 					"advskew": "0",
 					"status": "MASTER",
 					"status_txt": "MASTER",
-					"vip": "10.0.0.1",
-					"subnet": "24"
+					"subnet": "10.0.0.1"
 				},
 				{
 					"interface": "WAN",
@@ -32,8 +31,7 @@ func TestFetchCARPStatus_WithVIPs(t *testing.T) {
 					"advskew": "100",
 					"status": "BACKUP",
 					"status_txt": "BACKUP",
-					"vip": "192.168.1.1",
-					"subnet": "24"
+					"subnet": "192.168.1.1"
 				}
 			],
 			"carp": {
@@ -167,8 +165,7 @@ func TestFetchCARPStatus_StatusMapping(t *testing.T) {
 							Advskew:   "0",
 							Status:    tc.status,
 							StatusTxt: tc.status,
-							VIP:       "10.0.0.1",
-							Subnet:    "24",
+							Subnet:    "10.0.0.1",
 						},
 					},
 					Carp: carpInfo{

@@ -119,7 +119,18 @@ func (c *carpCollector) Update(ctx context.Context, client *opnsense.Client, ch 
 		c.instance,
 	)
 
+	// Defence-in-depth: a vhid carrying multiple addresses must not collapse to a
+	// duplicate (interface, vhid, vip) tuple and fail the whole scrape (#166).
+	seen := make(map[[3]string]bool, len(data.VIPs))
 	for _, vip := range data.VIPs {
+		key := [3]string{vip.Interface, vip.VHID, vip.VIP}
+		if seen[key] {
+			c.log.Warn("skipping CARP VIP with duplicate (interface, vhid, vip) label tuple",
+				"interface", vip.Interface, "vhid", vip.VHID, "vip", vip.VIP)
+			continue
+		}
+		seen[key] = true
+
 		ch <- prometheus.MustNewConstMetric(
 			c.vipStatus,
 			prometheus.GaugeValue,

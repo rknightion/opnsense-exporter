@@ -1,6 +1,8 @@
 package opnsense
 
-// carpVIPRow is the raw JSON row returned by the CARP VIP status API.
+// carpVIPRow is the raw JSON row returned by the CARP VIP status API
+// (get_vip_status). On OPNsense 26.1 the row has no "vip" key — the VIP address
+// is carried in "subnet" (getVipStatusAction sets 'subnet' => $subnet['ipaddr']).
 type carpVIPRow struct {
 	Interface string `json:"interface"`
 	VHID      string `json:"vhid"`
@@ -8,7 +10,6 @@ type carpVIPRow struct {
 	Advskew   string `json:"advskew"`
 	Status    string `json:"status"`
 	StatusTxt string `json:"status_txt"`
-	VIP       string `json:"vip"`
 	Subnet    string `json:"subnet"`
 }
 
@@ -84,10 +85,13 @@ func (c *Client) FetchCARPStatus() (CARPStatus, *APICallError) {
 		vip := CARPVIP{
 			Interface: row.Interface,
 			VHID:      row.VHID,
-			VIP:       row.VIP,
-			Status:    parseCARPStatus(row.Status),
-			Advbase:   safeAtoi(row.Advbase),
-			Advskew:   safeAtoi(row.Advskew),
+			// The VIP address is in the API's "subnet" field on 26.1 (there is
+			// no "vip" key). Using subnet also keeps the (interface, vhid, vip)
+			// label tuple unique when a vhid carries multiple addresses (#166).
+			VIP:     row.Subnet,
+			Status:  parseCARPStatus(row.Status),
+			Advbase: safeAtoi(row.Advbase),
+			Advskew: safeAtoi(row.Advskew),
 		}
 		data.VIPs = append(data.VIPs, vip)
 	}
