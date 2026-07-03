@@ -8795,7 +8795,7 @@
         "spec": {
           "id": 69,
           "title": "Link State",
-          "description": "1 = Up (green), 0 = Down (red).",
+          "description": "1 = Up (green), 0 = Down (red), 2 = Unknown (yellow). Unknown is reported by the kernel for carrier-less pseudo-devices (PPPoE, tun/tailscale) and is not a fault - alert on Down (0), not not-Up.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -8859,6 +8859,11 @@
                           "text": "Up",
                           "color": "green",
                           "index": 1
+                        },
+                        "2": {
+                          "text": "Unknown",
+                          "color": "yellow",
+                          "index": 2
                         }
                       }
                     }

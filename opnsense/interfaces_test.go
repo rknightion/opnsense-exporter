@@ -173,6 +173,43 @@ func TestFetchInterfaces_ServerError(t *testing.T) {
 	}
 }
 
+// TestFetchInterfaces_LinkStateTriState guards #86: the kernel link state is
+// tri-state ("2"=up, "1"=down, "0"=unknown). "0" (unknown, reported for PPPoE
+// and other carrier-less pseudo-devices) must NOT be collapsed to the same value
+// as a genuine "1" (down), or healthy PPPoE WANs read as permanently down.
+func TestFetchInterfaces_LinkStateTriState(t *testing.T) {
+	cases := []struct {
+		name      string
+		linkState string
+		want      int
+	}{
+		{"up numeric", "2", LinkStateUp},
+		{"down numeric", "1", LinkStateDown},
+		{"unknown numeric", "0", LinkStateUnknown},
+		{"up legacy string", "link state is up", LinkStateUp},
+		{"down legacy string", "link state is down", LinkStateDown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet","link state":"` + tc.linkState + `","mtu":"1500","bytes received":"0","bytes transmitted":"0","packets received":"0","packets transmitted":"0","multicasts received":"0","multicasts transmitted":"0","input errors":"0","output errors":"0","collisions":"0","send queue length":"0","send queue max length":"0","send queue drops":"0","input queue drops":"0"}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfaces()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			if got := data.Interfaces[0].LinkState; got != tc.want {
+				t.Errorf("link state %q: got %d, want %d", tc.linkState, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFetchInterfaces_EmptyInterfaces(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"interfaces": {}}`))

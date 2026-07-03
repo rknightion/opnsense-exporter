@@ -108,7 +108,7 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		[]string{"interface", "device", "type"},
 	)
 	c.linkState = buildPrometheusDesc(c.subsystem, "link_state",
-		"Link state of this interface (1=up, 0=down) by interface name and device",
+		"Link state of this interface (1=up, 0=down, 2=unknown) by interface name and device. 2 (unknown) is reported by the kernel for carrier-less pseudo-devices such as PPPoE and tun/tailscale interfaces, which have no carrier-sense concept and are not actually down; alert on link_state==0, not link_state!=1.",
 		[]string{"interface", "device", "type"},
 	)
 	c.lineRate = buildPrometheusDesc(c.subsystem, "line_rate_bits",

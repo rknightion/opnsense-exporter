@@ -157,6 +157,49 @@ func TestInterfacesCollector_Update_MultipleInterfaces(t *testing.T) {
 	}
 }
 
+// TestInterfacesCollector_LinkStateUnknownNotDown guards #86: an interface whose
+// kernel link state is "0" (unknown — e.g. a healthy PPPoE WAN) must not be
+// emitted as link_state==0 (down).
+func TestInterfacesCollector_LinkStateUnknownNotDown(t *testing.T) {
+	cases := []struct {
+		name      string
+		linkState string
+		want      float64
+	}{
+		{"unknown is not down", "0", 2},
+		{"genuine down preserved", "1", 0},
+		{"up preserved", "2", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"interfaces":{"pppoe0":{"device":"pppoe0","name":"WAN","type":"PPPoE","link state":"` + tc.linkState + `","mtu":"1492","line rate":"0","bytes received":"0","bytes transmitted":"0","packets received":"0","packets transmitted":"0","multicasts received":"0","multicasts transmitted":"0","input errors":"0","output errors":"0","collisions":"0","send queue length":"0","send queue max length":"0","send queue drops":"0","input queue drops":"0"}}}`))
+			}))
+			defer server.Close()
+
+			client := newCollectorTestClient(t, server)
+			c := &interfacesCollector{subsystem: InterfacesSubsystem}
+			c.Register(namespace, "test", promslog.NewNopLogger())
+
+			metrics := collectMetrics(t, c, client)
+
+			found := false
+			for _, m := range metrics {
+				if !strings.Contains(m.Desc().String(), "link_state") {
+					continue
+				}
+				found = true
+				if got := getMetricValue(m); got != tc.want {
+					t.Errorf("link state %q: emitted link_state=%v, want %v", tc.linkState, got, tc.want)
+				}
+			}
+			if !found {
+				t.Fatal("no link_state series emitted")
+			}
+		})
+	}
+}
+
 func TestInterfacesCollector_Name(t *testing.T) {
 	c := &interfacesCollector{subsystem: InterfacesSubsystem}
 	if c.Name() != InterfacesSubsystem {

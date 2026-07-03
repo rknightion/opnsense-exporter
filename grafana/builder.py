@@ -40,6 +40,10 @@ def epoch_ms(expr: str) -> str:
 
 # Shared value-mapping dictionaries: state value -> (display text, colour).
 UPDOWN = {"0": ("Down", "red"), "1": ("Up", "green")}
+# Interface link state is tri-state: unknown ("2") is reported for carrier-less
+# pseudo-devices (PPPoE, tun/tailscale) and is not a fault, so map it distinctly
+# from a genuine down rather than folding it into UPDOWN (#86).
+LINK_STATE = {"0": ("Down", "red"), "1": ("Up", "green"), "2": ("Unknown", "yellow")}
 RUNSTOP = {"0": ("Stopped", "red"), "1": ("Running", "green")}
 OKERR = {"0": ("Error", "red"), "1": ("OK", "green")}
 YESNO = {"0": ("No", "green"), "1": ("Yes", "orange")}

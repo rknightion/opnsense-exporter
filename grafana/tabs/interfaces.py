@@ -8,7 +8,7 @@ Rows:
   4. Link state & rates— link_state statetimeline + info table (mtu, line_rate, device, type)
 """
 
-from builder import Builder, sel, RATE, UPDOWN
+from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
 
 
 def build(b: Builder):
@@ -107,8 +107,10 @@ def build(b: Builder):
     link_state = b.statetimeline(
         "Link State",
         [(sel("opnsense_interfaces_link_state", iface), "{{interface}}")],
-        UPDOWN, w=24, h=8,
-        desc="1 = Up (green), 0 = Down (red).",
+        LINK_STATE, w=24, h=8,
+        desc="1 = Up (green), 0 = Down (red), 2 = Unknown (yellow). Unknown is "
+             "reported by the kernel for carrier-less pseudo-devices (PPPoE, "
+             "tun/tailscale) and is not a fault - alert on Down (0), not not-Up.",
     )
     iface_info = b.table(
         "Interface Info (MTU / Line Rate / Device / Type)",

@@ -4,6 +4,16 @@ import (
 	"strings"
 )
 
+// Interface link-state values. The OPNsense/FreeBSD kernel link state is
+// tri-state: "unknown" is reported for carrier-less pseudo-devices (PPPoE,
+// tun/tailscale) and must be distinguished from a genuine "down", otherwise a
+// healthy PPPoE WAN reads as permanently down (#86).
+const (
+	LinkStateDown    = 0
+	LinkStateUp      = 1
+	LinkStateUnknown = 2
+)
+
 type InterfaceDetails struct {
 	Device                    string `json:"device"`
 	Driver                    string `json:"driver"`
@@ -63,7 +73,7 @@ type Interface struct {
 	SendQueueMaxLength    int64
 	SendQueueDrops        int64
 	InputQueueDrops       int64
-	LinkState             int   // 1=up, 0=down — derived 0/1 enum, cannot overflow; stays int
+	LinkState             int   // 0=down, 1=up, 2=unknown — derived enum, cannot overflow; stays int
 	LineRate              int64 // bits per second (10 Gbit > int32)
 }
 
@@ -109,11 +119,16 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 
 		// OPNsense >=25.x reports "link state" as a numeric string from the
 		// kernel ifmedia status: "2" = up (LINK_STATE_UP), "1" = down,
-		// "0" = unknown. Older releases used the human string "link state is
-		// up"/"...is down". Treat both shapes as up only when explicitly up.
-		linkState := 0
-		if v.LinkState == "2" || strings.Contains(v.LinkState, "is up") {
-			linkState = 1
+		// "0" = unknown (LINK_STATE_UNKNOWN, e.g. PPPoE/tun pseudo-devices with
+		// no carrier-sense concept). Older releases used the human string "link
+		// state is up"/"...is down". Map unknown to its own value so a healthy
+		// carrier-less WAN is not reported as down (#86).
+		linkState := LinkStateDown
+		switch {
+		case v.LinkState == "2" || strings.Contains(v.LinkState, "is up"):
+			linkState = LinkStateUp
+		case v.LinkState == "0":
+			linkState = LinkStateUnknown
 		}
 
 		data.Interfaces = append(data.Interfaces, Interface{
