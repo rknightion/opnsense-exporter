@@ -79,6 +79,80 @@ const bgpSummaryFixture = `{
 // bgpSummaryArrayResponse simulates the daemon-disabled configd fallback: `[]`.
 const bgpSummaryArrayResponse = `{"response":[]}`
 
+// bgpSummaryDualSAFIFixture activates a neighbor in both the ipv4 unicast and
+// multicast SAFIs — two top-level blocks FRR returns separately (#162).
+const bgpSummaryDualSAFIFixture = `{
+  "response": {
+    "ipv4Unicast": {
+      "ribCount": 42, "peerCount": 1, "failedPeers": 0,
+      "peers": {"10.0.0.2": {"remoteAs": 65002, "msgRcvd": 1, "msgSent": 1, "peerUptimeMsec": 1000, "pfxRcd": 5, "pfxSnt": 3, "state": "Established"}}
+    },
+    "ipv4Multicast": {
+      "ribCount": 7, "peerCount": 1, "failedPeers": 0,
+      "peers": {"10.0.0.2": {"remoteAs": 65002, "msgRcvd": 1, "msgSent": 1, "peerUptimeMsec": 1000, "pfxRcd": 2, "pfxSnt": 1, "state": "Established"}}
+    }
+  }
+}`
+
+// TestFrrAFLabel guards #162: distinct upstream SAFIs must not collapse onto the
+// same label. Unicast keeps the short label for backward compatibility.
+func TestFrrAFLabel(t *testing.T) {
+	cases := map[string]string{
+		"ipv4Unicast":   "ipv4",
+		"ipv4Multicast": "ipv4multicast",
+		"ipv6Unicast":   "ipv6",
+		"ipv6Multicast": "ipv6multicast",
+		"l2VpnEvpn":     "l2vpnevpn",
+	}
+	seen := map[string]string{}
+	for key, want := range cases {
+		got := frrAFLabel(key)
+		if got != want {
+			t.Errorf("frrAFLabel(%q) = %q, want %q", key, got, want)
+		}
+		if prev, ok := seen[got]; ok {
+			t.Errorf("label %q produced by both %q and %q — not injective", got, prev, key)
+		}
+		seen[got] = key
+	}
+}
+
+// TestFetchFRRBGP_DualSAFI guards #162: a neighbor activated in both ipv4 unicast
+// and multicast must yield two families/peers with distinct AF labels, not a
+// collision.
+func TestFetchFRRBGP_DualSAFI(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/bgpsummary", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(bgpSummaryDualSAFIFixture))
+	})
+
+	data, err := client.FetchFRRBGP()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	afs := map[string]bool{}
+	for _, f := range data.Families {
+		if afs[f.AF] {
+			t.Errorf("duplicate family AF label %q", f.AF)
+		}
+		afs[f.AF] = true
+	}
+	if !afs["ipv4"] || !afs["ipv4multicast"] {
+		t.Errorf("expected both ipv4 and ipv4multicast families, got %v", afs)
+	}
+	// The same neighbor in two SAFIs must produce distinct peer label tuples.
+	peerAFs := map[string]bool{}
+	for _, p := range data.Peers {
+		key := p.Peer + "/" + p.AF
+		if peerAFs[key] {
+			t.Errorf("duplicate peer label tuple %q", key)
+		}
+		peerAFs[key] = true
+	}
+}
+
 // ospfOverviewFixture is derived from FRR `show ip ospf json` output.
 const ospfOverviewFixture = `{
   "response": {

@@ -51,11 +51,17 @@ type frrBGPSummaryEnvelope struct {
 }
 
 // frrAFLabel converts an FRR address-family key like "ipv4Unicast" to a
-// lowercase label like "ipv4". Unknown keys pass through lowercased.
+// lowercase label. It is lossless per SAFI: the (overwhelmingly common) unicast
+// families keep the short "ipv4"/"ipv6" label for backward compatibility, while
+// any non-unicast SAFI retains its suffix (e.g. "ipv4multicast") so distinct
+// upstream families never collapse onto the same label tuple — which would emit
+// duplicate series and fail the whole scrape (#162). Unknown keys pass through
+// lowercased.
 func frrAFLabel(key string) string {
 	lower := strings.ToLower(key)
-	lower = strings.TrimSuffix(lower, "unicast")
-	lower = strings.TrimSuffix(lower, "multicast")
+	if trimmed, ok := strings.CutSuffix(lower, "unicast"); ok {
+		return trimmed
+	}
 	return lower
 }
 

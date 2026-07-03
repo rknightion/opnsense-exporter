@@ -230,6 +230,48 @@ func TestFRRCollector_Update_PluginAbsent(t *testing.T) {
 	}
 }
 
+// TestFRRCollector_Update_DualSAFINoDuplicateSeries guards #162: a neighbor
+// activated in both ipv4 unicast and multicast must not emit duplicate label
+// tuples for bgp_peers_total/bgp_failed_peers/bgp_rib_entries (which would fail
+// the whole scrape's Gather).
+func TestFRRCollector_Update_DualSAFINoDuplicateSeries(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/quagga/diagnostics/bgpsummary", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+  "response": {
+    "ipv4Unicast": {"ribCount": 42, "peerCount": 1, "failedPeers": 0,
+      "peers": {"10.0.0.2": {"remoteAs": 65002, "msgRcvd": 1, "msgSent": 1, "peerUptimeMsec": 1000, "pfxRcd": 5, "pfxSnt": 3, "state": "Established"}}},
+    "ipv4Multicast": {"ribCount": 7, "peerCount": 1, "failedPeers": 0,
+      "peers": {"10.0.0.2": {"remoteAs": 65002, "msgRcvd": 1, "msgSent": 1, "peerUptimeMsec": 1000, "pfxRcd": 2, "pfxSnt": 1, "state": "Established"}}}
+  }
+}`))
+	})
+	mux.HandleFunc("/api/quagga/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	// Both SAFIs must be represented as distinct af label values.
+	afs := map[string]bool{}
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "bgp_peers_total") {
+			afs[getMetricLabels(m)["af"]] = true
+		}
+	}
+	if !afs["ipv4"] || !afs["ipv4multicast"] {
+		t.Errorf("expected bgp_peers_total for both ipv4 and ipv4multicast, got %v", afs)
+	}
+}
+
 func TestFRRCollector_Name(t *testing.T) {
 	c := &frrCollector{subsystem: FRRSubsystem}
 	if c.Name() != FRRSubsystem {
