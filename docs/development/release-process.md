@@ -64,7 +64,7 @@ When a maintainer merges the release PR:
 
 Images are published to GitHub Container Registry:
 
-```
+```text
 ghcr.io/rknightion/opnsense-exporter
 ```
 

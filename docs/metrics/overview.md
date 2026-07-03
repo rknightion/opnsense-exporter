@@ -14,7 +14,7 @@ This page describes the naming conventions, label schemas, and metric types used
 
 All metrics follow the pattern:
 
-```
+```text
 opnsense_<subsystem>_<metric_name>
 ```
 

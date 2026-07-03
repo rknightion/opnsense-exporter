@@ -10,7 +10,7 @@ tags:
 
 The OPNsense Exporter is published as a multi-architecture container image (amd64/arm64) on GitHub Container Registry.
 
-```
+```text
 ghcr.io/rknightion/opnsense-exporter:latest
 ```
 

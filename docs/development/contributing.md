@@ -7,7 +7,7 @@ tags:
 
 # Contributing
 
-Thank you for your interest in contributing to the OPNsense Exporter. This guide covers the development workflow, tooling, and conventions.
+This guide covers the development workflow, tooling, and conventions for contributing to the OPNsense Exporter.
 
 ## Prerequisites
 
@@ -110,7 +110,7 @@ Before submitting a PR:
 
 ## Project structure
 
-```
+```text
 .
 +-- main.go                      # Entry point
 +-- internal/
