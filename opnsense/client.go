@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -39,6 +40,26 @@ func retryBackoff(attempt int) time.Duration {
 		attempt = 1
 	}
 	return baseRetryDelay << (attempt - 1)
+}
+
+// runConcurrentFetches runs each independent sub-fetch concurrently and returns their
+// errors in the same order. Used by the multi-endpoint Fetch* functions whose sub-calls
+// write to disjoint fields of a shared result struct, so overall wall time is bounded by
+// the slowest single call instead of the sum of all of them (#129). Each fn must only
+// touch its own disjoint field(s); errs[i] is written by a single goroutine so the slice
+// is race-free.
+func runConcurrentFetches(fns ...func() *APICallError) []*APICallError {
+	errs := make([]*APICallError, len(fns))
+	var wg sync.WaitGroup
+	wg.Add(len(fns))
+	for i, fn := range fns {
+		go func(i int, fn func() *APICallError) {
+			defer wg.Done()
+			errs[i] = fn()
+		}(i, fn)
+	}
+	wg.Wait()
+	return errs
 }
 
 // retryableStatus reports whether an idempotent GET receiving this status code should

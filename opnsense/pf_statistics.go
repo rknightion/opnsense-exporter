@@ -162,10 +162,18 @@ func (c *Client) FetchPFStatistics() (PFStatistics, *APICallError) {
 		err  *APICallError
 	}
 
-	results := []fetchResult{
-		{"pfStatsInfo", c.fetchPFStatsInfo(&data)},
-		{"pfStatsMemory", c.fetchPFStatsMemory(&data)},
-		{"pfStatsTimeouts", c.fetchPFStatsTimeouts(&data)},
+	// The three sub-fetches hit independent endpoints and write disjoint fields of data
+	// (Info/StateTable/Counters, MemoryLimits, Timeouts), so run them concurrently —
+	// wall time is bounded by the slowest single call, not the sum (#129).
+	names := []string{"pfStatsInfo", "pfStatsMemory", "pfStatsTimeouts"}
+	errs := runConcurrentFetches(
+		func() *APICallError { return c.fetchPFStatsInfo(&data) },
+		func() *APICallError { return c.fetchPFStatsMemory(&data) },
+		func() *APICallError { return c.fetchPFStatsTimeouts(&data) },
+	)
+	results := make([]fetchResult, len(names))
+	for i, name := range names {
+		results[i] = fetchResult{name, errs[i]}
 	}
 
 	var firstErr *APICallError

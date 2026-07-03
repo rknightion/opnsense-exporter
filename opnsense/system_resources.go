@@ -493,13 +493,24 @@ func (c *Client) FetchSystemResources() (SystemResources, *APICallError) {
 		err  *APICallError
 	}
 
-	results := []fetchResult{
-		{"systemResources", c.fetchSystemMemory(&data)},
-		{"systemTime", c.fetchSystemTime(&data)},
-		{"systemDisk", c.fetchSystemDisk(&data)},
-		{"systemSwap", c.fetchSystemSwap(&data)},
-		{"systemInformation", c.fetchSystemInfo(&data)},
-		{"cpuType", c.fetchCPUType(&data)},
+	// The six sub-fetches hit independent endpoints and write disjoint fields of data
+	// (Memory / Times / Disks / Swaps / Info / CPUType), so run them concurrently —
+	// wall time is bounded by the slowest single call, not the sum (#129). fetchSystemInfo
+	// and fetchCPUType both populate data.Info, so pre-allocate it here (single-threaded)
+	// to avoid a lazy-init race; they then write disjoint FIELDS of the shared struct.
+	data.Info = &SystemInfo{}
+	names := []string{"systemResources", "systemTime", "systemDisk", "systemSwap", "systemInformation", "cpuType"}
+	errs := runConcurrentFetches(
+		func() *APICallError { return c.fetchSystemMemory(&data) },
+		func() *APICallError { return c.fetchSystemTime(&data) },
+		func() *APICallError { return c.fetchSystemDisk(&data) },
+		func() *APICallError { return c.fetchSystemSwap(&data) },
+		func() *APICallError { return c.fetchSystemInfo(&data) },
+		func() *APICallError { return c.fetchCPUType(&data) },
+	)
+	results := make([]fetchResult, len(names))
+	for i, name := range names {
+		results[i] = fetchResult{name, errs[i]}
 	}
 
 	var firstErr *APICallError

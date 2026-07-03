@@ -1,12 +1,51 @@
 package collector
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
+
+// TestNetflowCollector_ConcurrentFetch covers #129: the three independent netflow
+// endpoints are fetched concurrently, so total wall time is bounded by the slowest
+// single call rather than their sum.
+func TestNetflowCollector_ConcurrentFetch(t *testing.T) {
+	mux := http.NewServeMux()
+	const delay = 60 * time.Millisecond
+	for _, p := range []string{
+		"/api/diagnostics/netflow/isEnabled",
+		"/api/diagnostics/netflow/status",
+		"/api/diagnostics/netflow/cacheStats",
+	} {
+		mux.HandleFunc(p, func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(delay)
+			_, _ = w.Write([]byte(`{}`))
+		})
+	}
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &netflowCollector{subsystem: NetflowSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	start := time.Now()
+	ch := make(chan prometheus.Metric, 128)
+	if err := c.Update(context.Background(), client, ch); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	close(ch)
+	elapsed := time.Since(start)
+	// Sequential = 3*60ms = 180ms; concurrent = ~60ms.
+	if elapsed > 140*time.Millisecond {
+		t.Errorf("netflow Update took %v; the three fetches did not run concurrently", elapsed)
+	}
+}
 
 func TestNetflowCollector_Update(t *testing.T) {
 	mux := http.NewServeMux()

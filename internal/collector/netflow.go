@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/opnsense"
@@ -86,9 +87,26 @@ func (c *netflowCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *netflowCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
-	enabledData, err := client.FetchNetflowIsEnabled()
-	if err != nil {
-		return err
+	// The three netflow endpoints are independent, so fetch them concurrently — wall
+	// time is bounded by the slowest single call, not the sum (#129). Emission and the
+	// fail-fast error ordering (is-enabled → status → cache) below are unchanged.
+	var (
+		enabledData opnsense.NetflowEnabled
+		statusData  opnsense.NetflowStatus
+		cacheData   []opnsense.NetflowCacheStats
+		enabledErr  *opnsense.APICallError
+		statusErr   *opnsense.APICallError
+		cacheErr    *opnsense.APICallError
+	)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { defer wg.Done(); enabledData, enabledErr = client.FetchNetflowIsEnabled() }()
+	go func() { defer wg.Done(); statusData, statusErr = client.FetchNetflowStatus() }()
+	go func() { defer wg.Done(); cacheData, cacheErr = client.FetchNetflowCacheStats() }()
+	wg.Wait()
+
+	if enabledErr != nil {
+		return enabledErr
 	}
 
 	var enabledVal, localVal float64
@@ -112,9 +130,8 @@ func (c *netflowCollector) Update(ctx context.Context, client *opnsense.Client, 
 		c.instance,
 	)
 
-	statusData, err := client.FetchNetflowStatus()
-	if err != nil {
-		return err
+	if statusErr != nil {
+		return statusErr
 	}
 
 	var activeVal float64
@@ -135,9 +152,8 @@ func (c *netflowCollector) Update(ctx context.Context, client *opnsense.Client, 
 		c.instance,
 	)
 
-	cacheData, err := client.FetchNetflowCacheStats()
-	if err != nil {
-		return err
+	if cacheErr != nil {
+		return cacheErr
 	}
 
 	for _, entry := range cacheData {

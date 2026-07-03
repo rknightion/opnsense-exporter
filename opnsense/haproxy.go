@@ -174,14 +174,24 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 		}
 	}
 
-	// The counters payload is a heterogeneous JSON array: complete rows are
-	// objects, incomplete CSV lines survive as raw arrays. Decode elementwise.
+	// Fetch counters and info concurrently — independent endpoints written to separate
+	// local vars, processed single-threaded after the join, so wall time is the slower
+	// of the two rather than their sum (#129). Counters still gates plugin-presence.
+	// The counters payload is a heterogeneous JSON array: complete rows are objects,
+	// incomplete CSV lines survive as raw arrays. Decode elementwise.
 	var rawRows []json.RawMessage
-	if err := c.do("GET", countersURL, nil, &rawRows); err != nil {
-		if err.StatusCode == http.StatusNotFound {
-			return data, nil // plugin absent: Present stays false
+	var info map[string]flexString
+	fetchErrs := runConcurrentFetches(
+		func() *APICallError { return c.do("GET", countersURL, nil, &rawRows) },
+		func() *APICallError { return c.do("GET", infoURL, nil, &info) },
+	)
+	countersErr, infoErr := fetchErrs[0], fetchErrs[1]
+
+	if countersErr != nil {
+		if countersErr.StatusCode == http.StatusNotFound {
+			return data, nil // plugin absent: Present stays false (info result discarded)
 		}
-		return data, err
+		return data, countersErr
 	}
 	data.Present = true
 
@@ -240,14 +250,13 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 		// listeners (type "3") and anything unclassified are skipped
 	}
 
-	var info map[string]flexString
-	if err := c.do("GET", infoURL, nil, &info); err != nil {
+	if infoErr != nil {
 		// Counters succeeded so the plugin exists; surface real info errors
 		// but tolerate 404 (defensive: endpoint variations across versions).
-		if err.StatusCode == http.StatusNotFound {
+		if infoErr.StatusCode == http.StatusNotFound {
 			return data, nil
 		}
-		return data, err
+		return data, infoErr
 	}
 	if len(info) > 0 {
 		data.HasInfo = true

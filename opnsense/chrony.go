@@ -270,29 +270,39 @@ func (c *Client) FetchChronyStatus() (ChronyStatus, *APICallError) {
 		Tracking: parseChronyTracking(trackingEnv.Response.String()),
 	}
 
-	// Sources — tolerate failure; keep partial data.
-	sourcesURL, ok := c.endpoints["chronySources"]
-	if ok {
-		var sourcesEnv chronyResponseEnvelope
-		if err := c.do("GET", sourcesURL, nil, &sourcesEnv); err != nil {
-			c.log.Warn("failed to fetch chrony sources", "err", err)
-		} else {
+	// Sources and SourceStats hit independent endpoints and write disjoint fields of
+	// status, so fetch them concurrently (the tracking call above gated Present and must
+	// stay first). Both tolerate failure and keep partial data (#129).
+	sourcesURL, hasSources := c.endpoints["chronySources"]
+	sourceStatsURL, hasSourceStats := c.endpoints["chronySourceStats"]
+	runConcurrentFetches(
+		func() *APICallError {
+			if !hasSources {
+				return nil
+			}
+			var sourcesEnv chronyResponseEnvelope
+			if err := c.do("GET", sourcesURL, nil, &sourcesEnv); err != nil {
+				c.log.Warn("failed to fetch chrony sources", "err", err)
+				return nil // tolerated
+			}
 			status.Sources = parseChronySources(sourcesEnv.Response.String())
 			status.HasSources = true
-		}
-	}
-
-	// SourceStats — tolerate failure; keep partial data.
-	sourceStatsURL, ok := c.endpoints["chronySourceStats"]
-	if ok {
-		var statsEnv chronyResponseEnvelope
-		if err := c.do("GET", sourceStatsURL, nil, &statsEnv); err != nil {
-			c.log.Warn("failed to fetch chrony sourcestats", "err", err)
-		} else {
+			return nil
+		},
+		func() *APICallError {
+			if !hasSourceStats {
+				return nil
+			}
+			var statsEnv chronyResponseEnvelope
+			if err := c.do("GET", sourceStatsURL, nil, &statsEnv); err != nil {
+				c.log.Warn("failed to fetch chrony sourcestats", "err", err)
+				return nil // tolerated
+			}
 			status.SourceStats = parseChronySourceStats(statsEnv.Response.String())
 			status.HasSourceStats = true
-		}
-	}
+			return nil
+		},
+	)
 
 	return status, nil
 }
