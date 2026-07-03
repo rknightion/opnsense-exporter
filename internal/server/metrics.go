@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// maxScrapeTimeoutSeconds bounds an accepted scrape-timeout header. Any real
+// Prometheus scrape budget is far below 24h; a larger (client-controlled) value is
+// rejected so it cannot overflow time.Duration or effectively disable the budget.
+const maxScrapeTimeoutSeconds = 86400
 
 // scrapeTimeoutHeader is set by Prometheus on every scrape to the configured
 // scrape timeout in (possibly fractional) seconds.
@@ -143,7 +149,11 @@ func scrapeTimeout(header string, offset time.Duration) (time.Duration, bool) {
 		return 0, false
 	}
 	seconds, err := strconv.ParseFloat(header, 64)
-	if err != nil || seconds <= 0 {
+	// strconv.ParseFloat parses "NaN"/"±Inf"/"1e300" without error, and every NaN
+	// comparison is false (so NaN would slip past a bare `seconds <= 0`). Reject
+	// non-finite and absurdly large values explicitly: the header is client-controlled
+	// and real Prometheus never sends these (#124).
+	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 || seconds > maxScrapeTimeoutSeconds {
 		return 0, false
 	}
 	timeout := time.Duration(seconds * float64(time.Second))

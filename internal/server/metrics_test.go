@@ -184,6 +184,12 @@ func TestScrapeTimeoutTable(t *testing.T) {
 		{"-5", 500 * time.Millisecond, 0, false},
 		{"0", 500 * time.Millisecond, 0, false},
 		{"abc", 500 * time.Millisecond, 0, false},
+		// Non-finite / absurd client-controlled values must be rejected, not accepted
+		// as a zero (immediately-expired) or ~292-year deadline (#124).
+		{"NaN", 500 * time.Millisecond, 0, false},
+		{"+Inf", 500 * time.Millisecond, 0, false},
+		{"-Inf", 500 * time.Millisecond, 0, false},
+		{"1e300", 500 * time.Millisecond, 0, false},
 	}
 	for _, tc := range cases {
 		got, ok := scrapeTimeout(tc.header, tc.offset)
@@ -194,19 +200,15 @@ func TestScrapeTimeoutTable(t *testing.T) {
 	}
 }
 
-// TestScrapeTimeoutNaNYieldsExpiredDeadline documents the deterministic bail trigger
-// behind #122: a NaN scrape-timeout header parses to (0, true), so the handler builds
-// context.WithTimeout(reqCtx, 0) — a deadline already in the past — which drives the
-// collector's deadline-expired bail path (and now its scrape_skips_total signal). This
-// is the deterministic reproduction, not the ~500ms offset timing window.
-func TestScrapeTimeoutNaNYieldsExpiredDeadline(t *testing.T) {
-	got, ok := scrapeTimeout("NaN", 500*time.Millisecond)
-	if !ok || got != 0 {
-		t.Fatalf("scrapeTimeout(NaN) = (%s, %v), want (0s, true)", got, ok)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), got)
-	defer cancel()
-	if ctx.Err() == nil {
-		t.Fatal("a NaN-derived 0 deadline must produce an already-expired context")
+// TestScrapeTimeoutRejectsNonFinite pins the #124 guard: NaN / ±Inf / absurdly large
+// client-controlled header values must yield ok=false (no deadline) rather than a
+// zero-duration "valid" timeout (immediately-expired, drops all OPNsense data) or an
+// effectively infinite one (defeats the budget). Supersedes the earlier assertion that
+// a NaN header produced (0, true).
+func TestScrapeTimeoutRejectsNonFinite(t *testing.T) {
+	for _, h := range []string{"NaN", "+Inf", "-Inf", "Inf", "1e300", "1e309"} {
+		if got, ok := scrapeTimeout(h, 500*time.Millisecond); ok || got != 0 {
+			t.Errorf("scrapeTimeout(%q) = (%s, %v), want (0s, false)", h, got, ok)
+		}
 	}
 }
