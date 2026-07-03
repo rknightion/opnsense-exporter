@@ -92,6 +92,39 @@ func TestHAProxyCollector_Update_PluginAbsent(t *testing.T) {
 	}
 }
 
+// TestHAProxyCollector_Update_TCPModeNoResponseCodes guards #164: a tcp-mode
+// proxy (empty hrsp_* cells) must not emit any http_responses_total series.
+func TestHAProxyCollector_Update_TCPModeNoResponseCodes(t *testing.T) {
+	const fixture = `[
+	  {"pxname":"smtp_frontend","svname":"FRONTEND","scur":"3","stot":"5000","bin":"1","bout":"2","dreq":"0","ereq":"0","status":"OPEN","type":"0","hrsp_1xx":"","hrsp_2xx":"","hrsp_3xx":"","hrsp_4xx":"","hrsp_5xx":"","hrsp_other":"","id":"smtp_frontend/FRONTEND"},
+	  {"pxname":"smtp_backend","svname":"BACKEND","scur":"2","stot":"3000","bin":"1","bout":"2","econ":"0","eresp":"0","wretr":"0","wredis":"0","status":"UP","act":"1","bck":"0","type":"1","hrsp_1xx":"","hrsp_2xx":"","hrsp_3xx":"","hrsp_4xx":"","hrsp_5xx":"","hrsp_other":"","id":"smtp_backend/BACKEND"}
+	]`
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/haproxy/statistics/counters", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fixture))
+	})
+	mux.HandleFunc("/api/haproxy/statistics/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Name":"HAProxy","Version":"2.8.3","Uptime_sec":"1","CurrConns":"0","CumConns":"0","CumReq":"0","Idle_pct":"100"}`))
+	})
+	mux.HandleFunc("/api/haproxy/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &haproxyCollector{subsystem: HAProxySubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "http_responses_total") {
+			t.Errorf("no http_responses_total series should be emitted for a tcp-mode proxy, got %s with labels %v", m.Desc().String(), getMetricLabels(m))
+		}
+	}
+}
+
 func TestHAProxyCollector_Name(t *testing.T) {
 	c := &haproxyCollector{subsystem: HAProxySubsystem}
 	if c.Name() != HAProxySubsystem {

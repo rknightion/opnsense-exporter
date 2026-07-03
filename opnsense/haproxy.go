@@ -113,15 +113,28 @@ type HAProxyStats struct {
 	HasInfo   bool
 }
 
+// haproxyResponses builds the hrsp_* response-code map, including only the codes
+// whose CSV cell is actually present. HAProxy leaves these cells empty ("") for
+// tcp-mode proxies (SMTP/DB/TLS-passthrough) because the stat is not applicable —
+// which safeParseFloat would otherwise collapse to a fabricated 0, indistinguishable
+// from a genuine "0" (zero HTTP responses served). A present "0" is kept as a real
+// zero; an empty cell is omitted entirely so no series is emitted (#164).
 func haproxyResponses(row haproxyStatRow) map[string]float64 {
-	return map[string]float64{
-		"1xx":   safeParseFloat(row.Hrsp1xx),
-		"2xx":   safeParseFloat(row.Hrsp2xx),
-		"3xx":   safeParseFloat(row.Hrsp3xx),
-		"4xx":   safeParseFloat(row.Hrsp4xx),
-		"5xx":   safeParseFloat(row.Hrsp5xx),
-		"other": safeParseFloat(row.HrspOther),
+	m := make(map[string]float64, 6)
+	for code, cell := range map[string]string{
+		"1xx":   row.Hrsp1xx,
+		"2xx":   row.Hrsp2xx,
+		"3xx":   row.Hrsp3xx,
+		"4xx":   row.Hrsp4xx,
+		"5xx":   row.Hrsp5xx,
+		"other": row.HrspOther,
+	} {
+		if strings.TrimSpace(cell) == "" {
+			continue
+		}
+		m[code] = safeParseFloat(cell)
 	}
+	return m
 }
 
 // haproxyStatusUp maps a HAProxy proxy/server status string to 1 (up/open)

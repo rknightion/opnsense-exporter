@@ -72,6 +72,35 @@ func TestFetchHAProxyStats_Normal(t *testing.T) {
 	}
 }
 
+// TestHAProxyResponses_EmptyVsZero guards #164: HAProxy leaves the hrsp_* cells
+// empty for tcp-mode proxies (stat not applicable), which must be omitted — while
+// a genuine "0" is preserved as a real zero, distinct from "not applicable".
+func TestHAProxyResponses_EmptyVsZero(t *testing.T) {
+	// tcp-mode proxy: all hrsp_* empty → no codes at all.
+	tcp := haproxyResponses(haproxyStatRow{})
+	if len(tcp) != 0 {
+		t.Errorf("tcp-mode (empty hrsp cells) should yield no response codes, got %v", tcp)
+	}
+
+	// http proxy with genuine zeros and real values.
+	http := haproxyResponses(haproxyStatRow{
+		Hrsp1xx: "0", Hrsp2xx: "4800", Hrsp5xx: "20",
+		// 3xx/4xx/other left empty (not applicable for this shape).
+	})
+	if v, ok := http["1xx"]; !ok || v != 0 {
+		t.Errorf(`genuine "0" for 1xx must be preserved as 0, got (%v, present=%v)`, v, ok)
+	}
+	if v, ok := http["2xx"]; !ok || v != 4800 {
+		t.Errorf("2xx should be 4800, got (%v, present=%v)", v, ok)
+	}
+	if _, ok := http["3xx"]; ok {
+		t.Error("empty 3xx cell must be omitted")
+	}
+	if _, ok := http["4xx"]; ok {
+		t.Error("empty 4xx cell must be omitted")
+	}
+}
+
 func TestFetchHAProxyStats_PluginAbsent404(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
