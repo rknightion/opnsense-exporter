@@ -15,10 +15,12 @@ type ipsecSearchResponse struct {
 		IkeId       string `json:"ikeid"`
 		Name        string `json:"name"`
 		InstallTime string `json:"install-time"`
-		BytesIn     int    `json:"bytes-in"`
-		BytesOut    int    `json:"bytes-out"`
-		PacketsIn   int    `json:"packets-in"`
-		PacketsOut  int    `json:"packets-out"`
+		// int64 so large byte/packet counters (>2^31) unmarshal correctly on
+		// 32-bit source builds instead of failing the whole fetch (#103).
+		BytesIn    int64 `json:"bytes-in"`
+		BytesOut   int64 `json:"bytes-out"`
+		PacketsIn  int64 `json:"packets-in"`
+		PacketsOut int64 `json:"packets-out"`
 	} `json:"rows"`
 	RowCount int `json:"rowCount"`
 	Total    int `json:"total"`
@@ -31,10 +33,11 @@ type ipsecPhase2 struct {
 	InstallTime int
 	RekeyTime   int
 	LifeTime    int
-	BytesIn     int
-	BytesOut    int
-	PacketsIn   int
-	PacketsOut  int
+	// int64 so large byte/packet counters (>2^31) survive on 32-bit builds (#103).
+	BytesIn    int64
+	BytesOut   int64
+	PacketsIn  int64
+	PacketsOut int64
 }
 
 type ipsecPhase2SearchResponse struct {
@@ -57,11 +60,12 @@ type IPsec struct {
 	IkeId       string
 	Name        string
 	InstallTime int
-	BytesIn     int
-	BytesOut    int
-	PacketsIn   int
-	PacketsOut  int
-	Phase2      []ipsecPhase2
+	// int64 so large byte/packet counters (>2^31) survive on 32-bit builds (#103).
+	BytesIn    int64
+	BytesOut   int64
+	PacketsIn  int64
+	PacketsOut int64
+	Phase2     []ipsecPhase2
 }
 
 type IPsecPhase1 struct {
@@ -140,22 +144,12 @@ func (c *Client) FetchIPsecPhase1() (IPsecPhase1, *APICallError) {
 				if err != nil {
 					lifeTime = 0
 				}
-				bytesIn, err := strconv.Atoi(v2.BytesIn)
-				if err != nil {
-					bytesIn = 0
-				}
-				bytesOut, err := strconv.Atoi(v2.BytesOut)
-				if err != nil {
-					bytesOut = 0
-				}
-				packetsIn, err := strconv.Atoi(v2.PacketsIn)
-				if err != nil {
-					packetsIn = 0
-				}
-				packetsOut, err := strconv.Atoi(v2.PacketsOut)
-				if err != nil {
-					packetsOut = 0
-				}
+				// safeAtoi (int64) so large byte/packet counters are preserved
+				// rather than silently zeroed via int overflow on 32-bit (#103).
+				bytesIn := safeAtoi(v2.BytesIn)
+				bytesOut := safeAtoi(v2.BytesOut)
+				packetsIn := safeAtoi(v2.PacketsIn)
+				packetsOut := safeAtoi(v2.PacketsOut)
 				phase2Rows = append(phase2Rows, ipsecPhase2{
 					Phase2desc:  v2.Phase2desc,
 					Name:        v2.Name,

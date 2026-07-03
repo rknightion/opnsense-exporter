@@ -10,11 +10,13 @@ type firewallRuleStatsResponse struct {
 }
 
 type firewallRuleStat struct {
-	PfRules     int `json:"pf_rules"`
-	Evaluations int `json:"evaluations"`
-	Packets     int `json:"packets"`
-	Bytes       int `json:"bytes"`
-	States      int `json:"states"`
+	// int64 so large evaluation/packet/byte counters (>2^31) unmarshal correctly
+	// on 32-bit source builds instead of failing the whole fetch (#103).
+	PfRules     int64 `json:"pf_rules"`
+	Evaluations int64 `json:"evaluations"`
+	Packets     int64 `json:"packets"`
+	Bytes       int64 `json:"bytes"`
+	States      int64 `json:"states"`
 }
 
 type firewallRuleSearchResponse struct {
@@ -41,11 +43,11 @@ type FirewallRuleStats struct {
 	Action      string
 	Interface   string
 	Direction   string
-	PfRules     int
-	Evaluations int
-	Packets     int
-	Bytes       int
-	States      int
+	PfRules     int64
+	Evaluations int64
+	Packets     int64
+	Bytes       int64
+	States      int64
 }
 
 type FirewallRulesData struct {

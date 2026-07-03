@@ -192,7 +192,7 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 	}
 
 	for _, v := range data.Interfaces {
-		metricsValueMapping := map[*prometheus.Desc]int{
+		metricsValueMapping := map[*prometheus.Desc]int64{
 			c.inIPv4PassPackets:   v.In4PassPackets,
 			c.outIPv4PassPackets:  v.Out4PassPackets,
 			c.inIPv4BlockPackets:  v.In4BlockPackets,

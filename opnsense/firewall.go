@@ -4,25 +4,27 @@ type FirewallPFStat struct {
 	InterfaceName string `json:"interface,omitempty"` // We will populate this field with the key of the map
 	References    int    `json:"references"`
 
-	In4PassPackets   int `json:"in4_pass_packets"`
-	In4BlockPackets  int `json:"in4_block_packets"`
-	Out4PassPackets  int `json:"out4_pass_packets"`
-	Out4BlockPackets int `json:"out4_block_packets"`
+	// int64 so large byte/packet counters (>2^31) unmarshal correctly on 32-bit
+	// source builds instead of failing the whole fetch (#103).
+	In4PassPackets   int64 `json:"in4_pass_packets"`
+	In4BlockPackets  int64 `json:"in4_block_packets"`
+	Out4PassPackets  int64 `json:"out4_pass_packets"`
+	Out4BlockPackets int64 `json:"out4_block_packets"`
 
-	In6PassPackets   int `json:"in6_pass_packets"`
-	In6BlockPackets  int `json:"in6_block_packets"`
-	Out6PassPackets  int `json:"out6_pass_packets"`
-	Out6BlockPackets int `json:"out6_block_packets"`
+	In6PassPackets   int64 `json:"in6_pass_packets"`
+	In6BlockPackets  int64 `json:"in6_block_packets"`
+	Out6PassPackets  int64 `json:"out6_pass_packets"`
+	Out6BlockPackets int64 `json:"out6_block_packets"`
 
-	In4PassBytes   int `json:"in4_pass_bytes"`
-	In4BlockBytes  int `json:"in4_block_bytes"`
-	Out4PassBytes  int `json:"out4_pass_bytes"`
-	Out4BlockBytes int `json:"out4_block_bytes"`
+	In4PassBytes   int64 `json:"in4_pass_bytes"`
+	In4BlockBytes  int64 `json:"in4_block_bytes"`
+	Out4PassBytes  int64 `json:"out4_pass_bytes"`
+	Out4BlockBytes int64 `json:"out4_block_bytes"`
 
-	In6PassBytes   int `json:"in6_pass_bytes"`
-	In6BlockBytes  int `json:"in6_block_bytes"`
-	Out6PassBytes  int `json:"out6_pass_bytes"`
-	Out6BlockBytes int `json:"out6_block_bytes"`
+	In6PassBytes   int64 `json:"in6_pass_bytes"`
+	In6BlockBytes  int64 `json:"in6_block_bytes"`
+	Out6PassBytes  int64 `json:"out6_pass_bytes"`
+	Out6BlockBytes int64 `json:"out6_block_bytes"`
 }
 
 // firewallPFStatsResponse is the struct returned by the OPNsense API

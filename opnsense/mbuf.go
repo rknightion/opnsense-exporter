@@ -1,30 +1,30 @@
 package opnsense
 
 type mbufStatisticsData struct {
-	MbufCurrent    int `json:"mbuf-current"`
-	MbufCache      int `json:"mbuf-cache"`
-	MbufTotal      int `json:"mbuf-total"`
-	MbufMax        int `json:"mbuf-max"`
-	ClusterCurrent int `json:"cluster-current"`
-	ClusterCache   int `json:"cluster-cache"`
-	ClusterTotal   int `json:"cluster-total"`
-	ClusterMax     int `json:"cluster-max"`
-	MbufFails      int `json:"mbuf-failures"`
-	ClusterFails   int `json:"cluster-failures"`
-	PacketFails    int `json:"packet-failures"`
-	MbufSleeps     int `json:"mbuf-sleeps"`
-	ClusterSleeps  int `json:"cluster-sleeps"`
-	PacketSleeps   int `json:"packet-sleeps"`
-	JumbopCurrent  int `json:"jumbop-current"`
-	JumbopCache    int `json:"jumbop-cache"`
-	JumbopTotal    int `json:"jumbop-total"`
-	JumbopMax      int `json:"jumbop-max"`
-	JumbopFails    int `json:"jumbop-failures"`
-	JumbopSleeps   int `json:"jumbop-sleeps"`
-	BytesInUse     int `json:"bytes-in-use"`
-	BytesTotal     int `json:"bytes-total"`
-	BytesPercent   int `json:"percentage"`
-	MbufAndCluster int `json:"mbuf-and-cluster"`
+	MbufCurrent    int   `json:"mbuf-current"`
+	MbufCache      int   `json:"mbuf-cache"`
+	MbufTotal      int   `json:"mbuf-total"`
+	MbufMax        int   `json:"mbuf-max"`
+	ClusterCurrent int   `json:"cluster-current"`
+	ClusterCache   int   `json:"cluster-cache"`
+	ClusterTotal   int   `json:"cluster-total"`
+	ClusterMax     int   `json:"cluster-max"`
+	MbufFails      int   `json:"mbuf-failures"`
+	ClusterFails   int   `json:"cluster-failures"`
+	PacketFails    int   `json:"packet-failures"`
+	MbufSleeps     int   `json:"mbuf-sleeps"`
+	ClusterSleeps  int   `json:"cluster-sleeps"`
+	PacketSleeps   int   `json:"packet-sleeps"`
+	JumbopCurrent  int   `json:"jumbop-current"`
+	JumbopCache    int   `json:"jumbop-cache"`
+	JumbopTotal    int   `json:"jumbop-total"`
+	JumbopMax      int   `json:"jumbop-max"`
+	JumbopFails    int   `json:"jumbop-failures"`
+	JumbopSleeps   int   `json:"jumbop-sleeps"`
+	BytesInUse     int64 `json:"bytes-in-use"`
+	BytesTotal     int64 `json:"bytes-total"`
+	BytesPercent   int   `json:"percentage"`
+	MbufAndCluster int   `json:"mbuf-and-cluster"`
 }
 
 type mbufResponse struct {
@@ -46,15 +46,16 @@ type memoryStatisticsResponse struct {
 }
 
 type MbufStatistics struct {
-	MbufCurrent       int
-	MbufCache         int
-	MbufTotal         int
-	ClusterCurrent    int
-	ClusterCache      int
-	ClusterTotal      int
-	ClusterMax        int
-	BytesInUse        int
-	BytesTotal        int
+	MbufCurrent    int
+	MbufCache      int
+	MbufTotal      int
+	ClusterCurrent int
+	ClusterCache   int
+	ClusterTotal   int
+	ClusterMax     int
+	// int64: byte totals ×1024 can exceed 2^31 on large-memory boxes (#103).
+	BytesInUse        int64
+	BytesTotal        int64
 	FailuresByType    map[string]int
 	SleepsByType      map[string]int
 	SendfileSyscalls  int

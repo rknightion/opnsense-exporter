@@ -2,16 +2,18 @@ package opnsense
 
 import "encoding/json"
 
-// numToInt converts a json.Number counter to int.
+// numToInt converts a json.Number counter to int64.
 // If the value cannot be represented as int64 (e.g. scientific notation like
 // 1.8446744073709552e+19 returned for max-uint64 counters), it returns 0 so
 // a single out-of-range field does not cause the entire scrape to fail.
-func numToInt(n json.Number) int {
+// int64 (not int) so large counters (>2^31) are not narrowed into negative
+// garbage on 32-bit source builds (#103).
+func numToInt(n json.Number) int64 {
 	i, err := n.Int64()
 	if err != nil {
 		return 0
 	}
-	return int(i)
+	return i
 }
 
 type protocolStatisticsResponse struct {
@@ -263,74 +265,77 @@ type protocolStatisticsResponse struct {
 	} `json:"statistics"`
 }
 
+// ProtocolStatistics counters are int64 (and map[string]int64) so large byte/
+// packet totals (>2^31) are not narrowed into negative garbage on 32-bit source
+// builds (#103).
 type ProtocolStatistics struct {
-	TCPSentPackets            int
-	TCPReceivedPackets        int
-	ARPSentRequests           int
-	ARPReceivedRequests       int
-	TCPConnectionCountByState map[string]int
-	ICMPCalls                 int
-	ICMPSentPackets           int
-	ICMPDroppedByReason       map[string]int
-	UDPDeliveredPackets       int
-	UDPOutputPackets          int
-	UDPReceivedDatagrams      int
-	UDPDroppedByReason        map[string]int
+	TCPSentPackets            int64
+	TCPReceivedPackets        int64
+	ARPSentRequests           int64
+	ARPReceivedRequests       int64
+	TCPConnectionCountByState map[string]int64
+	ICMPCalls                 int64
+	ICMPSentPackets           int64
+	ICMPDroppedByReason       map[string]int64
+	UDPDeliveredPackets       int64
+	UDPOutputPackets          int64
+	UDPReceivedDatagrams      int64
+	UDPDroppedByReason        map[string]int64
 
 	// CARP
-	CARPReceivedInet    int
-	CARPReceivedInet6   int
-	CARPSentInet        int
-	CARPSentInet6       int
-	CARPDroppedByReason map[string]int
+	CARPReceivedInet    int64
+	CARPReceivedInet6   int64
+	CARPSentInet        int64
+	CARPSentInet6       int64
+	CARPDroppedByReason map[string]int64
 
 	// Pfsync
-	PfsyncReceivedInet    int
-	PfsyncReceivedInet6   int
-	PfsyncSentInet        int
-	PfsyncSentInet6       int
-	PfsyncDroppedByReason map[string]int
-	PfsyncSendErrors      int
+	PfsyncReceivedInet    int64
+	PfsyncReceivedInet6   int64
+	PfsyncSentInet        int64
+	PfsyncSentInet6       int64
+	PfsyncDroppedByReason map[string]int64
+	PfsyncSendErrors      int64
 
 	// IP
-	IPReceivedPackets      int
-	IPForwardedPackets     int
-	IPFastForwardedPackets int
-	IPSentPackets          int
-	IPDroppedByReason      map[string]int
-	IPReceivedFragments    int
-	IPReassembledPackets   int
-	IPSentFragments        int
+	IPReceivedPackets      int64
+	IPForwardedPackets     int64
+	IPFastForwardedPackets int64
+	IPSentPackets          int64
+	IPDroppedByReason      map[string]int64
+	IPReceivedFragments    int64
+	IPReassembledPackets   int64
+	IPSentFragments        int64
 
 	// Detailed TCP
-	TCPRetransmitTimeouts            int
-	TCPConnectionRequests            int
-	TCPConnectionAccepts             int
-	TCPConnectionsEstablished        int
-	TCPConnectionsClosed             int
-	TCPConnectionDrops               int
-	TCPKeepaliveTimeouts             int
-	TCPKeepaliveProbes               int
-	TCPConnectionsDroppedByKeepalive int
-	TCPListenQueueOverflows          int
-	TCPSyncacheEntriesAdded          int
-	TCPSyncacheDropped               int
-	TCPSentDataBytes                 int
-	TCPRetransmittedPackets          int
-	TCPRetransmittedBytes            int
-	TCPReceivedInSequenceBytes       int
-	TCPReceivedDuplicateBytes        int
-	TCPSegmentsUpdatedRtt            int
-	TCPBadConnectionAttempts         int
+	TCPRetransmitTimeouts            int64
+	TCPConnectionRequests            int64
+	TCPConnectionAccepts             int64
+	TCPConnectionsEstablished        int64
+	TCPConnectionsClosed             int64
+	TCPConnectionDrops               int64
+	TCPKeepaliveTimeouts             int64
+	TCPKeepaliveProbes               int64
+	TCPConnectionsDroppedByKeepalive int64
+	TCPListenQueueOverflows          int64
+	TCPSyncacheEntriesAdded          int64
+	TCPSyncacheDropped               int64
+	TCPSentDataBytes                 int64
+	TCPRetransmittedPackets          int64
+	TCPRetransmittedBytes            int64
+	TCPReceivedInSequenceBytes       int64
+	TCPReceivedDuplicateBytes        int64
+	TCPSegmentsUpdatedRtt            int64
+	TCPBadConnectionAttempts         int64
 
 	// ARP detailed
-	ARPSentFailures            int
-	ARPSentReplies             int
-	ARPReceivedReplies         int
-	ARPReceivedPackets         int
-	ARPDroppedNoEntry          int
-	ARPEntriesTimeout          int
-	ARPDroppedDuplicateAddress int
+	ARPSentFailures            int64
+	ARPSentReplies             int64
+	ARPReceivedReplies         int64
+	ARPReceivedPackets         int64
+	ARPDroppedNoEntry          int64
+	ARPEntriesTimeout          int64
+	ARPDroppedDuplicateAddress int64
 }
 
 func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
@@ -352,7 +357,7 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		TCPReceivedPackets:  numToInt(resp.Statistics.TCP.ReceivedPackets),
 		ARPSentRequests:     numToInt(resp.Statistics.Arp.SentRequests),
 		ARPReceivedRequests: numToInt(resp.Statistics.Arp.ReceivedRequests),
-		TCPConnectionCountByState: map[string]int{
+		TCPConnectionCountByState: map[string]int64{
 			"CLOSED":      numToInt(resp.Statistics.TCP.TCPConnectionCountByState.Closed),
 			"LISTEN":      numToInt(resp.Statistics.TCP.TCPConnectionCountByState.Listen),
 			"SYN_SENT":    numToInt(resp.Statistics.TCP.TCPConnectionCountByState.SynSent),
@@ -367,7 +372,7 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		},
 		ICMPCalls:       numToInt(resp.Statistics.Icmp.IcmpCalls),
 		ICMPSentPackets: numToInt(resp.Statistics.Icmp.SentPackets),
-		ICMPDroppedByReason: map[string]int{
+		ICMPDroppedByReason: map[string]int64{
 			"BAD_CODE":            numToInt(resp.Statistics.Icmp.DroppedBadCode),
 			"TOO_SHORT":           numToInt(resp.Statistics.Icmp.DroppedTooShort),
 			"BAD_CHECKSUM":        numToInt(resp.Statistics.Icmp.DroppedBadChecksum),
@@ -378,7 +383,7 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		UDPDeliveredPackets:  numToInt(resp.Statistics.UDP.DeliveredPackets),
 		UDPOutputPackets:     numToInt(resp.Statistics.UDP.OutputPackets),
 		UDPReceivedDatagrams: numToInt(resp.Statistics.UDP.ReceivedDatagrams),
-		UDPDroppedByReason: map[string]int{
+		UDPDroppedByReason: map[string]int64{
 			"INCOMPLETE_HEADERS":  numToInt(resp.Statistics.UDP.DroppedIncompleteHeaders),
 			"BAD_DATA_LENGTH":     numToInt(resp.Statistics.UDP.DroppedBadDataLength),
 			"BAD_CHECKSUM":        numToInt(resp.Statistics.UDP.DroppedBadChecksum),
@@ -393,7 +398,7 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		CARPReceivedInet6: numToInt(resp.Statistics.Carp.ReceivedInet6Packets),
 		CARPSentInet:      numToInt(resp.Statistics.Carp.SentInetPackets),
 		CARPSentInet6:     numToInt(resp.Statistics.Carp.SentInet6Packets),
-		CARPDroppedByReason: map[string]int{
+		CARPDroppedByReason: map[string]int64{
 			"WRONG_TTL":        numToInt(resp.Statistics.Carp.DroppedWrongTTL),
 			"SHORT_HEADER":     numToInt(resp.Statistics.Carp.DroppedShortHeader),
 			"BAD_CHECKSUM":     numToInt(resp.Statistics.Carp.DroppedBadChecksum),
@@ -409,7 +414,7 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		PfsyncReceivedInet6: numToInt(resp.Statistics.Pfsync.ReceivedInet6Packets),
 		PfsyncSentInet:      numToInt(resp.Statistics.Pfsync.SentInetPackets),
 		PfsyncSentInet6:     numToInt(resp.Statistics.Pfsync.SendInet6Packets),
-		PfsyncDroppedByReason: map[string]int{
+		PfsyncDroppedByReason: map[string]int64{
 			"BAD_INTERFACE": numToInt(resp.Statistics.Pfsync.DroppedBadInterface),
 			"BAD_TTL":       numToInt(resp.Statistics.Pfsync.DroppedBadTTL),
 			"SHORT_HEADER":  numToInt(resp.Statistics.Pfsync.DroppedShortHeader),
@@ -428,7 +433,7 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		IPForwardedPackets:     numToInt(resp.Statistics.IP.ForwardedPackets),
 		IPFastForwardedPackets: numToInt(resp.Statistics.IP.FastForwardedPackets),
 		IPSentPackets:          numToInt(resp.Statistics.IP.SentPackets),
-		IPDroppedByReason: map[string]int{
+		IPDroppedByReason: map[string]int64{
 			"BAD_CHECKSUM":        numToInt(resp.Statistics.IP.DroppedBadChecksum),
 			"BELOW_MINIMUM_SIZE":  numToInt(resp.Statistics.IP.DroppedBelowMinimumSize),
 			"SHORT_PACKETS":       numToInt(resp.Statistics.IP.DroppedShortPackets),
