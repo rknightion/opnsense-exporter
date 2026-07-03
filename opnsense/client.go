@@ -23,9 +23,13 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
-// MaxRetries is the maximum number of retries
-// when a request to the OPNsense API fails
+// MaxRetries is the default maximum number of attempts for a failed request to the
+// OPNsense API, used when OPNSenseConfig.MaxRetries is not set (#140).
 const MaxRetries = 3
+
+// defaultClientTimeout is the default per-request HTTP timeout, used when
+// OPNSenseConfig.Timeout is not set (#140).
+const defaultClientTimeout = 15 * time.Second
 
 // baseRetryDelay is the first backoff interval; subsequent retries grow it
 // exponentially (100ms, 200ms, 400ms, ...) with jitter, instead of a fixed 25ms, so a
@@ -215,6 +219,7 @@ type Client struct {
 	key              string
 	secret           string
 	sslInsecure      bool
+	maxRetries       int
 	// reqCtx, when set via WithContext, bounds every request issued by this
 	// client (scrape deadline / cancellation). Storing a context in a struct is
 	// deliberate here: the clone is request-scoped, mirroring the
@@ -244,6 +249,15 @@ func (c *Client) SetRequestObserver(o RequestObserver) {
 
 // NewClient creates a new OPNsense API Client
 func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Logger) (Client, error) {
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = defaultClientTimeout
+	}
+	maxRetries := cfg.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = MaxRetries
+	}
+
 	sslPool, err := x509.SystemCertPool()
 	if err != nil {
 		return Client{}, errors.Join(fmt.Errorf("failed to load system cert pool"), err)
@@ -275,8 +289,9 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 			"Accept-Encoding": "gzip",
 		},
 		sslInsecure: cfg.Insecure,
+		maxRetries:  maxRetries,
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: timeout,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					MinVersion:         tls.VersionTLS12,
@@ -381,7 +396,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 	// cause (transport error text or retryable HTTP status) so an exhausted-retries
 	// failure surfaces WHY (DNS / refused / timeout / 503) instead of a generic string.
 	lastErr := "unknown error"
-	for attempt := 1; attempt <= MaxRetries; attempt++ {
+	for attempt := 1; attempt <= c.maxRetries; attempt++ {
 		if attempt > 1 {
 			// Jittered exponential backoff (full jitter over [base/2, base]), honouring
 			// context cancellation so a cancelled scrape doesn't sleep pointlessly.
@@ -443,7 +458,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 
 		// Retry idempotent GETs on transient gateway errors (e.g. a brief lighttpd/
 		// configd restart during a firmware check), which previously failed outright.
-		if retryableStatus(method, resp.StatusCode) && attempt < MaxRetries {
+		if retryableStatus(method, resp.StatusCode) && attempt < c.maxRetries {
 			lastErr = fmt.Sprintf("HTTP %d", resp.StatusCode)
 			resp.Body.Close()
 			c.log.Warn("retryable server error; will retry",
@@ -458,7 +473,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 	}
 	return &APICallError{
 		Endpoint:   string(path),
-		Message:    fmt.Sprintf("max retries of %d times reached: %s", MaxRetries, lastErr),
+		Message:    fmt.Sprintf("max retries of %d times reached: %s", c.maxRetries, lastErr),
 		StatusCode: 0,
 	}
 }

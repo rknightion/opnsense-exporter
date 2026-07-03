@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-// readyProbeTimeout bounds a single upstream readiness probe so a hung
-// OPNsense API (the client retries up to 3 attempts with a 15s HTTP timeout
-// each) cannot pin a probe request for ~45s.
+// readyProbeTimeout bounds a single upstream readiness probe independently of the API
+// client's own retry budget (--opnsense.max-retries × --opnsense.timeout, 3 × 15s = 45s
+// by default), so a hung OPNsense API cannot pin a probe request for the full client
+// worst-case. This fixed bound is deliberately decoupled from the client config.
 const readyProbeTimeout = 5 * time.Second
 
 // Healthy returns the liveness handler: it answers 200 as soon as the HTTP

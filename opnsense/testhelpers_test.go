@@ -28,7 +28,8 @@ func newTestClientWithServer(t *testing.T, handler http.HandlerFunc) (*httptest.
 			"User-Agent":      "prometheus-opnsense-exporter/test",
 			"Accept-Encoding": "gzip",
 		},
-		endpoints: testEndpoints(),
+		endpoints:  testEndpoints(),
+		maxRetries: MaxRetries,
 	}
 
 	return server, client
@@ -54,7 +55,8 @@ func newTestClientWithMux(t *testing.T) (*httptest.Server, *http.ServeMux, *Clie
 			"User-Agent":      "prometheus-opnsense-exporter/test",
 			"Accept-Encoding": "gzip",
 		},
-		endpoints: testEndpoints(),
+		endpoints:  testEndpoints(),
+		maxRetries: MaxRetries,
 	}
 
 	return server, mux, client

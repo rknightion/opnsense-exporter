@@ -22,7 +22,9 @@ These settings control how the exporter connects to the OPNsense API.
 | `--opnsense.api-key` | `OPNSENSE_EXPORTER_OPS_API_KEY` | -- | API key to use to connect to OPNsense API. This flag/ENV or the OPS_API_KEY_FILE may be set. |
 | `--opnsense.api-secret` | `OPNSENSE_EXPORTER_OPS_API_SECRET` | -- | API secret to use to connect to OPNsense API. This flag/ENV or the OPS_API_SECRET_FILE may be set. |
 | `--opnsense.insecure` | `OPNSENSE_EXPORTER_OPS_INSECURE` | `false` | Disable TLS certificate verification |
+| `--opnsense.max-retries` | `OPNSENSE_EXPORTER_OPS_MAX_RETRIES` | `3` | Number of attempts for a failed OPNsense API request (transport errors / retryable 5xx). Worst-case block time is --opnsense.timeout x this value. |
 | `--opnsense.protocol` | `OPNSENSE_EXPORTER_OPS_PROTOCOL` | -- | **Required.** Protocol to use to connect to OPNsense API. One of: [http, https] |
+| `--opnsense.timeout` | `OPNSENSE_EXPORTER_OPS_TIMEOUT` | `15s` | Per-request HTTP timeout for calls to the OPNsense API. Combined with --opnsense.max-retries this bounds the worst-case time a collector blocks on a slow endpoint (timeout x retries). Keep the product comfortably under Prometheus' scrape_timeout. |
 <!-- docgen:end:flags-connection -->
 
 !!! note
@@ -338,7 +340,9 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--opnsense.api-key` | `OPNSENSE_EXPORTER_OPS_API_KEY` | -- | API key to use to connect to OPNsense API. This flag/ENV or the OPS_API_KEY_FILE may be set. |
 | `--opnsense.api-secret` | `OPNSENSE_EXPORTER_OPS_API_SECRET` | -- | API secret to use to connect to OPNsense API. This flag/ENV or the OPS_API_SECRET_FILE may be set. |
 | `--opnsense.insecure` | `OPNSENSE_EXPORTER_OPS_INSECURE` | `false` | Disable TLS certificate verification |
+| `--opnsense.max-retries` | `OPNSENSE_EXPORTER_OPS_MAX_RETRIES` | `3` | Number of attempts for a failed OPNsense API request (transport errors / retryable 5xx). Worst-case block time is --opnsense.timeout x this value. |
 | `--opnsense.protocol` | `OPNSENSE_EXPORTER_OPS_PROTOCOL` | -- | **Required.** Protocol to use to connect to OPNsense API. One of: [http, https] |
+| `--opnsense.timeout` | `OPNSENSE_EXPORTER_OPS_TIMEOUT` | `15s` | Per-request HTTP timeout for calls to the OPNsense API. Combined with --opnsense.max-retries this bounds the worst-case time a collector blocks on a slow endpoint (timeout x retries). Keep the product comfortably under Prometheus' scrape_timeout. |
 | `--otlp.enabled` | `OPNSENSE_EXPORTER_OTLP_ENABLED` | `false` | Enable pushing metrics to an OTLP endpoint (in addition to the /metrics pull endpoint). Off by default. |
 | `--otlp.endpoint` | `OPNSENSE_EXPORTER_OTLP_ENDPOINT` | -- | OTLP endpoint URL. When empty, the standard OTEL_EXPORTER_OTLP_ENDPOINT env var is used. |
 | `--otlp.export-interval` | `OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL` | `60s` | Interval between OTLP metric exports (independent of Prometheus scrapes). |

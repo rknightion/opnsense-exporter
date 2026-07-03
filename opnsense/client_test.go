@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -42,6 +43,55 @@ func TestNewClient_InsecureWarns(t *testing.T) {
 				t.Errorf("warn emitted=%v, want %v; log=%q", got, tc.wantWarn, buf.String())
 			}
 		})
+	}
+}
+
+// TestNewClient_ConfigurableTimeout covers #140: the HTTP client timeout is taken from
+// OPNSenseConfig.Timeout, defaulting to 15s to preserve existing behaviour.
+func TestNewClient_ConfigurableTimeout(t *testing.T) {
+	base := options.OPNSenseConfig{Protocol: "http", Host: "h", APIKey: "k", APISecret: "s"}
+
+	def, err := NewClient(base, "t", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if def.httpClient.Timeout != defaultClientTimeout {
+		t.Errorf("default timeout = %v, want %v", def.httpClient.Timeout, defaultClientTimeout)
+	}
+
+	base.Timeout = 7 * time.Second
+	custom, err := NewClient(base, "t", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if custom.httpClient.Timeout != 7*time.Second {
+		t.Errorf("configured timeout = %v, want 7s", custom.httpClient.Timeout)
+	}
+}
+
+// TestNewClient_ConfigurableMaxRetries covers #140: the retry count comes from
+// OPNSenseConfig.MaxRetries (default 3), so a GET against a persistent 503 with
+// MaxRetries=1 hits the server exactly once.
+func TestNewClient_ConfigurableMaxRetries(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	cfg := options.OPNSenseConfig{
+		Protocol: "http", Host: strings.TrimPrefix(server.URL, "http://"),
+		APIKey: "k", APISecret: "s", MaxRetries: 1,
+	}
+	client, err := NewClient(cfg, "t", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	var out map[string]any
+	_ = client.do("GET", "api/test/x", nil, &out)
+	if got := hits.Load(); got != 1 {
+		t.Errorf("with MaxRetries=1, server hit %d times, want 1", got)
 	}
 }
 

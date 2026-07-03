@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/kingpin/v2"
 )
@@ -30,6 +31,14 @@ var (
 		"opnsense.insecure",
 		"Disable TLS certificate verification",
 	).Envar("OPNSENSE_EXPORTER_OPS_INSECURE").Default("false").Bool()
+	opnsenseTimeout = kingpin.Flag(
+		"opnsense.timeout",
+		"Per-request HTTP timeout for calls to the OPNsense API. Combined with --opnsense.max-retries this bounds the worst-case time a collector blocks on a slow endpoint (timeout x retries). Keep the product comfortably under Prometheus' scrape_timeout.",
+	).Envar("OPNSENSE_EXPORTER_OPS_TIMEOUT").Default("15s").Duration()
+	opnsenseMaxRetries = kingpin.Flag(
+		"opnsense.max-retries",
+		"Number of attempts for a failed OPNsense API request (transport errors / retryable 5xx). Worst-case block time is --opnsense.timeout x this value.",
+	).Envar("OPNSENSE_EXPORTER_OPS_MAX_RETRIES").Default("3").Int()
 )
 
 // ReadFirstLine opens a file and reads its first line.
@@ -73,6 +82,11 @@ type OPNSenseConfig struct {
 	APIKey    string
 	APISecret string
 	Insecure  bool
+	// Timeout is the per-request HTTP timeout; zero means the client default (15s).
+	Timeout time.Duration
+	// MaxRetries is the attempt count for a failed request; <=0 means the client
+	// default (3).
+	MaxRetries int
 }
 
 // Validate checks if the configuration is valid.
@@ -103,11 +117,13 @@ func OPNSense() (*OPNSenseConfig, error) {
 		return nil, err
 	}
 	conf := &OPNSenseConfig{
-		Protocol:  strings.TrimSpace(*opnsenseProtocol),
-		Host:      strings.TrimSpace(*opnsenseAPI),
-		APIKey:    apiKey,
-		APISecret: apiSecret,
-		Insecure:  *opnsenseInsecure,
+		Protocol:   strings.TrimSpace(*opnsenseProtocol),
+		Host:       strings.TrimSpace(*opnsenseAPI),
+		APIKey:     apiKey,
+		APISecret:  apiSecret,
+		Insecure:   *opnsenseInsecure,
+		Timeout:    *opnsenseTimeout,
+		MaxRetries: *opnsenseMaxRetries,
 	}
 
 	if err := conf.Validate(); err != nil {
