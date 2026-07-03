@@ -119,6 +119,60 @@ func TestFetchNTPStatus_Success(t *testing.T) {
 	}
 }
 
+// TestFetchNTPStatus_SuffixedWhenPoll guards #89: once an interval exceeds ~2048s
+// ntpq's prettyinterval renders when/poll as unit-suffixed strings ("34m", "12h",
+// "3d"). These must parse to seconds, not silently coerce to 0 (which reads as
+// "responded just now" during the exact outage the metric exists to detect).
+func TestFetchNTPStatus_SuffixedWhenPoll(t *testing.T) {
+	cases := []struct {
+		when string
+		poll string
+		want float64
+	}{
+		{"34m", "34m", 2040},
+		{"12h", "12h", 43200},
+		{"3d", "3d", 259200},
+	}
+	for _, tc := range cases {
+		t.Run(tc.when, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"rows":[{"status":"*","server":"s","refid":".GPS.","stratum":"1","type":"u","when":"` + tc.when + `","poll":"` + tc.poll + `","reach":"377","delay":"1","offset":"0","jitter":"0"}]}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchNTPStatus()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			p := data.Peers[0]
+			if p.WhenSeconds != tc.want || !p.WhenValid {
+				t.Errorf("when %q: got (%v, valid=%v), want (%v, true)", tc.when, p.WhenSeconds, p.WhenValid, tc.want)
+			}
+			if p.PollSeconds != tc.want || !p.PollValid {
+				t.Errorf("poll %q: got (%v, valid=%v), want (%v, true)", tc.poll, p.PollSeconds, p.PollValid, tc.want)
+			}
+		})
+	}
+}
+
+// TestFetchNTPStatus_UnknownWhenNotZero guards #89: an unknown when ("-" or
+// garbage) must be flagged invalid, not reported as a real 0 ("responded now").
+func TestFetchNTPStatus_UnknownWhenNotZero(t *testing.T) {
+	for _, when := range []string{"-", "garbage"} {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"rows":[{"status":"*","server":"s","refid":".GPS.","stratum":"1","type":"u","when":"` + when + `","poll":"64","reach":"377","delay":"1","offset":"0","jitter":"0"}]}`))
+		})
+		data, err := client.FetchNTPStatus()
+		server.Close()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data.Peers[0].WhenValid {
+			t.Errorf("when %q: expected WhenValid=false (unknown must be distinguishable from 0), got valid", when)
+		}
+	}
+}
+
 func TestFetchNTPStatus_OctalReachParsing(t *testing.T) {
 	tests := []struct {
 		name     string

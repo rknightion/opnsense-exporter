@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"strconv"
+	"strings"
 )
 
 type ntpPeerRow struct {
@@ -29,11 +30,35 @@ type NTPPeer struct {
 	Type         string
 	Stratum      int64
 	WhenSeconds  float64
+	WhenValid    bool // false when "when" is "-" or otherwise unparseable
 	PollSeconds  float64
+	PollValid    bool // false when "poll" is "-" or otherwise unparseable
 	Reach        int
 	DelayMillis  float64
 	OffsetMillis float64
 	JitterMillis float64
+}
+
+// parseNTPInterval converts an ntpq prettyinterval field (plain seconds below
+// ~2048s, otherwise unit-suffixed "34m"/"12h"/"3d") to seconds. Mirrors
+// chrony.go's parseChronyInterval; ported here because ntpq's when/poll columns
+// suffer the same suffix-vs-plain-seconds ambiguity (#89). Returns ok=false for
+// "-" or any unparseable value so callers can distinguish "unknown" from 0.
+func parseNTPInterval(s string) (float64, bool) {
+	mult := 1.0
+	switch {
+	case strings.HasSuffix(s, "m"):
+		mult, s = 60, strings.TrimSuffix(s, "m")
+	case strings.HasSuffix(s, "h"):
+		mult, s = 3600, strings.TrimSuffix(s, "h")
+	case strings.HasSuffix(s, "d"):
+		mult, s = 86400, strings.TrimSuffix(s, "d")
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v * mult, true
 }
 
 type NTPStatus struct {
@@ -58,10 +83,11 @@ func (c *Client) FetchNTPStatus() (NTPStatus, *APICallError) {
 	}
 
 	for _, row := range resp.Rows {
-		whenSeconds := 0.0
-		if row.When != "-" {
-			whenSeconds = safeParseFloat(row.When)
-		}
+		// ntpq renders when/poll as prettyinterval: plain seconds below ~2048s,
+		// otherwise unit-suffixed ("34m"). Parse suffix-aware and track validity
+		// so a stale/unknown peer never masquerades as "responded 0s ago" (#89).
+		whenSeconds, whenValid := parseNTPInterval(row.When)
+		pollSeconds, pollValid := parseNTPInterval(row.Poll)
 
 		// Reach is an 8-bit NTP shift register rendered as octal (0-377 == 0-255).
 		// Parse with bit size 32 so the value provably fits an int on every
@@ -81,7 +107,9 @@ func (c *Client) FetchNTPStatus() (NTPStatus, *APICallError) {
 			Type:         row.Type,
 			Stratum:      safeAtoi(row.Stratum),
 			WhenSeconds:  whenSeconds,
-			PollSeconds:  safeParseFloat(row.Poll),
+			WhenValid:    whenValid,
+			PollSeconds:  pollSeconds,
+			PollValid:    pollValid,
 			Reach:        reach,
 			DelayMillis:  safeParseFloat(row.Delay),
 			OffsetMillis: safeParseFloat(row.Offset),

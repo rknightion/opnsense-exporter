@@ -132,20 +132,27 @@ func (c *ntpCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			peer.Server,
 			c.instance,
 		)
-		ch <- prometheus.MustNewConstMetric(
-			c.peerWhenSeconds,
-			prometheus.GaugeValue,
-			peer.WhenSeconds,
-			peer.Server,
-			c.instance,
-		)
-		ch <- prometheus.MustNewConstMetric(
-			c.peerPollSeconds,
-			prometheus.GaugeValue,
-			peer.PollSeconds,
-			peer.Server,
-			c.instance,
-		)
+		// Skip when/poll when the source value was unknown ("-") or unparseable,
+		// rather than emitting 0 — which would read as "responded just now" and
+		// invert the staleness signal (#89).
+		if peer.WhenValid {
+			ch <- prometheus.MustNewConstMetric(
+				c.peerWhenSeconds,
+				prometheus.GaugeValue,
+				peer.WhenSeconds,
+				peer.Server,
+				c.instance,
+			)
+		}
+		if peer.PollValid {
+			ch <- prometheus.MustNewConstMetric(
+				c.peerPollSeconds,
+				prometheus.GaugeValue,
+				peer.PollSeconds,
+				peer.Server,
+				c.instance,
+			)
+		}
 		ch <- prometheus.MustNewConstMetric(
 			c.peerReach,
 			prometheus.GaugeValue,

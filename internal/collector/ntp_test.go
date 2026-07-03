@@ -50,8 +50,9 @@ func TestNTPCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 1 peersTotal + 2 peers * 8 metrics each (info, stratum, when, poll, reach, delay, offset, jitter) = 1 + 16 = 17
-	expectedCount := 17
+	// peer 1 (all valid): 8 metrics. peer 2 has when="-" so peer_when_seconds is
+	// skipped (#89): 7 metrics. + 1 peersTotal = 16.
+	expectedCount := 16
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
