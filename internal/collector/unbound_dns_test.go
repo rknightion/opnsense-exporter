@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/common/promslog"
@@ -189,6 +190,37 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 	expectedCount := 72
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+}
+
+// TestUnboundDNSCollector_Update_StatsUnavailable guards #90: when unbound-control
+// is unreachable ({"status":"failed"}), the collector must not emit the ~60 zero
+// stats series. Only the running-state signal should be emitted.
+func TestUnboundDNSCollector_Update_StatsUnavailable(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/unbound/diagnostics/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "failed"}`))
+	})
+	mux.HandleFunc("/api/unbound/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "stopped"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// Only service_running should be emitted; no uptime/cache/counter series.
+	if len(metrics) != 1 {
+		t.Fatalf("expected only 1 metric (service_running) when unbound-control unavailable, got %d", len(metrics))
+	}
+	if !strings.Contains(metrics[0].Desc().String(), "service_running") {
+		t.Errorf("expected the sole metric to be service_running, got %s", metrics[0].Desc().String())
 	}
 }
 

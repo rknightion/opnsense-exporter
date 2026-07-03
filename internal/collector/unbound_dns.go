@@ -263,10 +263,39 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.infraRTO
 }
 
+// emitServiceRunning fetches the unbound service running-state and emits the
+// service_running gauge. Kept separate so it is emitted both on the normal path
+// and when the stats envelope is unavailable (#90).
+func (c *unboundDNSCollector) emitServiceRunning(ch chan<- prometheus.Metric, client *opnsense.Client) {
+	status, sErr := client.FetchServiceStatus("unboundServiceStatus")
+	if sErr != nil {
+		c.log.Warn("failed to fetch service status", "err", sErr)
+		return
+	}
+	val := 0.0
+	if status == "running" {
+		val = 1.0
+	}
+	ch <- prometheus.MustNewConstMetric(
+		c.serviceRunning, prometheus.GaugeValue,
+		val, c.instance,
+	)
+}
+
 func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchUnboundOverview()
 	if err != nil {
 		return err
+	}
+
+	// When unbound-control is unavailable (Unbound stopped/restarting, or disabled
+	// on a dnsmasq-only box) the stats envelope is not "ok". Emit only the
+	// running-state signal and skip the ~60 stats series entirely — emitting them
+	// as zero would look like real zero-traffic and corrupt rate() with phantom
+	// resets (#90).
+	if !data.Present {
+		c.emitServiceRunning(ch, client)
+		return nil
 	}
 
 	// Uptime gauge
@@ -470,19 +499,7 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 		)
 	}
 
-	status, sErr := client.FetchServiceStatus("unboundServiceStatus")
-	if sErr != nil {
-		c.log.Warn("failed to fetch service status", "err", sErr)
-	} else {
-		val := 0.0
-		if status == "running" {
-			val = 1.0
-		}
-		ch <- prometheus.MustNewConstMetric(
-			c.serviceRunning, prometheus.GaugeValue,
-			val, c.instance,
-		)
-	}
+	c.emitServiceRunning(ch, client)
 
 	if c.infraEnabled {
 		infra, ierr := client.FetchUnboundInfra()

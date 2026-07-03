@@ -432,6 +432,25 @@ func TestFetchUnboundOverview_ServerError(t *testing.T) {
 	}
 }
 
+// TestFetchUnboundOverview_StatusFailed guards #90: statsAction() returns HTTP
+// 200 {"status":"failed"} (no data key) when unbound-control is unreachable. That
+// must yield Present=false (no error), not a zero-valued struct that reads as
+// success.
+func TestFetchUnboundOverview_StatusFailed(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "failed"}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error (failed status should not error): %v", err)
+	}
+	if data.Present {
+		t.Error("expected Present=false when unbound-control returns status=failed")
+	}
+}
+
 func TestFetchUnboundBlockListStatus_Success(t *testing.T) {
 	tests := []struct {
 		name     string

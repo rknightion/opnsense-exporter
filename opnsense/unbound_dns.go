@@ -195,6 +195,13 @@ type unboundDNSStatusResponse struct {
 }
 
 type UnboundDNSOverview struct {
+	// Present is false when unbound-control could not be reached: OPNsense's
+	// statsAction() returns HTTP 200 {"status":"failed"} with no data key when
+	// Unbound is stopped/restarting or disabled (e.g. dnsmasq-only boxes). The
+	// collector gates all stats series on this so it never emits ~60 zero-valued
+	// counters that read as real zero-traffic and corrupt rate() (#90).
+	Present bool
+
 	UptimeSeconds float64
 
 	// Query totals (from data.total.num)
@@ -284,6 +291,16 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	if err := c.do("GET", url, nil, &response); err != nil {
 		return data, err
 	}
+
+	// statsAction() returns HTTP 200 {"status":"failed"} (no data key) when
+	// unbound-control is unreachable — Unbound stopped/restarting, or disabled on
+	// a dnsmasq-only box. Treat anything other than "ok" as "no stats this scrape"
+	// (Present stays false) so the collector skips the whole stats set instead of
+	// emitting zeros (#90).
+	if response.Status != "ok" {
+		return data, nil
+	}
+	data.Present = true
 
 	// Uptime — use tolerant helper so empty/invalid values (e.g. during restart) return 0
 	data.UptimeSeconds = safeParseFloat(response.Data.Time.Up)
