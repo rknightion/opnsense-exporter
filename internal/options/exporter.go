@@ -19,9 +19,17 @@ var (
 		"Label to use to identify the instance in every metric. "+
 			"If you have multiple instances of the exporter, you can differentiate them by using "+
 			"different value in this flag, that represents the instance of the target OPNsense. "+
-			"If left empty, it defaults to the OPNsense hostname reported by the API "+
-			"(falling back to the configured OPNsense address if that lookup fails).",
+			"If left empty, it defaults to the configured OPNsense address (deterministic). "+
+			"Set --exporter.instance-use-hostname to derive it from the OPNsense hostname instead.",
 	).Envar("OPNSENSE_EXPORTER_INSTANCE_LABEL").Default("").String()
+	InstanceUseHostname = kingpin.Flag(
+		"exporter.instance-use-hostname",
+		"When --exporter.instance-label is empty, derive the instance label from the OPNsense "+
+			"hostname reported by the API instead of the configured address. This lookup is "+
+			"deterministic: it blocks at startup and, if the hostname cannot be obtained, the "+
+			"exporter refuses to start (rather than silently falling back to the address, which "+
+			"would make the label depend on startup timing and flip between restarts).",
+	).Envar("OPNSENSE_EXPORTER_INSTANCE_USE_HOSTNAME").Default("false").Bool()
 
 	ScrapeTimeoutOffset = kingpin.Flag(
 		"exporter.scrape-timeout-offset",

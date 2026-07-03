@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,11 +25,6 @@ import (
 
 var version = ""
 
-// instanceLabelLookupTimeout bounds the best-effort startup hostname lookup used
-// to derive a default instance label, so an unreachable OPNsense box (which the
-// API client would otherwise retry for up to ~45s) never delays startup.
-const instanceLabelLookupTimeout = 5 * time.Second
-
 // otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
 // export endpoint cannot hang process exit.
 const otlpShutdownTimeout = 10 * time.Second
@@ -38,6 +34,33 @@ const otlpShutdownTimeout = 10 * time.Second
 // roughly one per probe period regardless of how many probers hit the
 // endpoint, while keeping readiness staleness within a single probe cycle.
 const readyCacheTTL = 10 * time.Second
+
+// resolveInstanceLabel deterministically chooses the opnsense_instance label
+// value (baked into every metric, the OTLP resource identity and Pyroscope
+// tags). An explicit --exporter.instance-label always wins. Otherwise the
+// configured address is used — unless useHostname is set, in which case the
+// OPNsense hostname is looked up and, if unavailable, startup fails rather than
+// silently falling back to the address (which would make the label depend on
+// startup timing and differ across restarts). See #75.
+func resolveInstanceLabel(explicit, addr string, useHostname bool, lookup func() (string, error), logger *slog.Logger) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	if !useHostname {
+		logger.Info("instance label not set; using configured OPNsense address", "instance", addr)
+		return addr, nil
+	}
+	hostname, err := lookup()
+	if err != nil {
+		return "", fmt.Errorf("hostname lookup failed (set --exporter.instance-label explicitly, "+
+			"or unset --exporter.instance-use-hostname to use the configured address %q): %w", addr, err)
+	}
+	if hostname == "" {
+		return "", fmt.Errorf("OPNsense reported an empty hostname (set --exporter.instance-label explicitly)")
+	}
+	logger.Info("instance label not set; using OPNsense hostname", "instance", hostname)
+	return hostname, nil
+}
 
 func main() {
 	// Register --version before flag parsing so `opnsense-exporter --version`
@@ -302,45 +325,22 @@ func main() {
 		logger.Info("bpf collector disabled")
 	}
 
-	// Resolve the instance label. When the user does not set one, default to the
-	// OPNsense hostname reported by the API so single-instance deployments work
-	// out of the box, falling back to the configured address if the lookup fails.
-	instanceLabel := *options.InstanceLabel
-	if instanceLabel == "" {
-		// Default to the configured address, then try to upgrade to the OPNsense
-		// hostname. The lookup runs in a goroutine bounded by a short timeout so an
-		// unreachable box never blocks startup; a late result is simply ignored.
-		instanceLabel = opnsConfig.Host
-
-		type hostnameResult struct {
-			hostname string
-			err      *opnsense.APICallError
-		}
-		resCh := make(chan hostnameResult, 1)
-		go func() {
+	// Resolve the instance label deterministically (see #75). The label is baked
+	// once into every metric, the OTLP resource identity and Pyroscope tags, so it
+	// must not depend on startup timing or the box's momentary reachability — that
+	// would split a deployment's series across restarts.
+	instanceLabel, err := resolveInstanceLabel(
+		*options.InstanceLabel, opnsConfig.Host, *options.InstanceUseHostname,
+		func() (string, error) {
 			hostname, hErr := opnsenseClient.FetchSystemHostname()
-			resCh <- hostnameResult{hostname: hostname, err: hErr}
-		}()
-
-		select {
-		case res := <-resCh:
-			if res.err == nil && res.hostname != "" {
-				instanceLabel = res.hostname
-				logger.Info("instance label not set; using OPNsense hostname", "instance", instanceLabel)
-			} else {
-				logger.Warn(
-					"instance label not set and hostname lookup failed; falling back to configured address",
-					"instance", instanceLabel,
-					"err", res.err,
-				)
+			if hErr != nil {
+				return "", hErr
 			}
-		case <-time.After(instanceLabelLookupTimeout):
-			logger.Warn(
-				"instance label not set and hostname lookup timed out; falling back to configured address",
-				"instance", instanceLabel,
-				"timeout", instanceLabelLookupTimeout.String(),
-			)
-		}
+			return hostname, nil
+		}, logger)
+	if err != nil {
+		logger.Error("could not resolve instance label", "err", err)
+		os.Exit(1)
 	}
 
 	// Continuous profiling is opt-in: enabled only when a Pyroscope server
