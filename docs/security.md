@@ -165,7 +165,7 @@ Certain collectors require specific OPNsense settings to be enabled:
 The official container image follows security best practices:
 
 - **Distroless base image** -- minimal attack surface with no shell, package manager, or unnecessary binaries
-- **Non-root execution** -- runs as UID 65534 (nonroot)
+- **Non-root execution** -- runs as UID 65532 (nonroot)
 - **Read-only root filesystem** -- supported in Kubernetes and Docker
 - **No capabilities** -- all Linux capabilities are dropped in the Kubernetes deployment manifest
 - **Static binary** -- no runtime dependencies, CGO disabled

@@ -68,7 +68,7 @@ spec:
                 - ALL
             readOnlyRootFilesystem: true
             runAsNonRoot: true
-            runAsUser: 65534
+            runAsUser: 65532
           ports:
             - name: metrics-http
               containerPort: 8080
@@ -209,7 +209,7 @@ kubectl run debug --rm -i --tty --restart=Never --image=alpine -- \
 The deployment manifest follows security best practices:
 
 - **Read-only root filesystem** -- no writable paths in the container
-- **Non-root user** -- runs as UID 65534
+- **Non-root user** -- runs as UID 65532
 - **Dropped capabilities** -- all Linux capabilities are dropped
 - **No privilege escalation** -- `allowPrivilegeEscalation: false`
 - **File-based secrets** -- API credentials are mounted as files, not passed as environment variables

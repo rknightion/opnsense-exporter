@@ -29,7 +29,7 @@ spec:
                 - ALL
             readOnlyRootFilesystem: true
             runAsNonRoot: true
-            runAsUser: 65534
+            runAsUser: 65532
           ports:
             # Default value for --web.listen-address= is 8080
             - name: metrics-http

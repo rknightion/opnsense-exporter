@@ -165,7 +165,7 @@ services:
 ## Container image details
 
 - **Base image:** Distroless Debian 13 (nonroot), pinned by digest
-- **User:** Runs as nonroot (UID 65534)
+- **User:** Runs as nonroot (UID 65532)
 - **Architectures:** `linux/amd64`, `linux/arm64`
 - **Build flags:** Static binary with `-trimpath`, `-mod=vendor`, CGO disabled
 
