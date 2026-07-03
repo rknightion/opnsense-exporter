@@ -50,12 +50,20 @@ RULES = [
          A="opnsense_crash_reporter_status", op="lt", params=[1, 0], for_min=5, severity="warning",
          summary="OPNsense crash reports present ({{ $labels.opnsense_instance }})",
          description="opnsense_crash_reporter_status is 0 — one or more crash reports are present."),
+    # The alert-condition window MUST be short (2m) so the long for:15m actually measures how long
+    # errors PERSIST. If the window equals for (both 15m), increase()>0 stays true for 15m after the
+    # last error, so for:15m is satisfied by any burst spanning >1 eval interval and the alert fires
+    # ~15m AFTER recovery (#94). With a 2m window, an 8m error burst keeps the condition true only
+    # ~t=0..10m (<15m) → for:15m never elapses → no false page; genuinely sustained errors keep every
+    # rolling 2m window non-empty, so the condition stays true past 15m and the alert fires.
     dict(name="opnsense-endpoint-errors", title="OPNsenseEndpointErrors",
-         A="sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[15m]))",
+         A="sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[2m]))",
          op="gt", params=[0, 0], for_min=15, severity="warning",
          summary="OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-         description="The {{ $labels.endpoint }} API endpoint has returned errors continuously for 15m. "
-                     "The 15m for-duration filters out transient errors during a router reboot / brief WAN loss. One alert per endpoint."),
+         description="The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m "
+                     "(at least one error in every rolling 2m window for the full 15m). A brief router "
+                     "reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. "
+                     "One alert per endpoint."),
     # Split primary vs failover: the default (primary) WAN reconverges in <1m after a reboot, so it
     # keeps a tight for=5m + critical/page. A secondary/failover WAN can take ~7-10m to re-establish
     # (DHCP + dpinger convergence) after a reboot, so it gets for=15m + warning (no page) to avoid
@@ -125,6 +133,10 @@ RULES = [
          A="opnsense_ntp_peer_reach", op="lt", params=[1, 0], for_min=15, severity="warning",
          summary="OPNsense NTP peer {{ $labels.server }} unreachable",
          description="NTP peer {{ $labels.server }} reachability register has been 0 for 15m."),
+    # Unlike opnsense-endpoint-errors, this is a genuine count-in-window threshold (>5 bogus answers
+    # per rolling 15m) with for:0 — it fires immediately when the count is exceeded, so there is no
+    # for-duration whose meaning the 15m window could distort. The #94 defect (long for paired with an
+    # equally-long increase window) does not apply here, so the 15m window is intentional and kept.
     dict(name="opnsense-unbound-dnssec-bogus", title="OPNsenseUnboundDNSSECBogus",
          A="sum by (opnsense_instance) (increase(opnsense_unbound_dns_answers_bogus_total[15m]))",
          op="gt", params=[5, 0], for_min=0, severity="info",

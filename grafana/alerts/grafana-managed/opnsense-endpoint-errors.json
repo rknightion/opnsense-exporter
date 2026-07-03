@@ -23,7 +23,7 @@
     },
     "annotations": {
       "summary": "OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-      "description": "The {{ $labels.endpoint }} API endpoint has returned errors continuously for 15m. The 15m for-duration filters out transient errors during a router reboot / brief WAN loss. One alert per endpoint.",
+      "description": "The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m (at least one error in every rolling 2m window for the full 15m). A brief router reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. One alert per endpoint.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[15m]))",
+          "expr": "sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[2m]))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
