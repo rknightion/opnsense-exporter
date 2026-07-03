@@ -97,7 +97,7 @@ func main() {
 
 	// Gate: every metric the live collectors describe must be present in the
 	// AST-parsed set, or the generated docs are missing real metrics.
-	if err := verifyMetricsAgainstRegistry(collectors); err != nil {
+	if err := verifyMetricsAgainstRegistry(collectors, topLevelMetrics); err != nil {
 		fatal("%v", err)
 	}
 	fmt.Fprintf(os.Stderr, "docgen: registry verification passed\n")
@@ -286,6 +286,16 @@ func parseSubsystemConstants(filePath string) map[string]string {
 	return result
 }
 
+// unparsedMetricConstructors are prometheus/promauto metric constructors (keyed by the base name,
+// so both prometheus.X and promauto.X match) that parseTopLevelMetrics does NOT know how to turn
+// into doc entries. Encountering one in New() is fatal rather than silently skipped (#119).
+var unparsedMetricConstructors = map[string]bool{
+	"NewHistogram": true, "NewHistogramVec": true,
+	"NewSummary": true, "NewSummaryVec": true,
+	"NewGaugeFunc": true, "NewCounterFunc": true, "NewUntypedFunc": true,
+	"NewConstHistogram": true, "NewConstSummary": true,
+}
+
 // parseTopLevelMetrics parses collector.go New() function for prometheus.NewGauge and NewCounterVec calls.
 func parseTopLevelMetrics(filePath string) []MetricInfo {
 	fset := token.NewFileSet()
@@ -338,6 +348,18 @@ func parseTopLevelMetrics(filePath string) []MetricInfo {
 						m.Type = "Gauge"
 						metrics = append(metrics, *m)
 					}
+				case "prometheus.NewCounter", "NewCounter":
+					m := parseGaugeOpts(call) // same opts-struct-only shape as NewGauge
+					if m != nil {
+						m.Type = "Counter"
+						metrics = append(metrics, *m)
+					}
+				case "prometheus.NewGaugeVec", "NewGaugeVec":
+					m := parseCounterVecOpts(call) // same (opts, labels) shape as NewCounterVec
+					if m != nil {
+						m.Type = "Gauge"
+						metrics = append(metrics, *m)
+					}
 				case "prometheus.NewCounterVec", "NewCounterVec":
 					m := parseCounterVecOpts(call)
 					if m != nil {
@@ -352,6 +374,14 @@ func parseTopLevelMetrics(filePath string) []MetricInfo {
 					if m != nil {
 						m.Type = "Gauge"
 						metrics = append(metrics, *m)
+					}
+				default:
+					// A top-level metric built with a constructor docgen can't parse would
+					// silently vanish from the docs and the pinned count. Fail loudly instead
+					// so it's either handled above or refactored (#119).
+					if base := funcName[strings.LastIndex(funcName, ".")+1:]; unparsedMetricConstructors[base] {
+						fatal("parseTopLevelMetrics: unhandled top-level metric constructor %q in New() — "+
+							"teach the parser or the metric will silently vanish from the docs", funcName)
 					}
 				}
 			}
@@ -498,6 +528,14 @@ func parsePrometheusOpts(comp *ast.CompositeLit, extraLabels []string) *MetricIn
 
 	if ns == "" {
 		ns = "opnsense"
+	}
+	// Name/Help must be string literals docgen can read; a non-literal (or missing) value would
+	// otherwise produce a blank, mis-keyed doc entry — fail loudly instead (#119).
+	if name == "" {
+		fatal("parseTopLevelMetrics: a top-level metric has a missing or non-literal Name in its Opts")
+	}
+	if m.Help == "" {
+		fatal("parseTopLevelMetrics: top-level metric %q has a missing or non-literal Help in its Opts", name)
 	}
 	m.Name = name
 	m.FullName = ns + "_" + name

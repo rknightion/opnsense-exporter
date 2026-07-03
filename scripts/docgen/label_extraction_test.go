@@ -61,7 +61,8 @@ func TestVerifyDetectsLabelMismatch(t *testing.T) {
 	if !patched {
 		t.Fatal("did not find opnsense_syslog_events_per_second to corrupt")
 	}
-	err := verifyMetricsAgainstRegistry(astCollectors)
+	topLevel := parseTopLevelMetrics(repoRoot + "/internal/collector/collector.go")
+	err := verifyMetricsAgainstRegistry(astCollectors, topLevel)
 	if err == nil || !strings.Contains(err.Error(), "label set differs") {
 		t.Fatalf("expected a label-mismatch error, got: %v", err)
 	}

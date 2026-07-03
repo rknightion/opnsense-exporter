@@ -16,7 +16,8 @@ func TestVerifyAgainstRegistryPasses(t *testing.T) {
 	repoRoot := findRepoRoot()
 	subsystems := parseSubsystemConstants(repoRoot + "/internal/collector/collector.go")
 	astCollectors := parseAllCollectors(repoRoot+"/internal/collector", subsystems)
-	if err := verifyMetricsAgainstRegistry(astCollectors); err != nil {
+	topLevel := parseTopLevelMetrics(repoRoot + "/internal/collector/collector.go")
+	if err := verifyMetricsAgainstRegistry(astCollectors, topLevel); err != nil {
 		t.Fatalf("registry verification failed against current source: %v", err)
 	}
 }

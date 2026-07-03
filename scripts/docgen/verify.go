@@ -11,6 +11,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
 var fqNameRe = regexp.MustCompile(`fqName: "([^"]+)"`)
@@ -57,7 +59,7 @@ func sortedCopy(labels []string) []string {
 // set. A runtime metric missing from the docs is a hard error (docgen's AST
 // parser failed to see it). Docs-only names are reported as warnings, since
 // some descriptors may be registered conditionally.
-func verifyMetricsAgainstRegistry(astCollectors []CollectorInfo) error {
+func verifyMetricsAgainstRegistry(astCollectors []CollectorInfo, topLevel []MetricInfo) error {
 	astNames := map[string]bool{}
 	astLabels := map[string][]string{}
 	for _, c := range astCollectors {
@@ -65,6 +67,12 @@ func verifyMetricsAgainstRegistry(astCollectors []CollectorInfo) error {
 			astNames[m.FullName] = true
 			astLabels[m.FullName] = sortedCopy(m.Labels)
 		}
+	}
+	// Top-level Collector metrics (opnsense_up, exporter_*) are documented via parseTopLevelMetrics,
+	// not AllCollectors(); include their names so the top-level Describe() cross-check below can
+	// verify them too (#119).
+	for _, m := range topLevel {
+		astNames[m.FullName] = true
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -94,6 +102,33 @@ func verifyMetricsAgainstRegistry(astCollectors []CollectorInfo) error {
 				labelMismatches = append(labelMismatches, fmt.Sprintf(
 					"%s: docs labels %v, runtime labels %v", name, astLabels[name], runtimeLbls))
 			}
+		}
+	}
+
+	// Cross-check the top-level Collector's own Describe() output, closing the asymmetry where
+	// opnsense_up / exporter_* had no runtime coverage at all (#119). New() reads the client's
+	// endpoint map (to seed endpoint-error series), so build a throwaway client — NewClient does no
+	// network I/O, it just initialises config + the endpoint table.
+	client, err := opnsense.NewClient(
+		options.OPNSenseConfig{Protocol: "https", Host: "docgen.invalid"}, "docgen", logger)
+	if err != nil {
+		return fmt.Errorf("constructing throwaway client for top-level verification: %w", err)
+	}
+	topC, err := collector.New(&client, logger, "docgen")
+	if err != nil {
+		return fmt.Errorf("constructing top-level Collector for verification: %w", err)
+	}
+	topCh := make(chan *prometheus.Desc, 4096)
+	topC.Describe(topCh)
+	close(topCh)
+	for d := range topCh {
+		name := descFQName(d.String())
+		if name == "" {
+			continue
+		}
+		runtimeNames[name] = true
+		if !astNames[name] {
+			missing = append(missing, fmt.Sprintf("%s (top-level Collector)", name))
 		}
 	}
 
