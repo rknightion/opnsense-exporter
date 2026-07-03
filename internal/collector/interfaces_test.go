@@ -1,11 +1,13 @@
 package collector
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -204,6 +206,71 @@ func TestInterfacesCollector_Name(t *testing.T) {
 	c := &interfacesCollector{subsystem: InterfacesSubsystem}
 	if c.Name() != InterfacesSubsystem {
 		t.Errorf("expected %s, got %s", InterfacesSubsystem, c.Name())
+	}
+}
+
+// TestInterfacesCollector_OverviewFailureSurfaced covers #123: when the secondary
+// interfaces-overview fetch fails but the base fetch succeeds, the failure must be
+// surfaced through the standard collector error path (endpoint_errors_total +
+// scrape_collector_success=0) instead of being silently swallowed with a nil return,
+// while the base traffic metrics are still emitted (partial tolerance preserved).
+func TestInterfacesCollector_OverviewFailureSurfaced(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/traffic/interface", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"interfaces": {
+				"ixl0": {
+					"device": "ixl0", "driver": "ixl", "index": "1", "flags": "0x8843",
+					"send queue length": "0", "send queue max length": "50", "send queue drops": "0",
+					"type": "Ethernet", "link state": "2", "mtu": "1500", "line rate": "10000000000 bit/s",
+					"packets received": "123456", "packets transmitted": "654321",
+					"bytes received": "1000000", "bytes transmitted": "2000000",
+					"output errors": "0", "input errors": "1", "collisions": "0",
+					"multicasts received": "100", "multicasts transmitted": "50",
+					"input queue drops": "0", "name": "LAN"
+				}
+			}
+		}`))
+	})
+	// Overview endpoint fails while the base traffic endpoint above succeeds.
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	ic := &interfacesCollector{subsystem: InterfacesSubsystem}
+	ic.Register(namespace, "test", promslog.NewNopLogger())
+
+	c := newScrapeTestCollector(t, client, ic)
+	ch := make(chan prometheus.Metric, 128)
+	c.execute(context.Background(), ic, client, ch)
+	close(ch)
+
+	var trafficSeen bool
+	var successVal *float64
+	for m := range ch {
+		desc := m.Desc().String()
+		if strings.Contains(desc, `fqName: "opnsense_interfaces_received_bytes_total"`) {
+			trafficSeen = true
+		}
+		if strings.Contains(desc, "scrape_collector_success") {
+			v := getMetricValue(m)
+			successVal = &v
+		}
+	}
+
+	if !trafficSeen {
+		t.Error("base traffic metrics should still be emitted despite the overview failure")
+	}
+	if successVal == nil {
+		t.Error("scrape_collector_success was not emitted")
+	} else if *successVal != 0 {
+		t.Errorf("scrape_collector_success{collector=interfaces} = %v, want 0", *successVal)
+	}
+	if got := counterValue(t, c.endpointErrors.WithLabelValues("api/interfaces/overview/interfaces_info", "test")); got != 1 {
+		t.Errorf(`endpoint_errors_total{endpoint="api/interfaces/overview/interfaces_info"} = %v, want 1`, got)
 	}
 }
 

@@ -179,10 +179,14 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 
 	overview, oerr := client.FetchInterfacesOverview()
 	if oerr != nil {
-		// Non-fatal: keep the traffic metrics flowing even if the overview
-		// endpoint is unavailable.
+		// Partial tolerance: the traffic metrics above were already emitted, so keep
+		// them. But surface the overview failure through the standard collector error
+		// path (endpoint_errors_total + scrape_collector_success=0) rather than
+		// swallowing it with a nil return — mirroring kea.go's return-the-error pattern
+		// so a persistent overview outage is observable via the exporter's own
+		// instrumentation, not just a Warn log (#123).
 		c.log.Warn("failed to fetch interfaces overview; skipping interface info metrics", "err", oerr)
-		return nil
+		return oerr
 	}
 
 	for _, iface := range overview.Interfaces {
