@@ -1642,7 +1642,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(go_goroutines, __name__)",
+              "query": "label_values(go_goroutines{job=~\"opnsense.*\"}, __name__)",
               "refId": "has_go_runtime"
             }
           },
@@ -48347,7 +48347,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "go_goroutines{job=\"opnsense-exporter\"}",
+                        "expr": "go_goroutines{job=~\"opnsense.*\"}",
                         "refId": "A",
                         "legendFormat": "goroutines",
                         "instant": false,
@@ -48436,7 +48436,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "process_resident_memory_bytes{job=\"opnsense-exporter\"}",
+                        "expr": "process_resident_memory_bytes{job=~\"opnsense.*\"}",
                         "refId": "A",
                         "legendFormat": "RSS",
                         "instant": false,
@@ -48462,7 +48462,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "go_memstats_heap_inuse_bytes{job=\"opnsense-exporter\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{job=~\"opnsense.*\"}",
                         "refId": "B",
                         "legendFormat": "heap inuse",
                         "instant": false,
@@ -48551,7 +48551,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "rate(process_cpu_seconds_total{job=\"opnsense-exporter\"}[$__rate_interval])",
+                        "expr": "rate(process_cpu_seconds_total{job=~\"opnsense.*\"}[$__rate_interval])",
                         "refId": "A",
                         "legendFormat": "cpu",
                         "instant": false,

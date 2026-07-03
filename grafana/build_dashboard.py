@@ -27,6 +27,13 @@ STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
 # series). Keep this list short and justified — the coverage gate flags everything else.
 COVERAGE_EXEMPT = set()
 
+# The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's
+# Prometheus scrape config sets. The docs use `job_name: opnsense` (getting-started,
+# integration-dashboards, k8s static config) while deploy/k8s/scrape.yaml + the ScrapeConfig
+# CRD use `job: opnsense-exporter`. Match both with a regex so the Exporter Runtime panels
+# return data regardless of which documented setup the user followed (#113).
+JOB = 'job=~"opnsense.*"'
+
 
 def add_core_variables(b: Builder):
     b.variables.append({"kind": "DatasourceVariable", "spec": {
@@ -134,7 +141,7 @@ def build_overview(b: Builder):
 
 
 def build_diagnostics(b: Builder):
-    b.sentinel("has_go_runtime", "label_values(go_goroutines, __name__)")
+    b.sentinel("has_go_runtime", f'label_values(go_goroutines{{{JOB}}}, __name__)')
     up = b.statushistory("Scrape Success (opnsense_up)", [(sel("opnsense_up"), "{{opnsense_instance}}")],
                          UPDOWN, w=12, h=6)
     scrapes = b.ts("Scrape Rate", [(f'rate({sel("opnsense_exporter_scrapes_total")}[{RATE}])',
@@ -163,12 +170,12 @@ def build_diagnostics(b: Builder):
                                 OKERR, w=12, h=8,
                                 desc="1 = sub-collector scraped cleanly, 0 = error or panic.")
 
-    go_goro = b.ts("Exporter Goroutines", [("go_goroutines{job=\"opnsense-exporter\"}", "goroutines")],
+    go_goro = b.ts("Exporter Goroutines", [(f"go_goroutines{{{JOB}}}", "goroutines")],
                    w=8, h=6)
-    go_mem = b.ts("Exporter Memory", [("process_resident_memory_bytes{job=\"opnsense-exporter\"}", "RSS"),
-                  ("go_memstats_heap_inuse_bytes{job=\"opnsense-exporter\"}", "heap inuse")],
+    go_mem = b.ts("Exporter Memory", [(f"process_resident_memory_bytes{{{JOB}}}", "RSS"),
+                  (f"go_memstats_heap_inuse_bytes{{{JOB}}}", "heap inuse")],
                   unit="bytes", w=8, h=6)
-    go_cpu = b.ts("Exporter CPU", [("rate(process_cpu_seconds_total{job=\"opnsense-exporter\"}[%s])" % RATE,
+    go_cpu = b.ts("Exporter CPU", [(f"rate(process_cpu_seconds_total{{{JOB}}}[{RATE}])",
                   "cpu")], unit="percentunit", w=8, h=6)
 
     b.tab("Diagnostics", [
