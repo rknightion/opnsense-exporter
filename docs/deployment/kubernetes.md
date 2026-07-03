@@ -154,7 +154,10 @@ metadata:
     release: "kube-prom"
 spec:
   scrapeInterval: 60s
-  scrapeTimeout: 3s
+  # The exporter's internal deadline is this value minus --exporter.scrape-timeout-offset
+  # (default 500ms); 3s is too tight for a 30+ collector fan-out and silently cancels the
+  # slowest collectors. 30s leaves headroom and stays under scrapeInterval.
+  scrapeTimeout: 30s
   metricsPath: /metrics
   staticConfigs:
     - labels:

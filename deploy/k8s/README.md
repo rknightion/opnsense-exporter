@@ -54,6 +54,6 @@ Check your work:
 ```shell
 ❯ kubectl run debug --rm -i --tty --restart=Never --image=alpine
 <...>
-/ # wget --quiet -O- opnsense-exporter.svc.cluster.local:8080/metrics
+/ # wget --quiet -O- opnsense-exporter.default.svc.cluster.local:8080/metrics
 <...>
 ```

@@ -11,11 +11,20 @@ metadata:
     release: "kube-prom"
 spec:
   scrapeInterval: 60s
-  scrapeTimeout: 3s
+  # The exporter derives its internal per-scrape deadline as this value (sent as the
+  # X-Prometheus-Scrape-Timeout-Seconds header) MINUS --exporter.scrape-timeout-offset
+  # (default 500ms). A 30+ sub-collector fan-out, several chaining multiple sequential
+  # OPNsense API calls, needs well over the old 3s — at 3s the slowest collectors
+  # (e.g. activity, kea) are silently cancelled mid-scrape while the HTTP scrape still
+  # returns 200. 30s leaves ample headroom and stays comfortably under scrapeInterval.
+  scrapeTimeout: 30s
   metricsPath: /metrics
   staticConfigs:
     - labels:
         # if the job label is not set, one will be automatically generated from the scrape-config name and namespace
         job: opnsense-exporter
       targets:
-        - opnsense-exporter.svc:8080
+        # Valid Kubernetes Service DNS is <service>.<namespace>.svc — there is no
+        # ".svc" shorthand that omits the namespace. Substitute the namespace the
+        # exporter is deployed into (this assumes "default").
+        - opnsense-exporter.default.svc:8080
