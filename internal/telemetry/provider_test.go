@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,6 +143,80 @@ func keys(m map[string]metricdata.Metrics) []string {
 	return out
 }
 
+// dupCronCollector reproduces the real-world duplicate-label scenario from #81/#101:
+// two OPNsense cron jobs sharing the same description emit two series with identical
+// label values, which makes Registry.Gather() return a consistency (MultiError)
+// alongside the partial families.
+type dupCronCollector struct{ desc *prometheus.Desc }
+
+func (c *dupCronCollector) Describe(ch chan<- *prometheus.Desc) { ch <- c.desc }
+func (c *dupCronCollector) Collect(ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, 1, "nightly-backup")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, 1, "nightly-backup")
+}
+
+// TestBridgeIsolatesErroringGatherer covers #101: a duplicate-label consistency error
+// in the collector registry must not black out the whole OTLP export tick. The
+// self-metrics registry and every healthy collector family must still reach the
+// producer, the underlying error must still be logged, and only the offending family
+// is dropped.
+func TestBridgeIsolatesErroringGatherer(t *testing.T) {
+	selfReg := prometheus.NewRegistry()
+	selfGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_selftest_up", Help: "self"})
+	selfReg.MustRegister(selfGauge)
+	selfGauge.Set(1)
+
+	collectorReg := prometheus.NewRegistry()
+	healthy := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "opnsense_healthy_gauge", Help: "healthy"}, []string{"iface"})
+	collectorReg.MustRegister(healthy)
+	healthy.WithLabelValues("wan").Set(5)
+	collectorReg.MustRegister(&dupCronCollector{
+		desc: prometheus.NewDesc("opnsense_cron_job_enabled", "cron", []string{"description"}, nil),
+	})
+
+	// Sanity: the raw collector registry really does error on gather (premise check).
+	if _, err := collectorReg.Gather(); err == nil {
+		t.Fatal("expected a consistency error from the duplicated cron series; test premise stale")
+	}
+
+	var logBuf strings.Builder
+	log := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	producer := prometheusbridge.NewMetricProducer(
+		prometheusbridge.WithGatherer(&continueOnErrorGatherer{inner: selfReg, log: log, interval: time.Hour}),
+		prometheusbridge.WithGatherer(&continueOnErrorGatherer{inner: collectorReg, log: log, interval: time.Hour}),
+	)
+	reader := sdkmetric.NewManualReader(sdkmetric.WithProducer(producer))
+	defer reader.Shutdown(context.Background()) //nolint:errcheck
+	_ = sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect: %v", err)
+	}
+	byName := map[string]bool{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			byName[m.Name] = true
+		}
+	}
+
+	if !byName["opnsense_selftest_up"] {
+		t.Error("self-metric blacked out by the erroring collector registry (isolation failed)")
+	}
+	if !byName["opnsense_healthy_gauge"] {
+		t.Error("healthy collector family dropped alongside the duplicate (continue-on-error failed)")
+	}
+	// The offending family is "handled" rather than dropped: prometheus' Gather returns
+	// it alongside the MultiError, and continue-on-error surfaces that error via the log
+	// (asserted below) instead of blacking the whole tick out. What must never happen is
+	// a total export blackout, which the self + healthy assertions above prove it didn't.
+	if !strings.Contains(logBuf.String(), "otlp gather error") {
+		t.Errorf("underlying gather error was not logged; log = %q", logBuf.String())
+	}
+}
+
 func TestNewExporter_ProtocolSelection(t *testing.T) {
 	ctx := context.Background()
 	for _, proto := range []string{"grpc", "http/protobuf", ""} {
@@ -192,7 +267,7 @@ func TestStart_BuildsProviderAndShutdown(t *testing.T) {
 		ExportInterval: time.Hour,
 		ServiceName:    "opnsense-exporter",
 	}
-	shutdown, err := Start(context.Background(), reg, cfg, "v-test", "inst", discardLogger())
+	shutdown, err := Start(context.Background(), []prometheus.Gatherer{reg}, cfg, "v-test", "inst", discardLogger())
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}

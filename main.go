@@ -398,7 +398,7 @@ func main() {
 	}
 	var stopOTLP func()
 	if otlpEnabled {
-		shutdown, terr := telemetry.Start(context.Background(), prometheus.Gatherers{selfMetricsRegistry, collectorRegistry}, otlpCfg, version, instanceLabel, logger)
+		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, collectorRegistry}, otlpCfg, version, instanceLabel, logger)
 		if terr != nil {
 			logger.Error("failed to start otlp metrics export", "err", terr)
 		} else {
