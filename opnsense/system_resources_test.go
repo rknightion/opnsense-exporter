@@ -166,11 +166,12 @@ func TestFetchSystemResources_AllEndpoints(t *testing.T) {
 		t.Errorf("expected LoadAverage[2]=0.56, got %f", data.Time.LoadAverage[2])
 	}
 
-	// Config last change: age (datetime-config) is 23h57m22s = 86242s; the
-	// absolute timestamp is anchored to the exporter clock at scrape time.
-	expectedConfigTime := float64(time.Now().Add(-86242 * time.Second).Unix())
-	if diff := data.Time.ConfigLastChange - expectedConfigTime; diff < -5 || diff > 5 {
-		t.Errorf("expected ConfigLastChange≈%f (±5s), got %f", expectedConfigTime, data.Time.ConfigLastChange)
+	// Config last change: the true absolute instant recovered from config's own
+	// abbreviation — "Sun Jun 7 18:44:37 BST 2026" = 17:44:37 UTC (#107). This is
+	// deterministic (no dependence on the exporter's wall clock) and DST-correct.
+	expectedConfigTime := float64(time.Date(2026, 6, 7, 17, 44, 37, 0, time.UTC).Unix())
+	if data.Time.ConfigLastChange != expectedConfigTime {
+		t.Errorf("expected ConfigLastChange=%f, got %f", expectedConfigTime, data.Time.ConfigLastChange)
 	}
 
 	// Disks
@@ -536,5 +537,98 @@ func TestFetchCPUType_NoCoresInfo(t *testing.T) {
 	}
 	if data.Info.CPUThreads != "" {
 		t.Errorf("expected empty CPUThreads, got %q", data.Info.CPUThreads)
+	}
+}
+
+// TestDSTCorrectedDiffSeconds guards #107: OPNsense renders timestamps with only
+// a zone abbreviation, so a boottime "GMT" and datetime "BST" straddling a DST
+// transition must not overstate the difference by the DST delta. Verified for
+// both a UTC exporter (abbreviations unresolved → offset 0) and a matching-zone
+// exporter (abbreviations resolved), which the fix must handle identically.
+func TestDSTCorrectedDiffSeconds(t *testing.T) {
+	// 2026-01-01 is Thursday (GMT); 2026-07-01 is Wednesday (BST); 2026-08-01 Sat.
+	const bootGMT = "Thu Jan  1 00:00:00 GMT 2026"
+	const dtBST = "Wed Jul  1 00:00:00 BST 2026"
+	const dt2BST = "Sat Aug  1 00:00:00 BST 2026"
+
+	// True elapsed: Jan 1 00:00 GMT (=00:00 UTC) → Jul 1 00:00 BST (=Jun 30 23:00 UTC).
+	wantCross := time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC).
+		Sub(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)).Seconds()
+	// Same DST period (both BST): Jul 1 00:00 BST → Aug 1 00:00 BST.
+	wantSame := time.Date(2026, 7, 31, 23, 0, 0, 0, time.UTC).
+		Sub(time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC)).Seconds()
+
+	for _, tz := range []string{"UTC", "Europe/London"} {
+		loc, err := time.LoadLocation(tz)
+		if err != nil {
+			t.Skipf("timezone %s unavailable: %v", tz, err)
+		}
+		t.Run(tz, func(t *testing.T) {
+			boot, err := time.ParseInLocation(opnsenseTimeFormat, bootGMT, loc)
+			if err != nil {
+				t.Fatalf("parse boot: %v", err)
+			}
+			dt, err := time.ParseInLocation(opnsenseTimeFormat, dtBST, loc)
+			if err != nil {
+				t.Fatalf("parse datetime: %v", err)
+			}
+			dt2, err := time.ParseInLocation(opnsenseTimeFormat, dt2BST, loc)
+			if err != nil {
+				t.Fatalf("parse datetime2: %v", err)
+			}
+
+			if got := dstCorrectedDiffSeconds(dt, boot); got != wantCross {
+				t.Errorf("cross-DST diff: got %v, want %v (skewed by %v)", got, wantCross, got-wantCross)
+			}
+			// Regression: same DST period must be unaffected by the correction.
+			if got := dstCorrectedDiffSeconds(dt2, dt); got != wantSame {
+				t.Errorf("same-period diff: got %v, want %v", got, wantSame)
+			}
+		})
+	}
+}
+
+// TestFetchSystemResources_DSTStraddle guards #107 end-to-end: uptime and
+// config_last_change must be free of the ~3600s DST skew.
+func TestFetchSystemResources_DSTStraddle(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/systemResources", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"memory": {"total": "1", "used": 1, "arc": ""}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemTime", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"uptime": "",
+			"boottime": "Thu Jan  1 00:00:00 GMT 2026",
+			"datetime": "Wed Jul  1 00:00:00 BST 2026",
+			"config":   "Thu Jan  1 00:00:00 GMT 2026",
+			"loadavg": "0.0, 0.0, 0.0"
+		}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemDisk", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices": []}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemSwap", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"swap": []}`))
+	})
+	registerSystemInfoHandlers(mux)
+
+	data, err := client.FetchSystemResources()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// True uptime = Jul 1 00:00 BST − Jan 1 00:00 GMT (not the +3600 skewed value).
+	wantUptime := time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC).
+		Sub(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)).Seconds()
+	if data.Time.Uptime != wantUptime {
+		t.Errorf("uptime: got %v, want %v (DST skew of %v)", data.Time.Uptime, wantUptime, data.Time.Uptime-wantUptime)
+	}
+
+	// config was "Jan 1 00:00 GMT" → exactly 2026-01-01T00:00:00Z.
+	wantConfig := float64(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Unix())
+	if data.Time.ConfigLastChange != wantConfig {
+		t.Errorf("config_last_change: got %v, want %v (skew %v)", data.Time.ConfigLastChange, wantConfig, data.Time.ConfigLastChange-wantConfig)
 	}
 }

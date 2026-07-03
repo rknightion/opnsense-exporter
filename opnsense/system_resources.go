@@ -171,6 +171,71 @@ func parseHumanBytes(s string) int64 {
 
 const opnsenseTimeFormat = "Mon Jan 2 15:04:05 MST 2006"
 
+// dstAbbrevOffset maps the timezone abbreviations OPNsense commonly renders (via
+// PHP's date('T', ts), i.e. the abbreviation in effect at each timestamp) to
+// their real UTC offset in seconds. It is used only to correct the difference
+// between two of the box's timestamps when they carry DIFFERENT abbreviations —
+// the signature of a DST transition between them. When the abbreviations match,
+// their offsets cancel and no correction is applied, so non-DST zones (and any
+// abbreviation absent from this table) are unaffected and keep the pre-#107
+// behaviour. Ambiguous abbreviations (e.g. IST, CST elsewhere) are intentionally
+// limited to the DST-observing zones where the pairing is unambiguous within a
+// single box.
+var dstAbbrevOffset = map[string]int{
+	"UTC": 0, "GMT": 0, "WET": 0,
+	"BST": 3600, "WEST": 3600, "CET": 3600, "MET": 3600,
+	"CEST": 7200, "MEST": 7200, "EET": 7200,
+	"EEST": 10800,
+	"EST":  -18000, "EDT": -14400,
+	"CST": -21600, "CDT": -18000,
+	"MST": -25200, "MDT": -21600,
+	"PST": -28800, "PDT": -25200,
+}
+
+// absUnixFromAbbrev returns the true Unix instant of a timestamp parsed from an
+// OPNsense abbreviation-only string, recovering the real offset from
+// dstAbbrevOffset. It returns ok=false when the parse failed or the abbreviation
+// is not in the table (so the caller can fall back). Correct under any exporter
+// TZ: it adjusts relative to whatever offset time.Parse actually assigned (#107).
+func absUnixFromAbbrev(t time.Time, parseErr error) (int64, bool) {
+	if parseErr != nil {
+		return 0, false
+	}
+	name, assigned := t.Zone()
+	real, ok := dstAbbrevOffset[name]
+	if !ok {
+		return 0, false
+	}
+	// t.Unix() = wall - assigned; true = wall - real.
+	return t.Unix() - int64(real-assigned), true
+}
+
+// dstCorrectedDiffSeconds returns (later - earlier) in seconds, correcting for a
+// DST transition between the two timestamps. OPNsense renders each timestamp with
+// only a zone abbreviation, not a numeric offset; time.Parse can only resolve
+// that to a real offset when the exporter's own TZ matches the box's zone. So a
+// boottime rendered "GMT" and a datetime rendered "BST" (a box booted before a
+// spring-forward and scraped after it) are otherwise both parsed at a zero offset
+// under the common container TZ=UTC, overstating the difference by the DST delta.
+// We recover the real offset each timestamp should carry from dstAbbrevOffset and
+// subtract the residual delta relative to whatever offset time.Parse actually
+// assigned — so the result is correct under TZ=UTC and unchanged when the
+// exporter TZ already resolved the abbreviations. Unknown abbreviations fall back
+// to the raw difference (#107).
+func dstCorrectedDiffSeconds(later, earlier time.Time) float64 {
+	raw := later.Sub(earlier).Seconds()
+	lName, lAssigned := later.Zone()
+	eName, eAssigned := earlier.Zone()
+	lReal, lok := dstAbbrevOffset[lName]
+	eReal, eok := dstAbbrevOffset[eName]
+	if !lok || !eok {
+		return raw
+	}
+	// true = (laterWall - lReal) - (earlierWall - eReal); time.Sub gives
+	// (laterWall - lAssigned) - (earlierWall - eAssigned) as instants.
+	return raw - float64((lReal-lAssigned)-(eReal-eAssigned))
+}
+
 func (c *Client) fetchSystemMemory(data *SystemResources) *APICallError {
 	var resp systemResourcesResponse
 
@@ -221,34 +286,47 @@ func (c *Client) fetchSystemTime(data *SystemResources) *APICallError {
 	}
 	data.Time.Available = true
 
-	// OPNsense reports these timestamps with only a timezone abbreviation
-	// (e.g. "BST"), which time.Parse cannot map to a UTC offset — it falls back
-	// to a fabricated zone with a zero offset, so the parsed instants are skewed
-	// by the box's real offset. boottime, datetime and config all share the same
-	// zone, so a DIFFERENCE between any two cancels that offset and is correct.
-	// We therefore derive uptime and config age from datetime (the box's own
-	// "now") rather than mixing a skewed timestamp with the exporter's clock.
+	// OPNsense renders these timestamps with only a timezone abbreviation
+	// (PHP date('T', ts) — the abbreviation in effect AT each timestamp), not a
+	// numeric offset. time.Parse can only resolve an abbreviation to a real UTC
+	// offset when the exporter's own TZ matches the box's zone; under the common
+	// container TZ=UTC it fabricates a zero-offset zone. When boottime and
+	// datetime (or config) straddle a DST transition they carry DIFFERENT
+	// abbreviations (e.g. "GMT" vs "BST"), so a naive difference is skewed by the
+	// DST delta (~3600s). dstCorrectedDiffSeconds recovers each timestamp's real
+	// offset from its abbreviation and cancels that delta; when abbreviations
+	// match (same DST period) or are unknown it degrades to the raw difference.
+	// Residual caveat: for a box in an unlisted/ambiguous zone scraped across a
+	// DST boundary, up to a ±1h skew can remain (#107).
 	now := time.Now()
 	bootTime, errBoot := time.Parse(opnsenseTimeFormat, resp.Boottime)
 	dateTime, errDate := time.Parse(opnsenseTimeFormat, resp.Datetime)
 	configTime, errConfig := time.Parse(opnsenseTimeFormat, resp.Config)
 
-	// Uptime: datetime - boottime (offset cancels). Fall back to comparing
-	// boottime against the exporter clock if datetime is unavailable.
+	// Uptime: datetime - boottime, corrected for any DST transition between them.
+	// Fall back to comparing boottime against the exporter clock if datetime is
+	// unavailable.
 	switch {
 	case errDate == nil && errBoot == nil:
-		data.Time.Uptime = dateTime.Sub(bootTime).Seconds()
+		data.Time.Uptime = dstCorrectedDiffSeconds(dateTime, bootTime)
 	case errBoot == nil:
 		data.Time.Uptime = time.Since(bootTime).Seconds()
 	}
 
-	// Config last change: the age (datetime - config) is offset-independent;
-	// anchor it to the exporter's wall clock to produce an absolute timestamp.
-	switch {
-	case errDate == nil && errConfig == nil:
-		data.Time.ConfigLastChange = float64(now.Add(-dateTime.Sub(configTime)).Unix())
-	case errConfig == nil:
-		data.Time.ConfigLastChange = float64(configTime.Unix())
+	// Config last change: prefer the absolute instant recovered from config's own
+	// abbreviation (DST-correct and independent of the exporter clock). When the
+	// abbreviation is unknown, fall back to the DST-corrected age anchored to the
+	// exporter clock, which cancels the box's base offset.
+	if abs, ok := absUnixFromAbbrev(configTime, errConfig); ok {
+		data.Time.ConfigLastChange = float64(abs)
+	} else {
+		switch {
+		case errDate == nil && errConfig == nil:
+			age := time.Duration(dstCorrectedDiffSeconds(dateTime, configTime)) * time.Second
+			data.Time.ConfigLastChange = float64(now.Add(-age).Unix())
+		case errConfig == nil:
+			data.Time.ConfigLastChange = float64(configTime.Unix())
+		}
 	}
 
 	// Parse loadavg: "0.12, 0.34, 0.56"
