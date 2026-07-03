@@ -426,7 +426,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_dnsmasq_leases_total > 0)",
+              "query": "label_values(opnsense_dnsmasq_service_running, __name__)",
               "refId": "has_dnsmasq"
             }
           },
@@ -490,7 +490,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result((opnsense_kea_dhcp4_leases_total + opnsense_kea_dhcp6_leases_total) > 0)",
+              "query": "label_values(opnsense_kea_service_running, __name__)",
               "refId": "has_kea"
             }
           },
@@ -586,7 +586,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_dhcpv4_leases_total > 0)",
+              "query": "label_values(opnsense_dhcpv4_leases_total, __name__)",
               "refId": "has_dhcpv4_isc"
             }
           },
@@ -650,7 +650,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_dhcpv6_leases_total > 0)",
+              "query": "label_values(opnsense_dhcpv6_leases_total, __name__)",
               "refId": "has_dhcpv6_isc"
             }
           },

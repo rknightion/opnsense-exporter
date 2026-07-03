@@ -274,6 +274,21 @@ def main():
             print(f"  - {v}  (key it on \"Value #A\"..\"Value #N\" in expr order, not the metric name)", file=sys.stderr)
         sys.exit(1)
 
+    # A DHCP-backend row bundles a service-health stat with the lease/pool panels, so its
+    # presence sentinel must gate on whether the backend EXISTS, not on its lease count. A
+    # `> 0` count comparison hides a live-but-idle backend (leases_total=0), conflating
+    # "absent" with "present but zero" and blanking the very health stat meant to answer
+    # "is it up?" (#114). These must gate on existence via label_values(...)/service_running.
+    dhcp_presence_sentinels = {"has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"}
+    bad_sentinels = [v["spec"]["name"] for v in b.variables
+                     if v["spec"]["name"] in dhcp_presence_sentinels
+                     and "> 0" in v["spec"]["query"]["spec"]["query"]]
+    if bad_sentinels:
+        print(f"count-gated DHCP presence sentinels ({len(bad_sentinels)}):", file=sys.stderr)
+        for name in bad_sentinels:
+            print(f"  - {name}  (gate on existence via label_values(...), not a `> 0` lease-count threshold)", file=sys.stderr)
+        sys.exit(1)
+
     if not check_only:
         manifest = b.manifest(
             title="OPNsense Exporter",

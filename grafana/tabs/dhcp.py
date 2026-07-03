@@ -28,22 +28,29 @@ from builder import Builder, sel, epoch_ms, RUNSTOP
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
+    # Gate each backend row on PRESENCE, not lease count. A `leases_total > 0` filter conflates
+    # "backend absent" with "backend up but idle": a running-but-idle backend emits leases_total=0
+    # and its row would vanish — hiding the very service-health stat meant to answer "is it up?"
+    # (#114). label_values(metric, __name__) is non-empty whenever the series exists, regardless of
+    # value, so the row shows for a live backend even at 0 leases (or when the service is stopped).
+    # dnsmasq/kea expose service_running; the ISC v4/v6 collectors emit nothing when their plugin is
+    # absent (Present-gated, #87), so their always-emitted leases_total is a valid presence signal.
     b.sentinel("has_dnsmasq",
-               "query_result(opnsense_dnsmasq_leases_total > 0)")
+               "label_values(opnsense_dnsmasq_service_running, __name__)")
     b.sentinel("has_dnsmasq_details",
                "label_values(opnsense_dnsmasq_lease_info, __name__)")
     b.sentinel("has_kea",
-               "query_result((opnsense_kea_dhcp4_leases_total + opnsense_kea_dhcp6_leases_total) > 0)")
+               "label_values(opnsense_kea_service_running, __name__)")
     b.sentinel("has_kea4_details",
                "label_values(opnsense_kea_dhcp4_lease_info, __name__)")
     b.sentinel("has_kea6_details",
                "label_values(opnsense_kea_dhcp6_lease_info, __name__)")
     b.sentinel("has_dhcpv4_isc",
-               "query_result(opnsense_dhcpv4_leases_total > 0)")
+               "label_values(opnsense_dhcpv4_leases_total, __name__)")
     b.sentinel("has_dhcpv4_details",
                "label_values(opnsense_dhcpv4_lease_info, __name__)")
     b.sentinel("has_dhcpv6_isc",
-               "query_result(opnsense_dhcpv6_leases_total > 0)")
+               "label_values(opnsense_dhcpv6_leases_total, __name__)")
     b.sentinel("has_dhcpv6_details",
                "label_values(opnsense_dhcpv6_lease_info, __name__)")
 
