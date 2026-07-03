@@ -3,10 +3,63 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 )
+
+// TestFirewallCollector_InterfaceLogEntriesIsGauge guards #74: the per-interface
+// firewall log-entry count is a sliding-window value (rises and falls as log
+// lines age out of the fixed ~5000-record window), so it must be a Gauge — never
+// a Counter that rate()/increase() would misread as a reset. It also asserts the
+// synthetic "other" aggregate bucket is emitted.
+func TestFirewallCollector_InterfaceLogEntriesIsGauge(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/interfaces", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"statistics":{"interfaces":{}}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/pf_states/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"current":"1","limit":"2"}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/stats", func(w http.ResponseWriter, r *http.Request) {
+		// A value that would look like a counter reset if typed as a counter.
+		w.Write([]byte(`[{"label":"LAN","value":42},{"label":"other","value":7}]`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &firewallCollector{subsystem: FirewallSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	foundLAN, foundOther := false, false
+	for _, m := range metrics {
+		if !strings.Contains(m.Desc().String(), "interface_log_entries_recent") {
+			continue
+		}
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		if d.Gauge == nil {
+			t.Errorf("interface_log_entries_recent must be a Gauge (not Counter) so rate() can't misread window churn; got %v", d)
+		}
+		switch getMetricLabels(m)["interface"] {
+		case "LAN":
+			foundLAN = true
+		case "other":
+			foundOther = true
+		}
+	}
+	if !foundLAN {
+		t.Error("expected an interface_log_entries_recent series for LAN")
+	}
+	if !foundOther {
+		t.Error("expected the synthetic 'other' aggregate bucket to be emitted")
+	}
+}
 
 func TestFirewallCollector_Update(t *testing.T) {
 	mux := http.NewServeMux()

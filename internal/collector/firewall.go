@@ -33,7 +33,7 @@ type firewallCollector struct {
 	pfStatesCurrent *prometheus.Desc
 	pfStatesLimit   *prometheus.Desc
 
-	interfaceHitsTotal *prometheus.Desc
+	interfaceLogEntries *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -144,8 +144,16 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 		nil,
 	)
 
-	c.interfaceHitsTotal = buildPrometheusDesc(c.subsystem, "interface_hits_total",
-		"Total number of firewall rule matches per interface",
+	// Sourced from diagnostics/firewall/stats, which counts occurrences per
+	// interface over only the most recent ~5000 firewall *log* records and
+	// returns the top 10 plus a synthetic "other" aggregate bucket. It rises and
+	// falls as lines age out of that fixed window, so it is a gauge, not a
+	// monotonic counter — never wrap it in rate()/increase() (#74). The
+	// "interface" label is the interface description (e.g. LAN), and "other" is
+	// an aggregate of everything beyond the top 10, not a real interface.
+	c.interfaceLogEntries = buildPrometheusDesc(c.subsystem, "interface_log_entries_recent",
+		"Firewall log entries per interface within the most recent ~5000-record log window "+
+			"(sliding, not a counter; interface=\"other\" is an aggregate of interfaces beyond the top 10)",
 		[]string{"interface"},
 	)
 }
@@ -174,7 +182,7 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pfStatesCurrent
 	ch <- c.pfStatesLimit
 
-	ch <- c.interfaceHitsTotal
+	ch <- c.interfaceLogEntries
 }
 
 func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -236,8 +244,8 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 	} else {
 		for _, hit := range fwStats {
 			ch <- prometheus.MustNewConstMetric(
-				c.interfaceHitsTotal,
-				prometheus.CounterValue,
+				c.interfaceLogEntries,
+				prometheus.GaugeValue,
 				float64(hit.Value),
 				hit.Label,
 				c.instance,

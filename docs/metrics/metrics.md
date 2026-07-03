@@ -8,8 +8,8 @@ The `opnsense_instance` label is applied to all metrics.
 ## Summary
 
 - **Total metrics:** 556
-- **Gauges:** 329
-- **Counters:** 227
+- **Gauges:** 330
+- **Counters:** 226
 
 ## General
 
@@ -238,7 +238,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firewall_out_ipv6_block_bytes_total | Counter | interface | The number of IPv6 outgoing bytes that were blocked by the firewall by interface | --exporter.disable-firewall |
 | opnsense_firewall_pf_states_current | Gauge | --- | Current number of active PF states | --exporter.disable-firewall |
 | opnsense_firewall_pf_states_limit | Gauge | --- | Maximum number of PF states allowed | --exporter.disable-firewall |
-| opnsense_firewall_interface_hits_total | Counter | interface | Total number of firewall rule matches per interface | --exporter.disable-firewall |
+| opnsense_firewall_interface_log_entries_recent | Gauge | interface | Firewall log entries per interface within the most recent ~5000-record log window (sliding, not a counter; interface=\"other\" is an aggregate of interfaces beyond the top 10) | --exporter.disable-firewall |
 
 ## Firewall Aliases
 

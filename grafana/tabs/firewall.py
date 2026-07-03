@@ -122,13 +122,15 @@ def build(b: Builder):
     # ROW 3 — Interface hits & PF state table
     # ══════════════════════════════════════════════════════════════════════
     iface_hits = b.ts(
-        "Interface Rule Hits/s",
+        "Recent Firewall Log Entries per Interface",
         [
-            (f'rate({sel("opnsense_firewall_interface_hits_total", "interface=~\"$interface\"")}[{RATE}])',
+            (sel("opnsense_firewall_interface_log_entries_recent", "interface=~\"$interface\""),
              "{{interface}}"),
         ],
-        unit="ops", w=12, h=8,
-        desc="Rate of firewall rule matches per interface.",
+        unit="short", w=12, h=8,
+        desc="Firewall log entries per interface in the most recent ~5000-record log window. "
+             "This is a sliding-window gauge (not a counter): plotted directly, never rate()d. "
+             "interface=\"other\" aggregates interfaces beyond the top 10.",
     )
 
     pf_states_gauge = b.gauge(
