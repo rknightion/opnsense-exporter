@@ -28,3 +28,47 @@
 [data-md-color-scheme="default"] .md-typeset a {
   color: var(--md-primary-fg-color);
 }
+
+/* --- Documentation-friendly hero -------------------------------------------
+ * Neutralises the oversized marketing gradient banner (legacy extra.css) into a
+ * compact, readable intro. brand.css loads last, so these win. Currently only
+ * the opnsense-exporter home page renders a .hero, but this is fleet-safe. */
+.md-typeset .hero {
+  background: none;
+  color: inherit;
+  margin: 0 0 1.5rem;
+  padding: 0.25rem 0 1.25rem;
+  border-radius: 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  text-align: center;
+}
+.md-typeset .hero > h1:first-child { margin-top: 0.4rem; }
+.md-typeset .hero p {
+  opacity: 1;
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+  max-width: 46rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.md-typeset .hero-badges {
+  margin: 1.25rem 0 0;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.md-typeset .hero .md-button { margin: 0; }
+.md-typeset .hero .md-button--primary {
+  background-color: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+  color: #fff;
+  backdrop-filter: none;
+}
+.md-typeset .hero .md-button--primary:hover {
+  background-color: var(--md-primary-fg-color--dark);
+  border-color: var(--md-primary-fg-color--dark);
+  transform: none;
+  box-shadow: none;
+}
+.md-typeset .hero .md-button--stretch { min-width: 0; }
