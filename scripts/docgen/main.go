@@ -647,65 +647,159 @@ func extractLabelsFromComposite(expr ast.Expr) []string {
 	return nil
 }
 
-// findBuildPrometheusDescCalls walks the AST for calls to buildPrometheusDesc.
+// findBuildPrometheusDescCalls walks the AST for `<field> = buildPrometheusDesc(...)`
+// assignments, deriving each metric's Prometheus type from the prometheus.{Counter,Gauge}Value
+// argument at its MustNewConstMetric/NewConstMetric emission call site (#100). The desc field
+// (e.g. c.servicesRunning) links the assignment to the emission. The historical `_total`-suffix
+// heuristic is retained only as a fallback for descs whose emission site cannot be resolved
+// statically (e.g. table-driven collectors that emit through a loop/local desc variable).
 func findBuildPrometheusDescCalls(f *ast.File, subsystem string, fset *token.FileSet) []MetricInfo {
 	var metrics []MetricInfo
 
 	// Pre-collect local variable definitions for string slices
 	localVars := collectLocalStringSliceVars(f)
+	// Map desc-field name -> emitted Prometheus type, from this file's emission call sites.
+	emittedTypes := collectEmittedValueTypes(f)
 
 	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
+		assign, ok := n.(*ast.AssignStmt)
 		if !ok {
 			return true
 		}
 
-		// Check if this is a call to buildPrometheusDesc
-		ident, ok := call.Fun.(*ast.Ident)
-		if !ok || ident.Name != "buildPrometheusDesc" {
-			return true
-		}
+		for i, rhs := range assign.Rhs {
+			call, ok := rhs.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			// Check if this is a call to buildPrometheusDesc
+			ident, ok := call.Fun.(*ast.Ident)
+			if !ok || ident.Name != "buildPrometheusDesc" {
+				continue
+			}
+			if len(call.Args) < 4 {
+				continue
+			}
 
-		if len(call.Args) < 4 {
-			return true
-		}
-
-		// arg 0: subsystem (skip, we know it)
-		// arg 1: name (string literal)
-		name := extractStringArg(call.Args[1], fset)
-		// arg 2: help (string literal, possibly multiline concatenation)
-		help := extractStringArg(call.Args[2], fset)
-		// arg 3: labels ([]string{...} or nil or variable reference)
-		labels := extractLabelsArg(call.Args[3])
-		// If labels is nil and arg is an identifier, try resolving from local vars
-		if labels == nil {
-			if varIdent, ok := call.Args[3].(*ast.Ident); ok && varIdent.Name != "nil" {
-				if resolved, exists := localVars[varIdent.Name]; exists {
-					labels = resolved
+			// arg 0: subsystem (skip, we know it)
+			// arg 1: name (string literal)
+			name := extractStringArg(call.Args[1], fset)
+			// arg 2: help (string literal, possibly multiline concatenation)
+			help := extractStringArg(call.Args[2], fset)
+			// arg 3: labels ([]string{...} or nil or variable reference)
+			labels := extractLabelsArg(call.Args[3])
+			// If labels is nil and arg is an identifier, try resolving from local vars
+			if labels == nil {
+				if varIdent, ok := call.Args[3].(*ast.Ident); ok && varIdent.Name != "nil" {
+					if resolved, exists := localVars[varIdent.Name]; exists {
+						labels = resolved
+					}
 				}
 			}
+
+			fullName := "opnsense_" + subsystem + "_" + name
+
+			// Resolve type from the emission ValueType via the LHS desc-field name; fall back to
+			// the _total-suffix heuristic when the field/emission can't be resolved.
+			metricType := ""
+			if i < len(assign.Lhs) {
+				if field := descFieldName(assign.Lhs[i]); field != "" {
+					metricType = emittedTypes[field]
+				}
+			}
+			if metricType == "" {
+				metricType = "Gauge"
+				if strings.HasSuffix(name, "_total") {
+					metricType = "Counter"
+				}
+			}
+
+			metrics = append(metrics, MetricInfo{
+				FullName:  fullName,
+				Name:      name,
+				Subsystem: subsystem,
+				Help:      help,
+				Labels:    labels,
+				Type:      metricType,
+			})
 		}
-
-		fullName := "opnsense_" + subsystem + "_" + name
-
-		metricType := "Gauge"
-		if strings.HasSuffix(name, "_total") {
-			metricType = "Counter"
-		}
-
-		metrics = append(metrics, MetricInfo{
-			FullName:  fullName,
-			Name:      name,
-			Subsystem: subsystem,
-			Help:      help,
-			Labels:    labels,
-			Type:      metricType,
-		})
 
 		return true
 	})
 
 	return metrics
+}
+
+// collectEmittedValueTypes maps a desc-field name (e.g. "servicesRunning", from `c.servicesRunning`)
+// to the Prometheus type ("Counter"/"Gauge") of the prometheus.{Counter,Gauge}Value argument passed
+// alongside it at a MustNewConstMetric/NewConstMetric call site. Descs emitted with UntypedValue, or
+// with a conflicting type across call sites, are omitted so the caller falls back to the suffix
+// heuristic.
+func collectEmittedValueTypes(f *ast.File) map[string]string {
+	out := map[string]string{}
+	conflict := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if sel.Sel.Name != "MustNewConstMetric" && sel.Sel.Name != "NewConstMetric" {
+			return true
+		}
+		if len(call.Args) < 2 {
+			return true
+		}
+		field := descFieldName(call.Args[0])
+		if field == "" {
+			return true
+		}
+		vt := valueTypeName(call.Args[1])
+		if vt == "" {
+			return true
+		}
+		if existing, seen := out[field]; seen && existing != vt {
+			conflict[field] = true
+		} else {
+			out[field] = vt
+		}
+		return true
+	})
+	for field := range conflict {
+		delete(out, field)
+	}
+	return out
+}
+
+// descFieldName returns the field/identifier name a desc expression refers to:
+// c.servicesRunning -> "servicesRunning", or a bare local ident -> its name. Anything else -> "".
+func descFieldName(expr ast.Expr) string {
+	switch v := expr.(type) {
+	case *ast.SelectorExpr:
+		return v.Sel.Name
+	case *ast.Ident:
+		return v.Name
+	}
+	return ""
+}
+
+// valueTypeName maps a prometheus.{Counter,Gauge}Value argument to "Counter"/"Gauge".
+// prometheus.UntypedValue (and anything unrecognised) returns "".
+func valueTypeName(expr ast.Expr) string {
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+	switch sel.Sel.Name {
+	case "CounterValue":
+		return "Counter"
+	case "GaugeValue":
+		return "Gauge"
+	}
+	return ""
 }
 
 // extractStringArg extracts a string value from an AST expression.

@@ -8,8 +8,8 @@ The `opnsense_instance` label is applied to all metrics.
 ## Summary
 
 - **Total metrics:** 556
-- **Gauges:** 330
-- **Counters:** 226
+- **Gauges:** 366
+- **Counters:** 190
 
 ## General
 
@@ -30,7 +30,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_acme_certificates_total | Counter | --- | Total number of ACME-managed certificates | --exporter.disable-acme |
+| opnsense_acme_certificates_total | Gauge | --- | Total number of ACME-managed certificates | --exporter.disable-acme |
 | opnsense_acme_certificate_last_update_timestamp_seconds | Gauge | name, description | Unix timestamp of the last successful ACME certificate issue or renewal (0 = never) | --exporter.disable-acme |
 | opnsense_acme_certificate_status_code | Gauge | name, description | Numeric ACME operation status code from the last ACME run (100 = default/unknown) | --exporter.disable-acme |
 | opnsense_acme_certificate_status_last_update_timestamp_seconds | Gauge | name, description | Unix timestamp of the last ACME client run for this certificate (0 = never run) | --exporter.disable-acme |
@@ -66,7 +66,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_activity_threads_total | Counter | --- | Total number of threads on the system | --exporter.disable-activity |
+| opnsense_activity_threads_total | Gauge | --- | Total number of threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_running | Gauge | --- | Number of running threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_sleeping | Gauge | --- | Number of sleeping threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_waiting | Gauge | --- | Number of waiting threads on the system | --exporter.disable-activity |
@@ -80,7 +80,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_bpf_listeners_total | Counter | --- | Total number of active BPF listeners (raw entry count before aggregation) | --exporter.disable-bpf |
+| opnsense_bpf_listeners_total | Gauge | --- | Total number of active BPF listeners (raw entry count before aggregation) | --exporter.disable-bpf |
 | opnsense_bpf_received_packets_total | Counter | process, interface | Cumulative packets received by BPF listeners for this process/interface pair | --exporter.disable-bpf |
 | opnsense_bpf_dropped_packets_total | Counter | process, interface | Cumulative packets dropped by BPF listeners for this process/interface pair | --exporter.disable-bpf |
 | opnsense_bpf_matched_packets_total | Counter | process, interface | Cumulative packets matched by BPF filter for this process/interface pair | --exporter.disable-bpf |
@@ -94,7 +94,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_carp_demotion | Gauge | --- | CARP demotion level | --exporter.disable-carp |
 | opnsense_carp_allow | Gauge | --- | Whether CARP is allowed (1 = allowed, 0 = not allowed) | --exporter.disable-carp |
 | opnsense_carp_maintenance_mode | Gauge | --- | Whether CARP maintenance mode is enabled (1 = enabled, 0 = disabled) | --exporter.disable-carp |
-| opnsense_carp_vips_total | Counter | --- | Total number of CARP Virtual IPs | --exporter.disable-carp |
+| opnsense_carp_vips_total | Gauge | --- | Total number of CARP Virtual IPs | --exporter.disable-carp |
 | opnsense_carp_vip_status | Gauge | interface, vhid, vip | CARP VIP status (1 = MASTER, 0 = BACKUP, 2 = INIT, -1 = unknown) | --exporter.disable-carp |
 | opnsense_carp_vip_advbase_seconds | Gauge | interface, vhid, vip | CARP VIP advertisement base interval in seconds | --exporter.disable-carp |
 | opnsense_carp_vip_advskew | Gauge | interface, vhid, vip | CARP VIP advertisement skew | --exporter.disable-carp |
@@ -104,8 +104,8 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_captiveportal_service_running | Gauge | --- | Whether the captive portal service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-captiveportal |
-| opnsense_captiveportal_zones_total | Counter | --- | Number of configured captive portal zones (including disabled zones) | --exporter.disable-captiveportal |
-| opnsense_captiveportal_sessions_total | Counter | --- | Total number of active captive portal sessions across all zones | --exporter.disable-captiveportal |
+| opnsense_captiveportal_zones_total | Gauge | --- | Number of configured captive portal zones (including disabled zones) | --exporter.disable-captiveportal |
+| opnsense_captiveportal_sessions_total | Gauge | --- | Total number of active captive portal sessions across all zones | --exporter.disable-captiveportal |
 | opnsense_captiveportal_zone_sessions | Gauge | zone_id, zone_description | Number of active captive portal sessions in this zone | --exporter.disable-captiveportal |
 
 ## Certificates
@@ -118,7 +118,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_certificate_total | Gauge | --- | Total number of certificates | --exporter.disable-certificates |
 | opnsense_certificate_ca_valid_from_seconds | Gauge | description, commonname | Certificate authority valid from timestamp in seconds since epoch | --exporter.disable-certificates |
 | opnsense_certificate_ca_valid_to_seconds | Gauge | description, commonname | Certificate authority valid to (expiry) timestamp in seconds since epoch | --exporter.disable-certificates |
-| opnsense_certificate_ca_total | Counter | --- | Total number of certificate authorities | --exporter.disable-certificates |
+| opnsense_certificate_ca_total | Gauge | --- | Total number of certificate authorities | --exporter.disable-certificates |
 
 ## Chrony
 
@@ -137,7 +137,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_chrony_update_interval_seconds | Gauge | --- | Interval between the last two clock updates (seconds) | --exporter.disable-chrony |
 | opnsense_chrony_leap_status | Gauge | --- | Leap second status (0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised) | --exporter.disable-chrony |
 | opnsense_chrony_tracking_info | Gauge | reference_id, reference_name, leap_status | Chrony tracking info label gauge (always 1) — pool-rotation note: source labels churn with pool directives; use instant queries/tables | --exporter.disable-chrony |
-| opnsense_chrony_sources_total | Counter | --- | Total number of NTP sources chrony is currently tracking | --exporter.disable-chrony |
+| opnsense_chrony_sources_total | Gauge | --- | Total number of NTP sources chrony is currently tracking | --exporter.disable-chrony |
 | opnsense_chrony_source_selected | Gauge | source, mode | Whether this source is currently selected as the best available (1 = selected) | --exporter.disable-chrony |
 | opnsense_chrony_source_stratum | Gauge | source, mode | Stratum of this NTP source | --exporter.disable-chrony |
 | opnsense_chrony_source_reachability | Gauge | source, mode | Source reachability register (0–255; 255 means all 8 last polls succeeded) | --exporter.disable-chrony |
@@ -157,12 +157,12 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_crowdsec_service_running | Gauge | --- | Whether the CrowdSec service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-crowdsec |
-| opnsense_crowdsec_alerts_total | Counter | --- | Total number of CrowdSec alerts (count-only, no per-type breakdown) | --exporter.disable-crowdsec |
-| opnsense_crowdsec_decisions_total | Counter | --- | Total number of active CrowdSec decisions (count-only, no per-type breakdown) | --exporter.disable-crowdsec |
-| opnsense_crowdsec_bouncers_total | Counter | --- | Total number of registered CrowdSec bouncers | --exporter.disable-crowdsec |
+| opnsense_crowdsec_alerts_total | Gauge | --- | Total number of CrowdSec alerts (count-only, no per-type breakdown) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_decisions_total | Gauge | --- | Total number of active CrowdSec decisions (count-only, no per-type breakdown) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_bouncers_total | Gauge | --- | Total number of registered CrowdSec bouncers | --exporter.disable-crowdsec |
 | opnsense_crowdsec_bouncer_valid | Gauge | name, type | Whether the bouncer API key is valid (1 = valid, 0 = invalid) | --exporter.disable-crowdsec |
 | opnsense_crowdsec_bouncer_last_pull_timestamp_seconds | Gauge | name, type | Unix timestamp of the last pull by this bouncer (omitted when never pulled) | --exporter.disable-crowdsec |
-| opnsense_crowdsec_machines_total | Counter | --- | Total number of registered CrowdSec machines (agents) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_machines_total | Gauge | --- | Total number of registered CrowdSec machines (agents) | --exporter.disable-crowdsec |
 | opnsense_crowdsec_machine_validated | Gauge | name | Whether the machine registration has been validated (1 = validated, 0 = pending) | --exporter.disable-crowdsec |
 | opnsense_crowdsec_machine_last_heartbeat_timestamp_seconds | Gauge | name | Unix timestamp of the last heartbeat from this machine (omitted when absent) | --exporter.disable-crowdsec |
 
@@ -170,10 +170,10 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_dnsmasq_leases_total | Counter | --- | Total number of DHCP leases | --exporter.disable-dnsmasq |
+| opnsense_dnsmasq_leases_total | Gauge | --- | Total number of DHCP leases | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_leases_by_interface | Gauge | interface | Number of DHCP leases per interface | --exporter.disable-dnsmasq |
-| opnsense_dnsmasq_leases_reserved_total | Counter | --- | Total number of reserved (static) DHCP leases | --exporter.disable-dnsmasq |
-| opnsense_dnsmasq_leases_dynamic_total | Counter | --- | Total number of dynamic DHCP leases | --exporter.disable-dnsmasq |
+| opnsense_dnsmasq_leases_reserved_total | Gauge | --- | Total number of reserved (static) DHCP leases | --exporter.disable-dnsmasq |
+| opnsense_dnsmasq_leases_dynamic_total | Gauge | --- | Total number of dynamic DHCP leases | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_lease_info | Gauge | address, hostname, hwaddr, interface | Per-lease information (value is expire timestamp). Only emitted when --exporter.enable-dnsmasq-details is set. | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-dnsmasq |
 | opnsense_dnsmasq_pool_size | Gauge | interface | Number of addresses in the configured dnsmasq DHCP ranges per interface | --exporter.disable-dnsmasq |
@@ -182,7 +182,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_dyndns_accounts_total | Counter | --- | Total number of configured DynDNS accounts | --exporter.disable-dyndns |
+| opnsense_dyndns_accounts_total | Gauge | --- | Total number of configured DynDNS accounts | --exporter.disable-dyndns |
 | opnsense_dyndns_account_enabled | Gauge | description, service, hostnames, interface | Whether this DynDNS account is enabled (1 = enabled, 0 = disabled) | --exporter.disable-dyndns |
 | opnsense_dyndns_account_last_update_timestamp_seconds | Gauge | description, service, hostnames, interface | Unix timestamp of the last successful DynDNS IP update for this account | --exporter.disable-dyndns |
 | opnsense_dyndns_account_info | Gauge | description, service, hostnames, zone, interface, current_ip | DynDNS account information (value is always 1; use labels) | --exporter.disable-dyndns |
@@ -193,7 +193,7 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_frr_service_running | Gauge | --- | Whether the FRR (quagga) service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-frr |
-| opnsense_frr_bgp_peers_total | Counter | af | Total number of configured BGP peers for this address family | --exporter.disable-frr |
+| opnsense_frr_bgp_peers_total | Gauge | af | Total number of configured BGP peers for this address family | --exporter.disable-frr |
 | opnsense_frr_bgp_failed_peers | Gauge | af | Number of BGP peers in a failed state for this address family | --exporter.disable-frr |
 | opnsense_frr_bgp_rib_entries | Gauge | af | Number of RIB entries for this address family | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_up | Gauge | peer, remote_as, af | Whether this BGP peer session is established (1 = Established, 0 = otherwise) | --exporter.disable-frr |
@@ -202,13 +202,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_bgp_peer_uptime_seconds | Gauge | peer, remote_as, af | Uptime of this BGP peer session in seconds | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_messages_received_total | Counter | peer, remote_as, af | Cumulative BGP messages received from this peer | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_messages_sent_total | Counter | peer, remote_as, af | Cumulative BGP messages sent to this peer | --exporter.disable-frr |
-| opnsense_frr_ospf_neighbors_total | Counter | --- | Total number of OSPF neighbors | --exporter.disable-frr |
+| opnsense_frr_ospf_neighbors_total | Gauge | --- | Total number of OSPF neighbors | --exporter.disable-frr |
 | opnsense_frr_ospf_neighbor_adjacency | Gauge | neighbor_id, address, interface | Whether this OSPF neighbor is in Full adjacency state (1 = Full, 0 = otherwise) | --exporter.disable-frr |
 | opnsense_frr_ospf_area_interfaces_active | Gauge | area | Number of active interfaces in this OSPF area | --exporter.disable-frr |
 | opnsense_frr_ospf_area_neighbors_full_adjacent | Gauge | area | Number of neighbors in Full adjacency state in this OSPF area | --exporter.disable-frr |
 | opnsense_frr_ospf_area_lsa_count | Gauge | area | Number of LSAs in this OSPF area | --exporter.disable-frr |
 | opnsense_frr_ospf_area_spf_executed_total | Counter | area | Cumulative number of SPF calculations executed in this OSPF area | --exporter.disable-frr |
-| opnsense_frr_bfd_peers_total | Counter | --- | Total number of configured BFD peers | --exporter.disable-frr |
+| opnsense_frr_bfd_peers_total | Gauge | --- | Total number of configured BFD peers | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_up | Gauge | peer, interface | Whether this BFD peer session is up (1 = up, 0 = down) | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_uptime_seconds | Gauge | peer | Uptime of this BFD peer session in seconds | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_control_packets_received_total | Counter | peer | Cumulative BFD control packets received from this peer | --exporter.disable-frr |
@@ -244,7 +244,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_alias_tables_total | Counter | --- | Total number of pf alias tables | --exporter.disable-alias |
+| opnsense_alias_tables_total | Gauge | --- | Total number of pf alias tables | --exporter.disable-alias |
 | opnsense_alias_table_entries | Gauge | table | Current number of entries in this pf alias table | --exporter.disable-alias |
 | opnsense_alias_table_entries_used | Gauge | --- | Number of pf table-entries slots currently in use (global) | --exporter.disable-alias |
 | opnsense_alias_table_entries_limit | Gauge | --- | Maximum number of pf table-entries slots (global) | --exporter.disable-alias |
@@ -256,7 +256,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_firewall_rule_rules_total | Counter | --- | Total number of firewall rules with statistics | --exporter.disable-firewall-rules |
+| opnsense_firewall_rule_rules_total | Gauge | --- | Total number of firewall rules with statistics | --exporter.disable-firewall-rules |
 | opnsense_firewall_rule_evaluations_total | Counter | uuid, description, action, interface, direction | Total number of rule evaluations per firewall rule | --exporter.disable-firewall-rules |
 | opnsense_firewall_rule_packets_total | Counter | uuid, description, action, interface, direction | Total number of packets matched per firewall rule | --exporter.disable-firewall-rules |
 | opnsense_firewall_rule_bytes_total | Counter | uuid, description, action, interface, direction | Total number of bytes matched per firewall rule | --exporter.disable-firewall-rules |
@@ -306,7 +306,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_hasync_remote_reachable | Gauge | --- | Whether the HA sync remote peer is reachable (1 = reachable, 0 = unreachable/unconfigured) | --exporter.enable-hasync |
 | opnsense_hasync_remote_version_match | Gauge | --- | Whether the remote peer firmware version matches the local version (1 = match, 0 = mismatch) | --exporter.enable-hasync |
 | opnsense_hasync_remote_version_info | Gauge | remote_version, local_version | HA sync firmware version information (value is always 1; see labels) | --exporter.enable-hasync |
-| opnsense_hasync_remote_services_total | Counter | --- | Total number of services in the cached remote HA peer service list | --exporter.enable-hasync |
+| opnsense_hasync_remote_services_total | Gauge | --- | Total number of services in the cached remote HA peer service list | --exporter.enable-hasync |
 | opnsense_hasync_remote_service_running | Gauge | service, id | Whether a service is running on the remote HA peer (1 = running, 0 = stopped) | --exporter.enable-hasync |
 
 ## HAProxy
@@ -358,15 +358,15 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_ipsec_phase1_status | Gauge | description, name | IPsec phase1 (1 = connected, 0 = down) | --exporter.disable-ipsec |
 | opnsense_ipsec_phase1_install_time | Gauge | description, name | IPsec phase1 install time | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_bytes_in | Gauge | description, name | IPsec phase1 bytes in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_bytes_out | Gauge | description, name | IPsec phase1 bytes out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_packets_in | Gauge | description, name | IPsec phase1 packets in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_packets_out | Gauge | description, name | IPsec phase1 packets out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_bytes_in | Counter | description, name | IPsec phase1 bytes in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_bytes_out | Counter | description, name | IPsec phase1 bytes out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_packets_in | Counter | description, name | IPsec phase1 packets in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_packets_out | Counter | description, name | IPsec phase1 packets out | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_install_time | Gauge | description, name, phase1_name | IPsec phase2 install time | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_bytes_in | Gauge | description, name, phase1_name | IPsec phase2 bytes in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_bytes_out | Gauge | description, name, phase1_name | IPsec phase2 bytes out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_packets_in | Gauge | description, name, phase1_name | IPsec phase2 packets in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_packets_out | Gauge | description, name, phase1_name | IPsec phase2 packets out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_bytes_in | Counter | description, name, phase1_name | IPsec phase2 bytes in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_bytes_out | Counter | description, name, phase1_name | IPsec phase2 bytes out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_packets_in | Counter | description, name, phase1_name | IPsec phase2 packets in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_packets_out | Counter | description, name, phase1_name | IPsec phase2 packets out | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_rekey_time | Gauge | description, name, phase1_name | IPsec phase2 rekey time | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_life_time | Gauge | description, name, phase1_name | IPsec phase2 life time | --exporter.disable-ipsec |
 | opnsense_ipsec_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-ipsec |
@@ -378,22 +378,22 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_dhcpv4_leases_total | Counter | --- | Total number of ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_leases_total | Gauge | --- | Total number of ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
 | opnsense_dhcpv4_leases_by_interface | Gauge | interface | Number of ISC DHCPv4 leases per interface | --exporter.disable-dhcpv4 |
-| opnsense_dhcpv4_leases_reserved_total | Counter | --- | Total number of reserved (static) ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
-| opnsense_dhcpv4_leases_dynamic_total | Counter | --- | Total number of dynamic ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_leases_reserved_total | Gauge | --- | Total number of reserved (static) ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
+| opnsense_dhcpv4_leases_dynamic_total | Gauge | --- | Total number of dynamic ISC DHCPv4 leases | --exporter.disable-dhcpv4 |
 | opnsense_dhcpv4_lease_info | Gauge | address, hostname, mac, interface, type, state, status | Per-lease ISC DHCPv4 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv4-details is set. | --exporter.disable-dhcpv4 |
 
 ## ISC DHCPv6
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_dhcpv6_leases_total | Counter | --- | Total number of ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_leases_total | Gauge | --- | Total number of ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
 | opnsense_dhcpv6_leases_by_interface | Gauge | interface | Number of ISC DHCPv6 leases per interface | --exporter.disable-dhcpv6 |
-| opnsense_dhcpv6_leases_reserved_total | Counter | --- | Total number of reserved (static) ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
-| opnsense_dhcpv6_leases_dynamic_total | Counter | --- | Total number of dynamic ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_leases_reserved_total | Gauge | --- | Total number of reserved (static) ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_leases_dynamic_total | Gauge | --- | Total number of dynamic ISC DHCPv6 leases | --exporter.disable-dhcpv6 |
 | opnsense_dhcpv6_lease_info | Gauge | address, mac, duid, if_descr, state, status, type | Per-lease ISC DHCPv6 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv6-details is set. | --exporter.disable-dhcpv6 |
-| opnsense_dhcpv6_pd_prefixes_total | Counter | --- | Total number of ISC DHCPv6 prefix delegation entries | --exporter.disable-dhcpv6 |
+| opnsense_dhcpv6_pd_prefixes_total | Gauge | --- | Total number of ISC DHCPv6 prefix delegation entries | --exporter.disable-dhcpv6 |
 | opnsense_dhcpv6_pd_prefixes_active | Gauge | --- | Number of active ISC DHCPv6 prefix delegation entries | --exporter.disable-dhcpv6 |
 
 ## Interfaces
@@ -446,12 +446,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_mbuf_total | Gauge | --- | Total number of mbufs available | --exporter.disable-mbuf |
 | opnsense_mbuf_cluster_current | Gauge | --- | Current number of mbuf clusters in use | --exporter.disable-mbuf |
 | opnsense_mbuf_cluster_cache | Gauge | --- | Number of mbuf clusters in cache | --exporter.disable-mbuf |
-| opnsense_mbuf_cluster_total | Counter | --- | Total number of mbuf clusters available | --exporter.disable-mbuf |
+| opnsense_mbuf_cluster_total | Gauge | --- | Total number of mbuf clusters available | --exporter.disable-mbuf |
 | opnsense_mbuf_cluster_max | Gauge | --- | Maximum number of mbuf clusters | --exporter.disable-mbuf |
 | opnsense_mbuf_failures_total | Counter | type | Total number of mbuf allocation failures by type | --exporter.disable-mbuf |
 | opnsense_mbuf_sleeps_total | Counter | type | Total number of mbuf allocation sleeps by type | --exporter.disable-mbuf |
 | opnsense_mbuf_bytes_in_use | Gauge | --- | Number of bytes of memory currently in use by mbufs | --exporter.disable-mbuf |
-| opnsense_mbuf_bytes_total | Counter | --- | Total number of bytes of memory available for mbufs | --exporter.disable-mbuf |
+| opnsense_mbuf_bytes_total | Gauge | --- | Total number of bytes of memory available for mbufs | --exporter.disable-mbuf |
 | opnsense_mbuf_sendfile_syscalls_total | Counter | --- | Total number of sendfile syscalls | --exporter.disable-mbuf |
 | opnsense_mbuf_sendfile_io_total | Counter | --- | Total number of sendfile I/O operations | --exporter.disable-mbuf |
 | opnsense_mbuf_sendfile_pages_sent_total | Counter | --- | Total number of pages sent via sendfile | --exporter.disable-mbuf |
@@ -462,7 +462,7 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_monit_service_running | Gauge | --- | Whether the Monit service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-monit |
 | opnsense_monit_status_ok | Gauge | --- | Whether the monit httpd was reachable and returned a valid status (1 = ok, 0 = failed/unreachable) | --exporter.disable-monit |
-| opnsense_monit_checks_total | Counter | --- | Total number of service checks configured in monit | --exporter.disable-monit |
+| opnsense_monit_checks_total | Gauge | --- | Total number of service checks configured in monit | --exporter.disable-monit |
 | opnsense_monit_check_status | Gauge | name, type | Whether a monit check reports no errors (1 = status field is 0, 0 = error) | --exporter.disable-monit |
 | opnsense_monit_check_monitored | Gauge | name, type | Whether a monit check is actively monitored (1 = monitored, 0 = not monitored) | --exporter.disable-monit |
 
@@ -484,7 +484,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ntp_peer_delay_milliseconds | Gauge | server | Round-trip delay to the NTP peer in milliseconds | --exporter.disable-ntp |
 | opnsense_ntp_peer_offset_milliseconds | Gauge | server | Clock offset relative to the NTP peer in milliseconds | --exporter.disable-ntp |
 | opnsense_ntp_peer_jitter_milliseconds | Gauge | server | Dispersion jitter of the NTP peer in milliseconds | --exporter.disable-ntp |
-| opnsense_ntp_peers_total | Counter | --- | Total number of NTP peers | --exporter.disable-ntp |
+| opnsense_ntp_peers_total | Gauge | --- | Total number of NTP peers | --exporter.disable-ntp |
 
 ## NUT UPS
 
@@ -531,9 +531,9 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_network_diag_netisr_queue_watermark | Gauge | protocol | High watermark of netisr queue length across workstreams by protocol | --exporter.enable-network-diagnostics |
 | opnsense_network_diag_netisr_queue_limit | Gauge | protocol | Configured netisr queue limit by protocol | --exporter.enable-network-diagnostics |
 | opnsense_network_diag_sockets_active | Gauge | type | Number of active sockets by type | --exporter.enable-network-diagnostics |
-| opnsense_network_diag_sockets_unix_total | Counter | --- | Total number of active Unix domain sockets | --exporter.enable-network-diagnostics |
-| opnsense_network_diag_routes_total | Counter | proto | Number of routing table entries by protocol | --exporter.enable-network-diagnostics |
-| opnsense_network_diag_pfsync_nodes_total | Counter | --- | Total number of pfsync cluster nodes | --exporter.enable-network-diagnostics |
+| opnsense_network_diag_sockets_unix_total | Gauge | --- | Total number of active Unix domain sockets | --exporter.enable-network-diagnostics |
+| opnsense_network_diag_routes_total | Gauge | proto | Number of routing table entries by protocol | --exporter.enable-network-diagnostics |
+| opnsense_network_diag_pfsync_nodes_total | Gauge | --- | Total number of pfsync cluster nodes | --exporter.enable-network-diagnostics |
 | opnsense_network_diag_pfsync_node_info | Gauge | creatorid, is_local | PFSync node information (value is always 1) | --exporter.enable-network-diagnostics |
 
 ## Nginx
@@ -568,7 +568,7 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_openvpn_instances | Gauge | uuid, role, description, device_type | OpenVPN instances (1 = enabled, 0 = disabled) by role (server, client) | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions | Gauge | description, real_address, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
-| opnsense_openvpn_sessions_total | Counter | --- | Total number of OpenVPN sessions | --exporter.disable-openvpn |
+| opnsense_openvpn_sessions_total | Gauge | --- | Total number of OpenVPN sessions | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_by_instance | Gauge | description | Number of OpenVPN sessions per instance | --exporter.disable-openvpn |
 
 ## PF Statistics
@@ -645,7 +645,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_qfeeds_feeds_total | Counter | --- | Total number of configured Q-Feeds threat intelligence feeds | --exporter.disable-qfeeds |
+| opnsense_qfeeds_feeds_total | Gauge | --- | Total number of configured Q-Feeds threat intelligence feeds | --exporter.disable-qfeeds |
 | opnsense_qfeeds_feed_entries | Gauge | feed | Current number of entries in this Q-Feeds feed | --exporter.disable-qfeeds |
 | opnsense_qfeeds_feed_packets_blocked_total | Counter | feed | Packets blocked by this Q-Feeds feed since last reset | --exporter.disable-qfeeds |
 | opnsense_qfeeds_feed_bytes_blocked_total | Counter | feed | Bytes blocked by this Q-Feeds feed since last reset | --exporter.disable-qfeeds |
@@ -663,7 +663,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_smart_devices_total | Counter | --- | Number of SMART-monitored devices enumerated by the os-smart plugin | --exporter.disable-smart |
+| opnsense_smart_devices_total | Gauge | --- | Number of SMART-monitored devices enumerated by the os-smart plugin | --exporter.disable-smart |
 | opnsense_smart_device_health | Gauge | device, model, serial | SMART overall health assessment (1 = passed, 0 = failed) | --exporter.disable-smart |
 | opnsense_smart_device_temperature_celsius | Gauge | device | Current drive temperature in degrees Celsius | --exporter.disable-smart |
 | opnsense_smart_device_power_on_hours | Gauge | device | Total power-on hours reported by the drive | --exporter.disable-smart |
@@ -683,8 +683,8 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_services_status | Gauge | name, description | Service status by name and description (1 = running, 0 = stopped) | --- |
-| opnsense_services_running_total | Counter | --- | Total number of running services | --- |
-| opnsense_services_stopped_total | Counter | --- | Total number of stopped services | --- |
+| opnsense_services_running_total | Gauge | --- | Total number of running services | --- |
+| opnsense_services_stopped_total | Gauge | --- | Total number of stopped services | --- |
 
 ## Syslog
 
@@ -725,7 +725,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_tailscale_service_running | Gauge | --- | Whether the Tailscale plugin service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-tailscale |
 | opnsense_tailscale_backend_running | Gauge | --- | Whether the tailscaled backend state is Running (1 = Running, 0 = anything else) | --exporter.disable-tailscale |
 | opnsense_tailscale_info | Gauge | version, relay | Tailscale node information (value is always 1; see labels) | --exporter.disable-tailscale |
-| opnsense_tailscale_peers_total | Counter | --- | Number of tailnet peers known to this node | --exporter.disable-tailscale |
+| opnsense_tailscale_peers_total | Gauge | --- | Number of tailnet peers known to this node | --exporter.disable-tailscale |
 | opnsense_tailscale_peers_with_active_session | Gauge | --- | Number of tailnet peers with an established WireGuard session from this node (derived from local last-handshake presence, not coordination-server online state) | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_session_active | Gauge | peer | Whether this node has an established WireGuard session with the peer (1 = a handshake has been recorded since tailscaled start). Node-local; deliberately not the coordination-server online flag. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_direct | Gauge | peer | Whether the established session to the peer uses a direct (non-relayed) path (1 = direct, 0 = DERP-relayed). Only emitted for peers with a WireGuard session and when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
@@ -743,8 +743,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_trafficshaper_pipes_total | Counter | --- | Total number of configured traffic shaper pipes | --exporter.disable-trafficshaper |
-| opnsense_trafficshaper_queues_total | Counter | --- | Total number of configured traffic shaper queues (excluding template queues) | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_pipes_total | Gauge | --- | Total number of configured traffic shaper pipes | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_queues_total | Gauge | --- | Total number of configured traffic shaper queues (excluding template queues) | --exporter.disable-trafficshaper |
 | opnsense_trafficshaper_pipe_active_flows | Gauge | pipe, description | Number of currently active flows on this pipe | --exporter.disable-trafficshaper |
 | opnsense_trafficshaper_pipe_packets | Gauge | pipe, description | Total packets processed by this pipe (gauge: flow stats expire with idle flows) | --exporter.disable-trafficshaper |
 | opnsense_trafficshaper_pipe_bytes | Gauge | pipe, description | Total bytes processed by this pipe (gauge: flow stats expire with idle flows) | --exporter.disable-trafficshaper |
