@@ -210,6 +210,56 @@ func TestFetchInterfaces_LinkStateTriState(t *testing.T) {
 	}
 }
 
+// TestFetchInterfaces_TolerantFieldParsing guards #102: one malformed/missing
+// counter field on a single interface must degrade only that metric to 0, not
+// abort the whole fetch and blank every interface's metrics for the scrape.
+func TestFetchInterfaces_TolerantFieldParsing(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		// igb0 is fully valid; newtun0 has an empty "send queue max length".
+		w.Write([]byte(`{"interfaces":{
+			"igb0":{"device":"igb0","name":"LAN","type":"Ethernet","link state":"2","mtu":"1500","bytes received":"100","bytes transmitted":"200","packets received":"10","packets transmitted":"20","multicasts received":"0","multicasts transmitted":"0","input errors":"0","output errors":"0","collisions":"0","send queue length":"0","send queue max length":"50","send queue drops":"0","input queue drops":"0"},
+			"newtun0":{"device":"newtun0","name":"TUN","type":"Tunnel","link state":"0","mtu":"1400","bytes received":"5","bytes transmitted":"6","packets received":"1","packets transmitted":"2","multicasts received":"0","multicasts transmitted":"0","input errors":"0","output errors":"0","collisions":"0","send queue length":"0","send queue max length":"","send queue drops":"0","input queue drops":"0"}
+		}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfaces()
+	if err != nil {
+		t.Fatalf("expected nil error (one bad field must not abort the fetch), got: %v", err)
+	}
+	if len(data.Interfaces) != 2 {
+		t.Fatalf("expected 2 interfaces present despite one bad field, got %d", len(data.Interfaces))
+	}
+	for _, iface := range data.Interfaces {
+		switch iface.Device {
+		case "igb0":
+			if iface.BytesReceived != 100 || iface.SendQueueMaxLength != 50 {
+				t.Errorf("igb0 valid fields mis-parsed: %+v", iface)
+			}
+		case "newtun0":
+			if iface.SendQueueMaxLength != 0 {
+				t.Errorf("newtun0 malformed field should default to 0, got %d", iface.SendQueueMaxLength)
+			}
+			if iface.BytesReceived != 5 {
+				t.Errorf("newtun0 other fields must still parse, got BytesReceived=%d", iface.BytesReceived)
+			}
+		}
+	}
+}
+
+// TestFetchInterfaces_MalformedJSON guards #102's scope: a genuine decode failure
+// still returns an error (the fix narrows error scope to per-field parsing only).
+func TestFetchInterfaces_MalformedJSON(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{not valid json`))
+	})
+	defer server.Close()
+
+	if _, err := client.FetchInterfaces(); err == nil {
+		t.Fatal("expected a non-nil error for malformed JSON")
+	}
+}
+
 func TestFetchInterfaces_EmptyInterfaces(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"interfaces": {}}`))

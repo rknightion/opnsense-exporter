@@ -101,21 +101,12 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 
 	for _, v := range resp.Interface {
 
-		convertedValues, err := sliceIntToMapStringInt(
-			[]string{
-				v.MTU, v.BytesReceived, v.BytesTransmitted,
-				v.PacketsReceived, v.PacketsTransmitted,
-				v.MulticastsReceived, v.MulticastsTransmitted,
-				v.InputErrors, v.OutputErrors,
-				v.Collisions,
-				v.SendQueueLength, v.SendQueueMaxLength,
-				v.SendQueueDrops, v.InputQueueDrops,
-			},
-			url,
-		)
-		if err != nil {
-			return data, err
-		}
+		// Parse each counter/state field tolerantly (safeAtoi → 0 on a missing or
+		// non-numeric value), matching carp.go/unbound_dns.go/ntp.go. A single
+		// malformed field on one interface (e.g. a future driver omitting a
+		// netstat column) must degrade only that one metric to 0, not abort the
+		// whole fetch and blank every interface's metrics for the scrape (#102).
+		// Genuine transport/decode failures are still returned above.
 
 		// OPNsense >=25.x reports "link state" as a numeric string from the
 		// kernel ifmedia status: "2" = up (LINK_STATE_UP), "1" = down,
@@ -135,20 +126,20 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			Name:                  v.Name,
 			Device:                v.Device,
 			Type:                  v.Type,
-			MTU:                   convertedValues[v.MTU],
-			BytesReceived:         convertedValues[v.BytesReceived],
-			BytesTransmitted:      convertedValues[v.BytesTransmitted],
-			PacketsReceived:       convertedValues[v.PacketsReceived],
-			PacketsTransmitted:    convertedValues[v.PacketsTransmitted],
-			MulticastsReceived:    convertedValues[v.MulticastsReceived],
-			MulticastsTransmitted: convertedValues[v.MulticastsTransmitted],
-			InputErrors:           convertedValues[v.InputErrors],
-			OutputErrors:          convertedValues[v.OutputErrors],
-			Collisions:            convertedValues[v.Collisions],
-			SendQueueLength:       convertedValues[v.SendQueueLength],
-			SendQueueMaxLength:    convertedValues[v.SendQueueMaxLength],
-			SendQueueDrops:        convertedValues[v.SendQueueDrops],
-			InputQueueDrops:       convertedValues[v.InputQueueDrops],
+			MTU:                   safeAtoi(v.MTU),
+			BytesReceived:         safeAtoi(v.BytesReceived),
+			BytesTransmitted:      safeAtoi(v.BytesTransmitted),
+			PacketsReceived:       safeAtoi(v.PacketsReceived),
+			PacketsTransmitted:    safeAtoi(v.PacketsTransmitted),
+			MulticastsReceived:    safeAtoi(v.MulticastsReceived),
+			MulticastsTransmitted: safeAtoi(v.MulticastsTransmitted),
+			InputErrors:           safeAtoi(v.InputErrors),
+			OutputErrors:          safeAtoi(v.OutputErrors),
+			Collisions:            safeAtoi(v.Collisions),
+			SendQueueLength:       safeAtoi(v.SendQueueLength),
+			SendQueueMaxLength:    safeAtoi(v.SendQueueMaxLength),
+			SendQueueDrops:        safeAtoi(v.SendQueueDrops),
+			InputQueueDrops:       safeAtoi(v.InputQueueDrops),
 			LinkState:             linkState,
 			LineRate:              parseLineRateBits(v.LineRate),
 		})
