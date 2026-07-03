@@ -217,10 +217,66 @@ func TestGatewaysCollector_Update_EnabledWithoutMonitor(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Enabled but monitor disabled: 1 info + 1 monitor + 3 new unconditional (force_down, virtual, dynamic) + 1 priority = 6
-	expectedCount := 6
+	// Enabled but monitor disabled: 1 info + 1 monitor + 3 new unconditional
+	// (force_down, virtual, dynamic) + 1 priority + 1 status = 7. status is now
+	// emitted from the API-reported value even without monitoring (#77).
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	foundStatus := false
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "gateways_status") {
+			foundStatus = true
+			if v := getMetricValue(m); v != 1 { // "Online" → 1
+				t.Errorf("expected status=1 (Online) for monitor-disabled gateway, got %v", v)
+			}
+		}
+	}
+	if !foundStatus {
+		t.Error("expected opnsense_gateways_status to be emitted for an enabled monitor-disabled gateway")
+	}
+}
+
+// TestGatewaysCollector_DefaultGatewayMonitorDisabled reproduces the #77 blind
+// spot: a default gateway with monitoring disabled (the live box's IPv6 PPPoE/
+// DHCPv6-PD default gw). Before the fix no opnsense_gateways_status series
+// existed for it, so OPNsenseGatewayDown could never fire.
+func TestGatewaysCollector_DefaultGatewayMonitorDisabled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{"disabled": false, "name": "WAN6_DHCP6", "descr": "IPv6 WAN",
+				 "interface": "pppoe0", "ipprotocol": "inet6", "gateway": "fe80::1",
+				 "defaultgw": true, "monitor_disable": "1", "monitor_noroute": "0",
+				 "monitor": "", "force_down": "0", "priority": 255, "weight": "1",
+				 "uuid": "v6-gw", "if": "wan6", "dynamic": true, "virtual": false,
+				 "upstream": true, "interface_descr": "WAN6", "status": "Online",
+				 "delay": "", "stddev": "", "loss": "", "label_class": "success"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	found := false
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "gateways_status") {
+			found = true
+			if l := getMetricLabels(m); l["default_gateway"] != "true" {
+				t.Errorf("expected default_gateway=true label, got %q", l["default_gateway"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no opnsense_gateways_status series for a monitor-disabled default gateway — OPNsenseGatewayDown blind spot (#77)")
 	}
 }
 
@@ -289,7 +345,7 @@ func TestGatewaysCollector_Update_NewMetrics_BoolFields(t *testing.T) {
 
 	// Enabled, monitor disabled, force_down=true, virtual=true, dynamic=true, priority=10
 	// 1 info + 3 bool metrics + 1 priority + 1 monitor = 6
-	expectedCount := 6
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -395,7 +451,7 @@ func TestGatewaysCollector_Update_NewMetrics_ZeroBools(t *testing.T) {
 
 	// Enabled, monitor disabled, force_down=false, virtual=false, dynamic=false, priority=255
 	// 1 info + 3 bool metrics + 1 priority + 1 monitor = 6
-	expectedCount := 6
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -483,9 +539,9 @@ func TestGatewaysCollector_Update_Priority_Empty(t *testing.T) {
 
 	// Enabled, monitor disabled, priority="" (empty) — priority metric must be skipped
 	// 1 info + 3 bool metrics (force_down, virtual, dynamic) + 1 monitor = 5 (no priority)
-	expectedCount := 5
+	expectedCount := 6
 	if len(metrics) != expectedCount {
-		t.Errorf("expected %d metrics (priority skipped when empty), got %d", expectedCount, len(metrics))
+		t.Errorf("expected %d metrics (priority skipped when empty; status now always emitted), got %d", expectedCount, len(metrics))
 	}
 
 	// Verify force_down, virtual, dynamic are all 0 (false)

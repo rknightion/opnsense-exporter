@@ -120,9 +120,14 @@ target a specific Grafana folder.
 | OPNsenseNTPPeerUnreachable | warning | an NTP peer's reachability register is 0 for 15m |
 | OPNsenseUnboundDNSSECBogus | info | > 5 DNSSEC-bogus answers in 15m |
 
-Thresholds are conservative defaults — tune them in `build_rules.py` (or the YAML) for your
-environment. Note: `OPNsenseEndpointErrors` and `OPNsenseServiceDown` emit one alert per
-endpoint/service.
+Thresholds are conservative defaults — tune them in `build_rules.py` for your environment.
+Note: `OPNsenseEndpointErrors` and `OPNsenseServiceDown` emit one alert per endpoint/service.
+
+**Gateway coverage.** `opnsense_gateways_status` is emitted for every *enabled* gateway using the
+API-reported status, including gateways with OPNsense monitoring disabled (a common PPPoE/DHCPv6-PD
+default-gateway pattern) — so `OPNsenseGatewayDown` covers them too. The rule's `noDataState` stays
+`OK` (a totally-absent series means the exporter itself is down, which `OPNsenseExporterDown`
+already pages on); it does not fire for *disabled* gateways, which have no status series by design.
 
 **`opnsense_up` is reachability-only.** It is 1 whenever the exporter reaches and parses the
 OPNsense system-status API, and 0 only when that call fails (unreachable / auth / HTTP error).

@@ -276,6 +276,20 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 				v.Monitor,
 				c.instance,
 			)
+			// The API reports a real status independent of monitoring, so emit
+			// it for every enabled gateway — not only monitor-enabled ones.
+			// Otherwise a default gateway with monitoring disabled (a common
+			// PPPoE/DHCPv6-PD pattern) has no opnsense_gateways_status series at
+			// all, and the OPNsenseGatewayDown alert can never fire for it (#77).
+			ch <- prometheus.MustNewConstMetric(
+				c.status,
+				prometheus.GaugeValue,
+				float64(v.Status),
+				v.Name,
+				v.Monitor,
+				strconv.FormatBool(v.DefaultGateway),
+				c.instance,
+			)
 			if v.MonitorEnabled {
 				if v.Delay >= 0 {
 					ch <- prometheus.MustNewConstMetric(
@@ -314,15 +328,6 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 				c.emitThreshold(ch, c.interval, "interval", v.Interval, v.Name, v.Monitor)
 				c.emitThreshold(ch, c.period, "time_period", v.TimePeriod, v.Name, v.Monitor)
 				c.emitThreshold(ch, c.timeout, "loss_interval", v.LossInterval, v.Name, v.Monitor)
-				ch <- prometheus.MustNewConstMetric(
-					c.status,
-					prometheus.GaugeValue,
-					float64(v.Status),
-					v.Name,
-					v.Monitor,
-					strconv.FormatBool(v.DefaultGateway),
-					c.instance,
-				)
 			}
 		}
 	}
