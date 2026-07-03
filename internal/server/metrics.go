@@ -67,8 +67,24 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	promhttp.HandlerFor(
 		prometheus.Gatherers{h.self, reg},
-		promhttp.HandlerOpts{},
+		// ContinueOnError (not the zero-value HTTPErrorOnError) so a single
+		// collector emitting a duplicate label tuple degrades to a logged
+		// warning plus a partial scrape, instead of a blanket HTTP 500 that
+		// drops every collector's series and the self/process metrics too (#81).
+		promhttp.HandlerOpts{
+			ErrorHandling: promhttp.ContinueOnError,
+			ErrorLog:      promErrorLogger{log: h.log},
+		},
 	).ServeHTTP(w, r)
+}
+
+// promErrorLogger adapts a *slog.Logger to promhttp.Logger so Gather errors
+// (e.g. duplicate label tuples) are surfaced in structured logs rather than
+// silently swallowed by the default nil ErrorLog.
+type promErrorLogger struct{ log *slog.Logger }
+
+func (l promErrorLogger) Println(v ...any) {
+	l.log.Warn("error gathering metrics for scrape", "err", strings.TrimSuffix(fmt.Sprintln(v...), "\n"))
 }
 
 // parseCollectorFilters turns collect[]/exclude[] query parameters into an

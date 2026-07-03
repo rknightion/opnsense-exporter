@@ -87,7 +87,20 @@ func (c *acmeCollector) Update(ctx context.Context, client *opnsense.Client, ch 
 		c.instance,
 	)
 
+	// ACME metrics are keyed on (name, description), neither guaranteed unique by
+	// OPNsense. Emitting two rows with the same tuple fails the whole scrape, so
+	// skip duplicates (defence-in-depth alongside the server-side partial-scrape
+	// handling) (#81).
+	seen := make(map[[2]string]bool, len(data.Certificates))
 	for _, cert := range data.Certificates {
+		key := [2]string{cert.Name, cert.Description}
+		if seen[key] {
+			c.log.Warn("skipping ACME certificate with duplicate (name, description) label tuple",
+				"name", cert.Name, "description", cert.Description)
+			continue
+		}
+		seen[key] = true
+
 		enabledVal := 0.0
 		if cert.Enabled {
 			enabledVal = 1.0

@@ -97,7 +97,21 @@ func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Cli
 		c.instance,
 	)
 
+	// Leaf-cert metrics are keyed on (description, commonname, cert_type, in_use),
+	// none guaranteed unique — e.g. an old cert left behind with the same
+	// description after an ACME renewal. Skip duplicates so one collision doesn't
+	// fail the whole scrape (defence-in-depth alongside the server handler) (#81).
+	seenLeaf := make(map[[4]string]bool, len(data.Certificates))
 	for _, cert := range data.Certificates {
+		key := [4]string{cert.Description, cert.CommonName, cert.CertType, cert.InUse}
+		if seenLeaf[key] {
+			c.log.Warn("skipping certificate with duplicate label tuple",
+				"description", cert.Description, "commonname", cert.CommonName,
+				"cert_type", cert.CertType, "in_use", cert.InUse)
+			continue
+		}
+		seenLeaf[key] = true
+
 		ch <- prometheus.MustNewConstMetric(
 			c.validFrom,
 			prometheus.GaugeValue,
@@ -138,7 +152,15 @@ func (c *certificatesCollector) Update(ctx context.Context, client *opnsense.Cli
 
 	ch <- prometheus.MustNewConstMetric(c.caTotal, prometheus.GaugeValue,
 		float64(caData.Total), c.instance)
+	seenCA := make(map[[2]string]bool, len(caData.CAs))
 	for _, ca := range caData.CAs {
+		key := [2]string{ca.Description, ca.CommonName}
+		if seenCA[key] {
+			c.log.Warn("skipping CA certificate with duplicate label tuple",
+				"description", ca.Description, "commonname", ca.CommonName)
+			continue
+		}
+		seenCA[key] = true
 		ch <- prometheus.MustNewConstMetric(c.caValidFrom, prometheus.GaugeValue,
 			ca.ValidFrom, ca.Description, ca.CommonName, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.caValidTo, prometheus.GaugeValue,

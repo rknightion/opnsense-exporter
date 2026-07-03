@@ -44,9 +44,13 @@ func (c *dyndnsCollector) Register(namespace, instanceLabel string, log *slog.Lo
 		"Whether this DynDNS account is enabled (1 = enabled, 0 = disabled)",
 		[]string{"description", "service", "hostnames", "interface"},
 	)
+	// interface is included (matching the account_enabled/account_info sibling
+	// metrics) so two dyndns accounts sharing description/service/hostnames but
+	// bound to different interfaces — a normal dual-WAN failover setup — don't
+	// collapse to the same label tuple and fail the whole scrape (#81).
 	c.lastUpdate = buildPrometheusDesc(c.subsystem, "account_last_update_timestamp_seconds",
 		"Unix timestamp of the last successful DynDNS IP update for this account",
-		[]string{"description", "service", "hostnames"},
+		[]string{"description", "service", "hostnames", "interface"},
 	)
 	c.accountInfo = buildPrometheusDesc(c.subsystem, "account_info",
 		"DynDNS account information (value is always 1; use labels)",
@@ -119,6 +123,7 @@ func (c *dyndnsCollector) Update(ctx context.Context, client *opnsense.Client, c
 				acct.Description,
 				acct.Service,
 				acct.Hostnames,
+				acct.Interface,
 				c.instance,
 			)
 		}

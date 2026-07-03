@@ -77,6 +77,45 @@ func TestCronCollector_Update(t *testing.T) {
 	}
 }
 
+// TestCronCollector_DuplicateFieldsStayDistinct reproduces the #81 collision: a
+// cron job cloned (then the original disabled) yields two rows identical in
+// (schedule, description, command, origin). Before the fix these collapsed to one
+// label tuple and 500'd the whole scrape; the uuid label keeps them distinct.
+func TestCronCollector_DuplicateFieldsStayDistinct(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"uuid":"uuid-a","enabled":"1","minutes":"0","hours":"1","days":"*","months":"*","weekdays":"*","description":"nightly job","command":"do-thing","origin":"cron"},
+				{"uuid":"uuid-b","enabled":"0","minutes":"0","hours":"1","days":"*","months":"*","weekdays":"*","description":"nightly job","command":"do-thing","origin":"cron"}
+			],
+			"rowCount": 2, "total": 2, "current": 1
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &cronCollector{subsystem: CronTableSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 2 {
+		t.Fatalf("expected 2 metrics, got %d", len(metrics))
+	}
+	assertNoDuplicateSeries(t, metrics)
+
+	uuids := map[string]bool{}
+	for _, m := range metrics {
+		l := getMetricLabels(m)
+		if l["uuid"] == "" {
+			t.Errorf("expected a non-empty uuid label, got %v", l)
+		}
+		uuids[l["uuid"]] = true
+	}
+	if len(uuids) != 2 {
+		t.Errorf("expected 2 distinct uuid labels, got %d: %v", len(uuids), uuids)
+	}
+}
+
 func TestCronCollector_Name(t *testing.T) {
 	c := &cronCollector{subsystem: CronTableSubsystem}
 	if c.Name() != CronTableSubsystem {

@@ -150,7 +150,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_cron_job_status | Gauge | schedule, description, command, origin | Cron job status by name and description (1 = enabled, 0 = disabled) | --exporter.disable-cron-table |
+| opnsense_cron_job_status | Gauge | uuid, schedule, description, command, origin | Cron job status by name and description (1 = enabled, 0 = disabled) | --exporter.disable-cron-table |
 
 ## CrowdSec
 
@@ -184,7 +184,7 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_dyndns_accounts_total | Counter | --- | Total number of configured DynDNS accounts | --exporter.disable-dyndns |
 | opnsense_dyndns_account_enabled | Gauge | description, service, hostnames, interface | Whether this DynDNS account is enabled (1 = enabled, 0 = disabled) | --exporter.disable-dyndns |
-| opnsense_dyndns_account_last_update_timestamp_seconds | Gauge | description, service, hostnames | Unix timestamp of the last successful DynDNS IP update for this account | --exporter.disable-dyndns |
+| opnsense_dyndns_account_last_update_timestamp_seconds | Gauge | description, service, hostnames, interface | Unix timestamp of the last successful DynDNS IP update for this account | --exporter.disable-dyndns |
 | opnsense_dyndns_account_info | Gauge | description, service, hostnames, zone, interface, current_ip | DynDNS account information (value is always 1; use labels) | --exporter.disable-dyndns |
 | opnsense_dyndns_service_running | Gauge | --- | Whether the DynDNS service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-dyndns |
 

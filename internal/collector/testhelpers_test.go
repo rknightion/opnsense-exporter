@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http/httptest"
 	"net/url"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -12,6 +14,28 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
+
+// assertNoDuplicateSeries fails if any two metrics share the same descriptor and
+// label values — the exact condition that makes a checked registry's Gather()
+// error and (before #81) 500 the whole scrape.
+func assertNoDuplicateSeries(t *testing.T, metrics []prometheus.Metric) {
+	t.Helper()
+	seen := make(map[string]bool, len(metrics))
+	for _, m := range metrics {
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		parts := make([]string, 0, len(d.GetLabel()))
+		for _, lp := range d.GetLabel() {
+			parts = append(parts, lp.GetName()+"="+lp.GetValue())
+		}
+		sort.Strings(parts)
+		key := m.Desc().String() + "|" + strings.Join(parts, ",")
+		if seen[key] {
+			t.Fatalf("duplicate series (would fail Gather): %s", key)
+		}
+		seen[key] = true
+	}
+}
 
 func newCollectorTestClient(t *testing.T, server *httptest.Server) *opnsense.Client {
 	t.Helper()

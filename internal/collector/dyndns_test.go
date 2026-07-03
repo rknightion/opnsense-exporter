@@ -21,6 +21,44 @@ func dyndnsTestMux(t *testing.T, accountsResponse, serviceResponse string) *http
 	return mux
 }
 
+// TestDynDNSCollector_LastUpdateUniquePerInterface reproduces the #81 dyndns
+// collision: two accounts sharing description/service/hostnames but bound to
+// different interfaces (a dual-WAN failover setup). The last_update metric
+// previously omitted the interface label, so the two rows collided and 500'd the
+// whole scrape.
+func TestDynDNSCollector_LastUpdateUniquePerInterface(t *testing.T) {
+	accountsResponse := `{
+		"total": 2, "rowCount": 2, "current": 1,
+		"rows": [
+			{"uuid":"a","enabled":"1","service":"cloudflare","%service":"Cloudflare","hostnames":"dyn.example.com","zone":"example.com","interface":"wan","%interface":"WAN","description":"dual","current_ip":"1.1.1.1","current_mtime":"2026-05-29T21:37:38+01:00"},
+			{"uuid":"b","enabled":"1","service":"cloudflare","%service":"Cloudflare","hostnames":"dyn.example.com","zone":"example.com","interface":"wan2","%interface":"WAN2","description":"dual","current_ip":"2.2.2.2","current_mtime":"2026-05-29T22:37:38+01:00"}
+		]
+	}`
+	mux := dyndnsTestMux(t, accountsResponse, `{"status": "running"}`)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &dyndnsCollector{subsystem: DynDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var lastUpdate []map[string]string
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "account_last_update_timestamp_seconds") {
+			lastUpdate = append(lastUpdate, getMetricLabels(m))
+		}
+	}
+	if len(lastUpdate) != 2 {
+		t.Fatalf("expected 2 last_update metrics, got %d", len(lastUpdate))
+	}
+	if lastUpdate[0]["interface"] == lastUpdate[1]["interface"] {
+		t.Errorf("expected distinct interface labels on last_update metrics, got %q twice", lastUpdate[0]["interface"])
+	}
+}
+
 func TestDynDNSCollector_Update_Normal(t *testing.T) {
 	accountsResponse := `{
 		"total": 2,

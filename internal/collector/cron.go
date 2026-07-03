@@ -31,9 +31,13 @@ func (c *cronCollector) Register(namespace, instanceLabel string, log *slog.Logg
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
+	// uuid (the stable OPNsense config row id) is included so two cron rows
+	// that share schedule/description/command/origin — e.g. a job cloned and
+	// its original disabled — don't collapse to the same label tuple and fail
+	// the whole scrape (#81).
 	c.jobsStatus = buildPrometheusDesc(c.subsystem, "job_status",
 		"Cron job status by name and description (1 = enabled, 0 = disabled)",
-		[]string{"schedule", "description", "command", "origin"},
+		[]string{"uuid", "schedule", "description", "command", "origin"},
 	)
 }
 
@@ -51,6 +55,7 @@ func (c *cronCollector) Update(ctx context.Context, client *opnsense.Client, ch 
 			c.jobsStatus,
 			prometheus.GaugeValue,
 			float64(cron.Status),
+			cron.UUID,
 			cron.Schedule,
 			cron.Description,
 			cron.Command,
