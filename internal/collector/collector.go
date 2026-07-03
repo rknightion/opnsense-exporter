@@ -905,6 +905,19 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	c.collect(context.Background(), ch, nil)
 }
 
+// collectAlwaysOn emits the cumulative exporter-meta metrics that every scrape path
+// (normal, deadline-skip, unreachable short-circuit) must surface so they stay present
+// at their current values. scrapes/scrapeSkips are incremented by the caller as
+// appropriate before this is called.
+func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
+	c.scrapes.Collect(ch)
+	c.scrapeSkips.Collect(ch)
+	c.endpointErrors.Collect(ch)
+	c.apiRequests.Collect(ch)
+	c.apiRequestDuration.Collect(ch)
+	c.collectExporterInfo(ch)
+}
+
 // collect runs one scrape. include==nil selects every enabled collector; a
 // non-nil map (even an empty one) restricts the fan-out to the named
 // sub-collectors. The always-on metrics (up, health, build_info,
@@ -925,18 +938,31 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 		// silently over-count relative to what Prometheus observed. scrapes_total is
 		// still Collected (unincremented) so it stays present at its completed count.
 		c.scrapeSkips.WithLabelValues(c.instanceLabel).Inc()
-		c.scrapeSkips.Collect(ch)
-		c.scrapes.Collect(ch)
-		c.endpointErrors.Collect(ch)
-		c.apiRequests.Collect(ch)
-		c.apiRequestDuration.Collect(ch)
-		c.collectExporterInfo(ch)
+		c.collectAlwaysOn(ch)
 		return
 	}
 
 	client := c.Client.WithContext(ctx)
 
 	if err := c.collectHealthMetrics(client, ch); err != nil {
+		// A transport-level health-check failure (StatusCode==0: DNS, connection
+		// refused, timeout, context abort) means the box is unreachable. Running the
+		// full ~49-collector fan-out would just repeat the same failing dials — a burst
+		// of doomed requests and (now Warn-level) log lines every scrape interval — with
+		// no new signal beyond opnsense_up=0, which collectHealthMetrics already emitted.
+		// Short-circuit: count the scrape, emit the always-on meta metrics, and skip the
+		// sub-collectors. A non-transport failure (a reachable box returning an HTTP
+		// error) still falls through so the sub-collectors run (#127).
+		var apiErr *opnsense.APICallError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == 0 {
+			c.log.Warn(
+				"firewall unreachable (transport-level health-check failure); skipping sub-collectors this scrape",
+				"err", err,
+			)
+			c.scrapes.WithLabelValues(c.instanceLabel).Inc()
+			c.collectAlwaysOn(ch)
+			return
+		}
 		c.log.Error(
 			"failed to fetch system health status; continuing with sub-collectors",
 			"err", err,
@@ -957,14 +983,7 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 	wg.Wait()
 
 	c.scrapes.WithLabelValues(c.instanceLabel).Inc()
-	c.scrapes.Collect(ch)
-	// Collect scrapeSkips (at its current value, 0 in normal operation) so the series
-	// is always present — an alert/dashboard on it works without waiting for a skip.
-	c.scrapeSkips.Collect(ch)
-	c.endpointErrors.Collect(ch)
-	c.apiRequests.Collect(ch)
-	c.apiRequestDuration.Collect(ch)
-	c.collectExporterInfo(ch)
+	c.collectAlwaysOn(ch)
 }
 
 // selectedCollectors returns the sub-collectors to run for this scrape.

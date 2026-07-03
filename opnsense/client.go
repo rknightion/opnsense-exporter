@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -24,6 +25,31 @@ import (
 // MaxRetries is the maximum number of retries
 // when a request to the OPNsense API fails
 const MaxRetries = 3
+
+// baseRetryDelay is the first backoff interval; subsequent retries grow it
+// exponentially (100ms, 200ms, 400ms, ...) with jitter, instead of a fixed 25ms, so a
+// down or flapping firewall isn't hammered with back-to-back doomed dials (#127).
+const baseRetryDelay = 100 * time.Millisecond
+
+// retryBackoff returns the base backoff before retry attempt n (1-indexed): exponential
+// growth from baseRetryDelay. Jitter is applied at the call site; this stays a pure,
+// deterministic function so the growth is unit-testable.
+func retryBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	return baseRetryDelay << (attempt - 1)
+}
+
+// retryableStatus reports whether an idempotent GET receiving this status code should
+// be retried: transient gateway/proxy errors that a brief service restart produces.
+func retryableStatus(method string, code int) bool {
+	if method != "GET" {
+		return false
+	}
+	return code == http.StatusBadGateway || code == http.StatusServiceUnavailable ||
+		code == http.StatusGatewayTimeout
+}
 
 // maxResponseBodyBytes caps how much of an API response body the client reads
 // (after any gzip decompression), so a compromised or misbehaving OPNsense box
@@ -321,8 +347,27 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 		ctx = context.Background()
 	}
 
-	// Retry the request up to MaxRetries times
-	for range MaxRetries {
+	// Retry the request up to MaxRetries times. lastErr records the real underlying
+	// cause (transport error text or retryable HTTP status) so an exhausted-retries
+	// failure surfaces WHY (DNS / refused / timeout / 503) instead of a generic string.
+	lastErr := "unknown error"
+	for attempt := 1; attempt <= MaxRetries; attempt++ {
+		if attempt > 1 {
+			// Jittered exponential backoff (full jitter over [base/2, base]), honouring
+			// context cancellation so a cancelled scrape doesn't sleep pointlessly.
+			base := retryBackoff(attempt - 1)
+			delay := base/2 + time.Duration(rand.Int64N(int64(base/2)+1))
+			select {
+			case <-ctx.Done():
+				return &APICallError{
+					Endpoint:   string(path),
+					Message:    fmt.Sprintf("request aborted: %s", ctx.Err()),
+					StatusCode: 0,
+				}
+			case <-time.After(delay):
+			}
+		}
+
 		var reqBody io.Reader
 		if bodyBytes != nil {
 			reqBody = bytes.NewReader(bodyBytes)
@@ -355,10 +400,26 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 					StatusCode: 0,
 				}
 			}
-			c.log.Error("failed to send request; retrying",
+			lastErr = err.Error()
+			// Warn (not Error): a single unreachable firewall would otherwise emit an
+			// Error line per endpoint per attempt (a log storm); opnsense_up=0 is the
+			// real signal. The exhausted-retries APICallError below carries the cause.
+			c.log.Warn("failed to send request; will retry",
 				"component", "opnsense-client",
+				"attempt", attempt,
 				"err", err.Error())
-			time.Sleep(25 * time.Millisecond)
+			continue
+		}
+
+		// Retry idempotent GETs on transient gateway errors (e.g. a brief lighttpd/
+		// configd restart during a firmware check), which previously failed outright.
+		if retryableStatus(method, resp.StatusCode) && attempt < MaxRetries {
+			lastErr = fmt.Sprintf("HTTP %d", resp.StatusCode)
+			resp.Body.Close()
+			c.log.Warn("retryable server error; will retry",
+				"component", "opnsense-client",
+				"attempt", attempt,
+				"code", resp.StatusCode)
 			continue
 		}
 
@@ -367,7 +428,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 	}
 	return &APICallError{
 		Endpoint:   string(path),
-		Message:    fmt.Sprintf("max retries of %d times reached", MaxRetries),
+		Message:    fmt.Sprintf("max retries of %d times reached: %s", MaxRetries, lastErr),
 		StatusCode: 0,
 	}
 }

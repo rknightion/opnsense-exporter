@@ -571,6 +571,48 @@ func TestCollectSkipSignalOnZeroDeadline(t *testing.T) {
 	}
 }
 
+// TestCollectShortCircuitsWhenFirewallUnreachable covers #127: a transport-level
+// health-check failure (StatusCode==0) must skip the sub-collector fan-out for that
+// scrape (still reporting opnsense_up=0), and must not produce ERROR-level log storms.
+func TestCollectShortCircuitsWhenFirewallUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	client := newCollectorTestClient(t, srv)
+	srv.Close() // every dial now refused -> transport error, StatusCode 0
+
+	fake := &fakeCollectorInstance{name: "fake"}
+	c := newScrapeTestCollector(t, client, fake)
+	var buf strings.Builder
+	c.log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	ch := make(chan prometheus.Metric, 128)
+	c.collect(context.Background(), ch, nil)
+	close(ch)
+
+	if fake.calls != 0 {
+		t.Errorf("sub-collector fan-out should be skipped when the firewall is unreachable, got %d calls", fake.calls)
+	}
+
+	var up *float64
+	for m := range ch {
+		if strings.Contains(m.Desc().String(), "opnsense_up_test") {
+			v := getMetricValue(m)
+			up = &v
+		}
+	}
+	if up == nil {
+		t.Fatal("opnsense_up must still be emitted on the unreachable short-circuit")
+	}
+	if *up != 0 {
+		t.Errorf("opnsense_up = %v, want 0", *up)
+	}
+
+	// Log-volume regression: the transport retries are Warn-level now and the fan-out is
+	// skipped, so a single unreachable scrape produces zero ERROR lines (was ~223).
+	if n := strings.Count(buf.String(), "level=ERROR"); n != 0 {
+		t.Errorf("expected 0 ERROR log lines on an unreachable scrape, got %d:\n%s", n, buf.String())
+	}
+}
+
 func TestScrapeViewFiltersCollectors(t *testing.T) {
 	client := newCollectorTestClient(t, healthOKServer(t))
 
