@@ -47629,8 +47629,8 @@
         "kind": "Panel",
         "spec": {
           "id": 432,
-          "title": "Scrape Rate",
-          "description": "",
+          "title": "Scrape & Skip Rate",
+          "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -47655,7 +47655,33 @@
                       "spec": {
                         "expr": "rate(opnsense_exporter_scrapes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
                         "refId": "A",
-                        "legendFormat": "{{opnsense_instance}}",
+                        "legendFormat": "completed {{opnsense_instance}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_exporter_scrape_skips_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "B",
+                        "legendFormat": "skipped {{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }

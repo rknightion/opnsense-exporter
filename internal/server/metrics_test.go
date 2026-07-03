@@ -193,3 +193,20 @@ func TestScrapeTimeoutTable(t *testing.T) {
 		}
 	}
 }
+
+// TestScrapeTimeoutNaNYieldsExpiredDeadline documents the deterministic bail trigger
+// behind #122: a NaN scrape-timeout header parses to (0, true), so the handler builds
+// context.WithTimeout(reqCtx, 0) — a deadline already in the past — which drives the
+// collector's deadline-expired bail path (and now its scrape_skips_total signal). This
+// is the deterministic reproduction, not the ~500ms offset timing window.
+func TestScrapeTimeoutNaNYieldsExpiredDeadline(t *testing.T) {
+	got, ok := scrapeTimeout("NaN", 500*time.Millisecond)
+	if !ok || got != 0 {
+		t.Fatalf("scrapeTimeout(NaN) = (%s, %v), want (0s, true)", got, ok)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), got)
+	defer cancel()
+	if ctx.Err() == nil {
+		t.Fatal("a NaN-derived 0 deadline must produce an already-expired context")
+	}
+}

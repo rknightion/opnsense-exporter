@@ -154,6 +154,7 @@ type Collector struct {
 	crashReporterStatus  prometheus.Gauge
 	systemStatusCode     prometheus.Gauge
 	scrapes              prometheus.CounterVec
+	scrapeSkips          prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
 	instanceLabel        string
 	collectors           []CollectorInstance
@@ -710,7 +711,13 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.scrapes = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_scrapes_total",
-		Help:      "Total number of times OPNsense was scraped for metrics.",
+		Help:      "Total number of times OPNsense was scraped for metrics (completed scrapes only; scrapes skipped because the deadline expired before the collector lock was acquired are counted by opnsense_exporter_scrape_skips_total instead).",
+	}, []string{"opnsense_instance"})
+
+	c.scrapeSkips = *prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "exporter_scrape_skips_total",
+		Help:      "Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics — opnsense_up and the per-collector series are absent — so this counter is the signal to distinguish a skipped scrape from a completed one.",
 	}, []string{"opnsense_instance"})
 
 	c.endpointErrors = *prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -726,6 +733,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	// non-idempotent (a second New panicked on duplicate registration), which is
 	// why several tests previously avoided calling New.
 	c.scrapes.WithLabelValues(c.instanceLabel).Add(0)
+	c.scrapeSkips.WithLabelValues(c.instanceLabel).Add(0)
 
 	for _, path := range c.Client.Endpoints() {
 		c.endpointErrors.WithLabelValues(string(path), c.instanceLabel).Add(0)
@@ -736,6 +744,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 // Describe implements the prometheus.Collector interface.
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapes.Describe(ch)
+	c.scrapeSkips.Describe(ch)
 	c.endpointErrors.Describe(ch)
 	c.isUp.Describe(ch)
 	ch <- c.buildInfo
@@ -873,7 +882,12 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 	// always-on exporter metrics and bail.
 	if ctx.Err() != nil {
 		c.log.Warn("scrape deadline expired before collection started; skipping sub-collectors", "err", ctx.Err())
-		c.scrapes.WithLabelValues(c.instanceLabel).Inc()
+		// Count this as a SKIP, not a completed scrape: incrementing scrapes_total here
+		// would make a deadline-expired bail indistinguishable from a real scrape and
+		// silently over-count relative to what Prometheus observed. scrapes_total is
+		// still Collected (unincremented) so it stays present at its completed count.
+		c.scrapeSkips.WithLabelValues(c.instanceLabel).Inc()
+		c.scrapeSkips.Collect(ch)
 		c.scrapes.Collect(ch)
 		c.endpointErrors.Collect(ch)
 		c.collectExporterInfo(ch)
@@ -904,6 +918,9 @@ func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, in
 
 	c.scrapes.WithLabelValues(c.instanceLabel).Inc()
 	c.scrapes.Collect(ch)
+	// Collect scrapeSkips (at its current value, 0 in normal operation) so the series
+	// is always present — an alert/dashboard on it works without waiting for a skip.
+	c.scrapeSkips.Collect(ch)
 	c.endpointErrors.Collect(ch)
 	c.collectExporterInfo(ch)
 }

@@ -144,8 +144,13 @@ def build_diagnostics(b: Builder):
     b.sentinel("has_go_runtime", f'label_values(go_goroutines{{{JOB}}}, __name__)')
     up = b.statushistory("Scrape Success (opnsense_up)", [(sel("opnsense_up"), "{{opnsense_instance}}")],
                          UPDOWN, w=12, h=6)
-    scrapes = b.ts("Scrape Rate", [(f'rate({sel("opnsense_exporter_scrapes_total")}[{RATE}])',
-                    "{{opnsense_instance}}")], unit="reqps", w=12, h=6)
+    scrapes = b.ts("Scrape & Skip Rate",
+                   [(f'rate({sel("opnsense_exporter_scrapes_total")}[{RATE}])', "completed {{opnsense_instance}}"),
+                    (f'rate({sel("opnsense_exporter_scrape_skips_total")}[{RATE}])', "skipped {{opnsense_instance}}")],
+                   unit="reqps", w=12, h=6,
+                   desc="Completed scrapes vs scrapes skipped because the deadline expired before the collector "
+                        "lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates "
+                        "mutex pile-up in front of a slow firewall — opnsense_up is absent for those scrapes.")
     errs_ts = b.ts("Endpoint Errors (rate)", [(f'rate({sel("opnsense_exporter_endpoint_errors_total")}[{RATE}])',
                    "{{endpoint}}")], unit="errps", w=12, h=7)
     errs_tbl = b.table("Endpoint Errors (total)",

@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 556
+- **Total metrics:** 557
 - **Gauges:** 366
-- **Counters:** 190
+- **Counters:** 191
 
 ## General
 
@@ -23,7 +23,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firewall_status | Gauge | --- | Status of the firewall reported by the system health check (1 = ok, 0 = errors) |
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |
 | opnsense_system_status_code | Gauge | --- | Numeric OPNsense system status code from the health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1) |
-| opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics. |
+| opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics (completed scrapes only; scrapes skipped because the deadline expired before the collector lock was acquired are counted by opnsense_exporter_scrape_skips_total instead). |
+| opnsense_exporter_scrape_skips_total | Counter | --- | Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics — opnsense_up and the per-collector series are absent — so this counter is the signal to distinguish a skipped scrape from a completed one. |
 | opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead. |
 
 ## ACME Client

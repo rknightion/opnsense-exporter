@@ -394,6 +394,10 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 		prometheus.CounterOpts{Name: "opnsense_exporter_scrapes_total_test", Help: "h"},
 		[]string{"opnsense_instance"},
 	)
+	c.scrapeSkips = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "opnsense_exporter_scrape_skips_total_test", Help: "h"},
+		[]string{"opnsense_instance"},
+	)
 	c.endpointErrors = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{Name: "opnsense_exporter_endpoint_errors_total_test", Help: "h"},
 		[]string{"endpoint", "opnsense_instance"},
@@ -493,6 +497,69 @@ func TestEnabledCollectorNames(t *testing.T) {
 	got := c.EnabledCollectorNames()
 	if len(got) != 2 || got[0] != "alpha" || got[1] != "zeta" {
 		t.Errorf("EnabledCollectorNames() = %v, want [alpha zeta] (sorted)", got)
+	}
+}
+
+// TestCollectDeadlineExpiredEmitsSkipSignal covers #122: when the scrape deadline has
+// already expired at lock-acquisition time, the bail path must record a distinct skip
+// signal (not fold into scrapes_total) and must not silently look like a successful
+// scrape — opnsense_up is absent, so scrape_skips_total is the distinguishing signal.
+func TestCollectDeadlineExpiredEmitsSkipSignal(t *testing.T) {
+	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
+	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	c := newScrapeTestCollector(t, &client)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already expired before the lock is taken
+
+	ch := make(chan prometheus.Metric, 64)
+	c.collect(ctx, ch, nil)
+	close(ch)
+
+	var sawUp bool
+	for m := range ch {
+		if strings.Contains(m.Desc().String(), "opnsense_up_test") {
+			sawUp = true
+		}
+	}
+	if sawUp {
+		t.Error("opnsense_up must be absent on the deadline-expired bail path")
+	}
+	if got := counterValue(t, c.scrapeSkips.WithLabelValues("test")); got != 1 {
+		t.Errorf("scrape_skips_total = %v, want 1", got)
+	}
+	if got := counterValue(t, c.scrapes.WithLabelValues("test")); got != 0 {
+		t.Errorf("scrapes_total = %v, want 0 — a skipped scrape must not count as completed", got)
+	}
+}
+
+// TestCollectSkipSignalOnZeroDeadline covers #122 acceptance #5: the NaN
+// scrape-timeout-header path deterministically yields scrapeTimeout("NaN") == (0, true)
+// (verified in internal/server), so the handler builds context.WithTimeout(reqCtx, 0)
+// — a deadline already in the past. Reproduce that exact 0-deadline (not the ~500ms
+// timing window) and confirm the skip signal fires reliably.
+func TestCollectSkipSignalOnZeroDeadline(t *testing.T) {
+	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
+	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	c := newScrapeTestCollector(t, &client)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	if ctx.Err() == nil {
+		t.Fatal("a 0 deadline must produce an already-expired context (test premise)")
+	}
+
+	ch := make(chan prometheus.Metric, 64)
+	c.collect(ctx, ch, nil)
+	close(ch)
+	if got := counterValue(t, c.scrapeSkips.WithLabelValues("test")); got != 1 {
+		t.Errorf("scrape_skips_total = %v, want 1 on the NaN-derived 0-deadline path", got)
 	}
 }
 
