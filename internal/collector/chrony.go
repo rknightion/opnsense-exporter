@@ -153,39 +153,46 @@ func (c *chronyCollector) Update(_ context.Context, client *opnsense.Client, ch 
 			tr.ReferenceID, tr.ReferenceName, tr.LeapStatus, c.instance)
 	}
 
-	// Sources total + per-source metrics.
-	ch <- prometheus.MustNewConstMetric(c.sourcesTotal, prometheus.GaugeValue,
-		float64(len(data.Sources)), c.instance)
+	// Sources total + per-source metrics. Skip entirely when the sources sub-fetch
+	// failed, so a transient error is not reported as a real sources_total=0 that
+	// looks like chronyd lost all its NTP sources (#163).
+	if data.HasSources {
+		ch <- prometheus.MustNewConstMetric(c.sourcesTotal, prometheus.GaugeValue,
+			float64(len(data.Sources)), c.instance)
 
-	for _, src := range data.Sources {
-		selected := 0.0
-		if src.State == "*" {
-			selected = 1.0
-		}
-		ch <- prometheus.MustNewConstMetric(c.sourceSelected, prometheus.GaugeValue,
-			selected, src.Name, src.Mode, c.instance)
-		ch <- prometheus.MustNewConstMetric(c.sourceStratum, prometheus.GaugeValue,
-			src.Stratum, src.Name, src.Mode, c.instance)
-		ch <- prometheus.MustNewConstMetric(c.sourceReachability, prometheus.GaugeValue,
-			src.Reachability, src.Name, src.Mode, c.instance)
-		if src.HasLastRx {
-			ch <- prometheus.MustNewConstMetric(c.sourceLastRx, prometheus.GaugeValue,
-				src.LastRxSeconds, src.Name, src.Mode, c.instance)
-		}
-		if src.HasOffset {
-			ch <- prometheus.MustNewConstMetric(c.sourceOffset, prometheus.GaugeValue,
-				src.OffsetSeconds, src.Name, src.Mode, c.instance)
+		for _, src := range data.Sources {
+			selected := 0.0
+			if src.State == "*" {
+				selected = 1.0
+			}
+			ch <- prometheus.MustNewConstMetric(c.sourceSelected, prometheus.GaugeValue,
+				selected, src.Name, src.Mode, c.instance)
+			ch <- prometheus.MustNewConstMetric(c.sourceStratum, prometheus.GaugeValue,
+				src.Stratum, src.Name, src.Mode, c.instance)
+			ch <- prometheus.MustNewConstMetric(c.sourceReachability, prometheus.GaugeValue,
+				src.Reachability, src.Name, src.Mode, c.instance)
+			if src.HasLastRx {
+				ch <- prometheus.MustNewConstMetric(c.sourceLastRx, prometheus.GaugeValue,
+					src.LastRxSeconds, src.Name, src.Mode, c.instance)
+			}
+			if src.HasOffset {
+				ch <- prometheus.MustNewConstMetric(c.sourceOffset, prometheus.GaugeValue,
+					src.OffsetSeconds, src.Name, src.Mode, c.instance)
+			}
 		}
 	}
 
-	// Per-source stats (stddev + samples).
-	for _, st := range data.SourceStats {
-		if st.HasStdDev {
-			ch <- prometheus.MustNewConstMetric(c.sourceOffsetStdDev, prometheus.GaugeValue,
-				st.StdDevSeconds, st.Name, c.instance)
+	// Per-source stats (stddev + samples). Skipped when the sourcestats sub-fetch
+	// failed (#163).
+	if data.HasSourceStats {
+		for _, st := range data.SourceStats {
+			if st.HasStdDev {
+				ch <- prometheus.MustNewConstMetric(c.sourceOffsetStdDev, prometheus.GaugeValue,
+					st.StdDevSeconds, st.Name, c.instance)
+			}
+			ch <- prometheus.MustNewConstMetric(c.sourceSamples, prometheus.GaugeValue,
+				st.Samples, st.Name, c.instance)
 		}
-		ch <- prometheus.MustNewConstMetric(c.sourceSamples, prometheus.GaugeValue,
-			st.Samples, st.Name, c.instance)
 	}
 
 	return nil

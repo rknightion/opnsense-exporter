@@ -163,6 +163,49 @@ func TestChronyCollector_Update_PluginAbsent(t *testing.T) {
 	}
 }
 
+// TestChronyCollector_Update_SourcesFetchFailure guards #163: when the sources
+// sub-fetch fails (transient 500), sources_total and per-source metrics must be
+// omitted, not emitted as a false 0. Tracking metrics still appear.
+func TestChronyCollector_Update_SourcesFetchFailure(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/chrony/service/chronytracking", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":"` + escapeCollectorJSON(chronyTestTrackingFixture) + `"}`))
+	})
+	mux.HandleFunc("/api/chrony/service/chronysources", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/chrony/service/chronysourcestats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":"` + escapeCollectorJSON(chronyTestSourceStatsFixture) + `"}`))
+	})
+	mux.HandleFunc("/api/chrony/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &chronyCollector{subsystem: ChronySubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	sawTracking := false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "sources_total") || strings.Contains(desc, "source_selected") ||
+			strings.Contains(desc, "source_stratum") || strings.Contains(desc, "source_reachability") {
+			t.Errorf("sources metric must be omitted on sources-fetch failure: %s", desc)
+		}
+		if strings.Contains(desc, "chrony_stratum") {
+			sawTracking = true
+		}
+	}
+	if !sawTracking {
+		t.Error("expected tracking metrics to still be emitted despite sources-fetch failure")
+	}
+}
+
 func TestChronyCollector_Name(t *testing.T) {
 	c := &chronyCollector{subsystem: ChronySubsystem}
 	if c.Name() != ChronySubsystem {

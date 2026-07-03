@@ -54,10 +54,15 @@ type ChronySourceStats struct {
 
 // ChronyStatus is the normalised result returned by FetchChronyStatus.
 type ChronyStatus struct {
-	Present     bool
-	Tracking    ChronyTracking
-	Sources     []ChronySource
-	SourceStats []ChronySourceStats
+	Present bool
+	// HasSources/HasSourceStats are true only when the respective sub-fetch
+	// succeeded, so the collector can distinguish "fetch failed" from "genuinely
+	// zero sources" and skip emitting a false sources_total=0 (#163).
+	HasSources     bool
+	HasSourceStats bool
+	Tracking       ChronyTracking
+	Sources        []ChronySource
+	SourceStats    []ChronySourceStats
 }
 
 // chronyResponseEnvelope matches the {"response": "<raw text>"} wrapper that
@@ -273,6 +278,7 @@ func (c *Client) FetchChronyStatus() (ChronyStatus, *APICallError) {
 			c.log.Warn("failed to fetch chrony sources", "err", err)
 		} else {
 			status.Sources = parseChronySources(sourcesEnv.Response.String())
+			status.HasSources = true
 		}
 	}
 
@@ -284,6 +290,7 @@ func (c *Client) FetchChronyStatus() (ChronyStatus, *APICallError) {
 			c.log.Warn("failed to fetch chrony sourcestats", "err", err)
 		} else {
 			status.SourceStats = parseChronySourceStats(statsEnv.Response.String())
+			status.HasSourceStats = true
 		}
 	}
 

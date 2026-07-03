@@ -294,6 +294,40 @@ func TestFetchChronyStatus_Normal(t *testing.T) {
 	}
 }
 
+// TestFetchChronyStatus_SubFetchFailure guards #163: a non-404 error from the
+// sources (or sourcestats) sub-endpoint must be distinguishable from a genuine
+// zero-sources response — HasSources/HasSourceStats stay false — rather than
+// silently yielding empty slices with no signal.
+func TestFetchChronyStatus_SubFetchFailure(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/chrony/service/chronytracking", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(wrapChronyResponse(chronyTrackingFixture)))
+	})
+	// Sources transiently fails (500); sourcestats succeeds.
+	mux.HandleFunc("/api/chrony/service/chronysources", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/chrony/service/chronysourcestats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(wrapChronyResponse(chronySourceStatsFixture)))
+	})
+
+	data, err := client.FetchChronyStatus()
+	if err != nil {
+		t.Fatalf("expected nil error (sub-fetch failure is tolerated), got %v", err)
+	}
+	if !data.Present {
+		t.Fatal("expected Present=true")
+	}
+	if data.HasSources {
+		t.Error("expected HasSources=false when the sources sub-fetch fails")
+	}
+	if !data.HasSourceStats {
+		t.Error("expected HasSourceStats=true when sourcestats succeeds")
+	}
+}
+
 func TestFetchChronyStatus_ChronydStopped(t *testing.T) {
 	// When chronyd is stopped, the configd script returns error text.
 	server, mux, client := newTestClientWithMux(t)
