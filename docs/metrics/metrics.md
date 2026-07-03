@@ -697,8 +697,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_syslog_truncated_messages_total | Counter | source_name, source_id, source_instance | Messages truncated by this syslog-ng object since stats reset | --exporter.disable-syslog |
 | opnsense_syslog_truncated_bytes_total | Counter | source_name, source_id, source_instance | Bytes truncated by this syslog-ng object since stats reset | --exporter.disable-syslog |
 | opnsense_syslog_memory_usage_bytes | Gauge | source_name, source_id, source_instance | Current memory usage of this syslog-ng object in bytes | --exporter.disable-syslog |
-| opnsense_syslog_events_per_second | Gauge | --- | syslog-ng events per second over the labelled window (1h, 24h, since_start) | --exporter.disable-syslog |
-| opnsense_syslog_message_size_bytes | Gauge | --- | syslog-ng message size in bytes (stat = avg or max) | --exporter.disable-syslog |
+| opnsense_syslog_events_per_second | Gauge | source_name, source_id, source_instance, window | syslog-ng events per second over the labelled window (1h, 24h, since_start) | --exporter.disable-syslog |
+| opnsense_syslog_message_size_bytes | Gauge | source_name, source_id, source_instance, stat | syslog-ng message size in bytes (stat = avg or max) | --exporter.disable-syslog |
 | opnsense_syslog_service_running | Gauge | --- | Whether the syslog-ng service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-syslog |
 
 ## System

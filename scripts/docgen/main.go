@@ -711,16 +711,8 @@ func findBuildPrometheusDescCalls(f *ast.File, subsystem string, fset *token.Fil
 			name := extractStringArg(call.Args[1], fset)
 			// arg 2: help (string literal, possibly multiline concatenation)
 			help := extractStringArg(call.Args[2], fset)
-			// arg 3: labels ([]string{...} or nil or variable reference)
-			labels := extractLabelsArg(call.Args[3])
-			// If labels is nil and arg is an identifier, try resolving from local vars
-			if labels == nil {
-				if varIdent, ok := call.Args[3].(*ast.Ident); ok && varIdent.Name != "nil" {
-					if resolved, exists := localVars[varIdent.Name]; exists {
-						labels = resolved
-					}
-				}
-			}
+			// arg 3: labels — []string{...}, nil, a local var, or an append(...) chain.
+			labels := resolveLabelSlice(call.Args[3], localVars)
 
 			fullName := "opnsense_" + subsystem + "_" + name
 
@@ -827,6 +819,48 @@ func valueTypeName(expr ast.Expr) string {
 	return ""
 }
 
+// resolveLabelSlice statically evaluates a label-slice expression to its string values, folding the
+// three shapes collectors use: a []string{...} literal, a local var reference (resolved via
+// localVars), and append(...) chains such as append(append([]string{}, srcLabels...), "window")
+// (#118). Returns nil for a nil argument or anything unresolvable, so the caller documents no labels.
+func resolveLabelSlice(expr ast.Expr, localVars map[string][]string) []string {
+	switch v := expr.(type) {
+	case *ast.Ident:
+		if v.Name == "nil" {
+			return nil
+		}
+		return localVars[v.Name]
+	case *ast.CompositeLit:
+		var out []string
+		for _, elt := range v.Elts {
+			if lit, ok := elt.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				out = append(out, strings.Trim(lit.Value, `"`))
+			}
+		}
+		return out
+	case *ast.CallExpr:
+		ident, ok := v.Fun.(*ast.Ident)
+		if !ok || ident.Name != "append" {
+			return nil
+		}
+		var out []string
+		for i, arg := range v.Args {
+			if i == 0 {
+				out = append(out, resolveLabelSlice(arg, localVars)...) // base slice
+				continue
+			}
+			// Later args: a string literal element, or a spread (srcLabels...) of a slice.
+			if lit, ok := arg.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				out = append(out, strings.Trim(lit.Value, `"`))
+			} else {
+				out = append(out, resolveLabelSlice(arg, localVars)...)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // extractStringArg extracts a string value from an AST expression.
 // Handles basic literals, binary concatenation, and identifier references.
 func extractStringArg(expr ast.Expr, fset *token.FileSet) string {
@@ -844,33 +878,6 @@ func extractStringArg(expr ast.Expr, fset *token.FileSet) string {
 		return ""
 	}
 	return ""
-}
-
-// extractLabelsArg extracts labels from a []string{...} composite literal or nil.
-func extractLabelsArg(expr ast.Expr) []string {
-	// Check for nil
-	if ident, ok := expr.(*ast.Ident); ok && ident.Name == "nil" {
-		return nil
-	}
-
-	// Check for variable reference (e.g. certLabels)
-	if _, ok := expr.(*ast.Ident); ok {
-		// We can't resolve this statically, but we handle known cases
-		return nil
-	}
-
-	comp, ok := expr.(*ast.CompositeLit)
-	if !ok {
-		return nil
-	}
-
-	var labels []string
-	for _, elt := range comp.Elts {
-		if lit, ok := elt.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-			labels = append(labels, strings.Trim(lit.Value, `"`))
-		}
-	}
-	return labels
 }
 
 func formatLabels(labels []string) string {

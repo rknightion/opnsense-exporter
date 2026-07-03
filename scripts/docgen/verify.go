@@ -14,6 +14,7 @@ import (
 )
 
 var fqNameRe = regexp.MustCompile(`fqName: "([^"]+)"`)
+var varLabelsRe = regexp.MustCompile(`variableLabels: \{([^}]*)\}`)
 
 func descFQName(s string) string {
 	m := fqNameRe.FindStringSubmatch(s)
@@ -23,6 +24,34 @@ func descFQName(s string) string {
 	return m[1]
 }
 
+// descVariableLabels extracts the variable-label names from a Desc.String(), dropping the universal
+// opnsense_instance label that buildPrometheusDesc appends to every metric (docgen omits it from the
+// docs on purpose). Returns them sorted for order-independent set comparison.
+func descVariableLabels(s string) []string {
+	m := varLabelsRe.FindStringSubmatch(s)
+	if m == nil {
+		return nil
+	}
+	var out []string
+	for l := range strings.SplitSeq(m[1], ",") {
+		l = strings.TrimSpace(l)
+		if l == "" || l == "opnsense_instance" {
+			continue
+		}
+		out = append(out, l)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sortedCopy returns a sorted copy of labels (docgen omits opnsense_instance already), for
+// order-independent comparison against the runtime label set.
+func sortedCopy(labels []string) []string {
+	out := append([]string(nil), labels...)
+	sort.Strings(out)
+	return out
+}
+
 // verifyMetricsAgainstRegistry registers every collector and walks Describe(),
 // then checks that each runtime metric name appears in the AST-parsed docs
 // set. A runtime metric missing from the docs is a hard error (docgen's AST
@@ -30,28 +59,40 @@ func descFQName(s string) string {
 // some descriptors may be registered conditionally.
 func verifyMetricsAgainstRegistry(astCollectors []CollectorInfo) error {
 	astNames := map[string]bool{}
+	astLabels := map[string][]string{}
 	for _, c := range astCollectors {
 		for _, m := range c.Metrics {
 			astNames[m.FullName] = true
+			astLabels[m.FullName] = sortedCopy(m.Labels)
 		}
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	runtimeNames := map[string]bool{}
 	var missing []string
+	var labelMismatches []string
 	for _, inst := range collector.AllCollectors() {
 		inst.Register("opnsense", "docgen", logger)
 		ch := make(chan *prometheus.Desc, 4096)
 		inst.Describe(ch)
 		close(ch)
 		for d := range ch {
-			name := descFQName(d.String())
+			s := d.String()
+			name := descFQName(s)
 			if name == "" {
 				continue
 			}
 			runtimeNames[name] = true
 			if !astNames[name] {
 				missing = append(missing, fmt.Sprintf("%s (collector %s)", name, inst.Name()))
+				continue
+			}
+			// Compare the documented label set against the runtime Desc's variable labels so a
+			// label the AST parser couldn't resolve (e.g. an append(...) chain, #118) is caught.
+			runtimeLbls := descVariableLabels(s)
+			if !equalStrings(runtimeLbls, astLabels[name]) {
+				labelMismatches = append(labelMismatches, fmt.Sprintf(
+					"%s: docs labels %v, runtime labels %v", name, astLabels[name], runtimeLbls))
 			}
 		}
 	}
@@ -73,5 +114,23 @@ func verifyMetricsAgainstRegistry(astCollectors []CollectorInfo) error {
 		return fmt.Errorf("metrics described by collectors but missing from generated docs (AST parser gap):\n  %s",
 			strings.Join(missing, "\n  "))
 	}
+	if len(labelMismatches) > 0 {
+		sort.Strings(labelMismatches)
+		return fmt.Errorf("metrics whose documented label set differs from the runtime Desc (AST label-extraction gap):\n  %s",
+			strings.Join(labelMismatches, "\n  "))
+	}
 	return nil
+}
+
+// equalStrings reports whether two sorted string slices are element-wise equal.
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
