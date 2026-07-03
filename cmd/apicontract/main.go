@@ -6,7 +6,9 @@
 //	apicontract --ref master=upstream-master.json --ref stable/26.1=upstream-stable.json [--out report.md]
 //
 // Exit code 0 = no missing endpoints; 1 = drift (missing endpoints) found;
-// 2 = usage/IO error. Verb drift is reported but does not change the exit code.
+// 2 = usage/IO error. Verb drift is reported but does not change the exit code; it is
+// surfaced to CI via the `warnings` step output (see GitHubOutputs) so a warnings-only
+// run still files/updates the api-drift issue instead of finishing silently green.
 package main
 
 import (
@@ -92,6 +94,27 @@ func main() {
 	if *out != "" {
 		if err := os.WriteFile(*out, []byte(md), 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "write report: %v\n", err)
+			os.Exit(2)
+		}
+	}
+
+	// Emit drift/warnings step outputs so the workflow can act on verb-drift warnings
+	// (file/update the api-drift issue) without them forcing a hard CI failure — the
+	// exit code below is still gated on errors only (#93). GITHUB_OUTPUT is a file the
+	// runner reads back as this step's outputs; appending is how Actions sets them.
+	if gho := os.Getenv("GITHUB_OUTPUT"); gho != "" {
+		f, err := os.OpenFile(gho, os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open GITHUB_OUTPUT: %v\n", err)
+			os.Exit(2)
+		}
+		if _, err := f.WriteString(GitHubOutputs(reports)); err != nil {
+			_ = f.Close()
+			fmt.Fprintf(os.Stderr, "write GITHUB_OUTPUT: %v\n", err)
+			os.Exit(2)
+		}
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "close GITHUB_OUTPUT: %v\n", err)
 			os.Exit(2)
 		}
 	}

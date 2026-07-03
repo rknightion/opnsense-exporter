@@ -15,6 +15,28 @@ func HasErrors(reps []Report) bool {
 	return false
 }
 
+// HasWarnings reports whether any ref had a warning-class finding (verb drift, e.g.
+// the CVE-2026-30868 GET->POST tightening class). This is deliberately independent of
+// HasErrors: verb drift does not change the exit code (it must not force a hard CI
+// failure), but the workflow needs a distinct signal so a warnings-only run still files
+// or updates the api-drift issue instead of finishing silently green (#93).
+func HasWarnings(reps []Report) bool {
+	for _, r := range reps {
+		if len(r.Warnings) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// GitHubOutputs renders the `drift`/`warnings` step outputs consumed by
+// api-contract.yml. `drift` gates the hard-fail + close-when-clean steps; `warnings`
+// (OR'd with drift) gates issue creation/update and blocks the close-when-clean step
+// while verb drift is still live. Written to $GITHUB_OUTPUT by main.
+func GitHubOutputs(reps []Report) string {
+	return fmt.Sprintf("drift=%t\nwarnings=%t\n", HasErrors(reps), HasWarnings(reps))
+}
+
 // RenderMarkdown produces the issue body summarising drift across refs.
 func RenderMarkdown(reps []Report) string {
 	var b strings.Builder

@@ -99,16 +99,17 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t args < out/args.txt
-          # Exit 0 = clean; exit 1 = missing-endpoint drift (breaking); other = error.
+          # apicontract writes drift/warnings step outputs to $GITHUB_OUTPUT itself.
+          # Exit 0 = clean OR warnings-only (verb drift); exit 1 = missing-endpoint drift
+          # (breaking, but outputs are still written first); other = error.
           if /tmp/apicontract "${args[@]}" --out out/report.md; then
-            echo "drift=false" >> "$GITHUB_OUTPUT"
+            :
           else
             code=$?
             if [ "$code" -ne 1 ]; then
               echo "apicontract failed with code $code" >&2
               exit "$code"
             fi
-            echo "drift=true" >> "$GITHUB_OUTPUT"
           fi
           # Always surface the report (incl. non-failing verb warnings) in the run summary.
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
@@ -123,7 +124,9 @@ jobs:
             --description "OPNsense API contract drift detected by CI" 2>/dev/null || true
 
       - name: Open or update drift issue
-        if: steps.diff.outputs.drift == 'true' && github.event_name != 'pull_request'
+        # Fire on breaking drift OR verb-drift warnings: a warnings-only run (e.g. the
+        # CVE-2026-30868 GET->POST tightening) must still file/update the issue (#93).
+        if: (steps.diff.outputs.drift == 'true' || steps.diff.outputs.warnings == 'true') && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -144,7 +147,9 @@ jobs:
           fi
 
       - name: Close drift issue when clean
-        if: steps.diff.outputs.drift == 'false' && github.event_name == 'schedule'
+        # Only close when BOTH errors and verb-drift warnings are absent, so a still-live
+        # verb-drift warning can't mislabel an open drift issue as resolved (#93).
+        if: steps.diff.outputs.drift == 'false' && steps.diff.outputs.warnings == 'false' && github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
