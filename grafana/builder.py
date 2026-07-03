@@ -67,6 +67,7 @@ class Builder:
         self._exprs: list = []    # every PromQL string emitted (for coverage)
         self._ts_violations: list = []  # dateTimeAsIso fields fed unscaled epoch seconds (#78)
         self._table_key_violations: list = []  # dead metric-name/Value renames+units on multi-expr tables (#97)
+        self._table_exclude_conflicts: list = []  # a rename/unit key that is also excluded (#112)
 
     # ---- low-level -------------------------------------------------------
     def _next(self) -> tuple[str, int]:
@@ -248,6 +249,13 @@ class Builder:
                     ord(orig.split("#", 1)[1].strip()) - ord("A") if orig.startswith("Value #") else None)
                 if idx is None or not (0 <= idx < len(exprs)) or "* 1000" not in exprs[idx]:
                     self._ts_violations.append(f"table {title!r} column {field!r}")
+        # Regression guard (#112): a field listed in `excludes` is dropped from the table, so a
+        # renameByName/unit_override keyed on that same field is dead — the classic exclude "Value"
+        # + unit_override "Value" contradiction that silently hid the lease-expiry column.
+        excluded = set(excludes or [])
+        for key in list((renames or {}).keys()) + list((unit_overrides or {}).keys()):
+            if key in excluded:
+                self._table_exclude_conflicts.append(f"table {title!r} key {key!r} is both excluded and renamed/unit-overridden")
         # Regression guard (#97): with multiple exprs the merge transform names the value
         # columns "Value #A".."Value #N" — keying renames/unit_overrides on a metric name (or on
         # bare "Value", or an out-of-range "Value #X") silently matches nothing, leaving unlabeled,

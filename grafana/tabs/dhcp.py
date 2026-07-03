@@ -113,17 +113,18 @@ def build(b: Builder):
         "Dnsmasq Lease Details",
         [epoch_ms(sel("opnsense_dnsmasq_lease_info"))],
         w=24, h=10,
-        excludes=["Value", "__name__", "job", "instance"],
+        excludes=["__name__", "job", "instance"],
         renames={
             "address": "IP Address",
             "hostname": "Hostname",
             "hwaddr": "MAC Address",
             "interface": "Interface",
+            "Value": "Expires",
         },
-        unit_overrides={"Value": "dateTimeAsIso"},
+        unit_overrides={"Expires": "dateTimeAsIso"},
         sort_by="Interface",
         desc=(
-            "Per-lease detail. Value = expire timestamp (shown as ISO date). "
+            "Per-lease detail. The Expires column shows the lease expiry as an ISO date. "
             "Only emitted when --exporter.enable-dnsmasq-details is set. "
             "Filter by interface with the $interface variable."
         ),
@@ -222,17 +223,18 @@ def build(b: Builder):
         "Kea DHCPv4 Lease Details",
         [epoch_ms(sel("opnsense_kea_dhcp4_lease_info"))],
         w=24, h=10,
-        excludes=["Value", "__name__", "job", "instance"],
+        excludes=["__name__", "job", "instance"],
         renames={
             "address": "IP Address",
             "hostname": "Hostname",
             "hwaddr": "MAC Address",
             "interface": "Interface",
+            "Value": "Expires",
         },
-        unit_overrides={"Value": "dateTimeAsIso"},
+        unit_overrides={"Expires": "dateTimeAsIso"},
         sort_by="Interface",
         desc=(
-            "Per-lease DHCPv4 detail. Value = expire timestamp (ISO date). "
+            "Per-lease DHCPv4 detail. The Expires column shows the lease expiry as an ISO date. "
             "Only emitted with --exporter.enable-kea-details."
         ),
     )
@@ -244,17 +246,18 @@ def build(b: Builder):
         "Kea DHCPv6 Lease Details",
         [epoch_ms(sel("opnsense_kea_dhcp6_lease_info"))],
         w=24, h=10,
-        excludes=["Value", "__name__", "job", "instance"],
+        excludes=["__name__", "job", "instance"],
         renames={
             "address": "IPv6 Address",
             "hostname": "Hostname",
             "hwaddr": "DUID / MAC",
             "interface": "Interface",
+            "Value": "Expires",
         },
-        unit_overrides={"Value": "dateTimeAsIso"},
+        unit_overrides={"Expires": "dateTimeAsIso"},
         sort_by="Interface",
         desc=(
-            "Per-lease DHCPv6 detail. Value = expire timestamp (ISO date). "
+            "Per-lease DHCPv6 detail. The Expires column shows the lease expiry as an ISO date. "
             "Only emitted with --exporter.enable-kea-details."
         ),
     )

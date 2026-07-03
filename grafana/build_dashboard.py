@@ -279,6 +279,14 @@ def main():
     # `> 0` count comparison hides a live-but-idle backend (leases_total=0), conflating
     # "absent" with "present but zero" and blanking the very health stat meant to answer
     # "is it up?" (#114). These must gate on existence via label_values(...)/service_running.
+    # A table field listed in `excludes` is dropped, so renaming/unit-overriding that same field
+    # is a dead no-op that silently hides the column (#112).
+    if b._table_exclude_conflicts:
+        print(f"table rename/unit keys that are also excluded ({len(b._table_exclude_conflicts)}):", file=sys.stderr)
+        for v in b._table_exclude_conflicts:
+            print(f"  - {v}", file=sys.stderr)
+        sys.exit(1)
+
     dhcp_presence_sentinels = {"has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"}
     bad_sentinels = [v["spec"]["name"] for v in b.variables
                      if v["spec"]["name"] in dhcp_presence_sentinels

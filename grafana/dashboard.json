@@ -17016,7 +17016,7 @@
         "spec": {
           "id": 144,
           "title": "Dnsmasq Lease Details",
-          "description": "Per-lease detail. Value = expire timestamp (shown as ISO date). Only emitted when --exporter.enable-dnsmasq-details is set. Filter by interface with the $interface variable.",
+          "description": "Per-lease detail. The Expires column shows the lease expiry as an ISO date. Only emitted when --exporter.enable-dnsmasq-details is set. Filter by interface with the $interface variable.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -17068,7 +17068,6 @@
                       "excludeByName": {
                         "Time": true,
                         "__name__": true,
-                        "Value": true,
                         "job": true,
                         "instance": true
                       },
@@ -17076,7 +17075,8 @@
                         "address": "IP Address",
                         "hostname": "Hostname",
                         "hwaddr": "MAC Address",
-                        "interface": "Interface"
+                        "interface": "Interface",
+                        "Value": "Expires"
                       },
                       "indexByName": {}
                     }
@@ -17105,7 +17105,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Value"
+                      "options": "Expires"
                     },
                     "properties": [
                       {
@@ -18242,7 +18242,7 @@
         "spec": {
           "id": 157,
           "title": "Kea DHCPv4 Lease Details",
-          "description": "Per-lease DHCPv4 detail. Value = expire timestamp (ISO date). Only emitted with --exporter.enable-kea-details.",
+          "description": "Per-lease DHCPv4 detail. The Expires column shows the lease expiry as an ISO date. Only emitted with --exporter.enable-kea-details.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18294,7 +18294,6 @@
                       "excludeByName": {
                         "Time": true,
                         "__name__": true,
-                        "Value": true,
                         "job": true,
                         "instance": true
                       },
@@ -18302,7 +18301,8 @@
                         "address": "IP Address",
                         "hostname": "Hostname",
                         "hwaddr": "MAC Address",
-                        "interface": "Interface"
+                        "interface": "Interface",
+                        "Value": "Expires"
                       },
                       "indexByName": {}
                     }
@@ -18331,7 +18331,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Value"
+                      "options": "Expires"
                     },
                     "properties": [
                       {
@@ -18369,7 +18369,7 @@
         "spec": {
           "id": 158,
           "title": "Kea DHCPv6 Lease Details",
-          "description": "Per-lease DHCPv6 detail. Value = expire timestamp (ISO date). Only emitted with --exporter.enable-kea-details.",
+          "description": "Per-lease DHCPv6 detail. The Expires column shows the lease expiry as an ISO date. Only emitted with --exporter.enable-kea-details.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18421,7 +18421,6 @@
                       "excludeByName": {
                         "Time": true,
                         "__name__": true,
-                        "Value": true,
                         "job": true,
                         "instance": true
                       },
@@ -18429,7 +18428,8 @@
                         "address": "IPv6 Address",
                         "hostname": "Hostname",
                         "hwaddr": "DUID / MAC",
-                        "interface": "Interface"
+                        "interface": "Interface",
+                        "Value": "Expires"
                       },
                       "indexByName": {}
                     }
@@ -18458,7 +18458,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Value"
+                      "options": "Expires"
                     },
                     "properties": [
                       {
