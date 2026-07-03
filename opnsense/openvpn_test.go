@@ -123,19 +123,22 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 					"username": "user1",
 					"real_address": "203.0.113.10:51820",
 					"virtual_address": "10.8.0.2",
-					"status": "ok"
+					"status": "ok",
+					"is_client": true
 				},
 				{
 					"description": "Road Warrior VPN",
 					"username": "user2",
 					"virtual_address": "10.8.0.3",
-					"status": "disconnected"
+					"status": "disconnected",
+					"is_client": true
 				},
 				{
 					"description": "Site-to-Site",
 					"username": "",
 					"virtual_address": "10.9.0.1",
-					"status": "connected"
+					"status": "connected",
+					"is_client": true
 				}
 			],
 			"rowCount": 3,
@@ -179,6 +182,36 @@ func TestFetchOpenVPNSessions_Success(t *testing.T) {
 	s3 := data.Rows[2]
 	if s3.Status != 1 {
 		t.Errorf("expected Status=1 for 'connected', got %d", s3.Status)
+	}
+}
+
+// TestFetchOpenVPNSessions_FiltersNonClientRows guards #88: the API mixes real
+// client rows (is_client:true) with a synthetic zero-client running-instance row
+// and an enabled-but-stopped stub row. Only client rows are sessions.
+func TestFetchOpenVPNSessions_FiltersNonClientRows(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"description":"RW VPN","username":"user1","real_address":"203.0.113.10:1194","virtual_address":"10.8.0.2","status":"ok","is_client":true},
+				{"description":"Idle Server","username":"","real_address":"","virtual_address":"","status":"connected"},
+				{"description":"Stopped Server","username":"","real_address":"","virtual_address":"","status":"failed"}
+			],
+			"rowCount": 3,
+			"total": 3,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchOpenVPNSessions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rows) != 1 {
+		t.Fatalf("expected 1 client session (idle/stopped rows filtered), got %d", len(data.Rows))
+	}
+	if data.Rows[0].Username != "user1" {
+		t.Errorf("expected the surviving row to be the client row (user1), got %q", data.Rows[0].Username)
 	}
 }
 

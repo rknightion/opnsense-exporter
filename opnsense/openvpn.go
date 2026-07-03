@@ -24,6 +24,13 @@ type openVPNSearchSessionsResponse struct {
 		RealAddress    string `json:"real_address"`
 		VirtualAddress string `json:"virtual_address"`
 		Status         string `json:"status"`
+		// IsClient is true only for real per-client session rows. The
+		// searchSessionsAction controller also appends a synthetic row for a
+		// running server with zero clients and a stub row for each
+		// enabled-but-stopped server; those carry no is_client flag and must not
+		// be counted as sessions (#88). Defaults to false when the field is
+		// absent (older fixtures / API shapes).
+		IsClient flexBool `json:"is_client"`
 	} `json:"rows"`
 	RowCount int `json:"rowCount"`
 	Total    int `json:"total"`
@@ -104,6 +111,12 @@ func (c *Client) FetchOpenVPNSessions() (OpenVPNSessions, *APICallError) {
 	}
 
 	for _, v := range resp.Rows {
+		// Only real client rows are sessions. Idle running-instance rows and
+		// enabled-but-stopped stub rows have no is_client flag and would inflate
+		// the session count by one per idle/stopped instance (#88).
+		if !v.IsClient.Bool() {
+			continue
+		}
 		data.Rows = append(data.Rows, Sessions{
 			Description:    v.Description,
 			Username:       v.Username,

@@ -54,21 +54,24 @@ const openVPNTestSessions = `{
 			"username": "user1",
 			"real_address": "203.0.113.10:51820",
 			"virtual_address": "10.0.0.2",
-			"status": "ok"
+			"status": "ok",
+			"is_client": true
 		},
 		{
 			"description": "Site-to-Site VPN",
 			"username": "user2",
 			"real_address": "203.0.113.11:51820",
 			"virtual_address": "10.0.0.3",
-			"status": "ok"
+			"status": "ok",
+			"is_client": true
 		},
 		{
 			"description": "Road Warrior",
 			"username": "user3",
 			"real_address": "198.51.100.7:1194",
 			"virtual_address": "10.0.1.2",
-			"status": "ok"
+			"status": "ok",
+			"is_client": true
 		}
 	],
 	"rowCount": 3,
@@ -195,6 +198,51 @@ func TestOpenVPNCollector_Update_NoSessions(t *testing.T) {
 	// 2 instances + 1 sessions_total = 3
 	if expectedCount := 3; len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+}
+
+// TestOpenVPNCollector_Update_ExcludesNonClientRows guards #88: idle running-
+// instance rows and enabled-but-stopped stub rows must not inflate sessions_total,
+// sessions_by_instance, or the per-session detail metric.
+func TestOpenVPNCollector_Update_ExcludesNonClientRows(t *testing.T) {
+	sessions := `{
+		"rows": [
+			{"description":"Site-to-Site VPN","username":"user1","real_address":"203.0.113.10:1194","virtual_address":"10.0.0.2","status":"ok","is_client":true},
+			{"description":"Idle Server","username":"","real_address":"","virtual_address":"","status":"connected"},
+			{"description":"Stopped Server","username":"","real_address":"","virtual_address":"","status":"failed"}
+		],
+		"rowCount": 3, "total": 3, "current": 1
+	}`
+	server := openVPNTestServer(t, sessions)
+	client := newCollectorTestClient(t, server)
+
+	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+
+	totals := metricsByDesc(metrics, "opnsense_openvpn_sessions_total")
+	if len(totals) != 1 {
+		t.Fatalf("expected 1 sessions_total metric, got %d", len(totals))
+	}
+	if v := getMetricValue(totals[0]); v != 1 {
+		t.Errorf("expected sessions_total = 1 (only the client row), got %v", v)
+	}
+
+	byInstance := metricsByDesc(metrics, "opnsense_openvpn_sessions_by_instance")
+	if len(byInstance) != 1 {
+		t.Errorf("expected 1 sessions_by_instance series (idle/stopped excluded), got %d", len(byInstance))
+	}
+	for _, m := range byInstance {
+		if d := getMetricLabels(m)["description"]; d != "Site-to-Site VPN" {
+			t.Errorf("unexpected sessions_by_instance for %q; non-client rows should be excluded", d)
+		}
+	}
+
+	detail := metricsByDesc(metrics, "opnsense_openvpn_sessions")
+	if len(detail) != 1 {
+		t.Errorf("expected 1 per-session detail metric (only the client row), got %d", len(detail))
 	}
 }
 
