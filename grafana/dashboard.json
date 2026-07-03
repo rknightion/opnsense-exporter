@@ -8994,8 +8994,8 @@
                         "interface": "Interface",
                         "device": "Device",
                         "type": "Type",
-                        "opnsense_interfaces_mtu_bytes": "MTU (bytes)",
-                        "opnsense_interfaces_line_rate_bits": "Line Rate (bps)"
+                        "Value #A": "MTU (bytes)",
+                        "Value #B": "Line Rate (bps)"
                       },
                       "indexByName": {}
                     }
@@ -9024,7 +9024,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "MTU (bytes)"
+                      "options": "Value #A"
                     },
                     "properties": [
                       {
@@ -9036,7 +9036,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Line Rate (bps)"
+                      "options": "Value #B"
                     },
                     "properties": [
                       {
@@ -13154,8 +13154,8 @@
                       "renameByName": {
                         "name": "Gateway",
                         "address": "Address",
-                        "opnsense_gateways_rtt_low_milliseconds": "RTT Low (ms)",
-                        "opnsense_gateways_rtt_high_milliseconds": "RTT High (ms)"
+                        "Value #A": "RTT Low (ms)",
+                        "Value #B": "RTT High (ms)"
                       },
                       "indexByName": {}
                     }
@@ -13184,7 +13184,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "RTT Low (ms)"
+                      "options": "Value #A"
                     },
                     "properties": [
                       {
@@ -13196,7 +13196,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "RTT High (ms)"
+                      "options": "Value #B"
                     },
                     "properties": [
                       {
@@ -13408,8 +13408,8 @@
                       "renameByName": {
                         "name": "Gateway",
                         "address": "Address",
-                        "opnsense_gateways_loss_low_percentage": "Loss Low (%)",
-                        "opnsense_gateways_loss_high_percentage": "Loss High (%)"
+                        "Value #A": "Loss Low (%)",
+                        "Value #B": "Loss High (%)"
                       },
                       "indexByName": {}
                     }
@@ -13438,7 +13438,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Loss Low (%)"
+                      "options": "Value #A"
                     },
                     "properties": [
                       {
@@ -13450,7 +13450,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Loss High (%)"
+                      "options": "Value #B"
                     },
                     "properties": [
                       {
@@ -13857,10 +13857,10 @@
                       "renameByName": {
                         "name": "Name",
                         "address": "Address",
-                        "opnsense_gateways_force_down": "Force Down",
-                        "opnsense_gateways_virtual": "Virtual",
-                        "opnsense_gateways_dynamic": "Dynamic",
-                        "opnsense_gateways_priority": "Priority"
+                        "Value #A": "Force Down",
+                        "Value #B": "Virtual",
+                        "Value #C": "Dynamic",
+                        "Value #D": "Priority"
                       },
                       "indexByName": {}
                     }
@@ -14025,9 +14025,9 @@
                       "renameByName": {
                         "name": "Gateway",
                         "address": "Address",
-                        "opnsense_gateways_probe_interval_seconds": "Interval (s)",
-                        "opnsense_gateways_probe_period_seconds": "Period (s)",
-                        "opnsense_gateways_probe_timeout_seconds": "Timeout (s)"
+                        "Value #A": "Interval (s)",
+                        "Value #B": "Period (s)",
+                        "Value #C": "Timeout (s)"
                       },
                       "indexByName": {}
                     }
@@ -14056,7 +14056,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Interval (s)"
+                      "options": "Value #A"
                     },
                     "properties": [
                       {
@@ -14068,7 +14068,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Period (s)"
+                      "options": "Value #B"
                     },
                     "properties": [
                       {
@@ -14080,7 +14080,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Timeout (s)"
+                      "options": "Value #C"
                     },
                     "properties": [
                       {
@@ -21756,8 +21756,8 @@
                         "description": "Description",
                         "name": "Name",
                         "phase1_name": "Phase 1",
-                        "opnsense_ipsec_phase2_rekey_time": "Rekey Time (s)",
-                        "opnsense_ipsec_phase2_life_time": "Life Time (s)"
+                        "Value #A": "Rekey Time (s)",
+                        "Value #B": "Life Time (s)"
                       },
                       "indexByName": {}
                     }
@@ -21786,7 +21786,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Rekey Time (s)"
+                      "options": "Value #A"
                     },
                     "properties": [
                       {
@@ -21798,7 +21798,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Life Time (s)"
+                      "options": "Value #B"
                     },
                     "properties": [
                       {
@@ -36188,10 +36188,10 @@
                       "renameByName": {
                         "backend": "Backend",
                         "server": "Server",
-                        "opnsense_haproxy_server_status": "Status",
-                        "opnsense_haproxy_server_weight": "Weight",
-                        "opnsense_haproxy_server_current_sessions": "Sessions",
-                        "opnsense_haproxy_server_queue_current": "Queue"
+                        "Value #A": "Status",
+                        "Value #B": "Weight",
+                        "Value #C": "Sessions",
+                        "Value #D": "Queue"
                       },
                       "indexByName": {}
                     }
@@ -40976,8 +40976,8 @@
                       "renameByName": {
                         "name": "Check Name",
                         "type": "Type",
-                        "opnsense_monit_check_status": "Status OK",
-                        "opnsense_monit_check_monitored": "Monitored"
+                        "Value #A": "Status OK",
+                        "Value #B": "Monitored"
                       },
                       "indexByName": {}
                     }
@@ -41681,7 +41681,7 @@
                       "renameByName": {
                         "name": "Bouncer",
                         "type": "Type",
-                        "opnsense_crowdsec_bouncer_valid": "Valid",
+                        "Value #A": "Valid",
                         "Value #B": "Last Pull Age (s)"
                       },
                       "indexByName": {}
@@ -41927,7 +41927,7 @@
                       },
                       "renameByName": {
                         "name": "Machine",
-                        "opnsense_crowdsec_machine_validated": "Validated",
+                        "Value #A": "Validated",
                         "Value #B": "Last Heartbeat Age (s)"
                       },
                       "indexByName": {}
@@ -47186,10 +47186,10 @@
                       "renameByName": {
                         "source": "Source",
                         "mode": "Mode",
-                        "opnsense_chrony_source_selected": "Selected",
-                        "opnsense_chrony_source_stratum": "Stratum",
-                        "opnsense_chrony_source_reachability": "Reachability",
-                        "opnsense_chrony_source_last_rx_seconds": "Last RX (s)"
+                        "Value #A": "Selected",
+                        "Value #B": "Stratum",
+                        "Value #C": "Reachability",
+                        "Value #D": "Last RX (s)"
                       },
                       "indexByName": {}
                     }
@@ -47218,7 +47218,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Last RX (s)"
+                      "options": "Value #D"
                     },
                     "properties": [
                       {
@@ -47428,8 +47428,8 @@
                       },
                       "renameByName": {
                         "source": "Source",
-                        "opnsense_chrony_source_offset_stddev_seconds": "Offset Std Dev (s)",
-                        "opnsense_chrony_source_samples": "Samples"
+                        "Value #A": "Offset Std Dev (s)",
+                        "Value #B": "Samples"
                       },
                       "indexByName": {}
                     }
@@ -47458,7 +47458,7 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Offset Std Dev (s)"
+                      "options": "Value #A"
                     },
                     "properties": [
                       {

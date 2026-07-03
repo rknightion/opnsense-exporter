@@ -18,6 +18,8 @@ This file is the FROZEN API used by every tab module under `tabs/`. See
 
 from __future__ import annotations
 
+import re
+
 INSTANCE_SEL = 'opnsense_instance=~"$opnsense_instance"'
 RATE = "$__rate_interval"
 DS = {"name": "${datasource}"}
@@ -64,6 +66,7 @@ class Builder:
         self.size: dict = {}      # element name -> (w, h)
         self._exprs: list = []    # every PromQL string emitted (for coverage)
         self._ts_violations: list = []  # dateTimeAsIso fields fed unscaled epoch seconds (#78)
+        self._table_key_violations: list = []  # dead metric-name/Value renames+units on multi-expr tables (#97)
 
     # ---- low-level -------------------------------------------------------
     def _next(self) -> tuple[str, int]:
@@ -245,6 +248,20 @@ class Builder:
                     ord(orig.split("#", 1)[1].strip()) - ord("A") if orig.startswith("Value #") else None)
                 if idx is None or not (0 <= idx < len(exprs)) or "* 1000" not in exprs[idx]:
                     self._ts_violations.append(f"table {title!r} column {field!r}")
+        # Regression guard (#97): with multiple exprs the merge transform names the value
+        # columns "Value #A".."Value #N" — keying renames/unit_overrides on a metric name (or on
+        # bare "Value", or an out-of-range "Value #X") silently matches nothing, leaving unlabeled,
+        # unit-less columns. Flag such dead keys so the build fails instead of shipping them.
+        if len(exprs) > 1:
+            referenced = set()
+            for e in exprs:
+                referenced.update(re.findall(r"opnsense_[a-z0-9_]+", e))
+            referenced.discard("opnsense_instance")  # a real label, legitimately renamable
+            valid_value_cols = {f"Value #{chr(65 + i)}" for i in range(len(exprs))}
+            for key in list((renames or {}).keys()) + list((unit_overrides or {}).keys()):
+                if key in referenced or key == "Value" or (
+                        key.startswith("Value #") and key not in valid_value_cols):
+                    self._table_key_violations.append(f"table {title!r} key {key!r}")
         opts = {"showHeader": True, "cellHeight": "sm",
                 "footer": {"show": footer, "reducer": ["sum"], "countRows": False, "fields": ""}}
         if sort_by:

@@ -243,6 +243,14 @@ def main():
             print(f"  - {v}  (wrap the expr in epoch_ms())", file=sys.stderr)
         sys.exit(1)
 
+    # A multi-expr table() renames/units its merged columns by "Value #A".."Value #N"; keying on a
+    # metric name (or bare "Value") is a silent no-op that ships unlabeled, unit-less columns (#97).
+    if b._table_key_violations:
+        print(f"dead multi-expr table rename/unit keys ({len(b._table_key_violations)}):", file=sys.stderr)
+        for v in b._table_key_violations:
+            print(f"  - {v}  (key it on \"Value #A\"..\"Value #N\" in expr order, not the metric name)", file=sys.stderr)
+        sys.exit(1)
+
     if not check_only:
         manifest = b.manifest(
             title="OPNsense Exporter",

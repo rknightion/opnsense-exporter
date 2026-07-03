@@ -84,7 +84,7 @@ def build(b: Builder):
         renames={
             "name": "Bouncer",
             "type": "Type",
-            "opnsense_crowdsec_bouncer_valid": "Valid",
+            "Value #A": "Valid",
             "Value #B": "Last Pull Age (s)",
         },
         sort_by="Bouncer",
@@ -114,7 +114,7 @@ def build(b: Builder):
         excludes=["__name__", "job", "instance"],
         renames={
             "name": "Machine",
-            "opnsense_crowdsec_machine_validated": "Validated",
+            "Value #A": "Validated",
             "Value #B": "Last Heartbeat Age (s)",
         },
         sort_by="Machine",

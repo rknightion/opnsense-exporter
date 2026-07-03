@@ -147,12 +147,12 @@ def build(b: Builder):
         renames={
             "source": "Source",
             "mode": "Mode",
-            "opnsense_chrony_source_selected": "Selected",
-            "opnsense_chrony_source_stratum": "Stratum",
-            "opnsense_chrony_source_reachability": "Reachability",
-            "opnsense_chrony_source_last_rx_seconds": "Last RX (s)",
+            "Value #A": "Selected",
+            "Value #B": "Stratum",
+            "Value #C": "Reachability",
+            "Value #D": "Last RX (s)",
         },
-        unit_overrides={"Last RX (s)": "s"},
+        unit_overrides={"Value #D": "s"},
         sort_by="Source",
         desc=(
             "Per-source NTP status. Selected=1 means this is the active reference. "
@@ -183,10 +183,10 @@ def build(b: Builder):
         excludes=["__name__", "job", "instance"],
         renames={
             "source": "Source",
-            "opnsense_chrony_source_offset_stddev_seconds": "Offset Std Dev (s)",
-            "opnsense_chrony_source_samples": "Samples",
+            "Value #A": "Offset Std Dev (s)",
+            "Value #B": "Samples",
         },
-        unit_overrides={"Offset Std Dev (s)": "s"},
+        unit_overrides={"Value #A": "s"},
         sort_by="Source",
         desc=(
             "Per-source regression statistics from chronyc sourcestats. "

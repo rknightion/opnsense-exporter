@@ -90,8 +90,8 @@ def build(b: Builder):
         renames={
             "name": "Check Name",
             "type": "Type",
-            "opnsense_monit_check_status": "Status OK",
-            "opnsense_monit_check_monitored": "Monitored",
+            "Value #A": "Status OK",
+            "Value #B": "Monitored",
         },
         sort_by="Check Name",
         desc="Current status and monitored state for all configured monit checks.",
