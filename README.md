@@ -3,6 +3,7 @@
 ![GitHub License](https://img.shields.io/github/license/rknightion/opnsense-exporter)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/rknightion/opnsense-exporter/ci.yml)
 ![GitHub go.mod Go version (branch)](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense-exporter/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense-exporter)
 
 A Prometheus exporter for [OPNsense](https://opnsense.org/) firewalls. It polls the
 OPNsense REST API and exposes 556 metrics across 47 collectors — firewall and PF
