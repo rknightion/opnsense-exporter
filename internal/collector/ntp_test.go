@@ -57,6 +57,29 @@ func TestNTPCollector_Update(t *testing.T) {
 	}
 }
 
+// TestNTPCollector_DuplicateServer guards #85: two NTP associations pointing at
+// the same server collide on the server-keyed per-peer metrics and would fail the
+// whole scrape; the collector must guarantee unique label tuples.
+func TestNTPCollector_DuplicateServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"status":"*","server":"pool.ntp.org","refid":".GPS.","stratum":"1","type":"u","when":"32","poll":"64","reach":"377","delay":"12.3","offset":"-0.5","jitter":"1.2"},
+				{"status":"+","server":"pool.ntp.org","refid":".PPS.","stratum":"2","type":"u","when":"16","poll":"128","reach":"177","delay":"25.6","offset":"1.2","jitter":"2.3"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &ntpCollector{subsystem: NTPSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+}
+
 func TestNTPCollector_Update_NoPeers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"rows": []}`))

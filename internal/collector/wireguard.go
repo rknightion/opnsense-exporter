@@ -108,7 +108,20 @@ func (c *WireguardCollector) Update(ctx context.Context, client *opnsense.Client
 	}
 
 	now := c.now()
+	// Peer metrics are keyed on (device, device_type, device_name, peer_name), and
+	// peer_name is free-form user config that OPNsense does not enforce as unique
+	// per interface. Two peers on the same device sharing a display name would emit
+	// identical label tuples and fail the whole scrape, so skip duplicates (#85).
+	seenPeers := make(map[[4]string]bool, len(data.Peers))
 	for _, instance := range data.Peers {
+		key := [4]string{instance.Device, instance.DeviceType, instance.DeviceName, instance.Name}
+		if seenPeers[key] {
+			c.log.Warn("skipping wireguard peer with duplicate (device, device_type, device_name, peer_name) label tuple",
+				"device", instance.Device, "device_name", instance.DeviceName, "peer_name", instance.Name)
+			continue
+		}
+		seenPeers[key] = true
+
 		c.update(ch, c.peers, prometheus.GaugeValue, float64(instance.Status), instance.Device, instance.DeviceType, instance.DeviceName, instance.Name, c.instance)
 		c.update(ch, c.LatestHandshake, prometheus.GaugeValue, float64(instance.LatestHandshake), instance.Device, instance.DeviceType, instance.DeviceName, instance.Name, c.instance)
 		c.update(ch, c.TransferRx, prometheus.CounterValue, float64(instance.TransferRx), instance.Device, instance.DeviceType, instance.DeviceName, instance.Name, c.instance)

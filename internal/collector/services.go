@@ -73,7 +73,19 @@ func (c *servicesCollector) Update(ctx context.Context, client *opnsense.Client,
 		c.instance,
 	)
 
+	// The status metric is keyed on (name, description), neither guaranteed unique
+	// by OPNsense (the unique id is not part of the label set). Emitting two rows
+	// with the same tuple fails the whole scrape, so skip duplicates (#85).
+	seen := make(map[[2]string]bool, len(services.Services))
 	for _, service := range services.Services {
+		key := [2]string{service.Name, service.Description}
+		if seen[key] {
+			c.log.Warn("skipping service with duplicate (name, description) label tuple",
+				"name", service.Name, "description", service.Description)
+			continue
+		}
+		seen[key] = true
+
 		ch <- prometheus.MustNewConstMetric(
 			c.services, prometheus.GaugeValue,
 			float64(service.Status),

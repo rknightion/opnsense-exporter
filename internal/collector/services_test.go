@@ -37,6 +37,32 @@ func TestServicesCollector_Update(t *testing.T) {
 	}
 }
 
+// TestServicesCollector_DuplicateNameDescription guards #85: two services sharing
+// both name and description (differing only in the dropped id) must not emit
+// duplicate label tuples, which would fail the whole scrape.
+func TestServicesCollector_DuplicateNameDescription(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"id":"1","name":"dpinger","description":"dpinger","locked":0,"running":1},
+				{"id":"2","name":"dpinger","description":"dpinger","locked":0,"running":1}
+			],
+			"total": 2,
+			"rowCount": 2,
+			"current": 1
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &servicesCollector{subsystem: ServicesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+}
+
 func TestServicesCollector_Name(t *testing.T) {
 	c := &servicesCollector{subsystem: ServicesSubsystem}
 	if c.Name() != ServicesSubsystem {

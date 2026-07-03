@@ -170,6 +170,41 @@ func TestWireguardCollector_Update_Empty(t *testing.T) {
 	}
 }
 
+// TestWireguardCollector_DuplicatePeerName guards #85: two peers on the same
+// device given the same free-form display name (OPNsense does not enforce
+// per-interface peer-name uniqueness) collide on the peer label tuple and would
+// fail the whole scrape; the collector must guarantee unique label tuples.
+func TestWireguardCollector_DuplicatePeerName(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/wireguard/service/show", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"if":"wg0","type":"peer","status":"","name":"Laptop","ifname":"wg0","latest-handshake":1700000000,"transfer-rx":10,"transfer-tx":20,"peer-status":"online"},
+				{"if":"wg0","type":"peer","status":"","name":"Laptop","ifname":"wg0","latest-handshake":1700000001,"transfer-rx":30,"transfer-tx":40,"peer-status":"online"}
+			],
+			"rowCount": 2,
+			"total": 2,
+			"current": 1
+		}`))
+	})
+
+	mux.HandleFunc("/api/wireguard/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &WireguardCollector{subsystem: WireguardSubsystem, now: time.Now}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+}
+
 func TestWireguardCollector_Name(t *testing.T) {
 	c := &WireguardCollector{subsystem: WireguardSubsystem}
 	if c.Name() != WireguardSubsystem {

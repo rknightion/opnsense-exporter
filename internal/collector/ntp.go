@@ -103,7 +103,18 @@ func (c *ntpCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 		c.instance,
 	)
 
+	// Every per-peer metric is keyed on server (peer_info also carries refid/type/
+	// status), and two configured associations can reference the same remote, which
+	// would emit identical label tuples and fail the whole scrape. Dedupe by server
+	// so the first association for a given remote wins (#85).
+	seen := make(map[string]bool, len(data.Peers))
 	for _, peer := range data.Peers {
+		if seen[peer.Server] {
+			c.log.Warn("skipping NTP peer with duplicate server label", "server", peer.Server)
+			continue
+		}
+		seen[peer.Server] = true
+
 		ch <- prometheus.MustNewConstMetric(
 			c.peerInfo,
 			prometheus.GaugeValue,
