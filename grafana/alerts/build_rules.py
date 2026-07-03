@@ -2,25 +2,26 @@
 """
 Single-source builder for OPNsense exporter alert + recording rules.
 
-Rules are defined once (RULES / RECORDING below) and emitted in two formats:
+Rules are defined once (RULES / RECORDING below) and emitted as Grafana-managed manifests:
 
-  * `opnsense.rules.yaml`            — portable Prometheus rule-group format. Loads into
-                                       any Prometheus / Mimir / Grafana-Cloud ruler and is
-                                       human-readable. THIS is the artifact most users want.
   * `grafana-managed/*.json`         — Grafana-managed `rules.alerting.grafana.app/v0alpha1`
-                                       AlertRule / RecordingRule manifests, pushable with
-                                       `gcx resources push`. Use `--stack` to add an IRM
-                                       label contract (domain/page) for routed alerting.
+                                       AlertRule / RecordingRule manifests (+ a folder),
+                                       pushable with `gcx resources push`. Use `--stack` to add
+                                       an IRM label contract (domain/page) for routed alerting.
+
+Grafana-managed alerting is the only supported format: it carries `noDataState` (so the
+exporter-down/NoData case actually fires) and Grafana templating (`$values`), neither of which
+a portable Prometheus rule-group file can express. A previously-shipped portable
+`opnsense.rules.yaml` was dropped for this reason.
 
 Usage:
-    python3 build_rules.py                       # both formats, generic labels
+    python3 build_rules.py                       # generic labels
     python3 build_rules.py --stack               # add domain=infra (+page on critical)
-    python3 build_rules.py --datasource <uid>    # datasource UID for grafana-managed (default grafanacloud-prom)
+    python3 build_rules.py --datasource <uid>    # datasource UID (default grafanacloud-prom)
     python3 build_rules.py --folder <name>       # grafana folder (default opnsense-alerts)
 
-Alerts are defined as a value-producing query `A` plus a threshold condition, so the same
-definition renders to a Prometheus `expr` (comparison inlined) and to the Grafana A→C
-query/threshold node pipeline.
+Alerts are defined as a value-producing query `A` plus a threshold condition, rendered to the
+Grafana A→C query/threshold node pipeline.
 """
 import argparse
 import json
@@ -154,74 +155,6 @@ RECORDING = [
          expr="opnsense_system_memory_used_bytes / (opnsense_system_memory_total_bytes > 0)"),
 ]
 
-OP_SYMBOL = {"gt": ">", "lt": "<"}
-
-
-def prom_expr(r) -> str:
-    """Reconstruct a standalone Prometheus alert expr from A + condition."""
-    A, op, p = r["A"], r["op"], r["params"]
-    if op in OP_SYMBOL:
-        return f"{A} {OP_SYMBOL[op]} {p[0]}"
-    if op == "within_range":
-        return f"({A} > {p[0]}) and ({A} < {p[1]})"
-    if op == "outside_range":
-        return f"({A} < {p[0]}) or ({A} > {p[1]})"
-    raise ValueError(op)
-
-
-# ---- minimal YAML emitter (JSON-encoded scalars are valid YAML) ----------
-def yaml_dump(obj, indent=0) -> str:
-    pad = "  " * indent
-    out = []
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if isinstance(v, (dict, list)) and v:
-                out.append(f"{pad}{k}:")
-                out.append(yaml_dump(v, indent + 1))
-            else:
-                out.append(f"{pad}{k}: {json.dumps(v)}")
-    elif isinstance(obj, list):
-        for item in obj:
-            if isinstance(item, dict):
-                inner = yaml_dump(item, indent + 1).lstrip()
-                out.append(f"{pad}- {inner}")
-            else:
-                out.append(f"{pad}- {json.dumps(item)}")
-    return "\n".join(out)
-
-
-def emit_prometheus(stack: bool):
-    alert_rules = []
-    for r in RULES:
-        labels = {"severity": r["severity"]}
-        if stack:
-            labels["domain"] = "infra"
-            if r["severity"] == "critical":
-                labels["page"] = "true"
-        alert_rules.append({
-            "alert": r["title"], "expr": prom_expr(r),
-            **({"for": f"{r['for_min']}m"} if r["for_min"] else {}),
-            "labels": labels,
-            "annotations": {"summary": r["summary"], "description": r["description"],
-                            "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"},
-        })
-    rec_rules = []
-    for r in RECORDING:
-        lab = {"domain": "infra"} if stack else {}
-        rec_rules.append({"record": r["metric"], "expr": r["expr"],
-                          **({"labels": lab} if lab else {})})
-    doc = {"groups": [
-        {"name": "opnsense-exporter-alerts", "rules": alert_rules},
-        {"name": "opnsense-exporter-recording", "interval": "1m", "rules": rec_rules},
-    ]}
-    path = os.path.join(HERE, "opnsense.rules.yaml")
-    with open(path, "w") as f:
-        f.write("# Generated by build_rules.py — portable Prometheus rule groups.\n")
-        f.write("# Alerts + recording rules for the OPNsense exporter. Datasource-agnostic.\n")
-        f.write(yaml_dump(doc) + "\n")
-    return path
-
-
 def grafana_for(for_min: int) -> str:
     return "0s" if not for_min else f"{for_min}m0s"
 
@@ -323,9 +256,7 @@ def main():
                     help="add IRM label contract (domain=infra; page=true on critical)")
     args = ap.parse_args()
 
-    p1 = emit_prometheus(args.stack)
     outdir, written = emit_grafana_managed(args.datasource, args.folder, args.stack)
-    print(f"wrote {p1}")
     print(f"wrote {len(written)} grafana-managed manifests to {outdir}")
     print(f"alerts: {len(RULES)}  recording rules: {len(RECORDING)}  stack-labels: {args.stack}")
 

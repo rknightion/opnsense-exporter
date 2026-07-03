@@ -8,9 +8,8 @@ OPNsense Exporter:
 | `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 16 tabs that auto-show/hide based on which metrics your exporter emits. |
 | `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
-| `alerts/opnsense.rules.yaml` | Portable **Prometheus rule groups** (alerts + recording rules). Datasource-agnostic. |
-| `alerts/grafana-managed/` | The same rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
-| `alerts/build_rules.py` | Generator for both rule formats from a single source. |
+| `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
+| `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
 
 The dashboard is **metrics-only**. It does not include log/Loki panels — those belong in a
 separate firewall-logs dashboard.
@@ -76,13 +75,12 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 
 ## Alerts & recording rules
 
-`alerts/` contains **18 alert rules** and **8 recording rules**.
-
-### Portable Prometheus format (recommended for most users)
-
-`alerts/opnsense.rules.yaml` is a standard Prometheus rule-group file — load it into Prometheus,
-Mimir, or the Grafana Cloud ruler. Alerts carry a `severity` label and runbook annotation;
-recording rules follow the `instance:opnsense_<subsystem>_<measurement>:<op>` convention.
+`alerts/` contains **18 alert rules** and **8 recording rules**, shipped as **Grafana-managed
+alerting** manifests. Grafana-managed is the only supported format — it carries `noDataState`
+(so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
+portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
+annotation; recording rules follow the `instance:opnsense_<subsystem>_<measurement>:<op>`
+convention.
 
 ### Grafana-managed format
 
