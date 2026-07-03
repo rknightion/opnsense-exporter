@@ -25,6 +25,17 @@ type mbufStatisticsData struct {
 	BytesTotal     int64 `json:"bytes-total"`
 	BytesPercent   int   `json:"percentage"`
 	MbufAndCluster int   `json:"mbuf-and-cluster"`
+	// Extended fields present in systemMbuf on OPNsense 26.1+ (both endpoints wrap the
+	// same `netstat -m` output). Pointers so a nil distinguishes "key absent" (older
+	// release) from "present with value 0", which decides whether the redundant
+	// memoryStatistics call is needed (#137).
+	Jumbo9Failures    *int `json:"jumbo9-failures"`
+	Jumbo16Failures   *int `json:"jumbo16-failures"`
+	Jumbo9Sleeps      *int `json:"jumbo9-sleeps"`
+	Jumbo16Sleeps     *int `json:"jumbo16-sleeps"`
+	SendfileSyscalls  *int `json:"sendfile-syscalls"`
+	SendfileIOCount   *int `json:"sendfile-io-count"`
+	SendfilePagesSent *int `json:"sendfile-pages-sent"`
 }
 
 type mbufResponse struct {
@@ -109,7 +120,22 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 		"jumbop":  s.JumbopSleeps,
 	}
 
-	// Fetch additional memory statistics (partial failure tolerant)
+	// On OPNsense 26.1+ the jumbo9/jumbo16/sendfile keys are already in the systemMbuf
+	// response, so read them from there and skip the redundant memoryStatistics
+	// round-trip entirely (#137). A nil pointer means the key was absent (older release).
+	if s.Jumbo9Failures != nil || s.SendfileSyscalls != nil {
+		data.FailuresByType["jumbo9"] = derefInt(s.Jumbo9Failures)
+		data.FailuresByType["jumbo16"] = derefInt(s.Jumbo16Failures)
+		data.SleepsByType["jumbo9"] = derefInt(s.Jumbo9Sleeps)
+		data.SleepsByType["jumbo16"] = derefInt(s.Jumbo16Sleeps)
+		data.SendfileSyscalls = derefInt(s.SendfileSyscalls)
+		data.SendfileIOCount = derefInt(s.SendfileIOCount)
+		data.SendfilePagesSent = derefInt(s.SendfilePagesSent)
+		return data, nil
+	}
+
+	// Fallback for older releases whose systemMbuf lacks the extended keys: fetch them
+	// from the separate memoryStatistics endpoint (partial-failure tolerant).
 	var memResp memoryStatisticsResponse
 	memURL, ok := c.endpoints["memoryStatistics"]
 	if ok {
@@ -131,4 +157,12 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 	}
 
 	return data, nil
+}
+
+// derefInt returns the pointed-to int, or 0 when the pointer is nil (JSON key absent).
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

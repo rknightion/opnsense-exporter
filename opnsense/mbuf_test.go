@@ -2,8 +2,92 @@ package opnsense
 
 import (
 	"net/http"
+	"sync/atomic"
 	"testing"
 )
+
+// baseMbufFields is the shared systemMbuf JSON body (without the extended
+// jumbo9/jumbo16/sendfile keys) used to compose the mbuf test responses.
+const baseMbufFields = `"mbuf-current": 1024, "mbuf-cache": 512, "mbuf-total": 2048, "mbuf-max": 4096,
+	"cluster-current": 256, "cluster-cache": 128, "cluster-total": 512, "cluster-max": 1024,
+	"mbuf-failures": 3, "cluster-failures": 1, "packet-failures": 0,
+	"mbuf-sleeps": 5, "cluster-sleeps": 2, "packet-sleeps": 0,
+	"jumbop-current": 10, "jumbop-cache": 5, "jumbop-total": 20, "jumbop-max": 50,
+	"jumbop-failures": 7, "jumbop-sleeps": 4,
+	"bytes-in-use": 65536, "bytes-total": 131072, "percentage": 50, "mbuf-and-cluster": 100`
+
+// TestFetchMbufStatistics_ExtendedFromSystemMbuf covers #137: when systemMbuf already
+// carries the jumbo9/jumbo16/sendfile keys (OPNsense 26.1+), they are read from that
+// single response and the redundant memoryStatistics call is NOT made.
+func TestFetchMbufStatistics_ExtendedFromSystemMbuf(t *testing.T) {
+	var systemMbufCalls, memStatsCalls atomic.Int32
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/systemMbuf", func(w http.ResponseWriter, _ *http.Request) {
+		systemMbufCalls.Add(1)
+		w.Write([]byte(`{"mbuf-statistics": {` + baseMbufFields + `,
+			"jumbo9-failures": 15, "jumbo16-failures": 22,
+			"jumbo9-sleeps": 8, "jumbo16-sleeps": 11,
+			"sendfile-syscalls": 42, "sendfile-io-count": 100, "sendfile-pages-sent": 500}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_memory_statistics", func(w http.ResponseWriter, _ *http.Request) {
+		memStatsCalls.Add(1)
+		w.Write([]byte(`{"mbuf-statistics": {}}`))
+	})
+
+	data, err := client.FetchMbufStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.FailuresByType["jumbo9"] != 15 || data.FailuresByType["jumbo16"] != 22 {
+		t.Errorf("jumbo failures = %v, want jumbo9=15 jumbo16=22", data.FailuresByType)
+	}
+	if data.SleepsByType["jumbo9"] != 8 || data.SleepsByType["jumbo16"] != 11 {
+		t.Errorf("jumbo sleeps = %v, want jumbo9=8 jumbo16=11", data.SleepsByType)
+	}
+	if data.SendfileSyscalls != 42 || data.SendfileIOCount != 100 || data.SendfilePagesSent != 500 {
+		t.Errorf("sendfile = %d/%d/%d, want 42/100/500", data.SendfileSyscalls, data.SendfileIOCount, data.SendfilePagesSent)
+	}
+	// Steady-state: exactly one call to systemMbuf, zero to memoryStatistics.
+	if got := systemMbufCalls.Load(); got != 1 {
+		t.Errorf("systemMbuf calls = %d, want 1", got)
+	}
+	if got := memStatsCalls.Load(); got != 0 {
+		t.Errorf("memoryStatistics calls = %d, want 0 (redundant call must be skipped)", got)
+	}
+}
+
+// TestFetchMbufStatistics_FallsBackWhenExtendedAbsent covers #137 acceptance #3: an
+// older-release systemMbuf without the extended keys still uses the memoryStatistics
+// fallback exactly once.
+func TestFetchMbufStatistics_FallsBackWhenExtendedAbsent(t *testing.T) {
+	var systemMbufCalls, memStatsCalls atomic.Int32
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/diagnostics/system/systemMbuf", func(w http.ResponseWriter, _ *http.Request) {
+		systemMbufCalls.Add(1)
+		w.Write([]byte(`{"mbuf-statistics": {` + baseMbufFields + `}}`)) // no extended keys
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_memory_statistics", func(w http.ResponseWriter, _ *http.Request) {
+		memStatsCalls.Add(1)
+		w.Write([]byte(`{"mbuf-statistics": {"jumbo9-failures": 15, "jumbo16-failures": 22,
+			"jumbo9-sleeps": 8, "jumbo16-sleeps": 11, "sendfile-syscalls": 42,
+			"sendfile-io-count": 100, "sendfile-pages-sent": 500}}`))
+	})
+
+	data, err := client.FetchMbufStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.FailuresByType["jumbo9"] != 15 || data.SendfileSyscalls != 42 {
+		t.Errorf("fallback did not populate extended fields: %v sendfile=%d", data.FailuresByType, data.SendfileSyscalls)
+	}
+	if got := memStatsCalls.Load(); got != 1 {
+		t.Errorf("memoryStatistics calls = %d, want 1 (fallback for older release)", got)
+	}
+}
 
 func TestFetchMbufStatistics_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
