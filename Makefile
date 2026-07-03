@@ -8,7 +8,7 @@ SYFT_VERSION        ?= v1.18.1
 TOOLS_DIR := $(CURDIR)/.tools
 export PATH := $(TOOLS_DIR):$(PATH)
 
-.PHONY: default docgen docs docs-check dashboard rules install-hooks capture \
+.PHONY: default docgen docs docs-check dashboard rules grafana-check install-hooks capture \
         coverage notices sbom tools-licensing tools-sbom
 default:
 	go build \
@@ -97,6 +97,17 @@ dashboard:
 
 rules:
 	cd grafana/alerts && python3 build_rules.py
+
+# CI gate for the generated grafana/ artifacts (#84): coverage gate + regeneration
+# staleness + manifest validity. Fails if any catalogue metric is off the dashboard,
+# if dashboard.json / dashboard-stats.json / the grafana-managed manifests are stale
+# relative to their builders, or if a manifest is malformed.
+grafana-check:
+	cd grafana && python3 build_dashboard.py --check
+	cd grafana && python3 build_dashboard.py
+	cd grafana/alerts && python3 build_rules.py
+	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/alerts/grafana-managed/
+	python3 grafana/alerts/validate_manifests.py
 
 # Capture live-box responses for the response-shape canary (cmd/apicapture).
 # Writes to the gitignored opnsense/testdata/captures/ scratch dir; then run

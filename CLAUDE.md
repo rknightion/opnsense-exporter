@@ -56,7 +56,7 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
 
 **Dashboard (required — a coverage gate enforces this):**
 
-9. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`.
+9. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build (non-zero exit, in both write and `--check` mode) if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`. CI enforces all of this via `make grafana-check` (a required `ci-success` job): the coverage gate, regeneration staleness of `dashboard.json`/`dashboard-stats.json`/`grafana/alerts/grafana-managed/*.json`, and Grafana-managed manifest validity.
 
 ## Key Conventions
 

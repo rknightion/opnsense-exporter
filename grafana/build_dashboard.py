@@ -321,7 +321,12 @@ def main():
             f.write("\n")
         print(f"wrote {STATS_PATH}", file=sys.stderr)
 
-    if check_only and missing:
+    # Coverage gate fails the build in BOTH modes: CLAUDE.md promises `make dashboard`
+    # fails if any catalogue metric is left off the dashboard, and CI enforces the same
+    # via `build_dashboard.py --check`. In write mode the (partial) dashboard.json is
+    # still written first so a contributor can iterate, then the non-zero exit blocks
+    # the commit/CI until a panel is added (#84).
+    if missing:
         sys.exit(1)
 
 
