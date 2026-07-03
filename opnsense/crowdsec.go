@@ -202,6 +202,14 @@ func (c *Client) FetchCrowdSecStatus() (CrowdSecStatus, *APICallError) {
 				}
 				data.Bouncers = append(data.Bouncers, b)
 			}
+		} else {
+			// A row-shape drift (e.g. array → object) would otherwise be swallowed
+			// silently, leaving HasBouncers=true with an empty slice → a false
+			// bouncers_total=0. Mark absent and log so the metric goes away rather
+			// than reporting a fake zero (#104).
+			data.HasBouncers = false
+			c.log.Warn("crowdsec: failed to decode bouncers rows; omitting bouncers metrics",
+				"err", jsonErr)
 		}
 	}
 
@@ -229,6 +237,12 @@ func (c *Client) FetchCrowdSecStatus() (CrowdSecStatus, *APICallError) {
 				}
 				data.Machines = append(data.Machines, m)
 			}
+		} else {
+			// See the bouncers branch above: mark absent + log on decode failure
+			// rather than emitting a false machines_total=0 (#104).
+			data.HasMachines = false
+			c.log.Warn("crowdsec: failed to decode machines rows; omitting machines metrics",
+				"err", jsonErr)
 		}
 	}
 

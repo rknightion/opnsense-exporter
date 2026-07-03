@@ -155,6 +155,44 @@ func TestCrowdSecCollector_Update_MessageEnvelope(t *testing.T) {
 	}
 }
 
+// TestCrowdSecCollector_Update_UndecodableRows guards #104: when the bouncers
+// rows fail to decode, HasBouncers is false and the collector must omit
+// crowdsec_bouncers_total entirely (not emit a false 0).
+func TestCrowdSecCollector_Update_UndecodableRows(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecCollectorAlertsFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/decisions/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecMessageEnvelopeCollector))
+	})
+	// Envelope decodes but rows is an object → decode fails → HasBouncers=false.
+	mux.HandleFunc("/api/crowdsec/bouncers/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total": 1, "rowCount": 1, "current": 1, "rows": {"x": 1}}`))
+	})
+	mux.HandleFunc("/api/crowdsec/machines/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecCollectorMachinesFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &crowdsecCollector{subsystem: CrowdSecSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "crowdsec_bouncers_total") {
+			t.Error("bouncers_total must be omitted (not emitted as 0) when bouncers rows fail to decode")
+		}
+	}
+}
+
 // TestCrowdSecCollector_Update_PluginAbsent expects 0 metrics when all
 // endpoints return 404 (plugin not installed).
 func TestCrowdSecCollector_Update_PluginAbsent(t *testing.T) {

@@ -1,7 +1,10 @@
 package opnsense
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -149,6 +152,57 @@ func TestFetchCrowdSecStatus_Normal(t *testing.T) {
 	}
 	if !m.HasLastHeartbeat {
 		t.Error("expected HasLastHeartbeat=true")
+	}
+}
+
+// TestFetchCrowdSecStatus_UndecodableRows guards #104: when the envelope decodes
+// (total set → HasBouncers/HasMachines would be true) but the rows payload has an
+// unexpected shape (object instead of array), the fetcher must mark the section
+// absent and log a warning, not leave HasBouncers=true with an empty slice (which
+// the collector would emit as a false total=0).
+func TestFetchCrowdSecStatus_UndecodableRows(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	var buf bytes.Buffer
+	client.log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecAlertsFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/decisions/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecDecisionsFixture))
+	})
+	// Envelope decodes (total set) but rows is an object, not an array.
+	mux.HandleFunc("/api/crowdsec/bouncers/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total": 1, "rowCount": 1, "current": 1, "rows": {"unexpected": "object"}}`))
+	})
+	mux.HandleFunc("/api/crowdsec/machines/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total": 1, "rowCount": 1, "current": 1, "rows": {"unexpected": "object"}}`))
+	})
+	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+
+	data, err := client.FetchCrowdSecStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.HasBouncers {
+		t.Error("expected HasBouncers=false when bouncers rows fail to decode (avoid false total=0)")
+	}
+	if len(data.Bouncers) != 0 {
+		t.Errorf("expected no bouncers on decode failure, got %d", len(data.Bouncers))
+	}
+	if data.HasMachines {
+		t.Error("expected HasMachines=false when machines rows fail to decode")
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "decode bouncers rows") {
+		t.Errorf("expected a warning about bouncers decode failure; got: %q", logs)
+	}
+	if !strings.Contains(logs, "decode machines rows") {
+		t.Errorf("expected a warning about machines decode failure; got: %q", logs)
 	}
 }
 
