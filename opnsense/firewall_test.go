@@ -97,6 +97,68 @@ func TestFetchPFStatsByInterface_Success(t *testing.T) {
 	}
 }
 
+// TestFetchPFStatsByInterface_FiltersPseudoEntries guards #105: the pfctl
+// interfaces map mixes the "all" aggregate and pf interface-group rows in with
+// real devices, and appends " (skip)" to devices with pf skip enabled. Only real
+// devices should survive, with a stable (skip-suffix-free) name.
+func TestFetchPFStatsByInterface_FiltersPseudoEntries(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"interfaces": {
+			"all": {"in4_pass_packets": 100},
+			"enc": {"in4_pass_packets": 1},
+			"vlan": {"in4_pass_packets": 1},
+			"zenvpngroup": {"in4_pass_packets": 1},
+			"igb0": {"in4_pass_packets": 10},
+			"lo0 (skip)": {"in4_pass_packets": 5},
+			"pfsync0 (skip)": {"in4_pass_packets": 3},
+			"tailscale0": {"in4_pass_packets": 7}
+		}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchPFStatsByInterface()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, iface := range data.Interfaces {
+		got[iface.InterfaceName] = true
+	}
+
+	// Real devices survive, with the " (skip)" suffix stripped.
+	for _, want := range []string{"igb0", "lo0", "pfsync0", "tailscale0"} {
+		if !got[want] {
+			t.Errorf("expected device %q to be present, got keys %v", want, got)
+		}
+	}
+	// Aggregate + group pseudo-entries are excluded.
+	for _, banned := range []string{"all", "enc", "vlan", "zenvpngroup", "lo0 (skip)", "pfsync0 (skip)"} {
+		if got[banned] {
+			t.Errorf("pseudo-entry/unstable name %q must not appear as an interface", banned)
+		}
+	}
+}
+
+// TestFetchPFStatsByInterface_SkipToggleStableLabel guards #105 AC4: toggling pf
+// "skip on interface" must not change the interface label between scrapes.
+func TestFetchPFStatsByInterface_SkipToggleStableLabel(t *testing.T) {
+	fetch := func(key string) string {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"interfaces": {"` + key + `": {"in4_pass_packets": 1}}}`))
+		})
+		defer server.Close()
+		data, err := client.FetchPFStatsByInterface()
+		if err != nil || len(data.Interfaces) != 1 {
+			t.Fatalf("fetch %q: err=%v len=%d", key, err, len(data.Interfaces))
+		}
+		return data.Interfaces[0].InterfaceName
+	}
+	if a, b := fetch("lo0"), fetch("lo0 (skip)"); a != b {
+		t.Errorf("interface label changed on skip toggle: %q vs %q", a, b)
+	}
+}
+
 func TestFetchPFStatsByInterface_EmptyInterfaces(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"interfaces": {}}`))

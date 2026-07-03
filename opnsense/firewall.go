@@ -1,5 +1,7 @@
 package opnsense
 
+import "strings"
+
 type FirewallPFStat struct {
 	InterfaceName string `json:"interface,omitempty"` // We will populate this field with the key of the map
 	References    int    `json:"references"`
@@ -57,10 +59,41 @@ func (c *Client) FetchPFStatsByInterface() (FirewallPFStats, *APICallError) {
 	}
 
 	for k, v := range resp.Interface {
-		v.InterfaceName = k
+		// The pfctl-derived interfaces map mixes real devices with the "all"
+		// aggregate row and pf interface-group rows (enc, lo, pflog, pfsync, tun,
+		// vlan, and custom groups like "zenvpngroup"), and appends a literal
+		// " (skip)" suffix to any device with pf "skip on interface" enabled.
+		// Strip the mutable skip suffix (so toggling it doesn't rename the series)
+		// and keep only real network devices, so the interface label is stable and
+		// a naive sum can't double-count aggregate/group rows against members (#105).
+		name := stripPFSkipSuffix(k)
+		if !isPFDeviceName(name) {
+			continue
+		}
+		v.InterfaceName = name
 		data.Interfaces = append(data.Interfaces, v)
 	}
 	return data, nil
+}
+
+// stripPFSkipSuffix removes the literal " (skip)" that pfctl appends to a device
+// name when "skip on interface" is enabled, so the interface label does not
+// change when that pf option is toggled (#105).
+func stripPFSkipSuffix(name string) string {
+	return strings.TrimSuffix(name, " (skip)")
+}
+
+// isPFDeviceName reports whether a pfctl interfaces-map key names a real network
+// device rather than the "all" aggregate or a pf interface group. FreeBSD network
+// interfaces are always "<driver><unit>" and end in a digit (igb0, lo0, pppoe0,
+// tailscale0, vlan sub-interfaces, …); the "all" row and pf groups (enc, lo,
+// pflog, pfsync, tun, vlan, custom groups) are bare names with no unit number.
+func isPFDeviceName(name string) bool {
+	if name == "" {
+		return false
+	}
+	last := name[len(name)-1]
+	return last >= '0' && last <= '9'
 }
 
 type firewallStatEntry struct {
