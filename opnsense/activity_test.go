@@ -1,7 +1,10 @@
 package opnsense
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -137,6 +140,137 @@ func TestFetchActivity_MalformedHeaders(t *testing.T) {
 	}
 	if data.CPUIdle != 0.0 {
 		t.Errorf("expected CPUIdle=0.0, got %f", data.CPUIdle)
+	}
+}
+
+// TestFetchActivity_ZombieBetweenSleepingAndWaiting guards #82: FreeBSD's top
+// inserts non-zero states (zombie/stopped/starting) in a fixed order, breaking a
+// regex that requires running,sleeping,waiting to be contiguous. Each state must
+// be parsed independently.
+func TestFetchActivity_ZombieBetweenSleepingAndWaiting(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"headers": [
+				"879 threads:   13 running, 831 sleeping, 1 zombie, 34 waiting",
+				"CPU:  1.3% user,  0.0% nice,  2.2% system,  0.1% interrupt, 96.4% idle"
+			],
+			"details": []
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ThreadsTotal != 879 {
+		t.Errorf("expected ThreadsTotal=879, got %d", data.ThreadsTotal)
+	}
+	if data.ThreadsRunning != 13 {
+		t.Errorf("expected ThreadsRunning=13, got %d", data.ThreadsRunning)
+	}
+	if data.ThreadsSleeping != 831 {
+		t.Errorf("expected ThreadsSleeping=831, got %d", data.ThreadsSleeping)
+	}
+	if data.ThreadsWaiting != 34 {
+		t.Errorf("expected ThreadsWaiting=34, got %d", data.ThreadsWaiting)
+	}
+	// CPU must still parse from the following header despite the thread-state change.
+	if data.CPUIdle != 96.4 {
+		t.Errorf("expected CPUIdle=96.4, got %f", data.CPUIdle)
+	}
+}
+
+// TestFetchActivity_WaitingAbsent guards #82: top only prints non-zero states, so
+// a header can omit waiting entirely. The present states must still parse and the
+// absent one defaults to 0 without failing the whole parse.
+func TestFetchActivity_WaitingAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"headers": [
+				"8 threads:   2 running, 6 sleeping"
+			],
+			"details": []
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ThreadsTotal != 8 {
+		t.Errorf("expected ThreadsTotal=8, got %d", data.ThreadsTotal)
+	}
+	if data.ThreadsRunning != 2 {
+		t.Errorf("expected ThreadsRunning=2, got %d", data.ThreadsRunning)
+	}
+	if data.ThreadsSleeping != 6 {
+		t.Errorf("expected ThreadsSleeping=6, got %d", data.ThreadsSleeping)
+	}
+	if data.ThreadsWaiting != 0 {
+		t.Errorf("expected ThreadsWaiting=0 (absent), got %d", data.ThreadsWaiting)
+	}
+}
+
+// TestFetchActivity_StartingBeforeRunning guards #82: a starting/stopped segment
+// can precede running; the remaining states must still parse correctly.
+func TestFetchActivity_StartingBeforeRunning(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"headers": [
+				"900 threads:   1 starting, 13 running, 850 sleeping, 1 stopped, 35 waiting"
+			],
+			"details": []
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ThreadsTotal != 900 {
+		t.Errorf("expected ThreadsTotal=900, got %d", data.ThreadsTotal)
+	}
+	if data.ThreadsRunning != 13 {
+		t.Errorf("expected ThreadsRunning=13, got %d", data.ThreadsRunning)
+	}
+	if data.ThreadsSleeping != 850 {
+		t.Errorf("expected ThreadsSleeping=850, got %d", data.ThreadsSleeping)
+	}
+	if data.ThreadsWaiting != 35 {
+		t.Errorf("expected ThreadsWaiting=35, got %d", data.ThreadsWaiting)
+	}
+}
+
+// TestFetchActivity_WarnsOnUnparsableThreadStates guards #82's acceptance
+// criterion: when a "threads:" header is present but no state segment parses, the
+// failure must be logged, not silent.
+func TestFetchActivity_WarnsOnUnparsableThreadStates(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"headers": [
+				"42 threads: something totally unexpected here"
+			],
+			"details": []
+		}`))
+	})
+	defer server.Close()
+
+	var buf bytes.Buffer
+	client.log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The total is still recoverable from the header prefix.
+	if data.ThreadsTotal != 42 {
+		t.Errorf("expected ThreadsTotal=42, got %d", data.ThreadsTotal)
+	}
+	if !strings.Contains(buf.String(), "thread-state") {
+		t.Errorf("expected a warning about unparsable thread states; got log: %q", buf.String())
 	}
 }
 

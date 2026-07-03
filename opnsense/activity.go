@@ -6,8 +6,14 @@ import (
 )
 
 var (
-	threadsRegex = regexp.MustCompile(`(\d+)\s+threads:\s+(\d+)\s+running,\s+(\d+)\s+sleeping,\s+(\d+)\s+waiting`)
-	cpuRegex     = regexp.MustCompile(`([\d.]+)%\s+user,\s+([\d.]+)%\s+nice,\s+([\d.]+)%\s+system,\s+([\d.]+)%\s+interrupt,\s+([\d.]+)%\s+idle`)
+	// threadsHeaderRegex matches the "N threads:" prefix and captures the total.
+	// FreeBSD's top only prints thread states that are non-zero, in a fixed order
+	// (starting, running, sleeping, stopped, zombie, waiting, lock), so the
+	// individual states cannot be matched as one contiguous sequence — they are
+	// scanned independently by threadStateRegex below.
+	threadsHeaderRegex = regexp.MustCompile(`(\d+)\s+threads:`)
+	threadStateRegex   = regexp.MustCompile(`(\d+)\s+(starting|running|sleeping|stopped|zombie|waiting|lock)\b`)
+	cpuRegex           = regexp.MustCompile(`([\d.]+)%\s+user,\s+([\d.]+)%\s+nice,\s+([\d.]+)%\s+system,\s+([\d.]+)%\s+interrupt,\s+([\d.]+)%\s+idle`)
 )
 
 type activityResponse struct {
@@ -45,31 +51,37 @@ func (c *Client) FetchActivity() (SystemActivity, *APICallError) {
 	}
 
 	for _, header := range resp.Headers {
-		if matches := threadsRegex.FindStringSubmatch(header); matches != nil {
+		if matches := threadsHeaderRegex.FindStringSubmatch(header); matches != nil {
 			total, err := strconv.Atoi(matches[1])
 			if err != nil {
 				c.log.Warn("failed to parse threads total", "value", matches[1], "err", err)
 				continue
 			}
-			running, err := strconv.Atoi(matches[2])
-			if err != nil {
-				c.log.Warn("failed to parse threads running", "value", matches[2], "err", err)
-				continue
-			}
-			sleeping, err := strconv.Atoi(matches[3])
-			if err != nil {
-				c.log.Warn("failed to parse threads sleeping", "value", matches[3], "err", err)
-				continue
-			}
-			waiting, err := strconv.Atoi(matches[4])
-			if err != nil {
-				c.log.Warn("failed to parse threads waiting", "value", matches[4], "err", err)
-				continue
-			}
 			data.ThreadsTotal = total
-			data.ThreadsRunning = running
-			data.ThreadsSleeping = sleeping
-			data.ThreadsWaiting = waiting
+
+			// Scan each thread-state segment independently: top prints only the
+			// non-zero states, in a fixed order, so any absent state defaults to 0
+			// and an inserted state (zombie/stopped/starting) no longer breaks the
+			// running/sleeping/waiting parse.
+			states := threadStateRegex.FindAllStringSubmatch(header, -1)
+			if len(states) == 0 {
+				c.log.Warn("threads header present but no thread-state segments parsed", "header", header)
+			}
+			for _, s := range states {
+				n, err := strconv.Atoi(s[1])
+				if err != nil {
+					c.log.Warn("failed to parse thread-state count", "state", s[2], "value", s[1], "err", err)
+					continue
+				}
+				switch s[2] {
+				case "running":
+					data.ThreadsRunning = n
+				case "sleeping":
+					data.ThreadsSleeping = n
+				case "waiting":
+					data.ThreadsWaiting = n
+				}
+			}
 		}
 
 		if matches := cpuRegex.FindStringSubmatch(header); matches != nil {
