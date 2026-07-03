@@ -65,6 +65,34 @@ func TestResolveSecret_FilePrecedence(t *testing.T) {
 	}
 }
 
+// TestResolveSecretMulti_PrefixPrecedence covers #141: resolveSecretMulti accepts the
+// canonical prefixed name and the legacy alias, preferring the prefixed one.
+func TestResolveSecretMulti_PrefixPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	prefixed := filepath.Join(dir, "p")
+	legacy := filepath.Join(dir, "l")
+	if err := os.WriteFile(prefixed, []byte("from-prefixed\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("from-legacy\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Legacy alias alone is honored.
+	t.Setenv("PYROSCOPE_AUTH_USER_FILE", legacy)
+	got, err := resolveSecretMulti("flag", "OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
+	if err != nil || got != "from-legacy" {
+		t.Fatalf("legacy alias: got %q err %v, want from-legacy", got, err)
+	}
+
+	// Prefixed name wins when both are set.
+	t.Setenv("OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", prefixed)
+	got, err = resolveSecretMulti("flag", "OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
+	if err != nil || got != "from-prefixed" {
+		t.Errorf("prefixed precedence: got %q err %v, want from-prefixed", got, err)
+	}
+}
+
 func TestResolveSecret_FallbackToFlag(t *testing.T) {
 	got, err := resolveSecret("PYRO_TEST_UNSET_FILE", "flag-token")
 	if err != nil {

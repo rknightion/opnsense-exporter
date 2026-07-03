@@ -72,13 +72,23 @@ func (c *PyroscopeConfig) Validate() error {
 // env var is set and the file's first line is non-empty; otherwise it returns
 // flagValue. Mirrors the OPS_API_*_FILE precedence in ops.go.
 func resolveSecret(fileEnvVar, flagValue string) (string, error) {
-	if path, ok := os.LookupEnv(fileEnvVar); ok && path != "" {
-		v, err := getLineFromFile(path)
-		if err != nil {
-			return "", errors.Join(fmt.Errorf("failed to read %s", fileEnvVar), err)
-		}
-		if v != "" {
-			return v, nil
+	return resolveSecretMulti(flagValue, fileEnvVar)
+}
+
+// resolveSecretMulti tries each fileEnvVar in order — the first that is set and names a
+// file with a non-empty first line wins — otherwise returns flagValue. Callers list the
+// canonical OPNSENSE_EXPORTER_-prefixed name first and a legacy unprefixed alias second,
+// so both are accepted while the project-wide prefix convention holds (#141).
+func resolveSecretMulti(flagValue string, fileEnvVars ...string) (string, error) {
+	for _, fileEnvVar := range fileEnvVars {
+		if path, ok := os.LookupEnv(fileEnvVar); ok && path != "" {
+			v, err := getLineFromFile(path)
+			if err != nil {
+				return "", errors.Join(fmt.Errorf("failed to read %s", fileEnvVar), err)
+			}
+			if v != "" {
+				return v, nil
+			}
 		}
 	}
 	return flagValue, nil
@@ -93,11 +103,13 @@ func Pyroscope() (*PyroscopeConfig, bool, error) {
 		return nil, false, nil
 	}
 
-	user, err := resolveSecret("PYROSCOPE_AUTH_USER_FILE", *pyroscopeAuthUser)
+	user, err := resolveSecretMulti(*pyroscopeAuthUser,
+		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER_FILE", "PYROSCOPE_AUTH_USER_FILE")
 	if err != nil {
 		return nil, false, err
 	}
-	password, err := resolveSecret("PYROSCOPE_AUTH_PASSWORD_FILE", *pyroscopeAuthPassword)
+	password, err := resolveSecretMulti(*pyroscopeAuthPassword,
+		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE")
 	if err != nil {
 		return nil, false, err
 	}

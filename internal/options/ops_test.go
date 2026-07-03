@@ -244,6 +244,52 @@ func TestOpsAPIKey_ResolvesFlag(t *testing.T) {
 	}
 }
 
+// TestOpsAPIKey_PrefixedFileEnv covers #141: the prefixed
+// OPNSENSE_EXPORTER_OPS_API_KEY_FILE alias is recognized (in addition to the legacy
+// unprefixed name), and takes precedence over it.
+func TestOpsAPIKey_PrefixedFileEnv(t *testing.T) {
+	resetOpsFlags(t)
+	dir := t.TempDir()
+	os.Unsetenv("OPS_API_KEY_FILE")
+
+	// Prefixed alias alone resolves.
+	prefixed := filepath.Join(dir, "prefixed")
+	if err := os.WriteFile(prefixed, []byte("prefixed-key\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPNSENSE_EXPORTER_OPS_API_KEY_FILE", prefixed)
+	*opnsenseAPIKey = ""
+	if got, err := opsAPIKey(); err != nil || got != "prefixed-key" {
+		t.Fatalf("prefixed alias: got %q err %v, want prefixed-key", got, err)
+	}
+
+	// When both are set, the prefixed (canonical) name wins.
+	legacy := filepath.Join(dir, "legacy")
+	if err := os.WriteFile(legacy, []byte("legacy-key\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPS_API_KEY_FILE", legacy)
+	if got, err := opsAPIKey(); err != nil || got != "prefixed-key" {
+		t.Errorf("with both set: got %q err %v, want prefixed-key (prefixed precedence)", got, err)
+	}
+}
+
+// TestOpsAPISecret_PrefixedFileEnv covers #141 for the secret.
+func TestOpsAPISecret_PrefixedFileEnv(t *testing.T) {
+	resetOpsFlags(t)
+	dir := t.TempDir()
+	os.Unsetenv("OPS_API_SECRET_FILE")
+	p := filepath.Join(dir, "sec")
+	if err := os.WriteFile(p, []byte("prefixed-secret\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OPNSENSE_EXPORTER_OPS_API_SECRET_FILE", p)
+	*opnsenseAPISecret = ""
+	if got, err := opsAPISecret(); err != nil || got != "prefixed-secret" {
+		t.Fatalf("prefixed secret alias: got %q err %v", got, err)
+	}
+}
+
 // The core #109 bug: OPS_API_KEY_FILE / OPS_API_SECRET_FILE set but empty (a common
 // templated-blank env pattern) must fall back to the flag/env value, not abort startup
 // by trying to os.Open("").

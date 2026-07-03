@@ -59,7 +59,7 @@ For secure credential management in containers and orchestrated environments, cr
 | `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (promhttp_*, process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
 | `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
-| `--web.telemetry-path` | -- | `/metrics` | Path under which to expose metrics. |
+| `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
 <!-- docgen:end:flags-exporter -->
 
 ## Health endpoints & scrape filtering
@@ -366,5 +366,5 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (promhttp_*, process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
 | `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
-| `--web.telemetry-path` | -- | `/metrics` | Path under which to expose metrics. |
+| `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
 <!-- docgen:end:flags-full-reference -->

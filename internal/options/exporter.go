@@ -12,7 +12,7 @@ var (
 	MetricsPath = kingpin.Flag(
 		"web.telemetry-path",
 		"Path under which to expose metrics.",
-	).Default("/metrics").String()
+	).Envar("OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH").Default("/metrics").String()
 	DisableExporterMetrics = kingpin.Flag(
 		"web.disable-exporter-metrics",
 		"Exclude metrics about the exporter itself (promhttp_*, process_*, go_*).",

@@ -44,3 +44,36 @@ func TestRegisterAllFlagsIdempotent(t *testing.T) {
 	options.RegisterAllFlags()
 	options.RegisterAllFlags() // second call must not panic (kingpin panics on duplicate flags)
 }
+
+// TestAllFlagsHaveEnvar covers #141: every project-owned flag must be settable via an
+// OPNSENSE_EXPORTER_-prefixed env var (a fully env-driven deployment), and
+// --web.telemetry-path specifically must expose OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH.
+func TestAllFlagsHaveEnvar(t *testing.T) {
+	options.RegisterAllFlags()
+	model := kingpin.CommandLine.Model()
+
+	var telemetry *kingpin.FlagModel
+	for _, f := range model.Flags {
+		// Skip toolkit-provided flags (web.*, help, version) except the project's own
+		// web.telemetry-path, which we assert explicitly below.
+		if f.Name == "web.telemetry-path" {
+			telemetry = f
+			continue
+		}
+		if !strings.HasPrefix(f.Name, "opnsense.") && !strings.HasPrefix(f.Name, "exporter.") && !strings.HasPrefix(f.Name, "otlp.") {
+			continue
+		}
+		if f.Envar == "" {
+			t.Errorf("project flag --%s has no env var binding", f.Name)
+		}
+		if !strings.HasPrefix(f.Envar, "OPNSENSE_EXPORTER_") {
+			t.Errorf("flag --%s env var %q is not OPNSENSE_EXPORTER_-prefixed", f.Name, f.Envar)
+		}
+	}
+	if telemetry == nil {
+		t.Fatal("web.telemetry-path flag not found")
+	}
+	if telemetry.Envar != "OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH" {
+		t.Errorf("web.telemetry-path env var = %q, want OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH", telemetry.Envar)
+	}
+}

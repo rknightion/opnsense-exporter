@@ -68,11 +68,13 @@ func getLineFromFile(filePath string) (string, error) {
 // open ""; the three secret families (OPS key/secret, Pyroscope/OTLP) thus share one
 // precedence. A missing value is enforced later by OPNSenseConfig.Validate (#109).
 func opsAPISecret() (string, error) {
-	return resolveSecret("OPS_API_SECRET_FILE", *opnsenseAPISecret)
+	return resolveSecretMulti(*opnsenseAPISecret,
+		"OPNSENSE_EXPORTER_OPS_API_SECRET_FILE", "OPS_API_SECRET_FILE")
 }
 
 func opsAPIKey() (string, error) {
-	return resolveSecret("OPS_API_KEY_FILE", *opnsenseAPIKey)
+	return resolveSecretMulti(*opnsenseAPIKey,
+		"OPNSENSE_EXPORTER_OPS_API_KEY_FILE", "OPS_API_KEY_FILE")
 }
 
 // OPNSenseConfig holds the configuration for the OPNsense API.
