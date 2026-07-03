@@ -41,11 +41,12 @@ func TestNDPCollector_Update(t *testing.T) {
 
 	c := &ndpCollector{subsystem: NDPSubsystem}
 	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
 
 	metrics := collectMetrics(t, c, client)
 
-	// 2 NDP entries = 2 metrics
-	expectedCount := 2
+	// aggregate (1) + 2 per-entry = 3 metrics with details on
+	expectedCount := 3
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -93,8 +94,31 @@ func TestNDPCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	if len(metrics) != 0 {
-		t.Errorf("expected 0 metrics, got %d", len(metrics))
+	// Details off (default) + empty table: only the aggregate (entries_total=0) is emitted.
+	if len(metrics) != 1 {
+		t.Fatalf("expected 1 metric (aggregate only), got %d", len(metrics))
+	}
+	if !hasFqName(metrics[0], "opnsense_ndp_entries_total") || getMetricValue(metrics[0]) != 0 {
+		t.Errorf("expected opnsense_ndp_entries_total=0, got %s=%v",
+			metrics[0].Desc().String(), getMetricValue(metrics[0]))
+	}
+}
+
+// TestNDPCollector_DetailsGating covers #125 for NDP: default emits only the aggregate.
+func TestNDPCollector_DetailsGating(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/interface/get_ndp", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[{"ip":"fe80::1","mac":"00:11:22:33:44:55","intf_description":"LAN","type":"dynamic"}]`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	off := &ndpCollector{subsystem: NDPSubsystem}
+	off.Register(namespace, "test", promslog.NewNopLogger())
+	m := collectMetrics(t, off, client)
+	if len(m) != 1 || !hasFqName(m[0], "opnsense_ndp_entries_total") {
+		t.Errorf("details-off should emit only the aggregate, got %d metrics", len(m))
 	}
 }
 

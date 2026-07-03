@@ -1,5 +1,5 @@
 title: OPNsense Exporter Documentation
-description: Comprehensive Prometheus exporter for OPNsense firewalls providing 567 metrics across 47 collectors for firewall monitoring, network diagnostics, and system observability
+description: Comprehensive Prometheus exporter for OPNsense firewalls providing 569 metrics across 47 collectors for firewall monitoring, network diagnostics, and system observability
 
 # Global meta tags for all pages
 tags:

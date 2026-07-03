@@ -40,12 +40,12 @@ def build(b: Builder):
     # ======================================================================
     arp_count = b.stat(
         "ARP Entries",
-        f'count({sel("opnsense_arp_table_entries")})',
+        sel("opnsense_arp_table_entries_total"),
         unit="short",
         w=4, h=4,
         instant=True,
         graph="none",
-        desc="Total number of ARP table entries currently known.",
+        desc="Total number of ARP table entries currently known (low-cardinality aggregate, always emitted).",
     )
     arp_by_iface = b.bargauge(
         "ARP Entries by Interface",
@@ -55,7 +55,7 @@ def build(b: Builder):
         w=8, h=8,
         orient="horizontal",
         instant=True,
-        desc="ARP entry count grouped by interface.",
+        desc="ARP entry count grouped by interface. Requires --exporter.enable-arp-details (#125).",
     )
     arp_table = b.table(
         "ARP Table Detail",
@@ -80,12 +80,12 @@ def build(b: Builder):
     # ======================================================================
     ndp_count = b.stat(
         "NDP Entries",
-        f'count({sel("opnsense_ndp_entries")})',
+        sel("opnsense_ndp_entries_total"),
         unit="short",
         w=4, h=4,
         instant=True,
         graph="none",
-        desc="Total number of NDP (IPv6 neighbor) entries currently known.",
+        desc="Total number of NDP (IPv6 neighbor) entries currently known (low-cardinality aggregate, always emitted).",
     )
     ndp_by_iface = b.bargauge(
         "NDP Entries by Interface",
@@ -95,7 +95,7 @@ def build(b: Builder):
         w=8, h=8,
         orient="horizontal",
         instant=True,
-        desc="NDP entry count grouped by interface.",
+        desc="NDP entry count grouped by interface. Requires --exporter.enable-ndp-details (#125).",
     )
     ndp_table = b.table(
         "NDP Table Detail",

@@ -604,6 +604,32 @@ func WithDhcpv6Details() Option {
 	}
 }
 
+// WithArpDetails enables per-entry ARP metrics (default-off; #125).
+func WithArpDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if ac, ok := c.(*arpTableCollector); ok {
+				ac.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithNdpDetails enables per-entry NDP metrics (default-off; #125).
+func WithNdpDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if nc, ok := c.(*ndpCollector); ok {
+				nc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithAliasDetails enables per-table pf counter metrics for the alias collector
 func WithAliasDetails() Option {
 	return func(o *Collector) error {

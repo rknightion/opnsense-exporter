@@ -326,6 +326,14 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithDhcpv6Details())
 		logger.Info("dhcpv6 per-lease details enabled")
 	}
+	if collectorsSwitches.ArpDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithArpDetails())
+		logger.Info("arp per-entry details enabled")
+	}
+	if collectorsSwitches.NdpDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithNdpDetails())
+		logger.Info("ndp per-entry details enabled")
+	}
 	if !collectorsSwitches.BPF {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutBPFCollector())
 		logger.Info("bpf collector disabled")

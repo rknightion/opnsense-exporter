@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 567
-- **Gauges:** 367
+- **Total metrics:** 569
+- **Gauges:** 369
 - **Counters:** 200
 
 ## General
@@ -63,7 +63,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_arp_table_entries | Gauge | ip, mac, hostname, interface_description, type, expired, permanent | Arp entries by ip, mac, hostname, interface description, type, expired and permanent | --exporter.disable-arp-table |
+| opnsense_arp_table_entries_total | Gauge | --- | Total number of ARP table entries (low-cardinality aggregate, always emitted) | --exporter.disable-arp-table |
+| opnsense_arp_table_entries | Gauge | ip, mac, hostname, interface_description, type, expired, permanent | Arp entries by ip, mac, hostname, interface description, type, expired and permanent. Only emitted when --exporter.enable-arp-details is set (high, churning cardinality). | --exporter.disable-arp-table |
 
 ## Activity
 
@@ -473,7 +474,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_ndp_entries | Gauge | ip, mac, interface_description, type | NDP entries by ip, mac, interface description, and type | --exporter.disable-ndp |
+| opnsense_ndp_entries_total | Gauge | --- | Total number of NDP table entries (low-cardinality aggregate, always emitted) | --exporter.disable-ndp |
+| opnsense_ndp_entries | Gauge | ip, mac, interface_description, type | NDP entries by ip, mac, interface description, and type. Only emitted when --exporter.enable-ndp-details is set (high, churning cardinality from IPv6 privacy addresses). | --exporter.disable-ndp |
 
 ## NTP
 

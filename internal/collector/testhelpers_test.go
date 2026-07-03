@@ -95,6 +95,12 @@ func collectMetrics(t *testing.T, instance CollectorInstance, client *opnsense.C
 	return metrics
 }
 
+// hasFqName reports whether a metric's descriptor has exactly the given fqName (matches
+// the `fqName: "<name>"` token, so a prefix like ..._entries does not match ..._entries_total).
+func hasFqName(m prometheus.Metric, name string) bool {
+	return strings.Contains(m.Desc().String(), `fqName: "`+name+`"`)
+}
+
 func getMetricValue(m prometheus.Metric) float64 {
 	d := &dto.Metric{}
 	_ = m.Write(d)

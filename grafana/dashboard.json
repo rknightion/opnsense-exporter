@@ -23073,7 +23073,7 @@
         "spec": {
           "id": 204,
           "title": "ARP Entries",
-          "description": "Total number of ARP table entries currently known.",
+          "description": "Total number of ARP table entries currently known (low-cardinality aggregate, always emitted).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -23096,7 +23096,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "count(opnsense_arp_table_entries{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "opnsense_arp_table_entries_total{opnsense_instance=~\"$opnsense_instance\"}",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -23159,7 +23159,7 @@
         "spec": {
           "id": 205,
           "title": "ARP Entries by Interface",
-          "description": "ARP entry count grouped by interface.",
+          "description": "ARP entry count grouped by interface. Requires --exporter.enable-arp-details (#125).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -23370,7 +23370,7 @@
         "spec": {
           "id": 207,
           "title": "NDP Entries",
-          "description": "Total number of NDP (IPv6 neighbor) entries currently known.",
+          "description": "Total number of NDP (IPv6 neighbor) entries currently known (low-cardinality aggregate, always emitted).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -23393,7 +23393,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "count(opnsense_ndp_entries{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "opnsense_ndp_entries_total{opnsense_instance=~\"$opnsense_instance\"}",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -23456,7 +23456,7 @@
         "spec": {
           "id": 208,
           "title": "NDP Entries by Interface",
-          "description": "NDP entry count grouped by interface.",
+          "description": "NDP entry count grouped by interface. Requires --exporter.enable-ndp-details (#125).",
           "links": [],
           "data": {
             "kind": "QueryGroup",

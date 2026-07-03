@@ -7,6 +7,10 @@ var (
 		"exporter.disable-arp-table",
 		"Disable the scraping of the ARP table",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ARP_TABLE").Default("false").Bool()
+	arpDetailsEnabled = kingpin.Flag(
+		"exporter.enable-arp-details",
+		"Enable per-entry ARP metrics (ip/mac/hostname labels — high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS").Default("false").Bool()
 	cronTableCollectorDisabled = kingpin.Flag(
 		"exporter.disable-cron-table",
 		"Disable the scraping of the cron table",
@@ -115,6 +119,10 @@ var (
 		"exporter.disable-ndp",
 		"Disable the scraping of the NDP (IPv6 neighbor discovery) table",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_NDP").Default("false").Bool()
+	ndpDetailsEnabled = kingpin.Flag(
+		"exporter.enable-ndp-details",
+		"Enable per-entry NDP metrics (ip/mac labels — high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS").Default("false").Bool()
 	dhcpv4CollectorDisabled = kingpin.Flag(
 		"exporter.disable-dhcpv4",
 		"Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent)",
@@ -277,12 +285,16 @@ type CollectorsDisableSwitch struct {
 	Dhcpv6                 bool
 	Dhcpv6Details          bool
 	BPF                    bool
+	ArpDetails             bool
+	NdpDetails             bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
 func CollectorsSwitches() CollectorsDisableSwitch {
 	return CollectorsDisableSwitch{
 		ARP:                    !*arpTableCollectorDisabled,
+		ArpDetails:             *arpDetailsEnabled,
+		NdpDetails:             *ndpDetailsEnabled,
 		Cron:                   !*cronTableCollectorDisabled,
 		Wireguard:              !*wireguardCollectorDisabled,
 		IPsec:                  !*ipsecCollectorDisabled,
@@ -356,6 +368,8 @@ type CollectorFlag struct {
 // does not break that existing chain.)
 var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-arp-table", Subsystem: "arp_table"},
+	{Flag: "exporter.enable-arp-details", Subsystem: "arp_table", Detail: true},
+	{Flag: "exporter.enable-ndp-details", Subsystem: "ndp", Detail: true},
 	{Flag: "exporter.disable-cron-table", Subsystem: "cron"},
 	{Flag: "exporter.disable-wireguard", Subsystem: "wireguard"},
 	{Flag: "exporter.disable-ipsec", Subsystem: "ipsec"},

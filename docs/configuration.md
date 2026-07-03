@@ -250,6 +250,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 <!-- docgen:begin:flags-collectors-details -->
 | Flag | Env Var | Collector | Description |
 |------|---------|-----------|-------------|
+| `--exporter.enable-arp-details` | `OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS` | ARP Table | Enable per-entry ARP metrics (ip/mac/hostname labels — high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted. |
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | Dnsmasq DHCP | Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks) |
 | `--exporter.enable-alias-details` | `OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS` | Firewall Aliases | Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table) |
 | `--exporter.enable-firewall-rules-details` | `OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS` | Firewall Rules | Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets) |
@@ -257,6 +258,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | ISC DHCPv4 | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
 | `--exporter.enable-dhcpv6-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS` | ISC DHCPv6 | Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks) |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Kea DHCP | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
+| `--exporter.enable-ndp-details` | `OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS` | NDP | Enable per-entry NDP metrics (ip/mac labels — high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted. |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | OpenVPN | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |
 | `--exporter.enable-tailscale-peer-details` | `OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS` | Tailscale | Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer hostname labels) |
 | `--exporter.enable-unbound-infra` | `OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA` | Unbound DNS | Enable per-upstream infra cache RTT metrics from Unbound (cardinality scales with the resolver's infra cache; one series pair per upstream ip/host) |
@@ -312,6 +314,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-unbound` | `OPNSENSE_EXPORTER_DISABLE_UNBOUND` | `false` | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPNSENSE_EXPORTER_DISABLE_WIREGUARD` | `false` | Disable the scraping of Wireguard service |
 | `--exporter.enable-alias-details` | `OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS` | `false` | Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table) |
+| `--exporter.enable-arp-details` | `OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS` | `false` | Enable per-entry ARP metrics (ip/mac/hostname labels — high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted. |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
 | `--exporter.enable-dhcpv6-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks) |
 | `--exporter.enable-dnsmasq-details` | `OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS` | `false` | Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks) |
@@ -319,6 +322,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.enable-firmware-package-details` | `OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS` | `false` | Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape) |
 | `--exporter.enable-hasync` | `OPNSENSE_EXPORTER_ENABLE_HASYNC` | `false` | Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scrape). Disabled by default. |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | `false` | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
+| `--exporter.enable-ndp-details` | `OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS` | `false` | Enable per-entry NDP metrics (ip/mac labels — high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted. |
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | `false` | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | `false` | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | `false` | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |

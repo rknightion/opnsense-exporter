@@ -8,7 +8,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 |-----------|-----------|---------|---------|------|---------------------|
 | ACME Client | acme | 6 | Enabled | --exporter.disable-acme | OPNSENSE_EXPORTER_DISABLE_ACME |
 | APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPNSENSE_EXPORTER_DISABLE_APCUPSD |
-| ARP Table | arp_table | 1 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
+| ARP Table | arp_table | 2 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
 | Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
 | BPF Statistics | bpf | 6 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
@@ -34,7 +34,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Kea DHCP | kea | 13 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 5 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
-| NDP | ndp | 1 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
+| NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
 | NTP | ntp | 9 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
 | NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPNSENSE_EXPORTER_DISABLE_NUT |
 | NetFlow | netflow | 7 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
