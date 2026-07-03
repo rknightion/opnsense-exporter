@@ -158,7 +158,7 @@ RECORDING = [
          expr="opnsense_firewall_pf_states_current / (opnsense_firewall_pf_states_limit > 0)"),
     dict(metric="instance:opnsense_unbound_cache:hit_ratio",
          expr="rate(opnsense_unbound_dns_cache_hits_total[5m]) / "
-              "clamp_min(rate(opnsense_unbound_dns_cache_hits_total[5m]) + rate(opnsense_unbound_dns_cache_miss_total[5m]), 1)"),
+              "(rate(opnsense_unbound_dns_cache_hits_total[5m]) + rate(opnsense_unbound_dns_cache_miss_total[5m]) > 0)"),
     dict(metric="instance:opnsense_unbound_queries:rate5m",
          expr="rate(opnsense_unbound_dns_queries_total[5m])"),
     dict(metric="instance:opnsense_gateway_loss:ratio",

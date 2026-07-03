@@ -55,12 +55,14 @@ def build(b: Builder):
         unit="reqps", w=12, h=8,
         desc="Total DNS queries received per second.",
     )
-    # Cache hit ratio: 100 * hits / (hits + misses), clamp_min avoids ÷0
+    # Cache hit ratio: 100 * hits / (hits + misses). The (Y > 0) boolean filter guards ÷0 without
+    # distorting real values — clamp_min(Y, 1) pinned the denominator to 1 qps and collapsed the
+    # ratio on quiet/low-traffic boxes below 1 qps (#96).
     cache_hit_ratio = b.gauge(
         "Cache Hit Ratio",
         (
             f"100 * {r('cache_hits_total')}"
-            f" / clamp_min({r('cache_hits_total')} + {r('cache_miss_total')}, 1)"
+            f" / ({r('cache_hits_total')} + {r('cache_miss_total')} > 0)"
         ),
         unit="percent", mn=0, mx=100, w=4, h=8,
         thresholds=[

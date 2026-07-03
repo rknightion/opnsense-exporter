@@ -32,7 +32,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "rate(opnsense_unbound_dns_cache_hits_total[5m]) / clamp_min(rate(opnsense_unbound_dns_cache_hits_total[5m]) + rate(opnsense_unbound_dns_cache_miss_total[5m]), 1)",
+          "expr": "rate(opnsense_unbound_dns_cache_hits_total[5m]) / (rate(opnsense_unbound_dns_cache_hits_total[5m]) + rate(opnsense_unbound_dns_cache_miss_total[5m]) > 0)",
           "instant": false,
           "range": true,
           "intervalMs": 1000,

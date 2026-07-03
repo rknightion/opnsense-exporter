@@ -14527,7 +14527,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "100 * rate(opnsense_unbound_dns_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]) / clamp_min(rate(opnsense_unbound_dns_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]) + rate(opnsense_unbound_dns_cache_miss_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]), 1)",
+                        "expr": "100 * rate(opnsense_unbound_dns_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]) / (rate(opnsense_unbound_dns_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]) + rate(opnsense_unbound_dns_cache_miss_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]) > 0)",
                         "refId": "A",
                         "instant": false,
                         "range": true
