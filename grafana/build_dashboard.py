@@ -309,8 +309,10 @@ def main():
             json.dump(manifest, f, indent=2)
             f.write("\n")
         print(f"wrote {OUT}", file=sys.stderr)
+        tab_names = [t["spec"]["title"] for t in b.tabs]
         with open(STATS_PATH, "w") as f:
-            json.dump({"metrics": total, "panels": len(b.elements), "tabs": len(b.tabs)}, f, indent=2)
+            json.dump({"metrics": total, "panels": len(b.elements), "tabs": len(b.tabs),
+                       "tab_names": tab_names}, f, indent=2)
             f.write("\n")
         print(f"wrote {STATS_PATH}", file=sys.stderr)
 

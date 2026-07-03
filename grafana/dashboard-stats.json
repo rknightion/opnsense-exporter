@@ -1,5 +1,37 @@
 {
   "metrics": 556,
   "panels": 441,
-  "tabs": 30
+  "tabs": 30,
+  "tab_names": [
+    "Overview",
+    "System & Resources",
+    "Interfaces",
+    "Firewall & PF",
+    "Aliases",
+    "Gateways & WAN",
+    "DNS \u2014 Unbound",
+    "DHCP",
+    "VPN",
+    "Tailscale",
+    "Routing & Neighbors",
+    "Protocol Stats",
+    "NTP",
+    "Certificates",
+    "Services, Cron & DynDNS",
+    "Syslog",
+    "Q-Feeds",
+    "NetFlow",
+    "CARP / HA",
+    "HAProxy",
+    "Nginx",
+    "FRR Routing",
+    "Monit",
+    "CrowdSec",
+    "UPS",
+    "Captive Portal",
+    "Traffic Shaper",
+    "HA Sync",
+    "Chrony",
+    "Diagnostics"
+  ]
 }

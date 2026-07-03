@@ -155,13 +155,19 @@ func main() {
 	// Step 6: Inject generated flag tables into docs/configuration.md.
 	injectConfigurationDoc(out, allFlags)
 
-	// Step 7: Pin metric/collector/dashboard counts across prose and config.
-	dashMetrics, dashTabs := loadDashboardStats(repoRoot)
+	// Step 7: Inject the generated dashboard tab-name list into prose that enumerates tabs.
+	dashMetrics, dashTabs, tabNames := loadDashboardStats(repoRoot)
+	injectDashboardTabs(out, tabNames)
+
+	// Step 8: Pin metric/collector/dashboard/rule counts across prose and config.
+	alerts, recording := loadRulesStats(repoRoot)
 	applyStatRules(out, statRules(docStats{
 		Metrics:     totalMetrics,
 		Collectors:  len(collectors),
 		DashMetrics: dashMetrics,
 		DashTabs:    dashTabs,
+		Alerts:      alerts,
+		Recording:   recording,
 	}))
 
 	// Step 8: Lint every flag/env-var token in prose docs against the model.
@@ -202,6 +208,25 @@ func injectConfigurationDoc(out *output, allFlags []FlagDoc) {
 		}
 	}
 	out.write(configPath, []byte(doc))
+}
+
+// injectDashboardTabs fills the docgen:dashboard-tabs marker region in grafana/README.md and
+// docs/integration-dashboards.md with the ordered tab-name list from the dashboard build, so the
+// hand-typed enumerations can't drift from the actual tabs (#116).
+func injectDashboardTabs(out *output, tabNames []string) {
+	content := strings.Join(tabNames, ", ")
+	for _, file := range []string{"grafana/README.md", "docs/integration-dashboards.md"} {
+		path := filepath.Join(out.repoRoot, file)
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			fatal("reading %s: %v", path, err)
+		}
+		doc, err := injectRegion(string(raw), "dashboard-tabs", content)
+		if err != nil {
+			fatal("%s: %v", file, err)
+		}
+		out.write(path, []byte(doc))
+	}
 }
 
 func findRepoRoot() string {

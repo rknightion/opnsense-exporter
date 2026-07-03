@@ -5,7 +5,7 @@ OPNsense Exporter:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 16 tabs that auto-show/hide based on which metrics your exporter emits. |
+| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 30 tabs that auto-show/hide based on which metrics your exporter emits. |
 | `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
@@ -25,11 +25,14 @@ separate firewall-logs dashboard.
 
 ## The dashboard
 
-One dashboard, 16 tabs: **Overview, System & Resources, Interfaces, Firewall & PF,
-Gateways & WAN, DNS — Unbound, DHCP, VPN, Routing & Neighbors, Protocol Stats, NTP,
-Certificates, Services/Cron/DynDNS, NetFlow, CARP/HA, Diagnostics** — covering **every** metric
-the exporter emits (a coverage gate in `build_dashboard.py` fails the build if any catalogue
-metric is left unreferenced).
+One dashboard, 30 tabs (generated list, do not hand-edit):
+
+<!-- docgen:begin:dashboard-tabs -->
+Overview, System & Resources, Interfaces, Firewall & PF, Aliases, Gateways & WAN, DNS — Unbound, DHCP, VPN, Tailscale, Routing & Neighbors, Protocol Stats, NTP, Certificates, Services, Cron & DynDNS, Syslog, Q-Feeds, NetFlow, CARP / HA, HAProxy, Nginx, FRR Routing, Monit, CrowdSec, UPS, Captive Portal, Traffic Shaper, HA Sync, Chrony, Diagnostics
+<!-- docgen:end:dashboard-tabs -->
+
+covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the
+build if any catalogue metric is left unreferenced).
 
 ### Dynamic show/hide
 
@@ -75,7 +78,7 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 
 ## Alerts & recording rules
 
-`alerts/` contains **18 alert rules** and **8 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **19 alert rules** and **8 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format — it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
@@ -105,7 +108,8 @@ target a specific Grafana folder.
 | OPNsenseFirewallUnhealthy | warning | firewall health check reports errors for 10m |
 | OPNsenseCrashReports | warning | crash reports present |
 | OPNsenseEndpointErrors | warning | an API endpoint returned errors in 15m |
-| OPNsenseGatewayDown | critical | a gateway is offline for 5m |
+| OPNsenseGatewayDown | critical | the primary gateway is offline for 5m |
+| OPNsenseGatewayDownFailover | warning | a failover/secondary gateway is offline for 15m |
 | OPNsenseGatewayHighLoss | warning | gateway loss > 20% for 10m |
 | OPNsenseGatewayHighRTT | warning | gateway RTT over its configured high threshold for 10m |
 | OPNsensePFStateTableNearLimit | warning | PF state table > 90% of limit for 10m |
