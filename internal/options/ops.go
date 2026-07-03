@@ -2,7 +2,6 @@ package options
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -54,38 +53,17 @@ func getLineFromFile(filePath string) (string, error) {
 	return "", nil
 }
 
+// opsAPISecret / opsAPIKey resolve the OPS API credentials through the shared
+// resolveSecret helper, which guards against a set-but-empty *_FILE env var (a common
+// templated-blank pattern) by falling back to the flag/env value instead of trying to
+// open ""; the three secret families (OPS key/secret, Pyroscope/OTLP) thus share one
+// precedence. A missing value is enforced later by OPNSenseConfig.Validate (#109).
 func opsAPISecret() (string, error) {
-	if env, ok := os.LookupEnv("OPS_API_SECRET_FILE"); ok {
-		apiSecret, err := getLineFromFile(env)
-		if err != nil {
-			return "", errors.Join(fmt.Errorf("failed to read OPS_API_SECRET_FILE"), err)
-		}
-		if len(apiSecret) > 0 {
-			return apiSecret, nil
-		}
-	}
-	if *opnsenseAPISecret == "" {
-		return "", fmt.Errorf("opnsense.api-secret or OPS_API_SECRET_FILE must be set")
-	}
-
-	return *opnsenseAPISecret, nil
+	return resolveSecret("OPS_API_SECRET_FILE", *opnsenseAPISecret)
 }
 
 func opsAPIKey() (string, error) {
-	if env, ok := os.LookupEnv("OPS_API_KEY_FILE"); ok {
-		apiKey, err := getLineFromFile(env)
-		if err != nil {
-			return "", errors.Join(fmt.Errorf("failed to read OPS_API_KEY_FILE"), err)
-		}
-		if len(apiKey) > 0 {
-			return apiKey, nil
-		}
-	}
-	if *opnsenseAPIKey == "" {
-		return "", fmt.Errorf("opnsense.api-key or OPS_API_KEY_FILE must be set")
-	}
-
-	return *opnsenseAPIKey, nil
+	return resolveSecret("OPS_API_KEY_FILE", *opnsenseAPIKey)
 }
 
 // OPNSenseConfig holds the configuration for the OPNsense API.

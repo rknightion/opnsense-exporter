@@ -218,18 +218,9 @@ func resetOpsFlags(t *testing.T) {
 	})
 }
 
-func TestOpsAPISecret_ChecksSecretFlag(t *testing.T) {
+func TestOpsAPISecret_ResolvesFlag(t *testing.T) {
 	resetOpsFlags(t)
-
-	// Secret unset must error even when the key IS set.
-	*opnsenseAPIKey = "some-key"
-	*opnsenseAPISecret = ""
-	if _, err := opsAPISecret(); err == nil {
-		t.Fatal("expected error when api-secret is unset, got nil")
-	}
-
-	// Secret set must resolve even when the key is NOT set.
-	*opnsenseAPIKey = ""
+	os.Unsetenv("OPS_API_SECRET_FILE")
 	*opnsenseAPISecret = "s3cret"
 	got, err := opsAPISecret()
 	if err != nil {
@@ -240,24 +231,64 @@ func TestOpsAPISecret_ChecksSecretFlag(t *testing.T) {
 	}
 }
 
-func TestOpsAPIKey_ChecksKeyFlag(t *testing.T) {
+func TestOpsAPIKey_ResolvesFlag(t *testing.T) {
 	resetOpsFlags(t)
-
-	// Key unset must error even when the secret IS set.
-	*opnsenseAPIKey = ""
-	*opnsenseAPISecret = "some-secret"
-	if _, err := opsAPIKey(); err == nil {
-		t.Fatal("expected error when api-key is unset, got nil")
-	}
-
-	// Key set must resolve even when the secret is NOT set.
+	os.Unsetenv("OPS_API_KEY_FILE")
 	*opnsenseAPIKey = "the-key"
-	*opnsenseAPISecret = ""
 	got, err := opsAPIKey()
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if got != "the-key" {
 		t.Errorf("expected 'the-key', got %q", got)
+	}
+}
+
+// The core #109 bug: OPS_API_KEY_FILE / OPS_API_SECRET_FILE set but empty (a common
+// templated-blank env pattern) must fall back to the flag/env value, not abort startup
+// by trying to os.Open("").
+func TestOpsAPIKey_EmptyFileEnvFallsBackToFlag(t *testing.T) {
+	resetOpsFlags(t)
+	t.Setenv("OPS_API_KEY_FILE", "") // present but empty
+	*opnsenseAPIKey = "flag-key"
+	got, err := opsAPIKey()
+	if err != nil {
+		t.Fatalf("empty OPS_API_KEY_FILE should fall back to the flag, got err: %v", err)
+	}
+	if got != "flag-key" {
+		t.Errorf("expected fallback to 'flag-key', got %q", got)
+	}
+}
+
+func TestOpsAPISecret_EmptyFileEnvFallsBackToFlag(t *testing.T) {
+	resetOpsFlags(t)
+	t.Setenv("OPS_API_SECRET_FILE", "") // present but empty
+	*opnsenseAPISecret = "flag-secret"
+	got, err := opsAPISecret()
+	if err != nil {
+		t.Fatalf("empty OPS_API_SECRET_FILE should fall back to the flag, got err: %v", err)
+	}
+	if got != "flag-secret" {
+		t.Errorf("expected fallback to 'flag-secret', got %q", got)
+	}
+}
+
+// Regression guard: a real, valid OPS_API_KEY_FILE path is still read from the file,
+// taking precedence over the flag value.
+func TestOpsAPIKey_ValidFileTakesPrecedence(t *testing.T) {
+	resetOpsFlags(t)
+	dir := t.TempDir()
+	p := filepath.Join(dir, "key")
+	if err := os.WriteFile(p, []byte("file-key\n"), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	t.Setenv("OPS_API_KEY_FILE", p)
+	*opnsenseAPIKey = "flag-key"
+	got, err := opsAPIKey()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got != "file-key" {
+		t.Errorf("expected file value 'file-key' to win, got %q", got)
 	}
 }
