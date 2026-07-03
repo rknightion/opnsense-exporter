@@ -1,6 +1,8 @@
 package collector
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -295,6 +297,31 @@ func TestDynDNSCollector_Update_Empty(t *testing.T) {
 				t.Errorf("expected accounts_total=0, got %v", val)
 			}
 		}
+	}
+}
+
+// TestDyndnsCollector_Update_PluginAbsent guards #87: with os-ddclient absent
+// (endpoints 404) the collector must emit nothing rather than accounts_total=0,
+// and must not log a service-status warning on every scrape.
+func TestDyndnsCollector_Update_PluginAbsent(t *testing.T) {
+	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	c := &dyndnsCollector{subsystem: DynDNSSubsystem}
+	c.Register(namespace, "test", logger)
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics when plugin absent (404), got %d", len(metrics))
+	}
+	if strings.Contains(buf.String(), "dyndns service status") {
+		t.Errorf("expected no service-status warning on plugin-absent box; got log: %q", buf.String())
 	}
 }
 

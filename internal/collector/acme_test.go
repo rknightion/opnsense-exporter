@@ -264,6 +264,24 @@ func TestACMECollector_Update_ArrayQuirks(t *testing.T) {
 	}
 }
 
+// TestAcmeCollector_Update_PluginAbsent guards #87: with os-acme-client absent
+// (endpoint 404s) the collector must emit nothing rather than certificates_total=0.
+func TestAcmeCollector_Update_PluginAbsent(t *testing.T) {
+	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &acmeCollector{subsystem: ACMESubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics when plugin absent (404), got %d", len(metrics))
+	}
+}
+
 func TestACMECollector_Name(t *testing.T) {
 	c := &acmeCollector{subsystem: ACMESubsystem}
 	if c.Name() != ACMESubsystem {

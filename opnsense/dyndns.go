@@ -49,6 +49,7 @@ type DynDNSAccount struct {
 
 // DynDNSAccounts holds the aggregated result of FetchDynDNSAccounts.
 type DynDNSAccounts struct {
+	Present  bool // false when the os-ddclient plugin is not installed (HTTP 404)
 	Accounts []DynDNSAccount
 	Total    int
 }
@@ -80,6 +81,7 @@ func (c *Client) FetchDynDNSAccounts() (DynDNSAccounts, *APICallError) {
 		return data, err
 	}
 
+	data.Present = true
 	data.Total = resp.Total
 
 	for _, row := range resp.Rows {

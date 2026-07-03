@@ -131,6 +131,12 @@ func (c *smartCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		return err
 	}
 
+	// os-smart absent → Present=false; stay silent so devices_total=0 (plugin
+	// absent) is not confused with a box that genuinely has no disks (#87).
+	if !data.Present {
+		return nil
+	}
+
 	ch <- prometheus.MustNewConstMetric(
 		c.devicesTotal,
 		prometheus.GaugeValue,

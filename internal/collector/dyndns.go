@@ -76,6 +76,13 @@ func (c *dyndnsCollector) Update(ctx context.Context, client *opnsense.Client, c
 		return err
 	}
 
+	// os-ddclient absent → Present=false; stay silent so accounts_total=0 (plugin
+	// absent) is not confused with a present-but-unconfigured ddclient, and we do
+	// not probe the service-status endpoint (which would 404-warn every scrape) (#87).
+	if !data.Present {
+		return nil
+	}
+
 	ch <- prometheus.MustNewConstMetric(
 		c.accountsTotal,
 		prometheus.GaugeValue,
@@ -129,10 +136,10 @@ func (c *dyndnsCollector) Update(ctx context.Context, client *opnsense.Client, c
 		}
 	}
 
-	status, sErr := client.FetchServiceStatus("dyndnsServiceStatus")
+	status, present, sErr := client.FetchServiceStatusOptional("dyndnsServiceStatus")
 	if sErr != nil {
 		c.log.Warn("failed to fetch dyndns service status", "err", sErr)
-	} else {
+	} else if present {
 		val := 0.0
 		if status == "running" {
 			val = 1.0

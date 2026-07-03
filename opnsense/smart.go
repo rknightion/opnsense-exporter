@@ -116,6 +116,11 @@ type SMARTDevice struct {
 
 // SMARTDevices holds the aggregated result of FetchSMARTDevices.
 type SMARTDevices struct {
+	// Present is false when the os-smart plugin is not installed (list endpoint
+	// 404s). The collector gates all emission on this so it stays silent on
+	// boxes without the plugin.
+	Present bool
+
 	// Devices is the list of parsed devices. Only devices whose info call
 	// succeeded and returned an output block are fully populated; others
 	// may have nil pointer fields.
@@ -160,14 +165,15 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 	var listResp smartListResponse
 	if err := c.doForm(listURL, url.Values{}, &listResp); err != nil {
 		// os-smart plugin not installed → endpoint 404s. Treat as "feature
-		// absent" (empty data, no error) so the collector, which is enabled by
-		// default, stays quiet on boxes without the plugin.
+		// absent" (empty data with Present=false, no error) so the collector,
+		// which is enabled by default, stays quiet on boxes without the plugin.
 		if err.StatusCode == http.StatusNotFound {
 			return data, nil
 		}
 		return data, err
 	}
 
+	data.Present = true
 	data.DeviceCount = len(listResp.Devices)
 
 	// Step 2: fetch info for each device.

@@ -51,6 +51,7 @@ type ACMECertificate struct {
 
 // ACMECertificates holds the aggregated result of FetchACMECertificates.
 type ACMECertificates struct {
+	Present      bool // false when the os-acme-client plugin is not installed (HTTP 404)
 	Certificates []ACMECertificate
 	Total        int
 }
@@ -82,6 +83,7 @@ func (c *Client) FetchACMECertificates() (ACMECertificates, *APICallError) {
 		return data, err
 	}
 
+	data.Present = true
 	data.Total = resp.Total
 
 	for _, row := range resp.Rows {

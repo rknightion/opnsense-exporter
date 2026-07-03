@@ -51,6 +51,7 @@ type DHCPv4Lease struct {
 
 // DHCPv4Leases holds the aggregated result of FetchDHCPv4Leases.
 type DHCPv4Leases struct {
+	Present           bool // false when the ISC DHCPv4 plugin is not installed (HTTP 404)
 	Leases            []DHCPv4Lease
 	TotalLeases       int
 	ReservedCount     int // static leases
@@ -86,6 +87,7 @@ func (c *Client) FetchDHCPv4Leases() (DHCPv4Leases, *APICallError) {
 		return data, err
 	}
 
+	data.Present = true
 	data.TotalLeases = resp.Total
 	data.LeasesByInterface = make(map[string]int)
 

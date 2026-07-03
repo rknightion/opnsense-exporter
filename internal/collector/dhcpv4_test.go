@@ -278,6 +278,25 @@ func TestDhcpv4Collector_Update_ArrayQuirks(t *testing.T) {
 	}
 }
 
+// TestDhcpv4Collector_Update_PluginAbsent guards #87: when the ISC DHCPv4 plugin
+// is absent (endpoint 404s) the collector must stay completely silent, not emit
+// leases_total=0 which is indistinguishable from a present-but-empty server.
+func TestDhcpv4Collector_Update_PluginAbsent(t *testing.T) {
+	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &dhcpv4Collector{subsystem: Dhcpv4Subsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics when plugin absent (404), got %d", len(metrics))
+	}
+}
+
 func TestDhcpv4Collector_Name(t *testing.T) {
 	c := &dhcpv4Collector{subsystem: Dhcpv4Subsystem}
 	if c.Name() != Dhcpv4Subsystem {

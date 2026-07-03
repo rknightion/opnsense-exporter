@@ -259,6 +259,24 @@ func TestSMARTCollector_Update_PartialFields(t *testing.T) {
 	}
 }
 
+// TestSmartCollector_Update_PluginAbsent guards #87: with os-smart absent (list
+// endpoint 404s) the collector must emit nothing rather than devices_total=0.
+func TestSmartCollector_Update_PluginAbsent(t *testing.T) {
+	mux := http.NewServeMux() // no handlers: all requests 404 → plugin absent
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &smartCollector{subsystem: SMARTSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	if len(metrics) != 0 {
+		t.Errorf("expected 0 metrics when plugin absent (404), got %d", len(metrics))
+	}
+}
+
 func TestSMARTCollector_Name(t *testing.T) {
 	c := &smartCollector{subsystem: SMARTSubsystem}
 	if c.Name() != SMARTSubsystem {

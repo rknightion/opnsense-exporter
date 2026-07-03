@@ -77,6 +77,13 @@ func (c *dhcpv4Collector) Update(ctx context.Context, client *opnsense.Client, c
 		return err
 	}
 
+	// The legacy ISC DHCPv4 plugin is deprecated and absent on modern boxes; a 404
+	// yields Present=false. Stay completely silent then, so leases_total=0 (plugin
+	// absent) is never confused with a present-but-empty server (#87).
+	if !data.Present {
+		return nil
+	}
+
 	ch <- prometheus.MustNewConstMetric(
 		c.leasesTotal,
 		prometheus.GaugeValue,

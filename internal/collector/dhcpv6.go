@@ -92,8 +92,8 @@ func (c *dhcpv6Collector) Update(ctx context.Context, client *opnsense.Client, c
 	}
 
 	// FetchDHCPv6Leases initialises LeasesByInterface only when the endpoint
-	// responds (404 leaves it nil). Use nil map as the plugin-absent signal —
-	// same approach as the dhcpv4 sibling (which relies on zero TotalLeases).
+	// responds (404 leaves it nil), so a nil map is the plugin-absent signal here.
+	// (The dhcpv4 sibling uses an explicit Present flag for the same purpose.)
 	// When the plugin is absent, stay completely silent.
 	if leases.LeasesByInterface == nil {
 		return nil
