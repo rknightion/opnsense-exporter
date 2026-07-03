@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -28,6 +29,11 @@ var version = ""
 // otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
 // export endpoint cannot hang process exit.
 const otlpShutdownTimeout = 10 * time.Second
+
+// httpShutdownTimeout bounds the graceful HTTP drain on SIGTERM/SIGINT so an in-flight
+// scrape can finish, while staying comfortably under Kubernetes' default 30s
+// termination grace period so the container is never SIGKILLed mid-drain (#161).
+const httpShutdownTimeout = 10 * time.Second
 
 // readyCacheTTL caches /-/ready probe results (success and failure). 10s
 // matches the default kubelet probe period, bounding upstream health calls to
@@ -498,7 +504,9 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 	go func() {
-		if err := web.ListenAndServe(srv, options.WebConfig, logger); err != nil {
+		// srv.Shutdown makes ListenAndServe return http.ErrServerClosed — that's the
+		// normal graceful-exit path, not an error, so don't treat it as a crash.
+		if err := web.ListenAndServe(srv, options.WebConfig, logger); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("Error received from the HTTP server", "err", err)
 			close(srvClose)
 		}
@@ -506,17 +514,30 @@ func main() {
 
 	for {
 		select {
-		case <-term:
-			logger.Info("Received SIGTERM, exiting gracefully...")
-			if stopOTLP != nil {
-				stopOTLP()
-			}
-			if stopProfiling != nil {
-				stopProfiling()
-			}
-			os.Exit(0)
+		case sig := <-term:
+			gracefulShutdown(srv, sig, stopOTLP, stopProfiling, logger)
+			return
 		case <-srvClose:
 			os.Exit(1)
 		}
+	}
+}
+
+// gracefulShutdown drains in-flight scrapes with a bounded deadline before flushing
+// telemetry and returning, so a scrape landing mid-response during a rollout/redeploy
+// finishes instead of being severed (which Prometheus records as up=0). The log line
+// reports the actual signal received rather than a hardcoded "SIGTERM" (#161).
+func gracefulShutdown(srv *http.Server, sig os.Signal, stopOTLP, stopProfiling func(), logger *slog.Logger) {
+	logger.Info("received signal, shutting down gracefully", "signal", sig.String())
+	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("graceful HTTP shutdown failed; in-flight scrapes may have been cut", "err", err)
+	}
+	if stopOTLP != nil {
+		stopOTLP()
+	}
+	if stopProfiling != nil {
+		stopProfiling()
 	}
 }
