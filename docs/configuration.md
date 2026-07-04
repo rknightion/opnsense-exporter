@@ -56,7 +56,7 @@ For secure credential management in containers and orchestrated environments, cr
 | `--log.format` | -- | `logfmt` | Output format of log messages. One of: [logfmt, json] |
 | `--log.level` | -- | `info` | Only log messages with the given severity or above. One of: [debug, info, warn, error] |
 | `--web.config.file` | -- | -- | Path to configuration file that can enable TLS or authentication. See: https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md |
-| `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (promhttp_*, process_*, go_*). |
+| `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
 | `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
 | `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
@@ -369,7 +369,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--pyroscope.server-address` | `OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS` | -- | Grafana Cloud Pyroscope endpoint URL. When empty, continuous profiling is disabled. |
 | `--pyroscope.tenant-id` | `OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID` | -- | Pyroscope tenant ID (only needed for multi-tenancy; unused for Grafana Cloud). |
 | `--web.config.file` | -- | -- | Path to configuration file that can enable TLS or authentication. See: https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md |
-| `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (promhttp_*, process_*, go_*). |
+| `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
 | `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
 | `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |

@@ -15,7 +15,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH").Default("/metrics").String()
 	DisableExporterMetrics = kingpin.Flag(
 		"web.disable-exporter-metrics",
-		"Exclude metrics about the exporter itself (promhttp_*, process_*, go_*).",
+		"Exclude metrics about the exporter itself (process_*, go_*).",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS").Bool()
 	InstanceLabel = kingpin.Flag(
 		"exporter.instance-label",
