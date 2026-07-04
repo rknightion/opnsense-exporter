@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.1](https://github.com/rknightion/opnsense-exporter/compare/v2.0.0...v2.0.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* **grafana:** emit valid alert noDataState "Ok" (was "OK", rejected by the API) ([d75d02c](https://github.com/rknightion/opnsense-exporter/commit/d75d02cc2e26a2672c6287fa8be6176f59fea33c))
+
+
+### Miscellaneous
+
+* **deps:** update anthropics/claude-code-action action to v1.0.164 ([#172](https://github.com/rknightion/opnsense-exporter/issues/172)) ([345f0e1](https://github.com/rknightion/opnsense-exporter/commit/345f0e16c6fd21b2c059bb44aff91453c93166ed))
+
 ## [2.0.0](https://github.com/rknightion/opnsense-exporter/compare/v1.0.1...v2.0.0) (2026-07-04)
 
 
