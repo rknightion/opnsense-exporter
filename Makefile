@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 # ── pinned release-tooling versions (override via env) ────────────────────────
 # renovate: datasource=go depName=github.com/google/go-licenses
-GO_LICENSES_VERSION ?= v1.6.0
+GO_LICENSES_VERSION ?= v2.0.1
 # renovate: datasource=go depName=github.com/anchore/syft
 SYFT_VERSION        ?= v1.18.1
 
