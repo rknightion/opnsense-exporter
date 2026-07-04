@@ -12,8 +12,21 @@ import (
 // token in prose documentation refers to a real flag/env var from the kingpin
 // model. Renaming a flag without updating an example becomes a build failure.
 
-var flagTokenRe = regexp.MustCompile(`--((?:opnsense|web|log|exporter|otlp|pyroscope|runtime)\.[A-Za-z0-9.-]+)`)
-var envTokenRe = regexp.MustCompile(`\b(OPNSENSE_EXPORTER_[A-Z0-9_]+|OPS_API_(?:KEY|SECRET)_FILE|PYROSCOPE_AUTH_(?:USER|PASSWORD)_FILE)\b`)
+// flagTokenRe matches by shape — any `--word.word` long flag — not a hardcoded prefix
+// list, so a wrong prefix (e.g. --collector.disable-arp-table, a typo of
+// --exporter.disable-arp-table) is caught, not silently ignored (#151). All this
+// project's flags carry a dotted namespace, so requiring the dot keeps prose `--flag`
+// (no dot) from matching.
+var flagTokenRe = regexp.MustCompile(`--([a-z][a-z0-9-]*\.[A-Za-z0-9.-]+)`)
+
+// envTokenRe matches env vars in the families this project owns and validates: any
+// OPNSENSE-brand token (so a typo'd prefix like OPNSENSE_EXPORT_... — missing the ER —
+// is caught, not silently ignored, the env analogue of the flag-prefix bug in #151) plus
+// the two non-prefixed file-secret families. It deliberately does NOT match arbitrary
+// all-caps tokens: standard third-party envs (OTEL_*, SSL_CERT_FILE) and Makefile vars
+// (OPS_*, GO_LICENSES_VERSION) are legitimately absent from the kingpin model and must
+// not be flagged. Legit-but-unknown OPNSENSE-brand tokens go in doclint_allow.txt.
+var envTokenRe = regexp.MustCompile(`\b(OPNSENSE[A-Z0-9]*(?:_[A-Z0-9]+)+|OPS_API_(?:KEY|SECRET)_FILE|PYROSCOPE_AUTH_(?:USER|PASSWORD)_FILE)\b`)
 
 // fileSecretEnvVars are env vars read via os.LookupEnv in internal/options
 // (not part of the kingpin model).
@@ -86,6 +99,19 @@ func loadAllowlist(repoRoot string) map[string]bool {
 // lintTargets returns every prose/config file that may mention flags/env vars.
 func lintTargets(repoRoot string) []string {
 	targets := []string{"README.md", "CONTRIBUTING.md", "CLAUDE.md", "Makefile", "grafana/README.md"}
+	// grafana/tabs/*.py panel descriptions reference flags (e.g. --exporter.enable-*-details)
+	// that must stay valid as flags are renamed (#151).
+	_ = filepath.WalkDir(filepath.Join(repoRoot, "grafana", "tabs"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && filepath.Ext(path) == ".py" {
+			if rel, relErr := filepath.Rel(repoRoot, path); relErr == nil {
+				targets = append(targets, rel)
+			}
+		}
+		return nil
+	})
 	for _, dir := range []string{"docs", "deploy"} {
 		_ = filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, d os.DirEntry, err error) error {
 			if err != nil {
