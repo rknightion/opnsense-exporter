@@ -44,7 +44,15 @@ Each scrape fans out to ~47 collectors in parallel; total scrape time is bounded
 the slowest OPNsense API endpoint. If scrapes approach your Prometheus
 `scrape_timeout`:
 
-- Disable collectors you don't need (`--exporter.disable-*`).
+- Check `opnsense_exporter_scrape_collector_duration_seconds` (per-collector,
+  labelled by `collector`) to see which collector is actually slow before
+  disabling anything.
+- The `activity` collector is usually the single slowest default-on collector: it
+  runs a `top(1)`-equivalent snapshot (load averages + a per-process array) on the
+  firewall every scrape — commonly ~2-2.5s on a modest box, vs tens of ms for most
+  other endpoints. Disable it with `--exporter.disable-activity` if you don't need
+  per-process/load metrics.
+- Disable other collectors you don't need (`--exporter.disable-*`).
 - The SMART collector performs one POST per disk per scrape (running `smartctl`
   on the firewall); it is opt-in (`--exporter.enable-smart`) — leave it off if
   your hardware is slow to answer or you use spun-down disks.
