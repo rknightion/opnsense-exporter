@@ -31,6 +31,13 @@ linters:
       - builtin$
       - examples$
 formatters:
+  # Enable gofmt (with -s simplify) so `golangci-lint run` gates formatting in CI, not
+  # just the local `make lint` write step (#132). Matches `gofmt -s` used by make lint.
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
   exclusions:
     generated: lax
     paths:

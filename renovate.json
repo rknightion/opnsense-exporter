@@ -8,6 +8,14 @@
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) packageName=(?<packageName>.*?) currentValue=(?<currentValue>.*?)\\s+OPNSENSE_DOCS_REF: (?<currentDigest>[a-f0-9]{40})"
       ]
+    },
+    {
+      "description": "Bump the pinned golangci-lint binary version in ci.yml (#132).",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+version: (?<currentValue>v[0-9.]+)"
+      ]
     }
   ],
   "packageRules": [
