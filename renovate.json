@@ -37,6 +37,11 @@
   ],
   "packageRules": [
     {
+      "description": "Keep Dockerfile base-image digests pinned and fresh (builder + distroless runtime) (#148).",
+      "matchManagers": ["dockerfile"],
+      "pinDigests": true
+    },
+    {
       "description": "OpenTelemetry Go modules release in lockstep — group across all update types so a bump is never a partial set.",
       "matchManagers": ["gomod"],
       "matchPackageNames": ["go.opentelemetry.io/**"],

@@ -1,4 +1,7 @@
-FROM --platform=${BUILDPLATFORM:-linux/amd64} mirror.gcr.io/library/golang:1.26-alpine AS build
+# Digest-pinned builder (matches the pinned distroless runtime below) so a mutable-tag
+# push can't slip an unreviewed builder image into a release build (#148). Digest is the
+# multi-arch index for golang:1.26-alpine; Renovate keeps it fresh (pinDigests, renovate.json).
+FROM --platform=${BUILDPLATFORM:-linux/amd64} mirror.gcr.io/library/golang:1.26-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS build
 
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
