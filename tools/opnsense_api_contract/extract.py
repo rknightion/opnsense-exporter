@@ -76,6 +76,11 @@ def main() -> int:
 
     out = []
     for controller in controllers:
+        # Abstract controllers (e.g. filter_base, Kea's Leases base) are non-instantiable
+        # PHP base classes, never registered as routable MVC controllers — paths built
+        # from them 404 live. Skip them so the manifest holds only real endpoints (#146).
+        if getattr(controller, "is_abstract", False):
+            continue
         for action in controller.actions:
             out.append({
                 "module": controller.module,

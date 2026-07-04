@@ -29,10 +29,12 @@ import (
 //   - keaLeases4/keaLeases6: the real routes are served by Kea\Api\Leases4Controller
 //     and Leases6Controller, which add no methods of their own — they inherit
 //     searchAction() from the abstract LeasesController base. The parser only reads
-//     methods literally defined in each file, so it emits the (non-routable) abstract
-//     base as kea/leases/search and nothing for the concrete leases4/leases6 routes.
-//     Verified against a live 26.1 box: kea/leases4/search and kea/leases6/search
-//     return 200 while kea/leases/search returns 404.
+//     methods literally defined in each file, so it sees searchAction only on the
+//     abstract base and nothing for the concrete leases4/leases6 routes. extract.py now
+//     filters abstract controllers (#146), so the base no longer appears as a phantom
+//     kea/leases/search either — but the concrete routes still aren't emitted, so these
+//     two exemptions remain necessary. Verified against a live 26.1 box: kea/leases4/search
+//     and kea/leases6/search return 200 while kea/leases/search returns 404.
 //
 // Coverage gap (acknowledged): these four endpoints have NO automated drift detection.
 // The source-diff canary is exempt for them by design, and there is no automated

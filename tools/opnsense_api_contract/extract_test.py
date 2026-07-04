@@ -60,6 +60,25 @@ def test_extract_emits_endpoints():
         assert by_path["api/sample/example/status"]["methods"] == ["GET"]
 
 
+def test_abstract_controller_emits_no_endpoints():
+    # #146: an abstract base controller is non-routable, so extract.py must emit zero
+    # entries for it, while a concrete sibling's actions are still emitted.
+    with tempfile.TemporaryDirectory() as tmp:
+        _place_valid(tmp)  # concrete OPNsense/Sample/Api/ExampleController.php
+        absdir = _controller_dir(tmp, "Abstract")
+        shutil.copy(os.path.join(HERE, "testdata", "Abstract", "Api", "BaseController.php"),
+                    os.path.join(absdir, "BaseController.php"))
+
+        p = _run_extract(tmp)
+        by_path = {e["path"]: e for e in json.loads(p.stdout)}
+
+        # Concrete sibling still emitted.
+        assert "api/sample/example/search" in by_path, by_path
+        # Abstract controller emits nothing.
+        abstract = [path for path in by_path if path.startswith("api/abstract/")]
+        assert abstract == [], f"abstract controller should emit no endpoints, got {abstract}"
+
+
 def test_one_unparseable_controller_is_skipped_not_fatal():
     # #111: a valid controller alongside one the phply grammar cannot parse (PHP enum,
     # standing in for the Zenarmor construct) must exit 0, emit the valid controller's
