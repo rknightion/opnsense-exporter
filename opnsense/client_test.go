@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -111,6 +112,13 @@ func TestNewClient_EndpointCount(t *testing.T) {
 	endpoints := client.Endpoints()
 	if len(endpoints) != 107 {
 		t.Errorf("expected 107 endpoints, got %d", len(endpoints))
+	}
+	// Content equality, not just count: the live Client must use exactly the
+	// canonical defaultEndpoints() table. The fetch tests now build their clients
+	// from defaultEndpoints() too (there is no parallel testEndpoints() copy to
+	// drift), so this also certifies fetch tests exercise the production URLs (#154).
+	if !reflect.DeepEqual(endpoints, defaultEndpoints()) {
+		t.Errorf("client endpoints diverge from defaultEndpoints()")
 	}
 }
 
