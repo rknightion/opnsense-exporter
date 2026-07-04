@@ -23,6 +23,11 @@ sync-vendor:
 	go mod vendor
 
 local-run: default
+	# Pass the API key/secret via env (OPNSENSE_EXPORTER_OPS_API_*), NOT --opnsense.api-*
+	# flags: argv is world-readable (ps, /proc/<pid>/cmdline), so flag-passed creds leak
+	# to every local user for the process lifetime. The env is only owner-readable (#160).
+	OPNSENSE_EXPORTER_OPS_API_KEY="$(OPS_API_KEY)" \
+	OPNSENSE_EXPORTER_OPS_API_SECRET="$(OPS_API_SECRET)" \
 	./${BINARY_NAME} --log.level="debug" \
 		--log.format="logfmt" \
 		--web.telemetry-path="/metrics" \
@@ -30,8 +35,6 @@ local-run: default
 		--exporter.instance-label="$(or $(OPS_INSTANCE), opnsense-local1)" \
 		--opnsense.protocol="https" \
 		--opnsense.address="${OPS_ADDRESS}" \
-		--opnsense.api-key="${OPS_API_KEY}" \
-		--opnsense.api-secret="${OPS_API_SECRET}" \
 		--web.disable-exporter-metrics \
 		$(if $(OPS_ADDITIONAL_ARGS),"${OPS_ADDITIONAL_ARGS}")
 
@@ -116,8 +119,10 @@ grafana-check:
 # `go test ./opnsense/ -run TestResponseContracts` to validate them. Reuses the
 # same OPS_* vars as local-run; set OPS_INSECURE=1 for self-signed certs.
 capture:
+	# Creds via env (apicapture reads OPNSENSE_EXPORTER_OPS_API_* as flag defaults), not
+	# --api-key/--api-secret flags, to keep them out of world-readable argv (#160).
+	OPNSENSE_EXPORTER_OPS_API_KEY="$(OPS_API_KEY)" \
+	OPNSENSE_EXPORTER_OPS_API_SECRET="$(OPS_API_SECRET)" \
 	go run ./cmd/apicapture \
 		--base-url "$(or $(OPS_BASE_URL),https://$(OPS_ADDRESS))" \
-		--api-key "$(OPS_API_KEY)" \
-		--api-secret "$(OPS_API_SECRET)" \
 		$(if $(OPS_INSECURE),--insecure) $(CAPTURE_ARGS)
