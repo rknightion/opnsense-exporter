@@ -20,11 +20,13 @@ on:
 permissions:
   contents: read
 
-# The docs repo supplies the PHP parser. `master` tracks parser improvements; the
-# `--min` floor below catches catastrophic parser breakage. Pin this to a specific
-# commit SHA once the tooling is validated if you want byte-for-byte reproducibility.
+# The docs repo supplies the PHP parser, whose modules extract.py imports (i.e.
+# executes) — so it's a code dependency, not just data. Pin to a specific commit SHA
+# rather than mutable `master` to close the unpinned-code channel (#130); Renovate's
+# custom manager below bumps it. The `--min` floor still catches parser breakage.
 env:
-  OPNSENSE_DOCS_REF: master
+  # renovate: datasource=git-refs depName=opnsense-docs packageName=https://github.com/opnsense/docs currentValue=master
+  OPNSENSE_DOCS_REF: 343a092eb04ea5eed0094afd6b60435ecffb1393
 
 jobs:
   contract:
@@ -46,10 +48,18 @@ jobs:
           python-version: '3.x'
 
       - name: Install parser dependencies
-        run: python -m pip install --quiet phply jinja2 pydantic
+        run: python -m pip install --quiet -r tools/opnsense_api_contract/requirements.txt
 
-      - name: Clone opnsense/docs (parser)
-        run: git clone --depth 1 --branch "$OPNSENSE_DOCS_REF" https://github.com/opnsense/docs upstream/docs
+      - name: Clone opnsense/docs (parser) at pinned SHA
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/docs
+          cd upstream/docs
+          git init -q
+          git remote add origin https://github.com/opnsense/docs
+          # Shallow-fetch exactly the pinned commit (works for a SHA; --branch does not).
+          git fetch -q --depth 1 origin "$OPNSENSE_DOCS_REF"
+          git checkout -q FETCH_HEAD
 
       - name: Determine refs to check
         id: refs

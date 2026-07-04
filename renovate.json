@@ -1,5 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customManagers": [
+    {
+      "description": "Bump the pinned opnsense/docs commit SHA in api-contract.yml (#130).",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/api-contract\\.yml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) packageName=(?<packageName>.*?) currentValue=(?<currentValue>.*?)\\s+OPNSENSE_DOCS_REF: (?<currentDigest>[a-f0-9]{40})"
+      ]
+    }
+  ],
   "packageRules": [
     {
       "description": "OpenTelemetry Go modules release in lockstep — group across all update types so a bump is never a partial set.",
