@@ -51,6 +51,11 @@ local.docker-compose.yml
 __pycache__/
 *.pyc
 
+# zensical local build output. The published site is built independently by the
+# rknightion/m7kni-net-site hub from docs/ + zensical.toml; nothing in this repo
+# consumes a committed build tree, so keep it untracked.
+/site/
+
 # Superpowers scratch (specs/plans) + local roadmap — never committed
 docs/superpowers/
 /roadmap.md
