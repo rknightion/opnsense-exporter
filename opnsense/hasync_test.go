@@ -142,6 +142,27 @@ func TestFetchHasyncStatus_NullBody(t *testing.T) {
 	}
 }
 
+// TestFetchHasyncStatus_ResponseFalse pins the single-node / HA-unconfigured
+// shape a real box returns (live-verified on OPNsense 26.1.8): {"response": false}.
+// This is the highest-frequency real input for this endpoint and was previously
+// only correct by accident of implementation (#156). A refactor that decodes
+// "response" into any/map[string]any would successfully decode the bare false and
+// take a different path or return a non-nil error; this test guards against that.
+func TestFetchHasyncStatus_ResponseFalse(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response": false}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchHasyncStatus()
+	if err != nil {
+		t.Fatalf("expected nil error for single-node {\"response\": false}, got: %v", err)
+	}
+	if data.Reachable {
+		t.Error("expected Reachable=false for single-node {\"response\": false}")
+	}
+}
+
 // TestFetchHasyncStatus_FlexBoolNativeBool is a targeted test proving flexBool
 // correctly decodes a native JSON boolean (not a string "true"/"false").
 func TestFetchHasyncStatus_FlexBoolNativeBool(t *testing.T) {

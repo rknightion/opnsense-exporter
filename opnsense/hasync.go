@@ -15,6 +15,16 @@ import (
 //
 //	{"status": "error", "message": "..."} — no "response" key.
 //
+// Single-node / HA-unconfigured (the overwhelming majority of installs): the
+// controller returns a bare boolean rather than an object:
+//
+//	{"response": false}
+//
+// Here "response" decodes as the raw bytes `false`, which is non-empty and not
+// "null", so it falls through to the object unmarshal below; a JSON boolean
+// cannot decode into hasyncVersionObj, so it lands in the undecodable-response
+// fallback and is (correctly) reported as Reachable=false with a nil error.
+//
 // May also be literal JSON null.
 //
 // VERIFICATION: shapes derived from Core/Api/HasyncStatusController.php and
