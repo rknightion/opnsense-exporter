@@ -13,10 +13,16 @@ spec:
       labels:
         app.kubernetes.io/name: opnsense-exporter
     spec:
+      # The exporter is a pure HTTP scrape target and never calls the Kubernetes API,
+      # so don't mount a ServiceAccount token (shrinks the pivot surface on compromise).
+      automountServiceAccountToken: false
       containers:
         - name: opnsense-exporter
-          image: ghcr.io/rknightion/opnsense-exporter:latest
-          imagePullPolicy: Always
+          # Pin to an immutable release tag (substitute the version you deploy), not
+          # :latest — :latest is retagged every release, so a pod reschedule could
+          # silently pull a breaking version with no deploy event to correlate.
+          image: ghcr.io/rknightion/opnsense-exporter:v1.0.1
+          imagePullPolicy: IfNotPresent
           # In pod, mount OPNSense API credentials as files
           volumeMounts:
             # name must match the volume name below
@@ -30,6 +36,8 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             # Default value for --web.listen-address= is 8080
             - name: metrics-http

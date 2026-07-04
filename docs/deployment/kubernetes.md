@@ -54,10 +54,14 @@ spec:
       labels:
         app.kubernetes.io/name: opnsense-exporter
     spec:
+      # The exporter never calls the Kubernetes API — don't mount a SA token.
+      automountServiceAccountToken: false
       containers:
         - name: opnsense-exporter
-          image: ghcr.io/rknightion/opnsense-exporter:latest
-          imagePullPolicy: Always
+          # Pin to an immutable release tag (not :latest) so a reschedule can't silently
+          # pull a breaking version.
+          image: ghcr.io/rknightion/opnsense-exporter:v1.0.1
+          imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: api-key-vol
               mountPath: /etc/opnsense-exporter/creds
@@ -69,6 +73,8 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: metrics-http
               containerPort: 8080
