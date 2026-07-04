@@ -3,17 +3,75 @@ package main
 import (
 	"bytes"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+// TestEveryDisableSwitchWiredInMain guards the fourth "Adding a New Collector" step that
+// no other test covered (#153): each CollectorsDisableSwitch struct field must be
+// referenced as `collectorsSwitches.<Field>` in main.go, otherwise the documented
+// --exporter.disable-*/--exporter.enable-* flag is generated but silently does nothing at
+// runtime (the collector self-registers via init() and would never be gated). It parses
+// main.go's AST for the references and diffs them against the reflected struct fields in
+// both directions — a field with no reference (unwired flag), and a reference to a field
+// that no longer exists (stale block left after a rename/removal).
+func TestEveryDisableSwitchWiredInMain(t *testing.T) {
+	structFields := map[string]bool{}
+	st := reflect.TypeOf(options.CollectorsDisableSwitch{})
+	for i := 0; i < st.NumField(); i++ {
+		structFields[st.Field(i).Name] = true
+	}
+	if len(structFields) == 0 {
+		t.Fatal("CollectorsDisableSwitch has no fields — reflection failed")
+	}
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "main.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse main.go: %v", err)
+	}
+	referenced := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if x, ok := sel.X.(*ast.Ident); ok && x.Name == "collectorsSwitches" {
+			referenced[sel.Sel.Name] = true
+		}
+		return true
+	})
+	if len(referenced) == 0 {
+		t.Fatal("no collectorsSwitches.<Field> references found in main.go — variable renamed?")
+	}
+
+	// Forward drift: a struct field (documented flag) with no wiring in main.go is a no-op.
+	for field := range structFields {
+		if !referenced[field] {
+			t.Errorf("CollectorsDisableSwitch.%s is not wired in main.go: its --exporter.* flag would be documented but do nothing", field)
+		}
+	}
+	// Reverse drift: main.go references a field no longer on the struct (stale wiring).
+	for field := range referenced {
+		if !structFields[field] {
+			t.Errorf("main.go references collectorsSwitches.%s, which is not a CollectorsDisableSwitch field (stale wiring)", field)
+		}
+	}
+}
 
 // TestGracefulShutdownDrainsInFlightRequest covers #161: a slow request in flight when
 // the signal arrives must complete (not be severed), telemetry stop hooks must run, and

@@ -46,7 +46,7 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
     automatically. The `cmd/apicontract` canary cross-checks every endpoint against OPNsense source.
 3. Add a `<Subsystem>Subsystem` const and a `Without<Subsystem>Collector()` option in `internal/collector/collector.go`
 4. Add the flag + `CollectorsDisableSwitch` field + switch entry in `internal/options/collectors.go`. Use `exporter.disable-*` (default-on) for low-cardinality collectors; reserve `exporter.enable-*` (default-off) for collectors with extra per-scrape API cost or high cardinality
-5. Wire it in `main.go` (`if !collectorsSwitches.<X> { ... WithoutXCollector() }`)
+5. Wire it in `main.go` (`if !collectorsSwitches.<X> { ... WithoutXCollector() }`) (a unit test fails without it — `TestEveryDisableSwitchWiredInMain` reflects every `CollectorsDisableSwitch` field against the `collectorsSwitches.<X>` references in `main.go`, so a documented flag can't silently be a no-op)
 
 **Docs (generated — do not hand-edit tables):**
 
