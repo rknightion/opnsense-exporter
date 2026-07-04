@@ -46,3 +46,14 @@ Captures may contain host/network data, so they are gitignored by default. To ma
 2. Add a `ResponseContract` entry in `opnsense/response_contract.go` with its `KnownTopLevelKeys`
    and a validator asserting the fields the collector consumes are populated.
 3. `go test ./opnsense/ -run TestResponseContracts`.
+
+## Coverage (which endpoints are contracted)
+
+**Contracted** (a `ResponseContract` + committed fixture guards payload-shape drift):
+`healthCheck`, `gatewaysStatus`, `pfStates`, `unboundDNSStatus`, `firmware`.
+
+**Not yet contracted** — highest-value gaps to fill next with `make capture`: interface
+traffic, `systemResources`/`systemTime`, and the fetchers whose response shapes are not yet
+validated against a live box (`apcupsd`, `chrony`, `crowdsec`, `dhcpv6` ISC, `frr`, `haproxy`,
+`hasync`, `nginx`, `nut`). Until contracted, those rely on the tolerant JSON decode: a renamed
+field silently reads as a Go zero value with no CI signal.

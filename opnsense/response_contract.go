@@ -73,7 +73,91 @@ func ResponseContracts() []ResponseContract {
 			KnownTopLevelKeys: []string{"System", "CrashReporter", "Firewall", "metadata", "subsystems"},
 			Validate:          validateHealthResponse,
 		},
+		{
+			Endpoint:          "gatewaysStatus",
+			FixtureGlobs:      []string{"testdata/gateways/*.json", "testdata/captures/gatewaysStatus*.json"},
+			KnownTopLevelKeys: []string{"total", "rowCount", "current", "rows"},
+			Validate:          validateGatewaysResponse,
+		},
+		{
+			Endpoint:          "pfStates",
+			FixtureGlobs:      []string{"testdata/pf_states/*.json", "testdata/captures/pfStates*.json"},
+			KnownTopLevelKeys: []string{"current", "limit"},
+			Validate:          validatePFStatesResponse,
+		},
+		{
+			Endpoint:          "unboundDNSStatus",
+			FixtureGlobs:      []string{"testdata/unbound/*.json", "testdata/captures/unboundDNSStatus*.json"},
+			KnownTopLevelKeys: []string{"status", "data"},
+			Validate:          validateUnboundResponse,
+		},
+		{
+			Endpoint:     "firmware",
+			FixtureGlobs: []string{"testdata/firmware/*.json", "testdata/captures/firmware*.json"},
+			KnownTopLevelKeys: []string{
+				"status", "last_check", "needs_reboot", "os_version", "product_id",
+				"product_version", "product_abi", "new_packages", "upgrade_packages", "product",
+			},
+			Validate: validateFirmwareResponse,
+		},
 	}
+}
+
+// validateGatewaysResponse asserts the gateway search envelope decodes and each row's
+// consumed fields (name + status) come through — a rename of `rows`/`name`/`status`
+// would otherwise silently yield zero gateways with no error.
+func validateGatewaysResponse(raw []byte) error {
+	var resp gatewayConfigurationResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("decode gatewayConfigurationResponse: %w", err)
+	}
+	if resp.Total > 0 && len(resp.Rows) == 0 {
+		return fmt.Errorf("total=%d but rows decoded empty — the `rows` field may have moved/renamed", resp.Total)
+	}
+	for _, r := range resp.Rows {
+		if r.Name == "" {
+			return fmt.Errorf("a gateway row decoded with an empty name — the `name` field may have moved/renamed")
+		}
+	}
+	return nil
+}
+
+// validatePFStatesResponse asserts the current/limit fields decode into usable numbers.
+func validatePFStatesResponse(raw []byte) error {
+	var resp pfStatesResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("decode pfStatesResponse: %w", err)
+	}
+	if resp.Current == "" && resp.Limit == "" {
+		return fmt.Errorf("both current and limit decoded empty — the pf_states fields may have moved/renamed")
+	}
+	return nil
+}
+
+// validateUnboundResponse asserts the status + data envelope decodes and, for an
+// ok status, the query totals are reachable (the fields the collector consumes).
+func validateUnboundResponse(raw []byte) error {
+	var resp unboundDNSStatusResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("decode unboundDNSStatusResponse: %w", err)
+	}
+	if resp.Status == "" {
+		return fmt.Errorf("unbound response has no top-level status — the `status` field may have moved/renamed")
+	}
+	return nil
+}
+
+// validateFirmwareResponse asserts the firmware status envelope decodes and the
+// consumed status/version fields are present.
+func validateFirmwareResponse(raw []byte) error {
+	var resp firmwareStatusResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return fmt.Errorf("decode firmwareStatusResponse: %w", err)
+	}
+	if resp.Status == "" {
+		return fmt.Errorf("firmware response has no top-level status — the `status` field may have moved/renamed")
+	}
+	return nil
 }
 
 // validateHealthResponse asserts the system-status response yields a usable

@@ -1,0 +1,166 @@
+{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {
+						"queries": "100000",
+						"queries_ip_ratelimited": "5",
+						"queries_cookie_valid": "0",
+						"queries_cookie_client": "0",
+						"queries_cookie_invalid": "0",
+						"cachehits": "75000",
+						"cachemiss": "25000",
+						"prefetch": "100",
+						"queries_timed_out": "10",
+						"expired": "50",
+						"recursivereplies": "24000",
+						"queries_discard_timeout": "0",
+						"queries_wait_limit": "0",
+						"dns_error_reports": "0",
+						"dnscrypt": {
+							"crypted": "0",
+							"cert": "0",
+							"cleartext": "0",
+							"malformed": "0"
+						}
+					},
+					"query": {
+						"queue_time_us": {"max": "100"}
+					},
+					"requestlist": {
+						"avg": "1.5",
+						"max": "50",
+						"overwritten": "2",
+						"exceeded": "1",
+						"current": {
+							"all": "10",
+							"user": "5"
+						}
+					},
+					"recursion": {
+						"time": {
+							"avg": "0.025",
+							"median": "0.015"
+						}
+					},
+					"tcpusage": "0.5"
+				},
+				"time": {
+					"now": "1704067200",
+					"up": "86400.5",
+					"elapsed": "86400.5"
+				},
+				"mem": {
+					"cache": {
+						"rrset": "524288",
+						"message": "262144",
+						"dnscrypt_shared_secret": "0",
+						"dnscrypt_nonce": "0"
+					},
+					"mod": {
+						"iterator": "131072",
+						"validator": "65536",
+						"respip": "0",
+						"dynlibmod": "0"
+					},
+					"streamwait": "0",
+					"http": {
+						"query_buffer": "0",
+						"response_buffer": "0"
+					}
+				},
+				"num": {
+					"query": {
+						"type": {
+							"A": "60000",
+							"SOA": "100",
+							"PTR": "5000",
+							"MX": "200",
+							"TXT": "300",
+							"AAAA": "30000",
+							"SRV": "50",
+							"SVCB": "10",
+							"HTTPS": "4000",
+							"NS": "20",
+							"CNAME": "15",
+							"NAPTR": "5",
+							"DNSKEY": "100",
+							"ANY": "0",
+							"LOC": "0",
+							"HINFO": "0"
+						},
+						"class": {"IN": "100000"},
+						"opcode": {"QUERY": "100000"},
+						"tcp": "500",
+						"tcpout": "100",
+						"udpout": "24000",
+						"tls": {"__value__": "200", "resume": "0"},
+						"ipv6": "15000",
+						"https": "50",
+						"flags": {
+							"QR": "100000",
+							"AA": "0",
+							"TC": "5",
+							"RD": "100000",
+							"RA": "100000",
+							"Z": "0",
+							"AD": "1000",
+							"CD": "0"
+						},
+						"edns": {"present": "90000", "DO": "5000"},
+						"ratelimited": "0",
+						"aggressive": {"NOERROR": "0", "NXDOMAIN": "0"},
+						"dnscrypt": {"shared_secret": {"cachemiss": "0"}, "replay": "0"},
+						"authzone": {"up": "0", "down": "0"}
+					},
+					"answer": {
+						"rcode": {
+							"NOERROR": "95000",
+							"FORMERR": "0",
+							"SERVFAIL": "100",
+							"NXDOMAIN": "4800",
+							"NOTIMPL": "0",
+							"REFUSED": "50",
+							"nodata": "5000"
+						},
+						"secure": "10000",
+						"bogus": "5"
+					},
+					"rrset": {
+						"bogus": "3"
+					}
+				},
+				"unwanted": {
+					"queries": "20",
+					"replies": "10"
+				},
+				"msg": {
+					"cache": {
+						"count": "50000",
+						"max_collisions": "5"
+					}
+				},
+				"rrset": {
+					"cache": {
+						"count": "80000",
+						"max_collisions": "10"
+					}
+				},
+				"infra": {
+					"cache": {
+						"count": "500"
+					}
+				},
+				"key": {
+					"cache": {
+						"count": "200"
+					}
+				},
+				"dnscrypt_shared_secret": {
+					"cache": {"count": "0"}
+				},
+				"dnscrypt_nonce": {
+					"cache": {"count": "0"}
+				}
+			}
+		}

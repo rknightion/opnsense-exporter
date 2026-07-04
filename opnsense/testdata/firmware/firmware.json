@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "last_check": "2026-06-09T10:13:17",
+  "needs_reboot": "0",
+  "os_version": "FreeBSD 14.3-RELEASE-p14",
+  "product_id": "opnsense",
+  "product_version": "26.1.9",
+  "product_abi": "26.1",
+  "new_packages": [],
+  "upgrade_packages": [
+    {"name": "curl", "repository": "OPNsense", "current_version": "8.8.0", "new_version": "8.9.1"}
+  ],
+  "product": {"product_check": {"upgrade_needs_reboot": "0"}}
+}

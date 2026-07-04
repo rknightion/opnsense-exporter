@@ -3,6 +3,7 @@ package opnsense
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -68,6 +69,48 @@ func TestUnknownTopLevelKeys(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "brand_new_field" {
 		t.Errorf("got %v, want [brand_new_field]", got)
+	}
+}
+
+// TestResponseContract_RenamedFieldIsDrift covers #144: mutating a committed fixture to
+// rename a known top-level field must be caught — both as an unknown top-level key and
+// (for gateways) as a validator failure (rows decode empty though total>0).
+func TestResponseContract_RenamedFieldIsDrift(t *testing.T) {
+	var gw ResponseContract
+	for _, c := range ResponseContracts() {
+		if c.Endpoint == "gatewaysStatus" {
+			gw = c
+		}
+	}
+	if gw.Endpoint == "" {
+		t.Fatal("gatewaysStatus contract not registered")
+	}
+	fixtures, err := gw.Fixtures()
+	if err != nil || len(fixtures) == 0 {
+		t.Fatalf("resolve gateways fixtures: %v", err)
+	}
+	raw, err := os.ReadFile(fixtures[0])
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	// Rename the consumed `rows` field, as an upstream reshape would.
+	drifted := []byte(strings.Replace(string(raw), `"rows"`, `"items"`, 1))
+
+	unknown, err := gw.UnknownTopLevelKeys(drifted)
+	if err != nil {
+		t.Fatalf("UnknownTopLevelKeys: %v", err)
+	}
+	foundItems := false
+	for _, k := range unknown {
+		if k == "items" {
+			foundItems = true
+		}
+	}
+	if !foundItems {
+		t.Errorf("renamed field not flagged as unknown top-level key; got %v", unknown)
+	}
+	if err := gw.Validate(drifted); err == nil {
+		t.Error("validator should fail when the consumed `rows` field is renamed away (total>0, rows empty)")
 	}
 }
 
