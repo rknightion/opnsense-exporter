@@ -77,18 +77,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Build telemetry secrets are only injected on push builds; PR-triggered
-      # runs build with an unconfigured (no-op) OTLP exporter.
+      # NOTE: no OTEL build-telemetry driver-opts here — the OTEL_EXPORTER_OTLP_ENDPOINT
+      # / _HEADERS repo secrets it referenced were never provisioned, so it set
+      # OTEL_TRACES_EXPORTER=otlp with no destination and emitted doomed exports every
+      # push build. Removed as dead config (#133); re-add conditionally (guarded on the
+      # endpoint secret being present) if build tracing is ever wired up.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-        with:
-          driver-opts: |
-            env.OTEL_EXPORTER_OTLP_ENDPOINT=${{ github.event_name != 'pull_request' && secrets.OTEL_EXPORTER_OTLP_ENDPOINT || '' }}
-            env.OTEL_EXPORTER_OTLP_HEADERS=${{ github.event_name != 'pull_request' && secrets.OTEL_EXPORTER_OTLP_HEADERS || '' }}
-            env.OTEL_TRACES_EXPORTER=otlp
-            env.OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-            env.OTEL_SERVICE_NAME=opnsense-exporter-ci
-            "env.OTEL_RESOURCE_ATTRIBUTES=ci.pipeline=${{ github.workflow }},ci.run_id=${{ github.run_id }},ci.ref=${{ github.ref_name }}"
 
       - name: Build Docker image (verify only)
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
