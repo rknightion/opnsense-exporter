@@ -4,3 +4,5 @@
 phply==1.2.6
 jinja2==3.1.6
 pydantic==2.13.4
+# Test runner for extract_test.py, wired into the api-contract CI job (#136).
+pytest==9.1.1

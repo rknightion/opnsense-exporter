@@ -61,6 +61,14 @@ jobs:
           git fetch -q --depth 1 origin "$OPNSENSE_DOCS_REF"
           git checkout -q FETCH_HEAD
 
+      # Guard the parser-contract fixture (isPost() verb detection, default-GET, the
+      # mvc/app/controllers/.../Api path filter) against upstream docs-lib churn, so a
+      # breaking refactor fails here instead of silently producing a wrong manifest (#136).
+      - name: Run parser-contract unit tests
+        env:
+          OPNSENSE_DOCS_REPO: ${{ github.workspace }}/upstream/docs
+        run: python -m pytest tools/opnsense_api_contract/ -q
+
       - name: Determine refs to check
         id: refs
         env:
