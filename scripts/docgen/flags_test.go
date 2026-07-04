@@ -42,11 +42,12 @@ func TestCollectorFlagInfo(t *testing.T) {
 	if !ok || nd.Default != "Disabled" {
 		t.Errorf("network_diag should be Disabled by default, got %+v", nd)
 	}
-	// always-on collectors get empty-flag entries
+	// interfaces/services/protocol gained default-on disable switches (#143): they now
+	// have a --exporter.disable-* flag and are Enabled by default.
 	for _, s := range []string{"interfaces", "services", "protocol"} {
 		fi, ok := info[s]
-		if !ok || fi.FlagName != "" || fi.Default != "Enabled" {
-			t.Errorf("always-on subsystem %s: got %+v ok=%v", s, fi, ok)
+		if !ok || fi.FlagName != "--exporter.disable-"+s || fi.Default != "Enabled" {
+			t.Errorf("subsystem %s should have a default-on disable flag: got %+v ok=%v", s, fi, ok)
 		}
 	}
 }

@@ -7,6 +7,18 @@ var (
 		"exporter.disable-arp-table",
 		"Disable the scraping of the ARP table",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ARP_TABLE").Default("false").Bool()
+	interfacesCollectorDisabled = kingpin.Flag(
+		"exporter.disable-interfaces",
+		"Disable the interfaces collector (per-interface traffic/link metrics)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_INTERFACES").Default("false").Bool()
+	protocolCollectorDisabled = kingpin.Flag(
+		"exporter.disable-protocol",
+		"Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_PROTOCOL").Default("false").Bool()
+	servicesCollectorDisabled = kingpin.Flag(
+		"exporter.disable-services",
+		"Disable the services collector (per-service running state)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_SERVICES").Default("false").Bool()
 	arpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-arp-details",
 		"Enable per-entry ARP metrics (ip/mac/hostname labels — high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted.",
@@ -292,6 +304,9 @@ type CollectorsDisableSwitch struct {
 	BPF                    bool
 	ArpDetails             bool
 	NdpDetails             bool
+	Interfaces             bool
+	Protocol               bool
+	Services               bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -300,6 +315,9 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		ARP:                    !*arpTableCollectorDisabled,
 		ArpDetails:             *arpDetailsEnabled,
 		NdpDetails:             *ndpDetailsEnabled,
+		Interfaces:             !*interfacesCollectorDisabled,
+		Protocol:               !*protocolCollectorDisabled,
+		Services:               !*servicesCollectorDisabled,
 		Cron:                   !*cronTableCollectorDisabled,
 		Wireguard:              !*wireguardCollectorDisabled,
 		IPsec:                  !*ipsecCollectorDisabled,
@@ -373,6 +391,9 @@ type CollectorFlag struct {
 // does not break that existing chain.)
 var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-arp-table", Subsystem: "arp_table"},
+	{Flag: "exporter.disable-interfaces", Subsystem: "interfaces"},
+	{Flag: "exporter.disable-protocol", Subsystem: "protocol"},
+	{Flag: "exporter.disable-services", Subsystem: "services"},
 	{Flag: "exporter.enable-arp-details", Subsystem: "arp_table", Detail: true},
 	{Flag: "exporter.enable-ndp-details", Subsystem: "ndp", Detail: true},
 	{Flag: "exporter.disable-cron-table", Subsystem: "cron"},

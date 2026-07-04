@@ -30,7 +30,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | IPsec | ipsec | 17 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
-| Interfaces | interfaces | 18 | Enabled | --- | --- |
+| Interfaces | interfaces | 18 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
 | Kea DHCP | kea | 13 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 5 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
@@ -42,10 +42,10 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Nginx | nginx | 21 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
 | OpenVPN | openvpn | 4 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
-| Protocol Statistics | protocol | 59 | Enabled | --- | --- |
+| Protocol Statistics | protocol | 59 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
 | SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
-| Services | services | 3 | Enabled | --- | --- |
+| Services | services | 3 | Enabled | --exporter.disable-services | OPNSENSE_EXPORTER_DISABLE_SERVICES |
 | Syslog | syslog | 10 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
 | System | system | 12 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
 | Tailscale | tailscale | 10 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |

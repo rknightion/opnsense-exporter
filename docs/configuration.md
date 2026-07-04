@@ -206,6 +206,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | IPsec | Disable the scraping of IPSec service |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | ISC DHCPv4 | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |
 | `--exporter.disable-dhcpv6` | `OPNSENSE_EXPORTER_DISABLE_DHCPV6` | ISC DHCPv6 | Disable the scraping of ISC DHCPv6 leases and delegated prefixes (silent when the legacy ISC DHCP backend is absent) |
+| `--exporter.disable-interfaces` | `OPNSENSE_EXPORTER_DISABLE_INTERFACES` | Interfaces | Disable the interfaces collector (per-interface traffic/link metrics) |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | Kea DHCP | Disable the scraping of Kea DHCP lease metrics |
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | Mbuf | Disable the scraping of mbuf statistics |
 | `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | Monit | Disable the scraping of Monit service check status (silent when Monit is not running) |
@@ -215,7 +216,9 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | Nginx | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | OpenVPN | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF Statistics | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
+| `--exporter.disable-protocol` | `OPNSENSE_EXPORTER_DISABLE_PROTOCOL` | Protocol Statistics | Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | Q-Feeds | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
+| `--exporter.disable-services` | `OPNSENSE_EXPORTER_DISABLE_SERVICES` | Services | Disable the services collector (per-service running state) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | Syslog | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | System | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | Tailscale | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
@@ -296,6 +299,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-frr` | `OPNSENSE_EXPORTER_DISABLE_FRR` | `false` | Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent) |
 | `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | `false` | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
 | `--exporter.disable-haproxy` | `OPNSENSE_EXPORTER_DISABLE_HAPROXY` | `false` | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
+| `--exporter.disable-interfaces` | `OPNSENSE_EXPORTER_DISABLE_INTERFACES` | `false` | Disable the interfaces collector (per-interface traffic/link metrics) |
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | `false` | Disable the scraping of IPSec service |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | `false` | Disable the scraping of Kea DHCP lease metrics |
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | `false` | Disable the scraping of mbuf statistics |
@@ -306,7 +310,9 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-nut` | `OPNSENSE_EXPORTER_DISABLE_NUT` | `false` | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | `false` | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | `false` | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
+| `--exporter.disable-protocol` | `OPNSENSE_EXPORTER_DISABLE_PROTOCOL` | `false` | Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | `false` | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
+| `--exporter.disable-services` | `OPNSENSE_EXPORTER_DISABLE_SERVICES` | `false` | Disable the services collector (per-service running state) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | `false` | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | `false` | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | `false` | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |

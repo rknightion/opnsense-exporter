@@ -132,6 +132,18 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutArpTableCollector())
 		logger.Info("arp collector disabled")
 	}
+	if !collectorsSwitches.Interfaces {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutInterfacesCollector())
+		logger.Info("interfaces collector disabled")
+	}
+	if !collectorsSwitches.Protocol {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutProtocolCollector())
+		logger.Info("protocol collector disabled")
+	}
+	if !collectorsSwitches.Services {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutServicesCollector())
+		logger.Info("services collector disabled")
+	}
 	if !collectorsSwitches.Firewall {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallCollector())
 		logger.Info("firewall collector disabled")

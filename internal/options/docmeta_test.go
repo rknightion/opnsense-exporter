@@ -40,6 +40,26 @@ func TestCollectorFlagsCoverAllSwitchFlags(t *testing.T) {
 	}
 }
 
+// TestEveryCollectorHasDisableSwitch covers #143: every collector that self-registers
+// via init() must have a CollectorFlags entry (a disable or enable switch), so a future
+// collector added without one — the exact gap that left interfaces/protocol/services
+// ungated — fails this test instead of silently shipping non-optional.
+func TestEveryCollectorHasDisableSwitch(t *testing.T) {
+	options.RegisterAllFlags()
+
+	flaggedSubsystems := map[string]bool{}
+	for _, cf := range options.CollectorFlags {
+		if !cf.Detail { // detail flags gate extra metrics, not the collector's registration
+			flaggedSubsystems[cf.Subsystem] = true
+		}
+	}
+	for _, c := range collector.AllCollectors() {
+		if !flaggedSubsystems[c.Name()] {
+			t.Errorf("collector %q has no enable/disable CollectorFlags entry (add one per the CLAUDE.md recipe)", c.Name())
+		}
+	}
+}
+
 func TestRegisterAllFlagsIdempotent(t *testing.T) {
 	options.RegisterAllFlags()
 	options.RegisterAllFlags() // second call must not panic (kingpin panics on duplicate flags)

@@ -229,6 +229,21 @@ func WithoutArpTableCollector() Option {
 	return withoutCollectorInstance(ArpTableSubsystem)
 }
 
+// WithoutInterfacesCollector removes the interfaces collector (#143).
+func WithoutInterfacesCollector() Option {
+	return withoutCollectorInstance(InterfacesSubsystem)
+}
+
+// WithoutProtocolCollector removes the protocol-statistics collector (#143).
+func WithoutProtocolCollector() Option {
+	return withoutCollectorInstance(ProtocolSubsystem)
+}
+
+// WithoutServicesCollector removes the services collector (#143).
+func WithoutServicesCollector() Option {
+	return withoutCollectorInstance(ServicesSubsystem)
+}
+
 // WithoutCronCollector Option
 // removes the cron collector from the list of collectors
 func WithoutCronCollector() Option {

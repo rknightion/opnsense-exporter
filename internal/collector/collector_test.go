@@ -710,6 +710,28 @@ func TestOTLPCollectDerivesDeadlineFromInterval(t *testing.T) {
 	}
 }
 
+// TestWithoutInterfacesProtocolServices covers #143: the three previously-ungated
+// collectors can now be removed from the registered set via their Without* options.
+func TestWithoutInterfacesProtocolServices(t *testing.T) {
+	client, err := opnsense.NewClient(
+		options.OPNSenseConfig{Protocol: "https", Host: "h", APIKey: "k", APISecret: "s"},
+		"test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	c, err := New(&client, promslog.NewNopLogger(), "test",
+		WithoutInterfacesCollector(), WithoutProtocolCollector(), WithoutServicesCollector())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, coll := range c.collectors {
+		switch coll.Name() {
+		case InterfacesSubsystem, ProtocolSubsystem, ServicesSubsystem:
+			t.Errorf("expected %q collector to be removed", coll.Name())
+		}
+	}
+}
+
 func TestScrapeViewFiltersCollectors(t *testing.T) {
 	client := newCollectorTestClient(t, healthOKServer(t))
 

@@ -404,24 +404,24 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_interfaces_mtu_bytes | Gauge | interface, device, type | The MTU value of the interface | --- |
-| opnsense_interfaces_received_bytes_total | Counter | interface, device, type | Bytes received on this interface by interface name and device | --- |
-| opnsense_interfaces_transmitted_bytes_total | Counter | interface, device, type | Bytes transmitted on this interface by interface name and device | --- |
-| opnsense_interfaces_received_multicasts_total | Counter | interface, device, type | Multicasts received on this interface by interface name and device | --- |
-| opnsense_interfaces_transmitted_multicasts_total | Counter | interface, device, type | Multicasts transmitted on this interface by interface name and device | --- |
-| opnsense_interfaces_input_errors_total | Counter | interface, device, type | Input errors on this interface by interface name and device | --- |
-| opnsense_interfaces_output_errors_total | Counter | interface, device, type | Output errors on this interface by interface name and device | --- |
-| opnsense_interfaces_collisions_total | Counter | interface, device, type | Collisions on this interface by interface name and device | --- |
-| opnsense_interfaces_received_packets_total | Counter | interface, device, type | Total packets received on this interface by interface name and device | --- |
-| opnsense_interfaces_transmitted_packets_total | Counter | interface, device, type | Total packets transmitted on this interface by interface name and device | --- |
-| opnsense_interfaces_send_queue_length | Gauge | interface, device, type | Current send queue length on this interface by interface name and device | --- |
-| opnsense_interfaces_send_queue_max_length | Gauge | interface, device, type | Maximum send queue length on this interface by interface name and device | --- |
-| opnsense_interfaces_send_queue_drops_total | Counter | interface, device, type | Send queue drops on this interface by interface name and device | --- |
-| opnsense_interfaces_input_queue_drops_total | Counter | interface, device, type | Input queue drops on this interface by interface name and device | --- |
-| opnsense_interfaces_link_state | Gauge | interface, device, type | Link state of this interface (1=up, 0=down, 2=unknown) by interface name and device. 2 (unknown) is reported by the kernel for carrier-less pseudo-devices such as PPPoE and tun/tailscale interfaces, which have no carrier-sense concept and are not actually down; alert on link_state==0, not link_state!=1. | --- |
-| opnsense_interfaces_line_rate_bits | Gauge | interface, device, type | Line rate in bits per second on this interface by interface name and device | --- |
-| opnsense_interfaces_admin_up | Gauge | interface, device | Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices. | --- |
-| opnsense_interfaces_info | Gauge | interface, device, identifier, media, link_type, vlan_tag, vlan_parent, physical | Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series. | --- |
+| opnsense_interfaces_mtu_bytes | Gauge | interface, device, type | The MTU value of the interface | --exporter.disable-interfaces |
+| opnsense_interfaces_received_bytes_total | Counter | interface, device, type | Bytes received on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_transmitted_bytes_total | Counter | interface, device, type | Bytes transmitted on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_received_multicasts_total | Counter | interface, device, type | Multicasts received on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_transmitted_multicasts_total | Counter | interface, device, type | Multicasts transmitted on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_input_errors_total | Counter | interface, device, type | Input errors on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_output_errors_total | Counter | interface, device, type | Output errors on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_collisions_total | Counter | interface, device, type | Collisions on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_received_packets_total | Counter | interface, device, type | Total packets received on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_transmitted_packets_total | Counter | interface, device, type | Total packets transmitted on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_send_queue_length | Gauge | interface, device, type | Current send queue length on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_send_queue_max_length | Gauge | interface, device, type | Maximum send queue length on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_send_queue_drops_total | Counter | interface, device, type | Send queue drops on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_input_queue_drops_total | Counter | interface, device, type | Input queue drops on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_link_state | Gauge | interface, device, type | Link state of this interface (1=up, 0=down, 2=unknown) by interface name and device. 2 (unknown) is reported by the kernel for carrier-less pseudo-devices such as PPPoE and tun/tailscale interfaces, which have no carrier-sense concept and are not actually down; alert on link_state==0, not link_state!=1. | --exporter.disable-interfaces |
+| opnsense_interfaces_line_rate_bits | Gauge | interface, device, type | Line rate in bits per second on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_admin_up | Gauge | interface, device | Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices. | --exporter.disable-interfaces |
+| opnsense_interfaces_info | Gauge | interface, device, identifier, media, link_type, vlan_tag, vlan_parent, physical | Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series. | --exporter.disable-interfaces |
 
 ## Kea DHCP
 
@@ -594,65 +594,65 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_protocol_tcp_connection_count_by_state | Gauge | state | Number of TCP connections by state | --- |
-| opnsense_protocol_tcp_sent_packets_total | Counter | --- | Number of sent TCP packets  | --- |
-| opnsense_protocol_tcp_received_packets_total | Counter | --- | Number of received TCP packets | --- |
-| opnsense_protocol_arp_sent_requests_total | Counter | --- | Number of sent ARP requests | --- |
-| opnsense_protocol_arp_received_requests_total | Counter | --- | Number of received ARP requests | --- |
-| opnsense_protocol_icmp_calls_total | Counter | --- | Number of ICMP calls | --- |
-| opnsense_protocol_icmp_sent_packets_total | Counter | --- | Number of sent ICMP packets | --- |
-| opnsense_protocol_icmp_dropped_by_reason_total | Counter | reason | Number of dropped ICMP packets by reason | --- |
-| opnsense_protocol_udp_delivered_packets_total | Counter | --- | Number of delivered UDP packets | --- |
-| opnsense_protocol_udp_output_packets_total | Counter | --- | Number of output UDP packets | --- |
-| opnsense_protocol_udp_received_datagrams_total | Counter | --- | Number of received UDP datagrams | --- |
-| opnsense_protocol_udp_dropped_by_reason_total | Counter | reason | Number of dropped UDP packets by reason | --- |
-| opnsense_protocol_carp_received_packets_total | Counter | address_family | Number of received CARP packets | --- |
-| opnsense_protocol_carp_sent_packets_total | Counter | address_family | Number of sent CARP packets | --- |
-| opnsense_protocol_carp_dropped_by_reason_total | Counter | reason | Number of dropped CARP packets by reason | --- |
-| opnsense_protocol_pfsync_received_packets_total | Counter | address_family | Number of received Pfsync packets | --- |
-| opnsense_protocol_pfsync_sent_packets_total | Counter | address_family | Number of sent Pfsync packets | --- |
-| opnsense_protocol_pfsync_dropped_by_reason_total | Counter | reason | Number of dropped Pfsync packets by reason | --- |
-| opnsense_protocol_pfsync_send_errors_total | Counter | --- | Number of Pfsync send errors | --- |
-| opnsense_protocol_ip_received_packets_total | Counter | --- | Number of received IP packets | --- |
-| opnsense_protocol_ip_forwarded_packets_total | Counter | --- | Number of forwarded IP packets | --- |
-| opnsense_protocol_ip_sent_packets_total | Counter | --- | Number of sent IP packets | --- |
-| opnsense_protocol_ip_dropped_by_reason_total | Counter | reason | Number of dropped IP packets by reason | --- |
-| opnsense_protocol_ip_fragments_received_total | Counter | --- | Number of received IP fragments | --- |
-| opnsense_protocol_ip_reassembled_packets_total | Counter | --- | Number of reassembled IP packets | --- |
-| opnsense_protocol_ip6_received_packets_total | Counter | --- | Number of received IPv6 packets | --- |
-| opnsense_protocol_ip6_forwarded_packets_total | Counter | --- | Number of forwarded IPv6 packets | --- |
-| opnsense_protocol_ip6_sent_packets_total | Counter | --- | Number of sent IPv6 packets | --- |
-| opnsense_protocol_ip6_dropped_by_reason_total | Counter | reason | Number of dropped IPv6 packets by reason | --- |
-| opnsense_protocol_ip6_fragments_received_total | Counter | --- | Number of received IPv6 fragments | --- |
-| opnsense_protocol_ip6_reassembled_packets_total | Counter | --- | Number of reassembled IPv6 packets | --- |
-| opnsense_protocol_icmp6_calls_total | Counter | --- | Number of ICMPv6 calls | --- |
-| opnsense_protocol_icmp6_dropped_by_reason_total | Counter | reason | Number of dropped ICMPv6 packets by reason | --- |
-| opnsense_protocol_tcp_connection_requests_total | Counter | --- | Number of TCP connection requests | --- |
-| opnsense_protocol_tcp_connection_accepts_total | Counter | --- | Number of TCP connection accepts | --- |
-| opnsense_protocol_tcp_connections_established_total | Counter | --- | Number of TCP connections established | --- |
-| opnsense_protocol_tcp_connections_closed_total | Counter | --- | Number of TCP connections closed | --- |
-| opnsense_protocol_tcp_connection_drops_total | Counter | --- | Number of TCP connection drops | --- |
-| opnsense_protocol_tcp_retransmit_timeouts_total | Counter | --- | Number of TCP retransmit timeouts | --- |
-| opnsense_protocol_tcp_keepalive_timeouts_total | Counter | --- | Number of TCP keepalive timeouts | --- |
-| opnsense_protocol_tcp_listen_queue_overflows_total | Counter | --- | Number of TCP listen queue overflows | --- |
-| opnsense_protocol_tcp_syncache_entries_total | Counter | --- | Number of TCP syncache entries added | --- |
-| opnsense_protocol_arp_sent_failures_total | Counter | --- | Number of ARP sent failures | --- |
-| opnsense_protocol_arp_sent_replies_total | Counter | --- | Number of ARP sent replies | --- |
-| opnsense_protocol_arp_received_replies_total | Counter | --- | Number of ARP received replies | --- |
-| opnsense_protocol_arp_received_packets_total | Counter | --- | Number of ARP received packets | --- |
-| opnsense_protocol_arp_dropped_no_entry_total | Counter | --- | Number of ARP packets dropped with no entry | --- |
-| opnsense_protocol_arp_entries_timeout_total | Counter | --- | Number of ARP entries that timed out | --- |
-| opnsense_protocol_tcp_sent_data_bytes_total | Counter | --- | Total bytes of data sent via TCP | --- |
-| opnsense_protocol_tcp_retransmitted_packets_total | Counter | --- | Total number of TCP packets retransmitted | --- |
-| opnsense_protocol_tcp_retransmitted_bytes_total | Counter | --- | Total bytes retransmitted via TCP | --- |
-| opnsense_protocol_tcp_received_in_sequence_bytes_total | Counter | --- | Total bytes received in sequence via TCP | --- |
-| opnsense_protocol_tcp_received_duplicate_bytes_total | Counter | --- | Total completely duplicate bytes received via TCP | --- |
-| opnsense_protocol_tcp_segments_updated_rtt_total | Counter | --- | Total TCP segments that updated RTT | --- |
-| opnsense_protocol_tcp_bad_connection_attempts_total | Counter | --- | Total bad TCP connection attempts | --- |
-| opnsense_protocol_tcp_keepalive_probes_total | Counter | --- | Total TCP keepalive probes sent | --- |
-| opnsense_protocol_tcp_syncache_dropped_total | Counter | --- | Total TCP syncache entries dropped | --- |
-| opnsense_protocol_ip_sent_fragments_total | Counter | --- | Total IP fragments sent | --- |
-| opnsense_protocol_arp_dropped_duplicate_address_total | Counter | --- | Total ARP packets dropped due to duplicate address | --- |
+| opnsense_protocol_tcp_connection_count_by_state | Gauge | state | Number of TCP connections by state | --exporter.disable-protocol |
+| opnsense_protocol_tcp_sent_packets_total | Counter | --- | Number of sent TCP packets  | --exporter.disable-protocol |
+| opnsense_protocol_tcp_received_packets_total | Counter | --- | Number of received TCP packets | --exporter.disable-protocol |
+| opnsense_protocol_arp_sent_requests_total | Counter | --- | Number of sent ARP requests | --exporter.disable-protocol |
+| opnsense_protocol_arp_received_requests_total | Counter | --- | Number of received ARP requests | --exporter.disable-protocol |
+| opnsense_protocol_icmp_calls_total | Counter | --- | Number of ICMP calls | --exporter.disable-protocol |
+| opnsense_protocol_icmp_sent_packets_total | Counter | --- | Number of sent ICMP packets | --exporter.disable-protocol |
+| opnsense_protocol_icmp_dropped_by_reason_total | Counter | reason | Number of dropped ICMP packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_udp_delivered_packets_total | Counter | --- | Number of delivered UDP packets | --exporter.disable-protocol |
+| opnsense_protocol_udp_output_packets_total | Counter | --- | Number of output UDP packets | --exporter.disable-protocol |
+| opnsense_protocol_udp_received_datagrams_total | Counter | --- | Number of received UDP datagrams | --exporter.disable-protocol |
+| opnsense_protocol_udp_dropped_by_reason_total | Counter | reason | Number of dropped UDP packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_carp_received_packets_total | Counter | address_family | Number of received CARP packets | --exporter.disable-protocol |
+| opnsense_protocol_carp_sent_packets_total | Counter | address_family | Number of sent CARP packets | --exporter.disable-protocol |
+| opnsense_protocol_carp_dropped_by_reason_total | Counter | reason | Number of dropped CARP packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_pfsync_received_packets_total | Counter | address_family | Number of received Pfsync packets | --exporter.disable-protocol |
+| opnsense_protocol_pfsync_sent_packets_total | Counter | address_family | Number of sent Pfsync packets | --exporter.disable-protocol |
+| opnsense_protocol_pfsync_dropped_by_reason_total | Counter | reason | Number of dropped Pfsync packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_pfsync_send_errors_total | Counter | --- | Number of Pfsync send errors | --exporter.disable-protocol |
+| opnsense_protocol_ip_received_packets_total | Counter | --- | Number of received IP packets | --exporter.disable-protocol |
+| opnsense_protocol_ip_forwarded_packets_total | Counter | --- | Number of forwarded IP packets | --exporter.disable-protocol |
+| opnsense_protocol_ip_sent_packets_total | Counter | --- | Number of sent IP packets | --exporter.disable-protocol |
+| opnsense_protocol_ip_dropped_by_reason_total | Counter | reason | Number of dropped IP packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_ip_fragments_received_total | Counter | --- | Number of received IP fragments | --exporter.disable-protocol |
+| opnsense_protocol_ip_reassembled_packets_total | Counter | --- | Number of reassembled IP packets | --exporter.disable-protocol |
+| opnsense_protocol_ip6_received_packets_total | Counter | --- | Number of received IPv6 packets | --exporter.disable-protocol |
+| opnsense_protocol_ip6_forwarded_packets_total | Counter | --- | Number of forwarded IPv6 packets | --exporter.disable-protocol |
+| opnsense_protocol_ip6_sent_packets_total | Counter | --- | Number of sent IPv6 packets | --exporter.disable-protocol |
+| opnsense_protocol_ip6_dropped_by_reason_total | Counter | reason | Number of dropped IPv6 packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_ip6_fragments_received_total | Counter | --- | Number of received IPv6 fragments | --exporter.disable-protocol |
+| opnsense_protocol_ip6_reassembled_packets_total | Counter | --- | Number of reassembled IPv6 packets | --exporter.disable-protocol |
+| opnsense_protocol_icmp6_calls_total | Counter | --- | Number of ICMPv6 calls | --exporter.disable-protocol |
+| opnsense_protocol_icmp6_dropped_by_reason_total | Counter | reason | Number of dropped ICMPv6 packets by reason | --exporter.disable-protocol |
+| opnsense_protocol_tcp_connection_requests_total | Counter | --- | Number of TCP connection requests | --exporter.disable-protocol |
+| opnsense_protocol_tcp_connection_accepts_total | Counter | --- | Number of TCP connection accepts | --exporter.disable-protocol |
+| opnsense_protocol_tcp_connections_established_total | Counter | --- | Number of TCP connections established | --exporter.disable-protocol |
+| opnsense_protocol_tcp_connections_closed_total | Counter | --- | Number of TCP connections closed | --exporter.disable-protocol |
+| opnsense_protocol_tcp_connection_drops_total | Counter | --- | Number of TCP connection drops | --exporter.disable-protocol |
+| opnsense_protocol_tcp_retransmit_timeouts_total | Counter | --- | Number of TCP retransmit timeouts | --exporter.disable-protocol |
+| opnsense_protocol_tcp_keepalive_timeouts_total | Counter | --- | Number of TCP keepalive timeouts | --exporter.disable-protocol |
+| opnsense_protocol_tcp_listen_queue_overflows_total | Counter | --- | Number of TCP listen queue overflows | --exporter.disable-protocol |
+| opnsense_protocol_tcp_syncache_entries_total | Counter | --- | Number of TCP syncache entries added | --exporter.disable-protocol |
+| opnsense_protocol_arp_sent_failures_total | Counter | --- | Number of ARP sent failures | --exporter.disable-protocol |
+| opnsense_protocol_arp_sent_replies_total | Counter | --- | Number of ARP sent replies | --exporter.disable-protocol |
+| opnsense_protocol_arp_received_replies_total | Counter | --- | Number of ARP received replies | --exporter.disable-protocol |
+| opnsense_protocol_arp_received_packets_total | Counter | --- | Number of ARP received packets | --exporter.disable-protocol |
+| opnsense_protocol_arp_dropped_no_entry_total | Counter | --- | Number of ARP packets dropped with no entry | --exporter.disable-protocol |
+| opnsense_protocol_arp_entries_timeout_total | Counter | --- | Number of ARP entries that timed out | --exporter.disable-protocol |
+| opnsense_protocol_tcp_sent_data_bytes_total | Counter | --- | Total bytes of data sent via TCP | --exporter.disable-protocol |
+| opnsense_protocol_tcp_retransmitted_packets_total | Counter | --- | Total number of TCP packets retransmitted | --exporter.disable-protocol |
+| opnsense_protocol_tcp_retransmitted_bytes_total | Counter | --- | Total bytes retransmitted via TCP | --exporter.disable-protocol |
+| opnsense_protocol_tcp_received_in_sequence_bytes_total | Counter | --- | Total bytes received in sequence via TCP | --exporter.disable-protocol |
+| opnsense_protocol_tcp_received_duplicate_bytes_total | Counter | --- | Total completely duplicate bytes received via TCP | --exporter.disable-protocol |
+| opnsense_protocol_tcp_segments_updated_rtt_total | Counter | --- | Total TCP segments that updated RTT | --exporter.disable-protocol |
+| opnsense_protocol_tcp_bad_connection_attempts_total | Counter | --- | Total bad TCP connection attempts | --exporter.disable-protocol |
+| opnsense_protocol_tcp_keepalive_probes_total | Counter | --- | Total TCP keepalive probes sent | --exporter.disable-protocol |
+| opnsense_protocol_tcp_syncache_dropped_total | Counter | --- | Total TCP syncache entries dropped | --exporter.disable-protocol |
+| opnsense_protocol_ip_sent_fragments_total | Counter | --- | Total IP fragments sent | --exporter.disable-protocol |
+| opnsense_protocol_arp_dropped_duplicate_address_total | Counter | --- | Total ARP packets dropped due to duplicate address | --exporter.disable-protocol |
 
 ## Q-Feeds
 
@@ -695,9 +695,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_services_status | Gauge | name, description | Service status by name and description (1 = running, 0 = stopped) | --- |
-| opnsense_services_running_total | Gauge | --- | Total number of running services | --- |
-| opnsense_services_stopped_total | Gauge | --- | Total number of stopped services | --- |
+| opnsense_services_status | Gauge | name, description | Service status by name and description (1 = running, 0 = stopped) | --exporter.disable-services |
+| opnsense_services_running_total | Gauge | --- | Total number of running services | --exporter.disable-services |
+| opnsense_services_stopped_total | Gauge | --- | Total number of stopped services | --exporter.disable-services |
 
 ## Syslog
 
