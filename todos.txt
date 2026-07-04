@@ -438,7 +438,7 @@ Notes:
 
 
 ================================================================================
-TODO 23: BPF STATISTICS COLLECTOR (MEDIUM PRIORITY)
+TODO 23: BPF STATISTICS COLLECTOR (MEDIUM PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: Berkeley Packet Filter (BPF) statistics show which processes are using
@@ -570,7 +570,7 @@ Notes:
 
 
 ================================================================================
-TODO 25: NETFLOW CACHE STATISTICS COLLECTOR (LOW PRIORITY)
+TODO 25: NETFLOW CACHE STATISTICS COLLECTOR (LOW PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: For OPNsense instances with NetFlow/IPFIX enabled, cache statistics
@@ -657,7 +657,7 @@ Notes:
 
 
 ================================================================================
-TODO 26: Q-FEEDS THREAT INTELLIGENCE COLLECTOR (MEDIUM PRIORITY)
+TODO 26: Q-FEEDS THREAT INTELLIGENCE COLLECTOR (MEDIUM PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: Q-Feeds is a threat intelligence plugin for OPNsense that provides IP
@@ -938,7 +938,7 @@ directly on the OPNsense box.
    - Impact: LOW — file descriptor exhaustion is rare on firewalls.
 
 ================================================================================
-TODO 29: SMART DISK HEALTH COLLECTOR (HIGH PRIORITY)
+TODO 29: SMART DISK HEALTH COLLECTOR (HIGH PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: SMART (Self-Monitoring, Analysis and Reporting Technology) provides
@@ -1111,7 +1111,7 @@ Notes:
 
 
 ================================================================================
-TODO 30: TAILSCALE COLLECTOR (MEDIUM PRIORITY)
+TODO 30: TAILSCALE COLLECTOR (MEDIUM PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: Tailscale is a popular mesh VPN used on OPNsense for remote access and
@@ -1243,7 +1243,7 @@ Notes:
 
 
 ================================================================================
-TODO 31: CROWDSEC SECURITY COLLECTOR (MEDIUM PRIORITY)
+TODO 31: CROWDSEC SECURITY COLLECTOR (MEDIUM PRIORITY) ✅ COMPLETED
 ================================================================================
 
 WHY: CrowdSec is a popular open-source security engine that detects and blocks
@@ -1487,4 +1487,14 @@ threat intelligence, and security — none of which node_exporter handles as
 comprehensively.
 
 
-Consume todos.txt and follow all instructions within it. We are now ready to plan out and implement TODO 20 AND TODO 21. You can also address any other TODO items required to get that in place or that would be complementary or sensible to implement at the same time due to touching similar areas. Ideally the more TODOs we can do in the same session the better (but not absoloutely essential). Please make a comprehensive implementation plan for all tasks listed within the phase, ensuring we are comforming with all architecture principles and common patterns defined in todos.txt. Make use of subagents and agent teams where appropriate during the planning and implementation phases once the plan is approved. Ensure the todos.txt file is updated to mark each phase as complete once it is completed and ensure this initial prompt is included on any plan produced so it is not lost during context compaction.
+STATUS: TODOs 20-31 are all ✅ COMPLETED — every collector described above (PF
+stats, enhanced system info, kernel network memory, BPF, NDP, Netflow, Q-Feeds,
+firewall aggregate stats, pfsync/HA, SMART, Tailscale, CrowdSec) is implemented
+and tested at HEAD in internal/collector/. There is no outstanding work in this
+file; it is retained only as a historical planning record. New collector work is
+tracked via GitHub issues, not here (see CLAUDE.md "Adding a New Collector").
+
+Original session prompt (historical, retained for context): "Consume todos.txt
+and follow all instructions within it. We are now ready to plan out and implement
+TODO 20 AND TODO 21..." — this refers to work that has since shipped; do not act
+on it.
