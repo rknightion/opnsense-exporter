@@ -9,10 +9,12 @@
 //
 //	apicapture --base-url https://192.168.1.1 --insecure [--out opnsense/testdata/captures]
 //
-// Credentials come from --api-key/--api-secret or the OPNSENSE_EXPORTER_OPS_API_KEY
-// and OPNSENSE_EXPORTER_OPS_API_SECRET environment variables. Captures land in a
-// gitignored scratch dir by default; review one (it may contain host/network data)
-// and promote it into a curated fixture to make it a permanent CI gate.
+// Credentials come from --api-key/--api-secret, the OPNSENSE_EXPORTER_OPS_API_KEY /
+// OPNSENSE_EXPORTER_OPS_API_SECRET environment variables, or the file-based
+// OPS_API_KEY_FILE / OPS_API_SECRET_FILE secrets (resolved identically to the
+// exporter, via internal/options). Captures land in a gitignored scratch dir by
+// default; review one (it may contain host/network data) and promote it into a
+// curated fixture to make it a permanent CI gate.
 package main
 
 import (
@@ -23,6 +25,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -34,8 +37,22 @@ func main() {
 	outDir := flag.String("out", "opnsense/testdata/captures", "directory to write captured responses into")
 	flag.Parse()
 
-	if *baseURL == "" || *apiKey == "" || *apiSecret == "" {
-		fmt.Fprintln(os.Stderr, "error: --base-url, --api-key and --api-secret (or their env vars) are required")
+	// Resolve credentials the same way the exporter does: OPS_API_KEY_FILE /
+	// OPS_API_SECRET_FILE (file-based secrets) take precedence over the flag/plaintext
+	// env value, so `make capture` has full parity with `make local-run` (#157).
+	resolvedKey, err := options.ResolveOPSAPIKey(*apiKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error resolving API key: %v\n", err)
+		os.Exit(2)
+	}
+	resolvedSecret, err := options.ResolveOPSAPISecret(*apiSecret)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error resolving API secret: %v\n", err)
+		os.Exit(2)
+	}
+
+	if *baseURL == "" || resolvedKey == "" || resolvedSecret == "" {
+		fmt.Fprintln(os.Stderr, "error: --base-url, --api-key and --api-secret (or their env vars, incl. OPS_API_KEY_FILE/OPS_API_SECRET_FILE) are required")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -47,7 +64,7 @@ func main() {
 		},
 	}
 
-	results, err := captureContracts(httpClient, *baseURL, *apiKey, *apiSecret, *outDir,
+	results, err := captureContracts(httpClient, *baseURL, resolvedKey, resolvedSecret, *outDir,
 		opnsense.ResponseContracts(), opnsense.ContractManifest())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "capture failed: %v\n", err)

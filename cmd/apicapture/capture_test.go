@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -78,6 +79,55 @@ func TestCaptureContracts_HTTPErrorRecorded(t *testing.T) {
 	if results[0].Status != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", results[0].Status)
 	}
+}
+
+// TestCredentialResolutionParity verifies apicapture resolves credentials through the
+// same helper the exporter uses, so file-based secrets (OPS_API_KEY_FILE /
+// OPS_API_SECRET_FILE) work identically to `make local-run` (#157): a *_FILE secret
+// resolves to the same value as the plaintext env var, and takes precedence over the
+// flag/env fallback, while the plaintext path keeps working.
+func TestCredentialResolutionParity(t *testing.T) {
+	writeSecret := func(t *testing.T, val string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "secret")
+		if err := os.WriteFile(p, []byte(val+"\n"), 0o600); err != nil {
+			t.Fatalf("write secret file: %v", err)
+		}
+		return p
+	}
+
+	t.Run("plaintext flag/env value passes through", func(t *testing.T) {
+		got, err := options.ResolveOPSAPIKey("plainkey")
+		if err != nil || got != "plainkey" {
+			t.Fatalf("got (%q, %v), want (\"plainkey\", nil)", got, err)
+		}
+	})
+
+	t.Run("_FILE resolves to the same value as the plaintext var", func(t *testing.T) {
+		keyFile := writeSecret(t, "filekey")
+		secretFile := writeSecret(t, "filesecret")
+		t.Setenv("OPS_API_KEY_FILE", keyFile)
+		t.Setenv("OPS_API_SECRET_FILE", secretFile)
+
+		// flagValue empty (as when only the *_FILE env is set): file wins.
+		gotKey, err := options.ResolveOPSAPIKey("")
+		if err != nil || gotKey != "filekey" {
+			t.Fatalf("key: got (%q, %v), want (\"filekey\", nil)", gotKey, err)
+		}
+		gotSecret, err := options.ResolveOPSAPISecret("")
+		if err != nil || gotSecret != "filesecret" {
+			t.Fatalf("secret: got (%q, %v), want (\"filesecret\", nil)", gotSecret, err)
+		}
+	})
+
+	t.Run("_FILE takes precedence over the flag/env fallback", func(t *testing.T) {
+		keyFile := writeSecret(t, "filekey")
+		t.Setenv("OPS_API_KEY_FILE", keyFile)
+		got, err := options.ResolveOPSAPIKey("plainkey")
+		if err != nil || got != "filekey" {
+			t.Fatalf("got (%q, %v), want (\"filekey\", nil) — *_FILE must win", got, err)
+		}
+	})
 }
 
 func TestCaptureContracts_SkipsNonGET(t *testing.T) {

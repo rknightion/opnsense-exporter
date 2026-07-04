@@ -118,10 +118,13 @@ grafana-check:
 # Capture live-box responses for the response-shape canary (cmd/apicapture).
 # Writes to the gitignored opnsense/testdata/captures/ scratch dir; then run
 # `go test ./opnsense/ -run TestResponseContracts` to validate them. Reuses the
-# same OPS_* vars as local-run; set OPS_INSECURE=1 for self-signed certs.
+# same OPS API credential vars as local-run — including the file-based
+# OPS_API_KEY_FILE / OPS_API_SECRET_FILE secrets, resolved identically to the
+# exporter (#157); set OPS_INSECURE=1 for self-signed certs.
 capture:
-	# Creds via env (apicapture reads the exporter's OPS API env vars as flag defaults),
-	# not via CLI flags, to keep them out of world-readable argv (#160).
+	# Creds via env (apicapture reads the exporter's OPS API env vars as flag defaults,
+	# and OPS_API_KEY_FILE/OPS_API_SECRET_FILE via internal/options), not via CLI flags,
+	# to keep them out of world-readable argv (#160).
 	OPNSENSE_EXPORTER_OPS_API_KEY="$(OPS_API_KEY)" \
 	OPNSENSE_EXPORTER_OPS_API_SECRET="$(OPS_API_SECRET)" \
 	go run ./cmd/apicapture \

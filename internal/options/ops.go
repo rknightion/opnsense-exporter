@@ -68,13 +68,28 @@ func getLineFromFile(filePath string) (string, error) {
 // open ""; the three secret families (OPS key/secret, Pyroscope/OTLP) thus share one
 // precedence. A missing value is enforced later by OPNSenseConfig.Validate (#109).
 func opsAPISecret() (string, error) {
-	return resolveSecretMulti(*opnsenseAPISecret,
-		"OPNSENSE_EXPORTER_OPS_API_SECRET_FILE", "OPS_API_SECRET_FILE")
+	return ResolveOPSAPISecret(*opnsenseAPISecret)
 }
 
 func opsAPIKey() (string, error) {
-	return resolveSecretMulti(*opnsenseAPIKey,
+	return ResolveOPSAPIKey(*opnsenseAPIKey)
+}
+
+// ResolveOPSAPIKey resolves the OPNsense API key from OPNSENSE_EXPORTER_OPS_API_KEY_FILE
+// / OPS_API_KEY_FILE (first set-and-non-empty file wins), falling back to flagValue. It is
+// exported so other entrypoints — notably cmd/apicapture via `make capture` — resolve
+// file-based secrets identically to the exporter itself (#157).
+func ResolveOPSAPIKey(flagValue string) (string, error) {
+	return resolveSecretMulti(flagValue,
 		"OPNSENSE_EXPORTER_OPS_API_KEY_FILE", "OPS_API_KEY_FILE")
+}
+
+// ResolveOPSAPISecret resolves the OPNsense API secret from
+// OPNSENSE_EXPORTER_OPS_API_SECRET_FILE / OPS_API_SECRET_FILE, falling back to flagValue.
+// See ResolveOPSAPIKey.
+func ResolveOPSAPISecret(flagValue string) (string, error) {
+	return resolveSecretMulti(flagValue,
+		"OPNSENSE_EXPORTER_OPS_API_SECRET_FILE", "OPS_API_SECRET_FILE")
 }
 
 // OPNSenseConfig holds the configuration for the OPNsense API.
