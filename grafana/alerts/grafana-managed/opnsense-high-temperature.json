@@ -12,7 +12,7 @@
   },
   "spec": {
     "title": "OPNsenseHighTemperature",
-    "noDataState": "OK",
+    "noDataState": "Ok",
     "execErrState": "Error",
     "for": "10m0s",
     "trigger": {

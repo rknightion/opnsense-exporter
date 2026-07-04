@@ -204,7 +204,7 @@ def emit_grafana_managed(ds: str, folder: str, stack: bool):
                          "annotations": {"grafana.app/folder": folder},
                          "labels": {"grafana.app/folder": folder}},
             "spec": {
-                "title": r["title"], "noDataState": r.get("nodata", "OK"),
+                "title": r["title"], "noDataState": r.get("nodata", "Ok"),
                 "execErrState": "Error", "for": grafana_for(r["for_min"]),
                 "trigger": {"interval": "1m"}, "labels": labels,
                 "annotations": {"summary": r["summary"], "description": r["description"],

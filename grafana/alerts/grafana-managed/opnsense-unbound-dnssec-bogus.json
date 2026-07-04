@@ -12,7 +12,7 @@
   },
   "spec": {
     "title": "OPNsenseUnboundDNSSECBogus",
-    "noDataState": "OK",
+    "noDataState": "Ok",
     "execErrState": "Error",
     "for": "0s",
     "trigger": {

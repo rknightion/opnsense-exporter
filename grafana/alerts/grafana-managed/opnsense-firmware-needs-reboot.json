@@ -12,7 +12,7 @@
   },
   "spec": {
     "title": "OPNsenseFirmwareNeedsReboot",
-    "noDataState": "OK",
+    "noDataState": "Ok",
     "execErrState": "Error",
     "for": "30m0s",
     "trigger": {

@@ -12,7 +12,7 @@
   },
   "spec": {
     "title": "OPNsenseCrashReports",
-    "noDataState": "OK",
+    "noDataState": "Ok",
     "execErrState": "Error",
     "for": "5m0s",
     "trigger": {

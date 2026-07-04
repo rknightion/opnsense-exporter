@@ -12,7 +12,7 @@
   },
   "spec": {
     "title": "OPNsenseEndpointErrors",
-    "noDataState": "OK",
+    "noDataState": "Ok",
     "execErrState": "Error",
     "for": "15m0s",
     "trigger": {

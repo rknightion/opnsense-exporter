@@ -22,6 +22,11 @@ FOLDER_API = "folder.grafana.app/v1beta1"
 RULE_API = "rules.alerting.grafana.app/v0alpha1"
 RULE_KINDS = {"AlertRule", "RecordingRule"}
 
+# The rules.alerting.grafana.app API rejects any other value for an AlertRule's
+# noDataState (note the casing: "Ok", not "OK"). It slipped past this validator once
+# and made every affected rule un-deployable via `gcx resources push`, so pin it here.
+NODATA_STATES = {"NoData", "Ok", "Alerting", "KeepLast"}
+
 
 def main() -> int:
     paths = sorted(glob.glob(os.path.join(MANIFEST_DIR, "*.json")))
@@ -53,6 +58,13 @@ def main() -> int:
             errors.append(f"{name}: expected kind in {sorted(RULE_KINDS)}, got {kind}")
         if not doc.get("metadata", {}).get("name"):
             errors.append(f"{name}: missing metadata.name")
+        if kind == "AlertRule":
+            nds = doc.get("spec", {}).get("noDataState")
+            if nds not in NODATA_STATES:
+                errors.append(
+                    f"{name}: invalid spec.noDataState {nds!r}, "
+                    f"must be one of {sorted(NODATA_STATES)}"
+                )
 
     if not saw_folder:
         errors.append("_folder.json is missing (folder manifest must be present)")
