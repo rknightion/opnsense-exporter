@@ -1,7 +1,6 @@
 package opnsense
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -60,14 +59,4 @@ func newTestClientWithMux(t *testing.T) (*httptest.Server, *http.ServeMux, *Clie
 	}
 
 	return server, mux, client
-}
-
-// mustMarshal JSON-encodes v, failing the test on error.
-func mustMarshal(t *testing.T, v any) []byte {
-	t.Helper()
-	data, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("mustMarshal: %v", err)
-	}
-	return data
 }

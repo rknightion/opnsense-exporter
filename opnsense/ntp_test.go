@@ -190,24 +190,11 @@ func TestFetchNTPStatus_OctalReachParsing(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
-				resp := ntpStatusResponse{
-					Rows: []ntpPeerRow{
-						{
-							Status:  "*",
-							Server:  "ntp.test",
-							RefID:   ".GPS.",
-							Stratum: "1",
-							Type:    "u",
-							When:    "10",
-							Poll:    "64",
-							Reach:   tc.reach,
-							Delay:   "0",
-							Offset:  "0",
-							Jitter:  "0",
-						},
-					},
-				}
-				w.Write(mustMarshal(t, resp))
+				// Raw JSON literal mirroring a real /api/ntp/service/status peer row, so
+				// a wrong json tag or field type in ntpStatusResponse/ntpPeerRow is caught
+				// rather than round-tripped away (#155). Live shape: all peer fields are
+				// strings (reach is an octal string parsed by the client).
+				w.Write([]byte(`{"rows":[{"status":"*","server":"ntp.test","refid":".GPS.","stratum":"1","type":"u","when":"10","poll":"64","reach":"` + tc.reach + `","delay":"0","offset":"0","jitter":"0"}]}`))
 			})
 			defer server.Close()
 

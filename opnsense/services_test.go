@@ -10,23 +10,19 @@ func TestFetchServices_Success(t *testing.T) {
 		if r.Method != "GET" {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
-		resp := servicesSearchResponse{
-			Rows: []struct {
-				ID          string `json:"id"`
-				Name        string `json:"name"`
-				Description string `json:"description"`
-				Locked      int    `json:"locked"`
-				Running     int    `json:"running"`
-			}{
-				{ID: "1", Name: "sshd", Description: "Secure Shell Daemon", Locked: 0, Running: 1},
-				{ID: "2", Name: "ntpd", Description: "NTP Daemon", Locked: 0, Running: 1},
-				{ID: "3", Name: "dpinger", Description: "Gateway Monitor", Locked: 1, Running: 0},
-			},
-			Total:    3,
-			RowCount: 3,
-			Current:  1,
-		}
-		w.Write(mustMarshal(t, resp))
+		// Raw JSON literal mirroring a real /api/core/service/search payload, so a
+		// wrong json tag or field type in servicesSearchResponse is caught rather than
+		// round-tripped away (#155). Live shape: locked/running are native JSON ints.
+		w.Write([]byte(`{
+			"rows": [
+				{"id": "1", "name": "sshd", "description": "Secure Shell Daemon", "locked": 0, "running": 1},
+				{"id": "2", "name": "ntpd", "description": "NTP Daemon", "locked": 0, "running": 1},
+				{"id": "3", "name": "dpinger", "description": "Gateway Monitor", "locked": 1, "running": 0}
+			],
+			"total": 3,
+			"rowCount": 3,
+			"current": 1
+		}`))
 	})
 	defer server.Close()
 
@@ -82,17 +78,7 @@ func TestFetchServices_ServerError(t *testing.T) {
 
 func TestFetchServices_EmptyList(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
-		resp := servicesSearchResponse{
-			Rows: []struct {
-				ID          string `json:"id"`
-				Name        string `json:"name"`
-				Description string `json:"description"`
-				Locked      int    `json:"locked"`
-				Running     int    `json:"running"`
-			}{},
-			Total: 0,
-		}
-		w.Write(mustMarshal(t, resp))
+		w.Write([]byte(`{"rows": [], "total": 0, "rowCount": 0, "current": 1}`))
 	})
 	defer server.Close()
 

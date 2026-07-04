@@ -26,49 +26,19 @@ func TestFetchArpTable_Success(t *testing.T) {
 			t.Errorf("expected resolve=no, got %v", payload["resolve"])
 		}
 
-		resp := arpSearchResponse{
-			Rows: []struct {
-				Mac             string `json:"mac"`
-				IP              string `json:"ip"`
-				Intf            string `json:"intf"`
-				Type            string `json:"type"`
-				Manufacturer    string `json:"manufacturer"`
-				Hostname        string `json:"hostname"`
-				IntfDescription string `json:"intf_description"`
-				Permanent       bool   `json:"permanent"`
-				Expired         bool   `json:"expired"`
-				Expires         int    `json:"expires"`
-			}{
-				{
-					Mac:             "aa:bb:cc:dd:ee:ff",
-					IP:              "192.168.1.100",
-					Intf:            "em0",
-					Type:            "ethernet",
-					Manufacturer:    "Dell Inc.",
-					Hostname:        "workstation1",
-					IntfDescription: "LAN",
-					Permanent:       true,
-					Expired:         false,
-					Expires:         1200,
-				},
-				{
-					Mac:             "11:22:33:44:55:66",
-					IP:              "192.168.1.200",
-					Intf:            "em0",
-					Type:            "ethernet",
-					Manufacturer:    "Apple Inc.",
-					Hostname:        "macbook",
-					IntfDescription: "LAN",
-					Permanent:       false,
-					Expired:         true,
-					Expires:         0,
-				},
-			},
-			Total:    2,
-			RowCount: 2,
-			Current:  1,
-		}
-		w.Write(mustMarshal(t, resp))
+		// Raw JSON literal mirroring a real /api/diagnostics/interface/search_arp
+		// payload, so a wrong json tag or field type in arpSearchResponse is caught
+		// rather than round-tripped away (#155). Live shape: permanent/expired are
+		// native JSON bools, expires a native int.
+		w.Write([]byte(`{
+			"rows": [
+				{"mac": "aa:bb:cc:dd:ee:ff", "ip": "192.168.1.100", "intf": "em0", "type": "ethernet", "manufacturer": "Dell Inc.", "hostname": "workstation1", "intf_description": "LAN", "permanent": true, "expired": false, "expires": 1200},
+				{"mac": "11:22:33:44:55:66", "ip": "192.168.1.200", "intf": "em0", "type": "ethernet", "manufacturer": "Apple Inc.", "hostname": "macbook", "intf_description": "LAN", "permanent": false, "expired": true, "expires": 0}
+			],
+			"total": 2,
+			"rowCount": 2,
+			"current": 1
+		}`))
 	})
 	defer server.Close()
 

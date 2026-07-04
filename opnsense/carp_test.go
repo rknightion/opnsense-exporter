@@ -156,24 +156,16 @@ func TestFetchCARPStatus_StatusMapping(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
-				resp := carpStatusResponse{
-					Rows: []carpVIPRow{
-						{
-							Interface: "LAN",
-							VHID:      "1",
-							Advbase:   "1",
-							Advskew:   "0",
-							Status:    tc.status,
-							StatusTxt: tc.status,
-							Subnet:    "10.0.0.1",
-						},
-					},
-					Carp: carpInfo{
-						Demotion: "0",
-						Allow:    "1",
-					},
-				}
-				w.Write(mustMarshal(t, resp))
+				// Raw JSON literal mirroring a real /api/diagnostics/interface/get_vip_status
+				// payload, so a wrong json tag or field type in carpStatusResponse/carpVIPRow/
+				// carpInfo is caught rather than round-tripped away (#155). Live shape: VIP
+				// fields (incl. status/status_txt) are strings, maintenancemode a native bool.
+				w.Write([]byte(`{
+					"rows": [
+						{"interface": "LAN", "vhid": "1", "advbase": "1", "advskew": "0", "status": "` + tc.status + `", "status_txt": "` + tc.status + `", "subnet": "10.0.0.1"}
+					],
+					"carp": {"demotion": "0", "allow": "1", "maintenancemode": false}
+				}`))
 			})
 			defer server.Close()
 
