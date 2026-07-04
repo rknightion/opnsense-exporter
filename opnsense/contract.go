@@ -8,11 +8,13 @@ type EndpointContract struct {
 }
 
 // postEndpoints lists every endpoint the exporter calls with POST (via
-// c.do("POST", ...) or c.doForm(...)). Everything else is GET. Regenerate with:
+// c.do("POST", ...) or c.doForm(...)). Everything else is GET.
 //
-//	grep -rnE 'c\.doForm\(|c\.do\("POST"' opnsense/*.go | grep -v _test.go
-//
-// then map each call site back to its c.endpoints["..."] key.
+// This map is no longer hand-regenerated: TestPostEndpointsMatchCallSites derives the
+// POST endpoint set from the package source (AST) and fails CI if this map drifts from
+// the actual call sites — a new POST Fetch* missing here, or a stale entry whose site is
+// GET. Add the key here (and bump the golden count in contract_test.go) when you add a
+// POST endpoint; the test tells you exactly which key is missing/stale (#145).
 var postEndpoints = map[EndpointName]struct{}{
 	"arp":                   {},
 	"captivePortalSessions": {},
