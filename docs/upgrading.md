@@ -1,6 +1,6 @@
 ---
 title: Upgrading
-description: Breaking changes and migration notes for OPNsense Exporter releases, including v1.0 and migration from the upstream AthennaMind exporter
+description: Breaking changes and migration notes for OPNsense Exporter releases, including v2.0, v1.0 and migration from the upstream AthennaMind exporter
 tags:
   - upgrading
   - migration
@@ -8,9 +8,42 @@ tags:
 
 # Upgrading
 
-This page lists breaking changes by release, plus notes for users migrating from the
-upstream AthennaMind exporter. Full details for every release:
+This page lists breaking changes by release, most recent first, plus notes for users
+migrating from the upstream AthennaMind exporter. Full details for every release:
 [Changelog](changelog.md).
+
+## Upgrading to v2.0 from v1.x
+
+- **SMART collector is now opt-in** — the `opnsense_smart_*` metrics are no longer
+  emitted by default. Set `--exporter.enable-smart` (env
+  `OPNSENSE_EXPORTER_ENABLE_SMART=true`) to restore them. Querying SMART data is one
+  of the more expensive per-scrape calls, so it now has to be requested explicitly.
+- **ARP/NDP per-entry series are opt-in** — the per-entry `opnsense_arp_table_entries`
+  and `opnsense_ndp_entries` series (one series per host, high cardinality) are no
+  longer emitted by default. Set `--exporter.enable-arp-details` /
+  `--exporter.enable-ndp-details` to restore them. Otherwise switch dashboards and
+  alerts to the new `opnsense_arp_table_entries_total` /
+  `opnsense_ndp_entries_total` aggregate gauges, which are always emitted.
+- **`opnsense_firewall_interface_hits_total` renamed and re-typed** — it is now
+  `opnsense_firewall_interface_log_entries_recent` and is a **gauge**, not a counter.
+  It reflects the current count of recent log entries, so it no longer makes sense to
+  wrap in `rate()`/`increase()` — plot the gauge directly. The bundled Grafana
+  dashboard has already been updated.
+- **Default instance label changed** — when `--exporter.instance-label` is unset, the
+  `instance` label now defaults to the **configured OPNsense address** (deterministic
+  across restarts) rather than the hostname reported by the API. To keep the old
+  hostname-derived behaviour, set `--exporter.instance-use-hostname`; to pin an
+  explicit value, set `--exporter.instance-label`. If you relied on the old default,
+  existing series will change their `instance` label after the upgrade.
+- **Portable Prometheus alert rules removed** — `grafana/alerts/opnsense.rules.yaml`
+  no longer ships. If you were loading that file into Prometheus, Mimir, or the
+  Grafana Cloud ruler, migrate to the Grafana-managed alert manifests under
+  `grafana/alerts/grafana-managed/` (pushed as Grafana resources). See
+  [Integration & Dashboards](integration-dashboards.md).
+- **Unknown link state no longer reported as down** — interfaces whose link state the
+  API reports as unknown (e.g. some PPPoE WANs) are now distinguished from genuinely
+  down interfaces instead of being flattened to down. Alerts that treated "not up" as
+  "down" may fire differently; check any rules built on interface link-state metrics.
 
 ## Upgrading to v1.0 from v0.x
 
@@ -27,6 +60,11 @@ upstream AthennaMind exporter. Full details for every release:
   changed from counter to gauge (it is a Unix timestamp). Replace
   `rate(opnsense_wireguard_peer_last_handshake_seconds[...])` with the purpose-built
   `opnsense_wireguard_peer_handshake_age_seconds` gauge.
+- **`opnsense_up` semantics** — `opnsense_up` no longer flips to 0 for a box that is
+  reachable but self-reports as degraded (e.g. a leftover crash report). Such a box
+  now trips the warning-level `OPNsenseCrashReports` / `OPNsenseFirewallUnhealthy`
+  alerts instead of the critical `OPNsenseExporterDown`. If you alerted on
+  `opnsense_up == 0` for these cases, switch to those signals.
 
 ## Migrating from upstream (AthennaMind/opnsense-exporter)
 
@@ -43,8 +81,10 @@ In addition to the items above:
   `opnsense_firmware_info` (labels) plus numeric gauges (`needs_reboot`,
   `upgrade_needs_reboot`, `last_check_timestamp_seconds`, `new_packages_count`,
   `upgrade_packages_count`).
-- **`--exporter.instance-label` now optional** — defaults to the hostname reported by
-  the OPNsense API.
+- **`--exporter.instance-label` now optional** — when left empty it defaults to the
+  configured OPNsense address (see the v2.0 note above for the change from the old
+  hostname default; set `--exporter.instance-use-hostname` for hostname-derived
+  labels).
 - **Many new collectors are enabled by default** — review the
   [collector switches](configuration.md#collector-switches) and disable what you
   don't need.
