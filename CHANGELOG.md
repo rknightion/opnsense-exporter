@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.2](https://github.com/rknightion/opnsense-exporter/compare/v2.0.1...v2.0.2) (2026-07-05)
+
+
+### Miscellaneous
+
+* **deps:** update anthropics/claude-code-action action to v1.0.165 ([#174](https://github.com/rknightion/opnsense-exporter/issues/174)) ([d8c75d9](https://github.com/rknightion/opnsense-exporter/commit/d8c75d9e1f648c9cf6f7957f9087366a292ee97b))
+
+
+### Documentation
+
+* **upgrading:** add v2.0 breaking-changes section and fix instance-label note ([#176](https://github.com/rknightion/opnsense-exporter/issues/176)) ([22dcb32](https://github.com/rknightion/opnsense-exporter/commit/22dcb32329237c3dba4bc9ddd78395d858a9b56d))
+
 ## [2.0.1](https://github.com/rknightion/opnsense-exporter/compare/v2.0.0...v2.0.1) (2026-07-04)
 
 
