@@ -30,7 +30,17 @@ env:
 
 jobs:
   canary:
+    # Hardening, since this workflow holds tailnet credentials in a public
+    # repo: it triggers only on schedule + manual dispatch (never on
+    # pull_request, so fork PRs can neither run it nor see its secrets), the
+    # secrets live in the `tailnet` environment whose deployment-branch policy
+    # is main-only, and the repository guard stops forks' copies from even
+    # attempting scheduled runs. timeout-minutes bounds how long the ephemeral
+    # node can exist if something hangs.
+    if: github.repository == 'rknightion/opnsense-exporter'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: tailnet
     permissions:
       contents: read
       issues: write
@@ -87,6 +97,7 @@ jobs:
           OPNSENSE_EXPORTER_OPS_INSECURE: 'true'
           OPNSENSE_EXPORTER_INSTANCE_LABEL: canary
         run: |
+          # shellcheck disable=SC2016 # the single-quoted $1/$2 below are awk field refs, not shell vars
           set -euo pipefail
           go build -o /tmp/opnsense-exporter .
           OPNSENSE_EXPORTER_OPS_API="$DEVBOX_HOST" /tmp/opnsense-exporter \
