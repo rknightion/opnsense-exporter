@@ -97,7 +97,6 @@ jobs:
           OPNSENSE_EXPORTER_OPS_INSECURE: 'true'
           OPNSENSE_EXPORTER_INSTANCE_LABEL: canary
         run: |
-          # shellcheck disable=SC2016 # the single-quoted $1/$2 below are awk field refs, not shell vars
           set -euo pipefail
           go build -o /tmp/opnsense-exporter .
           OPNSENSE_EXPORTER_OPS_API="$DEVBOX_HOST" /tmp/opnsense-exporter \
@@ -125,6 +124,7 @@ jobs:
             -o /tmp/metrics.txt http://localhost:8080/metrics
 
           fail=0
+          # shellcheck disable=SC2016 # single-quoted $1/$2 are awk field refs, not shell vars
           {
             echo ""
             echo "## End-to-end exporter smoke"
