@@ -1,0 +1,16 @@
+{
+  "endpoint": "routingTable",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_routes",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].proto",
+      "kind": "string"
+    }
+  ]
+}

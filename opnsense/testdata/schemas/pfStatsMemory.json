@@ -1,0 +1,19 @@
+{
+  "endpoint": "pfStatsMemory",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/pf_statistics/memory",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "memory"
+  ],
+  "fields": [
+    {
+      "path": "memory",
+      "kind": "object"
+    },
+    {
+      "path": "memory.*",
+      "kind": "number"
+    }
+  ]
+}

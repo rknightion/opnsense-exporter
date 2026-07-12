@@ -1,0 +1,28 @@
+{
+  "endpoint": "systemActivity",
+  "method": "GET",
+  "path": "api/diagnostics/activity/get_activity",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "details",
+    "headers"
+  ],
+  "fields": [
+    {
+      "path": "details",
+      "kind": "array"
+    },
+    {
+      "path": "details[]",
+      "kind": "any"
+    },
+    {
+      "path": "headers",
+      "kind": "array"
+    },
+    {
+      "path": "headers[]",
+      "kind": "string"
+    }
+  ]
+}

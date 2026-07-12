@@ -1,0 +1,70 @@
+{
+  "endpoint": "dyndnsAccounts",
+  "method": "GET",
+  "path": "api/dyndns/accounts/searchItem",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].current_ip",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].current_mtime",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].hostnames",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].interface",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].service",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].zone",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "endpoint": "nutUpsStatus",
+  "method": "GET",
+  "path": "api/nut/diagnostics/upsstatus",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

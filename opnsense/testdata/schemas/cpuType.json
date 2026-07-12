@@ -1,0 +1,12 @@
+{
+  "endpoint": "cpuType",
+  "method": "GET",
+  "path": "api/diagnostics/cpu_usage/getCPUType",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "string"
+    }
+  ]
+}

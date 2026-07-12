@@ -1,0 +1,15 @@
+{
+  "endpoint": "tailscaleServiceStatus",
+  "method": "GET",
+  "path": "api/tailscale/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

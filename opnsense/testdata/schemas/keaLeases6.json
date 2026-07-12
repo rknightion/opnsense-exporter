@@ -1,0 +1,58 @@
+{
+  "endpoint": "keaLeases6",
+  "method": "GET",
+  "path": "api/kea/leases6/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].expire",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].hostname",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].hwaddr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].if_descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].is_reserved",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

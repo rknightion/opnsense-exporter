@@ -1,0 +1,47 @@
+{
+  "endpoint": "systemDisk",
+  "method": "GET",
+  "path": "api/diagnostics/system/systemDisk",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "devices"
+  ],
+  "fields": [
+    {
+      "path": "devices",
+      "kind": "array"
+    },
+    {
+      "path": "devices[]",
+      "kind": "object"
+    },
+    {
+      "path": "devices[].available",
+      "kind": "string"
+    },
+    {
+      "path": "devices[].blocks",
+      "kind": "string"
+    },
+    {
+      "path": "devices[].device",
+      "kind": "string"
+    },
+    {
+      "path": "devices[].mountpoint",
+      "kind": "string"
+    },
+    {
+      "path": "devices[].type",
+      "kind": "string"
+    },
+    {
+      "path": "devices[].used",
+      "kind": "string"
+    },
+    {
+      "path": "devices[].used_pct",
+      "kind": "number"
+    }
+  ]
+}

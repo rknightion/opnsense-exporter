@@ -1,0 +1,15 @@
+{
+  "endpoint": "ipsecPools",
+  "method": "GET",
+  "path": "api/ipsec/leases/pools",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "pools"
+  ],
+  "fields": [
+    {
+      "path": "pools",
+      "kind": "any"
+    }
+  ]
+}

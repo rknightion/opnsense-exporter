@@ -1,0 +1,85 @@
+{
+  "endpoint": "qfeedsStats",
+  "method": "GET",
+  "path": "api/qfeeds/settings/stats",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "feeds",
+    "license",
+    "totals"
+  ],
+  "fields": [
+    {
+      "path": "feeds",
+      "kind": "array"
+    },
+    {
+      "path": "feeds[]",
+      "kind": "object"
+    },
+    {
+      "path": "feeds[].addresses_blocked",
+      "kind": "number"
+    },
+    {
+      "path": "feeds[].bytes_blocked",
+      "kind": "number"
+    },
+    {
+      "path": "feeds[].licensed",
+      "kind": "boolean"
+    },
+    {
+      "path": "feeds[].name",
+      "kind": "string"
+    },
+    {
+      "path": "feeds[].next_update",
+      "kind": "string"
+    },
+    {
+      "path": "feeds[].packets_blocked",
+      "kind": "number"
+    },
+    {
+      "path": "feeds[].total_entries",
+      "kind": "number"
+    },
+    {
+      "path": "feeds[].updated_at",
+      "kind": "string"
+    },
+    {
+      "path": "license",
+      "kind": "object"
+    },
+    {
+      "path": "license.expiry_date",
+      "kind": "string"
+    },
+    {
+      "path": "license.name",
+      "kind": "string"
+    },
+    {
+      "path": "totals",
+      "kind": "object"
+    },
+    {
+      "path": "totals.addresses_blocked",
+      "kind": "number"
+    },
+    {
+      "path": "totals.bytes_blocked",
+      "kind": "number"
+    },
+    {
+      "path": "totals.entries",
+      "kind": "number"
+    },
+    {
+      "path": "totals.packets_blocked",
+      "kind": "number"
+    }
+  ]
+}

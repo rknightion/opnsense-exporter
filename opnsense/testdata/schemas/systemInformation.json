@@ -1,0 +1,29 @@
+{
+  "endpoint": "systemInformation",
+  "method": "GET",
+  "path": "api/diagnostics/system/system_information",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "name",
+    "updates",
+    "versions"
+  ],
+  "fields": [
+    {
+      "path": "name",
+      "kind": "string"
+    },
+    {
+      "path": "updates",
+      "kind": "string"
+    },
+    {
+      "path": "versions",
+      "kind": "array"
+    },
+    {
+      "path": "versions[]",
+      "kind": "string"
+    }
+  ]
+}

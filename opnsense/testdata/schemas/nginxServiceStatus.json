@@ -1,0 +1,15 @@
+{
+  "endpoint": "nginxServiceStatus",
+  "method": "GET",
+  "path": "api/nginx/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "endpoint": "certificates",
+  "method": "GET",
+  "path": "api/trust/cert/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].%cert_type",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].commonname",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].in_use",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].valid_from",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].valid_to",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

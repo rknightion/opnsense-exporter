@@ -1,0 +1,91 @@
+{
+  "endpoint": "pfStatisticsByInterface",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/pf_statistics/interfaces",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "interfaces"
+  ],
+  "fields": [
+    {
+      "path": "interfaces",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces.*",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces.*.in4_block_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in4_block_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in4_pass_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in4_pass_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in6_block_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in6_block_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in6_pass_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.in6_pass_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.interface",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.out4_block_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out4_block_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out4_pass_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out4_pass_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out6_block_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out6_block_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out6_pass_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.out6_pass_packets",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces.*.references",
+      "kind": "number"
+    }
+  ]
+}

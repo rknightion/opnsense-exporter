@@ -1,0 +1,202 @@
+{
+  "endpoint": "gatewaysStatus",
+  "method": "GET",
+  "path": "api/routing/settings/searchGateway",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].attribute",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].current_data_length",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_interval",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_latencyhigh",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_latencylow",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_loss_interval",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_losshigh",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_losslow",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].current_time_period",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].data_length",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].defaultgw",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].delay",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].disabled",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].dynamic",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].fargw",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].force_down",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].gateway",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].if",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].interface",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].interface_descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].interval",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].ipprotocol",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].label_class",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].latencyhigh",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].latencylow",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].loss",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].loss_interval",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].losshigh",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].losslow",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].monitor",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].monitor_disable",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].monitor_noroute",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].priority",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].stddev",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].time_period",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].upstream",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].virtual",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].weight",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

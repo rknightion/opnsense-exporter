@@ -1,0 +1,108 @@
+{
+  "endpoint": "firmware",
+  "method": "GET",
+  "path": "api/core/firmware/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "last_check",
+    "needs_reboot",
+    "new_packages",
+    "os_version",
+    "product",
+    "product_abi",
+    "product_id",
+    "product_version",
+    "status",
+    "upgrade_packages"
+  ],
+  "fields": [
+    {
+      "path": "last_check",
+      "kind": "string"
+    },
+    {
+      "path": "needs_reboot",
+      "kind": "string"
+    },
+    {
+      "path": "new_packages",
+      "kind": "array"
+    },
+    {
+      "path": "new_packages[]",
+      "kind": "object"
+    },
+    {
+      "path": "new_packages[].name",
+      "kind": "string"
+    },
+    {
+      "path": "new_packages[].repository",
+      "kind": "string"
+    },
+    {
+      "path": "new_packages[].version",
+      "kind": "string"
+    },
+    {
+      "path": "os_version",
+      "kind": "string"
+    },
+    {
+      "path": "product",
+      "kind": "object"
+    },
+    {
+      "path": "product.product_check",
+      "kind": "object"
+    },
+    {
+      "path": "product.product_check.upgrade_needs_reboot",
+      "kind": "string"
+    },
+    {
+      "path": "product_abi",
+      "kind": "string"
+    },
+    {
+      "path": "product_id",
+      "kind": "string"
+    },
+    {
+      "path": "product_version",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_packages",
+      "kind": "array"
+    },
+    {
+      "path": "upgrade_packages[]",
+      "kind": "object"
+    },
+    {
+      "path": "upgrade_packages[].current_version",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_packages[].name",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_packages[].new_version",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_packages[].repository",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_packages[].size",
+      "kind": "string"
+    }
+  ]
+}

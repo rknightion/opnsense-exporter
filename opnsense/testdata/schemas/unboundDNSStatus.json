@@ -1,0 +1,544 @@
+{
+  "endpoint": "unboundDNSStatus",
+  "method": "GET",
+  "path": "api/unbound/diagnostics/stats",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "data",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "data",
+      "kind": "object"
+    },
+    {
+      "path": "data.dnscrypt_nonce",
+      "kind": "object"
+    },
+    {
+      "path": "data.dnscrypt_nonce.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.dnscrypt_nonce.cache.count",
+      "kind": "string"
+    },
+    {
+      "path": "data.dnscrypt_shared_secret",
+      "kind": "object"
+    },
+    {
+      "path": "data.dnscrypt_shared_secret.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.dnscrypt_shared_secret.cache.count",
+      "kind": "string"
+    },
+    {
+      "path": "data.infra",
+      "kind": "object"
+    },
+    {
+      "path": "data.infra.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.infra.cache.count",
+      "kind": "string"
+    },
+    {
+      "path": "data.key",
+      "kind": "object"
+    },
+    {
+      "path": "data.key.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.key.cache.count",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem",
+      "kind": "object"
+    },
+    {
+      "path": "data.mem.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.mem.cache.dnscrypt_nonce",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.cache.dnscrypt_shared_secret",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.cache.message",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.cache.rrset",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.http",
+      "kind": "object"
+    },
+    {
+      "path": "data.mem.http.query_buffer",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.http.response_buffer",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.mod",
+      "kind": "object"
+    },
+    {
+      "path": "data.mem.mod.dynlibmod",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.mod.iterator",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.mod.respip",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.mod.validator",
+      "kind": "string"
+    },
+    {
+      "path": "data.mem.streamwait",
+      "kind": "string"
+    },
+    {
+      "path": "data.msg",
+      "kind": "object"
+    },
+    {
+      "path": "data.msg.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.msg.cache.count",
+      "kind": "string"
+    },
+    {
+      "path": "data.msg.cache.max_collisions",
+      "kind": "string"
+    },
+    {
+      "path": "data.num",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.answer",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.answer.bogus",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.answer.rcode.FORMERR",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode.NOERROR",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode.NOTIMPL",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode.NXDOMAIN",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode.REFUSED",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode.SERVFAIL",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.rcode.nodata",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.answer.secure",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.aggressive",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.aggressive.NOERROR",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.aggressive.NXDOMAIN",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.authzone",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.authzone.down",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.authzone.up",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.class",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.class.IN",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.dnscrypt",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.dnscrypt.replay",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.dnscrypt.shared_secret",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.dnscrypt.shared_secret.cachemiss",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.edns",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.edns.DO",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.edns.present",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.flags.AA",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.AD",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.CD",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.QR",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.RA",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.RD",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.TC",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.flags.Z",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.https",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.ipv6",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.opcode",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.opcode.QUERY",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.ratelimited",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.tcp",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.tcpout",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.tls",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.tls.__value__",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.tls.resume",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.type",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.query.type.*",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.query.udpout",
+      "kind": "string"
+    },
+    {
+      "path": "data.num.rrset",
+      "kind": "object"
+    },
+    {
+      "path": "data.num.rrset.bogus",
+      "kind": "string"
+    },
+    {
+      "path": "data.rrset",
+      "kind": "object"
+    },
+    {
+      "path": "data.rrset.cache",
+      "kind": "object"
+    },
+    {
+      "path": "data.rrset.cache.count",
+      "kind": "string"
+    },
+    {
+      "path": "data.rrset.cache.max_collisions",
+      "kind": "string"
+    },
+    {
+      "path": "data.time",
+      "kind": "object"
+    },
+    {
+      "path": "data.time.elapsed",
+      "kind": "string"
+    },
+    {
+      "path": "data.time.now",
+      "kind": "string"
+    },
+    {
+      "path": "data.time.up",
+      "kind": "string"
+    },
+    {
+      "path": "data.total",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.num",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.num.cachehits",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.cachemiss",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.dns_error_reports",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.dnscrypt",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.num.dnscrypt.cert",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.dnscrypt.cleartext",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.dnscrypt.crypted",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.dnscrypt.malformed",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.expired",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.prefetch",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_cookie_client",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_cookie_invalid",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_cookie_valid",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_discard_timeout",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_ip_ratelimited",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_timed_out",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.queries_wait_limit",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.num.recursivereplies",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.query",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.query.queue_time_us",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.query.queue_time_us.max",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.recursion",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.recursion.time",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.recursion.time.avg",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.recursion.time.median",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.requestlist.avg",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist.current",
+      "kind": "object"
+    },
+    {
+      "path": "data.total.requestlist.current.all",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist.current.user",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist.exceeded",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist.max",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist.overwritten",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.tcpusage",
+      "kind": "string"
+    },
+    {
+      "path": "data.unwanted",
+      "kind": "object"
+    },
+    {
+      "path": "data.unwanted.queries",
+      "kind": "string"
+    },
+    {
+      "path": "data.unwanted.replies",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

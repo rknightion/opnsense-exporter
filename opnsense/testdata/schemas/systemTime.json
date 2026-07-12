@@ -1,0 +1,35 @@
+{
+  "endpoint": "systemTime",
+  "method": "GET",
+  "path": "api/diagnostics/system/systemTime",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "boottime",
+    "config",
+    "datetime",
+    "loadavg",
+    "uptime"
+  ],
+  "fields": [
+    {
+      "path": "boottime",
+      "kind": "string"
+    },
+    {
+      "path": "config",
+      "kind": "string"
+    },
+    {
+      "path": "datetime",
+      "kind": "string"
+    },
+    {
+      "path": "loadavg",
+      "kind": "string"
+    },
+    {
+      "path": "uptime",
+      "kind": "string"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "endpoint": "haproxyInfo",
+  "method": "GET",
+  "path": "api/haproxy/statistics/info",
+  "topLevelKind": "object",
+  "fields": [
+    {
+      "path": "*",
+      "kind": "any"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "endpoint": "chronyServiceStatus",
+  "method": "GET",
+  "path": "api/chrony/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

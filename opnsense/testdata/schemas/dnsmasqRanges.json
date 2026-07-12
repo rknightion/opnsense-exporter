@@ -1,0 +1,31 @@
+{
+  "endpoint": "dnsmasqRanges",
+  "method": "GET",
+  "path": "api/dnsmasq/settings/searchRange",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].%interface",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].end_addr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].start_addr",
+      "kind": "string"
+    }
+  ]
+}

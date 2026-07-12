@@ -1,0 +1,15 @@
+{
+  "endpoint": "wireguardServiceStatus",
+  "method": "GET",
+  "path": "api/wireguard/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

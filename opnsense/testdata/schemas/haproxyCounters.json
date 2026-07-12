@@ -1,0 +1,12 @@
+{
+  "endpoint": "haproxyCounters",
+  "method": "GET",
+  "path": "api/haproxy/statistics/counters",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "any"
+    }
+  ]
+}

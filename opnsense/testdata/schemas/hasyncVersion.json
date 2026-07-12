@@ -1,0 +1,25 @@
+{
+  "endpoint": "hasyncVersion",
+  "method": "GET",
+  "path": "api/core/hasync_status/version",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "message",
+    "response",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "message",
+      "kind": "any"
+    },
+    {
+      "path": "response",
+      "kind": "any"
+    },
+    {
+      "path": "status",
+      "kind": "any"
+    }
+  ]
+}

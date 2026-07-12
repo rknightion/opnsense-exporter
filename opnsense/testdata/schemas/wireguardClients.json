@@ -1,0 +1,70 @@
+{
+  "endpoint": "wireguardClients",
+  "method": "GET",
+  "path": "api/wireguard/service/show",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].if",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].ifname",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].latest-handshake",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].peer-status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].transfer-rx",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].transfer-tx",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

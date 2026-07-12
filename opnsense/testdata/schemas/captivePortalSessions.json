@@ -1,0 +1,38 @@
+{
+  "endpoint": "captivePortalSessions",
+  "method": "POST",
+  "path": "api/captiveportal/session/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].zoneid",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

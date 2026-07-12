@@ -1,0 +1,19 @@
+{
+  "endpoint": "socketStatistics",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_socket_statistics",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "statistics"
+  ],
+  "fields": [
+    {
+      "path": "statistics",
+      "kind": "object"
+    },
+    {
+      "path": "statistics.*",
+      "kind": "any"
+    }
+  ]
+}

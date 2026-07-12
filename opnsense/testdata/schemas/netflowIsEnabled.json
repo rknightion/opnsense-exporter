@@ -1,0 +1,20 @@
+{
+  "endpoint": "netflowIsEnabled",
+  "method": "GET",
+  "path": "api/diagnostics/netflow/isEnabled",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "local",
+    "netflow"
+  ],
+  "fields": [
+    {
+      "path": "local",
+      "kind": "number"
+    },
+    {
+      "path": "netflow",
+      "kind": "number"
+    }
+  ]
+}

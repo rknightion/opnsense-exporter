@@ -1,0 +1,19 @@
+{
+  "endpoint": "smartList",
+  "method": "POST",
+  "path": "api/smart/service/list",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "devices"
+  ],
+  "fields": [
+    {
+      "path": "devices",
+      "kind": "array"
+    },
+    {
+      "path": "devices[]",
+      "kind": "string"
+    }
+  ]
+}

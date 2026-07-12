@@ -1,0 +1,166 @@
+{
+  "endpoint": "nginxVts",
+  "method": "GET",
+  "path": "api/nginx/service/vts",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "connections",
+    "serverZones",
+    "sharedZones",
+    "upstreamZones"
+  ],
+  "fields": [
+    {
+      "path": "connections",
+      "kind": "object"
+    },
+    {
+      "path": "connections.accepted",
+      "kind": "number"
+    },
+    {
+      "path": "connections.active",
+      "kind": "number"
+    },
+    {
+      "path": "connections.handled",
+      "kind": "number"
+    },
+    {
+      "path": "connections.reading",
+      "kind": "number"
+    },
+    {
+      "path": "connections.requests",
+      "kind": "number"
+    },
+    {
+      "path": "connections.waiting",
+      "kind": "number"
+    },
+    {
+      "path": "connections.writing",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones",
+      "kind": "object"
+    },
+    {
+      "path": "serverZones.*",
+      "kind": "object"
+    },
+    {
+      "path": "serverZones.*.inBytes",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.outBytes",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.requestCounter",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses",
+      "kind": "object"
+    },
+    {
+      "path": "serverZones.*.responses.1xx",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.2xx",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.3xx",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.4xx",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.5xx",
+      "kind": "number"
+    },
+    {
+      "path": "sharedZones",
+      "kind": "object"
+    },
+    {
+      "path": "sharedZones.maxSize",
+      "kind": "number"
+    },
+    {
+      "path": "sharedZones.usedNode",
+      "kind": "number"
+    },
+    {
+      "path": "sharedZones.usedSize",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones",
+      "kind": "object"
+    },
+    {
+      "path": "upstreamZones.*",
+      "kind": "array"
+    },
+    {
+      "path": "upstreamZones.*[]",
+      "kind": "object"
+    },
+    {
+      "path": "upstreamZones.*[].down",
+      "kind": "boolean"
+    },
+    {
+      "path": "upstreamZones.*[].inBytes",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].outBytes",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].requestCounter",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responseMsec",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responses",
+      "kind": "object"
+    },
+    {
+      "path": "upstreamZones.*[].responses.1xx",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responses.2xx",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responses.3xx",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responses.4xx",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responses.5xx",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].server",
+      "kind": "string"
+    }
+  ]
+}

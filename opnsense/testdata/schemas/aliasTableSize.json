@@ -1,0 +1,78 @@
+{
+  "endpoint": "aliasTableSize",
+  "method": "GET",
+  "path": "api/firewall/alias/get_table_size",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "details",
+    "size",
+    "status",
+    "used"
+  ],
+  "fields": [
+    {
+      "path": "details",
+      "kind": "object"
+    },
+    {
+      "path": "details.*",
+      "kind": "object"
+    },
+    {
+      "path": "details.*.count",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.eval_match",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.eval_nomatch",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.in_block_b",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.in_block_p",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.in_pass_b",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.in_pass_p",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.out_block_b",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.out_block_p",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.out_pass_b",
+      "kind": "number"
+    },
+    {
+      "path": "details.*.out_pass_p",
+      "kind": "number"
+    },
+    {
+      "path": "size",
+      "kind": "number"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    },
+    {
+      "path": "used",
+      "kind": "number"
+    }
+  ]
+}

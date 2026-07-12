@@ -1,0 +1,32 @@
+{
+  "endpoint": "systemTemperature",
+  "method": "GET",
+  "path": "api/diagnostics/system/systemTemperature",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].device",
+      "kind": "string"
+    },
+    {
+      "path": "[].device_seq",
+      "kind": "number"
+    },
+    {
+      "path": "[].temperature",
+      "kind": "string"
+    },
+    {
+      "path": "[].type",
+      "kind": "string"
+    },
+    {
+      "path": "[].type_translated",
+      "kind": "string"
+    }
+  ]
+}

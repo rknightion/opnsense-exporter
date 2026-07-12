@@ -1,0 +1,40 @@
+{
+  "endpoint": "unboundInfra",
+  "method": "GET",
+  "path": "api/unbound/diagnostics/dumpinfra",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "data",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "data",
+      "kind": "array"
+    },
+    {
+      "path": "data[]",
+      "kind": "object"
+    },
+    {
+      "path": "data[].host",
+      "kind": "string"
+    },
+    {
+      "path": "data[].ip",
+      "kind": "string"
+    },
+    {
+      "path": "data[].rto",
+      "kind": "string"
+    },
+    {
+      "path": "data[].rtt",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

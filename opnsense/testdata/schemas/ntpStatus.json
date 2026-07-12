@@ -1,0 +1,63 @@
+{
+  "endpoint": "ntpStatus",
+  "method": "GET",
+  "path": "api/ntpd/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].delay",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].jitter",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].offset",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].poll",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].reach",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].refid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].server",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].stratum",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].when",
+      "kind": "string"
+    }
+  ]
+}

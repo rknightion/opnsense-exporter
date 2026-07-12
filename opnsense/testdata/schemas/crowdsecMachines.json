@@ -1,0 +1,20 @@
+{
+  "endpoint": "crowdsecMachines",
+  "method": "POST",
+  "path": "api/crowdsec/machines/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

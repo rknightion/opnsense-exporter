@@ -1,0 +1,87 @@
+{
+  "endpoint": "dhcpv4",
+  "method": "GET",
+  "path": "api/dhcpv4/leases/searchLease",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "interfaces",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces",
+      "kind": "any"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].descr",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].ends",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].hostname",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].if",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].if_descr",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].mac",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].man",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].starts",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].state",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

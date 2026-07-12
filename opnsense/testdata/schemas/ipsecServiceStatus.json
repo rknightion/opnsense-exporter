@@ -1,0 +1,15 @@
+{
+  "endpoint": "ipsecServiceStatus",
+  "method": "GET",
+  "path": "api/ipsec/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

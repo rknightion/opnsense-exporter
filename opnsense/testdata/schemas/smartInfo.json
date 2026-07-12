@@ -1,0 +1,115 @@
+{
+  "endpoint": "smartInfo",
+  "method": "POST",
+  "path": "api/smart/service/info",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "output"
+  ],
+  "fields": [
+    {
+      "path": "output",
+      "kind": "object"
+    },
+    {
+      "path": "output.ata_smart_attributes",
+      "kind": "object"
+    },
+    {
+      "path": "output.ata_smart_attributes.table",
+      "kind": "array"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[]",
+      "kind": "object"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].id",
+      "kind": "number"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].name",
+      "kind": "string"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].raw",
+      "kind": "object"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].raw.value",
+      "kind": "number"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].thresh",
+      "kind": "number"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].value",
+      "kind": "number"
+    },
+    {
+      "path": "output.ata_smart_attributes.table[].worst",
+      "kind": "number"
+    },
+    {
+      "path": "output.model_name",
+      "kind": "string"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log",
+      "kind": "object"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log.available_spare",
+      "kind": "number"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log.data_units_read",
+      "kind": "number"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log.data_units_written",
+      "kind": "number"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log.media_errors",
+      "kind": "number"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log.percentage_used",
+      "kind": "number"
+    },
+    {
+      "path": "output.nvme_smart_health_information_log.unsafe_shutdowns",
+      "kind": "number"
+    },
+    {
+      "path": "output.power_on_time",
+      "kind": "object"
+    },
+    {
+      "path": "output.power_on_time.hours",
+      "kind": "number"
+    },
+    {
+      "path": "output.serial_number",
+      "kind": "string"
+    },
+    {
+      "path": "output.smart_status",
+      "kind": "object"
+    },
+    {
+      "path": "output.smart_status.passed",
+      "kind": "boolean"
+    },
+    {
+      "path": "output.temperature",
+      "kind": "object"
+    },
+    {
+      "path": "output.temperature.current",
+      "kind": "number"
+    }
+  ]
+}

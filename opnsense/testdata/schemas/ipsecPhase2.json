@@ -1,0 +1,55 @@
+{
+  "endpoint": "ipsecPhase2",
+  "method": "POST",
+  "path": "api/ipsec/sessions/search_phase2",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].bytes-in",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].bytes-out",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].install-time",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].life-time",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].packets-in",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].packets-out",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].phase2desc",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].rekey-time",
+      "kind": "string"
+    }
+  ]
+}

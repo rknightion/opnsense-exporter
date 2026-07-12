@@ -1,0 +1,41 @@
+{
+  "endpoint": "firmwareInfo",
+  "method": "GET",
+  "path": "api/core/firmware/info",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "plugin",
+    "product_id",
+    "product_version"
+  ],
+  "fields": [
+    {
+      "path": "plugin",
+      "kind": "array"
+    },
+    {
+      "path": "plugin[]",
+      "kind": "object"
+    },
+    {
+      "path": "plugin[].installed",
+      "kind": "string"
+    },
+    {
+      "path": "plugin[].name",
+      "kind": "string"
+    },
+    {
+      "path": "plugin[].version",
+      "kind": "string"
+    },
+    {
+      "path": "product_id",
+      "kind": "string"
+    },
+    {
+      "path": "product_version",
+      "kind": "string"
+    }
+  ]
+}

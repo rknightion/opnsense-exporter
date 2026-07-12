@@ -1,0 +1,15 @@
+{
+  "endpoint": "syslogServiceStatus",
+  "method": "GET",
+  "path": "api/syslog/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

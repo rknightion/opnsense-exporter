@@ -1,0 +1,39 @@
+{
+  "endpoint": "hasyncServices",
+  "method": "POST",
+  "path": "api/core/hasync_status/services",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].id",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].running",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "any"
+    }
+  ]
+}

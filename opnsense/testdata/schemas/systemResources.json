@@ -1,0 +1,27 @@
+{
+  "endpoint": "systemResources",
+  "method": "GET",
+  "path": "api/diagnostics/system/systemResources",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "memory"
+  ],
+  "fields": [
+    {
+      "path": "memory",
+      "kind": "object"
+    },
+    {
+      "path": "memory.arc",
+      "kind": "string"
+    },
+    {
+      "path": "memory.total",
+      "kind": "string"
+    },
+    {
+      "path": "memory.used",
+      "kind": "string"
+    }
+  ]
+}

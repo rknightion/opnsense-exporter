@@ -1,0 +1,31 @@
+{
+  "endpoint": "systemSwap",
+  "method": "GET",
+  "path": "api/diagnostics/system/systemSwap",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "swap"
+  ],
+  "fields": [
+    {
+      "path": "swap",
+      "kind": "array"
+    },
+    {
+      "path": "swap[]",
+      "kind": "object"
+    },
+    {
+      "path": "swap[].device",
+      "kind": "string"
+    },
+    {
+      "path": "swap[].total",
+      "kind": "string"
+    },
+    {
+      "path": "swap[].used",
+      "kind": "string"
+    }
+  ]
+}

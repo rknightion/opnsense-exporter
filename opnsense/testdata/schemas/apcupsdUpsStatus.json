@@ -1,0 +1,32 @@
+{
+  "endpoint": "apcupsdUpsStatus",
+  "method": "GET",
+  "path": "api/apcupsd/service/getUpsStatus",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "error",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "error",
+      "kind": "any"
+    },
+    {
+      "path": "status",
+      "kind": "object"
+    },
+    {
+      "path": "status.*",
+      "kind": "object"
+    },
+    {
+      "path": "status.*.norm",
+      "kind": "any"
+    },
+    {
+      "path": "status.*.value",
+      "kind": "any"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "endpoint": "openVPNSessions",
+  "method": "GET",
+  "path": "api/openvpn/service/search_sessions",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].is_client",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].real_address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].username",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].virtual_address",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

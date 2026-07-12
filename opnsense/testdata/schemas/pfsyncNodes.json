@@ -1,0 +1,42 @@
+{
+  "endpoint": "pfsyncNodes",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_pfsync_nodes",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].creatorid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].this",
+      "kind": "number"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

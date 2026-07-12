@@ -1,0 +1,44 @@
+{
+  "endpoint": "firewallRuleStats",
+  "method": "GET",
+  "path": "api/firewall/filter_util/rule_stats",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "stats",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "stats",
+      "kind": "object"
+    },
+    {
+      "path": "stats.*",
+      "kind": "object"
+    },
+    {
+      "path": "stats.*.bytes",
+      "kind": "number"
+    },
+    {
+      "path": "stats.*.evaluations",
+      "kind": "number"
+    },
+    {
+      "path": "stats.*.packets",
+      "kind": "number"
+    },
+    {
+      "path": "stats.*.pf_rules",
+      "kind": "number"
+    },
+    {
+      "path": "stats.*.states",
+      "kind": "number"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

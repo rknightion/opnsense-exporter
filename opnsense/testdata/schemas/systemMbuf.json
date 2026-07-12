@@ -1,0 +1,139 @@
+{
+  "endpoint": "systemMbuf",
+  "method": "GET",
+  "path": "api/diagnostics/system/systemMbuf",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "mbuf-statistics"
+  ],
+  "fields": [
+    {
+      "path": "mbuf-statistics",
+      "kind": "object"
+    },
+    {
+      "path": "mbuf-statistics.bytes-in-use",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.bytes-total",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.cluster-cache",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.cluster-current",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.cluster-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.cluster-max",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.cluster-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.cluster-total",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo16-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo16-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo9-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo9-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbop-cache",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbop-current",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbop-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbop-max",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbop-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbop-total",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-and-cluster",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-cache",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-current",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-max",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.mbuf-total",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.packet-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.packet-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.percentage",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.sendfile-io-count",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.sendfile-pages-sent",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.sendfile-syscalls",
+      "kind": "number"
+    }
+  ]
+}

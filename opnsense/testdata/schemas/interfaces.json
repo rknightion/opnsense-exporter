@@ -1,0 +1,143 @@
+{
+  "endpoint": "interfaces",
+  "method": "GET",
+  "path": "api/diagnostics/traffic/interface",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "interfaces"
+  ],
+  "fields": [
+    {
+      "path": "interfaces",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces.*",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces.*.HW offload capabilities",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.address length",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.bytes received",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.bytes transmitted",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.collisions",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.datalen",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.device",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.driver",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.flags",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.header length",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.index",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.input errors",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.input queue drops",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.line rate",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.link state",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.metric",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.mtu",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.multicasts received",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.multicasts transmitted",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.name",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.output errors",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.packets for unknown protocol",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.packets received",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.packets transmitted",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.promiscuous listeners",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.send queue drops",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.send queue length",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.send queue max length",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.type",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.uptime at attach or stat reset",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces.*.vhid",
+      "kind": "string"
+    }
+  ]
+}

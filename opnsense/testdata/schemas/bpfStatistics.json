@@ -1,0 +1,19 @@
+{
+  "endpoint": "bpfStatistics",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_bpf_statistics",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "bpf-statistics"
+  ],
+  "fields": [
+    {
+      "path": "bpf-statistics",
+      "kind": "object"
+    },
+    {
+      "path": "bpf-statistics.bpf-entry",
+      "kind": "any"
+    }
+  ]
+}

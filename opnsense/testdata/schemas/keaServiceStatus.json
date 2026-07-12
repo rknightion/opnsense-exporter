@@ -1,0 +1,15 @@
+{
+  "endpoint": "keaServiceStatus",
+  "method": "GET",
+  "path": "api/kea/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

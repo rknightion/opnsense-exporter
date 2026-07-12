@@ -1,0 +1,28 @@
+{
+  "endpoint": "netflowCacheStats",
+  "method": "GET",
+  "path": "api/diagnostics/netflow/cacheStats",
+  "topLevelKind": "object",
+  "fields": [
+    {
+      "path": "*",
+      "kind": "object"
+    },
+    {
+      "path": "*.DstIPaddresses",
+      "kind": "number"
+    },
+    {
+      "path": "*.Pkts",
+      "kind": "number"
+    },
+    {
+      "path": "*.SrcIPaddresses",
+      "kind": "number"
+    },
+    {
+      "path": "*.if",
+      "kind": "string"
+    }
+  ]
+}

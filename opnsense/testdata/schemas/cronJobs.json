@@ -1,0 +1,74 @@
+{
+  "endpoint": "cronJobs",
+  "method": "POST",
+  "path": "api/cron/settings/searchJobs",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].command",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].days",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].hours",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].minutes",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].months",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].origin",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].weekdays",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

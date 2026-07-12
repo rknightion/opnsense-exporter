@@ -1,0 +1,66 @@
+{
+  "endpoint": "acmeCertificates",
+  "method": "GET",
+  "path": "api/acmeclient/certificates/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].altNames",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].lastUpdate",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].statusCode",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].statusLastUpdate",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

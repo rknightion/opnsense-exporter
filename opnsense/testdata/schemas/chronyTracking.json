@@ -1,0 +1,15 @@
+{
+  "endpoint": "chronyTracking",
+  "method": "GET",
+  "path": "api/chrony/service/chronytracking",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

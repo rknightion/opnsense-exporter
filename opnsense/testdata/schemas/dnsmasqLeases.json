@@ -1,0 +1,83 @@
+{
+  "endpoint": "dnsmasqLeases",
+  "method": "GET",
+  "path": "api/dnsmasq/leases/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "interfaces",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces",
+      "kind": "any"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].client_id",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].expire",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].hostname",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].hwaddr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].iaid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].if",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].if_descr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].if_name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].is_reserved",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].mac_info",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

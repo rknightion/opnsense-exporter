@@ -1,0 +1,31 @@
+{
+  "endpoint": "keaSubnets6",
+  "method": "GET",
+  "path": "api/kea/dhcpv6/searchSubnet",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].%interface",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].pools",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].subnet",
+      "kind": "string"
+    }
+  ]
+}

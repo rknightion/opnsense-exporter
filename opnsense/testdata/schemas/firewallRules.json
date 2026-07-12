@@ -1,0 +1,66 @@
+{
+  "endpoint": "firewallRules",
+  "method": "POST",
+  "path": "api/firewall/filter/search_rule",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].%interface",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].action",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].direction",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].interface",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].protocol",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

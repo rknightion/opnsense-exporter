@@ -1,0 +1,15 @@
+{
+  "endpoint": "dnsmasqServiceStatus",
+  "method": "GET",
+  "path": "api/dnsmasq/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

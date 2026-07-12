@@ -1,0 +1,15 @@
+{
+  "endpoint": "quaggaBgpSummary",
+  "method": "GET",
+  "path": "api/quagga/diagnostics/bgpsummary",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

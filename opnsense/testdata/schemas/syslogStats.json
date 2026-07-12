@@ -1,0 +1,62 @@
+{
+  "endpoint": "syslogStats",
+  "method": "GET",
+  "path": "api/syslog/service/stats",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].Description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].Number",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].SourceId",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].SourceInstance",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].SourceName",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].State",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].Type",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

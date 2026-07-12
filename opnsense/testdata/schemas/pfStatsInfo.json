@@ -1,0 +1,151 @@
+{
+  "endpoint": "pfStatsInfo",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/pf_statistics/info",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "info"
+  ],
+  "fields": [
+    {
+      "path": "info",
+      "kind": "object"
+    },
+    {
+      "path": "info.counters",
+      "kind": "object"
+    },
+    {
+      "path": "info.counters.*",
+      "kind": "object"
+    },
+    {
+      "path": "info.counters.*.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.counters.*.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.limit-counters",
+      "kind": "object"
+    },
+    {
+      "path": "info.limit-counters.*",
+      "kind": "object"
+    },
+    {
+      "path": "info.limit-counters.*.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.limit-counters.*.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table",
+      "kind": "object"
+    },
+    {
+      "path": "info.source-tracking-table.current-entries",
+      "kind": "object"
+    },
+    {
+      "path": "info.source-tracking-table.current-entries.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.current-entries.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.inserts",
+      "kind": "object"
+    },
+    {
+      "path": "info.source-tracking-table.inserts.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.inserts.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.removals",
+      "kind": "object"
+    },
+    {
+      "path": "info.source-tracking-table.removals.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.removals.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.searches",
+      "kind": "object"
+    },
+    {
+      "path": "info.source-tracking-table.searches.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.source-tracking-table.searches.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table",
+      "kind": "object"
+    },
+    {
+      "path": "info.state-table.current-entries",
+      "kind": "object"
+    },
+    {
+      "path": "info.state-table.current-entries.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.current-entries.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.inserts",
+      "kind": "object"
+    },
+    {
+      "path": "info.state-table.inserts.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.inserts.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.removals",
+      "kind": "object"
+    },
+    {
+      "path": "info.state-table.removals.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.removals.total",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.searches",
+      "kind": "object"
+    },
+    {
+      "path": "info.state-table.searches.rate",
+      "kind": "number"
+    },
+    {
+      "path": "info.state-table.searches.total",
+      "kind": "number"
+    }
+  ]
+}

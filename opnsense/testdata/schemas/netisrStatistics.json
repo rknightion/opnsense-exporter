@@ -1,0 +1,95 @@
+{
+  "endpoint": "netisrStatistics",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_netisr_statistics",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "netisr"
+  ],
+  "fields": [
+    {
+      "path": "netisr",
+      "kind": "object"
+    },
+    {
+      "path": "netisr.protocol",
+      "kind": "array"
+    },
+    {
+      "path": "netisr.protocol[]",
+      "kind": "object"
+    },
+    {
+      "path": "netisr.protocol[].name",
+      "kind": "string"
+    },
+    {
+      "path": "netisr.protocol[].policy",
+      "kind": "string"
+    },
+    {
+      "path": "netisr.protocol[].protocol",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.protocol[].queue-limit",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream",
+      "kind": "array"
+    },
+    {
+      "path": "netisr.workstream[]",
+      "kind": "object"
+    },
+    {
+      "path": "netisr.workstream[].work",
+      "kind": "array"
+    },
+    {
+      "path": "netisr.workstream[].work[]",
+      "kind": "object"
+    },
+    {
+      "path": "netisr.workstream[].work[].cpu",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].dispatched",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].handled",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].hybrid-dispatched",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].length",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].name",
+      "kind": "string"
+    },
+    {
+      "path": "netisr.workstream[].work[].queue-drops",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].queued",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].watermark",
+      "kind": "number"
+    },
+    {
+      "path": "netisr.workstream[].work[].workstream",
+      "kind": "number"
+    }
+  ]
+}

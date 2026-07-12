@@ -1,0 +1,15 @@
+{
+  "endpoint": "nutServiceStatus",
+  "method": "GET",
+  "path": "api/nut/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

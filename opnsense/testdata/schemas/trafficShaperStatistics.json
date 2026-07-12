@@ -1,0 +1,96 @@
+{
+  "endpoint": "trafficShaperStatistics",
+  "method": "GET",
+  "path": "api/trafficshaper/service/statistics",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "items",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "items",
+      "kind": "array"
+    },
+    {
+      "path": "items[]",
+      "kind": "object"
+    },
+    {
+      "path": "items[].description",
+      "kind": "any"
+    },
+    {
+      "path": "items[].flows",
+      "kind": "array"
+    },
+    {
+      "path": "items[].flows[]",
+      "kind": "object"
+    },
+    {
+      "path": "items[].flows[].bytes",
+      "kind": "number"
+    },
+    {
+      "path": "items[].flows[].drop_bytes",
+      "kind": "number"
+    },
+    {
+      "path": "items[].flows[].drop_pkt",
+      "kind": "number"
+    },
+    {
+      "path": "items[].flows[].pkt",
+      "kind": "number"
+    },
+    {
+      "path": "items[].id",
+      "kind": "any"
+    },
+    {
+      "path": "items[].pipe",
+      "kind": "any"
+    },
+    {
+      "path": "items[].rules",
+      "kind": "array"
+    },
+    {
+      "path": "items[].rules[]",
+      "kind": "object"
+    },
+    {
+      "path": "items[].rules[].attached_to",
+      "kind": "any"
+    },
+    {
+      "path": "items[].rules[].bytes",
+      "kind": "number"
+    },
+    {
+      "path": "items[].rules[].description",
+      "kind": "any"
+    },
+    {
+      "path": "items[].rules[].pkts",
+      "kind": "number"
+    },
+    {
+      "path": "items[].rules[].rule",
+      "kind": "any"
+    },
+    {
+      "path": "items[].template",
+      "kind": "any"
+    },
+    {
+      "path": "items[].type",
+      "kind": "any"
+    },
+    {
+      "path": "status",
+      "kind": "any"
+    }
+  ]
+}

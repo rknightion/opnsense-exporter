@@ -1,0 +1,74 @@
+{
+  "endpoint": "arp",
+  "method": "POST",
+  "path": "api/diagnostics/interface/search_arp",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].expired",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].expires",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].hostname",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].intf",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].intf_description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].ip",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].mac",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].manufacturer",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].permanent",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

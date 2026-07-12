@@ -1,0 +1,20 @@
+{
+  "endpoint": "pfStates",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/pf_states/1",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "limit"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "string"
+    },
+    {
+      "path": "limit",
+      "kind": "string"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "endpoint": "interfacesOverview",
+  "method": "GET",
+  "path": "api/interfaces/overview/interfaces_info",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].device",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].flags",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].flags[]",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].identifier",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].is_physical",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].link_type",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].media",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].vlan",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].vlan.parent",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].vlan.tag",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].vlan_tag",
+      "kind": "string"
+    }
+  ]
+}

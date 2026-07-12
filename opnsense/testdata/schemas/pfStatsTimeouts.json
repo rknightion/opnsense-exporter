@@ -1,0 +1,19 @@
+{
+  "endpoint": "pfStatsTimeouts",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/pf_statistics/timeouts",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "timeouts"
+  ],
+  "fields": [
+    {
+      "path": "timeouts",
+      "kind": "object"
+    },
+    {
+      "path": "timeouts.*",
+      "kind": "string"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "endpoint": "quaggaServiceStatus",
+  "method": "GET",
+  "path": "api/quagga/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

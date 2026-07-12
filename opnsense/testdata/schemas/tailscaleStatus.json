@@ -1,0 +1,90 @@
+{
+  "endpoint": "tailscaleStatus",
+  "method": "GET",
+  "path": "api/tailscale/status/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "BackendState",
+    "Peer",
+    "Self",
+    "Version"
+  ],
+  "fields": [
+    {
+      "path": "BackendState",
+      "kind": "string"
+    },
+    {
+      "path": "Peer",
+      "kind": "object"
+    },
+    {
+      "path": "Peer.*",
+      "kind": "object"
+    },
+    {
+      "path": "Peer.*.CurAddr",
+      "kind": "string"
+    },
+    {
+      "path": "Peer.*.DNSName",
+      "kind": "string"
+    },
+    {
+      "path": "Peer.*.HostName",
+      "kind": "string"
+    },
+    {
+      "path": "Peer.*.LastHandshake",
+      "kind": "string"
+    },
+    {
+      "path": "Peer.*.Relay",
+      "kind": "string"
+    },
+    {
+      "path": "Peer.*.RxBytes",
+      "kind": "number"
+    },
+    {
+      "path": "Peer.*.TxBytes",
+      "kind": "number"
+    },
+    {
+      "path": "Self",
+      "kind": "object"
+    },
+    {
+      "path": "Self.CurAddr",
+      "kind": "string"
+    },
+    {
+      "path": "Self.DNSName",
+      "kind": "string"
+    },
+    {
+      "path": "Self.HostName",
+      "kind": "string"
+    },
+    {
+      "path": "Self.LastHandshake",
+      "kind": "string"
+    },
+    {
+      "path": "Self.Relay",
+      "kind": "string"
+    },
+    {
+      "path": "Self.RxBytes",
+      "kind": "number"
+    },
+    {
+      "path": "Self.TxBytes",
+      "kind": "number"
+    },
+    {
+      "path": "Version",
+      "kind": "string"
+    }
+  ]
+}

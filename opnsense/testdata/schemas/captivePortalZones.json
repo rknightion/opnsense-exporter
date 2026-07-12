@@ -1,0 +1,7 @@
+{
+  "endpoint": "captivePortalZones",
+  "method": "GET",
+  "path": "api/captiveportal/session/zones",
+  "topLevelKind": "any",
+  "fields": []
+}

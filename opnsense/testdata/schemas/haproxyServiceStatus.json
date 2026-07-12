@@ -1,0 +1,15 @@
+{
+  "endpoint": "haproxyServiceStatus",
+  "method": "GET",
+  "path": "api/haproxy/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

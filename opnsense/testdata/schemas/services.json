@@ -1,0 +1,54 @@
+{
+  "endpoint": "services",
+  "method": "GET",
+  "path": "api/core/service/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].id",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].locked",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].running",
+      "kind": "number"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

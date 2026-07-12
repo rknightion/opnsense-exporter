@@ -1,0 +1,15 @@
+{
+  "endpoint": "crowdsecServiceStatus",
+  "method": "GET",
+  "path": "api/crowdsec/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

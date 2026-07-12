@@ -1,0 +1,15 @@
+{
+  "endpoint": "monitServiceStatus",
+  "method": "GET",
+  "path": "api/monit/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

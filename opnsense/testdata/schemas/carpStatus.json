@@ -1,0 +1,64 @@
+{
+  "endpoint": "carpStatus",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_vip_status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "carp",
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "carp",
+      "kind": "object"
+    },
+    {
+      "path": "carp.allow",
+      "kind": "string"
+    },
+    {
+      "path": "carp.demotion",
+      "kind": "string"
+    },
+    {
+      "path": "carp.maintenancemode",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].advbase",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].advskew",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].interface",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status_txt",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].subnet",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].vhid",
+      "kind": "string"
+    }
+  ]
+}

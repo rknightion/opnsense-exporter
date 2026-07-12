@@ -1,0 +1,20 @@
+{
+  "endpoint": "netflowStatus",
+  "method": "GET",
+  "path": "api/diagnostics/netflow/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "collectors",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "collectors",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

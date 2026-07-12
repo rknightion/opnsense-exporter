@@ -1,0 +1,70 @@
+{
+  "endpoint": "ipsecPhase1",
+  "method": "GET",
+  "path": "api/ipsec/sessions/search_phase1",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].bytes-in",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].bytes-out",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].connected",
+      "kind": "boolean"
+    },
+    {
+      "path": "rows[].ikeid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].install-time",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].packets-in",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].packets-out",
+      "kind": "number"
+    },
+    {
+      "path": "rows[].phase1desc",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

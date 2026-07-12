@@ -1,0 +1,103 @@
+{
+  "endpoint": "healthCheck",
+  "method": "GET",
+  "path": "api/core/system/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "CrashReporter",
+    "Firewall",
+    "System",
+    "metadata",
+    "subsystems"
+  ],
+  "fields": [
+    {
+      "path": "CrashReporter",
+      "kind": "object"
+    },
+    {
+      "path": "CrashReporter.message",
+      "kind": "string"
+    },
+    {
+      "path": "CrashReporter.status",
+      "kind": "string"
+    },
+    {
+      "path": "CrashReporter.statusCode",
+      "kind": "number"
+    },
+    {
+      "path": "Firewall",
+      "kind": "object"
+    },
+    {
+      "path": "Firewall.message",
+      "kind": "string"
+    },
+    {
+      "path": "Firewall.status",
+      "kind": "string"
+    },
+    {
+      "path": "Firewall.statusCode",
+      "kind": "number"
+    },
+    {
+      "path": "System",
+      "kind": "object"
+    },
+    {
+      "path": "System.status",
+      "kind": "string"
+    },
+    {
+      "path": "metadata",
+      "kind": "object"
+    },
+    {
+      "path": "metadata.CrashReporter",
+      "kind": "object"
+    },
+    {
+      "path": "metadata.CrashReporter.message",
+      "kind": "string"
+    },
+    {
+      "path": "metadata.CrashReporter.status",
+      "kind": "string"
+    },
+    {
+      "path": "metadata.CrashReporter.statusCode",
+      "kind": "number"
+    },
+    {
+      "path": "metadata.Firewall",
+      "kind": "object"
+    },
+    {
+      "path": "metadata.Firewall.message",
+      "kind": "string"
+    },
+    {
+      "path": "metadata.Firewall.status",
+      "kind": "any"
+    },
+    {
+      "path": "metadata.Firewall.statusCode",
+      "kind": "number"
+    },
+    {
+      "path": "metadata.System",
+      "kind": "object"
+    },
+    {
+      "path": "metadata.System.status",
+      "kind": "any"
+    },
+    {
+      "path": "subsystems",
+      "kind": "any"
+    }
+  ]
+}

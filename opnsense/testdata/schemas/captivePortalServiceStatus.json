@@ -1,0 +1,15 @@
+{
+  "endpoint": "captivePortalServiceStatus",
+  "method": "GET",
+  "path": "api/captiveportal/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

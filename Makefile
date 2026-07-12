@@ -11,7 +11,7 @@ TOOLS_DIR := $(CURDIR)/.tools
 export PATH := $(TOOLS_DIR):$(PATH)
 
 .PHONY: default docgen docs docs-check dashboard rules grafana-check install-hooks capture \
-        coverage notices sbom tools-licensing tools-sbom
+        schemas coverage notices sbom tools-licensing tools-sbom
 default:
 	go build \
 	-tags osusergo,netgo \
@@ -114,6 +114,12 @@ grafana-check:
 	cd grafana/alerts && python3 build_rules.py
 	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/alerts/grafana-managed/
 	python3 grafana/alerts/validate_manifests.py
+
+# Regenerate the committed structure-only golden schemas (opnsense/testdata/schemas/)
+# from the response structs (cmd/apischema). Run after changing any response
+# struct; opnsense.TestSchemasUpToDate fails CI when these are stale.
+schemas:
+	go run ./cmd/apischema
 
 # Capture live-box responses for the response-shape canary (cmd/apicapture).
 # Writes to the gitignored opnsense/testdata/captures/ scratch dir; then run

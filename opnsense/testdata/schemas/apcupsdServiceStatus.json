@@ -1,0 +1,15 @@
+{
+  "endpoint": "apcupsdServiceStatus",
+  "method": "GET",
+  "path": "api/apcupsd/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

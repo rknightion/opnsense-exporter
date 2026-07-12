@@ -1,0 +1,15 @@
+{
+  "endpoint": "unboundServiceStatus",
+  "method": "GET",
+  "path": "api/unbound/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

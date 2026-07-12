@@ -1,0 +1,40 @@
+{
+  "endpoint": "ndpTable",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_ndp",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].expire",
+      "kind": "string"
+    },
+    {
+      "path": "[].intf",
+      "kind": "string"
+    },
+    {
+      "path": "[].intf_description",
+      "kind": "string"
+    },
+    {
+      "path": "[].ip",
+      "kind": "string"
+    },
+    {
+      "path": "[].mac",
+      "kind": "string"
+    },
+    {
+      "path": "[].manufacturer",
+      "kind": "string"
+    },
+    {
+      "path": "[].type",
+      "kind": "string"
+    }
+  ]
+}

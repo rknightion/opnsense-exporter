@@ -1,6 +1,9 @@
 package opnsense
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -141,6 +144,42 @@ func TestAllEndpointSchemas(t *testing.T) {
 		ec := manifest[EndpointName(s.Endpoint)]
 		if s.Path != string(ec.Path) || s.Method != ec.Method {
 			t.Errorf("schema %q path/method = %s %s, manifest says %s %s", s.Endpoint, s.Method, s.Path, ec.Method, ec.Path)
+		}
+	}
+}
+
+// The committed golden schema files must match what the current structs
+// derive — run `make schemas` after changing a response struct.
+func TestSchemasUpToDate(t *testing.T) {
+	schemas, err := AllEndpointSchemas()
+	if err != nil {
+		t.Fatalf("AllEndpointSchemas: %v", err)
+	}
+	seen := map[string]bool{"exemptions.json": true}
+	for _, s := range schemas {
+		name := s.Endpoint + ".json"
+		seen[name] = true
+		want, err := json.MarshalIndent(s, "", "  ")
+		if err != nil {
+			t.Fatalf("marshal %s: %v", s.Endpoint, err)
+		}
+		want = append(want, '\n')
+		got, err := os.ReadFile(filepath.Join("testdata", "schemas", name))
+		if err != nil {
+			t.Errorf("golden schema for %q unreadable (run `make schemas`): %v", s.Endpoint, err)
+			continue
+		}
+		if string(got) != string(want) {
+			t.Errorf("golden schema for %q is stale — run `make schemas`", s.Endpoint)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join("testdata", "schemas"))
+	if err != nil {
+		t.Fatalf("read testdata/schemas: %v", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() && !seen[e.Name()] {
+			t.Errorf("orphan golden schema %q — run `make schemas`", e.Name())
 		}
 	}
 }

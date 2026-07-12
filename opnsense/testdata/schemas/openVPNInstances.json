@@ -1,0 +1,54 @@
+{
+  "endpoint": "openVPNInstances",
+  "method": "POST",
+  "path": "api/openvpn/instances/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].description",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].dev_type",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].role",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

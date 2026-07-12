@@ -1,0 +1,20 @@
+{
+  "endpoint": "firewallStats",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/stats",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].label",
+      "kind": "string"
+    },
+    {
+      "path": "[].value",
+      "kind": "number"
+    }
+  ]
+}

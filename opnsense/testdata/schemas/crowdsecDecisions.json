@@ -1,0 +1,20 @@
+{
+  "endpoint": "crowdsecDecisions",
+  "method": "POST",
+  "path": "api/crowdsec/decisions/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

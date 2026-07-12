@@ -1,0 +1,15 @@
+{
+  "endpoint": "chronySources",
+  "method": "GET",
+  "path": "api/chrony/service/chronysources",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

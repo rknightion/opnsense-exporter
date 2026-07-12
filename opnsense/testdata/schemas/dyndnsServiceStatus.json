@@ -1,0 +1,15 @@
+{
+  "endpoint": "dyndnsServiceStatus",
+  "method": "GET",
+  "path": "api/dyndns/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

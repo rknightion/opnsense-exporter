@@ -1,0 +1,20 @@
+{
+  "endpoint": "monitStatus",
+  "method": "GET",
+  "path": "api/monit/status/get/xml",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "result",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "result",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "any"
+    }
+  ]
+}
