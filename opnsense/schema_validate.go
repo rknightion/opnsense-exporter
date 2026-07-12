@@ -32,9 +32,31 @@ func (r ValidationResult) Clean() bool {
 	return len(r.Missing) == 0 && len(r.Mismatches) == 0 && len(r.UnknownTopKeys) == 0
 }
 
+// SchemaExemption acknowledges known, deliberate divergence between one
+// endpoint's schema and a live box: paths that are legitimately absent in some
+// box states (MissingOK) and top-level keys the box serves that the exporter
+// deliberately does not model (KnownExtraTopKeys). Lives in the committed
+// opnsense/testdata/schemas/exemptions.json.
+type SchemaExemption struct {
+	MissingOK         []string `json:"missingOK,omitempty"`
+	KnownExtraTopKeys []string `json:"knownExtraTopKeys,omitempty"`
+	Note              string   `json:"note,omitempty"`
+}
+
+// bootgridEnvelopeKeys are the standard OPNsense search-envelope keys. Any
+// schema that models a "rows" top-level key gets these implicitly — the
+// exporter often decodes only rows/total, and the envelope keys are part of
+// the bootgrid protocol, not drift.
+var bootgridEnvelopeKeys = []string{"total", "rowCount", "current", "searchPhrase"}
+
 // ValidateResponseSchema checks a raw JSON response against a structure-only
-// schema. missingOK suppresses Missing reports for known-optional paths.
-func ValidateResponseSchema(s EndpointSchema, raw []byte, missingOK map[string]bool) (ValidationResult, error) {
+// schema. The exemption suppresses Missing reports for known-optional paths
+// and UnknownTopKeys reports for acknowledged unmodeled keys.
+func ValidateResponseSchema(s EndpointSchema, raw []byte, ex SchemaExemption) (ValidationResult, error) {
+	missingOK := make(map[string]bool, len(ex.MissingOK))
+	for _, p := range ex.MissingOK {
+		missingOK[p] = true
+	}
 	res := ValidationResult{Endpoint: s.Endpoint}
 
 	var root any
@@ -52,7 +74,19 @@ func ValidateResponseSchema(s EndpointSchema, raw []byte, missingOK map[string]b
 	if len(s.KnownTopLevelKeys) > 0 {
 		if obj, ok := root.(map[string]any); ok {
 			known := make(map[string]bool, len(s.KnownTopLevelKeys))
+			hasRows := false
 			for _, k := range s.KnownTopLevelKeys {
+				known[strings.ToLower(k)] = true
+				if k == "rows" {
+					hasRows = true
+				}
+			}
+			if hasRows {
+				for _, k := range bootgridEnvelopeKeys {
+					known[strings.ToLower(k)] = true
+				}
+			}
+			for _, k := range ex.KnownExtraTopKeys {
 				known[strings.ToLower(k)] = true
 			}
 			for k := range obj {
@@ -123,7 +157,7 @@ func evaluateFieldPath(f SchemaField, root any, missingOK map[string]bool, res *
 					unverifiable = true // incl. the PHP []-for-empty-object quirk
 					continue
 				}
-				child, present := obj[seg]
+				child, present := lookupKey(obj, seg)
 				if !present {
 					if last {
 						absentFinal++
@@ -167,6 +201,20 @@ func evaluateFieldPath(f SchemaField, root any, missingOK map[string]bool, res *
 		res.Unverified = append(res.Unverified, f.Path)
 		// else: an ancestor schema path is Missing and reports the drift itself.
 	}
+}
+
+// lookupKey resolves a JSON object key the way encoding/json does: an exact
+// match wins, otherwise a case-insensitive match is accepted.
+func lookupKey(obj map[string]any, key string) (any, bool) {
+	if v, ok := obj[key]; ok {
+		return v, true
+	}
+	for k, v := range obj {
+		if strings.EqualFold(k, key) {
+			return v, true
+		}
+	}
+	return nil, false
 }
 
 // splitSchemaPath tokenizes "rows[].name" → ["rows","[]","name"] and

@@ -31,7 +31,7 @@ func TestValidateResponseSchema(t *testing.T) {
 	cases := []struct {
 		name           string
 		raw            string
-		missingOK      map[string]bool
+		exemption      SchemaExemption
 		wantMissing    []string
 		wantMismatches []Mismatch
 		wantUnknownTop []string
@@ -77,7 +77,7 @@ func TestValidateResponseSchema(t *testing.T) {
 		{
 			name:        "missingOK suppresses a missing path",
 			raw:         `{"status":"ok","total":1,"details":{"uptime":41},"rows":[{"name":"a","flex":1}]}`,
-			missingOK:   map[string]bool{"rows[].size": true},
+			exemption:   SchemaExemption{MissingOK: []string{"rows[].size"}},
 			wantMissing: nil,
 		},
 		{
@@ -85,11 +85,27 @@ func TestValidateResponseSchema(t *testing.T) {
 			raw:         `{"status":"ok","total":2,"details":{"uptime":41},"rows":[{"name":"a","flex":1},{"name":"b","size":9,"flex":1}]}`,
 			wantMissing: nil,
 		},
+		{
+			// encoding/json matches keys case-insensitively, so the validator must too.
+			name: "case-insensitive key match like encoding/json",
+			raw:  `{"Status":"ok","Total":2,"Details":{"Uptime":41},"Rows":[{"Name":"a","Size":1,"Flex":1}]}`,
+		},
+		{
+			// Bootgrid envelope keys are protocol, not drift, on any rows schema.
+			name: "bootgrid envelope keys are implicitly known",
+			raw:  `{"status":"ok","total":1,"rowCount":1,"current":1,"searchPhrase":"","details":{"uptime":41},"rows":[{"name":"a","size":1,"flex":1}]}`,
+		},
+		{
+			name:           "knownExtraTopKeys suppresses an acknowledged key",
+			raw:            `{"status":"ok","total":1,"details":{"uptime":41},"rows":[{"name":"a","size":1,"flex":1}],"widget":{},"other":1}`,
+			exemption:      SchemaExemption{KnownExtraTopKeys: []string{"widget"}},
+			wantUnknownTop: []string{"other"},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := ValidateResponseSchema(validateFixtureSchema(), []byte(tc.raw), tc.missingOK)
+			res, err := ValidateResponseSchema(validateFixtureSchema(), []byte(tc.raw), tc.exemption)
 			if err != nil {
 				t.Fatalf("ValidateResponseSchema: %v", err)
 			}
@@ -111,7 +127,7 @@ func TestValidateResponseSchema(t *testing.T) {
 
 // A top-level kind conflict (object expected, array served) is breaking drift.
 func TestValidateResponseSchemaTopLevelMismatch(t *testing.T) {
-	res, err := ValidateResponseSchema(validateFixtureSchema(), []byte(`[1,2,3]`), nil)
+	res, err := ValidateResponseSchema(validateFixtureSchema(), []byte(`[1,2,3]`), SchemaExemption{})
 	if err != nil {
 		t.Fatalf("ValidateResponseSchema: %v", err)
 	}
@@ -132,7 +148,7 @@ func TestValidateResponseSchemaDynamicTopLevel(t *testing.T) {
 			{Path: "*.status", Kind: KindString},
 		},
 	}
-	res, err := ValidateResponseSchema(s, []byte(`{"wg0":{"status":"up"},"wg1":{"status":"down"},"extra":{"status":"up"}}`), nil)
+	res, err := ValidateResponseSchema(s, []byte(`{"wg0":{"status":"up"},"wg1":{"status":"down"},"extra":{"status":"up"}}`), SchemaExemption{})
 	if err != nil {
 		t.Fatalf("ValidateResponseSchema: %v", err)
 	}
@@ -140,7 +156,7 @@ func TestValidateResponseSchemaDynamicTopLevel(t *testing.T) {
 		t.Errorf("dynamic top level should be clean, got %+v", res)
 	}
 	// A retype inside one map value must still be caught.
-	res, err = ValidateResponseSchema(s, []byte(`{"wg0":{"status":5}}`), nil)
+	res, err = ValidateResponseSchema(s, []byte(`{"wg0":{"status":5}}`), SchemaExemption{})
 	if err != nil {
 		t.Fatalf("ValidateResponseSchema: %v", err)
 	}
@@ -152,7 +168,7 @@ func TestValidateResponseSchemaDynamicTopLevel(t *testing.T) {
 
 // Non-JSON or truncated bodies must error rather than pass silently.
 func TestValidateResponseSchemaBadJSON(t *testing.T) {
-	if _, err := ValidateResponseSchema(validateFixtureSchema(), []byte(`<html>`), nil); err == nil {
+	if _, err := ValidateResponseSchema(validateFixtureSchema(), []byte(`<html>`), SchemaExemption{}); err == nil {
 		t.Fatal("expected an error for a non-JSON body")
 	}
 }

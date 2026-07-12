@@ -1,1 +1,31 @@
-{}
+{
+  "apcupsdServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "apcupsdUpsStatus": { "knownExtraTopKeys": ["output"], "note": "raw apcaccess text echoed alongside the parsed fields; never consumed" },
+  "captivePortalServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "chronyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "crowdsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "dnsmasqServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "dyndnsServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "firmware": {
+    "missingOK": ["last_check", "needs_reboot", "new_packages", "os_version", "product_abi", "product_id", "product_version", "upgrade_packages"],
+    "knownExtraTopKeys": ["status_msg"],
+    "note": "firmware/status serves a minimal envelope until a check has run since boot; fields appear after the first check"
+  },
+  "haproxyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "hasyncVersion": { "missingOK": ["message", "status"], "note": "present only for some HA peer states; box has no HA peer" },
+  "ipsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "keaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "monitServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "nginxServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "nutServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "quaggaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "smartInfo": {
+    "missingOK": ["output.ata_smart_attributes", "output.nvme_smart_health_information_log", "output.power_on_time", "output.serial_number", "output.smart_status"],
+    "note": "smartctl fields vary by drive type — the struct fields are pointers by design"
+  },
+  "syslogServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "systemResources": { "missingOK": ["memory.arc"], "note": "ARC exists only on ZFS installs; testbed VM is UFS" },
+  "tailscaleServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "unboundServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "wireguardServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" }
+}
