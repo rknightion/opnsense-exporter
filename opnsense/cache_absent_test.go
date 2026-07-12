@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"net/http"
+	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -161,24 +162,64 @@ func TestClient_AbsentTTLDoesNotCacheServerErrors(t *testing.T) {
 // The plugin-gated allowlist is what protects core endpoints from negative caching.
 // A cached 404 on the health check would pin opnsense_up=0 for the whole TTL after
 // the box came back, so it must never be on the list.
-func TestPluginGatedEndpoints_ExcludesCoreAndPOSTEndpoints(t *testing.T) {
+func TestPluginGatedEndpoints_ExcludesCoreEndpoints(t *testing.T) {
 	endpoints := defaultEndpoints()
 
 	for _, name := range PluginGatedEndpoints() {
 		if _, ok := endpoints[name]; !ok {
 			t.Errorf("plugin-gated endpoint %q is not a registered endpoint", name)
 		}
-		if _, isPost := postEndpoints[name]; isPost {
-			t.Errorf("plugin-gated endpoint %q is POST; POSTs bypass the cache entirely, so listing it is dead config", name)
-		}
 	}
 
-	// Core endpoints whose absence must always be observed live.
+	// Core endpoints whose absence must always be observed live. A cached 404 on the
+	// health check would keep reporting a recovered firewall as down.
 	for _, forbidden := range []EndpointName{"healthCheck", "services", "systemResources", "firmware"} {
 		for _, name := range PluginGatedEndpoints() {
 			if name == forbidden {
 				t.Errorf("core endpoint %q must never be negative-cached", forbidden)
 			}
 		}
+	}
+}
+
+// POST endpoints are allowed on the plugin-gated list (only their 404 is cached),
+// but they must never receive a POSITIVE TTL: a POST's response body depends on what
+// was posted, so replaying it would serve one request's data for another.
+func TestCache_NeverServesACachedBodyForAPOST(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"device":"ada0"}`))
+	})
+	defer server.Close()
+
+	path := client.endpoints["smartInfo"]
+
+	// Force the pathological case: a positive entry present for a POST endpoint.
+	client.SetEndpointCacheTTL("smartInfo", time.Hour)
+	withFakeClock(t, client)
+	client.cache.put(path, http.StatusOK, []byte(`{"device":"ada0"}`))
+
+	if _, ok := client.cache.get(path); !ok {
+		t.Fatal("test setup: expected the entry to be cached")
+	}
+
+	// Even so, a POST must go to the box rather than replay that body.
+	var requests atomic.Int64
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		_ = r.ParseForm()
+		_, _ = w.Write([]byte(`{"device":"` + r.FormValue("device") + `"}`))
+	})
+
+	var resp struct {
+		Device string `json:"device"`
+	}
+	if err := client.doForm(path, url.Values{"device": {"ada1"}}, &resp); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Device != "ada1" {
+		t.Errorf("a POST was served a cached body: asked for ada1, got %q", resp.Device)
+	}
+	if requests.Load() != 1 {
+		t.Errorf("expected the POST to reach the box, got %d requests", requests.Load())
 	}
 }

@@ -184,13 +184,19 @@ func (c *Client) SetEndpointAbsentTTL(name EndpointName, ttl time.Duration) {
 //
 // It deliberately excludes core endpoints (healthCheck, services, systemResources,
 // firmware …): a cached 404 on those would misreport a broken or recovering box.
-// It also excludes POST endpoints (crowdsec*, smart*, ipsecPhase2 …), which bypass
-// the cache entirely because they would need body-keyed entries — listing one here
-// would be dead config. Both rules are enforced by TestPluginGatedEndpoints.
+// TestPluginGatedEndpoints enforces that.
+//
+// POST endpoints DO belong here. Only their 404 is ever cached, and a 404 is a
+// property of the route, not of the request body — verified against a live OPNsense
+// 26.1, where an absent plugin's endpoint answers 404 {"errorMessage":"Endpoint not
+// found"} to any POST, while a POST carrying a bad resource (smartInfo with a
+// nonexistent device) answers 200 {"message":"Invalid device name"}, not 404. So the
+// body-collision problem that rules out caching a POST's successful body does not
+// apply to caching its absence.
 //
 // When adding a plugin-gated collector whose Fetch treats 404 as feature-absent,
-// add its GET endpoint(s) here so boxes without the plugin stop paying for it on
-// every scrape.
+// add its endpoint(s) here so boxes without the plugin stop paying for it on every
+// scrape.
 func PluginGatedEndpoints() []EndpointName {
 	return []EndpointName{
 		// Per-plugin service status. The 200 body ({"status":"running"}) is live
@@ -202,7 +208,7 @@ func PluginGatedEndpoints() []EndpointName {
 		"quaggaServiceStatus", "syslogServiceStatus", "tailscaleServiceStatus",
 		"unboundServiceStatus", "wireguardServiceStatus",
 
-		// Plugin data endpoints.
+		// Plugin data endpoints (GET).
 		"acmeCertificates", "apcupsdUpsStatus", "bpfStatistics", "captivePortalZones",
 		"chronySources", "chronySourceStats", "chronyTracking", "dhcpv4",
 		"dhcpv6Leases", "dhcpv6Prefixes", "dyndnsAccounts", "haproxyCounters",
@@ -210,5 +216,11 @@ func PluginGatedEndpoints() []EndpointName {
 		"nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
 		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus",
 		"trafficShaperStatistics",
+
+		// Plugin data endpoints (POST). Only their 404 is cached; a successful POST
+		// response is body-dependent and always goes to the box (see the doc comment).
+		"crowdsecAlerts", "crowdsecDecisions", "crowdsecBouncers", "crowdsecMachines",
+		"captivePortalSessions", "ipsecPhase2", "quaggaOspfNeighbors",
+		"smartList", "smartInfo",
 	}
 }

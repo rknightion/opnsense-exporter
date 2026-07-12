@@ -363,18 +363,26 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 	// every endpoint). GET only: a POST is an action on the box, not an idempotent
 	// read. This precedes the observer below deliberately — a cache hit issues no
 	// request, so it must not be counted as one.
-	if method == "GET" {
-		if cached, ok := c.cache.get(path); ok {
-			c.log.Debug("serving cached response", "component", "opnsense-client", "url", reqURL, "code", cached.statusCode)
-			// A cached 404 is replayed as the error a live 404 produces, so callers
-			// that read it as "feature absent" behave exactly as they do uncached.
-			if cached.statusCode == http.StatusNotFound {
-				return &APICallError{
-					Endpoint:   string(path),
-					Message:    string(cached.body),
-					StatusCode: cached.statusCode,
-				}
+	if cached, ok := c.cache.get(path); ok {
+		// A cached 404 is replayed for ANY method, POST included: a 404 is a property
+		// of the route ("Endpoint not found" — the plugin is not installed), not of the
+		// request body, so it holds whatever was posted. It is returned as the same
+		// error a live 404 produces, so callers that read it as "feature absent" behave
+		// exactly as they do uncached.
+		if cached.statusCode == http.StatusNotFound {
+			c.log.Debug("serving cached 404", "component", "opnsense-client", "url", reqURL)
+			return &APICallError{
+				Endpoint:   string(path),
+				Message:    string(cached.body),
+				StatusCode: cached.statusCode,
 			}
+		}
+		// A cached BODY is only ever replayed for a GET. A POST's response depends on
+		// what was posted (smartInfo is POSTed once per device), so replaying one body
+		// for a different request would return another device's data. Such an entry is
+		// never stored — this is belt and braces.
+		if method == "GET" {
+			c.log.Debug("serving cached response", "component", "opnsense-client", "url", reqURL)
 			return unmarshalBody(path, cached.body, cached.statusCode, responseStruct)
 		}
 	}
@@ -548,13 +556,12 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody := truncateBody(respBody)
-		// A 404 from a plugin-gated endpoint means the plugin is not installed. Cache
-		// it (only if the endpoint has an absent TTL) so a box without the plugin is
-		// not asked again on every scrape; put() ignores every other status, so a 5xx
-		// or an auth failure still re-requests.
-		if method == "GET" {
-			c.cache.put(path, resp.StatusCode, errBody)
-		}
+		// A 404 from a plugin-gated endpoint means the plugin is not installed. Cache it
+		// regardless of method (only if the endpoint has an absent TTL): route absence is
+		// body-independent, so the POST-body-collision problem that rules out positive
+		// POST caching does not apply. put() ignores every other status, so a 5xx or an
+		// auth failure still re-requests.
+		c.cache.put(path, resp.StatusCode, errBody)
 		return &APICallError{
 			Endpoint:   string(path),
 			Message:    string(errBody),
