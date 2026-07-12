@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -250,10 +251,23 @@ func isPHPEmptyObject(expected FieldKind, v any) bool {
 
 // kindMatches reports whether a decoded JSON value satisfies a FieldKind.
 func kindMatches(k FieldKind, v any) bool {
-	if k == KindAny {
+	switch k {
+	case KindAny:
 		return true
+	case KindNumeric:
+		// json.Number decodes from a JSON number or a numeric string.
+		switch t := v.(type) {
+		case float64, json.Number:
+			return true
+		case string:
+			_, err := strconv.ParseFloat(t, 64)
+			return err == nil
+		default:
+			return false
+		}
+	default:
+		return jsonKindName(v) == string(kindToJSONName(k))
 	}
-	return jsonKindName(v) == string(kindToJSONName(k))
 }
 
 // jsonKindName names the JSON type of a decoded value (encoding/json mapping).

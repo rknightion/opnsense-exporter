@@ -125,6 +125,33 @@ func TestValidateResponseSchema(t *testing.T) {
 	}
 }
 
+// json.Number fields (KindNumeric) accept a JSON number or a numeric string —
+// OPNsense flips between them across releases (26.7 retyped many counters).
+func TestValidateResponseSchemaNumericKind(t *testing.T) {
+	s := EndpointSchema{
+		Endpoint:          "num",
+		TopLevelKind:      KindObject,
+		KnownTopLevelKeys: []string{"count"},
+		Fields:            []SchemaField{{Path: "count", Kind: KindNumeric}},
+	}
+	for _, raw := range []string{`{"count":5}`, `{"count":"5"}`, `{"count":"5.5"}`} {
+		res, err := ValidateResponseSchema(s, []byte(raw), SchemaExemption{})
+		if err != nil {
+			t.Fatalf("ValidateResponseSchema(%s): %v", raw, err)
+		}
+		if len(res.Mismatches) != 0 {
+			t.Errorf("numeric kind rejected %s: %+v", raw, res.Mismatches)
+		}
+	}
+	res, err := ValidateResponseSchema(s, []byte(`{"count":"abc"}`), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	if len(res.Mismatches) != 1 {
+		t.Errorf("numeric kind accepted a non-numeric string: %+v", res)
+	}
+}
+
 // A top-level kind conflict (object expected, array served) is breaking drift.
 func TestValidateResponseSchemaTopLevelMismatch(t *testing.T) {
 	res, err := ValidateResponseSchema(validateFixtureSchema(), []byte(`[1,2,3]`), SchemaExemption{})

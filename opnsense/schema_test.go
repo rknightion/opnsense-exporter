@@ -24,6 +24,7 @@ type walkerFixtureRow struct {
 
 type walkerFixtureTop struct {
 	walkerFixtureEmbedded
+	Count    json.Number                 `json:"count"`
 	Total    int                         `json:"total"`
 	Rows     []walkerFixtureRow          `json:"rows"`
 	Status   flexString                  `json:"status"`
@@ -51,6 +52,7 @@ func TestSchemaForType(t *testing.T) {
 		{Path: "byName.*.ratio", Kind: KindNumber},
 		{Path: "byName.*.tags", Kind: KindArray},
 		{Path: "byName.*.tags[]", Kind: KindString},
+		{Path: "count", Kind: KindNumeric},
 		{Path: "inherited", Kind: KindString},
 		{Path: "pointer", Kind: KindObject},
 		{Path: "pointer.bytes", Kind: KindNumber},

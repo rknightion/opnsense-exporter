@@ -17,10 +17,14 @@ type FieldKind string
 const (
 	KindString FieldKind = "string"
 	KindNumber FieldKind = "number"
-	KindBool   FieldKind = "boolean"
-	KindObject FieldKind = "object"
-	KindArray  FieldKind = "array"
-	KindAny    FieldKind = "any"
+	// KindNumeric is json.Number: the decoder accepts a JSON number or a
+	// numeric string, so both shapes are valid on the wire (OPNsense flips
+	// between them across releases — 26.7 retyped many counters).
+	KindNumeric FieldKind = "numeric"
+	KindBool    FieldKind = "boolean"
+	KindObject  FieldKind = "object"
+	KindArray   FieldKind = "array"
+	KindAny     FieldKind = "any"
 )
 
 // SchemaField is one expected key path in an endpoint's JSON response.
@@ -43,7 +47,10 @@ type EndpointSchema struct {
 	Fields            []SchemaField `json:"fields"`
 }
 
-var jsonUnmarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+var (
+	jsonUnmarshalerType = reflect.TypeOf((*json.Unmarshaler)(nil)).Elem()
+	jsonNumberType      = reflect.TypeOf(json.Number(""))
+)
 
 // schemaForType derives the schema of one Go type: its top-level kind and the
 // sorted key paths beneath it. Types with a custom UnmarshalJSON accept several
@@ -66,6 +73,9 @@ func walkType(t reflect.Type, prefix string, fields map[string]FieldKind, seen m
 		t = t.Elem()
 	}
 
+	if t == jsonNumberType {
+		return KindNumeric
+	}
 	if reflect.PointerTo(t).Implements(jsonUnmarshalerType) {
 		return KindAny
 	}

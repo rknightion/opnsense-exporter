@@ -17,39 +17,39 @@
     },
     {
       "path": "statistics.arp.dropped-duplicate-address",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.dropped-no-entry",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.entries-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.received-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.received-replies",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.received-requests",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.sent-failures",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.sent-replies",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.arp.sent-requests",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp",
@@ -57,55 +57,55 @@
     },
     {
       "path": "statistics.carp.dropped-bad-address-list",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-bad-authentication",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-bad-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-bad-version",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-bad-vhid",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-short-header",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-short-packet",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.dropped-wrong-ttl",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.received-inet-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.received-inet6-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.send-failed-memory-error",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.sent-inet-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.carp.sent-inet6-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp",
@@ -113,39 +113,39 @@
     },
     {
       "path": "statistics.icmp.discard-invalid-return-address",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.discard-no-route",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.dropped-bad-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.dropped-bad-code",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.dropped-bad-length",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.dropped-multicast-echo",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.dropped-multicast-timestamp",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.dropped-too-short",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.errors-not-from-message",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.icmp-address-responses",
@@ -153,11 +153,11 @@
     },
     {
       "path": "statistics.icmp.icmp-calls",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp.sent-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp6",
@@ -165,27 +165,27 @@
     },
     {
       "path": "statistics.icmp6.dropped-bad-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp6.dropped-bad-code",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp6.dropped-bad-length",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp6.dropped-no-entry",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp6.dropped-too-short",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.icmp6.icmp6-calls",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip",
@@ -193,119 +193,119 @@
     },
     {
       "path": "statistics.ip.discard-bad-address",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.discard-cannot-fragment",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.discard-no-mbufs",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.discard-no-route",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.discard-tunnel-no-gif",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-bad-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-bad-options",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-bad-version",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-below-minimum-size",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-fragments",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-fragments-after-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-short-data",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-short-header-length",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-short-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-too-long",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.dropped-unknown-protocol",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.fast-forwarded-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.forwarded-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.fragments-created",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.packets-cannot-forward",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.reassembled-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.received-fragments",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.received-local-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.received-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.received-unknown-multicast-group",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.redirects-sent",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.send-packets-fabricated-header",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.sent-fragments",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip.sent-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6",
@@ -313,63 +313,63 @@
     },
     {
       "path": "statistics.ip6.discard-cannot-fragment",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.discard-no-mbufs",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.discard-no-route",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.dropped-bad-options",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.dropped-bad-version",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.dropped-below-minimum-size",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.dropped-header-too-long",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.dropped-short-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.dropped-too-many-headers",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.forwarded-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.packets-not-forwardable",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.reassembled-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.received-fragments",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.received-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.ip6.sent-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync",
@@ -377,47 +377,47 @@
     },
     {
       "path": "statistics.pfsync.discarded-no-memory",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-bad-action",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-bad-auth",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-bad-interface",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-bad-ttl",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-bad-values",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-bad-version",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-failed-lookup",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-short",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-short-header",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.dropped-stale-state",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.input-histogram",
@@ -429,7 +429,7 @@
     },
     {
       "path": "statistics.pfsync.input-histogram[].count",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.input-histogram[].name",
@@ -445,7 +445,7 @@
     },
     {
       "path": "statistics.pfsync.output-histogram[].count",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.output-histogram[].name",
@@ -453,23 +453,23 @@
     },
     {
       "path": "statistics.pfsync.received-inet-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.received-inet6-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.send-errors",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.send-inet6-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.pfsync.sent-inet-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp",
@@ -481,135 +481,135 @@
     },
     {
       "path": "statistics.tcp.TCP connection count by state.CLOSED",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.CLOSE_WAIT",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.CLOSING",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.ESTABLISHED",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.FIN_WAIT_1",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.FIN_WAIT_2",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.LAST_ACK",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.LISTEN",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.SYN_RCVD",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.SYN_SENT",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.TCP connection count by state.TIME_WAIT",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ack-header-predictions",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.bad-connection-attempts",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connection-drops",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connection-requests",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-accepts",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-closed",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-dropped-by-finwait2-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-dropped-by-keepalives",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-dropped-by-persist-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-dropped-by-retransmit-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-established",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-hostcache-rtt",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-hostcache-rttvar",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-hostcache-ssthresh",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-updated-rtt-on-close",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-updated-ssthresh-on-close",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.connections-updated-variance-on-close",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.data-packet-header-predictions",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.discard-bad-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.discard-bad-header-offset",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.discard-reassembly-queue-full",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.discard-too-short",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ecn",
@@ -617,27 +617,27 @@
     },
     {
       "path": "statistics.tcp.ecn.ce-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ecn.congestion-reductions",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ecn.ect0-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ecn.ect1-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ecn.handshakes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.embryonic-connections-dropped",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.hostcache",
@@ -645,31 +645,31 @@
     },
     {
       "path": "statistics.tcp.hostcache.buffer-overflows",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.hostcache.entries-added",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.ignored-in-window-resets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.keepalive-probes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.keepalive-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.listen-queue-overflows",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.persist-timeout",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.pmtud",
@@ -677,103 +677,103 @@
     },
     {
       "path": "statistics.tcp.pmtud.pmtud-activated",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.pmtud.pmtud-activated-min-mss",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.pmtud.pmtud-failed",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.receive-window-update-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-ack-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-ack-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-acks-for-unsent-data",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-after-close-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-after-window-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-after-window-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-bad-udp-tunneled-pkts",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-completely-duplicate-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-completely-duplicate-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-duplicate-acks",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-in-sequence-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-in-sequence-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-old-duplicate-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-out-of-order",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-out-of-order-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-some-duplicate-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-some-duplicate-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-udp-tunneled-pkts",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.received-window-probes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.retransmit-timeouts",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sack",
@@ -781,87 +781,87 @@
     },
     {
       "path": "statistics.tcp.sack.byte-retransmits",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sack.received-blocks",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sack.recovery-episodes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sack.scoreboard-overflows",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sack.segment-retransmits",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sack.sent-option-blocks",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.segment-update-attempts",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.segments-updated-rtt",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-ack-only-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-control-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-data-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-data-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-packets-delayed",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-resends-by-mtu-discovery",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-retransmitted-bytes",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-retransmitted-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-unnecessary-retransmitted-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-urg-only-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-window-probe-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.sent-window-update-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache",
@@ -869,63 +869,63 @@
     },
     {
       "path": "statistics.tcp.syncache.aborted",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.bad-ack",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.bucket-overflow",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.cache-overflow",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.completed",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.dropped",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.duplicates",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.entries-added",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.receivd-cookies",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.reset",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.retransmitted",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.sent-cookies",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.stale",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.unreachable",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.syncache.zone-failures",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tcp-signature",
@@ -933,23 +933,23 @@
     },
     {
       "path": "statistics.tcp.tcp-signature.failed-make-signature",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tcp-signature.no-signature-expected",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tcp-signature.no-signature-provided",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tcp-signature.received-bad-signature",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tcp-signature.received-good-signature",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tw",
@@ -957,15 +957,15 @@
     },
     {
       "path": "statistics.tcp.tw.tw_recycles",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tw.tw_resets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.tcp.tw.tw_responds",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp",
@@ -973,51 +973,51 @@
     },
     {
       "path": "statistics.udp.delivered-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-bad-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-bad-data-length",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-broadcast-multicast",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-full-socket-buffer",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-incomplete-headers",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-no-checksum",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.dropped-no-socket",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.multicast-source-filter-matches",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.not-for-hashed-pcb",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.output-packets",
-      "kind": "string"
+      "kind": "numeric"
     },
     {
       "path": "statistics.udp.received-datagrams",
-      "kind": "string"
+      "kind": "numeric"
     }
   ]
 }
