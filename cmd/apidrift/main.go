@@ -74,6 +74,14 @@ func main() {
 		captures: *captures,
 	}
 
+	// Pre-flight: one cheap probe before the full sweep. When the box is
+	// unreachable (tailnet ACL, box down), failing fast beats 107 endpoints
+	// each burning the client timeout twice.
+	if _, _, err := p.fetchRaw("GET", "api/core/system/status", "", ""); err != nil {
+		fmt.Fprintf(os.Stderr, "pre-flight probe failed — box unreachable from here: %v\n", err)
+		os.Exit(2)
+	}
+
 	results := p.probeAll(schemas, exemptions)
 
 	// A box-wide outage is a probe problem, not API drift — fail loudly so the
