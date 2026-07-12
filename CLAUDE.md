@@ -49,6 +49,13 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
     then cached (`--exporter.cache-ttl`), so boxes without the plugin stop re-asking on every scrape.
     Never list a core endpoint there (a cached 404 on `healthCheck` would keep reporting a recovered
     firewall as down) — `TestPluginGatedEndpoints` enforces this.
+2c. Add the endpoint's response struct to `schemaRegistry` in `opnsense/schema_registry.go` and run
+    `make schemas` (`TestSchemaRegistryComplete` / `TestSchemasUpToDate` fail otherwise). If the
+    endpoint is POST, also add its request body to `captureRequests` in `opnsense/capture_requests.go`
+    (`TestCaptureRequestsCoverPostEndpoints` enforces parity). These feed the daily live-box schema
+    canary (`cmd/apidrift`, `.github/workflows/live-canary.yml`), which validates real payload
+    structure against the structs. Golden schemas are structure-only (key paths + JSON types) — never
+    commit response values.
 
 **Caching:** the client has a per-endpoint TTL response cache (`opnsense/cache.go`), opt-in per
 endpoint. Two rules, and they are not the same rule:
