@@ -49,6 +49,10 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+          # The tailnet overrides DNS to a private resolver tag:ci cannot reach,
+          # which kills api.github.com resolution after the join. The box is
+          # dialled by raw tailnet IP, so MagicDNS is not needed here.
+          args: --accept-dns=false
 
       - name: Schema canary (apidrift)
         id: drift
