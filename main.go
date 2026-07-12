@@ -96,6 +96,14 @@ func main() {
 
 	logger.Debug(fmt.Sprintf("OPNsense registered endpoints %s", opnsenseClient.Endpoints()))
 
+	// Slow-moving endpoints are served from an in-memory cache rather than re-fetched
+	// every scrape. Must happen before the client is cloned per scrape (WithContext):
+	// clones share the cache, but only one that already exists.
+	for endpoint, ttl := range options.CacheTTLs() {
+		opnsenseClient.SetEndpointCacheTTL(opnsense.EndpointName(endpoint), ttl)
+		logger.Info("caching API endpoint responses", "endpoint", endpoint, "ttl", ttl)
+	}
+
 	// selfMetricsRegistry holds exporter self-metrics (process_*, go_*). It is
 	// gathered on every /metrics request alongside the per-request collector view.
 	selfMetricsRegistry := prometheus.NewRegistry()

@@ -230,6 +230,11 @@ type Client struct {
 	// request-count/duration self-metrics without coupling this package to Prometheus.
 	// nil means no instrumentation.
 	observer RequestObserver
+	// cache, when set, serves successful GET responses for endpoints given a TTL via
+	// SetEndpointCacheTTL. It is a pointer so the per-scrape WithContext clone shares
+	// one cache with its parent; a value field would hand every scrape an empty cache.
+	// nil (and a cache with no TTLs) means every request goes to the box.
+	cache *responseCache
 }
 
 // RequestObserver is notified after every API request that passes through the client's
@@ -353,6 +358,18 @@ func (c *Client) doForm(path EndpointPath, form url.Values, responseStruct any) 
 func (c *Client) doWithContentType(method string, path EndpointPath, body io.Reader, contentType string, responseStruct any) (apiErr *APICallError) {
 	reqURL := fmt.Sprintf("%s/%s", c.baseURL, string(path))
 
+	// Serve slow-moving endpoints from the response cache (opt-in per endpoint via
+	// SetEndpointCacheTTL; no TTL configured = no caching, which is the default for
+	// every endpoint). GET only: a POST is an action on the box, not an idempotent
+	// read. This precedes the observer below deliberately — a cache hit issues no
+	// request, so it must not be counted as one.
+	if method == "GET" {
+		if cached, ok := c.cache.get(path); ok {
+			c.log.Debug("serving cached response", "component", "opnsense-client", "url", reqURL)
+			return unmarshalBody(path, cached, http.StatusOK, responseStruct)
+		}
+	}
+
 	// Record one self-metric observation per logical API call (not per retry): total
 	// wall time and the final HTTP status code. statusCode is a stack-local (the client
 	// clone is shared across concurrent sub-collector goroutines, so per-call state must
@@ -469,7 +486,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 		}
 
 		statusCode = resp.StatusCode
-		return c.readResponse(path, resp, responseStruct)
+		return c.readResponse(method, path, resp, responseStruct)
 	}
 	return &APICallError{
 		Endpoint:   string(path),
@@ -483,7 +500,11 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 // failures carry a bounded slice of the body in the returned error, which is
 // where response payloads are surfaced for debugging; successful responses are
 // never logged.
-func (c *Client) readResponse(path EndpointPath, resp *http.Response, responseStruct any) *APICallError {
+//
+// A successful GET body is handed to the response cache, which keeps it only if
+// the endpoint has a TTL. Failures are deliberately never cached: a scrape that
+// errored must retry on the next one, not serve the error for hours.
+func (c *Client) readResponse(method string, path EndpointPath, resp *http.Response, responseStruct any) *APICallError {
 	defer resp.Body.Close()
 
 	var reader io.Reader = resp.Body
@@ -524,14 +545,29 @@ func (c *Client) readResponse(path EndpointPath, resp *http.Response, responseSt
 		}
 	}
 
-	if err := json.Unmarshal(respBody, &responseStruct); err != nil {
-		return &APICallError{
-			Endpoint:   string(path),
-			Message:    fmt.Sprintf("failed to unmarshal response body: %s; body: %s", err.Error(), truncateBody(respBody)),
-			StatusCode: resp.StatusCode,
-		}
+	if err := unmarshalBody(path, respBody, resp.StatusCode, responseStruct); err != nil {
+		return err
 	}
 
+	if method == "GET" {
+		c.cache.put(path, respBody)
+	}
+
+	return nil
+}
+
+// unmarshalBody decodes an already-read, already-validated 2xx body into
+// responseStruct. Shared by the live-response path and the cache-hit path in
+// doWithContentType so a cached body is decoded exactly as a fresh one is,
+// giving each caller its own copy of the data.
+func unmarshalBody(path EndpointPath, body []byte, statusCode int, responseStruct any) *APICallError {
+	if err := json.Unmarshal(body, &responseStruct); err != nil {
+		return &APICallError{
+			Endpoint:   string(path),
+			Message:    fmt.Sprintf("failed to unmarshal response body: %s; body: %s", err.Error(), truncateBody(body)),
+			StatusCode: statusCode,
+		}
+	}
 	return nil
 }
 
