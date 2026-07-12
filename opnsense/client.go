@@ -365,8 +365,17 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 	// request, so it must not be counted as one.
 	if method == "GET" {
 		if cached, ok := c.cache.get(path); ok {
-			c.log.Debug("serving cached response", "component", "opnsense-client", "url", reqURL)
-			return unmarshalBody(path, cached, http.StatusOK, responseStruct)
+			c.log.Debug("serving cached response", "component", "opnsense-client", "url", reqURL, "code", cached.statusCode)
+			// A cached 404 is replayed as the error a live 404 produces, so callers
+			// that read it as "feature absent" behave exactly as they do uncached.
+			if cached.statusCode == http.StatusNotFound {
+				return &APICallError{
+					Endpoint:   string(path),
+					Message:    string(cached.body),
+					StatusCode: cached.statusCode,
+				}
+			}
+			return unmarshalBody(path, cached.body, cached.statusCode, responseStruct)
 		}
 	}
 
@@ -538,9 +547,17 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errBody := truncateBody(respBody)
+		// A 404 from a plugin-gated endpoint means the plugin is not installed. Cache
+		// it (only if the endpoint has an absent TTL) so a box without the plugin is
+		// not asked again on every scrape; put() ignores every other status, so a 5xx
+		// or an auth failure still re-requests.
+		if method == "GET" {
+			c.cache.put(path, resp.StatusCode, errBody)
+		}
 		return &APICallError{
 			Endpoint:   string(path),
-			Message:    string(truncateBody(respBody)),
+			Message:    string(errBody),
 			StatusCode: resp.StatusCode,
 		}
 	}
@@ -550,7 +567,7 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 	}
 
 	if method == "GET" {
-		c.cache.put(path, respBody)
+		c.cache.put(path, resp.StatusCode, respBody)
 	}
 
 	return nil

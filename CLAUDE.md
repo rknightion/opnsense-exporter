@@ -44,6 +44,18 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
     endpoint-name key to `postEndpoints` in `opnsense/contract.go` and bump the golden POST count in
     `opnsense/contract_test.go`. GET endpoints need no change — the contract manifest derives them
     automatically. The `cmd/apicontract` canary cross-checks every endpoint against OPNsense source.
+2b. If the new endpoint is plugin-gated (its `Fetch*` treats 404 as "feature absent" per step 2) **and
+    is a GET**, add its endpoint name to `PluginGatedEndpoints()` in `opnsense/cache.go`. Its 404 is
+    then cached (`--exporter.cache-ttl`), so boxes without the plugin stop re-asking on every scrape.
+    Never list a core endpoint there (a cached 404 on `healthCheck` would keep reporting a recovered
+    firewall as down) — `TestPluginGatedEndpoints` enforces this and rejects POST entries.
+
+**Caching:** the client has a per-endpoint TTL response cache (`opnsense/cache.go`), opt-in per
+endpoint and GET-only. A *successful* response may only be cached if the payload is **wholly**
+slow-moving — if it carries any counter, rate or live status (a service's running state, a link's
+up/down), caching it would freeze the series and invent flat `rate()` plateaus, so it must be fetched
+every scrape. Caching a **404** (step 2b) is safe even for endpoints whose success payload is live,
+because absence only changes when an admin installs the plugin.
 3. Add a `<Subsystem>Subsystem` const and a `Without<Subsystem>Collector()` option in `internal/collector/collector.go`
 4. Add the flag + `CollectorsDisableSwitch` field + switch entry in `internal/options/collectors.go`. Use `exporter.disable-*` (default-on) for low-cardinality collectors; reserve `exporter.enable-*` (default-off) for collectors with extra per-scrape API cost or high cardinality
 5. Wire it in `main.go` (`if !collectorsSwitches.<X> { ... WithoutXCollector() }`) (a unit test fails without it — `TestEveryDisableSwitchWiredInMain` reflects every `CollectorsDisableSwitch` field against the `collectorsSwitches.<X>` references in `main.go`, so a documented flag can't silently be a no-op)

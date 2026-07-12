@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"net/http"
 	"sync"
 	"time"
 )
@@ -20,22 +21,31 @@ import (
 // A nil *responseCache is a valid, permanently-empty cache — every method below
 // is nil-safe — so a Client built without one simply never caches.
 type responseCache struct {
-	now     func() time.Time
-	ttls    map[EndpointPath]time.Duration
-	entries map[EndpointPath]cacheEntry
-	mu      sync.Mutex
+	now func() time.Time
+	// ttls holds positive TTLs: how long a successful body may be replayed.
+	ttls map[EndpointPath]time.Duration
+	// absentTTLs holds negative TTLs: how long a 404 ("plugin absent") may be
+	// replayed. Kept separate from ttls because the two are not interchangeable —
+	// a *ServiceStatus endpoint's 200 body is live state that must never be cached,
+	// while its 404 is a routing fact that changes only when an admin installs the
+	// plugin. Most endpoints on the negative list have no positive TTL at all.
+	absentTTLs map[EndpointPath]time.Duration
+	entries    map[EndpointPath]cacheEntry
+	mu         sync.Mutex
 }
 
 type cacheEntry struct {
-	expiresAt time.Time
-	body      []byte
+	expiresAt  time.Time
+	body       []byte
+	statusCode int
 }
 
 func newResponseCache() *responseCache {
 	return &responseCache{
-		now:     time.Now,
-		ttls:    make(map[EndpointPath]time.Duration),
-		entries: make(map[EndpointPath]cacheEntry),
+		now:        time.Now,
+		ttls:       make(map[EndpointPath]time.Duration),
+		absentTTLs: make(map[EndpointPath]time.Duration),
+		entries:    make(map[EndpointPath]cacheEntry),
 	}
 }
 
@@ -56,35 +66,62 @@ func (rc *responseCache) setTTL(path EndpointPath, ttl time.Duration) {
 	rc.ttls[path] = ttl
 }
 
-// get returns the cached body for path when one is held and unexpired.
-func (rc *responseCache) get(path EndpointPath) ([]byte, bool) {
+// setAbsentTTL caches a 404 from path for ttl. A ttl <= 0 disables negative
+// caching for path and drops any entry already held for it.
+func (rc *responseCache) setAbsentTTL(path EndpointPath, ttl time.Duration) {
 	if rc == nil {
-		return nil, false
+		return
+	}
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	if ttl <= 0 {
+		delete(rc.absentTTLs, path)
+		delete(rc.entries, path)
+		return
+	}
+	rc.absentTTLs[path] = ttl
+}
+
+// get returns the cached entry for path when one is held and unexpired.
+func (rc *responseCache) get(path EndpointPath) (cacheEntry, bool) {
+	if rc == nil {
+		return cacheEntry{}, false
 	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
 	entry, ok := rc.entries[path]
 	if !ok || !rc.now().Before(entry.expiresAt) {
-		return nil, false
+		return cacheEntry{}, false
 	}
-	return entry.body, true
+	return entry, true
 }
 
-// put stores body as the cached response for path, if path has a TTL. body must
-// not be mutated afterwards; callers hand over a freshly read response body.
-func (rc *responseCache) put(path EndpointPath, body []byte) {
+// put stores a response for path under whichever TTL applies to its status code:
+// the positive TTL for a success, the absent TTL for a 404. Anything else (a 5xx,
+// an auth failure) is never cached — those are faults, and replaying one would
+// suppress a real error for the length of the TTL. body must not be mutated
+// afterwards; callers hand over a freshly read response body.
+func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) {
 	if rc == nil {
 		return
 	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
-	ttl, ok := rc.ttls[path]
+	var ttl time.Duration
+	var ok bool
+	switch {
+	case statusCode >= 200 && statusCode < 300:
+		ttl, ok = rc.ttls[path]
+	case statusCode == http.StatusNotFound:
+		ttl, ok = rc.absentTTLs[path]
+	}
 	if !ok {
 		return
 	}
-	rc.entries[path] = cacheEntry{body: body, expiresAt: rc.now().Add(ttl)}
+	rc.entries[path] = cacheEntry{body: body, statusCode: statusCode, expiresAt: rc.now().Add(ttl)}
 }
 
 // SetEndpointCacheTTL serves successful GET responses from the named endpoint
@@ -111,4 +148,67 @@ func (c *Client) SetEndpointCacheTTL(name EndpointName, ttl time.Duration) {
 		c.cache = newResponseCache()
 	}
 	c.cache.setTTL(path, ttl)
+}
+
+// SetEndpointAbsentTTL caches a 404 from the named endpoint for ttl, so a
+// plugin-gated endpoint on a box without the plugin is asked once per ttl rather
+// than on every scrape. A ttl <= 0 (the default) disables it. Unknown endpoint
+// names are ignored.
+//
+// The cached 404 is replayed as the same APICallError a live 404 produces, so the
+// Fetch* methods that treat 404 as "feature absent" behave identically and their
+// collectors stay silent. Only 404 is cached this way: a 5xx is a fault, not a
+// routing fact.
+//
+// The cost is staleness in one direction only: for up to ttl after an admin
+// installs a plugin, the exporter still reports it absent. Use only for
+// plugin-gated endpoints (see PluginGatedEndpoints) — never for a core endpoint
+// like the health check, where a cached 404 would keep reporting a recovered
+// firewall as down.
+func (c *Client) SetEndpointAbsentTTL(name EndpointName, ttl time.Duration) {
+	path, ok := c.endpoints[name]
+	if !ok {
+		return
+	}
+	if c.cache == nil {
+		c.cache = newResponseCache()
+	}
+	c.cache.setAbsentTTL(path, ttl)
+}
+
+// PluginGatedEndpoints lists the GET endpoints that answer 404 on a firewall
+// without the corresponding plugin installed, and whose Fetch* method therefore
+// treats a 404 as "feature absent" rather than an error. These are the endpoints
+// it is safe to negative-cache: a 404 here reflects an uninstalled plugin, which
+// changes only by admin action.
+//
+// It deliberately excludes core endpoints (healthCheck, services, systemResources,
+// firmware …): a cached 404 on those would misreport a broken or recovering box.
+// It also excludes POST endpoints (crowdsec*, smart*, ipsecPhase2 …), which bypass
+// the cache entirely because they would need body-keyed entries — listing one here
+// would be dead config. Both rules are enforced by TestPluginGatedEndpoints.
+//
+// When adding a plugin-gated collector whose Fetch treats 404 as feature-absent,
+// add its GET endpoint(s) here so boxes without the plugin stop paying for it on
+// every scrape.
+func PluginGatedEndpoints() []EndpointName {
+	return []EndpointName{
+		// Per-plugin service status. The 200 body ({"status":"running"}) is live
+		// state and is never cached — only the 404 is.
+		"apcupsdServiceStatus", "captivePortalServiceStatus", "chronyServiceStatus",
+		"crowdsecServiceStatus", "dnsmasqServiceStatus", "dyndnsServiceStatus",
+		"haproxyServiceStatus", "ipsecServiceStatus", "keaServiceStatus",
+		"monitServiceStatus", "nginxServiceStatus", "nutServiceStatus",
+		"quaggaServiceStatus", "syslogServiceStatus", "tailscaleServiceStatus",
+		"unboundServiceStatus", "wireguardServiceStatus",
+
+		// Plugin data endpoints.
+		"acmeCertificates", "apcupsdUpsStatus", "bpfStatistics", "captivePortalZones",
+		"chronySources", "chronySourceStats", "chronyTracking", "dhcpv4",
+		"dhcpv6Leases", "dhcpv6Prefixes", "dyndnsAccounts", "haproxyCounters",
+		"haproxyInfo", "ipsecPhase1", "ipsecPools", "monitStatus", "nginxVts",
+		"nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
+		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus",
+		"trafficShaperStatistics",
+	}
 }
