@@ -202,10 +202,42 @@ def build_diagnostics(b: Builder):
                    unit="s", w=12, h=7,
                    desc="p95 of opnsense_exporter_api_request_duration_seconds by endpoint.")
 
+    # Response cache (#196). A cache hit issues no API request, so it is invisible to
+    # api_requests_total above — that absence is by design (it is what makes the request
+    # rate drop when caching works), but it cannot be told apart from a disabled
+    # collector. These panels make the cache observable directly.
+    cache_hit_ratio = b.stat(
+        "API Cache Hit Rate",
+        f'sum(rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) / '
+        f'(sum(rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) + '
+        f'sum(rate({sel("opnsense_exporter_api_cache_misses_total")}[{RATE}])))',
+        unit="percentunit", w=6, h=7,
+        desc="Share of calls to cacheable endpoints served from cache rather than the "
+             "firewall. Endpoints with no TTL are not counted, so this describes the cache "
+             "itself. Expect a high steady-state value: slow-moving endpoints are re-fetched "
+             "only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.")
+    cache_hits = b.ts(
+        "API Cache Hits (by kind)",
+        [(f'sum by (kind) (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}]))', "{{kind}}")],
+        unit="reqps", w=9, h=7,
+        desc='kind="body": a replayed payload from a slow-moving endpoint (firmware status, '
+             'certificate inventory, CPU/system identity). kind="absent": a replayed 404 from a '
+             'plugin-gated endpoint — the plugin is not installed on this firewall, and the '
+             'exporter is no longer re-asking every scrape.')
+    cache_by_ep = b.table(
+        "API Cache Hits (by endpoint)",
+        [f'sort_desc(sum by (endpoint, kind) ({sel("opnsense_exporter_api_cache_hits_total")}))'],
+        renames={"Value": "Hits", "endpoint": "Endpoint", "kind": "Kind"},
+        excludes=["opnsense_instance"], w=9, h=7,
+        desc="Which endpoints the cache is actually saving calls on. An endpoint with a "
+             "configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an "
+             "ineffective TTL.")
+
     b.tab("Diagnostics", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
+        b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
         b.row("Exporter Build & Collectors", [build, cov]),
         b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),

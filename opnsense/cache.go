@@ -103,9 +103,17 @@ func (rc *responseCache) get(path EndpointPath) (cacheEntry, bool) {
 // an auth failure) is never cached — those are faults, and replaying one would
 // suppress a real error for the length of the TTL. body must not be mutated
 // afterwards; callers hand over a freshly read response body.
-func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) {
+//
+// It reports whether the response was actually stored, which is also what makes a
+// request a cache MISS in the self-metrics: a miss is a call that populated the
+// cache (cold cache or expired TTL). A call whose response was never cacheable in
+// the first place is not a miss — notably a 200 from an endpoint that only has an
+// absent TTL, i.e. a plugin-gated endpoint whose plugin IS installed. Its live
+// payload is fetched every scrape by design, so counting it as a miss every time
+// would bury the real signal and make the hit rate meaningless.
+func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) bool {
 	if rc == nil {
-		return
+		return false
 	}
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
@@ -119,9 +127,10 @@ func (rc *responseCache) put(path EndpointPath, statusCode int, body []byte) {
 		ttl, ok = rc.absentTTLs[path]
 	}
 	if !ok {
-		return
+		return false
 	}
 	rc.entries[path] = cacheEntry{body: body, statusCode: statusCode, expiresAt: rc.now().Add(ttl)}
+	return true
 }
 
 // SetEndpointCacheTTL serves successful GET responses from the named endpoint

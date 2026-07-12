@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 569
+- **Total metrics:** 571
 - **Gauges:** 369
-- **Counters:** 200
+- **Counters:** 202
 
 ## General
 
@@ -28,6 +28,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead. |
 | opnsense_exporter_api_requests_total | Counter | endpoint, code | Total number of OPNsense API requests made, by endpoint (api/* path) and HTTP response code (0 = no response, e.g. network error or context cancellation). Provides the denominator for a per-endpoint error rate alongside opnsense_exporter_endpoint_errors_total. |
 | opnsense_exporter_api_request_duration_seconds | Histogram | endpoint | Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scrape duration spikes. |
+| opnsense_exporter_api_cache_hits_total | Counter | endpoint, kind | Total number of OPNsense API calls served from the response cache instead of the firewall, by endpoint (api/* path) and kind. kind=\"body\" is a replayed payload from a slow-moving endpoint (--exporter.cache-ttl / --exporter.firmware-cache-ttl); kind=\"absent\" is a replayed 404 from a plugin-gated endpoint, meaning the plugin is not installed. Only endpoints with a configured TTL are counted, so this and opnsense_exporter_api_cache_misses_total form a hit rate for the cache itself. |
+| opnsense_exporter_api_cache_misses_total | Counter | endpoint | Total number of OPNsense API calls that went to the firewall and populated the response cache — a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched every scrape by design (only its 404 would be cached). |
 
 ## ACME Client
 

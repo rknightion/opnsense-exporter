@@ -159,6 +159,8 @@ type Collector struct {
 	endpointErrors       prometheus.CounterVec
 	apiRequests          prometheus.CounterVec
 	apiRequestDuration   prometheus.HistogramVec
+	apiCacheHits         prometheus.CounterVec
+	apiCacheMisses       prometheus.CounterVec
 	instanceLabel        string
 	collectors           []CollectorInstance
 
@@ -814,6 +816,18 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		Buckets:   []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15},
 	}, []string{"endpoint", "opnsense_instance"})
 
+	c.apiCacheHits = *prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "exporter_api_cache_hits_total",
+		Help:      "Total number of OPNsense API calls served from the response cache instead of the firewall, by endpoint (api/* path) and kind. kind=\"body\" is a replayed payload from a slow-moving endpoint (--exporter.cache-ttl / --exporter.firmware-cache-ttl); kind=\"absent\" is a replayed 404 from a plugin-gated endpoint, meaning the plugin is not installed. Only endpoints with a configured TTL are counted, so this and opnsense_exporter_api_cache_misses_total form a hit rate for the cache itself.",
+	}, []string{"endpoint", "kind", "opnsense_instance"})
+
+	c.apiCacheMisses = *prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "exporter_api_cache_misses_total",
+		Help:      "Total number of OPNsense API calls that went to the firewall and populated the response cache — a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched every scrape by design (only its 404 would be cached).",
+	}, []string{"endpoint", "opnsense_instance"})
+
 	// isUp, scrapes and endpointErrors are exposed through this Collector's own
 	// Describe/Collect (see Describe and collect), so they reach /metrics via the
 	// registry the Collector is registered on. They are deliberately NOT registered
@@ -837,6 +851,11 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	// &c is the pointer returned below, and the client is shared across every scrape
 	// (WithContext clones copy the observer field), so the wiring outlives New (#126).
 	c.Client.SetRequestObserver(&c)
+
+	// Likewise for the response cache: a cache hit issues no request, so it is invisible
+	// to the request observer above (by design — that is what makes api_requests_total
+	// drop when caching works). These counters make it visible directly.
+	c.Client.SetCacheObserver(&c)
 	return &c, nil
 }
 
@@ -849,6 +868,20 @@ func (c *Collector) ObserveAPIRequest(endpoint string, statusCode int, duration 
 	c.apiRequestDuration.WithLabelValues(endpoint, c.instanceLabel).Observe(duration.Seconds())
 }
 
+// ObserveCacheHit implements opnsense.CacheObserver: it counts one API call served
+// from the response cache, by endpoint and kind ("body" = replayed payload, "absent"
+// = replayed 404 from an uninstalled plugin). Called from the client choke point,
+// concurrently across sub-collector goroutines — the prometheus vecs are concurrency-safe.
+func (c *Collector) ObserveCacheHit(endpoint, kind string) {
+	c.apiCacheHits.WithLabelValues(endpoint, kind, c.instanceLabel).Inc()
+}
+
+// ObserveCacheMiss implements opnsense.CacheObserver: it counts one API call for a
+// cacheable endpoint that had to go to the firewall (cold cache or expired TTL).
+func (c *Collector) ObserveCacheMiss(endpoint string) {
+	c.apiCacheMisses.WithLabelValues(endpoint, c.instanceLabel).Inc()
+}
+
 // Describe implements the prometheus.Collector interface.
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapes.Describe(ch)
@@ -856,6 +889,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.endpointErrors.Describe(ch)
 	c.apiRequests.Describe(ch)
 	c.apiRequestDuration.Describe(ch)
+	c.apiCacheHits.Describe(ch)
+	c.apiCacheMisses.Describe(ch)
 	c.isUp.Describe(ch)
 	ch <- c.buildInfo
 	ch <- c.collectorEnabled
@@ -996,6 +1031,8 @@ func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 	c.endpointErrors.Collect(ch)
 	c.apiRequests.Collect(ch)
 	c.apiRequestDuration.Collect(ch)
+	c.apiCacheHits.Collect(ch)
+	c.apiCacheMisses.Collect(ch)
 	c.collectExporterInfo(ch)
 }
 

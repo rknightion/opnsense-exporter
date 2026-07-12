@@ -415,6 +415,14 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 		prometheus.HistogramOpts{Name: "opnsense_exporter_api_request_duration_seconds_test", Help: "h"},
 		[]string{"endpoint", "opnsense_instance"},
 	)
+	c.apiCacheHits = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "opnsense_exporter_api_cache_hits_total_test", Help: "h"},
+		[]string{"endpoint", "kind", "opnsense_instance"},
+	)
+	c.apiCacheMisses = *prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "opnsense_exporter_api_cache_misses_total_test", Help: "h"},
+		[]string{"endpoint", "opnsense_instance"},
+	)
 	return c
 }
 
@@ -963,5 +971,51 @@ func TestNew_Idempotent(t *testing.T) {
 		if _, err := New(&client, promslog.NewNopLogger(), "test-idempotent"); err != nil {
 			t.Fatalf("New call #%d returned error: %v", i+1, err)
 		}
+	}
+}
+
+// TestCacheSelfMetricsRecorded covers #196: a cache hit issues no API request, so it is
+// invisible to api_requests_total by design. These counters are what make it visible —
+// and a replayed 404 ("absent", plugin not installed) is counted separately from a
+// replayed payload ("body"), because the two mean different things.
+func TestCacheSelfMetricsRecorded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "haproxy") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"last_check":"2024-01-15T10:30:00Z","product_version":"24.1.1",
+			"product":{"product_check":{"upgrade_needs_reboot":"0"}},"status":"ok"}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	client.SetEndpointCacheTTL("firmware", time.Hour)
+	client.SetEndpointAbsentTTL("haproxyServiceStatus", time.Hour)
+
+	c := newScrapeTestCollector(t, client)
+	client.SetCacheObserver(c)
+
+	// Three calls each: one miss to populate, then two hits.
+	for range 3 {
+		if _, err := client.FetchFirmwareStatus(); err != nil {
+			t.Fatalf("firmware: %v", err)
+		}
+		if _, _, err := client.FetchServiceStatusOptional("haproxyServiceStatus"); err != nil {
+			t.Fatalf("haproxy: %v", err)
+		}
+	}
+
+	body := counterValue(t, c.apiCacheHits.WithLabelValues("api/core/firmware/status", "body", "test"))
+	if body != 2 {
+		t.Errorf("expected 2 body cache hits, got %v", body)
+	}
+	absent := counterValue(t, c.apiCacheHits.WithLabelValues("api/haproxy/service/status", "absent", "test"))
+	if absent != 2 {
+		t.Errorf("expected 2 absent cache hits, got %v", absent)
+	}
+	misses := counterValue(t, c.apiCacheMisses.WithLabelValues("api/core/firmware/status", "test"))
+	if misses != 1 {
+		t.Errorf("expected 1 miss (the cold fetch), got %v", misses)
 	}
 }

@@ -235,6 +235,10 @@ type Client struct {
 	// one cache with its parent; a value field would hand every scrape an empty cache.
 	// nil (and a cache with no TTLs) means every request goes to the box.
 	cache *responseCache
+	// cacheObserver, when set, is notified of every cache hit/miss on an endpoint that
+	// has a TTL, so the collector layer can record cache self-metrics. nil means no
+	// instrumentation.
+	cacheObserver CacheObserver
 }
 
 // RequestObserver is notified after every API request that passes through the client's
@@ -250,6 +254,37 @@ type RequestObserver interface {
 // request-scoped clone made afterwards via WithContext, since the clone is shallow).
 func (c *Client) SetRequestObserver(o RequestObserver) {
 	c.observer = o
+}
+
+// CacheObserver is notified when the response cache is used: a hit (kind "body" for
+// a replayed payload, "absent" for a replayed 404) or a miss.
+//
+// A miss is a call that POPULATED the cache — a cold cache or an expired TTL — not
+// merely a call that found nothing. The distinction matters: a plugin-gated endpoint
+// whose plugin IS installed answers 200 on every scrape, and that payload is never
+// cacheable (only its 404 would be), so it is not a miss. Counting it as one would
+// make every healthy plugin look like a permanent cache miss and drag the hit rate
+// toward zero while the cache was working perfectly.
+//
+// Implemented by the collector layer to record cache self-metrics; kept as an
+// interface here so opnsense/ stays Prometheus-free, mirroring RequestObserver.
+type CacheObserver interface {
+	ObserveCacheHit(endpoint, kind string)
+	ObserveCacheMiss(endpoint string)
+}
+
+// Cache hit kinds reported to a CacheObserver. A replayed body and a replayed 404
+// are counted separately because they mean different things: one saved a fetch of
+// slow-moving data, the other means the plugin is not installed on this firewall.
+const (
+	CacheHitBody   = "body"
+	CacheHitAbsent = "absent"
+)
+
+// SetCacheObserver installs o as the response-cache observer for this client (and any
+// request-scoped clone made afterwards via WithContext, since the clone is shallow).
+func (c *Client) SetCacheObserver(o CacheObserver) {
+	c.cacheObserver = o
 }
 
 // NewClient creates a new OPNsense API Client
@@ -371,6 +406,9 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 		// exactly as they do uncached.
 		if cached.statusCode == http.StatusNotFound {
 			c.log.Debug("serving cached 404", "component", "opnsense-client", "url", reqURL)
+			if c.cacheObserver != nil {
+				c.cacheObserver.ObserveCacheHit(string(path), CacheHitAbsent)
+			}
 			return &APICallError{
 				Endpoint:   string(path),
 				Message:    string(cached.body),
@@ -383,6 +421,9 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 		// never stored — this is belt and braces.
 		if method == "GET" {
 			c.log.Debug("serving cached response", "component", "opnsense-client", "url", reqURL)
+			if c.cacheObserver != nil {
+				c.cacheObserver.ObserveCacheHit(string(path), CacheHitBody)
+			}
 			return unmarshalBody(path, cached.body, cached.statusCode, responseStruct)
 		}
 	}
@@ -560,8 +601,11 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 		// regardless of method (only if the endpoint has an absent TTL): route absence is
 		// body-independent, so the POST-body-collision problem that rules out positive
 		// POST caching does not apply. put() ignores every other status, so a 5xx or an
-		// auth failure still re-requests.
-		c.cache.put(path, resp.StatusCode, errBody)
+		// auth failure still re-requests — and reports whether it stored, which is what
+		// makes this call a cache miss (a fetch that filled the cache).
+		if c.cache.put(path, resp.StatusCode, errBody) && c.cacheObserver != nil {
+			c.cacheObserver.ObserveCacheMiss(string(path))
+		}
 		return &APICallError{
 			Endpoint:   string(path),
 			Message:    string(errBody),
@@ -574,7 +618,9 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 	}
 
 	if method == "GET" {
-		c.cache.put(path, resp.StatusCode, respBody)
+		if c.cache.put(path, resp.StatusCode, respBody) && c.cacheObserver != nil {
+			c.cacheObserver.ObserveCacheMiss(string(path))
+		}
 	}
 
 	return nil
