@@ -1,0 +1,191 @@
+name: OPNsense Live-Box Canary
+
+# The live half of the API drift detection (#195): joins the tailnet, probes
+# every endpoint on the development-channel OPNsense box, validates the payload
+# STRUCTURE against schemas derived from our response structs (cmd/apidrift),
+# then runs the actual exporter end-to-end and asserts collector success plus a
+# metric-name floor. Drift lands in the same api-drift issue machinery as the
+# endpoint-manifest canary (api-contract.yml), under its own issue title.
+#
+# Reports and logs carry key paths + JSON type names only — never payload
+# values (the box's data must not leak into a public repo).
+
+on:
+  schedule:
+    - cron: '47 6 * * *'   # daily, offset from api-contract.yml's 06:17
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-canary
+  cancel-in-progress: false
+
+env:
+  # Distinct floors so a partial outage is distinguishable from drift:
+  # 47 sub-collectors must all succeed; the box currently emits 534 catalogue
+  # metric names, floor set with headroom for box-state variance.
+  METRIC_NAME_FLOOR: '490'
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Join tailnet
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Schema canary (apidrift)
+        id: drift
+        env:
+          DEVBOX_HOST: ${{ secrets.DEVBOX_HOST }}
+          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets.DEVBOX_API_KEY }}
+          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets.DEVBOX_API_SECRET }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Exit 0 = clean or warnings-only; exit 1 = breaking drift (outputs
+          # are written first); anything else = probe error.
+          if go run ./cmd/apidrift --base-url "https://${DEVBOX_HOST}" --insecure \
+               --out out/report.md --captures "$RUNNER_TEMP/captures"; then
+            :
+          else
+            code=$?
+            if [ "$code" -ne 1 ]; then
+              echo "apidrift failed with code $code" >&2
+              exit "$code"
+            fi
+          fi
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: End-to-end exporter smoke
+        id: smoke
+        env:
+          DEVBOX_HOST: ${{ secrets.DEVBOX_HOST }}
+          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets.DEVBOX_API_KEY }}
+          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets.DEVBOX_API_SECRET }}
+          OPNSENSE_EXPORTER_OPS_PROTOCOL: https
+          OPNSENSE_EXPORTER_OPS_INSECURE: 'true'
+          OPNSENSE_EXPORTER_INSTANCE_LABEL: canary
+        run: |
+          set -euo pipefail
+          go build -o /tmp/opnsense-exporter .
+          OPNSENSE_EXPORTER_OPS_API="$DEVBOX_HOST" /tmp/opnsense-exporter \
+            --exporter.enable-arp-details \
+            --exporter.enable-ndp-details \
+            --exporter.enable-unbound-infra \
+            --exporter.enable-openvpn-details \
+            --exporter.enable-firmware-package-details \
+            --exporter.enable-dnsmasq-details \
+            --exporter.enable-firewall-rules-details \
+            --exporter.enable-kea-details \
+            --exporter.enable-network-diagnostics \
+            --exporter.enable-netflow \
+            --exporter.enable-dhcpv4-details \
+            --exporter.enable-dhcpv6-details \
+            --exporter.enable-smart \
+            --exporter.enable-tailscale-peer-details \
+            --exporter.enable-alias-details \
+            --exporter.enable-hasync &
+          EXPORTER_PID=$!
+          trap 'kill "$EXPORTER_PID" 2>/dev/null || true' EXIT
+          sleep 3
+          # One scrape hits all 47 sub-collectors; give it a generous ceiling.
+          curl -sf -m 120 --retry 5 --retry-delay 5 --retry-connrefused \
+            -o /tmp/metrics.txt http://localhost:8080/metrics
+
+          fail=0
+          {
+            echo ""
+            echo "## End-to-end exporter smoke"
+            echo ""
+            up=$(awk '$1 ~ /^opnsense_up\{/ { print $2 }' /tmp/metrics.txt | head -n1)
+            if [ "$up" = "1" ]; then
+              echo "- \`opnsense_up\` = 1 ✅"
+            else
+              echo "- \`opnsense_up\` = ${up:-absent} ❌"
+              fail=1
+            fi
+            failed_collectors=$(awk '$1 ~ /^opnsense_exporter_scrape_collector_success\{/ && $2 == 0 { print $1 }' /tmp/metrics.txt || true)
+            ok_collectors=$(awk '$1 ~ /^opnsense_exporter_scrape_collector_success\{/ && $2 == 1 { c++ } END { print c+0 }' /tmp/metrics.txt)
+            if [ -z "$failed_collectors" ] && [ "$ok_collectors" -gt 0 ]; then
+              echo "- all ${ok_collectors} sub-collectors succeeded ✅"
+            else
+              echo "- failed sub-collectors ❌:"
+              # Label sets only — no payload values.
+              echo "$failed_collectors" | sed 's/^/  - `/; s/$/`/'
+              fail=1
+            fi
+            names=$(grep -c '^# TYPE opnsense_' /tmp/metrics.txt || true)
+            if [ "$names" -ge "$METRIC_NAME_FLOOR" ]; then
+              echo "- ${names} distinct \`opnsense_*\` metric names (floor ${METRIC_NAME_FLOOR}) ✅"
+            else
+              echo "- only ${names} distinct \`opnsense_*\` metric names (floor ${METRIC_NAME_FLOOR}) ❌"
+              fail=1
+            fi
+          } >> out/report.md
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "failed=$fail" >> "$GITHUB_OUTPUT"
+          # Job failure is decided after the issue steps, so a smoke failure
+          # still files/updates the drift issue first.
+
+      - name: Ensure api-drift label exists
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create api-drift --color B60205 \
+            --description "OPNsense API contract drift detected by CI" 2>/dev/null || true
+
+      - name: Open or update drift issue
+        if: steps.drift.outputs.drift == 'true' || steps.drift.outputs.warnings == 'true' || steps.smoke.outputs.failed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="OPNsense live-box canary drift"
+          # Label+exact-title dedupe — same proven pattern as api-contract.yml
+          # (author-based matching broke on gh's bot-login shape changes, #83).
+          existing=$(gh issue list --label api-drift --state open --json number,title \
+            --jq '.[] | select(.title == "OPNsense live-box canary drift") | .number' \
+            | head -n1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file out/report.md
+          else
+            gh issue create --title "$title" --label api-drift --body-file out/report.md
+          fi
+
+      - name: Close drift issue when clean
+        if: steps.drift.outputs.drift == 'false' && steps.drift.outputs.warnings == 'false' && steps.smoke.outputs.failed == '0' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --label api-drift --state open --json number,title \
+            --jq '.[] | select(.title == "OPNsense live-box canary drift") | .number' \
+            | head -n1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Live-box canary clean on the latest scheduled run. Closing."
+            gh issue close "$existing"
+          fi
+
+      - name: Fail the job on drift or smoke failure
+        if: steps.drift.outputs.drift == 'true' || steps.smoke.outputs.failed == '1'
+        run: |
+          echo "Live-box drift or smoke failure (see the run summary / the api-drift issue)." >&2
+          exit 1
