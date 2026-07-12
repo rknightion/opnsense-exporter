@@ -88,6 +88,63 @@ func TestSchemaForTypeTopLevelMap(t *testing.T) {
 	}
 }
 
+// Every manifest endpoint must have a schema registry entry or an explicit
+// exemption — never both, never neither.
+func TestSchemaRegistryComplete(t *testing.T) {
+	endpoints := defaultEndpoints()
+	for name := range endpoints {
+		_, registered := schemaRegistry[name]
+		_, exempt := schemaExemptEndpoints[name]
+		switch {
+		case registered && exempt:
+			t.Errorf("endpoint %q is both registered and exempt", name)
+		case !registered && !exempt:
+			t.Errorf("endpoint %q has neither a schema registry entry nor an exemption", name)
+		}
+	}
+	for name := range schemaRegistry {
+		if _, ok := endpoints[name]; !ok {
+			t.Errorf("schema registry entry %q is not a manifest endpoint", name)
+		}
+	}
+	for name := range schemaExemptEndpoints {
+		if _, ok := endpoints[name]; !ok {
+			t.Errorf("schema exemption %q is not a manifest endpoint", name)
+		}
+	}
+
+	// The four endpoints exempt from the endpoint-manifest canary get their
+	// ONLY automated coverage from this schema canary (#195) — they must never
+	// become schema-exempt too.
+	for _, name := range []EndpointName{"firmware", "firmwareInfo", "keaLeases4", "keaLeases6"} {
+		if _, ok := schemaRegistry[name]; !ok {
+			t.Errorf("endpoint %q must have a schema (it has no other automated coverage)", name)
+		}
+	}
+}
+
+// AllEndpointSchemas must derive a schema per registered endpoint, sorted,
+// with method/path from the contract manifest.
+func TestAllEndpointSchemas(t *testing.T) {
+	schemas, err := AllEndpointSchemas()
+	if err != nil {
+		t.Fatalf("AllEndpointSchemas: %v", err)
+	}
+	if len(schemas) != len(schemaRegistry) {
+		t.Fatalf("got %d schemas, want %d", len(schemas), len(schemaRegistry))
+	}
+	manifest := ContractManifest()
+	for i, s := range schemas {
+		if i > 0 && schemas[i-1].Endpoint >= s.Endpoint {
+			t.Errorf("schemas not sorted: %q before %q", schemas[i-1].Endpoint, s.Endpoint)
+		}
+		ec := manifest[EndpointName(s.Endpoint)]
+		if s.Path != string(ec.Path) || s.Method != ec.Method {
+			t.Errorf("schema %q path/method = %s %s, manifest says %s %s", s.Endpoint, s.Method, s.Path, ec.Method, ec.Path)
+		}
+	}
+}
+
 // Types with a custom UnmarshalJSON accept several JSON shapes, so the walker
 // must not descend into them or pin a kind.
 func TestSchemaForTypeCustomUnmarshaler(t *testing.T) {
