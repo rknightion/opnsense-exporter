@@ -267,6 +267,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"quaggaOspfv3Database":          "api/quagga/diagnostics/search_ospfv3database",
 		"quaggaGeneralRoute4":           "api/quagga/diagnostics/search_generalroute4",
 		"quaggaGeneralRoute6":           "api/quagga/diagnostics/search_generalroute6",
+		"firewallLog":                   "api/diagnostics/firewall/log",
 	}
 }
 

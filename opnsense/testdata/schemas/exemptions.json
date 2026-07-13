@@ -6,6 +6,10 @@
   "crowdsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "dnsmasqServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "dyndnsServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "firewallLog": {
+    "missingOK": ["[].srcport", "[].dstport", "[].tcpflags"],
+    "note": "per-protocol filterlog columns: srcport/dstport are emitted only for port-bearing protocols (tcp/udp) and tcpflags only for tcp, so an icmp/igmp/esp-only poll window omits the keys. Verified live 2026-07-13 (icmp/igmp rows carry neither). Box/traffic state, not a version prune"
+  },
   "firmware": {
     "missingOK": ["last_check", "needs_reboot", "new_packages", "os_version", "product_abi", "product_id", "product_version", "upgrade_packages"],
     "knownExtraTopKeys": ["all_packages", "all_sets", "api_version", "connection", "download_size", "product_target", "remove_packages", "repository", "status_msg", "status_reboot", "upgrade_major_message", "upgrade_major_version", "upgrade_needs_reboot", "upgrade_sets"],

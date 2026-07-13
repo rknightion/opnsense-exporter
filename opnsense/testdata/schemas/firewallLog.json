@@ -1,0 +1,92 @@
+{
+  "endpoint": "firewallLog",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/log",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].__digest__",
+      "kind": "string"
+    },
+    {
+      "path": "[].__timestamp__",
+      "kind": "string"
+    },
+    {
+      "path": "[].action",
+      "kind": "string"
+    },
+    {
+      "path": "[].anchorname",
+      "kind": "string"
+    },
+    {
+      "path": "[].dir",
+      "kind": "string"
+    },
+    {
+      "path": "[].dst",
+      "kind": "string"
+    },
+    {
+      "path": "[].dstport",
+      "kind": "string"
+    },
+    {
+      "path": "[].interface",
+      "kind": "string"
+    },
+    {
+      "path": "[].ipversion",
+      "kind": "string"
+    },
+    {
+      "path": "[].label",
+      "kind": "string"
+    },
+    {
+      "path": "[].length",
+      "kind": "string"
+    },
+    {
+      "path": "[].protoname",
+      "kind": "string"
+    },
+    {
+      "path": "[].protonum",
+      "kind": "string"
+    },
+    {
+      "path": "[].reason",
+      "kind": "string"
+    },
+    {
+      "path": "[].rid",
+      "kind": "string"
+    },
+    {
+      "path": "[].rulenr",
+      "kind": "string"
+    },
+    {
+      "path": "[].src",
+      "kind": "string"
+    },
+    {
+      "path": "[].srcport",
+      "kind": "string"
+    },
+    {
+      "path": "[].subrulenr",
+      "kind": "string"
+    },
+    {
+      "path": "[].tcpflags",
+      "kind": "string"
+    }
+  ]
+}

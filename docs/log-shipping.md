@@ -42,6 +42,49 @@ no Grafana Cloud endpoint, and no `OTEL_EXPORTER_OTLP_ENDPOINT` /
 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` environment variable), startup fails with an
 error naming the missing flag rather than silently shipping nothing.
 
+## Sources
+
+### Firewall (`--logs.firewall.enabled`)
+
+Ships parsed firewall filter-log events. Off by default; requires `--logs.enabled`.
+
+It polls `api/diagnostics/firewall/log`, the paged endpoint that returns each
+filterlog record already parsed into fields (`action`, `interface`, `dir`,
+`proto`, `src`/`dst`, ports, `rulenr`, `rid`) plus an **`__digest__`** (an md5 of
+the raw line) and a **`label`** — the human rule description the box resolves from
+the rule id against `/tmp/rules.debug`. That label is the reason to poll this API
+rather than tail native filterlog syslog: syslog ships a headerless CSV carrying
+only the rule md5, so the description is unavailable there.
+
+**Cursor.** Each poll passes the last-seen `__digest__` back as `?digest=`; the
+backend reverse-reads the rotation-aware logs and returns every newer row plus
+the cursor row itself, which the exporter drops. Tailing is lossless unless more
+than the row cap (1000) of events arrive between polls. On a fresh start with no
+`--logs.state-file`, the source primes its cursor at the newest row and ships
+nothing (resume-from-now — it does not dump the box's backlog); set
+`--logs.state-file` to persist the digest and resume across restarts. If the
+cursor has rotated out of the window, the source resumes from the newest row and
+logs a warning — bounded, visible loss, never silent. The source polls no faster
+than every 10s regardless of `--logs.poll-interval`, since each poll spawns
+configd and re-parses the rules on the box.
+
+**Loki mapping.** Body is a compact JSON encoding of the parsed event (the API
+does not return the original raw line). IPs, ports, rule ids and the rule label
+travel as structured metadata, never as labels.
+
+**Volume guidance.** This path targets **homelab/SMB** event rates. A box logging
+pass rules at hundreds to thousands of events per second (common on enterprise
+edges) will overwhelm API polling — use native filterlog syslog into an Alloy
+pipeline for that class instead. Do not run both paths for the firewall log at
+once: that double-ships (see [Delivery semantics](#delivery-semantics)).
+
+**Caveats.**
+
+- The filter log records the **first packet of a flow only** — it is an event
+  stream, not flow accounting. Do not read event counts as byte/connection totals.
+- qfeeds' `search_events` is a filtered, ~300s-stale subset of this same feed;
+  qfeeds blocks already appear here natively with their rule label.
+
 ## Loki label model
 
 Cardinality discipline is enforced by construction:
