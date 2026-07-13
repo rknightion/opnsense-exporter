@@ -29,6 +29,7 @@ nav = [
   { "Integration & Dashboards" = "integration-dashboards.md" },
   { Troubleshooting = "troubleshooting.md" },
   { Upgrading = "upgrading.md" },
+  { Compatibility = "compatibility.md" },
   { Architecture = "architecture.md" },
   { Changelog = "changelog.md" },
   { Development = [

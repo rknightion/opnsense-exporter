@@ -84,6 +84,21 @@ endpoint. Two rules, and they are not the same rule:
 
 9. Add panels for the new metrics to the Grafana dashboard. Each tab lives in a module under `grafana/tabs/` (see `grafana/tabs/AUTHORING.md` for the builder API); add panels to the relevant tab (or a new module wired into `register_subsystem_tabs` in `grafana/build_dashboard.py`). Then run `make dashboard` — it **fails the build (non-zero exit, in both write and `--check` mode) if any catalogue metric is left off the dashboard**. Optionally add alert/recording rules in `grafana/alerts/build_rules.py` and run `make rules`. See `grafana/README.md`. CI enforces all of this via `make grafana-check` (a required `ci-success` job): the coverage gate, regeneration staleness of `dashboard.json`/`dashboard-stats.json`/`grafana/alerts/grafana-managed/*.json`, and Grafana-managed manifest validity.
 
+## Canary Drift Triage
+
+Every finding from the daily live-box schema canary (`cmd/apidrift`) gets exactly one of four verdicts:
+
+- **absorb** — the payload changed representation only (a number arrived as a string, an object as an array of one). Flex types / `KindNumeric` usually already handle it; retype the field and move on.
+- **chase** — the data moved or was renamed. Write a **tolerant reader**: keep the legacy field, add the new one alongside it, and resolve new-wins-else-legacy in an accessor method. Template: `opnsense/health_check.go`.
+- **drop** — upstream removed the data. Keep the legacy field for the length of the support window; the metric reads absent/zero on newer releases. Document it in `docs/compatibility.md`.
+- **opportunity** — new data we don't model yet. Roadmap candidate, not a bug: exempt it via `knownExtraTopKeys` so the canary stops flagging it.
+
+Rules:
+
+- **Support window is current + previous stable OPNsense.** Never version-sniff — resolve by payload *shape*. Never remove a legacy field while a release that sends it is still in the window.
+- **`opnsense/testdata/schemas/exemptions.json` is the compat ledger.** Every kept-legacy path gets a `missingOK` entry (the prefix form `section.*` is supported) with a note naming the generation it belongs to and the trigger that will let us prune it. Unmodelled new top-level keys go in `knownExtraTopKeys`.
+- After changing structs, run `make schemas`. Goldens are structure-only — they must never contain response values.
+
 ## Key Conventions
 
 - **Vendor directory is committed** — always run `make sync-vendor` after `go.mod` changes
