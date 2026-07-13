@@ -1,5 +1,7 @@
 """
-Interfaces tab — all opnsense_interfaces_* metrics.
+Interfaces tab — all opnsense_interfaces_* metrics, plus the opnsense_vnstat_*
+persistent traffic-accounting family (#215), which is interface-shaped enough
+to live here rather than its own tab.
 
 Rows:
   1. Throughput        — rx/tx bytes as bps (rate*8), tx shown as negative-Y
@@ -13,6 +15,10 @@ Rows:
      voltage, per-lane RX power/TX bias. DOM panels are hardware-dependent — a copper RJ45
      SFP reports identity only, never DOM, so those panels legitimately show "No data" on
      such interfaces (absent series, not zero) (#214)
+  9. Vnstat Traffic Accounting — persistent (survives-reboot) day/month/total byte
+     counts per interface, sourced from vnstat's own on-disk DB rather than the live
+     interface counters above. Opt-in collector (--exporter.enable-vnstat); row is
+     gated on a presence sentinel so it disappears entirely when disabled/absent (#215).
 
 Two new label spaces introduced in #214, both DEVICE-space (kernel device name, same
 space as the existing device label on admin_up/info) — NOT the description-space
@@ -21,6 +27,10 @@ $interface variable:
   - lagg_port_active/_collecting/_distributing: device = owning lagg, member = physical port
   - bridge_member: device = owning bridge(4), member = attached interface
   - sfp_*: device = the interface owning the SFP cage
+
+vnstat's "interface" label (#215) is ALSO device-space (vnstat's interface_list returns
+kernel device names like vtnet1, not OPNsense's configured description) — filter with
+$device, not $interface, same as the LAGG/bridge/SFP rows above.
 """
 
 from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
@@ -28,10 +38,14 @@ from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
 
 def build(b: Builder):
     iface = 'interface=~"$interface"'
+    # vnstat's interface label is device-space (vtnet1, not a configured description) —
+    # same reasoning as the LAGG/bridge/SFP rows above and firewall.py's DEV constant (#98).
+    vnstat_iface = 'interface=~"$device"'
 
     b.sentinel("has_lagg", "label_values(opnsense_interfaces_lagg_info, __name__)")
     b.sentinel("has_bridge", "label_values(opnsense_interfaces_bridge_member, __name__)")
     b.sentinel("has_sfp", "label_values(opnsense_interfaces_sfp_info, __name__)")
+    b.sentinel("has_vnstat", "label_values(opnsense_vnstat_total_bytes, __name__)")
 
     # ---- Row 1: Throughput ------------------------------------------------
     rx_bps = b.ts(
@@ -287,6 +301,47 @@ def build(b: Builder):
              "rising trend at constant output power is a classic laser end-of-life signal.",
     )
 
+    # ---- Row 9: Vnstat traffic accounting (#215) ---------------------------
+    # total_bytes is a genuine counter (cumulative since vnstat's DB was created,
+    # resets only on `vnstat --resetdb`), but it is intentionally NOT rate()'d here:
+    # the point of vnstat's figures is the accumulated total itself (ISP data-cap
+    # tracking), not a throughput trend — the Throughput row above already covers
+    # live bps from the interface counters. current_day/current_month are gauges
+    # (they reset daily/monthly in vnstat's own bookkeeping) and are shown raw for
+    # the same reason: operators read these as "how much so far", not a rate.
+    vnstat_total = b.ts(
+        "Vnstat Total Traffic (Since DB Creation)",
+        [
+            (sel("opnsense_vnstat_total_bytes", f'{vnstat_iface},direction="rx"'), "{{interface}} rx"),
+            (sel("opnsense_vnstat_total_bytes", f'{vnstat_iface},direction="tx"'), "{{interface}} tx"),
+        ],
+        unit="bytes", w=24, h=8,
+        desc="opnsense_vnstat_total_bytes: cumulative bytes recorded by vnstat since this "
+             "interface's persistent database was created. Survives reboots and exporter "
+             "restarts — a drop to 0 means an admin ran `vnstat --resetdb`, not data loss.",
+    )
+    vnstat_day = b.ts(
+        "Vnstat Current Day Traffic",
+        [
+            (sel("opnsense_vnstat_current_day_bytes", f'{vnstat_iface},direction="rx"'), "{{interface}} rx"),
+            (sel("opnsense_vnstat_current_day_bytes", f'{vnstat_iface},direction="tx"'), "{{interface}} tx"),
+        ],
+        unit="bytes", w=12, h=8,
+        desc="opnsense_vnstat_current_day_bytes: bytes recorded by vnstat so far today. "
+             "Resets to 0 at local midnight in vnstat's own bookkeeping (gauge, not counter).",
+    )
+    vnstat_month = b.ts(
+        "Vnstat Current Month Traffic",
+        [
+            (sel("opnsense_vnstat_current_month_bytes", f'{vnstat_iface},direction="rx"'), "{{interface}} rx"),
+            (sel("opnsense_vnstat_current_month_bytes", f'{vnstat_iface},direction="tx"'), "{{interface}} tx"),
+        ],
+        unit="bytes", w=12, h=8,
+        desc="opnsense_vnstat_current_month_bytes: bytes recorded by vnstat so far this "
+             "month — the figure to alert on against an ISP data cap. Resets monthly "
+             "(gauge, not counter).",
+    )
+
     b.tab("Interfaces", [
         b.row("Throughput", [rx_bps, tx_bps]),
         b.row("Packets & Errors", [rx_pkts, tx_pkts, multicasts, errors, collisions]),
@@ -300,4 +355,6 @@ def build(b: Builder):
         b.row("SFP / Optics (DOM)",
               [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power, sfp_tx_bias],
               present="has_sfp"),
+        b.row("Vnstat Traffic Accounting", [vnstat_day, vnstat_month, vnstat_total],
+              present="has_vnstat"),
     ])

@@ -223,6 +223,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"lldpdNeighbors":             "api/lldpd/service/neighbor",
 		"dmidecodeInfo":              "api/dmidecode/service/get",
 		"dechwPowerStatus":           "api/dechw/info/power_status",
+		"vnstatInterfaceList":        "api/vnstat/service/interface_list",
+		"vnstatGetJsonData":          "api/vnstat/service/get_json_data",
 	}
 }
 

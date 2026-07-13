@@ -235,5 +235,14 @@ func PluginGatedEndpoints() []EndpointName {
 		"crowdsecAlerts", "crowdsecDecisions", "crowdsecBouncers", "crowdsecMachines",
 		"captivePortalSessions", "ipsecPhase2", "quaggaOspfNeighbors",
 		"smartList", "smartInfo",
+
+		// vnstatInterfaceList is the os-vnstat plugin's entry point (#215): a 404 here
+		// means the plugin is absent, and FetchVnstat bails out before ever calling
+		// get_json_data. vnstatGetJsonData is deliberately NOT listed here: its actual
+		// request path always carries a per-interface "?iface=" query string, but this
+		// negative cache is keyed on the fixed, registered path (no query) — so a TTL
+		// set on it would never match a real request and would be a no-op. See the
+		// FetchVnstat doc comment in vnstat.go.
+		"vnstatInterfaceList",
 	}
 }

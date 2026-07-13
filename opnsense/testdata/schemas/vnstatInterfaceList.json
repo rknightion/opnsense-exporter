@@ -1,0 +1,19 @@
+{
+  "endpoint": "vnstatInterfaceList",
+  "method": "GET",
+  "path": "api/vnstat/service/interface_list",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "interfaces"
+  ],
+  "fields": [
+    {
+      "path": "interfaces",
+      "kind": "array"
+    },
+    {
+      "path": "interfaces[]",
+      "kind": "string"
+    }
+  ]
+}

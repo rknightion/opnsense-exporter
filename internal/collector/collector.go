@@ -77,6 +77,7 @@ const (
 	IDSSubsystem           = "ids"
 	LLDPSubsystem          = "lldp"
 	HardwareSubsystem      = "hardware"
+	VnstatSubsystem        = "vnstat"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -137,6 +138,7 @@ var SubsystemDisplayNames = map[string]string{
 	IDSSubsystem:           "IDS/IPS (Suricata)",
 	LLDPSubsystem:          "LLDP Neighbors",
 	HardwareSubsystem:      "Hardware",
+	VnstatSubsystem:        "Vnstat Traffic Accounting",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -543,6 +545,12 @@ func WithoutLLDPCollector() Option {
 // removes the hardware collector from the list of collectors
 func WithoutHardwareCollector() Option {
 	return withoutCollectorInstance(HardwareSubsystem)
+}
+
+// WithoutVnstatCollector Option
+// removes the vnstat collector from the list of collectors
+func WithoutVnstatCollector() Option {
+	return withoutCollectorInstance(VnstatSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

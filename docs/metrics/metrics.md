@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 626
-- **Gauges:** 419
-- **Counters:** 207
+- **Total metrics:** 629
+- **Gauges:** 421
+- **Counters:** 208
 
 ## General
 
@@ -886,6 +886,14 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_unbound_dns_local_zones | Gauge | type | Number of configured Unbound local zones, by zone type. Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
 | opnsense_unbound_dns_local_data_records | Gauge | --- | Total number of configured Unbound local-data resource records. Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
 | opnsense_unbound_dns_insecure_domains | Gauge | --- | Number of domains configured as DNSSEC-insecure in Unbound. Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
+
+## Vnstat Traffic Accounting
+
+| Metric Name | Type | Labels | Description | Enable Flag |
+|-------------|------|--------|-------------|-------------|
+| opnsense_vnstat_total_bytes | Counter | interface, direction | Cumulative bytes recorded by vnstat since this interface's database was created (counter; resets only on vnstat --resetdb) | --exporter.enable-vnstat |
+| opnsense_vnstat_current_day_bytes | Gauge | interface, direction | Bytes recorded by vnstat so far today (gauge; resets to 0 at local midnight in vnstat's own bookkeeping) | --exporter.enable-vnstat |
+| opnsense_vnstat_current_month_bytes | Gauge | interface, direction | Bytes recorded by vnstat so far this month (gauge; resets monthly) | --exporter.enable-vnstat |
 
 ## Wireguard
 

@@ -276,6 +276,15 @@ var (
 		"exporter.disable-hardware",
 		"Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed.",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_HARDWARE").Default("false").Bool()
+	// Vnstat is opt-in (default-off): each scrape does one interface_list call plus one
+	// get_json_data call PER interface vnstat tracks (a configd `vnstat --json` exec each
+	// time), so it adds N extra API calls per scrape rather than one. This matches the
+	// CLAUDE.md convention that reserves enable-* for collectors with extra per-scrape
+	// API cost (#215).
+	vnstatEnabled = kingpin.Flag(
+		"exporter.enable-vnstat",
+		"Enable the vnstat persistent traffic accounting collector (day/month/total bytes per interface, survives reboots). Off by default: each scrape does one interface_list call plus one get_json_data call per interface vnstat tracks. Silent when the os-vnstat plugin is absent.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_VNSTAT").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -337,6 +346,7 @@ type CollectorsDisableSwitch struct {
 	BPF                    bool
 	ClamAV                 bool
 	Hardware               bool
+	Vnstat                 bool
 	ArpDetails             bool
 	NdpDetails             bool
 	Interfaces             bool
@@ -419,6 +429,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		IDSAlerts:              *idsAlertsEnabled,
 		LLDPD:                  !*lldpdCollectorDisabled,
 		Hardware:               !*hardwareCollectorDisabled,
+		Vnstat:                 *vnstatEnabled,
 	}
 }
 
@@ -505,4 +516,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-ids-alerts", Subsystem: "ids", Detail: true},
 	{Flag: "exporter.disable-lldpd", Subsystem: "lldp"},
 	{Flag: "exporter.disable-hardware", Subsystem: "hardware"},
+	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat"},
 }

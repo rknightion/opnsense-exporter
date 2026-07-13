@@ -401,6 +401,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutHardwareCollector())
 		logger.Info("hardware collector disabled")
 	}
+	if !collectorsSwitches.Vnstat {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutVnstatCollector())
+		logger.Info("vnstat collector disabled (opt-in via --exporter.enable-vnstat)")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

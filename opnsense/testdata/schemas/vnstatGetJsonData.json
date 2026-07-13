@@ -1,0 +1,123 @@
+{
+  "endpoint": "vnstatGetJsonData",
+  "method": "GET",
+  "path": "api/vnstat/service/get_json_data",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "interfaces"
+  ],
+  "fields": [
+    {
+      "path": "interfaces",
+      "kind": "array"
+    },
+    {
+      "path": "interfaces[]",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].name",
+      "kind": "string"
+    },
+    {
+      "path": "interfaces[].traffic",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].traffic.day",
+      "kind": "array"
+    },
+    {
+      "path": "interfaces[].traffic.day[]",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].traffic.day[].date",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].traffic.day[].date.day",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].traffic.day[].date.month",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].traffic.day[].date.year",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].traffic.day[].rx",
+      "kind": "any"
+    },
+    {
+      "path": "interfaces[].traffic.day[].tx",
+      "kind": "any"
+    },
+    {
+      "path": "interfaces[].traffic.month",
+      "kind": "array"
+    },
+    {
+      "path": "interfaces[].traffic.month[]",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].traffic.month[].date",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].traffic.month[].date.day",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].traffic.month[].date.month",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].traffic.month[].date.year",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].traffic.month[].rx",
+      "kind": "any"
+    },
+    {
+      "path": "interfaces[].traffic.month[].tx",
+      "kind": "any"
+    },
+    {
+      "path": "interfaces[].traffic.total",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].traffic.total.rx",
+      "kind": "any"
+    },
+    {
+      "path": "interfaces[].traffic.total.tx",
+      "kind": "any"
+    },
+    {
+      "path": "interfaces[].updated",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].updated.date",
+      "kind": "object"
+    },
+    {
+      "path": "interfaces[].updated.date.day",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].updated.date.month",
+      "kind": "number"
+    },
+    {
+      "path": "interfaces[].updated.date.year",
+      "kind": "number"
+    }
+  ]
+}
