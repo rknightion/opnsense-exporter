@@ -74,6 +74,38 @@ Stated honestly, because this pipeline is pull-based over a lossy source:
 - **One logs-enabled instance per firewall.** Running multiple logs-enabled
   replicas against the same firewall double-ships.
 
+## Sources
+
+### CrowdSec (`--logs.crowdsec.enabled`)
+
+Ships CrowdSec **alert** and **decision** records. There is no native syslog
+path for these — the plugin registers no syslog scope, so alerts and
+decisions live only in the local API (LAPI). Off by default; enable with
+`--logs.crowdsec.enabled` (requires `--logs.enabled`). Silent when the
+os-crowdsec plugin is absent. Polls at a 60s floor regardless of
+`--logs.poll-interval` — each poll is a full `cscli` alerts/decisions dump
+(one configd exec each), so polling faster buys nothing at homelab/SMB event
+volumes.
+
+- **Cursor.** Alert ids and decision ids are each a separate, server-side
+  monotonic counter. The source tracks the highest id shipped per record kind
+  and ships only rows whose id is greater on the next poll — a plain id-diff,
+  no timestamp windowing. On a cold start every currently-active alert/decision
+  is shipped once, so enabling the source surfaces current state instead of
+  silently starting from a blank slate.
+- **Body.** Compact JSON of the alert or decision (`kind`, `id`, `scope_value`,
+  `scenario`, plus alert-only `decisions`/`created` or decision-only
+  `alert_id`/`action`/`expiration`/`events_count`).
+- **Attributes** (structured metadata, never labels): `scenario`, `value`
+  (the scope:ip the alert/decision concerns — high cardinality, so metadata
+  only, never a label), `country`, `as` (both often empty without a GeoIP
+  database configured), plus `decisions` (alerts: a `type:count` summary, e.g.
+  `ban:1`) or `decision_type` and `duration` (decisions: the CrowdSec action
+  and the remaining-duration string, e.g. `693h46m29s`).
+- **Timestamps.** Alerts carry an RFC3339 `created` field, used as the
+  record's timestamp. Decisions carry no absolute timestamp (only a
+  remaining-duration string), so the record is stamped at emit time.
+
 ## Configuration
 
 The pipeline flags are listed in the [Configuration reference](configuration.md);

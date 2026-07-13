@@ -230,6 +230,163 @@ func parseCrowdSecTimestamp(s string) (float64, bool) {
 	return float64(t.Unix()) + float64(t.Nanosecond())/1e9, true
 }
 
+// crowdsecAlertRow is one row from the alerts/search bootgrid response
+// (rowCount=-1, full dump), as flattened by
+// OPNsense\CrowdSec\Api\AlertsController::searchAction.
+//
+// VERIFICATION: live dev-box capture 2026-07-13 (a cscli-created synthetic
+// ban) confirms this exact shape: {"id":1,"value":"Ip:192.0.2.66",
+// "reason":"...","country":"","as":"","decisions":"ban:1",
+// "created":"2026-07-12T17:09:28Z"}. country/as are legitimately empty for a
+// non-GeoIP-enriched source (no MaxMind DB configured on the box).
+type crowdsecAlertRow struct {
+	ID        flexInt    `json:"id"`
+	Value     flexString `json:"value"`     // "scope:value", e.g. "Ip:192.0.2.66"
+	Reason    flexString `json:"reason"`    // scenario name
+	Country   flexString `json:"country"`   // GeoIP country code; often empty
+	AS        flexString `json:"as"`        // GeoIP AS name; often empty
+	Decisions flexString `json:"decisions"` // summary "type:count ...", e.g. "ban:1"
+	Created   flexString `json:"created"`   // RFC3339 (time.RFC3339Nano-parseable)
+}
+
+// CrowdSecAlert is the normalised per-alert record returned by FetchCrowdSecAlerts.
+type CrowdSecAlert struct {
+	ID               int
+	ScopeValue       string // e.g. "Ip:192.0.2.66"
+	Scenario         string
+	Country          string
+	AS               string
+	DecisionsSummary string // e.g. "ban:1"
+	CreatedRaw       string // as sent by the API, RFC3339 or empty
+	CreatedAt        time.Time
+	HasCreatedAt     bool
+}
+
+// crowdsecDecisionRow is one row from the decisions/search bootgrid response
+// (rowCount=-1, full dump), as flattened+unrolled by
+// OPNsense\CrowdSec\Api\DecisionsController::searchAction (one decision per
+// row, each carrying its parent alert's id/events_count/GeoIP fields).
+//
+// VERIFICATION: live dev-box capture 2026-07-13 confirms this exact shape:
+// {"id":1,"source":"cscli","scope_value":"Ip:192.0.2.66","reason":"...",
+// "action":"ban","country":"","as":"","events_count":1,
+// "expiration":"693h46m29s","alert_id":1}. Note the row has NO absolute
+// timestamp field (unlike alerts) — "expiration" is a remaining-duration
+// string (Go duration syntax), not a point in time.
+type crowdsecDecisionRow struct {
+	ID          flexInt    `json:"id"`
+	Source      flexString `json:"source"`      // decision origin, e.g. "cscli"
+	ScopeValue  flexString `json:"scope_value"` // "scope:value", e.g. "Ip:192.0.2.66"
+	Reason      flexString `json:"reason"`      // scenario name
+	Action      flexString `json:"action"`      // decision type, e.g. "ban", "captcha"
+	Country     flexString `json:"country"`
+	AS          flexString `json:"as"`
+	EventsCount flexInt    `json:"events_count"`
+	Expiration  flexString `json:"expiration"` // remaining-duration string, e.g. "693h46m29s"
+	AlertID     flexInt    `json:"alert_id"`
+}
+
+// CrowdSecDecision is the normalised per-decision record returned by
+// FetchCrowdSecDecisions.
+type CrowdSecDecision struct {
+	ID          int
+	Origin      string
+	ScopeValue  string
+	Scenario    string
+	Action      string
+	Country     string
+	AS          string
+	EventsCount int
+	Expiration  string
+	AlertID     int
+}
+
+// FetchCrowdSecAlerts fetches the full current alert list (rowCount=-1) from
+// api/crowdsec/alerts/search, reusing the same endpoint the count-only metrics
+// fetch (FetchCrowdSecStatus) uses. A 404 (plugin absent) returns (nil, nil)
+// rather than an error, matching the FetchACMECertificates convention. The
+// cscli-not-running message envelope (HTTP-200, no "total" key) also returns
+// (nil, nil) — there is simply no data right now, not a fetch failure. A
+// row-shape decode failure is logged and returns (nil, nil) rather than
+// failing the caller, mirroring the bouncers/machines decode-failure handling
+// in FetchCrowdSecStatus (#104).
+func (c *Client) FetchCrowdSecAlerts() ([]CrowdSecAlert, *APICallError) {
+	rows, ok, err := c.crowdsecFetchRows("crowdsecAlerts")
+	if err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !ok || rows == nil {
+		return nil, nil
+	}
+
+	var raw []crowdsecAlertRow
+	if jsonErr := json.Unmarshal(rows, &raw); jsonErr != nil {
+		c.log.Warn("crowdsec: failed to decode alerts rows; omitting", "err", jsonErr)
+		return nil, nil
+	}
+
+	out := make([]CrowdSecAlert, 0, len(raw))
+	for _, r := range raw {
+		a := CrowdSecAlert{
+			ID:               r.ID.Int(),
+			ScopeValue:       r.Value.String(),
+			Scenario:         r.Reason.String(),
+			Country:          r.Country.String(),
+			AS:               r.AS.String(),
+			DecisionsSummary: r.Decisions.String(),
+			CreatedRaw:       r.Created.String(),
+		}
+		if ts, perr := time.Parse(time.RFC3339Nano, a.CreatedRaw); perr == nil {
+			a.CreatedAt = ts
+			a.HasCreatedAt = true
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// FetchCrowdSecDecisions fetches the full current decision list (rowCount=-1)
+// from api/crowdsec/decisions/search. See FetchCrowdSecAlerts for the
+// plugin-absent / daemon-not-running / decode-failure conventions, all shared.
+func (c *Client) FetchCrowdSecDecisions() ([]CrowdSecDecision, *APICallError) {
+	rows, ok, err := c.crowdsecFetchRows("crowdsecDecisions")
+	if err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !ok || rows == nil {
+		return nil, nil
+	}
+
+	var raw []crowdsecDecisionRow
+	if jsonErr := json.Unmarshal(rows, &raw); jsonErr != nil {
+		c.log.Warn("crowdsec: failed to decode decisions rows; omitting", "err", jsonErr)
+		return nil, nil
+	}
+
+	out := make([]CrowdSecDecision, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, CrowdSecDecision{
+			ID:          r.ID.Int(),
+			Origin:      r.Source.String(),
+			ScopeValue:  r.ScopeValue.String(),
+			Scenario:    r.Reason.String(),
+			Action:      r.Action.String(),
+			Country:     r.Country.String(),
+			AS:          r.AS.String(),
+			EventsCount: r.EventsCount.Int(),
+			Expiration:  r.Expiration.String(),
+			AlertID:     r.AlertID.Int(),
+		})
+	}
+	return out, nil
+}
+
 // FetchCrowdSecStatus fetches aggregated CrowdSec data from four bootgrid
 // endpoints (alerts, decisions, bouncers, machines).
 //

@@ -53,11 +53,11 @@ func (f *fakeSource) pollCount() int {
 
 type statefulFakeSource struct{ *fakeSource }
 
-func (s statefulFakeSource) LoadState(data []byte) { s.fakeSource.loaded = data }
+func (s statefulFakeSource) LoadState(data []byte) { s.loaded = data }
 func (s statefulFakeSource) SaveState() ([]byte, bool) {
-	return s.fakeSource.saveData, s.fakeSource.saveData != nil
+	return s.saveData, s.saveData != nil
 }
-func (s statefulFakeSource) MinInterval() time.Duration { return s.fakeSource.minEvery }
+func (s statefulFakeSource) MinInterval() time.Duration { return s.minEvery }
 
 type fakeSink struct {
 	mu       sync.Mutex

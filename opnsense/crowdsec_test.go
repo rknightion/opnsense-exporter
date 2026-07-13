@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // crowdsecAlertsFixture is a minimal bootgrid response for the alerts endpoint.
@@ -697,5 +698,215 @@ func TestFetchCrowdSecStatus_VersionUnparseable(t *testing.T) {
 	}
 	if !data.Present {
 		t.Error("expected Present=true (an unparseable version body is not an HTTP error)")
+	}
+}
+
+// crowdsecAlertsRowsFixture is a live dev-box capture (2026-07-13, a
+// cscli-created synthetic ban) of api/crowdsec/alerts/search with rowCount=-1.
+const crowdsecAlertsRowsFixture = `{"total":1,"rowCount":1,"current":1,"rows":[` +
+	`{"id":1,"value":"Ip:192.0.2.66","reason":"exporter testbed synthetic ban",` +
+	`"country":"","as":"","decisions":"ban:1","created":"2026-07-12T17:09:28Z"}]}`
+
+// crowdsecDecisionsRowsFixture is a live dev-box capture (2026-07-13, same
+// synthetic ban) of api/crowdsec/decisions/search with rowCount=-1.
+const crowdsecDecisionsRowsFixture = `{"total":1,"rowCount":1,"current":1,"rows":[` +
+	`{"id":1,"source":"cscli","scope_value":"Ip:192.0.2.66",` +
+	`"reason":"exporter testbed synthetic ban","action":"ban","country":"","as":"",` +
+	`"events_count":1,"expiration":"693h46m29s","alert_id":1}]}`
+
+func TestFetchCrowdSecAlerts_Normal(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(crowdsecAlertsRowsFixture))
+	})
+
+	alerts, err := client.FetchCrowdSecAlerts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(alerts))
+	}
+	a := alerts[0]
+	if a.ID != 1 {
+		t.Errorf("ID = %d, want 1", a.ID)
+	}
+	if a.ScopeValue != "Ip:192.0.2.66" {
+		t.Errorf("ScopeValue = %q, want %q", a.ScopeValue, "Ip:192.0.2.66")
+	}
+	if a.Scenario != "exporter testbed synthetic ban" {
+		t.Errorf("Scenario = %q", a.Scenario)
+	}
+	if a.DecisionsSummary != "ban:1" {
+		t.Errorf("DecisionsSummary = %q, want %q", a.DecisionsSummary, "ban:1")
+	}
+	if !a.HasCreatedAt {
+		t.Fatal("expected HasCreatedAt=true for a valid RFC3339 created timestamp")
+	}
+	wantCreated := time.Date(2026, 7, 12, 17, 9, 28, 0, time.UTC)
+	if !a.CreatedAt.Equal(wantCreated) {
+		t.Errorf("CreatedAt = %v, want %v", a.CreatedAt, wantCreated)
+	}
+	if a.CreatedRaw != "2026-07-12T17:09:28Z" {
+		t.Errorf("CreatedRaw = %q", a.CreatedRaw)
+	}
+	if a.Country != "" || a.AS != "" {
+		t.Errorf("expected empty country/as (no GeoIP DB on the source box), got %q/%q", a.Country, a.AS)
+	}
+}
+
+func TestFetchCrowdSecAlerts_PluginAbsent404(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	defer server.Close()
+
+	alerts, err := client.FetchCrowdSecAlerts()
+	if err != nil {
+		t.Fatalf("expected nil error on 404 (plugin absent), got: %v", err)
+	}
+	if alerts != nil {
+		t.Errorf("expected nil alerts on 404, got %v", alerts)
+	}
+}
+
+func TestFetchCrowdSecAlerts_MessageEnvelope(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(crowdsecMessageEnvelope))
+	})
+
+	alerts, err := client.FetchCrowdSecAlerts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if alerts != nil {
+		t.Errorf("expected nil alerts on message envelope (daemon not running), got %v", alerts)
+	}
+}
+
+func TestFetchCrowdSecAlerts_UndecodableRows(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":{"not":"an array"}}`))
+	})
+
+	alerts, err := client.FetchCrowdSecAlerts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if alerts != nil {
+		t.Errorf("expected nil alerts on undecodable rows, got %v", alerts)
+	}
+}
+
+func TestFetchCrowdSecAlerts_Empty(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/alerts/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+
+	alerts, err := client.FetchCrowdSecAlerts()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(alerts) != 0 {
+		t.Errorf("expected 0 alerts, got %d", len(alerts))
+	}
+}
+
+func TestFetchCrowdSecDecisions_Normal(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/decisions/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(crowdsecDecisionsRowsFixture))
+	})
+
+	decisions, err := client.FetchCrowdSecDecisions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(decisions) != 1 {
+		t.Fatalf("expected 1 decision, got %d", len(decisions))
+	}
+	d := decisions[0]
+	if d.ID != 1 {
+		t.Errorf("ID = %d, want 1", d.ID)
+	}
+	if d.Origin != "cscli" {
+		t.Errorf("Origin = %q, want %q", d.Origin, "cscli")
+	}
+	if d.ScopeValue != "Ip:192.0.2.66" {
+		t.Errorf("ScopeValue = %q", d.ScopeValue)
+	}
+	if d.Action != "ban" {
+		t.Errorf("Action = %q, want %q", d.Action, "ban")
+	}
+	if d.Expiration != "693h46m29s" {
+		t.Errorf("Expiration = %q", d.Expiration)
+	}
+	if d.AlertID != 1 {
+		t.Errorf("AlertID = %d, want 1", d.AlertID)
+	}
+	if d.EventsCount != 1 {
+		t.Errorf("EventsCount = %d, want 1", d.EventsCount)
+	}
+}
+
+func TestFetchCrowdSecDecisions_PluginAbsent404(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	defer server.Close()
+
+	decisions, err := client.FetchCrowdSecDecisions()
+	if err != nil {
+		t.Fatalf("expected nil error on 404 (plugin absent), got: %v", err)
+	}
+	if decisions != nil {
+		t.Errorf("expected nil decisions on 404, got %v", decisions)
+	}
+}
+
+func TestFetchCrowdSecDecisions_MessageEnvelope(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/decisions/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(crowdsecMessageEnvelope))
+	})
+
+	decisions, err := client.FetchCrowdSecDecisions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if decisions != nil {
+		t.Errorf("expected nil decisions on message envelope, got %v", decisions)
+	}
+}
+
+func TestFetchCrowdSecDecisions_UndecodableRows(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/crowdsec/decisions/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":{"not":"an array"}}`))
+	})
+
+	decisions, err := client.FetchCrowdSecDecisions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if decisions != nil {
+		t.Errorf("expected nil decisions on undecodable rows, got %v", decisions)
 	}
 }

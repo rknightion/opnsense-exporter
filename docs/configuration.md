@@ -60,6 +60,7 @@ For secure credential management in containers and orchestrated environments, cr
 | `--log.level` | -- | `info` | Only log messages with the given severity or above. One of: [debug, info, warn, error] |
 | `--logs.batch-max` | `OPNSENSE_EXPORTER_LOGS_BATCH_MAX` | `1000` | Maximum number of records the emitter hands to the sink per batch. |
 | `--logs.buffer-size` | `OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE` | `4096` | Capacity of the in-memory backpressure queue between pollers and the sink. On overflow the oldest record is dropped and counted (logs_dropped_total). |
+| `--logs.crowdsec.enabled` | `OPNSENSE_EXPORTER_LOGS_CROWDSEC_ENABLED` | `false` | Enable the crowdsec log source: ships CrowdSec alert and decision records to Loki (there is no native syslog path for these — the plugin registers no syslog scope; alerts live only in the LAPI). Requires --logs.enabled. Polls at a 60s floor regardless of --logs.poll-interval. Silent when the os-crowdsec plugin is absent. Off by default. |
 | `--logs.enabled` | `OPNSENSE_EXPORTER_LOGS_ENABLED` | `false` | Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and ships to Loki via OTLP). Off by default. Independent of --otlp.enabled (which gates metrics). |
 | `--logs.poll-interval` | `OPNSENSE_EXPORTER_LOGS_POLL_INTERVAL` | `10s` | Base interval between event polls per source (floor 5s). Sources may raise their own floor. |
 | `--logs.sink` | `OPNSENSE_EXPORTER_LOGS_SINK` | `otlp` | Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout (one JSON line per event). |
@@ -394,6 +395,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--log.level` | -- | `info` | Only log messages with the given severity or above. One of: [debug, info, warn, error] |
 | `--logs.batch-max` | `OPNSENSE_EXPORTER_LOGS_BATCH_MAX` | `1000` | Maximum number of records the emitter hands to the sink per batch. |
 | `--logs.buffer-size` | `OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE` | `4096` | Capacity of the in-memory backpressure queue between pollers and the sink. On overflow the oldest record is dropped and counted (logs_dropped_total). |
+| `--logs.crowdsec.enabled` | `OPNSENSE_EXPORTER_LOGS_CROWDSEC_ENABLED` | `false` | Enable the crowdsec log source: ships CrowdSec alert and decision records to Loki (there is no native syslog path for these — the plugin registers no syslog scope; alerts live only in the LAPI). Requires --logs.enabled. Polls at a 60s floor regardless of --logs.poll-interval. Silent when the os-crowdsec plugin is absent. Off by default. |
 | `--logs.enabled` | `OPNSENSE_EXPORTER_LOGS_ENABLED` | `false` | Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and ships to Loki via OTLP). Off by default. Independent of --otlp.enabled (which gates metrics). |
 | `--logs.poll-interval` | `OPNSENSE_EXPORTER_LOGS_POLL_INTERVAL` | `10s` | Base interval between event polls per source (floor 5s). Sources may raise their own floor. |
 | `--logs.sink` | `OPNSENSE_EXPORTER_LOGS_SINK` | `otlp` | Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout (one JSON line per event). |
