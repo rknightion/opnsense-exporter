@@ -306,6 +306,10 @@ var (
 		"exporter.enable-netbird-details",
 		"Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN labels)",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS").Default("false").Bool()
+	authCollectorDisabled = kingpin.Flag(
+		"exporter.disable-auth",
+		"Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only — no per-user data)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_AUTH").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -382,6 +386,7 @@ type CollectorsDisableSwitch struct {
 	IDS                    bool
 	IDSAlerts              bool
 	LLDPD                  bool
+	Auth                   bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -459,6 +464,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Vnstat:                 *vnstatEnabled,
 		Netbird:                !*netbirdCollectorDisabled,
 		NetbirdDetails:         *netbirdDetailsEnabled,
+		Auth:                   !*authCollectorDisabled,
 	}
 }
 
@@ -550,4 +556,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat"},
 	{Flag: "exporter.disable-netbird", Subsystem: "netbird"},
 	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true},
+	{Flag: "exporter.disable-auth", Subsystem: "auth"},
 }

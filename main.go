@@ -423,6 +423,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithNetbirdPeerDetails())
 		logger.Info("netbird per-peer details enabled")
 	}
+	if !collectorsSwitches.Auth {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutAuthCollector())
+		logger.Info("auth collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

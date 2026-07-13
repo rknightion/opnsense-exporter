@@ -69,7 +69,7 @@ Data structs for JSON unmarshaling live alongside each `Fetch*()` method.
 
 ### `internal/collector/` -- Prometheus collectors
 
-This package contains the top-level `Collector` struct and all 56 sub-collectors. Each sub-collector lives in its own file and implements the `CollectorInstance` interface:
+This package contains the top-level `Collector` struct and all 57 sub-collectors. Each sub-collector lives in its own file and implements the `CollectorInstance` interface:
 
 ```go
 type CollectorInstance interface {

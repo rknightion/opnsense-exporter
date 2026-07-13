@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 683
-- **Gauges:** 465
+- **Total metrics:** 689
+- **Gauges:** 471
 - **Counters:** 218
 
 ## General
@@ -519,6 +519,17 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_lldp_neighbors | Gauge | interface | Number of LLDP neighbors currently seen on this local interface | --exporter.disable-lldpd |
 | opnsense_lldp_neighbor_info | Gauge | interface, chassis_name, port_id, port_descr | LLDP neighbor information (value is always 1; use labels). SysDescr and MgmtIP are deliberately excluded from labels (free-text/unbounded) | --exporter.disable-lldpd |
+
+## Local Auth
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_auth_users | Gauge | disabled | Number of local users, by disabled state (aggregate count only — no usernames are exposed). | --exporter.disable-auth |
+| opnsense_auth_admin_users | Gauge | --- | Number of local users with administrator privileges (is_admin computed by OPNsense; aggregate count only). | --exporter.disable-auth |
+| opnsense_auth_users_expired | Gauge | --- | Number of local users whose account expiry date is in the past (aggregate count only). | --exporter.disable-auth |
+| opnsense_auth_users_with_otp | Gauge | --- | Number of local users with a TOTP seed configured (aggregate count only — the seed itself is never read into exporter memory beyond a transient presence check). | --exporter.disable-auth |
+| opnsense_auth_api_keys | Gauge | --- | Total number of local-user API keys configured (aggregate count only — key material is never decoded). | --exporter.disable-auth |
+| opnsense_auth_groups | Gauge | --- | Total number of local authentication groups configured. | --exporter.disable-auth |
 
 ## Mbuf
 

@@ -240,6 +240,9 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"torCircuits":                "api/tor/service/circuits",
 		"torStreams":                 "api/tor/service/streams",
 		"torHiddenServices":          "api/tor/service/get_hidden_services",
+		"authUsers":                  "api/auth/user/search",
+		"authAPIKeys":                "api/auth/user/search_api_key",
+		"authGroups":                 "api/auth/group/search",
 	}
 }
 
@@ -688,10 +691,12 @@ func unmarshalBody(path EndpointPath, body []byte, statusCode int, responseStruc
 }
 
 // sensitiveJSONField matches JSON key/value pairs whose key contains a
-// credential-like word (password, secret, token, api key, private key),
-// including OPNsense's "%"-prefixed field variants, so the value (string,
-// number or null) can be redacted before the body reaches an error message.
-var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key|prv)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
+// credential-like word (password, secret, token, api key, private key, otp
+// seed), including OPNsense's "%"-prefixed field variants, so the value
+// (string, number or null) can be redacted before the body reaches an error
+// message. otp_seed was added for #222: a TOTP seed is exactly as sensitive as
+// a password and must never surface in an error-path body dump.
+var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key|prv|otp_?seed)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
 
 // redactSensitiveFields replaces the values of credential-like JSON fields
 // with "[REDACTED]". Non-JSON bodies pass through unchanged.

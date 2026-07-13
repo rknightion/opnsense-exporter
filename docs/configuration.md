@@ -216,6 +216,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-interfaces` | `OPNSENSE_EXPORTER_DISABLE_INTERFACES` | Interfaces | Disable the interfaces collector (per-interface traffic/link metrics) |
 | `--exporter.disable-kea` | `OPNSENSE_EXPORTER_DISABLE_KEA` | Kea DHCP | Disable the scraping of Kea DHCP lease metrics |
 | `--exporter.disable-lldpd` | `OPNSENSE_EXPORTER_DISABLE_LLDPD` | LLDP Neighbors | Disable the scraping of LLDP neighbor table metrics (silent when the os-lldpd plugin is absent) |
+| `--exporter.disable-auth` | `OPNSENSE_EXPORTER_DISABLE_AUTH` | Local Auth | Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only — no per-user data) |
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | Mbuf | Disable the scraping of mbuf statistics |
 | `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | Monit | Disable the scraping of Monit service check status (silent when Monit is not running) |
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | NDP | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
@@ -299,6 +300,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-alias` | `OPNSENSE_EXPORTER_DISABLE_ALIAS` | `false` | Disable the scraping of firewall alias table sizes |
 | `--exporter.disable-apcupsd` | `OPNSENSE_EXPORTER_DISABLE_APCUPSD` | `false` | Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent) |
 | `--exporter.disable-arp-table` | `OPNSENSE_EXPORTER_DISABLE_ARP_TABLE` | `false` | Disable the scraping of the ARP table |
+| `--exporter.disable-auth` | `OPNSENSE_EXPORTER_DISABLE_AUTH` | `false` | Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only — no per-user data) |
 | `--exporter.disable-backup` | `OPNSENSE_EXPORTER_DISABLE_BACKUP` | `false` | Disable the scraping of config backup freshness metrics (last backup timestamp/count/size) |
 | `--exporter.disable-bpf` | `OPNSENSE_EXPORTER_DISABLE_BPF` | `false` | Disable the scraping of BPF listener statistics |
 | `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | `false` | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |

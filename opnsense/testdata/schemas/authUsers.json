@@ -1,0 +1,35 @@
+{
+  "endpoint": "authUsers",
+  "method": "GET",
+  "path": "api/auth/user/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].disabled",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].expires",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].is_admin",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].otp_seed",
+      "kind": "any"
+    }
+  ]
+}

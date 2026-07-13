@@ -99,6 +99,14 @@ func CacheTTLs() EndpointCacheTTLs {
 		// otherwise wholly static — unlike circuits/streams, which are live
 		// control-port state and must never be cached.
 		ttls["torHiddenServices"] = *cacheTTL
+
+		// Local auth posture (#222): disabled/admin/expiry/OTP flags, API key
+		// count, and group count all change only on an admin config edit (user
+		// add/edit, key issue/revoke, group membership change) — not on scrape
+		// cadence, so re-fetching every scrape only costs firewall CPU.
+		ttls["authUsers"] = *cacheTTL
+		ttls["authAPIKeys"] = *cacheTTL
+		ttls["authGroups"] = *cacheTTL
 	}
 
 	return ttls

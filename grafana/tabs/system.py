@@ -11,6 +11,7 @@ Covers:
   - Firmware subsystem (6 metrics)
   - Backup subsystem (3 metrics) — config backup freshness
   - Snapshots subsystem (3 metrics) — ZFS boot environment inventory
+  - Auth subsystem (6 metrics) — local user/group/API-key security posture (aggregate counts only)
 """
 
 from builder import Builder, sel, epoch_ms, RATE, YESNO, UPDOWN
@@ -781,6 +782,76 @@ def build(b: Builder):
     row_hardware_psu = b.row("Hardware Power Supply", [psu_timeline], present="has_hardware_psu")
 
     # =========================================================================
+    # Row: Local Auth (#222 — security-posture counts. Aggregate ONLY: no
+    # username/group-name label ever appears here, on purpose — see
+    # opnsense/auth.go and internal/collector/auth.go for the sensitivity
+    # rationale. disabled="true"/"false" is the only label this subsystem uses.)
+    # =========================================================================
+    auth_users_enabled = b.stat(
+        "Enabled Users",
+        sel("opnsense_auth_users", 'disabled="false"'),
+        w=4,
+        h=4,
+        desc="opnsense_auth_users{disabled=\"false\"}: local users currently enabled.",
+    )
+
+    auth_users_disabled = b.stat(
+        "Disabled Users",
+        sel("opnsense_auth_users", 'disabled="true"'),
+        w=4,
+        h=4,
+        thresholds=[{"color": "green", "value": None}, {"color": "blue", "value": 1}],
+        desc="opnsense_auth_users{disabled=\"true\"}: local users currently disabled.",
+    )
+
+    auth_admin_users = b.stat(
+        "Admin Users",
+        sel("opnsense_auth_admin_users"),
+        w=4,
+        h=4,
+        desc="opnsense_auth_admin_users: local users with administrator privileges.",
+    )
+
+    auth_expired_users = b.stat(
+        "Expired Users",
+        sel("opnsense_auth_users_expired"),
+        w=4,
+        h=4,
+        color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+        desc="opnsense_auth_users_expired: local users whose account expiry date has passed. Should normally be 0 — a non-zero value is a stale account still able to authenticate up to the point OPNsense itself enforces the expiry.",
+    )
+
+    auth_users_with_otp = b.stat(
+        "Users with OTP",
+        sel("opnsense_auth_users_with_otp"),
+        w=4,
+        h=4,
+        desc="opnsense_auth_users_with_otp: local users with a TOTP seed configured. The seed itself is never read into exporter memory beyond a transient presence check.",
+    )
+
+    auth_api_keys = b.stat(
+        "API Keys",
+        sel("opnsense_auth_api_keys"),
+        w=4,
+        h=4,
+        desc="opnsense_auth_api_keys: total local-user API keys configured. A sudden jump is worth investigating — key material is never decoded by the exporter.",
+    )
+
+    auth_groups = b.stat(
+        "Auth Groups",
+        sel("opnsense_auth_groups"),
+        w=4,
+        h=4,
+        desc="opnsense_auth_groups: total local authentication groups configured.",
+    )
+
+    row_auth = b.row("Local Auth", [
+        auth_users_enabled, auth_users_disabled, auth_admin_users,
+        auth_expired_users, auth_users_with_otp, auth_api_keys, auth_groups,
+    ])
+
+    # =========================================================================
     # Assemble tab
     # =========================================================================
     b.tab("System & Resources", [
@@ -799,4 +870,5 @@ def build(b: Builder):
         row_mbuf,
         row_hardware_dmi,
         row_hardware_psu,
+        row_auth,
     ])

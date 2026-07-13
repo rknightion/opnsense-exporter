@@ -1,0 +1,19 @@
+{
+  "endpoint": "authAPIKeys",
+  "method": "GET",
+  "path": "api/auth/user/search_api_key",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    }
+  ]
+}
