@@ -281,6 +281,10 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 // of OPNsense's own "<if-key> <cidr>" %subnet display string (see the
 // keaPdPoolRow doc comment) when the join misses, and finally the raw UUID as
 // a last resort so the series is never silently dropped.
+// of OPNsense's own "<interface-description> <cidr>" %subnet display string
+// (see the keaPdPoolRow doc comment — confirmed real shape "TESTLAN
+// fd09:172:16:9::/64") when the join misses, and finally the raw UUID as a
+// last resort so the series is never silently dropped.
 func pdPoolSubnetLabel(pool opnsense.KeaPdPool, byUUID map[string]string) string {
 	if subnet, ok := byUUID[pool.SubnetUUID]; ok && subnet != "" {
 		return subnet

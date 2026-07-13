@@ -530,3 +530,63 @@ func TestKeaCollector_PdPoolCapacity_UUIDJoinMiss_FallsBackToDisplay(t *testing.
 		t.Error("expected a kea_dhcp6_pd_pool_size metric")
 	}
 }
+
+// TestKeaCollector_PdPoolCapacity_RealDevBoxCapture replays the literal live
+// subnet6 + PD pool payloads captured on the dev box (issue #208,
+// 2026-07-13, p1-devbox-core: captures/kea/dhcpv6_search_subnet.json +
+// captures/kea/dhcpv6_search_pd_pool.json — a real PD pool added via
+// kea/dhcpv6/addPdPool, confirmed via Kea's own stats
+// subnet[1].pd-pool[0].total-pds==64). End-to-end: the UUID join must
+// resolve the PD pool's "subnet" label to the real subnet's CIDR
+// (fd09:172:16:9::/64), not the raw uuid or the %subnet fallback.
+func TestKeaCollector_PdPoolCapacity_RealDevBoxCapture(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"ab25acc5-fd49-47c4-ae2d-1eea0fa1b871","subnet":"fd09:172:16:9::/64","pools":"fd09:172:16:9::1000-fd09:172:16:9::1fff","interface":"opt1","%interface":"TESTLAN"}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"fbbea24d-f96b-4bd7-9394-5084912a818f","subnet":"ab25acc5-fd49-47c4-ae2d-1eea0fa1b871","%subnet":"TESTLAN fd09:172:16:9::/64","prefix":"fd09:172:16:100::","prefix_len":"56","delegated_len":"62","description":"Test PD pool"}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	found := false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "kea_dhcp6_pd_pool_size") {
+			found = true
+			labels := getMetricLabels(m)
+			if labels["subnet"] != "fd09:172:16:9::/64" {
+				t.Errorf("expected UUID-joined subnet 'fd09:172:16:9::/64', got %q", labels["subnet"])
+			}
+			if labels["prefix"] != "fd09:172:16:100::" {
+				t.Errorf("expected prefix 'fd09:172:16:100::', got %q", labels["prefix"])
+			}
+			// delegated_len("62") - prefix_len("56") = 6 -> 2^6 = 64, matching
+			// Kea's own reported total-pds==64 for this pool.
+			if getMetricValue(m) != 64 {
+				t.Errorf("expected capacity=64, got %v", getMetricValue(m))
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a kea_dhcp6_pd_pool_size metric")
+	}
+}

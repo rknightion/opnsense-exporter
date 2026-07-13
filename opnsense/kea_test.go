@@ -625,3 +625,86 @@ func TestKeaPoolUsedBySubnet_UnparseableSubnetCIDRSkipped(t *testing.T) {
 		t.Errorf("expected 0 for unparseable subnet, got %d", got)
 	}
 }
+
+// TestFetchKeaLeases4_RealDevBoxCapture replays the literal live payload
+// captured on the dev box (issue #208, 2026-07-13, p1-devbox-core:
+// captures/kea/leases4_search_with_data.json) — a real active DHCPv4 lease
+// after fixing a legacy-dhcpd/Kea port-67 conflict on the box. Confirms
+// type:"" and state:0 (JSON number) on a genuinely live lease, is_reserved:[]
+// (dynamic), and that `stats`/`interfaces` decode as siblings of `rows` with
+// `interfaces` as a populated JSON OBJECT.
+func TestFetchKeaLeases4_RealDevBoxCapture(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":[{"address":"172.16.9.100","prefix_len":128,"type":"","hwaddr":"bc:24:11:a5:a6:34","duid":"","client_id":"","iaid":"","valid_lifetime":4000,"expire":1783968374,"hostname":"exporter-traffgen","state":0,"if":"vtnet2","if_descr":"TESTLAN","is_reserved":[],"if_name":"opt1","mac_info":"Proxmox Server Solutions GmbH"}],"stats":{"active":1,"inactive":0,"total":1},"interfaces":{"opt1":"TESTLAN"}}`))
+	})
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.TotalLeases != 1 || data.DynamicCount != 1 || data.ReservedCount != 0 {
+		t.Errorf("unexpected counts: total=%d dynamic=%d reserved=%d", data.TotalLeases, data.DynamicCount, data.ReservedCount)
+	}
+	if len(data.Leases) != 1 {
+		t.Fatalf("expected 1 lease, got %d", len(data.Leases))
+	}
+	l := data.Leases[0]
+	if l.Type != "" {
+		t.Errorf("expected empty Type on a real v4 lease, got %q", l.Type)
+	}
+	if l.State != 0 {
+		t.Errorf("expected State=0, got %d", l.State)
+	}
+	if l.IfDescr != "TESTLAN" {
+		t.Errorf("expected IfDescr=TESTLAN, got %q", l.IfDescr)
+	}
+	if data.LeasesByState["active"] != 1 {
+		t.Errorf("expected LeasesByState[active]=1, got %d", data.LeasesByState["active"])
+	}
+	if len(data.LeasesByType) != 0 {
+		t.Errorf("expected empty LeasesByType (v4 has no type), got %v", data.LeasesByType)
+	}
+}
+
+// TestFetchKeaPdPools_RealDevBoxCapture replays the literal live PD pool
+// payload captured on the dev box (issue #208, 2026-07-13, p1-devbox-core:
+// captures/kea/dhcpv6_search_pd_pool.json) — a real PD pool added via
+// kea/dhcpv6/addPdPool, confirmed via Kea's own stats
+// (subnet[1].pd-pool[0].total-pds == 64 after reload). Confirms subnet is
+// the parent subnet6's uuid, %subnet is "<descr> <cidr>" space-separated,
+// and prefix_len/delegated_len arrive as JSON STRINGS on this box (not
+// numbers) — flexInt must tolerate that.
+func TestFetchKeaPdPools_RealDevBoxCapture(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"fbbea24d-f96b-4bd7-9394-5084912a818f","subnet":"ab25acc5-fd49-47c4-ae2d-1eea0fa1b871","%subnet":"TESTLAN fd09:172:16:9::/64","prefix":"fd09:172:16:100::","prefix_len":"56","delegated_len":"62","description":"Test PD pool"}],"rowCount":1,"total":1,"current":1}`))
+	})
+
+	pools, err := client.FetchKeaPdPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(pools))
+	}
+	p := pools[0]
+	if p.SubnetUUID != "ab25acc5-fd49-47c4-ae2d-1eea0fa1b871" {
+		t.Errorf("expected SubnetUUID from real capture, got %q", p.SubnetUUID)
+	}
+	if p.SubnetDisplay != "TESTLAN fd09:172:16:9::/64" {
+		t.Errorf("expected SubnetDisplay 'TESTLAN fd09:172:16:9::/64', got %q", p.SubnetDisplay)
+	}
+	if p.Prefix != "fd09:172:16:100::" {
+		t.Errorf("expected Prefix 'fd09:172:16:100::', got %q", p.Prefix)
+	}
+	// delegated_len("62") - prefix_len("56") = 6 -> 2^6 = 64, matching Kea's
+	// own reported total-pds==64 for this pool.
+	if p.Capacity != 64 {
+		t.Errorf("expected Capacity=64 (matches Kea's own total-pds), got %v", p.Capacity)
+	}
+}

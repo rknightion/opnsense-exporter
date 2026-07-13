@@ -33,6 +33,14 @@ type keaLeaseStats struct {
 // 2=expired-reclaimed). Unverified against a live box with non-zero leases
 // at the time of writing (issue #208: dev box had 0 leases) — kept
 // tolerant/parse-only per the issue body.
+// 2=expired-reclaimed). CONFIRMED on a real DHCPv4 lease (dev-box capture,
+// 2026-07-13, issue #208: captures/kea/leases4_search_with_data.json) —
+// type:"" and state:0 (JSON number) on a live active lease, plus the
+// top-level `stats`/`interfaces` siblings (see keaLeaseResponse). Still
+// unverified: a live DHCPv6 lease row showing the actual "IA_NA"/"IA_PD"
+// string values — the dev box's only IPv6-capable-client attempt hit a
+// host/LXC-level IPv6 kernel gap, so kept tolerant/parse-only for `type` on
+// v6 per the issue body.
 type keaLeaseRow struct {
 	Address    string     `json:"address"`
 	HWAddr     string     `json:"hwaddr"`
@@ -244,6 +252,20 @@ func (c *Client) FetchKeaSubnets6() ([]KeaSubnet, *APICallError) {
 // UUID join misses (e.g. a stale reference). Unverified against a live PD
 // pool row (issue #208: dev box had none configured at time of writing) —
 // derived from OPNsense core source, kept tolerant.
+// "<interface-description> <cidr>" description string (the generic
+// UIModelGrid %fieldname-when-differs-from-value convention, same one that
+// produces keaSubnets4/6's "%interface"); it is kept only as a fallback for
+// when the UUID join misses (e.g. a stale reference).
+//
+// CONFIRMED via a real PD pool added on the dev box (2026-07-13, issue #208:
+// captures/kea/dhcpv6_search_pd_pool.json) — subnet is the parent subnet6's
+// uuid, %subnet is "TESTLAN fd09:172:16:9::/64" (interface description +
+// CIDR, space-separated, matching a real subnet6 row's own uuid), and
+// prefix_len/delegated_len arrived as JSON STRINGS ("56"/"62") on this box —
+// flexInt already tolerates that. No live IA_PD lease row was captured
+// (host/LXC-level IPv6 kernel gap on the only available test client), so the
+// lease-side `type` field stays unverified for the actual "IA_NA"/"IA_PD"
+// wire values; the PD pool CONFIG row shape here is fully confirmed.
 type keaPdPoolRow struct {
 	SubnetUUID    string     `json:"subnet"`
 	SubnetDisplay flexString `json:"%subnet"`
