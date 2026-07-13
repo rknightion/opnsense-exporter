@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 577
-- **Gauges:** 371
-- **Counters:** 206
+- **Total metrics:** 589
+- **Gauges:** 382
+- **Counters:** 207
 
 ## General
 
@@ -425,6 +425,18 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_interfaces_line_rate_bits | Gauge | interface, device, type | Line rate in bits per second on this interface by interface name and device | --exporter.disable-interfaces |
 | opnsense_interfaces_admin_up | Gauge | interface, device | Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices. | --exporter.disable-interfaces |
 | opnsense_interfaces_info | Gauge | interface, device, identifier, media, link_type, vlan_tag, vlan_parent, physical | Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series. | --exporter.disable-interfaces |
+| opnsense_interfaces_lagg_info | Gauge | device, protocol, hash | LAGG (link aggregation) interface protocol/hash configuration. Value is always 1. Only emitted for interfaces that are themselves a lagg device. Join on the device label. | --exporter.disable-interfaces |
+| opnsense_interfaces_lagg_active_ports | Gauge | device | Number of currently active (traffic-carrying) member ports in this LAGG interface. Only emitted when the box reports a lagg statistics block for this device. | --exporter.disable-interfaces |
+| opnsense_interfaces_lagg_flapping_total | Counter | device | Cumulative count of LAGG active-port membership change (flap) events since the last stat reset. Only emitted when the box reports a lagg statistics block for this device. | --exporter.disable-interfaces |
+| opnsense_interfaces_lagg_port_active | Gauge | device, member | Whether this LAGG member port is currently active/selected to carry traffic (1) or not (0). The device label is the owning lagg interface; member is the physical port. | --exporter.disable-interfaces |
+| opnsense_interfaces_lagg_port_collecting | Gauge | device, member | LACP collecting state (RX distribution enabled) for this LAGG member port (1=collecting, 0=not). Only emitted for LACP laggs whose laggport reported a state; failover/loadbalance laggs never carry this state and emit no series. | --exporter.disable-interfaces |
+| opnsense_interfaces_lagg_port_distributing | Gauge | device, member | LACP distributing state (TX distribution enabled) for this LAGG member port (1=distributing, 0=not). Only emitted for LACP laggs whose laggport reported a state; failover/loadbalance laggs never carry this state and emit no series. | --exporter.disable-interfaces |
+| opnsense_interfaces_bridge_member | Gauge | device, member | Whether this interface is a member of the given bridge(4) interface. Value is always 1. The device label is the owning bridge interface; member is the attached interface. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_info | Gauge | device, vendor, part_number, serial_number | SFP/SFP+ transceiver identity for this interface's optical cage. Value is always 1. Emitted for any plugged module, optical or copper. Join on the device label. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_temperature_celsius | Gauge | device | SFP module temperature in degrees Celsius (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM temperature reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_voltage_volts | Gauge | device | SFP module supply voltage in volts (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM voltage reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_lane_rx_power_dbm | Gauge | device, lane | SFP per-lane received optical power in dBm (Digital Optical Monitoring). Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_lane_tx_bias_milliamps | Gauge | device, lane | SFP per-lane laser bias current in milliamps (Digital Optical Monitoring). Only emitted for lanes with a DOM TX bias reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
 
 ## Kea DHCP
 

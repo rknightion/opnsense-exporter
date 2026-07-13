@@ -382,3 +382,368 @@ func TestFetchInterfacesOverview_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+// TestFetchInterfacesOverview_SFPCopperNoDOM mirrors a real prod OPNsense 26.1
+// box (2026-07-13 capture): two ixl(4) ports each carry a UBNT UF-RJ45-1G
+// copper RJ45 SFP. Copper modules populate identity fields only — no
+// temperature/voltage/lane_*_rx_power/lane_*_tx_bias — and the box has no
+// LAGG or bridge interfaces at all. DOM series must degrade to absent, never
+// zero (#214).
+func TestFetchInterfacesOverview_SFPCopperNoDOM(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "ixl0",
+					"identifier": "wan",
+					"description": "WAN",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"media": "SFP/SFP+/SFP28 1000BASE-T <full-duplex>",
+					"link_type": "static",
+					"vlan_tag": null,
+					"is_physical": true,
+					"sfp": {
+						"plugged": "SFP/SFP+/SFP28 1000BASE-T (Unknown)",
+						"vendor": "UBNT",
+						"part_number": " UF-RJ45-1G",
+						"serial_number": "X00000000001",
+						"manufacturing_date": "2021-04-07"
+					}
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Laggs) != 0 || len(data.LaggPorts) != 0 || len(data.BridgeMembers) != 0 {
+		t.Errorf("expected no lagg/bridge data, got laggs=%d laggPorts=%d bridgeMembers=%d",
+			len(data.Laggs), len(data.LaggPorts), len(data.BridgeMembers))
+	}
+
+	if len(data.SFPModules) != 1 {
+		t.Fatalf("expected 1 SFP module, got %d", len(data.SFPModules))
+	}
+	sfp := data.SFPModules[0]
+	if sfp.Device != "ixl0" {
+		t.Errorf("expected device ixl0, got %q", sfp.Device)
+	}
+	if sfp.Vendor != "UBNT" {
+		t.Errorf("expected vendor UBNT, got %q", sfp.Vendor)
+	}
+	// PN comes off the wire with a leading space (interfaces.lib.inc's PN:(.*)
+	// capture has no \s+ before the value) — the parser must trim it.
+	if sfp.PartNumber != "UF-RJ45-1G" {
+		t.Errorf("expected trimmed part number UF-RJ45-1G, got %q", sfp.PartNumber)
+	}
+	if sfp.SerialNumber != "X00000000001" {
+		t.Errorf("expected serial X00000000001, got %q", sfp.SerialNumber)
+	}
+	if sfp.ManufacturingDate != "2021-04-07" {
+		t.Errorf("expected manufacturing date 2021-04-07, got %q", sfp.ManufacturingDate)
+	}
+
+	// The whole point of the copper-RJ45 case: DOM must be absent, never 0.
+	if sfp.TemperaturePresent {
+		t.Errorf("expected TemperaturePresent=false for a copper SFP, got value %v", sfp.TemperatureC)
+	}
+	if sfp.VoltagePresent {
+		t.Errorf("expected VoltagePresent=false for a copper SFP, got value %v", sfp.VoltageV)
+	}
+	if len(sfp.Lanes) != 0 {
+		t.Errorf("expected no DOM lanes for a copper SFP, got %+v", sfp.Lanes)
+	}
+}
+
+// TestFetchInterfacesOverview_SFPOpticalWithDOM is source-derived: OPNsense
+// core's legacy_interfaces_details() (interfaces.lib.inc lines 401-424)
+// parses `ifconfig -Lmv`'s "module temperature: X C voltage: Y Volts" and
+// "lane N: RX power: A TX bias: B" lines verbatim, including their unit
+// suffixes, into the sfp map. This models a DOM-capable optical transceiver
+// (e.g. an Intel ixl/ix or Chelsio NIC) with two lanes.
+func TestFetchInterfacesOverview_SFPOpticalWithDOM(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "ix0",
+					"identifier": "opt1",
+					"description": "SFP1",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"media": "10Gbase-SR <full-duplex>",
+					"link_type": "static",
+					"vlan_tag": null,
+					"is_physical": true,
+					"sfp": {
+						"plugged": "SFP+ 10GBASE-SR",
+						"vendor": "FS",
+						"part_number": "SFP-10GSR-85",
+						"serial_number": "G2129012345",
+						"manufacturing_date": "2021-01-01",
+						"temperature": "32.79 C",
+						"voltage": "3.30 ",
+						"lane_1_rx_power": "-2.32 dBm (0.59 mW)",
+						"lane_1_tx_bias": "6.02 mA",
+						"lane_2_rx_power": "-2.55 dBm (0.56 mW)",
+						"lane_2_tx_bias": "6.10 mA"
+					}
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.SFPModules) != 1 {
+		t.Fatalf("expected 1 SFP module, got %d", len(data.SFPModules))
+	}
+	sfp := data.SFPModules[0]
+
+	if !sfp.TemperaturePresent {
+		t.Fatal("expected TemperaturePresent=true")
+	}
+	if sfp.TemperatureC != 32.79 {
+		t.Errorf("expected temperature 32.79, got %v", sfp.TemperatureC)
+	}
+	if !sfp.VoltagePresent {
+		t.Fatal("expected VoltagePresent=true")
+	}
+	if sfp.VoltageV != 3.30 {
+		t.Errorf("expected voltage 3.30, got %v", sfp.VoltageV)
+	}
+
+	if len(sfp.Lanes) != 2 {
+		t.Fatalf("expected 2 DOM lanes, got %d: %+v", len(sfp.Lanes), sfp.Lanes)
+	}
+	byLane := map[string]SFPLane{}
+	for _, l := range sfp.Lanes {
+		byLane[l.Lane] = l
+	}
+	l1, ok := byLane["1"]
+	if !ok {
+		t.Fatalf("expected lane 1, got %+v", sfp.Lanes)
+	}
+	if !l1.RXPowerPresent || l1.RXPowerDBM != -2.32 {
+		t.Errorf("expected lane 1 rx power -2.32 (present), got %+v", l1)
+	}
+	if !l1.TXBiasPresent || l1.TXBiasMA != 6.02 {
+		t.Errorf("expected lane 1 tx bias 6.02 (present), got %+v", l1)
+	}
+	l2, ok := byLane["2"]
+	if !ok {
+		t.Fatalf("expected lane 2, got %+v", sfp.Lanes)
+	}
+	if !l2.RXPowerPresent || l2.RXPowerDBM != -2.55 {
+		t.Errorf("expected lane 2 rx power -2.55 (present), got %+v", l2)
+	}
+	if !l2.TXBiasPresent || l2.TXBiasMA != 6.10 {
+		t.Errorf("expected lane 2 tx bias 6.10 (present), got %+v", l2)
+	}
+}
+
+// TestFetchInterfacesOverview_LaggLACPWithMembers is source-derived from
+// interfaces.lib.inc lines 431-464: an LACP lagg reports laggproto+lagghash,
+// a "lagg statistics:" block (active ports/flapping), and a laggport map
+// whose per-member "state=" clause is LACP-only (collecting/distributing).
+func TestFetchInterfacesOverview_LaggLACPWithMembers(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "lagg0",
+					"identifier": "lan",
+					"description": "LAN",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"media": "Ethernet autoselect",
+					"link_type": "static",
+					"vlan_tag": null,
+					"is_physical": true,
+					"laggproto": "lacp",
+					"lagghash": "l2,l3,l4",
+					"laggstatistics": {
+						"active ports": "2",
+						"flapping": "0"
+					},
+					"laggport": {
+						"ix0": {
+							"flags": ["active"],
+							"state": ["active", "collecting", "distributing"]
+						},
+						"ix1": {
+							"flags": ["active"],
+							"state": ["active", "collecting", "distributing"]
+						}
+					}
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Laggs) != 1 {
+		t.Fatalf("expected 1 lagg, got %d", len(data.Laggs))
+	}
+	lagg := data.Laggs[0]
+	if lagg.Device != "lagg0" || lagg.Protocol != "lacp" || lagg.Hash != "l2,l3,l4" {
+		t.Errorf("unexpected lagg info: %+v", lagg)
+	}
+	if !lagg.StatsPresent {
+		t.Fatal("expected StatsPresent=true")
+	}
+	if lagg.ActivePorts != 2 || lagg.Flapping != 0 {
+		t.Errorf("expected active_ports=2 flapping=0, got %+v", lagg)
+	}
+
+	if len(data.LaggPorts) != 2 {
+		t.Fatalf("expected 2 lagg ports, got %d", len(data.LaggPorts))
+	}
+	for _, p := range data.LaggPorts {
+		if p.Lagg != "lagg0" {
+			t.Errorf("expected owning lagg lagg0, got %q", p.Lagg)
+		}
+		if !p.Active {
+			t.Errorf("expected port %q active=true", p.Port)
+		}
+		if !p.StatePresent {
+			t.Errorf("expected port %q StatePresent=true", p.Port)
+		}
+		if !p.Collecting || !p.Distributing {
+			t.Errorf("expected port %q collecting+distributing=true, got %+v", p.Port, p)
+		}
+	}
+}
+
+// TestFetchInterfacesOverview_LaggFailoverNoLACPState is source-derived:
+// non-LACP protocols (failover, loadbalance, ...) never carry a laggport
+// "state=" clause (interfaces.lib.inc line 455-456's second alternation has
+// no state group), and failover in particular carries no lagghash. The
+// standby port's "active" flag is absent.
+func TestFetchInterfacesOverview_LaggFailoverNoLACPState(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "lagg0",
+					"identifier": "lan",
+					"description": "LAN",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"media": "Ethernet autoselect",
+					"link_type": "static",
+					"vlan_tag": null,
+					"is_physical": true,
+					"laggproto": "failover",
+					"laggport": {
+						"ix0": {"flags": ["active"]},
+						"ix1": {"flags": []}
+					}
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Laggs) != 1 {
+		t.Fatalf("expected 1 lagg, got %d", len(data.Laggs))
+	}
+	lagg := data.Laggs[0]
+	if lagg.Protocol != "failover" || lagg.Hash != "" {
+		t.Errorf("expected failover protocol with empty hash, got %+v", lagg)
+	}
+	if lagg.StatsPresent {
+		t.Errorf("expected StatsPresent=false (no laggstatistics block), got %+v", lagg)
+	}
+
+	if len(data.LaggPorts) != 2 {
+		t.Fatalf("expected 2 lagg ports, got %d", len(data.LaggPorts))
+	}
+	var active, standby *LaggPort
+	for i := range data.LaggPorts {
+		p := &data.LaggPorts[i]
+		if p.Port == "ix0" {
+			active = p
+		}
+		if p.Port == "ix1" {
+			standby = p
+		}
+	}
+	if active == nil || !active.Active {
+		t.Fatalf("expected ix0 active=true, got %+v", active)
+	}
+	if active.StatePresent {
+		t.Error("expected StatePresent=false for a failover lagg (no LACP state)")
+	}
+	if standby == nil || standby.Active {
+		t.Fatalf("expected ix1 active=false, got %+v", standby)
+	}
+}
+
+// TestFetchInterfacesOverview_BridgeWithMembers is source-derived from
+// interfaces.lib.inc lines 505-511: a bridge(4) interface's "members" map
+// keys by member device name.
+func TestFetchInterfacesOverview_BridgeWithMembers(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "bridge0",
+					"identifier": "opt5",
+					"description": "GUESTBRIDGE",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"media": "Ethernet autoselect",
+					"link_type": "static",
+					"vlan_tag": null,
+					"is_physical": false,
+					"members": {
+						"ix2": {"flags": ["learning", "discover", "autoedge", "autoptp"]},
+						"ix3": {"flags": ["learning", "discover", "autoedge", "autoptp"]}
+					}
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.BridgeMembers) != 2 {
+		t.Fatalf("expected 2 bridge members, got %d", len(data.BridgeMembers))
+	}
+	for _, m := range data.BridgeMembers {
+		if m.Bridge != "bridge0" {
+			t.Errorf("expected owning bridge bridge0, got %q", m.Bridge)
+		}
+	}
+	if data.BridgeMembers[0].Member != "ix2" || data.BridgeMembers[1].Member != "ix3" {
+		t.Errorf("expected sorted members ix2, ix3, got %+v", data.BridgeMembers)
+	}
+}

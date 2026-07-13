@@ -1,11 +1,26 @@
 """
-Interfaces tab — all 16 opnsense_interfaces_* metrics.
+Interfaces tab — all opnsense_interfaces_* metrics.
 
 Rows:
   1. Throughput        — rx/tx bytes as bps (rate*8), tx shown as negative-Y
   2. Packets & Errors  — rx/tx packets (pps), multicasts (rate), input/output errors (rate), collisions (rate)
   3. Queues            — send_queue_length, send_queue_max_length, send_queue_drops (rate), input_queue_drops (rate)
   4. Link state & rates— link_state statetimeline + info table (mtu, line_rate, device, type)
+  5. Admin State & Identity — admin_up statetimeline + info table (media/VLAN/link type)
+  6. LAGG (Link Aggregation) — protocol/hash + active ports/flapping + per-port active/LACP state (#214)
+  7. Bridge Membership — member table (#214)
+  8. SFP / Optics (DOM) — transceiver identity + Digital Optical Monitoring: temperature,
+     voltage, per-lane RX power/TX bias. DOM panels are hardware-dependent — a copper RJ45
+     SFP reports identity only, never DOM, so those panels legitimately show "No data" on
+     such interfaces (absent series, not zero) (#214)
+
+Two new label spaces introduced in #214, both DEVICE-space (kernel device name, same
+space as the existing device label on admin_up/info) — NOT the description-space
+$interface variable:
+  - lagg_info/lagg_active_ports/lagg_flapping_total: device = the lagg(4) interface itself
+  - lagg_port_active/_collecting/_distributing: device = owning lagg, member = physical port
+  - bridge_member: device = owning bridge(4), member = attached interface
+  - sfp_*: device = the interface owning the SFP cage
 """
 
 from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
@@ -13,6 +28,10 @@ from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
 
 def build(b: Builder):
     iface = 'interface=~"$interface"'
+
+    b.sentinel("has_lagg", "label_values(opnsense_interfaces_lagg_info, __name__)")
+    b.sentinel("has_bridge", "label_values(opnsense_interfaces_bridge_member, __name__)")
+    b.sentinel("has_sfp", "label_values(opnsense_interfaces_sfp_info, __name__)")
 
     # ---- Row 1: Throughput ------------------------------------------------
     rx_bps = b.ts(
@@ -163,10 +182,122 @@ def build(b: Builder):
              "(media/duplex, link type, VLAN topology).",
     )
 
+    # ---- Row 6: LAGG (link aggregation) ------------------------------------
+    # device/member here are the DEVICE-space kernel names (lagg0, ix0, ...) —
+    # the same space as admin_up/info's device label, NOT $interface (#98).
+    lagg_info = b.table(
+        "LAGG Protocol / Hash",
+        [sel("opnsense_interfaces_lagg_info")],
+        w=12, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"device": "LAGG Device", "protocol": "Protocol", "hash": "Hash"},
+        sort_by="LAGG Device",
+        desc="opnsense_interfaces_lagg_info: laggproto/lagghash configuration for each "
+             "LAGG interface. Only present for interfaces that are themselves a lagg(4) device.",
+    )
+    lagg_active_ports = b.ts(
+        "LAGG Active Ports",
+        [(sel("opnsense_interfaces_lagg_active_ports"), "{{device}}")],
+        unit="short", w=6, h=8,
+        desc="Number of member ports currently active/carrying traffic. Only emitted when "
+             "the box reports a lagg statistics block for the device.",
+    )
+    lagg_flapping = b.ts(
+        "LAGG Port Flapping",
+        [(f'rate({sel("opnsense_interfaces_lagg_flapping_total")}[{RATE}])', "{{device}}")],
+        unit="short", w=6, h=8,
+        desc="Rate of LAGG active-port membership change (flap) events — a healthy LAGG "
+             "should sit at 0; sustained flapping indicates a failing member link.",
+    )
+    lagg_port_state = b.table(
+        "LAGG Member Port State",
+        [
+            sel("opnsense_interfaces_lagg_port_active"),
+            sel("opnsense_interfaces_lagg_port_collecting"),
+            sel("opnsense_interfaces_lagg_port_distributing"),
+        ],
+        w=24, h=10,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "device": "LAGG Device", "member": "Member Port",
+            "Value #A": "Active", "Value #B": "Collecting (LACP)", "Value #C": "Distributing (LACP)",
+        },
+        sort_by="LAGG Device",
+        desc="Per-member-port active/LACP negotiation state. Collecting/Distributing are "
+             "LACP-only — a failover/loadbalance LAGG's member never reports them (blank, "
+             "not 0). A LAGG that dropped from N active ports to fewer keeps passing traffic "
+             "with no other metric moving — watch this table plus LAGG Active Ports.",
+    )
+
+    # ---- Row 7: Bridge membership ------------------------------------------
+    bridge_members = b.table(
+        "Bridge Membership",
+        [sel("opnsense_interfaces_bridge_member")],
+        w=24, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"device": "Bridge Device", "member": "Member Interface"},
+        sort_by="Bridge Device",
+        desc="opnsense_interfaces_bridge_member: which interfaces are attached to each "
+             "bridge(4) interface.",
+    )
+
+    # ---- Row 8: SFP / Optics (DOM) ------------------------------------------
+    sfp_info = b.table(
+        "SFP Transceiver Identity",
+        [sel("opnsense_interfaces_sfp_info")],
+        w=24, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "device": "Device", "vendor": "Vendor",
+            "part_number": "Part Number", "serial_number": "Serial Number",
+        },
+        sort_by="Device",
+        desc="opnsense_interfaces_sfp_info: transceiver identity for any plugged SFP/SFP+ "
+             "module, optical or copper. Digital Optical Monitoring (DOM) panels below only "
+             "populate for transceivers that support DOM — a copper RJ45 SFP shows identity "
+             "here but no series below (absent, not zero).",
+    )
+    sfp_temperature = b.ts(
+        "SFP Temperature",
+        [(sel("opnsense_interfaces_sfp_temperature_celsius"), "{{device}}")],
+        unit="celsius", w=12, h=8,
+        desc="Digital Optical Monitoring module temperature. Only present for DOM-capable "
+             "transceivers — a rising trend or an out-of-spec reading is an early warning "
+             "sign for a dying optic.",
+    )
+    sfp_voltage = b.ts(
+        "SFP Supply Voltage",
+        [(sel("opnsense_interfaces_sfp_voltage_volts"), "{{device}}")],
+        unit="volt", w=12, h=8,
+        desc="Digital Optical Monitoring module supply voltage. Only present for DOM-capable "
+             "transceivers.",
+    )
+    sfp_rx_power = b.ts(
+        "SFP Lane RX Power",
+        [(sel("opnsense_interfaces_sfp_lane_rx_power_dbm"), "{{device}} lane {{lane}}")],
+        unit="dBm", w=12, h=8,
+        desc="Per-lane received optical power. Only present for DOM-capable transceivers; "
+             "a falling trend indicates a degrading link or fiber.",
+    )
+    sfp_tx_bias = b.ts(
+        "SFP Lane TX Bias Current",
+        [(sel("opnsense_interfaces_sfp_lane_tx_bias_milliamps"), "{{device}} lane {{lane}}")],
+        unit="mA", w=12, h=8,
+        desc="Per-lane laser bias current. Only present for DOM-capable transceivers; a "
+             "rising trend at constant output power is a classic laser end-of-life signal.",
+    )
+
     b.tab("Interfaces", [
         b.row("Throughput", [rx_bps, tx_bps]),
         b.row("Packets & Errors", [rx_pkts, tx_pkts, multicasts, errors, collisions]),
         b.row("Queues", [queue_len, queue_drops]),
         b.row("Link State & Rates", [link_state, iface_info]),
         b.row("Admin State & Identity", [admin_state, iface_identity]),
+        b.row("LAGG (Link Aggregation)",
+              [lagg_info, lagg_active_ports, lagg_flapping, lagg_port_state],
+              present="has_lagg"),
+        b.row("Bridge Membership", [bridge_members], present="has_bridge"),
+        b.row("SFP / Optics (DOM)",
+              [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power, sfp_tx_bias],
+              present="has_sfp"),
     ])

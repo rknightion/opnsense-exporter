@@ -22,6 +22,10 @@
     "note": "legacy pre-26.1.11 health shape (top-level per-subsystem objects + metadata.<Subsystem>); 26.1.11+ serves only metadata.system plus metadata.subsystems, which the tolerant reader prefers. Prune when 26.1.10 and older leave the support window"
   },
   "interfaces": { "knownExtraTopKeys": ["time"], "note": "capture timestamp of the interface statistics snapshot; not modelled" },
+  "interfacesOverview": {
+    "missingOK": ["rows[].laggproto", "rows[].lagghash", "rows[].laggstatistics.*", "rows[].laggport.*", "rows[].members.*"],
+    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport) and bridge (members) fields are hardware/config-dependent — only served by a row that is itself a lagg(4)/bridge(4) interface. Verified empirically 2026-07-13: absent on both the live prod box (no lagg, no bridge configured) and the 26.7-devel VM (virtio-only, no lagg/bridge module loaded). rows[].sfp.* already covers every sfp key uniformly (including the DOM-only temperature/voltage/lane_*_rx_power/lane_*_tx_bias keys) via the map wildcard, so no separate exemption is needed there — a copper RJ45 SFP's identity-only keys (verified live: UBNT UF-RJ45-1G) already satisfy the wildcard (#214)"
+  },
   "ipsecPools": { "knownExtraTopKeys": ["leases"], "note": "per-pool lease detail served alongside the pool rows; not modelled" },
   "ipsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "keaLeases4": { "knownExtraTopKeys": ["interfaces", "stats"], "note": "interface list and aggregate pool stats served with the lease rows; not modelled" },

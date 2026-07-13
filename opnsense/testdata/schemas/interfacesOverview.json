@@ -40,11 +40,79 @@
       "kind": "boolean"
     },
     {
+      "path": "rows[].lagghash",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].laggport",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].laggport.*",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].laggport.*.flags",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].laggport.*.flags[]",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].laggport.*.state",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].laggport.*.state[]",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].laggproto",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].laggstatistics",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].laggstatistics.active ports",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].laggstatistics.flapping",
+      "kind": "string"
+    },
+    {
       "path": "rows[].link_type",
       "kind": "string"
     },
     {
       "path": "rows[].media",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].members",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].members.*",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].members.*.flags",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].members.*.flags[]",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].sfp",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].sfp.*",
       "kind": "string"
     },
     {

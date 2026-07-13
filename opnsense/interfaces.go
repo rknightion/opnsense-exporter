@@ -1,6 +1,8 @@
 package opnsense
 
 import (
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -168,6 +170,52 @@ type interfaceOverviewRow struct {
 		Parent string `json:"parent"`
 	} `json:"vlan"`
 	IsPhysical bool `json:"is_physical"`
+
+	// LAGG (link aggregation) fields. Populated only when Device is itself a
+	// lagg(4) interface. Source: legacy_interfaces_details() in OPNsense
+	// core's src/etc/inc/interfaces.lib.inc, which parses `ifconfig -Lmv`:
+	//   laggproto (.*)$                                        -> LaggProto
+	//   laggproto (\S+) lagghash (\S+)$                         -> LaggProto + LaggHash
+	//   lagg statistics: / active ports: N / flapping: N        -> LaggStatistics
+	//   laggport: <dev> flags=..<..> [state=..<..>]             -> LaggPort[<dev>]
+	// (interfaces.lib.inc lines 431-464, opnsense/core master as of 2026-07-13).
+	LaggProto      string                          `json:"laggproto"`
+	LaggHash       string                          `json:"lagghash"`
+	LaggStatistics *interfaceLaggStatisticsRaw     `json:"laggstatistics"`
+	LaggPort       map[string]interfaceLaggPortRaw `json:"laggport"`
+
+	// Bridge membership. Populated only when Device is itself a bridge(4)
+	// interface: "members" maps each attached interface to its bridge flags.
+	// Source: `member: <dev> flags=...<...>` (interfaces.lib.inc lines
+	// 505-511).
+	Members map[string]interfaceBridgeMemberRaw `json:"members"`
+
+	// SFP/SFP+ transceiver block. A plain string map because OPNsense emits
+	// dynamic per-lane keys ("lane_1_rx_power", "lane_2_tx_bias", ...) that
+	// cannot be declared as fixed struct fields; fixed keys ("plugged",
+	// "vendor", "part_number", "serial_number", "manufacturing_date") live in
+	// the same map. Digital Optical Monitoring (DOM) keys — "temperature",
+	// "voltage", and the lane_* keys — are only present for transceivers that
+	// support DOM; copper RJ45 SFPs (verified live against a UBNT UF-RJ45-1G
+	// on OPNsense 26.1) report only the identity keys, never DOM. Source:
+	// interfaces.lib.inc lines 401-424.
+	SFP map[string]string `json:"sfp"`
+}
+
+type interfaceLaggStatisticsRaw struct {
+	ActivePorts string `json:"active ports"`
+	Flapping    string `json:"flapping"`
+}
+
+type interfaceLaggPortRaw struct {
+	Flags []string `json:"flags"`
+	// State is only present for LACP laggs (laggproto lacp); other protocols
+	// (failover, loadbalance, ...) never carry a laggport "state=" clause.
+	State []string `json:"state"`
+}
+
+type interfaceBridgeMemberRaw struct {
+	Flags []string `json:"flags"`
 }
 
 // InterfaceOverview is the per-interface identity/status data from the
@@ -186,9 +234,236 @@ type InterfaceOverview struct {
 	Physical    bool
 }
 
+// LaggInfo is a LAGG (link aggregation) interface's protocol/hash
+// configuration and aggregate active-port/flap counters (interfaces_info
+// "laggproto"/"lagghash"/"laggstatistics"). Present in InterfacesOverview only
+// for rows that are themselves a lagg device.
+type LaggInfo struct {
+	Device   string // the lagg device itself, e.g. "lagg0"
+	Protocol string // laggproto, e.g. "lacp", "failover", "loadbalance"
+	Hash     string // lagghash, e.g. "l2,l3,l4"; empty for hash-less protocols (e.g. failover)
+
+	// StatsPresent is false when the box served no "lagg statistics:" block
+	// for this device; ActivePorts/Flapping must not be read (and must not be
+	// emitted as a metric) in that case.
+	StatsPresent bool
+	ActivePorts  int64
+	Flapping     int64
+}
+
+// LaggPort is one physical member port of a LAGG, with its runtime
+// active/LACP-negotiation state (interfaces_info "laggport" map).
+type LaggPort struct {
+	Lagg string // owning lagg device, e.g. "lagg0"
+	Port string // member device, e.g. "ix0"
+	// Active reports whether the "active" flag is present on this port
+	// (the port is currently selected to carry traffic).
+	Active bool
+	// StatePresent is false for non-LACP laggs (failover/loadbalance/...),
+	// which never carry a laggport "state=" clause; Collecting/Distributing
+	// must not be read (or emitted) in that case.
+	StatePresent bool
+	Collecting   bool // LACP state: collecting (RX side up)
+	Distributing bool // LACP state: distributing (TX side up)
+}
+
+// BridgeMember is one interface attached to a bridge(4) interface
+// (interfaces_info "members" map).
+type BridgeMember struct {
+	Bridge string // owning bridge device, e.g. "bridge0"
+	Member string // member device, e.g. "ix1"
+}
+
+// SFPLane is one Digital Optical Monitoring (DOM) lane reading. Only lanes
+// actually reported by the box are included — never synthesized for lanes
+// the transceiver doesn't have.
+type SFPLane struct {
+	Lane string // lane identifier as reported, e.g. "1"
+
+	RXPowerPresent bool
+	RXPowerDBM     float64
+	TXBiasPresent  bool
+	TXBiasMA       float64
+}
+
+// SFPModule is the transceiver identity/diagnostics for one interface's SFP
+// cage (interfaces_info "sfp" block). Identity fields (Vendor/PartNumber/
+// SerialNumber/ManufacturingDate) are populated for every plugged module,
+// copper or optical. DOM fields (Temperature/Voltage/Lanes) are only
+// populated for transceivers that support Digital Optical Monitoring; a
+// copper RJ45 SFP (verified live: UBNT UF-RJ45-1G on OPNsense 26.1) reports
+// identity only. Callers must check *Present before reading/emitting a DOM
+// value — an absent reading must degrade to an absent series, never a zero.
+type SFPModule struct {
+	Device            string
+	Plugged           string
+	Vendor            string
+	PartNumber        string
+	SerialNumber      string
+	ManufacturingDate string
+
+	TemperaturePresent bool
+	TemperatureC       float64
+	VoltagePresent     bool
+	VoltageV           float64
+	Lanes              []SFPLane
+}
+
 // InterfacesOverview holds the parsed response from the interfaces overview endpoint.
 type InterfacesOverview struct {
-	Interfaces []InterfaceOverview
+	Interfaces    []InterfaceOverview
+	Laggs         []LaggInfo
+	LaggPorts     []LaggPort
+	BridgeMembers []BridgeMember
+	SFPModules    []SFPModule
+}
+
+// sfpLaneKeyRegexp matches the dynamic per-lane SFP DOM keys OPNsense emits,
+// e.g. "lane_1_rx_power" / "lane_1_tx_bias" (interfaces.lib.inc line 423:
+// sprintf('lane_%s_rx_power', $matches[1])). The lane identifier itself
+// (\S+, matched non-greedily) is whatever the kernel reports, typically a
+// small integer.
+var sfpLaneKeyRegexp = regexp.MustCompile(`^lane_(.+)_(rx_power|tx_bias)$`)
+
+// leadingFloatRegexp extracts the leading signed decimal number from an
+// OPNsense-formatted measurement string (e.g. "45.32 C", "-2.32 dBm (0.59 mW)",
+// "6.02 mA"), which always carries a trailing unit the exporter must strip
+// tolerantly rather than assume a fixed suffix.
+var leadingFloatRegexp = regexp.MustCompile(`-?\d+(?:\.\d+)?`)
+
+// leadingFloat parses the leading numeric token off a unit-suffixed
+// measurement string, reporting false (not 0) when no numeric token is found
+// so callers can distinguish "absent/malformed" from a genuine 0 reading.
+func leadingFloat(s string) (float64, bool) {
+	m := leadingFloatRegexp.FindString(s)
+	if m == "" {
+		return 0, false
+	}
+	return safeParseFloatOK(m)
+}
+
+// parseLaggInfo extracts LaggInfo from a row that is itself a lagg device.
+// Returns ok=false when the row carries no laggproto (i.e. is not a lagg).
+func parseLaggInfo(row interfaceOverviewRow) (LaggInfo, bool) {
+	if row.LaggProto == "" {
+		return LaggInfo{}, false
+	}
+	info := LaggInfo{
+		Device:   row.Device,
+		Protocol: row.LaggProto,
+		Hash:     row.LaggHash,
+	}
+	if row.LaggStatistics != nil {
+		info.StatsPresent = true
+		info.ActivePorts = safeAtoi(row.LaggStatistics.ActivePorts)
+		info.Flapping = safeAtoi(row.LaggStatistics.Flapping)
+	}
+	return info, true
+}
+
+// parseLaggPorts extracts the member ports of a lagg row, sorted by member
+// device name for deterministic output.
+func parseLaggPorts(row interfaceOverviewRow) []LaggPort {
+	if len(row.LaggPort) == 0 {
+		return nil
+	}
+	ports := make([]LaggPort, 0, len(row.LaggPort))
+	for member, raw := range row.LaggPort {
+		port := LaggPort{Lagg: row.Device, Port: member}
+		for _, f := range raw.Flags {
+			if f == "active" {
+				port.Active = true
+			}
+		}
+		if len(raw.State) > 0 {
+			port.StatePresent = true
+			for _, s := range raw.State {
+				switch s {
+				case "collecting":
+					port.Collecting = true
+				case "distributing":
+					port.Distributing = true
+				}
+			}
+		}
+		ports = append(ports, port)
+	}
+	sort.Slice(ports, func(i, j int) bool { return ports[i].Port < ports[j].Port })
+	return ports
+}
+
+// parseBridgeMembers extracts the member interfaces of a bridge row, sorted
+// by member device name for deterministic output.
+func parseBridgeMembers(row interfaceOverviewRow) []BridgeMember {
+	if len(row.Members) == 0 {
+		return nil
+	}
+	members := make([]BridgeMember, 0, len(row.Members))
+	for member := range row.Members {
+		members = append(members, BridgeMember{Bridge: row.Device, Member: member})
+	}
+	sort.Slice(members, func(i, j int) bool { return members[i].Member < members[j].Member })
+	return members
+}
+
+// parseSFPModule extracts identity and (when present) DOM diagnostics from a
+// row's sfp block. Returns ok=false when the row has no sfp cage at all.
+func parseSFPModule(row interfaceOverviewRow) (SFPModule, bool) {
+	if len(row.SFP) == 0 {
+		return SFPModule{}, false
+	}
+	m := row.SFP
+	mod := SFPModule{
+		Device:            row.Device,
+		Plugged:           m["plugged"],
+		Vendor:            strings.TrimSpace(m["vendor"]),
+		PartNumber:        strings.TrimSpace(m["part_number"]),
+		SerialNumber:      strings.TrimSpace(m["serial_number"]),
+		ManufacturingDate: strings.TrimSpace(m["manufacturing_date"]),
+	}
+	if v := m["temperature"]; v != "" {
+		if f, ok := leadingFloat(v); ok {
+			mod.TemperatureC = f
+			mod.TemperaturePresent = true
+		}
+	}
+	if v := m["voltage"]; v != "" {
+		if f, ok := leadingFloat(v); ok {
+			mod.VoltageV = f
+			mod.VoltagePresent = true
+		}
+	}
+
+	lanes := map[string]*SFPLane{}
+	var laneOrder []string
+	for k, v := range m {
+		sub := sfpLaneKeyRegexp.FindStringSubmatch(k)
+		if sub == nil {
+			continue
+		}
+		lane, kind := sub[1], sub[2]
+		l, ok := lanes[lane]
+		if !ok {
+			l = &SFPLane{Lane: lane}
+			lanes[lane] = l
+			laneOrder = append(laneOrder, lane)
+		}
+		f, fok := leadingFloat(v)
+		switch kind {
+		case "rx_power":
+			l.RXPowerDBM = f
+			l.RXPowerPresent = fok
+		case "tx_bias":
+			l.TXBiasMA = f
+			l.TXBiasPresent = fok
+		}
+	}
+	sort.Strings(laneOrder)
+	for _, lane := range laneOrder {
+		mod.Lanes = append(mod.Lanes, *lanes[lane])
+	}
+
+	return mod, true
 }
 
 // FetchInterfacesOverview calls api/interfaces/overview/interfaces_info and
@@ -238,6 +513,15 @@ func (c *Client) FetchInterfacesOverview() (InterfacesOverview, *APICallError) {
 			}
 		}
 		data.Interfaces = append(data.Interfaces, iface)
+
+		if info, ok := parseLaggInfo(row); ok {
+			data.Laggs = append(data.Laggs, info)
+		}
+		data.LaggPorts = append(data.LaggPorts, parseLaggPorts(row)...)
+		data.BridgeMembers = append(data.BridgeMembers, parseBridgeMembers(row)...)
+		if mod, ok := parseSFPModule(row); ok {
+			data.SFPModules = append(data.SFPModules, mod)
+		}
 	}
 
 	return data, nil

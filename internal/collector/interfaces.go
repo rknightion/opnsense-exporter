@@ -31,6 +31,20 @@ type interfacesCollector struct {
 	adminUp *prometheus.Desc
 	info    *prometheus.Desc
 
+	laggActivePorts      *prometheus.Desc
+	laggFlapping         *prometheus.Desc
+	laggInfo             *prometheus.Desc
+	laggPortActive       *prometheus.Desc
+	laggPortCollecting   *prometheus.Desc
+	laggPortDistributing *prometheus.Desc
+	bridgeMember         *prometheus.Desc
+
+	sfpInfo        *prometheus.Desc
+	sfpTemperature *prometheus.Desc
+	sfpVoltage     *prometheus.Desc
+	sfpLaneRXPower *prometheus.Desc
+	sfpLaneTXBias  *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -123,6 +137,55 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		"Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series.",
 		[]string{"interface", "device", "identifier", "media", "link_type", "vlan_tag", "vlan_parent", "physical"},
 	)
+
+	c.laggInfo = buildPrometheusDesc(c.subsystem, "lagg_info",
+		"LAGG (link aggregation) interface protocol/hash configuration. Value is always 1. Only emitted for interfaces that are themselves a lagg device. Join on the device label.",
+		[]string{"device", "protocol", "hash"},
+	)
+	c.laggActivePorts = buildPrometheusDesc(c.subsystem, "lagg_active_ports",
+		"Number of currently active (traffic-carrying) member ports in this LAGG interface. Only emitted when the box reports a lagg statistics block for this device.",
+		[]string{"device"},
+	)
+	c.laggFlapping = buildPrometheusDesc(c.subsystem, "lagg_flapping_total",
+		"Cumulative count of LAGG active-port membership change (flap) events since the last stat reset. Only emitted when the box reports a lagg statistics block for this device.",
+		[]string{"device"},
+	)
+	c.laggPortActive = buildPrometheusDesc(c.subsystem, "lagg_port_active",
+		"Whether this LAGG member port is currently active/selected to carry traffic (1) or not (0). The device label is the owning lagg interface; member is the physical port.",
+		[]string{"device", "member"},
+	)
+	c.laggPortCollecting = buildPrometheusDesc(c.subsystem, "lagg_port_collecting",
+		"LACP collecting state (RX distribution enabled) for this LAGG member port (1=collecting, 0=not). Only emitted for LACP laggs whose laggport reported a state; failover/loadbalance laggs never carry this state and emit no series.",
+		[]string{"device", "member"},
+	)
+	c.laggPortDistributing = buildPrometheusDesc(c.subsystem, "lagg_port_distributing",
+		"LACP distributing state (TX distribution enabled) for this LAGG member port (1=distributing, 0=not). Only emitted for LACP laggs whose laggport reported a state; failover/loadbalance laggs never carry this state and emit no series.",
+		[]string{"device", "member"},
+	)
+	c.bridgeMember = buildPrometheusDesc(c.subsystem, "bridge_member",
+		"Whether this interface is a member of the given bridge(4) interface. Value is always 1. The device label is the owning bridge interface; member is the attached interface.",
+		[]string{"device", "member"},
+	)
+	c.sfpInfo = buildPrometheusDesc(c.subsystem, "sfp_info",
+		"SFP/SFP+ transceiver identity for this interface's optical cage. Value is always 1. Emitted for any plugged module, optical or copper. Join on the device label.",
+		[]string{"device", "vendor", "part_number", "serial_number"},
+	)
+	c.sfpTemperature = buildPrometheusDesc(c.subsystem, "sfp_temperature_celsius",
+		"SFP module temperature in degrees Celsius (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM temperature reading; copper RJ45 SFPs never report DOM and emit no series here.",
+		[]string{"device"},
+	)
+	c.sfpVoltage = buildPrometheusDesc(c.subsystem, "sfp_voltage_volts",
+		"SFP module supply voltage in volts (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM voltage reading; copper RJ45 SFPs never report DOM and emit no series here.",
+		[]string{"device"},
+	)
+	c.sfpLaneRXPower = buildPrometheusDesc(c.subsystem, "sfp_lane_rx_power_dbm",
+		"SFP per-lane received optical power in dBm (Digital Optical Monitoring). Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here.",
+		[]string{"device", "lane"},
+	)
+	c.sfpLaneTXBias = buildPrometheusDesc(c.subsystem, "sfp_lane_tx_bias_milliamps",
+		"SFP per-lane laser bias current in milliamps (Digital Optical Monitoring). Only emitted for lanes with a DOM TX bias reading; copper RJ45 SFPs never report DOM and emit no series here.",
+		[]string{"device", "lane"},
+	)
 }
 
 func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -144,6 +207,18 @@ func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.lineRate
 	ch <- c.adminUp
 	ch <- c.info
+	ch <- c.laggInfo
+	ch <- c.laggActivePorts
+	ch <- c.laggFlapping
+	ch <- c.laggPortActive
+	ch <- c.laggPortCollecting
+	ch <- c.laggPortDistributing
+	ch <- c.bridgeMember
+	ch <- c.sfpInfo
+	ch <- c.sfpTemperature
+	ch <- c.sfpVoltage
+	ch <- c.sfpLaneRXPower
+	ch <- c.sfpLaneTXBias
 }
 
 func (c *interfacesCollector) update(ch chan<- prometheus.Metric, desc *prometheus.Desc, valueType prometheus.ValueType, value float64, labelValues ...string) {
@@ -204,6 +279,57 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.update(ch, c.info, prometheus.GaugeValue, 1,
 			iface.Description, iface.Device, iface.Identifier, iface.Media,
 			iface.LinkType, iface.VlanTag, iface.VlanParent, physical, c.instance)
+	}
+
+	// LAGG, bridge and SFP data are all hardware/config-dependent (absent on
+	// most boxes) — each block below degrades to emitting nothing rather than
+	// a zero when the box has no lagg, no bridge, or a DOM-incapable (e.g.
+	// copper RJ45) transceiver (#214).
+	for _, lagg := range overview.Laggs {
+		c.update(ch, c.laggInfo, prometheus.GaugeValue, 1, lagg.Device, lagg.Protocol, lagg.Hash, c.instance)
+		if lagg.StatsPresent {
+			c.update(ch, c.laggActivePorts, prometheus.GaugeValue, float64(lagg.ActivePorts), lagg.Device, c.instance)
+			c.update(ch, c.laggFlapping, prometheus.CounterValue, float64(lagg.Flapping), lagg.Device, c.instance)
+		}
+	}
+	for _, port := range overview.LaggPorts {
+		active := 0.0
+		if port.Active {
+			active = 1.0
+		}
+		c.update(ch, c.laggPortActive, prometheus.GaugeValue, active, port.Lagg, port.Port, c.instance)
+		if port.StatePresent {
+			collecting := 0.0
+			if port.Collecting {
+				collecting = 1.0
+			}
+			c.update(ch, c.laggPortCollecting, prometheus.GaugeValue, collecting, port.Lagg, port.Port, c.instance)
+			distributing := 0.0
+			if port.Distributing {
+				distributing = 1.0
+			}
+			c.update(ch, c.laggPortDistributing, prometheus.GaugeValue, distributing, port.Lagg, port.Port, c.instance)
+		}
+	}
+	for _, member := range overview.BridgeMembers {
+		c.update(ch, c.bridgeMember, prometheus.GaugeValue, 1, member.Bridge, member.Member, c.instance)
+	}
+	for _, sfp := range overview.SFPModules {
+		c.update(ch, c.sfpInfo, prometheus.GaugeValue, 1, sfp.Device, sfp.Vendor, sfp.PartNumber, sfp.SerialNumber, c.instance)
+		if sfp.TemperaturePresent {
+			c.update(ch, c.sfpTemperature, prometheus.GaugeValue, sfp.TemperatureC, sfp.Device, c.instance)
+		}
+		if sfp.VoltagePresent {
+			c.update(ch, c.sfpVoltage, prometheus.GaugeValue, sfp.VoltageV, sfp.Device, c.instance)
+		}
+		for _, lane := range sfp.Lanes {
+			if lane.RXPowerPresent {
+				c.update(ch, c.sfpLaneRXPower, prometheus.GaugeValue, lane.RXPowerDBM, sfp.Device, lane.Lane, c.instance)
+			}
+			if lane.TXBiasPresent {
+				c.update(ch, c.sfpLaneTXBias, prometheus.GaugeValue, lane.TXBiasMA, sfp.Device, lane.Lane, c.instance)
+			}
+		}
 	}
 
 	return nil
