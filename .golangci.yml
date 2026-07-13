@@ -10,6 +10,11 @@ linters:
       exclude-functions:
         - (net/http.ResponseWriter).Write
         - (github.com/go-kit/log.Logger).Log
+    misspell:
+      ignore-rules:
+        # ECT(0)/ECT(1) — ECN-Capable Transport codepoints (RFC 3168), not a typo
+        # of "etc"; misspell would otherwise rewrite the tcp ECN comments.
+        - ect
     revive:
       rules:
         - name: unused-parameter
