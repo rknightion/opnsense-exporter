@@ -46,6 +46,10 @@ var captureRequests = map[EndpointName]CaptureRequest{
 	// reads a single row purely for the envelope total (count-only).
 	"idsQueryAlerts":          {ContentType: formContentType, Body: "current=1&rowCount=500"},
 	"idsSearchInstalledRules": {ContentType: formContentType, Body: "current=1&rowCount=1"},
+	// unboundSearchQueries: without a client filter the backend caps the accessible
+	// window at the newest 1000 rows regardless of rowCount, so the capture probes
+	// with the same rowCount the live Fetch call uses (#233).
+	"unboundSearchQueries": {ContentType: formContentType, Body: "current=1&rowCount=1000"},
 }
 
 // CaptureRequestFor returns the capture request for a POST endpoint. GET

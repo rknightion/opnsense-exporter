@@ -66,9 +66,20 @@ def build(b: Builder):
              "opnsense_exporter_logs_last_event_timestamp_seconds. Steady growth on an active "
              "box indicates the source stopped producing (or the poll is failing).",
     )
+    possible_gaps = b.ts(
+        "Possible Sampling Gaps (rate)",
+        [(f'sum by (source) (rate({sel("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a "
+             "source whose only view of its data is a bounded window (e.g. the unbound source's "
+             "latest-1000-row DNS query log, #233) — incremented when a poll's page shows no "
+             "continuity with the previous cursor, meaning an unknown amount of data was "
+             "skipped between polls. Non-zero on a quiet box is expected occasionally; sustained "
+             "non-zero means the source cannot keep up with event volume at its poll interval.",
+    )
 
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),
         b.row("Queue & Errors", [queue_len, ship_errors, poll_errors], present="has_logs"),
-        b.row("Cursor", [cursor_lag], present="has_logs"),
+        b.row("Cursor", [cursor_lag, possible_gaps], present="has_logs"),
     ])

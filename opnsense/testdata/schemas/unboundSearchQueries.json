@@ -1,0 +1,94 @@
+{
+  "endpoint": "unboundSearchQueries",
+  "method": "POST",
+  "path": "api/unbound/overview/search_queries",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "any"
+    },
+    {
+      "path": "rowCount",
+      "kind": "any"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].action",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].blocklist",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].client",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].dnssec_status",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].domain",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].family",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].policy",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].rcode",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].resolve_time_ms",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].source",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].time",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].ttl",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "any"
+    }
+  ]
+}

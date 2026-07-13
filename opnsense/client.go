@@ -220,6 +220,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"unboundLocalZones":             "api/unbound/diagnostics/listlocalzones",
 		"unboundLocalData":              "api/unbound/diagnostics/listlocaldata",
 		"unboundInsecureDomains":        "api/unbound/diagnostics/listinsecure",
+		"unboundSearchQueries":          "api/unbound/overview/search_queries",
 		"backupHistory":                 "api/core/backup/backups/this",
 		"snapshotsSearch":               "api/core/snapshots/search",
 		"snapshotsIsSupported":          "api/core/snapshots/is_supported",

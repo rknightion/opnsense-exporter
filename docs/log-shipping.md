@@ -85,21 +85,6 @@ once: that double-ships (see [Delivery semantics](#delivery-semantics)).
 - qfeeds' `search_events` is a filtered, ~300s-stale subset of this same feed;
   qfeeds blocks already appear here natively with their rule label.
 
-## Loki label model
-
-Cardinality discipline is enforced by construction:
-
-- **Labels** (resource identity): `service.name` (from `--otlp.service-name`) and
-  `service.instance.id` (the resolved instance label). No host or SDK detectors are
-  attached to the resource, so nothing else can leak into the label set.
-- **`source`** (`firewall`, `ids`, `audit`, …): shipped as an OTLP attribute, so it
-  lands as Loki structured metadata by default. It can be promoted to a label
-  through Grafana Cloud / Loki OTLP config if you want to filter on it.
-- **Everything else** — IPs, ports, SIDs, domains, rule ids — is structured
-  metadata or body. It is never a label.
-
-## Sources
-
 ### IDS (Suricata EVE alerts)
 
 `--logs.ids.enabled` (off by default; requires `--logs.enabled`) ships full
@@ -142,27 +127,6 @@ collector's alert count is a floor against).
     `suricata`/`local5` facility with engine logs, so a demux step is needed on
     that path (not a concern for the API-polling source documented here).
 
-## Delivery semantics
-
-Stated honestly, because this pipeline is pull-based over a lossy source:
-
-- **Within a run: at-least-once.** Each source tracks its own cursor and a dedup
-  ring, so rotation overlap does not duplicate and normal operation does not lose.
-  Under sustained backpressure the bounded queue drops the **oldest** record and
-  counts it (`opnsense_exporter_logs_dropped_total{reason="overflow"}`) — degraded
-  but visible, never silent.
-- **Across restarts: at-most-once by default.** Cursors are in memory, so a restart
-  resumes from now. Set `--logs.state-file` to persist cursors (atomic JSON,
-  rewritten only when a cursor changes) for best-effort resume across restarts.
-- **Never exactly-once.**
-- **One path per log type.** Do not both ship a log type through this pipeline and
-  forward the same type via native syslog — that double-ships. Pick one path per
-  log type.
-- **One logs-enabled instance per firewall.** Running multiple logs-enabled
-  replicas against the same firewall double-ships.
-
-## Sources
-
 ### CrowdSec (`--logs.crowdsec.enabled`)
 
 Ships CrowdSec **alert** and **decision** records. There is no native syslog
@@ -193,6 +157,74 @@ volumes.
   record's timestamp. Decisions carry no absolute timestamp (only a
   remaining-duration string), so the record is stamped at emit time.
 
+### Unbound (per-query DNS log)
+
+`--logs.unbound.enabled` (default `false`) ships a pi-hole-style per-query DNS
+log: domain, client, action (`Pass`/`Block`/`Drop`), resolution source
+(`Recursion`/`Local`/`Local-data`/`Cache`), blocklist/policy enrichment and
+DNSSEC status per query — data unavailable anywhere else in OPNsense's API
+(syslog only carries raw unbound daemon lines). It requires Unbound
+reporting/statistics to be enabled on the firewall, and raises the poll floor
+to 15s (`IntervalSource`) because each poll spawns python+pandas+DuckDB on the
+box (~1s CPU).
+
+**Accepted sampling loss — read this before enabling on a busy resolver.**
+Unbound's query-log backend (`api/unbound/overview/search_queries`) has no true
+cursor: without a per-client filter it only ever returns the newest **1000
+rows across the whole resolver**, newest first. This source reconstructs a
+best-effort cursor from each row's `time` (unix seconds) plus a dedup
+fingerprint for rows sharing the same second — the `uuid` field is part of the
+documented schema but has been observed to always be `null` in practice, so it
+is used only when present. On a resolver sustaining more than roughly 1000
+queries between two polls, the oldest rows in the next page will all be newer
+than the previous cursor — a full discontinuity — meaning some number of
+queries fell out of the window before this exporter ever fetched them. That
+loss is never silent: it is counted via
+`opnsense_exporter_logs_possible_gap_total{source="unbound"}` (see
+[Self-metrics](#self-metrics)) every time it is detected. Homelab/SMB query
+volumes (a handful to ~100 qps) are fine; a busy enterprise resolver should not
+enable this source.
+
+Loki structured metadata for this source: `client`, `domain`, `qtype`,
+`action`, `query_source`, `rcode`, `blocklist`, `dnssec_status`. (Unbound's own
+`source` field — where the answer came from — is deliberately mapped to the
+`query_source` attribute rather than `source`, which is reserved for this
+pipeline's own `source` stamp; see [Loki label model](#loki-label-model).) The
+log body is a compact JSON encoding of the full row, including fields not
+promoted to structured metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
+
+## Loki label model
+
+Cardinality discipline is enforced by construction:
+
+- **Labels** (resource identity): `service.name` (from `--otlp.service-name`) and
+  `service.instance.id` (the resolved instance label). No host or SDK detectors are
+  attached to the resource, so nothing else can leak into the label set.
+- **`source`** (`firewall`, `ids`, `audit`, …): shipped as an OTLP attribute, so it
+  lands as Loki structured metadata by default. It can be promoted to a label
+  through Grafana Cloud / Loki OTLP config if you want to filter on it.
+- **Everything else** — IPs, ports, SIDs, domains, rule ids — is structured
+  metadata or body. It is never a label.
+
+## Delivery semantics
+
+Stated honestly, because this pipeline is pull-based over a lossy source:
+
+- **Within a run: at-least-once.** Each source tracks its own cursor and a dedup
+  ring, so rotation overlap does not duplicate and normal operation does not lose.
+  Under sustained backpressure the bounded queue drops the **oldest** record and
+  counts it (`opnsense_exporter_logs_dropped_total{reason="overflow"}`) — degraded
+  but visible, never silent.
+- **Across restarts: at-most-once by default.** Cursors are in memory, so a restart
+  resumes from now. Set `--logs.state-file` to persist cursors (atomic JSON,
+  rewritten only when a cursor changes) for best-effort resume across restarts.
+- **Never exactly-once.**
+- **One path per log type.** Do not both ship a log type through this pipeline and
+  forward the same type via native syslog — that double-ships. Pick one path per
+  log type.
+- **One logs-enabled instance per firewall.** Running multiple logs-enabled
+  replicas against the same firewall double-ships.
+
 ## Configuration
 
 The pipeline flags are listed in the [Configuration reference](configuration.md);
@@ -221,3 +253,8 @@ The pipeline exposes its own health metrics (visible at `/metrics` and on the
 - [Native Log Export](log-export-native.md) — the syslog-ng/Alloy/NetFlow
   alternative to this pipeline, and the decision matrix for choosing between
   the two paths per log type.
+- `opnsense_exporter_logs_possible_gap_total{source}` — possible sampling gaps
+  detected by a source whose only view of its data is a bounded window (e.g. the
+  unbound source's latest-1000-row DNS query log, see [Sources](#sources) above):
+  incremented when a poll's page shows no continuity with the previous cursor,
+  meaning an unknown amount of data was skipped between polls.

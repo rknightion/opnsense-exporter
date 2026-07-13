@@ -180,6 +180,7 @@ var schemaRegistry = map[EndpointName]any{
 	"unboundLocalZones":        unboundLocalZonesResponse{},
 	"unboundLocalData":         unboundLocalDataResponse{},
 	"unboundInsecureDomains":   unboundInsecureDomainsResponse{},
+	"unboundSearchQueries":     unboundSearchQueriesResponse{},
 	"vnstatInterfaceList":      vnstatInterfaceListResponse{},
 	"vnstatGetJsonData":        vnstatJSONResponse{},
 	"wireguardClients":         wireguardClientsResponse{},

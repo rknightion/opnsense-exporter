@@ -65439,6 +65439,95 @@
         "kind": "Panel",
         "spec": {
           "id": 600,
+          "title": "Possible Sampling Gaps (rate)",
+          "description": "opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a source whose only view of its data is a bounded window (e.g. the unbound source's latest-1000-row DNS query log, #233) \u2014 incremented when a poll's page shows no continuity with the previous cursor, meaning an unknown amount of data was skipped between polls. Non-zero on a quiet box is expected occasionally; sustained non-zero means the source cannot keep up with event volume at its poll interval.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (source) (rate(opnsense_exporter_logs_possible_gap_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{source}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-601": {
+        "kind": "Panel",
+        "spec": {
+          "id": 601,
           "title": "Scrape Success (opnsense_up)",
           "description": "",
           "links": [],
@@ -65536,10 +65625,10 @@
           }
         }
       },
-      "panel-601": {
+      "panel-602": {
         "kind": "Panel",
         "spec": {
-          "id": 601,
+          "id": 602,
           "title": "Scrape & Skip Rate",
           "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
@@ -65651,10 +65740,10 @@
           }
         }
       },
-      "panel-602": {
+      "panel-603": {
         "kind": "Panel",
         "spec": {
-          "id": 602,
+          "id": 603,
           "title": "Endpoint Errors (rate)",
           "description": "",
           "links": [],
@@ -65740,10 +65829,10 @@
           }
         }
       },
-      "panel-603": {
+      "panel-604": {
         "kind": "Panel",
         "spec": {
-          "id": 603,
+          "id": 604,
           "title": "Endpoint Errors (total)",
           "description": "",
           "links": [],
@@ -65844,10 +65933,10 @@
           }
         }
       },
-      "panel-604": {
+      "panel-605": {
         "kind": "Panel",
         "spec": {
-          "id": 604,
+          "id": 605,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -65951,10 +66040,10 @@
           }
         }
       },
-      "panel-605": {
+      "panel-606": {
         "kind": "Panel",
         "spec": {
-          "id": 605,
+          "id": 606,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -66059,10 +66148,10 @@
           }
         }
       },
-      "panel-606": {
+      "panel-607": {
         "kind": "Panel",
         "spec": {
-          "id": 606,
+          "id": 607,
           "title": "Collector Scrape Duration",
           "description": "",
           "links": [],
@@ -66148,10 +66237,10 @@
           }
         }
       },
-      "panel-607": {
+      "panel-608": {
         "kind": "Panel",
         "spec": {
-          "id": 607,
+          "id": 608,
           "title": "Collector Scrape Success",
           "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
           "links": [],
@@ -66256,10 +66345,10 @@
           }
         }
       },
-      "panel-608": {
+      "panel-609": {
         "kind": "Panel",
         "spec": {
-          "id": 608,
+          "id": 609,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -66345,10 +66434,10 @@
           }
         }
       },
-      "panel-609": {
+      "panel-610": {
         "kind": "Panel",
         "spec": {
-          "id": 609,
+          "id": 610,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -66460,10 +66549,10 @@
           }
         }
       },
-      "panel-610": {
+      "panel-611": {
         "kind": "Panel",
         "spec": {
-          "id": 610,
+          "id": 611,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -66549,10 +66638,10 @@
           }
         }
       },
-      "panel-611": {
+      "panel-612": {
         "kind": "Panel",
         "spec": {
-          "id": 611,
+          "id": 612,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -66638,10 +66727,10 @@
           }
         }
       },
-      "panel-612": {
+      "panel-613": {
         "kind": "Panel",
         "spec": {
-          "id": 612,
+          "id": 613,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -66727,10 +66816,10 @@
           }
         }
       },
-      "panel-613": {
+      "panel-614": {
         "kind": "Panel",
         "spec": {
-          "id": 613,
+          "id": 614,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -66812,10 +66901,10 @@
           }
         }
       },
-      "panel-614": {
+      "panel-615": {
         "kind": "Panel",
         "spec": {
-          "id": 614,
+          "id": 615,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -66901,10 +66990,10 @@
           }
         }
       },
-      "panel-615": {
+      "panel-616": {
         "kind": "Panel",
         "spec": {
-          "id": 615,
+          "id": 616,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -79584,6 +79673,19 @@
                                     "name": "panel-599"
                                   }
                                 }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-600"
+                                  }
+                                }
                               }
                             ]
                           }
@@ -79638,7 +79740,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-600"
+                                    "name": "panel-601"
                                   }
                                 }
                               },
@@ -79651,7 +79753,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-601"
+                                    "name": "panel-602"
                                   }
                                 }
                               },
@@ -79664,7 +79766,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-602"
+                                    "name": "panel-603"
                                   }
                                 }
                               },
@@ -79677,7 +79779,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-603"
+                                    "name": "panel-604"
                                   }
                                 }
                               }
@@ -79704,7 +79806,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-606"
+                                    "name": "panel-607"
                                   }
                                 }
                               },
@@ -79717,7 +79819,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-607"
+                                    "name": "panel-608"
                                   }
                                 }
                               }
@@ -79744,7 +79846,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-611"
+                                    "name": "panel-612"
                                   }
                                 }
                               },
@@ -79757,7 +79859,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-612"
+                                    "name": "panel-613"
                                   }
                                 }
                               }
@@ -79784,7 +79886,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-613"
+                                    "name": "panel-614"
                                   }
                                 }
                               },
@@ -79797,7 +79899,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-614"
+                                    "name": "panel-615"
                                   }
                                 }
                               },
@@ -79810,7 +79912,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-615"
+                                    "name": "panel-616"
                                   }
                                 }
                               }
@@ -79837,7 +79939,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-604"
+                                    "name": "panel-605"
                                   }
                                 }
                               },
@@ -79850,7 +79952,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-605"
+                                    "name": "panel-606"
                                   }
                                 }
                               }
@@ -79877,7 +79979,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-608"
+                                    "name": "panel-609"
                                   }
                                 }
                               },
@@ -79890,7 +79992,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-609"
+                                    "name": "panel-610"
                                   }
                                 }
                               },
@@ -79903,7 +80005,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-610"
+                                    "name": "panel-611"
                                   }
                                 }
                               }

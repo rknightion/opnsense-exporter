@@ -30,8 +30,8 @@ func TestPostEndpointsAreKnownAndCounted(t *testing.T) {
 			t.Errorf("postEndpoints contains unknown endpoint %q", name)
 		}
 	}
-	if len(postEndpoints) != 22 {
-		t.Errorf("expected 22 POST endpoints, got %d", len(postEndpoints))
+	if len(postEndpoints) != 23 {
+		t.Errorf("expected 23 POST endpoints, got %d", len(postEndpoints))
 	}
 	manifest := ContractManifest()
 	postCount := 0
@@ -40,7 +40,7 @@ func TestPostEndpointsAreKnownAndCounted(t *testing.T) {
 			postCount++
 		}
 	}
-	if postCount != 22 {
-		t.Errorf("expected 22 POST entries in manifest, got %d", postCount)
+	if postCount != 23 {
+		t.Errorf("expected 23 POST entries in manifest, got %d", postCount)
 	}
 }
