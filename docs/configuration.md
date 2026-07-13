@@ -221,6 +221,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | NDP | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
 | `--exporter.disable-ntp` | `OPNSENSE_EXPORTER_DISABLE_NTP` | NTP | Disable the scraping of NTP peer metrics |
 | `--exporter.disable-nut` | `OPNSENSE_EXPORTER_DISABLE_NUT` | NUT UPS | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
+| `--exporter.disable-netbird` | `OPNSENSE_EXPORTER_DISABLE_NETBIRD` | NetBird | Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent) |
 | `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | Nginx | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-openvpn` | `OPNSENSE_EXPORTER_DISABLE_OPENVPN` | OpenVPN | Disable the scraping of OpenVPN service |
 | `--exporter.disable-pf-stats` | `OPNSENSE_EXPORTER_DISABLE_PF_STATS` | PF Statistics | Disable the scraping of PF statistics (state table, counters, memory limits, timeouts) |
@@ -275,6 +276,7 @@ These flags enable per-item detail metrics that can produce a large number of ti
 | `--exporter.enable-dhcpv6-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS` | ISC DHCPv6 | Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks) |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | Kea DHCP | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
 | `--exporter.enable-ndp-details` | `OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS` | NDP | Enable per-entry NDP metrics (ip/mac labels — high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted. |
+| `--exporter.enable-netbird-details` | `OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS` | NetBird | Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN labels) |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | OpenVPN | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |
 | `--exporter.enable-tailscale-peer-details` | `OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS` | Tailscale | Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer hostname labels) |
 | `--exporter.enable-unbound-qstats` | `OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS` | Unbound DNS | Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scrape) — skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scrape once it is on. |
@@ -323,6 +325,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-mbuf` | `OPNSENSE_EXPORTER_DISABLE_MBUF` | `false` | Disable the scraping of mbuf statistics |
 | `--exporter.disable-monit` | `OPNSENSE_EXPORTER_DISABLE_MONIT` | `false` | Disable the scraping of Monit service check status (silent when Monit is not running) |
 | `--exporter.disable-ndp` | `OPNSENSE_EXPORTER_DISABLE_NDP` | `false` | Disable the scraping of the NDP (IPv6 neighbor discovery) table |
+| `--exporter.disable-netbird` | `OPNSENSE_EXPORTER_DISABLE_NETBIRD` | `false` | Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent) |
 | `--exporter.disable-nginx` | `OPNSENSE_EXPORTER_DISABLE_NGINX` | `false` | Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is absent) |
 | `--exporter.disable-ntp` | `OPNSENSE_EXPORTER_DISABLE_NTP` | `false` | Disable the scraping of NTP peer metrics |
 | `--exporter.disable-nut` | `OPNSENSE_EXPORTER_DISABLE_NUT` | `false` | Disable the scraping of NUT UPS metrics (silent when the os-nut plugin is absent) |
@@ -350,6 +353,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.enable-ids-alerts` | `OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS` | `false` | Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action). Off by default: each scrape triggers a reverse read of eve.json on the box. Window set by --exporter.ids-alert-lookback. |
 | `--exporter.enable-kea-details` | `OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS` | `false` | Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks) |
 | `--exporter.enable-ndp-details` | `OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS` | `false` | Enable per-entry NDP metrics (ip/mac labels — high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted. |
+| `--exporter.enable-netbird-details` | `OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS` | `false` | Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN labels) |
 | `--exporter.enable-netflow` | `OPNSENSE_EXPORTER_ENABLE_NETFLOW` | `false` | Enable the netflow collector (enabled status, service status, cache stats). Disabled by default. |
 | `--exporter.enable-network-diagnostics` | `OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS` | `false` | Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default. |
 | `--exporter.enable-openvpn-details` | `OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS` | `false` | Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses) |

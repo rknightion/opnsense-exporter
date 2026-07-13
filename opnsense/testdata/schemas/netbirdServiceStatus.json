@@ -1,0 +1,15 @@
+{
+  "endpoint": "netbirdServiceStatus",
+  "method": "GET",
+  "path": "api/netbird/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

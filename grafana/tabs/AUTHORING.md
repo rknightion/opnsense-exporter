@@ -124,6 +124,8 @@ Register with `b.sentinel(name, query)` then gate the tab/row with `present=name
 | has_qfeeds | `label_values(opnsense_qfeeds_feeds_total, __name__)` |
 | has_tailscale | `label_values(opnsense_tailscale_service_running, __name__)` |
 | has_tailscale_peers | `label_values(opnsense_tailscale_peer_session_active, __name__)` |
+| has_netbird | `label_values(opnsense_netbird_service_running, __name__)` |
+| has_netbird_peers | `label_values(opnsense_netbird_peer_connected, __name__)` |
 | has_alias | `label_values(opnsense_alias_tables_total, __name__)` |
 | has_alias_details | `label_values(opnsense_alias_table_packets_total, __name__)` |
 

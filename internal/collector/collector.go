@@ -78,6 +78,7 @@ const (
 	LLDPSubsystem          = "lldp"
 	HardwareSubsystem      = "hardware"
 	VnstatSubsystem        = "vnstat"
+	NetbirdSubsystem       = "netbird"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -139,6 +140,7 @@ var SubsystemDisplayNames = map[string]string{
 	LLDPSubsystem:          "LLDP Neighbors",
 	HardwareSubsystem:      "Hardware",
 	VnstatSubsystem:        "Vnstat Traffic Accounting",
+	NetbirdSubsystem:       "NetBird",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -553,6 +555,12 @@ func WithoutVnstatCollector() Option {
 	return withoutCollectorInstance(VnstatSubsystem)
 }
 
+// WithoutNetbirdCollector Option
+// removes the netbird collector from the list of collectors
+func WithoutNetbirdCollector() Option {
+	return withoutCollectorInstance(NetbirdSubsystem)
+}
+
 // WithFirmwarePackageDetails enables per-package detail metrics for the
 // firmware collector (pending package updates + installed plugin inventory).
 func WithFirmwarePackageDetails() Option {
@@ -667,6 +675,19 @@ func WithTailscalePeerDetails() Option {
 		for _, c := range o.collectors {
 			if tc, ok := c.(*tailscaleCollector); ok {
 				tc.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithNetbirdPeerDetails enables per-peer detail metrics for the netbird collector
+func WithNetbirdPeerDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if nc, ok := c.(*netbirdCollector); ok {
+				nc.SetDetailsEnabled(true)
 				return nil
 			}
 		}

@@ -82,6 +82,8 @@ var schemaRegistry = map[EndpointName]any{
 	"monitServiceStatus":         serviceStatusResponse{},
 	"monitStatus":                monitStatusEnvelope{},
 	"ndpTable":                   []ndpEntry{},
+	"netbirdServiceStatus":       serviceStatusResponse{},
+	"netbirdStatus":              netbirdStatusObject{},
 	"netflowCacheStats":          map[string]netflowCacheEntry{},
 	"netflowIsEnabled":           netflowIsEnabledResponse{},
 	"netflowStatus":              netflowStatusResponse{},

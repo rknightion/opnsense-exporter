@@ -215,7 +215,7 @@ func PluginGatedEndpoints() []EndpointName {
 		"haproxyServiceStatus", "ipsecServiceStatus", "keaServiceStatus",
 		"monitServiceStatus", "nginxServiceStatus", "nutServiceStatus",
 		"quaggaServiceStatus", "syslogServiceStatus", "tailscaleServiceStatus",
-		"unboundServiceStatus", "wireguardServiceStatus",
+		"unboundServiceStatus", "wireguardServiceStatus", "netbirdServiceStatus",
 
 		// Plugin data endpoints (GET).
 		"acmeCertificates", "apcupsdUpsStatus", "bpfStatistics", "captivePortalZones",
@@ -229,6 +229,8 @@ func PluginGatedEndpoints() []EndpointName {
 		"nginxVts", "nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
 		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus",
 		"trafficShaperStatistics", "lldpdNeighbors",
+		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus", "netbirdStatus",
+		"trafficShaperStatistics",
 
 		// Plugin data endpoints (POST). Only their 404 is cached; a successful POST
 		// response is body-dependent and always goes to the box (see the doc comment).

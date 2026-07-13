@@ -405,6 +405,14 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutVnstatCollector())
 		logger.Info("vnstat collector disabled (opt-in via --exporter.enable-vnstat)")
 	}
+	if !collectorsSwitches.Netbird {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetbirdCollector())
+		logger.Info("netbird collector disabled")
+	}
+	if collectorsSwitches.NetbirdDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithNetbirdPeerDetails())
+		logger.Info("netbird per-peer details enabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

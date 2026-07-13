@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 629
-- **Gauges:** 421
-- **Counters:** 208
+- **Total metrics:** 643
+- **Gauges:** 433
+- **Counters:** 210
 
 ## General
 
@@ -576,6 +576,25 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_nut_status_low_battery | Gauge | --- | 1 when battery is low (LB flag in ups.status) | --exporter.disable-nut |
 | opnsense_nut_status_charging | Gauge | --- | 1 when battery is charging (CHRG flag in ups.status) | --exporter.disable-nut |
 | opnsense_nut_status_replace_battery | Gauge | --- | 1 when battery replacement is recommended (RB flag in ups.status) | --exporter.disable-nut |
+
+## NetBird
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_netbird_management_connected | Gauge | --- | Whether this node's netbird daemon has an active connection to the management server (1 = connected, 0 = not) | --exporter.disable-netbird |
+| opnsense_netbird_signal_connected | Gauge | --- | Whether this node's netbird daemon has an active connection to the signal server (1 = connected, 0 = not) | --exporter.disable-netbird |
+| opnsense_netbird_relays_total | Gauge | --- | Number of relay servers known to this node's netbird daemon | --exporter.disable-netbird |
+| opnsense_netbird_relays_available | Gauge | --- | Number of relay servers currently reachable from this node's netbird daemon | --exporter.disable-netbird |
+| opnsense_netbird_peers_total | Gauge | --- | Number of netbird network peers known to this node | --exporter.disable-netbird |
+| opnsense_netbird_peers_connected | Gauge | --- | Number of netbird network peers this node currently has an active WireGuard connection to | --exporter.disable-netbird |
+| opnsense_netbird_service_running | Gauge | --- | Whether the netbird plugin service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-netbird |
+| opnsense_netbird_info | Gauge | cli_version, daemon_version | NetBird node version information (value is always 1; see labels). Only emitted when the daemon reports version data (absent while the daemon itself is down) | --exporter.disable-netbird |
+| opnsense_netbird_peer_connected | Gauge | fqdn | Whether this node currently has an active WireGuard connection to the peer (1 = connected, 0 = not). Only emitted when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
+| opnsense_netbird_peer_direct | Gauge | fqdn | Whether the connection to the peer uses a direct P2P path (1 = direct, 0 = relayed). Only emitted for peers with an active connection and when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
+| opnsense_netbird_peer_received_bytes_total | Counter | fqdn | Bytes received from this peer since the netbird daemon started. Only emitted when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
+| opnsense_netbird_peer_transmitted_bytes_total | Counter | fqdn | Bytes transmitted to this peer since the netbird daemon started. Only emitted when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
+| opnsense_netbird_peer_last_handshake_timestamp_seconds | Gauge | fqdn | Unix timestamp of the last WireGuard handshake with this peer. Only emitted for peers with an active connection and a recorded handshake, and when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
+| opnsense_netbird_peer_latency_seconds | Gauge | fqdn | Measured round-trip latency to this peer. Only emitted for peers with an active connection and a recorded latency, and when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
 
 ## NetFlow
 

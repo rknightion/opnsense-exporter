@@ -225,6 +225,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"dechwPowerStatus":           "api/dechw/info/power_status",
 		"vnstatInterfaceList":        "api/vnstat/service/interface_list",
 		"vnstatGetJsonData":          "api/vnstat/service/get_json_data",
+		"netbirdStatus":              "api/netbird/status/status",
+		"netbirdServiceStatus":       "api/netbird/service/status",
 	}
 }
 

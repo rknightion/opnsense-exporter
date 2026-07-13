@@ -1,0 +1,105 @@
+{
+  "endpoint": "netbirdStatus",
+  "method": "GET",
+  "path": "api/netbird/status/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "cliVersion",
+    "daemonStatus",
+    "daemonVersion",
+    "management",
+    "peers",
+    "relays",
+    "signal"
+  ],
+  "fields": [
+    {
+      "path": "cliVersion",
+      "kind": "string"
+    },
+    {
+      "path": "daemonStatus",
+      "kind": "string"
+    },
+    {
+      "path": "daemonVersion",
+      "kind": "string"
+    },
+    {
+      "path": "management",
+      "kind": "object"
+    },
+    {
+      "path": "management.connected",
+      "kind": "boolean"
+    },
+    {
+      "path": "peers",
+      "kind": "object"
+    },
+    {
+      "path": "peers.connected",
+      "kind": "number"
+    },
+    {
+      "path": "peers.details",
+      "kind": "array"
+    },
+    {
+      "path": "peers.details[]",
+      "kind": "object"
+    },
+    {
+      "path": "peers.details[].connectionType",
+      "kind": "string"
+    },
+    {
+      "path": "peers.details[].fqdn",
+      "kind": "string"
+    },
+    {
+      "path": "peers.details[].lastWireguardHandshake",
+      "kind": "string"
+    },
+    {
+      "path": "peers.details[].latency",
+      "kind": "number"
+    },
+    {
+      "path": "peers.details[].status",
+      "kind": "string"
+    },
+    {
+      "path": "peers.details[].transferReceived",
+      "kind": "number"
+    },
+    {
+      "path": "peers.details[].transferSent",
+      "kind": "number"
+    },
+    {
+      "path": "peers.total",
+      "kind": "number"
+    },
+    {
+      "path": "relays",
+      "kind": "object"
+    },
+    {
+      "path": "relays.available",
+      "kind": "number"
+    },
+    {
+      "path": "relays.total",
+      "kind": "number"
+    },
+    {
+      "path": "signal",
+      "kind": "object"
+    },
+    {
+      "path": "signal.connected",
+      "kind": "boolean"
+    }
+  ]
+}

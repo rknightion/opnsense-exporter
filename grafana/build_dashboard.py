@@ -285,7 +285,7 @@ def register_subsystem_tabs(b: Builder):
     build incrementally during development)."""
     order = [
         "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound",
-        "dhcp", "vpn", "tailscale", "routing", "protocols", "ntp", "certificates",
+        "dhcp", "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp",
         "haproxy", "nginx", "frr", "monit",
         "crowdsec", "ids", "ups", "captiveportal",

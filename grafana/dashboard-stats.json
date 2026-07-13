@@ -1,7 +1,7 @@
 {
-  "metrics": 629,
-  "panels": 508,
-  "tabs": 32,
+  "metrics": 643,
+  "panels": 521,
+  "tabs": 33,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -13,6 +13,7 @@
     "DHCP",
     "VPN",
     "Tailscale",
+    "NetBird",
     "Routing & Neighbors",
     "Protocol Stats",
     "NTP",

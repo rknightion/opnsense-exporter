@@ -285,6 +285,14 @@ var (
 		"exporter.enable-vnstat",
 		"Enable the vnstat persistent traffic accounting collector (day/month/total bytes per interface, survives reboots). Off by default: each scrape does one interface_list call plus one get_json_data call per interface vnstat tracks. Silent when the os-vnstat plugin is absent.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_VNSTAT").Default("false").Bool()
+	netbirdCollectorDisabled = kingpin.Flag(
+		"exporter.disable-netbird",
+		"Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_NETBIRD").Default("false").Bool()
+	netbirdDetailsEnabled = kingpin.Flag(
+		"exporter.enable-netbird-details",
+		"Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN labels)",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -347,6 +355,8 @@ type CollectorsDisableSwitch struct {
 	ClamAV                 bool
 	Hardware               bool
 	Vnstat                 bool
+	Netbird                bool
+	NetbirdDetails         bool
 	ArpDetails             bool
 	NdpDetails             bool
 	Interfaces             bool
@@ -430,6 +440,8 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		LLDPD:                  !*lldpdCollectorDisabled,
 		Hardware:               !*hardwareCollectorDisabled,
 		Vnstat:                 *vnstatEnabled,
+		Netbird:                !*netbirdCollectorDisabled,
+		NetbirdDetails:         *netbirdDetailsEnabled,
 	}
 }
 
@@ -517,4 +529,6 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-lldpd", Subsystem: "lldp"},
 	{Flag: "exporter.disable-hardware", Subsystem: "hardware"},
 	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat"},
+	{Flag: "exporter.disable-netbird", Subsystem: "netbird"},
+	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true},
 }
