@@ -1,0 +1,27 @@
+{
+  "endpoint": "backupHistory",
+  "method": "GET",
+  "path": "api/core/backup/backups/this",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "items"
+  ],
+  "fields": [
+    {
+      "path": "items",
+      "kind": "array"
+    },
+    {
+      "path": "items[]",
+      "kind": "object"
+    },
+    {
+      "path": "items[].filesize",
+      "kind": "any"
+    },
+    {
+      "path": "items[].time",
+      "kind": "any"
+    }
+  ]
+}

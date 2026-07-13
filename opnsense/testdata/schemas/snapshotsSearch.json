@@ -1,0 +1,50 @@
+{
+  "endpoint": "snapshotsSearch",
+  "method": "GET",
+  "path": "api/core/snapshots/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].active",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].created",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

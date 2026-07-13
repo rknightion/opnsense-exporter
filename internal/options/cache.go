@@ -63,6 +63,17 @@ func CacheTTLs() EndpointCacheTTLs {
 		ttls["unboundLocalZones"] = *cacheTTL
 		ttls["unboundLocalData"] = *cacheTTL
 		ttls["unboundInsecureDomains"] = *cacheTTL
+		// Config backup history: BackupController globs /conf/backup/config-*.xml
+		// and simplexml-parses every retained file (default retention 60, observed
+		// as high as 100 live) on every call — not free, and the data only changes
+		// when a config write actually happens, not on scrape cadence (#220).
+		ttls["backupHistory"] = *cacheTTL
+
+		// ZFS boot-environment inventory: bectl is a cheap exec, but boot
+		// environments are created only around upgrades/admin action, so
+		// re-running it every scrape buys nothing (#220).
+		ttls["snapshotsSearch"] = *cacheTTL
+		ttls["snapshotsIsSupported"] = *cacheTTL
 	}
 
 	return ttls

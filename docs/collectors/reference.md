@@ -15,6 +15,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Captive Portal | captiveportal | 4 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |
+| Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPNSENSE_EXPORTER_DISABLE_BACKUP |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
 | CrowdSec | crowdsec | 9 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
@@ -53,4 +54,5 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Traffic Shaper | trafficshaper | 14 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
 | Unbound DNS | unbound_dns | 40 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
+| ZFS Boot Environments | snapshots | 3 | Enabled | --exporter.disable-snapshots | OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS |
 

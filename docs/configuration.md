@@ -194,6 +194,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | Captive Portal | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | Certificates | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-chrony` | `OPNSENSE_EXPORTER_DISABLE_CHRONY` | Chrony | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
+| `--exporter.disable-backup` | `OPNSENSE_EXPORTER_DISABLE_BACKUP` | Config Backup | Disable the scraping of config backup freshness metrics (last backup timestamp/count/size) |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | Cron | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | CrowdSec | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | Dnsmasq DHCP | Disable the scraping of Dnsmasq DHCP leases |
@@ -228,6 +229,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-trafficshaper` | `OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER` | Traffic Shaper | Disable the scraping of traffic shaper pipe/queue/rule statistics (silent when the shaper is unconfigured) |
 | `--exporter.disable-unbound` | `OPNSENSE_EXPORTER_DISABLE_UNBOUND` | Unbound DNS | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPNSENSE_EXPORTER_DISABLE_WIREGUARD` | Wireguard | Disable the scraping of Wireguard service |
+| `--exporter.disable-snapshots` | `OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS` | ZFS Boot Environments | Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS) |
 <!-- docgen:end:flags-collectors-default-on -->
 
 !!! info "Always-on collectors"
@@ -286,6 +288,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-alias` | `OPNSENSE_EXPORTER_DISABLE_ALIAS` | `false` | Disable the scraping of firewall alias table sizes |
 | `--exporter.disable-apcupsd` | `OPNSENSE_EXPORTER_DISABLE_APCUPSD` | `false` | Disable the scraping of APC UPS (apcupsd) metrics (silent when the os-apcupsd plugin is absent) |
 | `--exporter.disable-arp-table` | `OPNSENSE_EXPORTER_DISABLE_ARP_TABLE` | `false` | Disable the scraping of the ARP table |
+| `--exporter.disable-backup` | `OPNSENSE_EXPORTER_DISABLE_BACKUP` | `false` | Disable the scraping of config backup freshness metrics (last backup timestamp/count/size) |
 | `--exporter.disable-bpf` | `OPNSENSE_EXPORTER_DISABLE_BPF` | `false` | Disable the scraping of BPF listener statistics |
 | `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | `false` | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | `false` | Disable the scraping of CARP/VIP status metrics |
@@ -317,6 +320,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-protocol` | `OPNSENSE_EXPORTER_DISABLE_PROTOCOL` | `false` | Disable the protocol-statistics collector (TCP/UDP/IP/ICMP/ARP/CARP/pfsync counters) |
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | `false` | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
 | `--exporter.disable-services` | `OPNSENSE_EXPORTER_DISABLE_SERVICES` | `false` | Disable the services collector (per-service running state) |
+| `--exporter.disable-snapshots` | `OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS` | `false` | Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | `false` | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | `false` | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | `false` | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |

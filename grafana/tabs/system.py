@@ -9,6 +9,8 @@ Covers:
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
   - SMART subsystem (4 metrics) — gated by has_smart sentinel
   - Firmware subsystem (6 metrics)
+  - Backup subsystem (3 metrics) — config backup freshness
+  - Snapshots subsystem (3 metrics) — ZFS boot environment inventory
 """
 
 from builder import Builder, sel, epoch_ms, RATE, YESNO
@@ -385,6 +387,81 @@ def build(b: Builder):
                                  present="has_firmware_details")
 
     # =========================================================================
+    # Row: Config Backup (#220 — is the firewall's own config actually being
+    # backed up, and how stale is the newest copy)
+    # =========================================================================
+    backup_last_ts = b.stat(
+        "Last Config Backup",
+        epoch_ms(sel("opnsense_backup_last_timestamp_seconds")),
+        unit="dateTimeAsIso",
+        w=8,
+        h=4,
+        graph="none",
+        instant=True,
+        desc="opnsense_backup_last_timestamp_seconds: Unix timestamp of the newest retained config backup. Compare against time() to catch silent backup failure.",
+    )
+
+    backup_count = b.stat(
+        "Retained Backups",
+        sel("opnsense_backup_count"),
+        w=4,
+        h=4,
+        graph="none",
+        desc="opnsense_backup_count: number of config backups OPNsense currently retains.",
+    )
+
+    backup_last_size = b.stat(
+        "Last Backup Size",
+        sel("opnsense_backup_last_size_bytes"),
+        unit="bytes",
+        w=4,
+        h=4,
+        graph="none",
+        desc="opnsense_backup_last_size_bytes: size of the newest retained config backup.",
+    )
+
+    row_backup = b.row("Config Backup", [backup_last_ts, backup_count, backup_last_size])
+
+    # =========================================================================
+    # Row: ZFS Boot Environments (#220 — the rollback safety net; supported=0
+    # with total=0 on a non-ZFS filesystem such as UFS is a normal, healthy
+    # shape, not an error)
+    # =========================================================================
+    snapshots_supported = b.stat(
+        "ZFS Boot Environments Supported",
+        sel("opnsense_snapshots_supported"),
+        mappings=YESNO,
+        color_mode="background",
+        thresholds=[{"color": "blue", "value": None}, {"color": "green", "value": 1}],
+        w=4,
+        h=4,
+        graph="none",
+        desc="opnsense_snapshots_supported: 1 if the root filesystem supports ZFS boot environments (bectl), 0 on e.g. UFS.",
+    )
+
+    snapshots_total = b.stat(
+        "Boot Environments",
+        sel("opnsense_snapshots_total"),
+        w=4,
+        h=4,
+        graph="none",
+        desc="opnsense_snapshots_total: number of ZFS boot environments currently present.",
+    )
+
+    snapshots_active_created = b.stat(
+        "Active Boot Environment Created",
+        epoch_ms(sel("opnsense_snapshots_active_created_timestamp_seconds")),
+        unit="dateTimeAsIso",
+        w=8,
+        h=4,
+        graph="none",
+        instant=True,
+        desc="opnsense_snapshots_active_created_timestamp_seconds: creation time of the currently active boot environment. Absent when none is marked active (e.g. unsupported filesystem) — are pre-upgrade snapshots actually being made?",
+    )
+
+    row_snapshots = b.row("ZFS Boot Environments", [snapshots_supported, snapshots_total, snapshots_active_created])
+
+    # =========================================================================
     # Row: Temperature (gated)
     # =========================================================================
     temp_ts = b.ts(
@@ -650,6 +727,8 @@ def build(b: Builder):
         row_disk,
         row_firmware,
         row_firmware_details,
+        row_backup,
+        row_snapshots,
         row_temp,
         row_smart,
         row_smart_detail,

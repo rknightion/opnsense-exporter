@@ -373,6 +373,14 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutBPFCollector())
 		logger.Info("bpf collector disabled")
 	}
+	if !collectorsSwitches.Backup {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutBackupCollector())
+		logger.Info("backup collector disabled")
+	}
+	if !collectorsSwitches.Snapshots {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSnapshotsCollector())
+		logger.Info("snapshots collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

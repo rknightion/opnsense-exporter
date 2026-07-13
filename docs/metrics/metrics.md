@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 603
-- **Gauges:** 396
+- **Total metrics:** 609
+- **Gauges:** 402
 - **Counters:** 207
 
 ## General
@@ -152,6 +152,14 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_chrony_source_offset_seconds | Gauge | source, mode | Measured offset of the source (seconds) | --exporter.disable-chrony |
 | opnsense_chrony_source_offset_stddev_seconds | Gauge | source | Estimated standard deviation of the source offset (seconds) | --exporter.disable-chrony |
 | opnsense_chrony_source_samples | Gauge | source | Number of samples currently held in the regression (sourcestats) | --exporter.disable-chrony |
+
+## Config Backup
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_backup_last_timestamp_seconds | Gauge | --- | Unix timestamp of the newest retained config backup. Compare against time() to alert on stale/silent backup failure. | --exporter.disable-backup |
+| opnsense_backup_count | Gauge | --- | Number of config backups OPNsense currently retains. | --exporter.disable-backup |
+| opnsense_backup_last_size_bytes | Gauge | --- | Size in bytes of the newest retained config backup. | --exporter.disable-backup |
 
 ## Cron
 
@@ -853,4 +861,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_wireguard_peer_last_handshake_seconds | Gauge | device, device_type, device_name, peer_name | Last handshake by peer in seconds | --exporter.disable-wireguard |
 | opnsense_wireguard_peer_handshake_age_seconds | Gauge | device, device_type, device_name, peer_name | Seconds since the peer's last handshake | --exporter.disable-wireguard |
 | opnsense_wireguard_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-wireguard |
+
+## ZFS Boot Environments
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_snapshots_supported | Gauge | --- | Whether the root filesystem supports ZFS boot environments (1 = ZFS/bectl, 0 = e.g. UFS). | --exporter.disable-snapshots |
+| opnsense_snapshots_total | Gauge | --- | Number of ZFS boot environments currently present. | --exporter.disable-snapshots |
+| opnsense_snapshots_active_created_timestamp_seconds | Gauge | --- | Unix timestamp when the currently active boot environment (active flag containing \"N\") was created. Absent when no boot environment is marked active (e.g. unsupported filesystem). | --exporter.disable-snapshots |
 

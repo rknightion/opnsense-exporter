@@ -248,6 +248,14 @@ var (
 		"exporter.disable-bpf",
 		"Disable the scraping of BPF listener statistics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_BPF").Default("false").Bool()
+	backupCollectorDisabled = kingpin.Flag(
+		"exporter.disable-backup",
+		"Disable the scraping of config backup freshness metrics (last backup timestamp/count/size)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_BACKUP").Default("false").Bool()
+	snapshotsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-snapshots",
+		"Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -312,6 +320,8 @@ type CollectorsDisableSwitch struct {
 	Interfaces             bool
 	Protocol               bool
 	Services               bool
+	Backup                 bool
+	Snapshots              bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -377,6 +387,8 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Dhcpv6:                 !*dhcpv6CollectorDisabled,
 		Dhcpv6Details:          *dhcpv6DetailsEnabled,
 		BPF:                    !*bpfCollectorDisabled,
+		Backup:                 !*backupCollectorDisabled,
+		Snapshots:              !*snapshotsCollectorDisabled,
 	}
 }
 
@@ -456,4 +468,6 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-dhcpv6", Subsystem: "dhcpv6"},
 	{Flag: "exporter.enable-dhcpv6-details", Subsystem: "dhcpv6", Detail: true},
 	{Flag: "exporter.disable-bpf", Subsystem: "bpf"},
+	{Flag: "exporter.disable-backup", Subsystem: "backup"},
+	{Flag: "exporter.disable-snapshots", Subsystem: "snapshots"},
 }

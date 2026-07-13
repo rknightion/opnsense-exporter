@@ -17,6 +17,7 @@ var schemaRegistry = map[EndpointName]any{
 	"apcupsdServiceStatus":       serviceStatusResponse{},
 	"apcupsdUpsStatus":           apcupsdUpsStatusResponse{},
 	"arp":                        arpSearchResponse{},
+	"backupHistory":              configBackupResponse{},
 	"bpfStatistics":              bpfStatisticsResponse{},
 	"caCertificates":             caSearchResponse{},
 	"captivePortalServiceStatus": serviceStatusResponse{},
@@ -100,6 +101,8 @@ var schemaRegistry = map[EndpointName]any{
 	"services":                   servicesSearchResponse{},
 	"smartInfo":                  smartInfoResponse{},
 	"smartList":                  smartListResponse{},
+	"snapshotsIsSupported":       snapshotsSupportedResponse{},
+	"snapshotsSearch":            bootEnvironmentSearchResponse{},
 	"socketStatistics": struct {
 		Statistics map[string]json.RawMessage `json:"statistics"`
 	}{},

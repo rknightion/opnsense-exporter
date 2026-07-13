@@ -71,6 +71,8 @@ const (
 	ChronySubsystem        = "chrony"
 	Dhcpv6Subsystem        = "dhcpv6"
 	BPFSubsystem           = "bpf"
+	BackupSubsystem        = "backup"
+	SnapshotsSubsystem     = "snapshots"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -125,6 +127,8 @@ var SubsystemDisplayNames = map[string]string{
 	ChronySubsystem:        "Chrony",
 	Dhcpv6Subsystem:        "ISC DHCPv6",
 	BPFSubsystem:           "BPF Statistics",
+	BackupSubsystem:        "Config Backup",
+	SnapshotsSubsystem:     "ZFS Boot Environments",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -501,6 +505,18 @@ func WithoutDhcpv6Collector() Option {
 // removes the bpf collector from the list of collectors
 func WithoutBPFCollector() Option {
 	return withoutCollectorInstance(BPFSubsystem)
+}
+
+// WithoutBackupCollector Option
+// removes the backup collector from the list of collectors
+func WithoutBackupCollector() Option {
+	return withoutCollectorInstance(BackupSubsystem)
+}
+
+// WithoutSnapshotsCollector Option
+// removes the snapshots (ZFS boot environment) collector from the list of collectors
+func WithoutSnapshotsCollector() Option {
+	return withoutCollectorInstance(SnapshotsSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

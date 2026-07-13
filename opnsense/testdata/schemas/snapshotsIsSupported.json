@@ -1,0 +1,15 @@
+{
+  "endpoint": "snapshotsIsSupported",
+  "method": "GET",
+  "path": "api/core/snapshots/is_supported",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "supported"
+  ],
+  "fields": [
+    {
+      "path": "supported",
+      "kind": "boolean"
+    }
+  ]
+}
