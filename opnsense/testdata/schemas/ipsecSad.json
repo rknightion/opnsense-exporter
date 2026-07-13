@@ -1,0 +1,71 @@
+{
+  "endpoint": "ipsecSad",
+  "method": "GET",
+  "path": "api/ipsec/sad/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].addtime_diff",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].addtime_hard",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].addtime_soft",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].dst",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].ikeid",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].nat",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].phase1desc",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].phase2desc",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].reqid",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].satype",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].spi",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].src",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].state",
+      "kind": "string"
+    }
+  ]
+}

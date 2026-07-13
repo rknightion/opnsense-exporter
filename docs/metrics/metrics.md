@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 674
-- **Gauges:** 456
+- **Total metrics:** 683
+- **Gauges:** 465
 - **Counters:** 218
 
 ## General
@@ -422,6 +422,15 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ipsec_pool_leases_online | Gauge | pool, net | Number of online leases in the IPsec mode-cfg pool | --exporter.disable-ipsec |
 | opnsense_ipsec_pool_leases_offline | Gauge | pool, net | Number of offline leases in the IPsec mode-cfg pool | --exporter.disable-ipsec |
 | opnsense_ipsec_pool_size | Gauge | pool, net | Total size (address capacity) of the IPsec mode-cfg pool | --exporter.disable-ipsec |
+| opnsense_ipsec_sad_entries | Gauge | satype, ikeid, phase1desc | Number of installed kernel IPsec security associations (setkey -D), grouped by satype | --exporter.disable-ipsec |
+| opnsense_ipsec_sa_age_seconds | Gauge | ikeid, phase2desc, reqid | Age in seconds of the oldest installed kernel SA in each reqid (child-SA) group | --exporter.disable-ipsec |
+| opnsense_ipsec_sa_lifetime_hard_seconds | Gauge | ikeid, phase2desc, reqid | Soonest hard-expiry lifetime in seconds across the kernel SAs in each reqid group | --exporter.disable-ipsec |
+| opnsense_ipsec_sa_lifetime_soft_seconds | Gauge | ikeid, phase2desc, reqid | Soonest soft-expiry (rekey) lifetime in seconds across the kernel SAs in each reqid group | --exporter.disable-ipsec |
+| opnsense_ipsec_sad_nat_traversal | Gauge | ikeid | Whether any kernel SA for the IKE SA is NAT-traversed (1 = NAT-T detected, 0 = not) | --exporter.disable-ipsec |
+| opnsense_ipsec_spd_policies | Gauge | direction | Number of installed kernel IPsec security policies (setkey -DP), grouped by direction | --exporter.disable-ipsec |
+| opnsense_ipsec_lease_online | Gauge | pool, user | Whether the IPsec mode-cfg lease is currently online (1 = online, 0 = offline). Per-user detail; only emitted with --exporter.enable-ipsec-lease-details | --exporter.disable-ipsec |
+| opnsense_ipsec_config_dirty | Gauge | --- | Whether there is an uncommitted (staged but not applied) IPsec configuration change (1 = dirty, 0 = clean) | --exporter.disable-ipsec |
+| opnsense_ipsec_legacy_enabled | Gauge | --- | Whether IPsec is enabled in the configuration (1 = enabled, 0 = disabled) | --exporter.disable-ipsec |
 
 ## ISC DHCPv4
 

@@ -1,0 +1,20 @@
+{
+  "endpoint": "ipsecLegacyStatus",
+  "method": "GET",
+  "path": "api/ipsec/legacy_subsystem/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "enabled",
+    "isDirty"
+  ],
+  "fields": [
+    {
+      "path": "enabled",
+      "kind": "any"
+    },
+    {
+      "path": "isDirty",
+      "kind": "any"
+    }
+  ]
+}

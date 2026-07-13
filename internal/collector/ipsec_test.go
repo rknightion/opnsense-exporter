@@ -350,6 +350,144 @@ func TestIPsecCollector_Update_DedupeRekeyOverlap(t *testing.T) {
 	}
 }
 
+// ipsecKernelMux wires the full established-tunnel scenario: phase1 connected,
+// empty phase2, running service, a pool with two leases, two kernel SAs (one per
+// direction, reqid 1, no NAT-T), two SPD policies (in/out), and enabled+clean
+// legacy status.
+func ipsecKernelMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ipsec/sessions/search_phase1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"phase1desc":"devbox","connected":true,"ikeid":"1","name":"con1","install-time":"120","bytes-in":1,"bytes-out":1,"packets-in":1,"packets-out":1}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/ipsec/sessions/search_phase2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[]}`))
+	})
+	mux.HandleFunc("/api/ipsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	mux.HandleFunc("/api/ipsec/leases/pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"pools":{"testpool":{"name":"testpool","net":"10.97.0.1","online":1,"offline":0,"size":254}},"leases":[{"pool":"testpool","address":"10.97.0.1","online":true,"user":"ctclient"},{"pool":"testpool","address":"10.97.0.2","online":false,"user":"roamer"}]}`))
+	})
+	mux.HandleFunc("/api/ipsec/sad/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"src":"172.16.9.1","dst":"172.16.9.100","satype":"esp","spi":"c6524517","reqid":1,"state":"mature","addtime_diff":45,"addtime_hard":3960,"addtime_soft":3306,"ikeid":null,"phase1desc":null,"phase2desc":null},{"src":"172.16.9.100","dst":"172.16.9.1","satype":"esp","spi":"cac34f73","reqid":1,"state":"mature","addtime_diff":30,"addtime_hard":3960,"addtime_soft":3548,"ikeid":null,"phase1desc":null,"phase2desc":null}]}`))
+	})
+	mux.HandleFunc("/api/ipsec/spd/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"dir":"in","reqid":"1"},{"dir":"out","reqid":"1"}]}`))
+	})
+	mux.HandleFunc("/api/ipsec/legacy_subsystem/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":true,"isDirty":false}`))
+	})
+	return mux
+}
+
+func TestIPsecCollector_Update_Kernel(t *testing.T) {
+	server := httptest.NewServer(ipsecKernelMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &ipsecCollector{subsystem: IPsecSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// phase1:6, phase2:0, service:1, pools:3, lease_online:0 (details off),
+	// sad_entries:1 (esp), sa age/hard/soft:3, nat:1, spd:2 (in/out),
+	// config_dirty+legacy_enabled:2  => 19 (sad contributes 5: 1 entries + 3 age/lifetime + 1 nat)
+	if got := len(metrics); got != 19 {
+		t.Errorf("expected 19 metrics with details off, got %d", got)
+	}
+
+	var forbidden []string
+	for _, m := range metrics {
+		labels := getMetricLabels(m)
+		for _, banned := range []string{"spi", "spi_in", "spi_out", "src", "dst", "address"} {
+			if _, ok := labels[banned]; ok {
+				forbidden = append(forbidden, banned)
+			}
+		}
+		desc := m.Desc().String()
+		switch {
+		case strings.Contains(desc, "ipsec_sad_entries"):
+			if labels["satype"] != "esp" {
+				t.Errorf("sad_entries satype wrong: %v", labels)
+			}
+			if v := getMetricValue(m); v != 2 {
+				t.Errorf("expected sad_entries=2 (two SAs), got %v", v)
+			}
+		case strings.Contains(desc, "ipsec_sa_age_seconds"):
+			if labels["reqid"] != "1" {
+				t.Errorf("sa_age reqid label wrong: %v", labels)
+			}
+			if v := getMetricValue(m); v != 45 {
+				t.Errorf("expected sa_age=45 (max age in reqid group), got %v", v)
+			}
+		case strings.Contains(desc, "ipsec_sa_lifetime_soft_seconds"):
+			if v := getMetricValue(m); v != 3306 {
+				t.Errorf("expected sa_lifetime_soft=3306 (min soft), got %v", v)
+			}
+		case strings.Contains(desc, "ipsec_sad_nat_traversal"):
+			if v := getMetricValue(m); v != 0 {
+				t.Errorf("expected nat_traversal=0 (no nat field), got %v", v)
+			}
+		case strings.Contains(desc, "ipsec_config_dirty"):
+			if v := getMetricValue(m); v != 0 {
+				t.Errorf("expected config_dirty=0, got %v", v)
+			}
+		case strings.Contains(desc, "ipsec_legacy_enabled"):
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("expected legacy_enabled=1, got %v", v)
+			}
+		}
+	}
+	if len(forbidden) > 0 {
+		t.Errorf("metrics carry forbidden high-cardinality labels: %v", forbidden)
+	}
+
+	// spd_policies: one series per direction, each value 1.
+	spd := metricsByDesc(metrics, "opnsense_ipsec_spd_policies")
+	if len(spd) != 2 {
+		t.Errorf("expected 2 spd_policies series, got %d", len(spd))
+	}
+}
+
+func TestIPsecCollector_Update_LeaseDetailsOptIn(t *testing.T) {
+	server := httptest.NewServer(ipsecKernelMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &ipsecCollector{subsystem: IPsecSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+
+	// 19 baseline + 2 lease_online series (ctclient online, roamer offline).
+	if got := len(metrics); got != 21 {
+		t.Errorf("expected 21 metrics with lease details on, got %d", got)
+	}
+
+	leases := metricsByDesc(metrics, "opnsense_ipsec_lease_online")
+	if len(leases) != 2 {
+		t.Fatalf("expected 2 lease_online series, got %d", len(leases))
+	}
+	for _, m := range leases {
+		labels := getMetricLabels(m)
+		switch labels["user"] {
+		case "ctclient":
+			if getMetricValue(m) != 1 {
+				t.Error("expected ctclient online=1")
+			}
+		case "roamer":
+			if getMetricValue(m) != 0 {
+				t.Error("expected roamer online=0")
+			}
+		default:
+			t.Errorf("unexpected lease user label: %v", labels)
+		}
+	}
+}
+
 func TestIPsecCollector_Name(t *testing.T) {
 	c := &ipsecCollector{subsystem: IPsecSubsystem}
 	if c.Name() != IPsecSubsystem {

@@ -143,6 +143,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutIPsecCollector())
 		logger.Info("ipsec collector disabled")
 	}
+	if collectorsSwitches.IPsecLeaseDetails {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithIPsecLeaseDetails())
+		logger.Info("ipsec per-lease details enabled")
+	}
 	if !collectorsSwitches.Cron {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCronCollector())
 		logger.Info("cron collector disabled")

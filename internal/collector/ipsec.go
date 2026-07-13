@@ -29,8 +29,29 @@ type ipsecCollector struct {
 	poolOffline         *prometheus.Desc
 	poolSize            *prometheus.Desc
 
+	// #213 kernel (setkey) tables, per-lease detail, pending-config flag.
+	sadEntries     *prometheus.Desc
+	saAge          *prometheus.Desc
+	saLifetimeHard *prometheus.Desc
+	saLifetimeSoft *prometheus.Desc
+	sadNat         *prometheus.Desc
+	spdPolicies    *prometheus.Desc
+	leaseOnline    *prometheus.Desc
+	configDirty    *prometheus.Desc
+	legacyEnabled  *prometheus.Desc
+
+	// detailsEnabled gates the per-lease opnsense_ipsec_lease_online series,
+	// whose `user` label is unbounded road-warrior identity (#213). Off by
+	// default; the pool aggregates stay always-on.
+	detailsEnabled bool
+
 	subsystem string
 	instance  string
+}
+
+// SetDetailsEnabled toggles the opt-in per-lease detail metric (user label).
+func (c *ipsecCollector) SetDetailsEnabled(enabled bool) {
+	c.detailsEnabled = enabled
 }
 
 func init() {
@@ -121,6 +142,51 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"Total size (address capacity) of the IPsec mode-cfg pool",
 		poolLabels,
 	)
+
+	// #213 kernel security-association database (setkey -D). SPI is never a
+	// label (churns every rekey); reqid IS a label — it is bounded by the
+	// configured child-SA count and stable across rekeys, and it disambiguates
+	// series when the ikeid/phaseNdesc join fields come back null (as they do on
+	// the live box). ikeid/phaseNdesc add human context when populated.
+	c.sadEntries = buildPrometheusDesc(c.subsystem, "sad_entries",
+		"Number of installed kernel IPsec security associations (setkey -D), grouped by satype",
+		[]string{"satype", "ikeid", "phase1desc"},
+	)
+	saLabels := []string{"ikeid", "phase2desc", "reqid"}
+	c.saAge = buildPrometheusDesc(c.subsystem, "sa_age_seconds",
+		"Age in seconds of the oldest installed kernel SA in each reqid (child-SA) group",
+		saLabels,
+	)
+	c.saLifetimeHard = buildPrometheusDesc(c.subsystem, "sa_lifetime_hard_seconds",
+		"Soonest hard-expiry lifetime in seconds across the kernel SAs in each reqid group",
+		saLabels,
+	)
+	c.saLifetimeSoft = buildPrometheusDesc(c.subsystem, "sa_lifetime_soft_seconds",
+		"Soonest soft-expiry (rekey) lifetime in seconds across the kernel SAs in each reqid group",
+		saLabels,
+	)
+	c.sadNat = buildPrometheusDesc(c.subsystem, "sad_nat_traversal",
+		"Whether any kernel SA for the IKE SA is NAT-traversed (1 = NAT-T detected, 0 = not)",
+		[]string{"ikeid"},
+	)
+	c.spdPolicies = buildPrometheusDesc(c.subsystem, "spd_policies",
+		"Number of installed kernel IPsec security policies (setkey -DP), grouped by direction",
+		[]string{"direction"},
+	)
+	// Opt-in (--exporter.enable-ipsec-lease-details): the `user` label is
+	// unbounded road-warrior identity.
+	c.leaseOnline = buildPrometheusDesc(c.subsystem, "lease_online",
+		"Whether the IPsec mode-cfg lease is currently online (1 = online, 0 = offline). Per-user detail; only emitted with --exporter.enable-ipsec-lease-details",
+		[]string{"pool", "user"},
+	)
+	c.configDirty = buildPrometheusDesc(c.subsystem, "config_dirty",
+		"Whether there is an uncommitted (staged but not applied) IPsec configuration change (1 = dirty, 0 = clean)",
+		nil,
+	)
+	c.legacyEnabled = buildPrometheusDesc(c.subsystem, "legacy_enabled",
+		"Whether IPsec is enabled in the configuration (1 = enabled, 0 = disabled)",
+		nil,
+	)
 }
 
 func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -142,6 +208,16 @@ func (c *ipsecCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.poolOnline
 	ch <- c.poolOffline
 	ch <- c.poolSize
+
+	ch <- c.sadEntries
+	ch <- c.saAge
+	ch <- c.saLifetimeHard
+	ch <- c.saLifetimeSoft
+	ch <- c.sadNat
+	ch <- c.spdPolicies
+	ch <- c.leaseOnline
+	ch <- c.configDirty
+	ch <- c.legacyEnabled
 }
 
 func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -320,6 +396,144 @@ func (c *ipsecCollector) Update(ctx context.Context, client *opnsense.Client, ch
 				pool.Size, pool.Name, pool.Net, c.instance,
 			)
 		}
+
+		// Per-lease detail is opt-in: the `user` label is unbounded road-warrior
+		// identity. Dedupe by (pool, user) so multiple leases for one user can't
+		// collide into a duplicate label set.
+		if c.detailsEnabled {
+			type leaseKey struct{ pool, user string }
+			online := make(map[leaseKey]bool)
+			for _, l := range pools.Leases {
+				k := leaseKey{l.Pool, l.User}
+				online[k] = online[k] || l.Online
+			}
+			for k, on := range online {
+				v := 0.0
+				if on {
+					v = 1.0
+				}
+				ch <- prometheus.MustNewConstMetric(
+					c.leaseOnline, prometheus.GaugeValue,
+					v, k.pool, k.user, c.instance,
+				)
+			}
+		}
+	}
+
+	// Kernel SA database (setkey -D). Partial-failure tolerant.
+	sad, sadErr := client.FetchIPsecSAD()
+	if sadErr != nil {
+		c.log.Warn("failed to fetch ipsec SAD", "err", sadErr)
+	} else {
+		// sad_entries: count of installed SAs grouped by (satype, ikeid,
+		// phase1desc). Map grouping guarantees unique label sets.
+		type entKey struct{ satype, ikeid, phase1 string }
+		entCounts := make(map[entKey]int)
+
+		// Age/lifetime aggregated per reqid (child-SA) group. reqid is the
+		// bounded, rekey-stable anchor; ikeid/phase2desc are context labels.
+		type saKey struct{ ikeid, phase2, reqid string }
+		type saAgg struct {
+			maxAge, minHard, minSoft int
+		}
+		groups := make(map[saKey]*saAgg)
+
+		// NAT-T per ikeid: 1 if any SA under the IKE SA is NAT-traversed.
+		natByIke := make(map[string]bool)
+
+		for _, sa := range sad.Entries {
+			entCounts[entKey{sa.SAType, sa.IkeID, sa.Phase1desc}]++
+
+			k := saKey{sa.IkeID, sa.Phase2desc, sa.ReqID}
+			if g, ok := groups[k]; ok {
+				if sa.AgeSeconds > g.maxAge {
+					g.maxAge = sa.AgeSeconds
+				}
+				if sa.LifetimeHard < g.minHard {
+					g.minHard = sa.LifetimeHard
+				}
+				if sa.LifetimeSoft < g.minSoft {
+					g.minSoft = sa.LifetimeSoft
+				}
+			} else {
+				groups[k] = &saAgg{
+					maxAge:  sa.AgeSeconds,
+					minHard: sa.LifetimeHard,
+					minSoft: sa.LifetimeSoft,
+				}
+			}
+
+			natByIke[sa.IkeID] = natByIke[sa.IkeID] || sa.NATTraversal
+		}
+
+		for k, n := range entCounts {
+			ch <- prometheus.MustNewConstMetric(
+				c.sadEntries, prometheus.GaugeValue,
+				float64(n), k.satype, k.ikeid, k.phase1, c.instance,
+			)
+		}
+		for k, g := range groups {
+			ch <- prometheus.MustNewConstMetric(
+				c.saAge, prometheus.GaugeValue,
+				float64(g.maxAge), k.ikeid, k.phase2, k.reqid, c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.saLifetimeHard, prometheus.GaugeValue,
+				float64(g.minHard), k.ikeid, k.phase2, k.reqid, c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.saLifetimeSoft, prometheus.GaugeValue,
+				float64(g.minSoft), k.ikeid, k.phase2, k.reqid, c.instance,
+			)
+		}
+		for ike, natOn := range natByIke {
+			v := 0.0
+			if natOn {
+				v = 1.0
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.sadNat, prometheus.GaugeValue, v, ike, c.instance,
+			)
+		}
+	}
+
+	// Kernel policy database (setkey -DP): count per direction. Partial-failure
+	// tolerant.
+	spd, spdErr := client.FetchIPsecSPD()
+	if spdErr != nil {
+		c.log.Warn("failed to fetch ipsec SPD", "err", spdErr)
+	} else {
+		dirCounts := make(map[string]int)
+		for _, d := range spd.Directions {
+			dirCounts[d]++
+		}
+		for dir, n := range dirCounts {
+			ch <- prometheus.MustNewConstMetric(
+				c.spdPolicies, prometheus.GaugeValue,
+				float64(n), dir, c.instance,
+			)
+		}
+	}
+
+	// Pending-config / enabled flags. Partial-failure tolerant.
+	legacy, legacyErr := client.FetchIPsecLegacyStatus()
+	if legacyErr != nil {
+		c.log.Warn("failed to fetch ipsec legacy status", "err", legacyErr)
+	} else {
+		dirty := 0.0
+		if legacy.IsDirty {
+			dirty = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.configDirty, prometheus.GaugeValue, dirty, c.instance,
+		)
+		enabled := 0.0
+		if legacy.Enabled {
+			enabled = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.legacyEnabled, prometheus.GaugeValue, enabled, c.instance,
+		)
 	}
 
 	return nil

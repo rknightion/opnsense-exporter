@@ -4,9 +4,34 @@
   "path": "api/ipsec/leases/pools",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
+    "leases",
     "pools"
   ],
   "fields": [
+    {
+      "path": "leases",
+      "kind": "array"
+    },
+    {
+      "path": "leases[]",
+      "kind": "object"
+    },
+    {
+      "path": "leases[].address",
+      "kind": "string"
+    },
+    {
+      "path": "leases[].online",
+      "kind": "any"
+    },
+    {
+      "path": "leases[].pool",
+      "kind": "string"
+    },
+    {
+      "path": "leases[].user",
+      "kind": "string"
+    },
     {
       "path": "pools",
       "kind": "any"

@@ -43,6 +43,8 @@ def build(b: Builder):
                "label_values(opnsense_ipsec_phase1_status, __name__)")
     b.sentinel("has_ipsec_pools",
                "label_values(opnsense_ipsec_pool_size, __name__)")
+    b.sentinel("has_ipsec_sad",
+               "label_values(opnsense_ipsec_sad_entries, __name__)")
 
     # ================================================================
     # Row 1: VPN Services (always visible)
@@ -363,6 +365,82 @@ def build(b: Builder):
         unit="short", w=8, h=8, orient="horizontal",
         desc="Total address space size of each mode-cfg pool.",
     )
+    lease_online = b.table(
+        "IPsec Mode-CFG Leases",
+        [sel("opnsense_ipsec_lease_online")],
+        w=24, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "pool": "Pool",
+            "user": "User",
+            "Value": "Online",
+        },
+        sort_by="Pool",
+        desc=(
+            "Per-user IPsec mode-cfg lease online state (1 = online, 0 = offline). "
+            "Only populated when the exporter runs with "
+            "--exporter.enable-ipsec-lease-details (the 'user' label is unbounded "
+            "road-warrior identity)."
+        ),
+    )
+
+    # ================================================================
+    # Row 7: IPsec Kernel (SAD/SPD) & Config
+    # ================================================================
+    # Kernel view (setkey) complements the vici phase1/phase2 metrics: it catches
+    # "tunnel up but no SA/policy installed" and exposes rekey-health timers.
+    sad_entries = b.ts(
+        "IPsec Kernel SAs Installed",
+        [(sel("opnsense_ipsec_sad_entries"), "{{satype}}")],
+        unit="short", w=8, h=8,
+        desc=(
+            "Number of installed kernel security associations (setkey -D), by "
+            "satype. Zero while phase1 claims connected signals a broken tunnel."
+        ),
+    )
+    spd_policies = b.ts(
+        "IPsec Kernel Policies Installed",
+        [(sel("opnsense_ipsec_spd_policies"), "{{direction}}")],
+        unit="short", w=8, h=8,
+        desc=(
+            "Number of installed kernel security policies (setkey -DP), by "
+            "direction (in/out/fwd)."
+        ),
+    )
+    sad_nat = b.statetimeline(
+        "IPsec NAT-Traversal",
+        [(sel("opnsense_ipsec_sad_nat_traversal"), "IKE {{ikeid}}")],
+        {"0": ("No NAT-T", "green"), "1": ("NAT-T", "blue")},
+        w=8, h=8,
+        desc="Whether the IKE SA's kernel SAs are NAT-traversed. 1 = NAT-T detected.",
+    )
+    sa_age = b.ts(
+        "IPsec SA Age vs Rekey Lifetime",
+        [
+            (sel("opnsense_ipsec_sa_age_seconds"), "reqid {{reqid}} age"),
+            (sel("opnsense_ipsec_sa_lifetime_soft_seconds"), "reqid {{reqid}} soft"),
+            (sel("opnsense_ipsec_sa_lifetime_hard_seconds"), "reqid {{reqid}} hard"),
+        ],
+        unit="s", w=16, h=8,
+        desc=(
+            "Kernel SA age (oldest SA per reqid/child-SA group) against its soft "
+            "(rekey) and hard expiry lifetimes. Age approaching the soft lifetime "
+            "is the time-to-rekey signal."
+        ),
+    )
+    config_flags = b.statetimeline(
+        "IPsec Config State",
+        [
+            (sel("opnsense_ipsec_legacy_enabled"), "enabled"),
+            (sel("opnsense_ipsec_config_dirty"), "uncommitted changes"),
+        ],
+        {"0": ("No", "green"), "1": ("Yes", "yellow")},
+        w=8, h=8,
+        desc=(
+            "IPsec enabled flag and the pending-config (dirty) flag. "
+            "Dirty = 1 means a staged IPsec change has not been applied."
+        ),
+    )
 
     # ================================================================
     # Tab assembly
@@ -389,6 +467,12 @@ def build(b: Builder):
               [ipsec_p2_install, ipsec_p2_throughput, ipsec_p2_pkts, ipsec_p2_times],
               present="has_ipsec_tunnels"),
         b.row("IPsec Mode-CFG Pools",
-              [pool_online, pool_offline, pool_size],
+              [pool_online, pool_offline, pool_size, lease_online],
               present="has_ipsec_pools"),
+        b.row("IPsec Kernel (SAD/SPD)",
+              [sad_entries, spd_policies, sad_nat, sa_age],
+              present="has_ipsec_sad"),
+        b.row("IPsec Config State",
+              [config_flags],
+              present="has_ipsec"),
     ])

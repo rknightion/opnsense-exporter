@@ -35,6 +35,10 @@ var (
 		"exporter.disable-ipsec",
 		"Disable the scraping of IPSec service",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_IPSEC").Default("false").Bool()
+	ipsecLeaseDetailsEnabled = kingpin.Flag(
+		"exporter.enable-ipsec-lease-details",
+		"Enable per-lease IPsec mode-cfg detail metrics (opnsense_ipsec_lease_online with an unbounded road-warrior user label). Off by default; the per-pool lease aggregates stay always-on.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_IPSEC_LEASE_DETAILS").Default("false").Bool()
 	unboundCollectorDisabled = kingpin.Flag(
 		"exporter.disable-unbound",
 		"Disable the scraping of Unbound service",
@@ -310,6 +314,7 @@ type CollectorsDisableSwitch struct {
 	Cron                   bool
 	Wireguard              bool
 	IPsec                  bool
+	IPsecLeaseDetails      bool
 	Unbound                bool
 	UnboundInfra           bool
 	UnboundQStats          bool
@@ -391,6 +396,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Cron:                   !*cronTableCollectorDisabled,
 		Wireguard:              !*wireguardCollectorDisabled,
 		IPsec:                  !*ipsecCollectorDisabled,
+		IPsecLeaseDetails:      *ipsecLeaseDetailsEnabled,
 		Unbound:                !*unboundCollectorDisabled,
 		UnboundInfra:           *unboundInfraEnabled,
 		UnboundQStats:          *unboundQStatsEnabled,
@@ -481,6 +487,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-cron-table", Subsystem: "cron"},
 	{Flag: "exporter.disable-wireguard", Subsystem: "wireguard"},
 	{Flag: "exporter.disable-ipsec", Subsystem: "ipsec"},
+	{Flag: "exporter.enable-ipsec-lease-details", Subsystem: "ipsec", Detail: true},
 	{Flag: "exporter.disable-unbound", Subsystem: "unbound_dns"},
 	{Flag: "exporter.enable-unbound-infra", Subsystem: "unbound_dns", Detail: true},
 	{Flag: "exporter.enable-unbound-qstats", Subsystem: "unbound_dns", Detail: true},

@@ -275,6 +275,205 @@ func TestFetchIPsecPools_UnconfiguredArray(t *testing.T) {
 	}
 }
 
+// leases fixture: the `leases` array served alongside pool rows by
+// api/ipsec/leases/pools (identical payload to the leases/search endpoint).
+const ipsecPoolsWithLeasesFixture = `{
+	"pools": {
+		"testpool": {"name": "testpool", "net": "10.97.0.1", "online": 1, "offline": 0, "size": 254}
+	},
+	"leases": [
+		{"pool": "testpool", "address": "10.97.0.1", "online": true, "user": "ctclient"},
+		{"pool": "testpool", "address": "10.97.0.2", "online": false, "user": "roamer"}
+	]
+}`
+
+func TestFetchIPsecPools_Leases(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/leases/pools", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ipsecPoolsWithLeasesFixture))
+	})
+
+	data, err := client.FetchIPsecPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(data.Pools))
+	}
+	if len(data.Leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	}
+	// Sorted by (pool, user): "ctclient" before "roamer".
+	if data.Leases[0].User != "ctclient" || !data.Leases[0].Online {
+		t.Errorf("lease[0] wrong: %+v", data.Leases[0])
+	}
+	if data.Leases[1].User != "roamer" || data.Leases[1].Online {
+		t.Errorf("lease[1] wrong: %+v", data.Leases[1])
+	}
+	if data.Leases[0].Pool != "testpool" {
+		t.Errorf("expected pool 'testpool', got %q", data.Leases[0].Pool)
+	}
+}
+
+// established-tunnel SAD fixture — two real SAs (one per direction) from a live
+// box, reqid 1, addtime_diff/hard/soft populated, spi as a hex string, no nat.
+const ipsecSadEstablishedFixture = `{"total":2,"rowCount":2,"current":1,"rows":[
+	{"src":"172.16.9.1","dst":"172.16.9.100","satype":"esp","spi":"c6524517","mode":"tunnel","reqid":1,"state":"mature","addtime_diff":45,"addtime_hard":3960,"addtime_soft":3306,"ikeid":null,"phase1desc":null,"phase2desc":null},
+	{"src":"172.16.9.100","dst":"172.16.9.1","satype":"esp","spi":"cac34f73","mode":"tunnel","reqid":1,"state":"mature","addtime_diff":45,"addtime_hard":3960,"addtime_soft":3548,"ikeid":null,"phase1desc":null,"phase2desc":null}
+]}`
+
+// the "No SAD entries." placeholder the PHP parser emits when setkey has nothing
+// to report — a single synthetic row with satype/spi null.
+const ipsecSadEmptyFixture = `{"total":1,"rowCount":1,"current":1,"rows":[
+	{"src":"No","dst":"SAD","satype":null,"spi":null,"nat":"ntries","id":"x","ikeid":null,"phase1desc":null,"phase2desc":null}
+]}`
+
+func TestFetchIPsecSAD_Established(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/sad/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(ipsecSadEstablishedFixture))
+	})
+
+	data, err := client.FetchIPsecSAD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Entries) != 2 {
+		t.Fatalf("expected 2 SA entries, got %d", len(data.Entries))
+	}
+	e := data.Entries[0]
+	if e.SAType != "esp" {
+		t.Errorf("expected satype esp, got %q", e.SAType)
+	}
+	if e.ReqID != "1" {
+		t.Errorf("expected reqid '1' (int→string), got %q", e.ReqID)
+	}
+	if e.AgeSeconds != 45 {
+		t.Errorf("expected age 45, got %d", e.AgeSeconds)
+	}
+	if e.LifetimeHard != 3960 || e.LifetimeSoft != 3306 {
+		t.Errorf("expected lifetimes 3960/3306, got %d/%d", e.LifetimeHard, e.LifetimeSoft)
+	}
+	if e.NATTraversal {
+		t.Errorf("expected no NAT-T (nat field absent), got true")
+	}
+	if e.IkeID != "" {
+		t.Errorf("expected empty ikeid (null join), got %q", e.IkeID)
+	}
+}
+
+func TestFetchIPsecSAD_EmptyPlaceholder(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/sad/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ipsecSadEmptyFixture))
+	})
+
+	data, err := client.FetchIPsecSAD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Entries) != 0 {
+		t.Errorf("expected the 'No SAD entries.' placeholder row to be discarded, got %d entries", len(data.Entries))
+	}
+}
+
+func TestFetchIPsecSAD_NATTraversal(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/sad/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"src":"a","dst":"b","satype":"esp","spi":"deadbeef","reqid":2,"nat":"4500","addtime_diff":10,"addtime_hard":3600,"addtime_soft":3000,"ikeid":null,"phase1desc":null,"phase2desc":null}]}`))
+	})
+
+	data, err := client.FetchIPsecSAD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(data.Entries))
+	}
+	if !data.Entries[0].NATTraversal {
+		t.Error("expected NAT-T true when the nat field is present")
+	}
+}
+
+func TestFetchIPsecSAD_ServerError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	defer server.Close()
+
+	_, err := client.FetchIPsecSAD()
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+}
+
+const ipsecSpdEstablishedFixture = `{"total":2,"rowCount":2,"current":1,"rows":[
+	{"src":"10.97.0.1","dst":"192.168.77.0/24","dir":"in","type":"ipsec","proto":"esp","mode":"tunnel","reqid":"1","spid":"1","seq":"1","pid":"71071","ikeid":null,"phase1desc":null,"phase2desc":null},
+	{"src":"192.168.77.0/24","dst":"10.97.0.1","dir":"out","type":"ipsec","proto":"esp","mode":"tunnel","reqid":"1","spid":"2","seq":"0","pid":"71071","ikeid":null,"phase1desc":null,"phase2desc":null}
+]}`
+
+func TestFetchIPsecSPD_Established(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/spd/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(ipsecSpdEstablishedFixture))
+	})
+
+	data, err := client.FetchIPsecSPD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Directions) != 2 {
+		t.Fatalf("expected 2 policy directions, got %d", len(data.Directions))
+	}
+	got := map[string]int{}
+	for _, d := range data.Directions {
+		got[d]++
+	}
+	if got["in"] != 1 || got["out"] != 1 {
+		t.Errorf("expected one in + one out, got %v", got)
+	}
+}
+
+func TestFetchIPsecLegacyStatus(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ipsec/legacy_subsystem/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{"enabled":true,"isDirty":false}`))
+	})
+
+	data, err := client.FetchIPsecLegacyStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Enabled {
+		t.Error("expected Enabled true")
+	}
+	if data.IsDirty {
+		t.Error("expected IsDirty false")
+	}
+}
+
 func TestFetchIPsecPools_404(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)

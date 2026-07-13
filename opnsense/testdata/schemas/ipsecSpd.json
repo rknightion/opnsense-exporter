@@ -1,0 +1,23 @@
+{
+  "endpoint": "ipsecSpd",
+  "method": "GET",
+  "path": "api/ipsec/spd/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].dir",
+      "kind": "string"
+    }
+  ]
+}

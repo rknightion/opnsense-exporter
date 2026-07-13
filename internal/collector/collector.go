@@ -596,6 +596,19 @@ func WithKeaDetails() Option {
 	}
 }
 
+// WithIPsecLeaseDetails enables per-lease detail metrics for the ipsec collector
+func WithIPsecLeaseDetails() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if ic, ok := c.(*ipsecCollector); ok {
+				ic.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithFirewallRulesDetails enables per-rule detail metrics for the firewall rules collector
 func WithFirewallRulesDetails() Option {
 	return func(o *Collector) error {
