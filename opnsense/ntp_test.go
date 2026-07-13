@@ -225,3 +225,90 @@ func TestFetchNTPStatus_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+// TestFetchNTPGPSStatus_NoRefclock covers the real shape captured live from the
+// 26.7-devel test box (no GPS hardware attached): the configd script's PHP
+// empty array `$result['gps'] = []` encodes as a JSON array, not an object.
+func TestFetchNTPGPSStatus_NoRefclock(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{"ntpq_servers":[{"status":"*","server":"ntp.test","refid":".PPS.","stratum":"1","type":"u","when":"10","poll":"64","reach":"377","delay":"0","offset":"0","jitter":"0"}],"gps":[]}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchNTPGPSStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.Present {
+		t.Errorf("expected Present=false when gps is an empty array (no refclock), got %+v", data)
+	}
+}
+
+// TestFetchNTPGPSStatus_GPGGA covers the populated shape derived from
+// ntpd_status.php's $GPGGA branch: 'ok' is the raw NMEA quality-indicator
+// digit (a string, not a JSON bool) and 'sat' is the satellite count string.
+// lat/lon are deliberately not modelled (privacy, per #224) even though the
+// script emits them.
+func TestFetchNTPGPSStatus_GPGGA(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ntpq_servers":[],"gps":{"sentence":"$GPGGA","ok":"1","alt":"12.3","alt_unit":"M","sat":"08","lat":37.5,"lon":-122.1}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchNTPGPSStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present {
+		t.Fatal("expected Present=true for a populated gps object")
+	}
+	if !data.OK {
+		t.Errorf("expected OK=true for quality indicator \"1\", got false")
+	}
+	if !data.SatellitesValid || data.Satellites != 8 {
+		t.Errorf("expected Satellites=8 (valid), got %d (valid=%v)", data.Satellites, data.SatellitesValid)
+	}
+}
+
+// TestFetchNTPGPSStatus_GPRMCNoFix covers the $GPRMC branch, where 'ok' is a
+// genuine JSON boolean (PHP `($vars[2] ?? ”) === 'A'`) rather than a string,
+// and asserts a "no fix" (false) is preserved rather than defaulting true.
+func TestFetchNTPGPSStatus_GPRMCNoFix(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ntpq_servers":[],"gps":{"sentence":"$GPRMC","ok":false}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchNTPGPSStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present {
+		t.Fatal("expected Present=true")
+	}
+	if data.OK {
+		t.Error("expected OK=false for a JSON false 'ok' value")
+	}
+	if data.SatellitesValid {
+		t.Errorf("expected SatellitesValid=false ($GPRMC never carries 'sat'), got Satellites=%d", data.Satellites)
+	}
+}
+
+func TestFetchNTPGPSStatus_ServerError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	defer server.Close()
+
+	_, err := client.FetchNTPGPSStatus()
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+	if err.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}

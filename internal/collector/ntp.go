@@ -21,6 +21,9 @@ type ntpCollector struct {
 	peerJitterMilliseconds *prometheus.Desc
 	peersTotal             *prometheus.Desc
 
+	gpsOK         *prometheus.Desc
+	gpsSatellites *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -76,6 +79,17 @@ func (c *ntpCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Total number of NTP peers",
 		nil,
 	)
+	c.gpsOK = buildPrometheusDesc(c.subsystem, "gps_ok",
+		"Whether the last NMEA sentence from a GPS refclock reported a valid fix (1 = ok, 0 = no fix). "+
+			"EXPERIMENTAL: derived from OPNsense source, not validated against real GPS hardware (#224). "+
+			"Absent entirely when no GPS refclock is attached/reporting.",
+		nil,
+	)
+	c.gpsSatellites = buildPrometheusDesc(c.subsystem, "gps_satellites",
+		"Number of satellites used in the last GPS fix ($GPGGA sentences only; absent for sentences that don't carry a satellite count). "+
+			"EXPERIMENTAL: derived from OPNsense source, not validated against real GPS hardware (#224).",
+		nil,
+	)
 }
 
 func (c *ntpCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -88,6 +102,8 @@ func (c *ntpCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.peerOffsetMilliseconds
 	ch <- c.peerJitterMilliseconds
 	ch <- c.peersTotal
+	ch <- c.gpsOK
+	ch <- c.gpsSatellites
 }
 
 func (c *ntpCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -181,6 +197,30 @@ func (c *ntpCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			peer.Server,
 			c.instance,
 		)
+	}
+
+	gps, gpsErr := client.FetchNTPGPSStatus()
+	if gpsErr != nil {
+		return gpsErr
+	}
+
+	// No GPS refclock reporting a fix: stay completely silent rather than
+	// emitting a fake 0 (absent hardware => absent series, #224).
+	if gps.Present {
+		ch <- prometheus.MustNewConstMetric(
+			c.gpsOK,
+			prometheus.GaugeValue,
+			boolToGauge(gps.OK),
+			c.instance,
+		)
+		if gps.SatellitesValid {
+			ch <- prometheus.MustNewConstMetric(
+				c.gpsSatellites,
+				prometheus.GaugeValue,
+				float64(gps.Satellites),
+				c.instance,
+			)
+		}
 	}
 
 	return nil

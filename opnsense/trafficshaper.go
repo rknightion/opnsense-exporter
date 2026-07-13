@@ -24,12 +24,18 @@ type tsFlow struct {
 }
 
 // tsRule holds one ipfw rule counter row attached to a pipe/queue item.
+//
+// AccessedEpoch mirrors scripts/shaper/lib/__init__.py:
+// 'accessed_epoch': int(parts[3]) if parts[3].isdigit() else 0 — a rule that
+// has never matched traffic reports 0, which is a sentinel, not a real Unix
+// timestamp (#224).
 type tsRule struct {
-	Rule        flexString `json:"rule"`
-	Pkts        float64    `json:"pkts"`
-	Bytes       float64    `json:"bytes"`
-	AttachedTo  flexString `json:"attached_to"`
-	Description flexString `json:"description"`
+	Rule          flexString `json:"rule"`
+	Pkts          float64    `json:"pkts"`
+	Bytes         float64    `json:"bytes"`
+	AttachedTo    flexString `json:"attached_to"`
+	Description   flexString `json:"description"`
+	AccessedEpoch float64    `json:"accessed_epoch"`
 }
 
 // tsItem mirrors one element of the api/trafficshaper/service/statistics response.
@@ -67,14 +73,16 @@ type TrafficShaperEntity struct {
 
 // TrafficShaperRule is the normalised view of one ipfw rule counter.
 // TargetType is "pipe" when the rule is attached to a pipe (via its template
-// queue), otherwise "queue".
+// queue), otherwise "queue". LastMatchEpoch is 0 when the rule has never
+// matched traffic (a sentinel, not the Unix epoch — see tsRule).
 type TrafficShaperRule struct {
-	Rule        string
-	AttachedTo  string
-	TargetType  string // "pipe" | "queue"
-	Description string
-	Packets     float64
-	Bytes       float64
+	Rule           string
+	AttachedTo     string
+	TargetType     string // "pipe" | "queue"
+	Description    string
+	Packets        float64
+	Bytes          float64
+	LastMatchEpoch float64
 }
 
 // TrafficShaperStatistics is the result returned by FetchTrafficShaperStatistics.
@@ -184,12 +192,13 @@ func (c *Client) FetchTrafficShaperStatistics() (TrafficShaperStatistics, *APICa
 		}
 		for _, r := range item.Rules {
 			rules = append(rules, TrafficShaperRule{
-				Rule:        r.Rule.String(),
-				AttachedTo:  r.AttachedTo.String(),
-				TargetType:  targetType,
-				Description: r.Description.String(),
-				Packets:     r.Pkts,
-				Bytes:       r.Bytes,
+				Rule:           r.Rule.String(),
+				AttachedTo:     r.AttachedTo.String(),
+				TargetType:     targetType,
+				Description:    r.Description.String(),
+				Packets:        r.Pkts,
+				Bytes:          r.Bytes,
+				LastMatchEpoch: r.AccessedEpoch,
 			})
 		}
 

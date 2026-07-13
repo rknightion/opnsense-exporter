@@ -144,6 +144,46 @@ func TestFetchTrafficShaperStatistics_Normal(t *testing.T) {
 	if rule.Bytes != 88888 {
 		t.Errorf("rule.Bytes = %v, want 88888", rule.Bytes)
 	}
+	// accessed_epoch (rider, #224): the fixture's rule carries 1780000000.
+	if rule.LastMatchEpoch != 1780000000 {
+		t.Errorf("rule.LastMatchEpoch = %v, want 1780000000", rule.LastMatchEpoch)
+	}
+}
+
+// TestFetchTrafficShaperStatistics_RuleNeverMatched guards the shaper
+// scripts/shaper/lib/__init__.py sentinel: a rule that has never matched
+// traffic reports accessed_epoch=0 (not a real Unix timestamp), which must be
+// distinguishable from "matched at the Unix epoch" so the collector can skip
+// emitting the gauge rather than reporting a bogus 1970 last-match (#224).
+func TestFetchTrafficShaperStatistics_RuleNeverMatched(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+		  "status": "ok",
+		  "items": [
+		    {
+		      "type": "pipe", "id": "00001", "pipe": "00001", "description": "WAN down",
+		      "flows": [],
+		      "rules": [
+		        {"rule": "60002", "pkts": 0, "bytes": 0,
+		         "accessed": "", "accessed_epoch": 0,
+		         "attached_to": "00001", "description": "Never matched"}
+		      ]
+		    }
+		  ]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchTrafficShaperStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(data.Rules))
+	}
+	if data.Rules[0].LastMatchEpoch != 0 {
+		t.Errorf("expected LastMatchEpoch=0 for a rule that never matched, got %v", data.Rules[0].LastMatchEpoch)
+	}
 }
 
 func TestFetchTrafficShaperStatistics_Unconfigured(t *testing.T) {

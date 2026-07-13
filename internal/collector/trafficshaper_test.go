@@ -174,6 +174,56 @@ func TestTrafficShaperCollector_Update_FeatureAbsent(t *testing.T) {
 	}
 }
 
+// TestTrafficShaperCollector_RuleLastMatch covers the accessed_epoch rider
+// (#224): a rule that has matched traffic emits rule_last_match_timestamp_seconds,
+// one that never has (accessed_epoch=0, the sentinel) must not.
+func TestTrafficShaperCollector_RuleLastMatch(t *testing.T) {
+	fixture := `{
+	  "status": "ok",
+	  "items": [
+	    {
+	      "type": "pipe", "id": "00001", "pipe": "00001", "description": "WAN down",
+	      "flows": [],
+	      "rules": [
+	        {"rule": "60001", "pkts": 999, "bytes": 88888,
+	         "accessed_epoch": 1780000000,
+	         "attached_to": "00001", "description": "Shape WAN"},
+	        {"rule": "60002", "pkts": 0, "bytes": 0,
+	         "accessed_epoch": 0,
+	         "attached_to": "00001", "description": "Never matched"}
+	      ]
+	    }
+	  ]
+	}`
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/trafficshaper/service/statistics", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fixture))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &trafficShaperCollector{subsystem: TrafficShaperSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	var lastMatchSeries []map[string]string
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "trafficshaper_rule_last_match_timestamp_seconds") {
+			lastMatchSeries = append(lastMatchSeries, getMetricLabels(m))
+		}
+	}
+
+	if len(lastMatchSeries) != 1 {
+		t.Fatalf("expected exactly 1 rule_last_match_timestamp_seconds series (the matched rule only), got %d", len(lastMatchSeries))
+	}
+	if lastMatchSeries[0]["rule"] != "60001" {
+		t.Errorf("expected the emitted series to be for rule 60001, got rule=%q", lastMatchSeries[0]["rule"])
+	}
+}
+
 func TestTrafficShaperCollector_Name(t *testing.T) {
 	c := &trafficShaperCollector{subsystem: TrafficShaperSubsystem}
 	if c.Name() != TrafficShaperSubsystem {

@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 715
-- **Gauges:** 493
+- **Total metrics:** 719
+- **Gauges:** 497
 - **Counters:** 222
 
 ## General
@@ -619,6 +619,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_ntp_peer_offset_milliseconds | Gauge | server | Clock offset relative to the NTP peer in milliseconds | --exporter.disable-ntp |
 | opnsense_ntp_peer_jitter_milliseconds | Gauge | server | Dispersion jitter of the NTP peer in milliseconds | --exporter.disable-ntp |
 | opnsense_ntp_peers_total | Gauge | --- | Total number of NTP peers | --exporter.disable-ntp |
+| opnsense_ntp_gps_ok | Gauge | --- | Whether the last NMEA sentence from a GPS refclock reported a valid fix (1 = ok, 0 = no fix). EXPERIMENTAL: derived from OPNsense source, not validated against real GPS hardware (#224). Absent entirely when no GPS refclock is attached/reporting. | --exporter.disable-ntp |
+| opnsense_ntp_gps_satellites | Gauge | --- | Number of satellites used in the last GPS fix ($GPGGA sentences only; absent for sentences that don't carry a satellite count). EXPERIMENTAL: derived from OPNsense source, not validated against real GPS hardware (#224). | --exporter.disable-ntp |
 
 ## NUT UPS
 
@@ -865,6 +867,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_services_running_total | Gauge | --- | Total number of running services | --exporter.disable-services |
 | opnsense_services_stopped_total | Gauge | --- | Total number of stopped services | --exporter.disable-services |
 
+## Siproxd
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_siproxd_registrations | Gauge | --- | Number of active SIP registrations tracked by siproxd. Silent when the os-siproxd plugin is absent. | --exporter.disable-siproxd |
+
 ## Syslog
 
 | Metric Name | Type | Labels | Description | Disable Flag |
@@ -948,6 +956,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_trafficshaper_queue_drop_bytes | Gauge | queue, pipe, description | Total bytes dropped by this queue (gauge) | --exporter.disable-trafficshaper |
 | opnsense_trafficshaper_rule_packets_total | Counter | rule, attached_to, target_type, description | Cumulative packets matched by this traffic shaper rule | --exporter.disable-trafficshaper |
 | opnsense_trafficshaper_rule_bytes_total | Counter | rule, attached_to, target_type, description | Cumulative bytes matched by this traffic shaper rule | --exporter.disable-trafficshaper |
+| opnsense_trafficshaper_rule_last_match_timestamp_seconds | Gauge | rule, attached_to, target_type, description | Unix timestamp of the last time this traffic shaper rule matched traffic. Absent for a rule that has never matched. | --exporter.disable-trafficshaper |
 
 ## Unbound DNS
 

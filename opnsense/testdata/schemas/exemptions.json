@@ -69,6 +69,10 @@
     "note": "netbird CLI status --json (client/status.OutputOverview, github.com/netbirdio/netbird) node identity/config/session fields the exporter does not model — an #211 opportunity if a future metric needs them. Separately (not expressible as an exemption here): the daemon-down state serves a bare `[]` instead of this object (verified live 2026-07-13); a canary run that catches the box in that state will report a top-level Mismatch for this endpoint — that is the documented daemon-down fallback (see opnsense/netbird.go), not drift"
   },
   "nginxServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "ntpGPS": {
+    "knownExtraTopKeys": ["ntpq_servers"],
+    "note": "api/ntpd/service/gps and api/ntpd/service/status both wrap the same `ntpd status` configd script output; ntpq_servers duplicates the peer rows already modelled via ntpStatus's \"rows\" key (statusAction re-wraps the same array through searchRecordsetBase). Intentionally not modelled a second time here (#224)"
+  },
   "nginxVts": {
     "knownExtraTopKeys": ["hostName", "loadMsec", "moduleVersion", "nginxVersion", "nowMsec"],
     "note": "vts module identity and snapshot timestamps; not modelled"

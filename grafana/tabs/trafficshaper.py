@@ -11,7 +11,7 @@ Rows:
   4. Rules          — rule packet/byte counters table (rate)
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, RATE, epoch_ms
 
 
 def build(b: Builder):
@@ -113,6 +113,27 @@ def build(b: Builder):
         unit="pps", w=12, h=8,
         desc="Packets per second matched by each traffic shaper rule.",
     )
+    rule_last_match = b.table(
+        "Rule Last Match",
+        [epoch_ms(sel("opnsense_trafficshaper_rule_last_match_timestamp_seconds"))],
+        w=24, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "rule": "Rule",
+            "attached_to": "Attached To",
+            "target_type": "Target Type",
+            "description": "Description",
+            "Value": "Last Match",
+            "opnsense_instance": "Instance",
+        },
+        unit_overrides={"Last Match": "dateTimeAsIso"},
+        sort_by="Last Match",
+        sort_desc=True,
+        desc=(
+            "Timestamp each traffic shaper rule last matched traffic. A rule that has "
+            "never matched is absent from this table (rider, #224)."
+        ),
+    )
 
     # ================================================================
     # Tab assembly
@@ -128,6 +149,6 @@ def build(b: Builder):
               [queue_flows, queue_bytes, queue_pkts],
               present="has_trafficshaper"),
         b.row("Rules",
-              [rule_bytes, rule_pkts],
+              [rule_bytes, rule_pkts, rule_last_match],
               present="has_trafficshaper"),
     ])

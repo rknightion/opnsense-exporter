@@ -42,7 +42,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 17 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
 | NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
-| NTP | ntp | 9 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
+| NTP | ntp | 11 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
 | NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPNSENSE_EXPORTER_DISABLE_NUT |
 | NetBird | netbird | 14 | Enabled | --exporter.disable-netbird | OPNSENSE_EXPORTER_DISABLE_NETBIRD |
 | NetFlow | netflow | 7 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
@@ -55,12 +55,13 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPNSENSE_EXPORTER_DISABLE_RELAYD |
 | SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
 | Services | services | 3 | Enabled | --exporter.disable-services | OPNSENSE_EXPORTER_DISABLE_SERVICES |
+| Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPNSENSE_EXPORTER_DISABLE_SIPROXD |
 | Syslog | syslog | 10 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
 | System | system | 12 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
 | Tailscale | tailscale | 11 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
 | Tor | tor | 6 | Disabled | --exporter.enable-tor | OPNSENSE_EXPORTER_ENABLE_TOR |
-| Traffic Shaper | trafficshaper | 14 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
+| Traffic Shaper | trafficshaper | 15 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
 | Unbound DNS | unbound_dns | 44 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPNSENSE_EXPORTER_ENABLE_VNSTAT |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |

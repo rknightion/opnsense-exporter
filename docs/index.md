@@ -1,6 +1,6 @@
 ---
 title: OPNsense Exporter
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 715 metrics across 59 collectors
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 719 metrics across 60 collectors
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
-A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 715 metrics across 59 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 719 metrics across 60 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
 
 <div class="hero-badges" markdown>
 
@@ -45,7 +45,7 @@ A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes
 
     ---
 
-    Browse all 715 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 719 Prometheus metrics with types, labels, and PromQL examples.
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 
@@ -53,7 +53,7 @@ A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes
 
     ---
 
-    59 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
+    60 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
 
     [:octicons-arrow-right-24: Collectors](collectors/index.md)
 
@@ -81,7 +81,7 @@ OPNsense Exporter focuses specifically on OPNsense, providing deep insight into 
 
 Key highlights:
 
-- **59 collectors** covering every major OPNsense subsystem
+- **60 collectors** covering every major OPNsense subsystem
 - **Concurrent collection** via goroutines for fast scrapes
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail

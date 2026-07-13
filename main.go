@@ -435,6 +435,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutRelaydCollector())
 		logger.Info("relayd collector disabled")
 	}
+	if !collectorsSwitches.Siproxd {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSiproxdCollector())
+		logger.Info("siproxd collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

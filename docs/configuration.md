@@ -231,6 +231,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | Q-Feeds | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
 | `--exporter.disable-relayd` | `OPNSENSE_EXPORTER_DISABLE_RELAYD` | Relayd Load Balancer | Disable the scraping of relayd virtual server/table/host health (silent when the os-relayd plugin is absent) |
 | `--exporter.disable-services` | `OPNSENSE_EXPORTER_DISABLE_SERVICES` | Services | Disable the services collector (per-service running state) |
+| `--exporter.disable-siproxd` | `OPNSENSE_EXPORTER_DISABLE_SIPROXD` | Siproxd | Disable the scraping of the siproxd active SIP registration count (silent when the os-siproxd plugin is absent) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | Syslog | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | System | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |
 | `--exporter.disable-tailscale` | `OPNSENSE_EXPORTER_DISABLE_TAILSCALE` | Tailscale | Disable the scraping of Tailscale node-local metrics (silent when the os-tailscale plugin is absent; complementary to tailscale2otel) |
@@ -342,6 +343,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-qfeeds` | `OPNSENSE_EXPORTER_DISABLE_QFEEDS` | `false` | Disable the scraping of Q-Feeds threat intelligence statistics (silent when the os-q-feeds-connector plugin is absent) |
 | `--exporter.disable-relayd` | `OPNSENSE_EXPORTER_DISABLE_RELAYD` | `false` | Disable the scraping of relayd virtual server/table/host health (silent when the os-relayd plugin is absent) |
 | `--exporter.disable-services` | `OPNSENSE_EXPORTER_DISABLE_SERVICES` | `false` | Disable the services collector (per-service running state) |
+| `--exporter.disable-siproxd` | `OPNSENSE_EXPORTER_DISABLE_SIPROXD` | `false` | Disable the scraping of the siproxd active SIP registration count (silent when the os-siproxd plugin is absent) |
 | `--exporter.disable-snapshots` | `OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS` | `false` | Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS) |
 | `--exporter.disable-syslog` | `OPNSENSE_EXPORTER_DISABLE_SYSLOG` | `false` | Disable the scraping of syslog-ng statistics |
 | `--exporter.disable-system` | `OPNSENSE_EXPORTER_DISABLE_SYSTEM` | `false` | Disable the scraping of system resource metrics (memory, uptime, disk, swap) |

@@ -249,6 +249,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"captivePortalVouchers":         "api/captiveportal/voucher/list_vouchers",
 		"relaydStatusSum":               "api/relayd/status/sum",
 		"haproxyTables":                 "api/haproxy/statistics/tables",
+		"ntpGPS":                        "api/ntpd/service/gps",
+		"siproxdRegistrations":          "api/siproxd/service/showregistrations",
 	}
 }
 

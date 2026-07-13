@@ -1,0 +1,15 @@
+{
+  "endpoint": "siproxdRegistrations",
+  "method": "GET",
+  "path": "api/siproxd/service/showregistrations",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

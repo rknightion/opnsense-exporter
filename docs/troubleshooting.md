@@ -40,7 +40,7 @@ Run with `--log.level=debug` to see each API call and its failure reason.
 
 ## Scrapes are slow or time out
 
-Each scrape fans out to ~59 collectors in parallel; total scrape time is bounded by
+Each scrape fans out to ~60 collectors in parallel; total scrape time is bounded by
 the slowest OPNsense API endpoint. If scrapes approach your Prometheus
 `scrape_timeout`:
 

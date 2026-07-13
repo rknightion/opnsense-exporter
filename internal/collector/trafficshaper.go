@@ -25,6 +25,7 @@ type trafficShaperCollector struct {
 	queueDropByt  *prometheus.Desc
 	rulePackets   *prometheus.Desc
 	ruleBytes     *prometheus.Desc
+	ruleLastMatch *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -78,6 +79,9 @@ func (c *trafficShaperCollector) Register(namespace, instanceLabel string, log *
 		"Cumulative packets matched by this traffic shaper rule", ruleLabels)
 	c.ruleBytes = buildPrometheusDesc(c.subsystem, "rule_bytes_total",
 		"Cumulative bytes matched by this traffic shaper rule", ruleLabels)
+	c.ruleLastMatch = buildPrometheusDesc(c.subsystem, "rule_last_match_timestamp_seconds",
+		"Unix timestamp of the last time this traffic shaper rule matched traffic. Absent for a rule that has never matched.",
+		ruleLabels)
 }
 
 func (c *trafficShaperCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -85,7 +89,7 @@ func (c *trafficShaperCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.pipesTotal, c.queuesTotal,
 		c.pipeFlows, c.pipePackets, c.pipeBytes, c.pipeDropPkts, c.pipeDropBytes,
 		c.queueFlows, c.queuePackets, c.queueBytes, c.queueDropPkts, c.queueDropByt,
-		c.rulePackets, c.ruleBytes,
+		c.rulePackets, c.ruleBytes, c.ruleLastMatch,
 	} {
 		ch <- d
 	}
@@ -146,6 +150,12 @@ func (c *trafficShaperCollector) Update(_ context.Context, client *opnsense.Clie
 			rule.Packets, rule.Rule, rule.AttachedTo, rule.TargetType, rule.Description, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.ruleBytes, prometheus.CounterValue,
 			rule.Bytes, rule.Rule, rule.AttachedTo, rule.TargetType, rule.Description, c.instance)
+		// accessed_epoch=0 is the "never matched" sentinel (scripts/shaper/lib/
+		// __init__.py), not a real Unix timestamp — omit rather than report 1970.
+		if rule.LastMatchEpoch > 0 {
+			ch <- prometheus.MustNewConstMetric(c.ruleLastMatch, prometheus.GaugeValue,
+				rule.LastMatchEpoch, rule.Rule, rule.AttachedTo, rule.TargetType, rule.Description, c.instance)
+		}
 	}
 
 	return nil

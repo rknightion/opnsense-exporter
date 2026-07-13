@@ -318,6 +318,10 @@ var (
 		"exporter.disable-relayd",
 		"Disable the scraping of relayd virtual server/table/host health (silent when the os-relayd plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_RELAYD").Default("false").Bool()
+	siproxdCollectorDisabled = kingpin.Flag(
+		"exporter.disable-siproxd",
+		"Disable the scraping of the siproxd active SIP registration count (silent when the os-siproxd plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_SIPROXD").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -384,6 +388,7 @@ type CollectorsDisableSwitch struct {
 	Vnstat                 bool
 	Netbird                bool
 	NetbirdDetails         bool
+	Siproxd                bool
 	ArpDetails             bool
 	NdpDetails             bool
 	Interfaces             bool
@@ -477,6 +482,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Auth:                   !*authCollectorDisabled,
 		HostDiscovery:          !*hostdiscoveryCollectorDisabled,
 		Relayd:                 !*relaydCollectorDisabled,
+		Siproxd:                !*siproxdCollectorDisabled,
 	}
 }
 
@@ -571,4 +577,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-auth", Subsystem: "auth"},
 	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},
 	{Flag: "exporter.disable-relayd", Subsystem: "relayd"},
+	{Flag: "exporter.disable-siproxd", Subsystem: "siproxd"},
 }

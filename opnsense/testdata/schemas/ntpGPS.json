@@ -1,0 +1,15 @@
+{
+  "endpoint": "ntpGPS",
+  "method": "GET",
+  "path": "api/ntpd/service/gps",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "gps"
+  ],
+  "fields": [
+    {
+      "path": "gps",
+      "kind": "any"
+    }
+  ]
+}

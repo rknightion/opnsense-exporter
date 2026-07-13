@@ -289,7 +289,7 @@ def register_subsystem_tabs(b: Builder):
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp",
         "haproxy", "relayd", "nginx", "frr", "monit",
         "crowdsec", "ids", "ups", "captiveportal",
-        "trafficshaper", "hasync", "chrony", "tor",
+        "trafficshaper", "hasync", "chrony", "tor", "siproxd",
     ]
     import importlib
     for mod in order:

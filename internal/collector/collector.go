@@ -83,6 +83,7 @@ const (
 	AuthSubsystem          = "auth"
 	HostDiscoverySubsystem = "hostdiscovery"
 	RelaydSubsystem        = "relayd"
+	SiproxdSubsystem       = "siproxd"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -149,6 +150,7 @@ var SubsystemDisplayNames = map[string]string{
 	AuthSubsystem:          "Local Auth",
 	HostDiscoverySubsystem: "Host Discovery",
 	RelaydSubsystem:        "Relayd Load Balancer",
+	SiproxdSubsystem:       "Siproxd",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -591,6 +593,12 @@ func WithoutHostDiscoveryCollector() Option {
 // removes the relayd collector from the list of collectors
 func WithoutRelaydCollector() Option {
 	return withoutCollectorInstance(RelaydSubsystem)
+}
+
+// WithoutSiproxdCollector Option
+// removes the siproxd (SIP registration count) collector from the list of collectors
+func WithoutSiproxdCollector() Option {
+	return withoutCollectorInstance(SiproxdSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

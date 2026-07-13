@@ -1,9 +1,12 @@
 """
 NTP tab for the OPNsense Exporter dashboard.
 
-Covers all 9 opnsense_ntp_* metrics across two rows:
+Covers all 11 opnsense_ntp_* metrics across three rows:
   1. Peers   — info table, stratum table, reach gauge (0-255) + % stat, peers_total
   2. Timing  — delay/offset/jitter timeseries, when/poll stats
+  3. GPS     — refclock fix status + satellite count (EXPERIMENTAL, #224: derived
+               from OPNsense source, not validated against real GPS hardware;
+               absent entirely on the vast majority of boxes with no GPS refclock)
 """
 
 from builder import Builder, sel
@@ -153,10 +156,50 @@ def build(b: Builder):
     )
 
     # =====================================================================
+    # Row 3: GPS (EXPERIMENTAL — only present with a GPS refclock attached)
+    # =====================================================================
+    b.sentinel("has_ntp_gps", "label_values(opnsense_ntp_gps_ok, __name__)")
+
+    gps_ok_stat = b.stat(
+        "GPS Fix",
+        sel("opnsense_ntp_gps_ok"),
+        unit="short",
+        w=6, h=4,
+        mappings={"0": ("No Fix", "red"), "1": ("Fix", "green")},
+        color_mode="value",
+        instant=True,
+        desc=(
+            "Whether the last NMEA sentence from a GPS refclock reported a valid fix. "
+            "EXPERIMENTAL: derived from OPNsense source, not validated against real GPS "
+            "hardware (#224). Only present when a GPS refclock is attached and reporting."
+        ),
+    )
+    gps_satellites_stat = b.stat(
+        "GPS Satellites",
+        sel("opnsense_ntp_gps_satellites"),
+        unit="short",
+        w=6, h=4,
+        thresholds=[{"color": "blue", "value": None}],
+        color_mode="value",
+        instant=True,
+        desc=(
+            "Number of satellites used in the last GPS fix ($GPGGA sentences only). "
+            "EXPERIMENTAL: derived from OPNsense source, not validated against real GPS "
+            "hardware (#224)."
+        ),
+    )
+
+    row_gps = b.row(
+        "GPS (experimental)",
+        [gps_ok_stat, gps_satellites_stat],
+        present="has_ntp_gps",
+    )
+
+    # =====================================================================
     # Assemble the tab
     # =====================================================================
     b.tab(
         "NTP",
-        [row_peers, row_timing],
+        [row_peers, row_timing, row_gps],
         present="has_ntp",
     )
