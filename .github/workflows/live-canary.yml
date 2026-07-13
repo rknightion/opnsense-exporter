@@ -24,9 +24,12 @@ concurrency:
 
 env:
   # Distinct floors so a partial outage is distinguishable from drift:
-  # 47 sub-collectors must all succeed; the box currently emits 534 catalogue
-  # metric names, floor set with headroom for box-state variance.
-  METRIC_NAME_FLOOR: '490'
+  # 47 sub-collectors must all succeed; the box currently emits 495 catalogue
+  # metric names (down from 507 since the unbound extended-statistics series
+  # are presence-gated — 26.7 ships extended-statistics: no, so emitting them
+  # would fabricate zero counters). Floor keeps ~15 names of headroom for
+  # box-state variance.
+  METRIC_NAME_FLOOR: '480'
 
 jobs:
   canary:
