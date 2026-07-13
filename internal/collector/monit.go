@@ -19,6 +19,22 @@ type monitCollector struct {
 	checkStatus    *prometheus.Desc
 	checkMonitored *prometheus.Desc
 
+	// Per-check resource telemetry (#219). All gauges; a value is only
+	// emitted when the underlying monit payload actually carried it — never
+	// coerced to zero when absent.
+	filesystemUsagePercent      *prometheus.Desc
+	filesystemInodeUsagePercent *prometheus.Desc
+	processCPUPercent           *prometheus.Desc
+	processMemoryBytes          *prometheus.Desc
+	processUptimeSeconds        *prometheus.Desc
+	processThreads              *prometheus.Desc
+	hostICMPResponseSeconds     *prometheus.Desc
+	portResponseSeconds         *prometheus.Desc
+	systemLoad                  *prometheus.Desc
+	systemMemoryPercent         *prometheus.Desc
+	systemSwapPercent           *prometheus.Desc
+	systemCPUPercent            *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -52,6 +68,54 @@ func (c *monitCollector) Register(namespace, instanceLabel string, log *slog.Log
 	c.checkMonitored = buildPrometheusDesc(c.subsystem, "check_monitored",
 		"Whether a monit check is actively monitored (1 = monitored, 0 = not monitored)",
 		[]string{"name", "type"})
+
+	c.filesystemUsagePercent = buildPrometheusDesc(c.subsystem, "filesystem_usage_percent",
+		"Filesystem block (space) usage percent for a monit filesystem check",
+		[]string{"name", "type"})
+
+	c.filesystemInodeUsagePercent = buildPrometheusDesc(c.subsystem, "filesystem_inode_usage_percent",
+		"Filesystem inode usage percent for a monit filesystem check",
+		[]string{"name", "type"})
+
+	c.processCPUPercent = buildPrometheusDesc(c.subsystem, "process_cpu_percent",
+		"CPU usage percent for a monit process check (absent until monit's second poll cycle computes a rate)",
+		[]string{"name", "type"})
+
+	c.processMemoryBytes = buildPrometheusDesc(c.subsystem, "process_memory_bytes",
+		"Resident memory usage in bytes for a monit process check",
+		[]string{"name", "type"})
+
+	c.processUptimeSeconds = buildPrometheusDesc(c.subsystem, "process_uptime_seconds",
+		"Uptime in seconds for a monit process check",
+		[]string{"name", "type"})
+
+	c.processThreads = buildPrometheusDesc(c.subsystem, "process_threads",
+		"Number of threads for a monit process check",
+		[]string{"name", "type"})
+
+	c.hostICMPResponseSeconds = buildPrometheusDesc(c.subsystem, "host_icmp_response_seconds",
+		"ICMP ping response time in seconds for a monit host check",
+		[]string{"name", "type"})
+
+	c.portResponseSeconds = buildPrometheusDesc(c.subsystem, "port_response_seconds",
+		"Port connection response time in seconds for a monit host check's port test",
+		[]string{"name", "type", "port", "protocol"})
+
+	c.systemLoad = buildPrometheusDesc(c.subsystem, "system_load",
+		"System load average for a monit system check",
+		[]string{"name", "type", "period"})
+
+	c.systemMemoryPercent = buildPrometheusDesc(c.subsystem, "system_memory_percent",
+		"System memory usage percent for a monit system check",
+		[]string{"name", "type"})
+
+	c.systemSwapPercent = buildPrometheusDesc(c.subsystem, "system_swap_percent",
+		"System swap usage percent for a monit system check",
+		[]string{"name", "type"})
+
+	c.systemCPUPercent = buildPrometheusDesc(c.subsystem, "system_cpu_percent",
+		"System CPU usage percent by mode for a monit system check",
+		[]string{"name", "type", "mode"})
 }
 
 func (c *monitCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -60,6 +124,18 @@ func (c *monitCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.checksTotal
 	ch <- c.checkStatus
 	ch <- c.checkMonitored
+	ch <- c.filesystemUsagePercent
+	ch <- c.filesystemInodeUsagePercent
+	ch <- c.processCPUPercent
+	ch <- c.processMemoryBytes
+	ch <- c.processUptimeSeconds
+	ch <- c.processThreads
+	ch <- c.hostICMPResponseSeconds
+	ch <- c.portResponseSeconds
+	ch <- c.systemLoad
+	ch <- c.systemMemoryPercent
+	ch <- c.systemSwapPercent
+	ch <- c.systemCPUPercent
 }
 
 func (c *monitCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -107,6 +183,66 @@ func (c *monitCollector) Update(ctx context.Context, client *opnsense.Client, ch
 			check.StatusOK, check.Name, check.Type, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.checkMonitored, prometheus.GaugeValue,
 			check.Monitored, check.Name, check.Type, c.instance)
+
+		if v := check.FilesystemUsagePercent; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.filesystemUsagePercent, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		if v := check.FilesystemInodeUsagePercent; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.filesystemInodeUsagePercent, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+
+		if v := check.ProcessCPUPercent; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.processCPUPercent, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		if v := check.ProcessMemoryBytes; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.processMemoryBytes, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		if v := check.ProcessUptimeSeconds; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.processUptimeSeconds, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		if v := check.ProcessThreads; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.processThreads, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+
+		if v := check.ICMPResponseSeconds; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.hostICMPResponseSeconds, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		for _, port := range check.Ports {
+			ch <- prometheus.MustNewConstMetric(c.portResponseSeconds, prometheus.GaugeValue,
+				port.ResponseSeconds, check.Name, check.Type, port.Port, port.Protocol, c.instance)
+		}
+
+		if v := check.SystemLoad1; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.systemLoad, prometheus.GaugeValue,
+				*v, check.Name, check.Type, "1m", c.instance)
+		}
+		if v := check.SystemLoad5; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.systemLoad, prometheus.GaugeValue,
+				*v, check.Name, check.Type, "5m", c.instance)
+		}
+		if v := check.SystemLoad15; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.systemLoad, prometheus.GaugeValue,
+				*v, check.Name, check.Type, "15m", c.instance)
+		}
+		if v := check.SystemMemoryPercent; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.systemMemoryPercent, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		if v := check.SystemSwapPercent; v != nil {
+			ch <- prometheus.MustNewConstMetric(c.systemSwapPercent, prometheus.GaugeValue,
+				*v, check.Name, check.Type, c.instance)
+		}
+		for mode, v := range check.SystemCPU {
+			ch <- prometheus.MustNewConstMetric(c.systemCPUPercent, prometheus.GaugeValue,
+				v, check.Name, check.Type, mode, c.instance)
+		}
 	}
 
 	return nil

@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 662
-- **Gauges:** 444
+- **Total metrics:** 674
+- **Gauges:** 456
 - **Counters:** 218
 
 ## General
@@ -539,6 +539,18 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_monit_checks_total | Gauge | --- | Total number of service checks configured in monit | --exporter.disable-monit |
 | opnsense_monit_check_status | Gauge | name, type | Whether a monit check reports no errors (1 = status field is 0, 0 = error) | --exporter.disable-monit |
 | opnsense_monit_check_monitored | Gauge | name, type | Whether a monit check is actively monitored (1 = monitored, 0 = not monitored) | --exporter.disable-monit |
+| opnsense_monit_filesystem_usage_percent | Gauge | name, type | Filesystem block (space) usage percent for a monit filesystem check | --exporter.disable-monit |
+| opnsense_monit_filesystem_inode_usage_percent | Gauge | name, type | Filesystem inode usage percent for a monit filesystem check | --exporter.disable-monit |
+| opnsense_monit_process_cpu_percent | Gauge | name, type | CPU usage percent for a monit process check (absent until monit's second poll cycle computes a rate) | --exporter.disable-monit |
+| opnsense_monit_process_memory_bytes | Gauge | name, type | Resident memory usage in bytes for a monit process check | --exporter.disable-monit |
+| opnsense_monit_process_uptime_seconds | Gauge | name, type | Uptime in seconds for a monit process check | --exporter.disable-monit |
+| opnsense_monit_process_threads | Gauge | name, type | Number of threads for a monit process check | --exporter.disable-monit |
+| opnsense_monit_host_icmp_response_seconds | Gauge | name, type | ICMP ping response time in seconds for a monit host check | --exporter.disable-monit |
+| opnsense_monit_port_response_seconds | Gauge | name, type, port, protocol | Port connection response time in seconds for a monit host check's port test | --exporter.disable-monit |
+| opnsense_monit_system_load | Gauge | name, type, period | System load average for a monit system check | --exporter.disable-monit |
+| opnsense_monit_system_memory_percent | Gauge | name, type | System memory usage percent for a monit system check | --exporter.disable-monit |
+| opnsense_monit_system_swap_percent | Gauge | name, type | System swap usage percent for a monit system check | --exporter.disable-monit |
+| opnsense_monit_system_cpu_percent | Gauge | name, type, mode | System CPU usage percent by mode for a monit system check | --exporter.disable-monit |
 
 ## NDP
 
