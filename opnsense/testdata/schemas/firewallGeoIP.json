@@ -1,0 +1,35 @@
+{
+  "endpoint": "firewallGeoIP",
+  "method": "GET",
+  "path": "api/firewall/alias/get_geo_i_p",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "alias"
+  ],
+  "fields": [
+    {
+      "path": "alias",
+      "kind": "object"
+    },
+    {
+      "path": "alias.geoip",
+      "kind": "object"
+    },
+    {
+      "path": "alias.geoip.address_count",
+      "kind": "any"
+    },
+    {
+      "path": "alias.geoip.file_count",
+      "kind": "any"
+    },
+    {
+      "path": "alias.geoip.timestamp",
+      "kind": "any"
+    },
+    {
+      "path": "alias.geoip.usages",
+      "kind": "any"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "endpoint": "natSourceNATRules",
+  "method": "GET",
+  "path": "api/firewall/source_nat/search_rule",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "any"
+    }
+  ]
+}

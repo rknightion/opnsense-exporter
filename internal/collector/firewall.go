@@ -35,6 +35,20 @@ type firewallCollector struct {
 
 	interfaceLogEntries *prometheus.Desc
 
+	// GeoIP alias-database freshness (#221): cheap, cache-eligible, and always
+	// on — a GeoIP alias silently stops matching any traffic once the database
+	// stops updating (expired MaxMind key, download failure), so this is a
+	// direct health signal, not an optional extra.
+	geoipAliasUsages         *prometheus.Desc
+	geoipAddresses           *prometheus.Desc
+	geoipFiles               *prometheus.Desc
+	geoipLastUpdateTimestamp *prometheus.Desc
+
+	// NAT rule inventory counts (#221): opt-in (natCountsEnabled) since it costs
+	// four extra GETs per scrape on top of the always-on pf/GeoIP calls above.
+	natRules         *prometheus.Desc
+	natCountsEnabled bool
+
 	subsystem string
 	instance  string
 }
@@ -47,6 +61,12 @@ func init() {
 
 func (c *firewallCollector) Name() string {
 	return c.subsystem
+}
+
+// SetNATCountsEnabled enables the opt-in NAT rule inventory count metric,
+// which costs four extra GETs per scrape (#221).
+func (c *firewallCollector) SetNATCountsEnabled(enabled bool) {
+	c.natCountsEnabled = enabled
 }
 
 func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.Logger) {
@@ -156,6 +176,28 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 			"(sliding, not a counter; interface=\"other\" is an aggregate of interfaces beyond the top 10)",
 		[]string{"interface"},
 	)
+
+	c.geoipAliasUsages = buildPrometheusDesc(c.subsystem, "geoip_alias_usages",
+		"Number of configured firewall aliases of type GeoIP, regardless of whether the GeoIP database itself has ever downloaded",
+		nil,
+	)
+	c.geoipAddresses = buildPrometheusDesc(c.subsystem, "geoip_addresses",
+		"Number of GeoIP addresses/networks currently loaded from the downloaded database (0 until a MaxMind/ipinfo key is configured and a download has succeeded)",
+		nil,
+	)
+	c.geoipFiles = buildPrometheusDesc(c.subsystem, "geoip_files",
+		"Number of per-country GeoIP alias table files currently written (0 until a MaxMind/ipinfo key is configured and a download has succeeded)",
+		nil,
+	)
+	c.geoipLastUpdateTimestamp = buildPrometheusDesc(c.subsystem, "geoip_last_update_timestamp_seconds",
+		"Unix timestamp of the last successful GeoIP database download. Absent until the first successful download; compare against time() to alert on a stale/failed GeoIP database (e.g. an expired MaxMind license key).",
+		nil,
+	)
+
+	c.natRules = buildPrometheusDesc(c.subsystem, "nat_rules",
+		"Number of MVC-managed NAT rules by type and enabled state (source_nat, d_nat, one_to_one, npt). Rules created before an admin migrated to the MVC-managed NAT backend are not counted.",
+		[]string{"type", "enabled"},
+	)
 }
 
 func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -183,6 +225,13 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pfStatesLimit
 
 	ch <- c.interfaceLogEntries
+
+	ch <- c.geoipAliasUsages
+	ch <- c.geoipAddresses
+	ch <- c.geoipFiles
+	ch <- c.geoipLastUpdateTimestamp
+
+	ch <- c.natRules
 }
 
 func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -253,6 +302,42 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 				hit.Label,
 				c.instance,
 			)
+		}
+	}
+
+	geoip, geoipErr := client.FetchFirewallGeoIPStatus()
+	if geoipErr != nil {
+		// Non-fatal (like the aggregate stats above): a transient failure of this
+		// one cheap, cached read must not blank out the rest of an otherwise
+		// healthy firewall collector's metrics.
+		c.log.Warn("failed to fetch firewall GeoIP status", "error", geoipErr.Error())
+	} else {
+		ch <- prometheus.MustNewConstMetric(c.geoipAliasUsages, prometheus.GaugeValue,
+			geoip.AliasUsages, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.geoipAddresses, prometheus.GaugeValue,
+			geoip.AddressCount, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.geoipFiles, prometheus.GaugeValue,
+			geoip.FileCount, c.instance)
+		// Emit only when the database has actually downloaded at least once —
+		// never emit epoch 0, which would misreport a never-configured GeoIP
+		// database as "stale since 1970" instead of simply absent (#221).
+		if geoip.HasLastUpdateTimestamp {
+			ch <- prometheus.MustNewConstMetric(c.geoipLastUpdateTimestamp, prometheus.GaugeValue,
+				geoip.LastUpdateTimestamp, c.instance)
+		}
+	}
+
+	if c.natCountsEnabled {
+		natCounts, natErr := client.FetchFirewallNATRuleCounts()
+		if natErr != nil {
+			c.log.Warn("failed to fetch firewall NAT rule counts", "error", natErr.Error())
+		} else {
+			for _, rc := range natCounts {
+				ch <- prometheus.MustNewConstMetric(c.natRules, prometheus.GaugeValue,
+					float64(rc.Enabled), rc.Type, "true", c.instance)
+				ch <- prometheus.MustNewConstMetric(c.natRules, prometheus.GaugeValue,
+					float64(rc.Disabled), rc.Type, "false", c.instance)
+			}
 		}
 	}
 

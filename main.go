@@ -171,6 +171,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallCollector())
 		logger.Info("firewall collector disabled")
 	}
+	if collectorsSwitches.FirewallNATCounts {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithFirewallNATCounts())
+		logger.Info("firewall NAT rule inventory counts enabled")
+	}
 	if !collectorsSwitches.FirewallRules {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallRulesCollector())
 		logger.Info("firewall rules collector disabled")

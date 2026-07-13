@@ -136,6 +136,11 @@ var schemaRegistry = map[EndpointName]any{
 	"ntpGPS":                        ntpGPSResponse{},
 	"siproxdRegistrations":          siproxdRegistrationsResponse{},
 	"nginxBans":                     nginxBanSearchResponse{},
+	"firewallGeoIP":                 geoIPAliasResponse{},
+	"natSourceNATRules":             natSearchRuleResponse{},
+	"natOneToOneRules":              natSearchRuleResponse{},
+	"natNPTRules":                   natSearchRuleResponse{},
+	"natDNATRules":                  natSearchRuleResponseDNAT{},
 	"socketStatistics": struct {
 		Statistics map[string]json.RawMessage `json:"statistics"`
 	}{},

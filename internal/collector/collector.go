@@ -800,6 +800,20 @@ func WithAliasDetails() Option {
 	}
 }
 
+// WithFirewallNATCounts enables the opt-in NAT rule inventory count metric on
+// the firewall collector (four extra GETs per scrape; #221).
+func WithFirewallNATCounts() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if fc, ok := c.(*firewallCollector); ok {
+				fc.SetNATCountsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithoutIDSCollector Option
 // removes the ids collector from the list of collectors
 func WithoutIDSCollector() Option {

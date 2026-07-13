@@ -6,9 +6,11 @@ Covers:
  - PF state table and source tracking gauges
  - PF counters, limit counters, memory limits, timeouts
  - Firewall rules (top 20, gated behind has_firewall_rules sentinel)
+ - GeoIP alias-database freshness (always on)
+ - NAT rule inventory counts (opt-in detail flag, #221)
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, epoch_ms, RATE
 
 # The pf-traffic and netflow metrics label `interface` with the kernel DEVICE name
 # (igb0, ixl0_vlan25, pppoe0), NOT the configured description that the $interface
@@ -21,6 +23,9 @@ def build(b: Builder):
     # ── Sentinel for firewall rules rows ──────────────────────────────────
     b.sentinel("has_firewall_rules",
                "label_values(opnsense_firewall_rule_rules_total, __name__)")
+    # ── Sentinel for the opt-in NAT rule inventory row (#221) ─────────────
+    b.sentinel("has_firewall_nat_counts",
+               "label_values(opnsense_firewall_nat_rules, __name__)")
 
     # ══════════════════════════════════════════════════════════════════════
     # ROW 1 — Traffic pass/block packets (pps) by interface
@@ -328,6 +333,80 @@ def build(b: Builder):
     )
 
     # ══════════════════════════════════════════════════════════════════════
+    # GeoIP alias-database freshness (#221) — always on, cheap/cached
+    # ══════════════════════════════════════════════════════════════════════
+    geoip_usages = b.stat(
+        "GeoIP Alias Usages",
+        sel("opnsense_firewall_geoip_alias_usages"),
+        unit="short", w=6, h=4,
+        desc="Number of configured firewall aliases of type GeoIP, regardless of whether the GeoIP database itself has ever downloaded.",
+    )
+    geoip_addresses = b.stat(
+        "GeoIP Addresses Loaded",
+        sel("opnsense_firewall_geoip_addresses"),
+        unit="short", w=6, h=4,
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        desc="Number of GeoIP addresses/networks currently loaded from the downloaded database. 0 until a MaxMind/ipinfo key is configured and a download has succeeded.",
+    )
+    geoip_files = b.stat(
+        "GeoIP Table Files",
+        sel("opnsense_firewall_geoip_files"),
+        unit="short", w=6, h=4,
+        desc="Number of per-country GeoIP alias table files currently written. 0 until a MaxMind/ipinfo key is configured and a download has succeeded.",
+    )
+    geoip_age = b.stat(
+        "GeoIP Database Age",
+        f"(time() - {sel('opnsense_firewall_geoip_last_update_timestamp_seconds')}) / 3600",
+        unit="short", w=6, h=4,
+        thresholds=[{"color": "green", "value": None},
+                    {"color": "orange", "value": 24},
+                    {"color": "red", "value": 168}],
+        desc=(
+            "Hours since the GeoIP database last downloaded successfully. Absent "
+            "entirely until the first successful download. A large or growing "
+            "value indicates an expired MaxMind license key or a failed download — "
+            "GeoIP aliases silently stop matching any traffic once the database "
+            "stops updating."
+        ),
+    )
+    geoip_last_update = b.table(
+        "GeoIP Database Last Update",
+        [epoch_ms(sel("opnsense_firewall_geoip_last_update_timestamp_seconds"))],
+        w=24, h=4,
+        excludes=["__name__", "job", "instance", "Value"],
+        renames={"opnsense_instance": "Instance", "Value #A": "Last Update"},
+        unit_overrides={"Last Update": "dateTimeAsIso"},
+        desc="Timestamp of the last successful GeoIP database download, per instance.",
+    )
+
+    # ══════════════════════════════════════════════════════════════════════
+    # NAT rule inventory counts (#221) — opt-in detail flag
+    # (--exporter.enable-firewall-nat-counts)
+    # ══════════════════════════════════════════════════════════════════════
+    nat_rules = b.bargauge(
+        "NAT Rules by Type",
+        [(f'sum by (type, enabled) ({sel("opnsense_firewall_nat_rules")})',
+          "{{type}} enabled={{enabled}}")],
+        unit="short", w=12, h=8,
+        desc=(
+            "MVC-managed NAT rule counts by type (source_nat, d_nat, one_to_one, "
+            "npt) and enabled state. Rules created before an admin migrated to the "
+            "MVC-managed NAT backend are not counted; NAT rules have no pf hit/byte "
+            "statistics upstream, so this is inventory only."
+        ),
+    )
+    nat_rules_table = b.table(
+        "NAT Rules — Detail",
+        [f'{sel("opnsense_firewall_nat_rules")}'],
+        w=12, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={"type": "Type", "enabled": "Enabled",
+                 "opnsense_instance": "Instance", "Value": "Rules"},
+        sort_by="Type",
+        desc="NAT rule counts by type and enabled state, one row per (type, enabled) pair.",
+    )
+
+    # ══════════════════════════════════════════════════════════════════════
     # Assemble tab
     # ══════════════════════════════════════════════════════════════════════
     b.tab("Firewall & PF", [
@@ -352,4 +431,9 @@ def build(b: Builder):
                fw_rule_pkts, fw_rule_bytes,
                fw_rule_states, fw_rule_pf],
               present="has_firewall_rules"),
+        b.row("GeoIP Alias-Database Freshness",
+              [geoip_usages, geoip_addresses, geoip_files, geoip_age, geoip_last_update]),
+        b.row("NAT Rule Inventory (details flag)",
+              [nat_rules, nat_rules_table],
+              present="has_firewall_nat_counts"),
     ])

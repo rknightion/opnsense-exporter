@@ -252,6 +252,11 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"ntpGPS":                        "api/ntpd/service/gps",
 		"siproxdRegistrations":          "api/siproxd/service/showregistrations",
 		"nginxBans":                     "api/nginx/bans/searchban",
+		"firewallGeoIP":                 "api/firewall/alias/get_geo_i_p",
+		"natSourceNATRules":             "api/firewall/source_nat/search_rule",
+		"natDNATRules":                  "api/firewall/d_nat/search_rule",
+		"natOneToOneRules":              "api/firewall/one_to_one/search_rule",
+		"natNPTRules":                   "api/firewall/npt/search_rule",
 	}
 }
 

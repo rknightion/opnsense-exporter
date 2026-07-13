@@ -107,6 +107,19 @@ func CacheTTLs() EndpointCacheTTLs {
 		ttls["authUsers"] = *cacheTTL
 		ttls["authAPIKeys"] = *cacheTTL
 		ttls["authGroups"] = *cacheTTL
+		// Firewall GeoIP alias-database freshness (#221): served from geoip.py's
+		// cached stats file (/usr/local/share/GeoIP/alias.stats), itself refreshed
+		// only by a daily filter_geoip cron/manual update — re-fetching every scrape
+		// only re-reads the same cache file on the box.
+		ttls["firewallGeoIP"] = *cacheTTL
+
+		// NAT rule inventory counts (#221): all four MVC-managed NAT rule types
+		// (source_nat, d_nat, one_to_one, npt) are pure config reads — rule counts
+		// change only on an admin edit, not on scrape cadence.
+		ttls["natSourceNATRules"] = *cacheTTL
+		ttls["natDNATRules"] = *cacheTTL
+		ttls["natOneToOneRules"] = *cacheTTL
+		ttls["natNPTRules"] = *cacheTTL
 	}
 
 	return ttls

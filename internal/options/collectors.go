@@ -63,6 +63,15 @@ var (
 		"exporter.disable-firewall",
 		"Disable the scraping of the firewall (pf) metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FIREWALL").Default("false").Bool()
+	// NAT rule inventory counts are opt-in (default-off, #221): each scrape does
+	// four extra GETs (one per MVC-managed NAT rule type: source_nat, d_nat,
+	// one_to_one, npt) on top of the always-on pf/GeoIP calls, matching the
+	// CLAUDE.md convention that reserves enable-* for collectors with extra
+	// per-scrape API cost.
+	firewallNATCountsEnabled = kingpin.Flag(
+		"exporter.enable-firewall-nat-counts",
+		"Enable the NAT rule inventory count metric (opnsense_firewall_nat_rules), broken down by type (source_nat, d_nat, one_to_one, npt) and enabled state. Off by default: each scrape does four extra GETs, one per NAT rule type. Rules created before an admin migrated to the MVC-managed NAT backend are not counted; NAT rule pf hit/byte statistics do not exist upstream.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_NAT_COUNTS").Default("false").Bool()
 	firmwareCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firmware",
 		"Disable the scraping of the firmware metrics",
@@ -337,6 +346,7 @@ type CollectorsDisableSwitch struct {
 	OpenVPN                bool
 	OpenVPNDetails         bool
 	Firewall               bool
+	FirewallNATCounts      bool
 	Firmware               bool
 	FirmwarePackageDetails bool
 	Dnsmasq                bool
@@ -423,6 +433,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		OpenVPN:                !*openVPNCollectorDisabled,
 		OpenVPNDetails:         *openVPNDetailsEnabled,
 		Firewall:               !*firewallCollectorDisabled,
+		FirewallNATCounts:      *firewallNATCountsEnabled,
 		Firmware:               !*firmwareCollectorDisabled,
 		FirmwarePackageDetails: *firmwarePackageDetailsEnabled,
 		Dnsmasq:                !*dnsmasqCollectorDisabled,
@@ -518,6 +529,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-openvpn", Subsystem: "openvpn"},
 	{Flag: "exporter.enable-openvpn-details", Subsystem: "openvpn", Detail: true},
 	{Flag: "exporter.disable-firewall", Subsystem: "firewall"},
+	{Flag: "exporter.enable-firewall-nat-counts", Subsystem: "firewall", Detail: true},
 	{Flag: "exporter.disable-firmware", Subsystem: "firmware"},
 	{Flag: "exporter.enable-firmware-package-details", Subsystem: "firmware", Detail: true},
 	{Flag: "exporter.disable-system", Subsystem: "system"},
