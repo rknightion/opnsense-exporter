@@ -1,0 +1,24 @@
+{
+  "endpoint": "captivePortalVouchers",
+  "method": "GET",
+  "path": "api/captiveportal/voucher/list_vouchers",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].expirytime",
+      "kind": "any"
+    },
+    {
+      "path": "[].state",
+      "kind": "any"
+    },
+    {
+      "path": "[].validity",
+      "kind": "any"
+    }
+  ]
+}

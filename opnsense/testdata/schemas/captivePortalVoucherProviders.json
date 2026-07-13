@@ -1,0 +1,12 @@
+{
+  "endpoint": "captivePortalVoucherProviders",
+  "method": "GET",
+  "path": "api/captiveportal/voucher/list_providers",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "string"
+    }
+  ]
+}

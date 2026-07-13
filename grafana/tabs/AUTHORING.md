@@ -128,6 +128,7 @@ Register with `b.sentinel(name, query)` then gate the tab/row with `present=name
 | has_netbird_peers | `label_values(opnsense_netbird_peer_connected, __name__)` |
 | has_alias | `label_values(opnsense_alias_tables_total, __name__)` |
 | has_alias_details | `label_values(opnsense_alias_table_packets_total, __name__)` |
+| has_captiveportal_vouchers | `label_values(opnsense_captiveportal_vouchers, __name__)` |
 
 ## Self-test before finishing
 

@@ -3,7 +3,9 @@ package opnsense
 import (
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -168,6 +170,191 @@ func TestFetchCaptivePortalSessions_404(t *testing.T) {
 	}
 	if data.Present {
 		t.Error("expected Present=false on 404")
+	}
+}
+
+func TestFetchCaptivePortalVouchers_Normal(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["TestVoucherServer"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/TestVoucherServer", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["TestGroup1"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_vouchers/TestVoucherServer/TestGroup1", func(w http.ResponseWriter, r *http.Request) {
+		// Real dev-box shape (#207): username IS the voucher code and must
+		// never be decoded — included here only to prove it is ignored.
+		w.Write([]byte(`[
+			{"username":"J#qfpf","validity":0,"expirytime":0,"starttime":1783963735,"endtime":1783963735,"state":"expired"},
+			{"username":"ut22)*","validity":3600,"expirytime":0,"starttime":1783963735,"endtime":1783967335,"state":"expired"},
+			{"username":"!kIbam","validity":3600,"expirytime":0,"starttime":1783968205,"endtime":1783971805,"state":"unused"},
+			{"username":"TM,*hh","validity":3600,"expirytime":0,"starttime":1783968205,"endtime":1783971805,"state":"unused"},
+			{"username":"RgfX0t","validity":3600,"expirytime":0,"starttime":1783968205,"endtime":1783971805,"state":"unused"}
+		]`))
+	})
+
+	data, err := client.FetchCaptivePortalVouchers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present {
+		t.Fatal("expected Present=true")
+	}
+	if len(data.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(data.Groups))
+	}
+	g := data.Groups[0]
+	if g.Provider != "TestVoucherServer" || g.Group != "TestGroup1" {
+		t.Errorf("group identity wrong: %+v", g)
+	}
+	if g.Counts["expired"] != 2 || g.Counts["unused"] != 3 || g.Counts["valid"] != 0 {
+		t.Errorf("counts wrong: %+v", g.Counts)
+	}
+	if g.HasNextExpiryTimestamp {
+		t.Errorf("expirytime is 0 on every row; expected no next-expiry, got %v", g.NextExpiryTimestamp)
+	}
+}
+
+func TestFetchCaptivePortalVouchers_NoProvider(t *testing.T) {
+	// Boxes without any voucher-type auth server: list_providers returns [].
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchCaptivePortalVouchers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present {
+		t.Error("expected Present=true (core endpoint, just no provider configured)")
+	}
+	if len(data.Groups) != 0 {
+		t.Errorf("expected 0 groups, got %d", len(data.Groups))
+	}
+}
+
+func TestFetchCaptivePortalVouchers_NoGroups(t *testing.T) {
+	// A configured provider with no generated voucher groups yet.
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Guest"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/Guest", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+
+	data, err := client.FetchCaptivePortalVouchers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Present {
+		t.Error("expected Present=true")
+	}
+	if len(data.Groups) != 0 {
+		t.Errorf("expected 0 groups, got %d", len(data.Groups))
+	}
+}
+
+func TestFetchCaptivePortalVouchers_404(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	defer server.Close()
+
+	data, err := client.FetchCaptivePortalVouchers()
+	if err != nil {
+		t.Fatalf("expected nil error on 404 (feature absent), got: %v", err)
+	}
+	if data.Present {
+		t.Error("expected Present=false on 404")
+	}
+}
+
+func TestFetchCaptivePortalVouchers_NextExpiryTimestamp(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Guest"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/Guest", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Group1"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_vouchers/Guest/Group1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[
+			{"username":"a","validity":3600,"expirytime":2000000000,"starttime":0,"endtime":0,"state":"unused"},
+			{"username":"b","validity":3600,"expirytime":1900000000,"starttime":0,"endtime":0,"state":"valid"},
+			{"username":"c","validity":3600,"expirytime":0,"starttime":0,"endtime":0,"state":"expired"}
+		]`))
+	})
+
+	data, err := client.FetchCaptivePortalVouchers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(data.Groups))
+	}
+	g := data.Groups[0]
+	if !g.HasNextExpiryTimestamp {
+		t.Fatal("expected HasNextExpiryTimestamp=true")
+	}
+	// Min positive expirytime across unused/valid rows: 1900000000 (the
+	// expired row's 0 must not participate).
+	if g.NextExpiryTimestamp != 1900000000 {
+		t.Errorf("expected NextExpiryTimestamp=1900000000, got %v", g.NextExpiryTimestamp)
+	}
+}
+
+func TestFetchCaptivePortalVouchers_UsernameNeverDecoded(t *testing.T) {
+	// Sensitivity guard (tracker #227): captivePortalVoucherRow must have no
+	// field that could ever carry the voucher code. Enforced structurally via
+	// reflection so a future field addition trips this test, not just review.
+	typ := reflect.TypeOf(captivePortalVoucherRow{})
+	for i := 0; i < typ.NumField(); i++ {
+		tag := typ.Field(i).Tag.Get("json")
+		if strings.Contains(strings.ToLower(tag), "username") {
+			t.Fatalf("captivePortalVoucherRow must never decode the username field; found tag %q", tag)
+		}
+	}
+}
+
+func TestFetchCaptivePortalVouchers_ProviderGroupFailureSkipped(t *testing.T) {
+	// A provider whose groups call fails outright is skipped, not fatal; a
+	// group whose vouchers call fails is likewise skipped.
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["Bad", "Good"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/Bad", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/Good", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["G1", "BadGroup"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_vouchers/Good/G1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"username":"x","validity":10,"expirytime":0,"starttime":0,"endtime":0,"state":"valid"}]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_vouchers/Good/BadGroup", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+
+	data, err := client.FetchCaptivePortalVouchers()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Groups) != 1 {
+		t.Fatalf("expected exactly 1 surviving group, got %d: %+v", len(data.Groups), data.Groups)
+	}
+	if data.Groups[0].Provider != "Good" || data.Groups[0].Group != "G1" {
+		t.Errorf("wrong surviving group: %+v", data.Groups[0])
 	}
 }
 

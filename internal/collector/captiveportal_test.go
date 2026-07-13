@@ -88,6 +88,107 @@ func TestCaptivePortalCollector_Update_Normal(t *testing.T) {
 	}
 }
 
+// captivePortalVoucherMux extends captivePortalCollectorMux with a single
+// voucher provider/group so a test can layer on top of the base session
+// handlers and add voucher rows.
+func captivePortalVoucherMux(t *testing.T, mux *http.ServeMux, providers, groups, vouchers string) {
+	t.Helper()
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(providers))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/TestVoucherServer", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(groups))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_vouchers/TestVoucherServer/TestGroup1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(vouchers))
+	})
+}
+
+func TestCaptivePortalCollector_Update_Vouchers(t *testing.T) {
+	mux := captivePortalCollectorMux(t)
+	captivePortalVoucherMux(t, mux,
+		`["TestVoucherServer"]`,
+		`["TestGroup1"]`,
+		// username deliberately present in the fixture to prove it never
+		// reaches a metric label (sensitivity guard, tracker #227).
+		`[
+			{"username":"J#qfpf","validity":0,"expirytime":0,"state":"expired"},
+			{"username":"ut22)*","validity":3600,"expirytime":0,"state":"expired"},
+			{"username":"!kIbam","validity":3600,"expirytime":0,"state":"unused"},
+			{"username":"TM,*hh","validity":3600,"expirytime":0,"state":"unused"},
+			{"username":"RgfX0t","validity":3600,"expirytime":0,"state":"unused"}
+		]`)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &captivePortalCollector{subsystem: CaptivePortalSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	voucherCounts := map[string]float64{}
+	var sawNextExpiry bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		val := getMetricValue(m)
+		if strings.Contains(desc, "captiveportal_vouchers") {
+			if labels["provider"] != "TestVoucherServer" || labels["group"] != "TestGroup1" {
+				t.Errorf("unexpected voucher labels: %+v", labels)
+			}
+			for k := range labels {
+				if strings.Contains(strings.ToLower(k), "username") || strings.Contains(strings.ToLower(k), "code") {
+					t.Fatalf("voucher metric leaked a code/username-shaped label: %+v", labels)
+				}
+			}
+			voucherCounts[labels["state"]] = val
+		}
+		if strings.Contains(desc, "captiveportal_voucher_group_next_expiry_seconds") {
+			sawNextExpiry = true
+		}
+	}
+
+	if voucherCounts["expired"] != 2 {
+		t.Errorf("expired count = %v, want 2", voucherCounts["expired"])
+	}
+	if voucherCounts["unused"] != 3 {
+		t.Errorf("unused count = %v, want 3", voucherCounts["unused"])
+	}
+	if voucherCounts["valid"] != 0 {
+		t.Errorf("valid count = %v, want 0 (zero-filled, no valid vouchers)", voucherCounts["valid"])
+	}
+	if sawNextExpiry {
+		t.Error("expirytime is 0 on every row; next_expiry_seconds should not be emitted")
+	}
+}
+
+func TestCaptivePortalCollector_Update_VouchersNoProvider(t *testing.T) {
+	// Core feature present, but no voucher-type auth server configured: the
+	// list_providers call succeeds with an empty array, so no voucher series
+	// are emitted at all — this must not be confused with feature-absent.
+	mux := captivePortalCollectorMux(t)
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &captivePortalCollector{subsystem: CaptivePortalSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "captiveportal_vouchers") ||
+			strings.Contains(m.Desc().String(), "captiveportal_voucher_group_next_expiry_seconds") {
+			t.Errorf("unexpected voucher metric with no provider configured: %s", m.Desc().String())
+		}
+	}
+}
+
 func TestCaptivePortalCollector_Update_Unconfigured(t *testing.T) {
 	// Core feature: present but unconfigured. Totals still emitted so the
 	// dashboard sentinel query (zones_total > 0) can correctly hide the tab.

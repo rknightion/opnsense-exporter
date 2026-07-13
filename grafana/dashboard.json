@@ -2079,6 +2079,38 @@
       {
         "kind": "QueryVariable",
         "spec": {
+          "name": "has_captiveportal_vouchers",
+          "label": "has_captiveportal_vouchers",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_captiveportal_vouchers, __name__)",
+              "refId": "has_captiveportal_vouchers"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
           "name": "has_trafficshaper",
           "label": "has_trafficshaper",
           "hide": "hideVariable",
@@ -56336,6 +56368,517 @@
         "kind": "Panel",
         "spec": {
           "id": 515,
+          "title": "Unused Vouchers",
+          "description": "Total unused (not yet redeemed) vouchers across every provider/group. A low or falling count is a run-out signal for guest network access.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum(opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\",state=\"unused\"})",
+                        "refId": "A",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": null
+                      },
+                      {
+                        "color": "yellow",
+                        "value": 1
+                      },
+                      {
+                        "color": "green",
+                        "value": 10
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-516": {
+        "kind": "Panel",
+        "spec": {
+          "id": 516,
+          "title": "Valid (Active) Vouchers",
+          "description": "Total vouchers currently redeemed and within their validity window.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum(opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\",state=\"valid\"})",
+                        "refId": "A",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "blue",
+                        "value": null
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-517": {
+        "kind": "Panel",
+        "spec": {
+          "id": 517,
+          "title": "Expired Vouchers",
+          "description": "Total expired vouchers across every provider/group \u2014 a large or growing count suggests the group needs cleanup.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum(opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\",state=\"expired\"})",
+                        "refId": "A",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "yellow",
+                        "value": 50
+                      },
+                      {
+                        "color": "orange",
+                        "value": 200
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-518": {
+        "kind": "Panel",
+        "spec": {
+          "id": 518,
+          "title": "Vouchers by Provider / Group / State",
+          "description": "Current voucher count for every (provider, group, state) combination.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\"}",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true,
+                        "job": true,
+                        "instance": true
+                      },
+                      "renameByName": {
+                        "provider": "Provider",
+                        "group": "Group",
+                        "state": "State",
+                        "Value": "Count",
+                        "opnsense_instance": "Instance"
+                      },
+                      "indexByName": {}
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Count",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-519": {
+        "kind": "Panel",
+        "spec": {
+          "id": 519,
+          "title": "Voucher Group Next Hard Expiry",
+          "description": "Hours remaining until each voucher group's earliest hard expiry cutoff (only shown for groups where at least one voucher has an absolute expiry deadline set \u2014 most vouchers rely on validity/first-use instead and never populate this). Negative = already past that cutoff.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "(opnsense_captiveportal_voucher_group_next_expiry_seconds{opnsense_instance=~\"$opnsense_instance\"} - time()) / 3600",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true,
+                        "job": true,
+                        "instance": true
+                      },
+                      "renameByName": {
+                        "provider": "Provider",
+                        "group": "Group",
+                        "Value": "Hours Left",
+                        "opnsense_instance": "Instance"
+                      },
+                      "indexByName": {}
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Hours Left"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Hours Left",
+                    "desc": false
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-520": {
+        "kind": "Panel",
+        "spec": {
+          "id": 520,
           "title": "Configured Pipes",
           "description": "Number of configured dummynet pipes (gauge \u2014 instantaneous count).",
           "links": [],
@@ -56417,10 +56960,10 @@
           }
         }
       },
-      "panel-516": {
+      "panel-521": {
         "kind": "Panel",
         "spec": {
-          "id": 516,
+          "id": 521,
           "title": "Configured Queues",
           "description": "Number of configured dummynet queues (gauge \u2014 instantaneous count).",
           "links": [],
@@ -56502,10 +57045,10 @@
           }
         }
       },
-      "panel-517": {
+      "panel-522": {
         "kind": "Panel",
         "spec": {
-          "id": 517,
+          "id": 522,
           "title": "Pipe Active Flows",
           "description": "Current number of active flows per dummynet pipe (gauge).",
           "links": [],
@@ -56591,10 +57134,10 @@
           }
         }
       },
-      "panel-518": {
+      "panel-523": {
         "kind": "Panel",
         "spec": {
-          "id": 518,
+          "id": 523,
           "title": "Pipe Bytes",
           "description": "Current byte counts per pipe (gauge \u2014 dummynet flow buckets can decrease when idle flows expire).",
           "links": [],
@@ -56706,10 +57249,10 @@
           }
         }
       },
-      "panel-519": {
+      "panel-524": {
         "kind": "Panel",
         "spec": {
-          "id": 519,
+          "id": 524,
           "title": "Pipe Packets",
           "description": "Current packet counts per pipe (gauge).",
           "links": [],
@@ -56821,10 +57364,10 @@
           }
         }
       },
-      "panel-520": {
+      "panel-525": {
         "kind": "Panel",
         "spec": {
-          "id": 520,
+          "id": 525,
           "title": "Queue Active Flows",
           "description": "Current number of active flows per dummynet queue (gauge).",
           "links": [],
@@ -56910,10 +57453,10 @@
           }
         }
       },
-      "panel-521": {
+      "panel-526": {
         "kind": "Panel",
         "spec": {
-          "id": 521,
+          "id": 526,
           "title": "Queue Bytes",
           "description": "Current byte counts per queue (gauge).",
           "links": [],
@@ -57025,10 +57568,10 @@
           }
         }
       },
-      "panel-522": {
+      "panel-527": {
         "kind": "Panel",
         "spec": {
-          "id": 522,
+          "id": 527,
           "title": "Queue Packets",
           "description": "Current packet counts per queue (gauge).",
           "links": [],
@@ -57140,10 +57683,10 @@
           }
         }
       },
-      "panel-523": {
+      "panel-528": {
         "kind": "Panel",
         "spec": {
-          "id": 523,
+          "id": 528,
           "title": "Rule Throughput (rate)",
           "description": "Bytes per second matched by each traffic shaper rule.",
           "links": [],
@@ -57229,10 +57772,10 @@
           }
         }
       },
-      "panel-524": {
+      "panel-529": {
         "kind": "Panel",
         "spec": {
-          "id": 524,
+          "id": 529,
           "title": "Rule Packets (rate)",
           "description": "Packets per second matched by each traffic shaper rule.",
           "links": [],
@@ -57318,10 +57861,10 @@
           }
         }
       },
-      "panel-525": {
+      "panel-530": {
         "kind": "Panel",
         "spec": {
-          "id": 525,
+          "id": 530,
           "title": "Remote Reachable",
           "description": "1 = HA peer is reachable via XML-RPC, 0 = unreachable.",
           "links": [],
@@ -57424,10 +57967,10 @@
           }
         }
       },
-      "panel-526": {
+      "panel-531": {
         "kind": "Panel",
         "spec": {
-          "id": 526,
+          "id": 531,
           "title": "Version Match",
           "description": "1 = remote firmware version matches local version. A mismatch indicates an in-progress upgrade.",
           "links": [],
@@ -57530,10 +58073,10 @@
           }
         }
       },
-      "panel-527": {
+      "panel-532": {
         "kind": "Panel",
         "spec": {
-          "id": 527,
+          "id": 532,
           "title": "HA Sync Version Info",
           "description": "Remote and local firmware version labels (value always 1).",
           "links": [],
@@ -57642,10 +58185,10 @@
           }
         }
       },
-      "panel-528": {
+      "panel-533": {
         "kind": "Panel",
         "spec": {
-          "id": 528,
+          "id": 533,
           "title": "Remote Services",
           "description": "Number of services reported by the HA peer.",
           "links": [],
@@ -57727,10 +58270,10 @@
           }
         }
       },
-      "panel-529": {
+      "panel-534": {
         "kind": "Panel",
         "spec": {
-          "id": 529,
+          "id": 534,
           "title": "Remote Service Status",
           "description": "Running state of each service on the HA peer over time.",
           "links": [],
@@ -57835,10 +58378,10 @@
           }
         }
       },
-      "panel-530": {
+      "panel-535": {
         "kind": "Panel",
         "spec": {
-          "id": 530,
+          "id": 535,
           "title": "Chrony Service",
           "description": "1 = chrony service is running, 0 = stopped/disabled.",
           "links": [],
@@ -57941,10 +58484,10 @@
           }
         }
       },
-      "panel-531": {
+      "panel-536": {
         "kind": "Panel",
         "spec": {
-          "id": 531,
+          "id": 536,
           "title": "Stratum",
           "description": "Current NTP stratum. Lower is better (1 = GPS/atomic, 16 = unsynchronised).",
           "links": [],
@@ -58034,10 +58577,10 @@
           }
         }
       },
-      "panel-532": {
+      "panel-537": {
         "kind": "Panel",
         "spec": {
-          "id": 532,
+          "id": 537,
           "title": "Leap Status",
           "description": "chronyc Leap Status: 0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised.",
           "links": [],
@@ -58150,10 +58693,10 @@
           }
         }
       },
-      "panel-533": {
+      "panel-538": {
         "kind": "Panel",
         "spec": {
-          "id": 533,
+          "id": 538,
           "title": "Sources",
           "description": "Total number of NTP sources configured in chrony.",
           "links": [],
@@ -58235,10 +58778,10 @@
           }
         }
       },
-      "panel-534": {
+      "panel-539": {
         "kind": "Panel",
         "spec": {
-          "id": 534,
+          "id": 539,
           "title": "Chrony Tracking Info",
           "description": "Current chrony reference info (value always 1).",
           "links": [],
@@ -58348,10 +58891,10 @@
           }
         }
       },
-      "panel-535": {
+      "panel-540": {
         "kind": "Panel",
         "spec": {
-          "id": 535,
+          "id": 540,
           "title": "System Time Offset",
           "description": "System clock offset from NTP time. Negative = slow; rms_offset is the long-term root-mean-square.",
           "links": [],
@@ -58489,10 +59032,10 @@
           }
         }
       },
-      "panel-536": {
+      "panel-541": {
         "kind": "Panel",
         "spec": {
-          "id": 536,
+          "id": 541,
           "title": "Frequency Error (ppm)",
           "description": "chrony frequency error metrics in parts per million.",
           "links": [],
@@ -58630,10 +59173,10 @@
           }
         }
       },
-      "panel-537": {
+      "panel-542": {
         "kind": "Panel",
         "spec": {
-          "id": 537,
+          "id": 542,
           "title": "Root Delay & Dispersion",
           "description": "Root delay = total round-trip to the reference clock. Root dispersion = accumulated error from the reference.",
           "links": [],
@@ -58745,10 +59288,10 @@
           }
         }
       },
-      "panel-538": {
+      "panel-543": {
         "kind": "Panel",
         "spec": {
-          "id": 538,
+          "id": 543,
           "title": "Tracking Update Interval",
           "description": "Interval between the last two clock updates.",
           "links": [],
@@ -58834,10 +59377,10 @@
           }
         }
       },
-      "panel-539": {
+      "panel-544": {
         "kind": "Panel",
         "spec": {
-          "id": 539,
+          "id": 544,
           "title": "Source Status",
           "description": "Per-source NTP status. Selected=1 means this is the active reference. Reachability is an 8-bit shift register (255=fully reachable). Last RX = seconds since the last valid packet was received.",
           "links": [],
@@ -59040,10 +59583,10 @@
           }
         }
       },
-      "panel-540": {
+      "panel-545": {
         "kind": "Panel",
         "spec": {
-          "id": 540,
+          "id": 545,
           "title": "Source Offset",
           "description": "Measured time offset from each NTP source. Note: source label set may churn with a pool directive.",
           "links": [],
@@ -59129,10 +59672,10 @@
           }
         }
       },
-      "panel-541": {
+      "panel-546": {
         "kind": "Panel",
         "spec": {
-          "id": 541,
+          "id": 546,
           "title": "Source Statistics",
           "description": "Per-source regression statistics from chronyc sourcestats. Std Dev measures dispersion of recent offset samples.",
           "links": [],
@@ -59280,10 +59823,10 @@
           }
         }
       },
-      "panel-542": {
+      "panel-547": {
         "kind": "Panel",
         "spec": {
-          "id": 542,
+          "id": 547,
           "title": "Control Port",
           "description": "Whether the Tor control port answered the last circuit/stream query (1 = up, 0 = unreachable or misconfigured). This is the primary health signal \u2014 a wedged Tor still reports its OPNsense service as running.",
           "links": [],
@@ -59386,10 +59929,10 @@
           }
         }
       },
-      "panel-543": {
+      "panel-548": {
         "kind": "Panel",
         "spec": {
-          "id": 543,
+          "id": 548,
           "title": "Built Circuits",
           "description": "Number of fully-built (3-hop, BUILT) circuits. Zero while the control port is up is the actual wedged-Tor signal \u2014 a running service with no usable circuits.",
           "links": [],
@@ -59475,10 +60018,10 @@
           }
         }
       },
-      "panel-544": {
+      "panel-549": {
         "kind": "Panel",
         "spec": {
-          "id": 544,
+          "id": 549,
           "title": "Total Circuits",
           "description": "Total circuits across every build status (LAUNCHED/BUILT/GUARD_WAIT/EXTENDED/FAILED/CLOSED/other).",
           "links": [],
@@ -59560,10 +60103,10 @@
           }
         }
       },
-      "panel-545": {
+      "panel-550": {
         "kind": "Panel",
         "spec": {
-          "id": 545,
+          "id": 550,
           "title": "Total Streams",
           "description": "Total streams across every status (NEW/SUCCEEDED/FAILED/CLOSED/other). Never labeled by destination.",
           "links": [],
@@ -59645,10 +60188,10 @@
           }
         }
       },
-      "panel-546": {
+      "panel-551": {
         "kind": "Panel",
         "spec": {
-          "id": 546,
+          "id": 551,
           "title": "Hidden Services",
           "description": "Number of configured Tor hidden services. Hostnames are never collected or displayed.",
           "links": [],
@@ -59730,10 +60273,10 @@
           }
         }
       },
-      "panel-547": {
+      "panel-552": {
         "kind": "Panel",
         "spec": {
-          "id": 547,
+          "id": 552,
           "title": "Circuits by Status",
           "description": "opnsense_tor_circuits: circuit counts by build status. An unrecognised status value from a plugin parsing regression is bucketed as \"other\", never shown verbatim.",
           "links": [],
@@ -59822,10 +60365,10 @@
           }
         }
       },
-      "panel-548": {
+      "panel-553": {
         "kind": "Panel",
         "spec": {
-          "id": 548,
+          "id": 553,
           "title": "Circuits by Purpose",
           "description": "opnsense_tor_circuits_by_purpose: circuit counts by purpose (GENERAL, HS_CLIENT_INTRO, HS_VANGUARDS, TESTING, ...). An unrecognised purpose is bucketed as \"other\".",
           "links": [],
@@ -59914,10 +60457,10 @@
           }
         }
       },
-      "panel-549": {
+      "panel-554": {
         "kind": "Panel",
         "spec": {
-          "id": 549,
+          "id": 554,
           "title": "Streams by Status",
           "description": "opnsense_tor_streams: stream counts by status (NEW/SUCCEEDED/FAILED/CLOSED/DETACHED/...). Never labeled by destination host or port. A row whose fields the plugin's GETINFO parser shifted into the wrong columns lands in \"other\" rather than leaking the raw (potentially relay-descriptor-shaped) value as a label.",
           "links": [],
@@ -60006,10 +60549,10 @@
           }
         }
       },
-      "panel-550": {
+      "panel-555": {
         "kind": "Panel",
         "spec": {
-          "id": 550,
+          "id": 555,
           "title": "Hidden Service Availability",
           "description": "Per configured hidden service: whether a .onion hostname has been provisioned (1 = available, 0 = not available). The hostname itself is never collected or shown.",
           "links": [],
@@ -60111,10 +60654,10 @@
           }
         }
       },
-      "panel-551": {
+      "panel-556": {
         "kind": "Panel",
         "spec": {
-          "id": 551,
+          "id": 556,
           "title": "Scrape Success (opnsense_up)",
           "description": "",
           "links": [],
@@ -60212,10 +60755,10 @@
           }
         }
       },
-      "panel-552": {
+      "panel-557": {
         "kind": "Panel",
         "spec": {
-          "id": 552,
+          "id": 557,
           "title": "Scrape & Skip Rate",
           "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
@@ -60327,10 +60870,10 @@
           }
         }
       },
-      "panel-553": {
+      "panel-558": {
         "kind": "Panel",
         "spec": {
-          "id": 553,
+          "id": 558,
           "title": "Endpoint Errors (rate)",
           "description": "",
           "links": [],
@@ -60416,10 +60959,10 @@
           }
         }
       },
-      "panel-554": {
+      "panel-559": {
         "kind": "Panel",
         "spec": {
-          "id": 554,
+          "id": 559,
           "title": "Endpoint Errors (total)",
           "description": "",
           "links": [],
@@ -60520,10 +61063,10 @@
           }
         }
       },
-      "panel-555": {
+      "panel-560": {
         "kind": "Panel",
         "spec": {
-          "id": 555,
+          "id": 560,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -60627,10 +61170,10 @@
           }
         }
       },
-      "panel-556": {
+      "panel-561": {
         "kind": "Panel",
         "spec": {
-          "id": 556,
+          "id": 561,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -60735,10 +61278,10 @@
           }
         }
       },
-      "panel-557": {
+      "panel-562": {
         "kind": "Panel",
         "spec": {
-          "id": 557,
+          "id": 562,
           "title": "Collector Scrape Duration",
           "description": "",
           "links": [],
@@ -60824,10 +61367,10 @@
           }
         }
       },
-      "panel-558": {
+      "panel-563": {
         "kind": "Panel",
         "spec": {
-          "id": 558,
+          "id": 563,
           "title": "Collector Scrape Success",
           "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
           "links": [],
@@ -60932,10 +61475,10 @@
           }
         }
       },
-      "panel-559": {
+      "panel-564": {
         "kind": "Panel",
         "spec": {
-          "id": 559,
+          "id": 564,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -61021,10 +61564,10 @@
           }
         }
       },
-      "panel-560": {
+      "panel-565": {
         "kind": "Panel",
         "spec": {
-          "id": 560,
+          "id": 565,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -61136,10 +61679,10 @@
           }
         }
       },
-      "panel-561": {
+      "panel-566": {
         "kind": "Panel",
         "spec": {
-          "id": 561,
+          "id": 566,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -61225,10 +61768,10 @@
           }
         }
       },
-      "panel-562": {
+      "panel-567": {
         "kind": "Panel",
         "spec": {
-          "id": 562,
+          "id": 567,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -61314,10 +61857,10 @@
           }
         }
       },
-      "panel-563": {
+      "panel-568": {
         "kind": "Panel",
         "spec": {
-          "id": 563,
+          "id": 568,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -61403,10 +61946,10 @@
           }
         }
       },
-      "panel-564": {
+      "panel-569": {
         "kind": "Panel",
         "spec": {
-          "id": 564,
+          "id": 569,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -61488,10 +62031,10 @@
           }
         }
       },
-      "panel-565": {
+      "panel-570": {
         "kind": "Panel",
         "spec": {
-          "id": 565,
+          "id": 570,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -61577,10 +62120,10 @@
           }
         }
       },
-      "panel-566": {
+      "panel-571": {
         "kind": "Panel",
         "spec": {
-          "id": 566,
+          "id": 571,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -72173,6 +72716,133 @@
                           }
                         }
                       }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Voucher Inventory",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-515"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 4,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-516"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 8,
+                                  "y": 0,
+                                  "width": 4,
+                                  "height": 4,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-517"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-518"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_captiveportal_vouchers",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Voucher Expiry",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 24,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-519"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_captiveportal_vouchers",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   ]
                 }
@@ -72205,7 +72875,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-515"
+                                    "name": "panel-520"
                                   }
                                 }
                               },
@@ -72218,7 +72888,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-516"
+                                    "name": "panel-521"
                                   }
                                 }
                               }
@@ -72262,7 +72932,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-517"
+                                    "name": "panel-522"
                                   }
                                 }
                               },
@@ -72275,7 +72945,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-518"
+                                    "name": "panel-523"
                                   }
                                 }
                               },
@@ -72288,7 +72958,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-519"
+                                    "name": "panel-524"
                                   }
                                 }
                               }
@@ -72332,7 +73002,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-520"
+                                    "name": "panel-525"
                                   }
                                 }
                               },
@@ -72345,7 +73015,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-521"
+                                    "name": "panel-526"
                                   }
                                 }
                               },
@@ -72358,7 +73028,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-522"
+                                    "name": "panel-527"
                                   }
                                 }
                               }
@@ -72402,7 +73072,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-523"
+                                    "name": "panel-528"
                                   }
                                 }
                               },
@@ -72415,7 +73085,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-524"
+                                    "name": "panel-529"
                                   }
                                 }
                               }
@@ -72472,7 +73142,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-525"
+                                    "name": "panel-530"
                                   }
                                 }
                               },
@@ -72485,7 +73155,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-526"
+                                    "name": "panel-531"
                                   }
                                 }
                               },
@@ -72498,7 +73168,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-527"
+                                    "name": "panel-532"
                                   }
                                 }
                               }
@@ -72542,7 +73212,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-528"
+                                    "name": "panel-533"
                                   }
                                 }
                               },
@@ -72555,7 +73225,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-529"
+                                    "name": "panel-534"
                                   }
                                 }
                               }
@@ -72612,7 +73282,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-530"
+                                    "name": "panel-535"
                                   }
                                 }
                               },
@@ -72625,7 +73295,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-531"
+                                    "name": "panel-536"
                                   }
                                 }
                               },
@@ -72638,7 +73308,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-532"
+                                    "name": "panel-537"
                                   }
                                 }
                               },
@@ -72651,7 +73321,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-533"
+                                    "name": "panel-538"
                                   }
                                 }
                               }
@@ -72695,7 +73365,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-534"
+                                    "name": "panel-539"
                                   }
                                 }
                               },
@@ -72708,7 +73378,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-535"
+                                    "name": "panel-540"
                                   }
                                 }
                               },
@@ -72721,7 +73391,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-536"
+                                    "name": "panel-541"
                                   }
                                 }
                               },
@@ -72734,7 +73404,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-537"
+                                    "name": "panel-542"
                                   }
                                 }
                               },
@@ -72747,7 +73417,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-538"
+                                    "name": "panel-543"
                                   }
                                 }
                               }
@@ -72791,7 +73461,7 @@
                                   "height": 10,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-539"
+                                    "name": "panel-544"
                                   }
                                 }
                               },
@@ -72804,7 +73474,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-540"
+                                    "name": "panel-545"
                                   }
                                 }
                               }
@@ -72848,7 +73518,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-541"
+                                    "name": "panel-546"
                                   }
                                 }
                               }
@@ -72905,7 +73575,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-542"
+                                    "name": "panel-547"
                                   }
                                 }
                               },
@@ -72918,7 +73588,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-543"
+                                    "name": "panel-548"
                                   }
                                 }
                               },
@@ -72931,7 +73601,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-544"
+                                    "name": "panel-549"
                                   }
                                 }
                               },
@@ -72944,7 +73614,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-545"
+                                    "name": "panel-550"
                                   }
                                 }
                               },
@@ -72957,7 +73627,7 @@
                                   "height": 4,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-546"
+                                    "name": "panel-551"
                                   }
                                 }
                               }
@@ -73001,7 +73671,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-547"
+                                    "name": "panel-552"
                                   }
                                 }
                               },
@@ -73014,7 +73684,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-548"
+                                    "name": "panel-553"
                                   }
                                 }
                               }
@@ -73058,7 +73728,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-549"
+                                    "name": "panel-554"
                                   }
                                 }
                               }
@@ -73102,7 +73772,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-550"
+                                    "name": "panel-555"
                                   }
                                 }
                               }
@@ -73159,7 +73829,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-551"
+                                    "name": "panel-556"
                                   }
                                 }
                               },
@@ -73172,7 +73842,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-552"
+                                    "name": "panel-557"
                                   }
                                 }
                               },
@@ -73185,7 +73855,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-553"
+                                    "name": "panel-558"
                                   }
                                 }
                               },
@@ -73198,7 +73868,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-554"
+                                    "name": "panel-559"
                                   }
                                 }
                               }
@@ -73225,7 +73895,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-557"
+                                    "name": "panel-562"
                                   }
                                 }
                               },
@@ -73238,7 +73908,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-558"
+                                    "name": "panel-563"
                                   }
                                 }
                               }
@@ -73265,7 +73935,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-562"
+                                    "name": "panel-567"
                                   }
                                 }
                               },
@@ -73278,7 +73948,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-563"
+                                    "name": "panel-568"
                                   }
                                 }
                               }
@@ -73305,7 +73975,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-564"
+                                    "name": "panel-569"
                                   }
                                 }
                               },
@@ -73318,7 +73988,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-565"
+                                    "name": "panel-570"
                                   }
                                 }
                               },
@@ -73331,7 +74001,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-566"
+                                    "name": "panel-571"
                                   }
                                 }
                               }
@@ -73358,7 +74028,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-555"
+                                    "name": "panel-560"
                                   }
                                 }
                               },
@@ -73371,7 +74041,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-556"
+                                    "name": "panel-561"
                                   }
                                 }
                               }
@@ -73398,7 +74068,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-559"
+                                    "name": "panel-564"
                                   }
                                 }
                               },
@@ -73411,7 +74081,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-560"
+                                    "name": "panel-565"
                                   }
                                 }
                               },
@@ -73424,7 +74094,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-561"
+                                    "name": "panel-566"
                                   }
                                 }
                               }

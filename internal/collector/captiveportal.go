@@ -8,13 +8,23 @@ import (
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
+// captivePortalVoucherStates is the fixed, known set of states OPNsense's
+// core Voucher auth connector emits (see opnsense.captivePortalVoucherRow).
+// Every configured (provider, group) always gets one series per state here
+// (0-filled when absent), so rate()/alerting queries never see a gap; any
+// unrecognised future state the box reports is still emitted, just without
+// the zero-fill guarantee.
+var captivePortalVoucherStates = []string{"valid", "unused", "expired"}
+
 type captivePortalCollector struct {
 	log *slog.Logger
 
-	serviceRunning *prometheus.Desc
-	zonesTotal     *prometheus.Desc
-	sessionsTotal  *prometheus.Desc
-	zoneSessions   *prometheus.Desc
+	serviceRunning    *prometheus.Desc
+	zonesTotal        *prometheus.Desc
+	sessionsTotal     *prometheus.Desc
+	zoneSessions      *prometheus.Desc
+	vouchers          *prometheus.Desc
+	voucherNextExpiry *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -42,11 +52,18 @@ func (c *captivePortalCollector) Register(namespace, instanceLabel string, log *
 	c.zoneSessions = buildPrometheusDesc(c.subsystem, "zone_sessions",
 		"Number of active captive portal sessions in this zone",
 		[]string{"zone_id", "zone_description"})
+	c.vouchers = buildPrometheusDesc(c.subsystem, "vouchers",
+		"Number of captive portal vouchers in this group by state (valid, unused, expired)",
+		[]string{"provider", "group", "state"})
+	c.voucherNextExpiry = buildPrometheusDesc(c.subsystem, "voucher_group_next_expiry_seconds",
+		"Unix timestamp of the earliest hard expiry deadline among this group's unused/valid vouchers (absent when no voucher in the group has one set)",
+		[]string{"provider", "group"})
 }
 
 func (c *captivePortalCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, d := range []*prometheus.Desc{
 		c.serviceRunning, c.zonesTotal, c.sessionsTotal, c.zoneSessions,
+		c.vouchers, c.voucherNextExpiry,
 	} {
 		ch <- d
 	}
@@ -92,6 +109,35 @@ func (c *captivePortalCollector) Update(_ context.Context, client *opnsense.Clie
 		}
 		ch <- prometheus.MustNewConstMetric(c.serviceRunning, prometheus.GaugeValue,
 			running, c.instance)
+	}
+
+	vouchers, vErr := client.FetchCaptivePortalVouchers()
+	if vErr != nil {
+		c.log.Warn("failed to fetch captive portal vouchers", "err", vErr)
+	} else if vouchers.Present {
+		for _, g := range vouchers.Groups {
+			// Emit every known state (0-filled when absent) plus any
+			// unrecognised state the box reported, so alerting/rate() queries
+			// never see a gap for a configured group.
+			seen := make(map[string]bool, len(captivePortalVoucherStates))
+			for _, state := range captivePortalVoucherStates {
+				seen[state] = true
+				ch <- prometheus.MustNewConstMetric(c.vouchers, prometheus.GaugeValue,
+					g.Counts[state], g.Provider, g.Group, state, c.instance)
+			}
+			for state, count := range g.Counts {
+				if seen[state] {
+					continue
+				}
+				ch <- prometheus.MustNewConstMetric(c.vouchers, prometheus.GaugeValue,
+					count, g.Provider, g.Group, state, c.instance)
+			}
+
+			if g.HasNextExpiryTimestamp {
+				ch <- prometheus.MustNewConstMetric(c.voucherNextExpiry, prometheus.GaugeValue,
+					g.NextExpiryTimestamp, g.Provider, g.Group, c.instance)
+			}
+		}
 	}
 
 	return nil

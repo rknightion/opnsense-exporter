@@ -103,7 +103,27 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 
 	method := "GET"
 	contentType, body := "", ""
-	if req, ok := opnsense.CaptureRequestFor(opnsense.EndpointName(s.Endpoint)); ok {
+	path := s.Path
+	if resolver, ok := getPathParamResolvers[s.Endpoint]; ok {
+		// GET endpoint whose OPNsense route embeds positional path segments —
+		// unlike vnstat's get_json_data (an optional query string the router
+		// never requires), these have no valid "bare" request at all: a
+		// missing {provider}/{group} 404s at the routing layer, verified live
+		// (#207). Resolve the live segments here so the daily canary probes
+		// the real route instead of permanently reporting a false Absent.
+		segs, err := resolver(p)
+		if err != nil {
+			res.ProbeErr = fmt.Sprintf("resolving path parameter: %v", err)
+			return res
+		}
+		if len(segs) == 0 {
+			res.SkippedParam = true
+			return res
+		}
+		for _, seg := range segs {
+			path = path + "/" + url.PathEscape(seg)
+		}
+	} else if req, ok := opnsense.CaptureRequestFor(opnsense.EndpointName(s.Endpoint)); ok {
 		method, contentType, body = "POST", req.ContentType, req.Body
 		if req.Parameterized {
 			param, err := p.resolveParam(s.Endpoint)
@@ -124,7 +144,8 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 		}
 	}
 
-	raw, status, err := p.fetchRaw(method, s.Path, contentType, body)
+	res.Path = path // reflects the resolved concrete path for parameterized endpoints
+	raw, status, err := p.fetchRaw(method, path, contentType, body)
 	res.Status = status
 	if status == http.StatusNotFound {
 		res.Absent = true
@@ -149,6 +170,76 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 	}
 	res.Res = vr
 	return res
+}
+
+// getPathParamResolvers maps a GET endpoint name to a function that derives
+// the live positional path segments to append to its registered (bare) path.
+// Only endpoints listed here take this branch in probeOne; every other GET
+// endpoint is probed at its registered path unchanged. An empty segment
+// slice with a nil error means "nothing to probe with" (valid box state,
+// e.g. no voucher provider configured) — probeOne turns that into
+// SkippedParam, not an error.
+var getPathParamResolvers = map[string]func(p *prober) ([]string, error){
+	"captivePortalVoucherGroups": func(p *prober) ([]string, error) {
+		provider, err := p.firstCaptivePortalVoucherProvider()
+		if err != nil || provider == "" {
+			return nil, err
+		}
+		return []string{provider}, nil
+	},
+	"captivePortalVouchers": func(p *prober) ([]string, error) {
+		provider, err := p.firstCaptivePortalVoucherProvider()
+		if err != nil || provider == "" {
+			return nil, err
+		}
+		group, err := p.firstCaptivePortalVoucherGroup(provider)
+		if err != nil || group == "" {
+			return nil, err
+		}
+		return []string{provider, group}, nil
+	},
+}
+
+// firstCaptivePortalVoucherProvider fetches the first (in practice, almost
+// always the only) voucher-type auth provider configured on the box.
+func (p *prober) firstCaptivePortalVoucherProvider() (string, error) {
+	raw, _, err := p.probeSource("captivePortalVoucherProviders")
+	if err != nil {
+		return "", err
+	}
+	var providers []string
+	if err := json.Unmarshal(raw, &providers); err != nil {
+		return "", fmt.Errorf("decode captivePortalVoucherProviders: %w", err)
+	}
+	if len(providers) == 0 {
+		return "", nil
+	}
+	return providers[0], nil
+}
+
+// firstCaptivePortalVoucherGroup fetches the first voucher group a given
+// provider has generated. Unlike probeSource (which only ever fetches an
+// endpoint's own bare registered path), this appends the already-resolved
+// provider segment itself, since list_voucher_groups is itself
+// path-parameterized.
+func (p *prober) firstCaptivePortalVoucherGroup(provider string) (string, error) {
+	ec, ok := opnsense.ContractManifest()["captivePortalVoucherGroups"]
+	if !ok {
+		return "", fmt.Errorf("endpoint captivePortalVoucherGroups not in manifest")
+	}
+	path := string(ec.Path) + "/" + url.PathEscape(provider)
+	raw, _, err := p.fetchRaw("GET", path, "", "")
+	if err != nil {
+		return "", err
+	}
+	var groups []string
+	if err := json.Unmarshal(raw, &groups); err != nil {
+		return "", fmt.Errorf("decode captivePortalVoucherGroups: %w", err)
+	}
+	if len(groups) == 0 {
+		return "", nil
+	}
+	return groups[0], nil
 }
 
 // resolveParam produces the live request parameter for the two parameterized

@@ -172,3 +172,161 @@ func (c *Client) FetchCaptivePortalSessions() (CaptivePortalSessions, *APICallEr
 
 	return data, nil
 }
+
+// captivePortalVoucherRow mirrors one row from
+// api/captiveportal/voucher/list_vouchers/{provider}/{group}, as computed by
+// OPNsense's core Voucher auth connector (listVouchers(), a direct SQLite
+// read — verified against opnsense/core src/opnsense/mvc/app/library/OPNsense/Auth/Voucher.php
+// and a live 26.7-devel box, #207).
+//
+// SENSITIVITY (tracker #227): the row's own "username" field IS the voucher
+// code — a bearer credential a guest redeems for network access, not an
+// identifier — and is deliberately NOT modeled here, NOT decoded, and must
+// never be added. This struct only carries the aggregate-safe fields: how
+// long a voucher is valid for, its hard expiry cutoff (0 = none), and the
+// state OPNsense itself derives (valid/unused/expired).
+type captivePortalVoucherRow struct {
+	Validity   flexInt    `json:"validity"`
+	Expirytime flexInt    `json:"expirytime"`
+	State      flexString `json:"state"`
+}
+
+// CaptivePortalVoucherGroup is the aggregated, per-(provider,group) voucher
+// inventory: a count per state plus the group's earliest hard expiry deadline
+// (if any voucher in the group has one).
+type CaptivePortalVoucherGroup struct {
+	Provider string
+	Group    string
+
+	// Counts is keyed by voucher state. OPNsense's Voucher connector only ever
+	// emits "valid", "unused", or "expired" (see the source reference above),
+	// but this is a map — not a fixed struct — so an unrecognised future state
+	// is still counted and exported rather than silently dropped.
+	Counts map[string]float64
+
+	// NextExpiryTimestamp is the earliest positive `expirytime` (an absolute
+	// Unix timestamp — OPNsense's own hard per-voucher cutoff, independent of
+	// use) among this group's "unused"/"valid" vouchers. Most groups never set
+	// this (expirytime 0 = "no hard cap", the common case; a voucher's
+	// ordinary lifetime is governed by `validity` counted from first use, not
+	// this field) so HasNextExpiryTimestamp is false far more often than true.
+	NextExpiryTimestamp    float64
+	HasNextExpiryTimestamp bool
+}
+
+// CaptivePortalVouchers holds the aggregated result of FetchCaptivePortalVouchers.
+type CaptivePortalVouchers struct {
+	// Present is false when the list_providers call itself fails with 404
+	// (defensive: this is a core action, not a plugin, so a live box should
+	// never actually 404 it — but a stripped/custom build might lack the
+	// module entirely, mirroring FetchCaptivePortalSessions's own zones gate).
+	Present bool
+
+	// Groups is empty on any box with no voucher-type auth server configured,
+	// or one with providers but no generated voucher groups yet — both are
+	// normal, common states, not errors (issue #207).
+	Groups []CaptivePortalVoucherGroup
+}
+
+// FetchCaptivePortalVouchers enumerates every voucher-type authentication
+// provider, every voucher group each one has generated, and aggregates each
+// group's vouchers by state. Three GETs per group (list_providers once,
+// list_voucher_groups per provider, list_vouchers per group); a group can
+// hold up to 10,000 vouchers, so rows are aggregated immediately and never
+// held or exported individually.
+//
+// A provider or group whose own list call fails (for a reason other than the
+// top-level 404 gate) is skipped, logged at debug level, and does not abort
+// the rest of the fetch — mirroring FetchSMARTDevices's per-device tolerance.
+func (c *Client) FetchCaptivePortalVouchers() (CaptivePortalVouchers, *APICallError) {
+	var data CaptivePortalVouchers
+
+	providersURL, ok := c.endpoints["captivePortalVoucherProviders"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "captivePortalVoucherProviders",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+	groupsBase, ok := c.endpoints["captivePortalVoucherGroups"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "captivePortalVoucherGroups",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+	vouchersBase, ok := c.endpoints["captivePortalVouchers"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "captivePortalVouchers",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var providers []string
+	if err := c.do("GET", providersURL, nil, &providers); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil // feature absent
+		}
+		return data, err
+	}
+	data.Present = true
+
+	for _, provider := range providers {
+		groupsPath := EndpointPath(string(groupsBase) + "/" + url.PathEscape(provider))
+		var groups []string
+		if err := c.do("GET", groupsPath, nil, &groups); err != nil {
+			c.log.Debug("captiveportal voucher groups call failed for provider; skipping",
+				"component", "opnsense-client",
+				"provider", provider,
+				"err", err.Error())
+			continue
+		}
+
+		for _, group := range groups {
+			vouchersPath := EndpointPath(string(vouchersBase) + "/" + url.PathEscape(provider) + "/" + url.PathEscape(group))
+			var rows []captivePortalVoucherRow
+			if err := c.do("GET", vouchersPath, nil, &rows); err != nil {
+				c.log.Debug("captiveportal list_vouchers call failed for group; skipping",
+					"component", "opnsense-client",
+					"provider", provider,
+					"group", group,
+					"err", err.Error())
+				continue
+			}
+
+			vg := CaptivePortalVoucherGroup{
+				Provider: provider,
+				Group:    group,
+				Counts:   make(map[string]float64),
+			}
+			for _, row := range rows {
+				state := row.State.String()
+				vg.Counts[state]++
+
+				if (state == "unused" || state == "valid") && row.Expirytime.Int() > 0 {
+					expiry := float64(row.Expirytime.Int())
+					if !vg.HasNextExpiryTimestamp || expiry < vg.NextExpiryTimestamp {
+						vg.NextExpiryTimestamp = expiry
+						vg.HasNextExpiryTimestamp = true
+					}
+				}
+			}
+
+			data.Groups = append(data.Groups, vg)
+		}
+	}
+
+	// Sort by (Provider, Group) for deterministic output and tests.
+	sort.Slice(data.Groups, func(i, j int) bool {
+		if data.Groups[i].Provider != data.Groups[j].Provider {
+			return data.Groups[i].Provider < data.Groups[j].Provider
+		}
+		return data.Groups[i].Group < data.Groups[j].Group
+	})
+
+	return data, nil
+}

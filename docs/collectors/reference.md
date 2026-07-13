@@ -12,7 +12,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
 | BPF Statistics | bpf | 6 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
-| Captive Portal | captiveportal | 4 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
+| Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |
 | ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPNSENSE_EXPORTER_DISABLE_CLAMAV |

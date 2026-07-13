@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 691
-- **Gauges:** 473
+- **Total metrics:** 693
+- **Gauges:** 475
 - **Counters:** 218
 
 ## General
@@ -114,6 +114,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_captiveportal_zones_total | Gauge | --- | Number of configured captive portal zones (including disabled zones) | --exporter.disable-captiveportal |
 | opnsense_captiveportal_sessions_total | Gauge | --- | Total number of active captive portal sessions across all zones | --exporter.disable-captiveportal |
 | opnsense_captiveportal_zone_sessions | Gauge | zone_id, zone_description | Number of active captive portal sessions in this zone | --exporter.disable-captiveportal |
+| opnsense_captiveportal_vouchers | Gauge | provider, group, state | Number of captive portal vouchers in this group by state (valid, unused, expired) | --exporter.disable-captiveportal |
+| opnsense_captiveportal_voucher_group_next_expiry_seconds | Gauge | provider, group | Unix timestamp of the earliest hard expiry deadline among this group's unused/valid vouchers (absent when no voucher in the group has one set) | --exporter.disable-captiveportal |
 
 ## Certificates
 

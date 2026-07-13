@@ -263,6 +263,72 @@ func TestProbeOneParameterizedSkip(t *testing.T) {
 	}
 }
 
+// captivePortalVouchers has two positional path segments (provider, group),
+// each resolved from a prior live GET — unlike smartInfo/ipsecPhase2, which
+// resolve one POST-body parameter.
+func TestProbeOneParameterizedCaptivePortalVouchers(t *testing.T) {
+	var gotPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`["TestVoucherServer"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups/TestVoucherServer", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`["TestGroup1"]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_vouchers/TestVoucherServer/TestGroup1", func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Write([]byte(`[{"validity":3600,"expirytime":0,"state":"unused"}]`))
+	})
+	p := newTestProber(t, mux)
+
+	s := opnsense.EndpointSchema{
+		Endpoint:     "captivePortalVouchers",
+		Method:       "GET",
+		Path:         "api/captiveportal/voucher/list_vouchers",
+		TopLevelKind: opnsense.KindArray,
+	}
+	res := p.probeOne(s, opnsense.SchemaExemption{})
+	if res.ProbeErr != "" || res.SkippedParam {
+		t.Fatalf("captivePortalVouchers probe failed: %+v", res)
+	}
+	if gotPath != "/api/captiveportal/voucher/list_vouchers/TestVoucherServer/TestGroup1" {
+		t.Errorf("captivePortalVouchers requested path = %q", gotPath)
+	}
+	if res.Path != "api/captiveportal/voucher/list_vouchers/TestVoucherServer/TestGroup1" {
+		t.Errorf("probeResult.Path = %q, want the resolved concrete path", res.Path)
+	}
+}
+
+// No voucher provider configured -> both dependent endpoints are skipped, not
+// failed, and the bare route is never requested (it would 404).
+func TestProbeOneParameterizedCaptivePortalVouchersSkip(t *testing.T) {
+	var bareHit bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/captiveportal/voucher/list_providers", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	mux.HandleFunc("/api/captiveportal/voucher/list_voucher_groups", func(w http.ResponseWriter, r *http.Request) {
+		bareHit = true
+		http.NotFound(w, r)
+	})
+	p := newTestProber(t, mux)
+
+	groups := opnsense.EndpointSchema{Endpoint: "captivePortalVoucherGroups", Method: "GET", Path: "api/captiveportal/voucher/list_voucher_groups", TopLevelKind: opnsense.KindArray}
+	res := p.probeOne(groups, opnsense.SchemaExemption{})
+	if !res.SkippedParam || res.ProbeErr != "" {
+		t.Errorf("expected SkippedParam for captivePortalVoucherGroups, got %+v", res)
+	}
+
+	vouchers := opnsense.EndpointSchema{Endpoint: "captivePortalVouchers", Method: "GET", Path: "api/captiveportal/voucher/list_vouchers", TopLevelKind: opnsense.KindArray}
+	res2 := p.probeOne(vouchers, opnsense.SchemaExemption{})
+	if !res2.SkippedParam || res2.ProbeErr != "" {
+		t.Errorf("expected SkippedParam for captivePortalVouchers, got %+v", res2)
+	}
+	if bareHit {
+		t.Error("the bare (parameter-less) route must never be requested — it 404s at the routing layer")
+	}
+}
+
 func TestProbeOneExemptionSuppressesMissing(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/test/renamed", func(w http.ResponseWriter, _ *http.Request) {
