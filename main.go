@@ -340,6 +340,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFRRCollector())
 		logger.Info("frr collector disabled")
 	}
+	if collectorsSwitches.FRRRoutes {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithFRRRoutesEnabled())
+		logger.Info("frr routing-state volume gauges enabled")
+	}
 	if !collectorsSwitches.Monit {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutMonitCollector())
 		logger.Info("monit collector disabled")

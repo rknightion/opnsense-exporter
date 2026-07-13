@@ -469,6 +469,20 @@ func WithoutFRRCollector() Option {
 	return withoutCollectorInstance(FRRSubsystem)
 }
 
+// WithFRRRoutesEnabled enables the opt-in FRR routing-state volume gauges
+// (zebra RIB / OSPF route table / LSDB counts; default-off; #199).
+func WithFRRRoutesEnabled() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if fc, ok := c.(*frrCollector); ok {
+				fc.SetRoutesEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithoutMonitCollector Option
 // removes the monit collector from the list of collectors
 func WithoutMonitCollector() Option {

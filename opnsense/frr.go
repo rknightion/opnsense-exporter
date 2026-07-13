@@ -4,17 +4,32 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 )
 
-// VERIFICATION: unvalidated against a live os-frr (quagga) box.
-// Shapes derived from net/frr/src/opnsense/mvc/app/controllers/OPNsense/Quagga/Api/DiagnosticsController.php
-// and FRR vtysh JSON output formats (FRR 8.x+).
-// Re-check on real hardware when available:
-//   - bgpsummary: per-AF field set, numeric types (remoteAs may exceed int32)
-//   - ospfoverview: areas key structure, nbrFullAdjacencyCount vs nbrFullAdjacentCounter
-//   - searchOspfneighbor: old vs new field names (state/nbrState, address/ifaceAddress)
+// VERIFICATION: bgpsummary/ospfoverview/searchOspfneighbor/bfd* below were
+// re-verified 2026-07-13 against a real os-frr dev-box lab (see #195/#197/#198/
+// #199 dev-box validation checklists) — an eBGP session AS65001<->AS65002 and an
+// OSPFv2 Full/DR adjacency, both bounced at least once. The BGP/OSPFv2/BFD shapes
+// and field names below match the live captures.
+//
+// The OSPFv3 (ospf6) structs added for #198 are the ONE exception: the dev-box
+// lab LXC has no IPv6 stack at all (unprivileged container, /proc/sys/net/ipv6
+// absent), so no live v3 adjacency could be brought up. Only the
+// disabled/empty `{"response":[]}` shape was captured for ospfv3overview and
+// ospfv3interface. Their field names are instead grounded in FRR's own ospf6d
+// C source (ospf6_top.c ospf6_show/ospf6_area_show, ospf6_interface.c
+// ospf6_interface_show) rather than a live payload — re-verify against a real
+// v3 adjacency when one becomes available and update this note.
+//
+//   - bgpsummary: per-AF field set, numeric types (remoteAs may exceed int32) — verified
+//   - bgpneighbors: per-peer flap/message/AF-prefix detail — verified (#197)
+//   - ospfoverview: areas key structure, nbrFullAdjacencyCount vs nbrFullAdjacentCounter — verified
+//   - ospfinterface: per-interface detail — verified ("interfaces"-wrapped shape, FRR>=8, this box's FRR 10.3); older flat top-level shape is decoded tolerantly but unverified live
+//   - ospfv3overview/ospfv3interface: UNVERIFIED against a live v3 adjacency — source-derived only (#198)
+//   - searchOspfneighbor: old vs new field names (state/nbrState, address/ifaceAddress) — verified
 //   - bfdneighbors/bfdcounters: peer-keyed map structure, uptime field presence
 
 // --- BGP ---
@@ -454,5 +469,780 @@ func (c *Client) FetchFRRBFD() (FRRBFD, *APICallError) {
 		}
 	}
 
+	return data, nil
+}
+
+// --- BGP Neighbor Session Detail (#197) ---
+
+// frrBGPNeighborMessageStats holds the per-message-type send/receive counters
+// from a bgpneighbors peer entry, plus the current in/out work-queue depth.
+type frrBGPNeighborMessageStats struct {
+	OpensSent         float64 `json:"opensSent"`
+	OpensRecv         float64 `json:"opensRecv"`
+	UpdatesSent       float64 `json:"updatesSent"`
+	UpdatesRecv       float64 `json:"updatesRecv"`
+	NotificationsSent float64 `json:"notificationsSent"`
+	NotificationsRecv float64 `json:"notificationsRecv"`
+	KeepalivesSent    float64 `json:"keepalivesSent"`
+	KeepalivesRecv    float64 `json:"keepalivesRecv"`
+	RouteRefreshSent  float64 `json:"routeRefreshSent"`
+	RouteRefreshRecv  float64 `json:"routeRefreshRecv"`
+	CapabilitySent    float64 `json:"capabilitySent"`
+	CapabilityRecv    float64 `json:"capabilityRecv"`
+	DepthInq          float64 `json:"depthInq"`
+	DepthOutq         float64 `json:"depthOutq"`
+}
+
+// frrBGPNeighborAFInfo holds one address-family's post-policy prefix count
+// from a bgpneighbors peer's addressFamilyInfo block.
+type frrBGPNeighborAFInfo struct {
+	AcceptedPrefixCounter float64 `json:"acceptedPrefixCounter"`
+}
+
+// frrBGPNeighborEntry is the raw per-peer JSON shape from FRR bgpneighbors
+// (`show bgp neighbors json`), keyed by peer IP in the response object.
+type frrBGPNeighborEntry struct {
+	BgpState               string                          `json:"bgpState"`
+	RemoteAs               float64                         `json:"remoteAs"`
+	ConnectionsEstablished float64                         `json:"connectionsEstablished"`
+	ConnectionsDropped     float64                         `json:"connectionsDropped"`
+	LastResetTimerMsecs    float64                         `json:"lastResetTimerMsecs"`
+	LastResetDueTo         string                          `json:"lastResetDueTo"`
+	MessageStats           frrBGPNeighborMessageStats      `json:"messageStats"`
+	AddressFamilyInfo      map[string]frrBGPNeighborAFInfo `json:"addressFamilyInfo"`
+}
+
+// frrBGPNeighborsEnvelope wraps the API `{"response": {<peerIP>: {...}}}`.
+type frrBGPNeighborsEnvelope struct {
+	Response json.RawMessage `json:"response"`
+}
+
+// FRRBGPNeighborMessageCount holds one (type, direction) message counter for a peer.
+type FRRBGPNeighborMessageCount struct {
+	Type, Direction string
+	Count           float64
+}
+
+// FRRBGPNeighborPrefixCount holds one address-family's accepted-prefix count for a peer.
+type FRRBGPNeighborPrefixCount struct {
+	AF    string
+	Count float64
+}
+
+// FRRBGPNeighborDetail holds normalised per-peer session-detail metrics: flap
+// counters, per-message-type counts, per-AF accepted-prefix counts and
+// in/out work-queue depth.
+type FRRBGPNeighborDetail struct {
+	Peer                                       string
+	ConnectionsEstablished, ConnectionsDropped float64
+	LastResetSeconds                           float64
+	LastResetDueTo                             string
+	QueueDepthIn, QueueDepthOut                float64
+	Messages                                   []FRRBGPNeighborMessageCount
+	Prefixes                                   []FRRBGPNeighborPrefixCount
+}
+
+// FRRBGPNeighbors holds the aggregated result of FetchFRRBGPNeighbors.
+type FRRBGPNeighbors struct {
+	Present bool
+	Peers   []FRRBGPNeighborDetail
+}
+
+// FetchFRRBGPNeighbors calls api/quagga/diagnostics/bgpneighbors and returns
+// normalised per-peer session-detail metrics. Peer labels are bounded by the
+// number of configured BGP peers (same cardinality class as FetchFRRBGP's
+// bgp_peer_up).
+//
+// A 404 (plugin absent) returns Present=false, nil. The daemon-disabled
+// configd `[]` fallback also returns Present=false, nil.
+func (c *Client) FetchFRRBGPNeighbors() (FRRBGPNeighbors, *APICallError) {
+	var data FRRBGPNeighbors
+
+	endpointURL, ok := c.endpoints["quaggaBgpNeighbors"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "quaggaBgpNeighbors",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var envelope frrBGPNeighborsEnvelope
+	if err := c.do("GET", endpointURL, nil, &envelope); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, err
+	}
+
+	if len(envelope.Response) == 0 || envelope.Response[0] == '[' {
+		return data, nil
+	}
+
+	var peers map[string]frrBGPNeighborEntry
+	if jsonErr := json.Unmarshal(envelope.Response, &peers); jsonErr != nil {
+		// Non-object response; treat as daemon disabled.
+		return data, nil
+	}
+	if len(peers) == 0 {
+		return data, nil
+	}
+
+	data.Present = true
+	for peerIP, peer := range peers {
+		ms := peer.MessageStats
+		detail := FRRBGPNeighborDetail{
+			Peer:                   peerIP,
+			ConnectionsEstablished: peer.ConnectionsEstablished,
+			ConnectionsDropped:     peer.ConnectionsDropped,
+			LastResetSeconds:       peer.LastResetTimerMsecs / 1000,
+			LastResetDueTo:         peer.LastResetDueTo,
+			QueueDepthIn:           ms.DepthInq,
+			QueueDepthOut:          ms.DepthOutq,
+			Messages: []FRRBGPNeighborMessageCount{
+				{Type: "open", Direction: "sent", Count: ms.OpensSent},
+				{Type: "open", Direction: "received", Count: ms.OpensRecv},
+				{Type: "update", Direction: "sent", Count: ms.UpdatesSent},
+				{Type: "update", Direction: "received", Count: ms.UpdatesRecv},
+				{Type: "keepalive", Direction: "sent", Count: ms.KeepalivesSent},
+				{Type: "keepalive", Direction: "received", Count: ms.KeepalivesRecv},
+				{Type: "notification", Direction: "sent", Count: ms.NotificationsSent},
+				{Type: "notification", Direction: "received", Count: ms.NotificationsRecv},
+				{Type: "route_refresh", Direction: "sent", Count: ms.RouteRefreshSent},
+				{Type: "route_refresh", Direction: "received", Count: ms.RouteRefreshRecv},
+				{Type: "capability", Direction: "sent", Count: ms.CapabilitySent},
+				{Type: "capability", Direction: "received", Count: ms.CapabilityRecv},
+			},
+		}
+		for afKey, afInfo := range peer.AddressFamilyInfo {
+			detail.Prefixes = append(detail.Prefixes, FRRBGPNeighborPrefixCount{
+				AF:    frrAFLabel(afKey),
+				Count: afInfo.AcceptedPrefixCounter,
+			})
+		}
+		data.Peers = append(data.Peers, detail)
+	}
+
+	return data, nil
+}
+
+// --- OSPF Interface Detail + OSPFv3 (ospf6) parity (#198) ---
+
+// frrOSPFInterfaceEntry is the raw per-interface JSON shape from FRR
+// `show ip ospf interface json`, as verified against this box's FRR 10.3.
+type frrOSPFInterfaceEntry struct {
+	IfUp             bool    `json:"ifUp"`
+	OspfEnabled      bool    `json:"ospfEnabled"`
+	Area             string  `json:"area"`
+	NetworkType      string  `json:"networkType"`
+	Cost             float64 `json:"cost"`
+	State            string  `json:"state"`
+	Priority         float64 `json:"priority"`
+	NbrCount         float64 `json:"nbrCount"`
+	NbrAdjacentCount float64 `json:"nbrAdjacentCount"`
+	MtuBytes         float64 `json:"mtuBytes"`
+	BandwidthMbit    float64 `json:"bandwidthMbit"`
+}
+
+// frrOSPFInterfaceWrapped is the FRR >= 8 shape, which wraps the per-interface
+// map in an "interfaces" object — verified against this box's FRR 10.3. Older
+// FRR returns the per-interface map directly at the top level instead (per
+// the plugin's own doc comments) — see FetchFRROSPFInterfaces, which decodes
+// both, though only the wrapped shape has been confirmed live.
+type frrOSPFInterfaceWrapped struct {
+	Interfaces map[string]frrOSPFInterfaceEntry `json:"interfaces"`
+}
+
+// frrOSPFInterfaceEnvelope wraps the API `{"response": ...}`.
+type frrOSPFInterfaceEnvelope struct {
+	Response json.RawMessage `json:"response"`
+}
+
+// FRROSPFInterface holds normalised per-OSPF-interface metrics.
+type FRROSPFInterface struct {
+	Interface, Area, NetworkType, State string
+	Up, Cost, Priority                  float64
+	NbrCount, NbrAdjacentCount          float64
+	MtuBytes, BandwidthMbit             float64
+}
+
+// FRROSPFInterfaces holds the aggregated result of FetchFRROSPFInterfaces.
+type FRROSPFInterfaces struct {
+	Present    bool
+	Interfaces []FRROSPFInterface
+}
+
+// FetchFRROSPFInterfaces calls api/quagga/diagnostics/ospfinterface. Interface
+// labels are bounded by NIC count.
+//
+// A 404 (plugin absent) or the daemon-disabled configd `[]` fallback returns
+// Present=false, nil.
+func (c *Client) FetchFRROSPFInterfaces() (FRROSPFInterfaces, *APICallError) {
+	var data FRROSPFInterfaces
+
+	endpointURL, ok := c.endpoints["quaggaOspfInterface"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "quaggaOspfInterface",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var envelope frrOSPFInterfaceEnvelope
+	if err := c.do("GET", endpointURL, nil, &envelope); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, err
+	}
+
+	if len(envelope.Response) == 0 || envelope.Response[0] == '[' {
+		return data, nil
+	}
+
+	var wrapped frrOSPFInterfaceWrapped
+	_ = json.Unmarshal(envelope.Response, &wrapped)
+	ifaces := wrapped.Interfaces
+	if len(ifaces) == 0 {
+		var flat map[string]frrOSPFInterfaceEntry
+		if jsonErr := json.Unmarshal(envelope.Response, &flat); jsonErr == nil {
+			ifaces = flat
+		}
+	}
+	if len(ifaces) == 0 {
+		return data, nil
+	}
+
+	data.Present = true
+	for name, iface := range ifaces {
+		up := 0.0
+		if iface.IfUp {
+			up = 1.0
+		}
+		data.Interfaces = append(data.Interfaces, FRROSPFInterface{
+			Interface:        name,
+			Area:             iface.Area,
+			NetworkType:      iface.NetworkType,
+			State:            iface.State,
+			Up:               up,
+			Cost:             iface.Cost,
+			Priority:         iface.Priority,
+			NbrCount:         iface.NbrCount,
+			NbrAdjacentCount: iface.NbrAdjacentCount,
+			MtuBytes:         iface.MtuBytes,
+			BandwidthMbit:    iface.BandwidthMbit,
+		})
+	}
+
+	return data, nil
+}
+
+// frrOSPFv3AreaData holds a single area's LSA count from ospfv3overview.
+// UNVERIFIED against a live payload (see the VERIFICATION banner at the top of
+// this file): field name grounded in FRR ospf6d source
+// (ospf6_area.c ospf6_area_show -> "numberOfAreaScopedLsa").
+type frrOSPFv3AreaData struct {
+	NumberOfAreaScopedLsa float64 `json:"numberOfAreaScopedLsa"`
+}
+
+// frrOSPFv3OverviewBody holds the parsed ospfv3overview `response` object.
+// UNVERIFIED against a live payload: field names grounded in FRR ospf6d source
+// (ospf6_top.c ospf6_show), mirroring `show ipv6 ospf6 json`.
+type frrOSPFv3OverviewBody struct {
+	RouterID            string                       `json:"routerId"`
+	NumberOfAsScopedLsa float64                      `json:"numberOfAsScopedLsa"`
+	Areas               map[string]frrOSPFv3AreaData `json:"areas"`
+}
+
+// frrOSPFv3OverviewEnvelope wraps the API `{"response": ...}`.
+type frrOSPFv3OverviewEnvelope struct {
+	Response json.RawMessage `json:"response"`
+}
+
+// FRROSPFv3Area holds normalised per-area OSPFv3 LSA-count metrics.
+type FRROSPFv3Area struct {
+	Area     string
+	LSACount float64
+}
+
+// FRROSPFv3Overview holds the aggregated result of FetchFRROSPFv3Overview.
+type FRROSPFv3Overview struct {
+	Present bool
+	Areas   []FRROSPFv3Area
+}
+
+// FetchFRROSPFv3Overview calls api/quagga/diagnostics/ospfv3overview.
+//
+// A 404 (plugin absent) or the array fallback (`{"response":[]}`, ospf6d
+// disabled — the only shape confirmed on the dev-box lab, which has no IPv6
+// stack) returns Present=false, nil.
+func (c *Client) FetchFRROSPFv3Overview() (FRROSPFv3Overview, *APICallError) {
+	var data FRROSPFv3Overview
+
+	endpointURL, ok := c.endpoints["quaggaOspfv3Overview"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "quaggaOspfv3Overview",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var envelope frrOSPFv3OverviewEnvelope
+	if err := c.do("GET", endpointURL, nil, &envelope); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, err
+	}
+
+	if len(envelope.Response) == 0 || envelope.Response[0] == '[' {
+		return data, nil
+	}
+
+	var body frrOSPFv3OverviewBody
+	if jsonErr := json.Unmarshal(envelope.Response, &body); jsonErr != nil {
+		return data, nil
+	}
+	if len(body.Areas) == 0 {
+		return data, nil
+	}
+
+	data.Present = true
+	for areaID, area := range body.Areas {
+		data.Areas = append(data.Areas, FRROSPFv3Area{
+			Area:     areaID,
+			LSACount: area.NumberOfAreaScopedLsa,
+		})
+	}
+
+	return data, nil
+}
+
+// frrOSPFv3InterfaceEntry is the raw per-interface JSON shape from FRR
+// `show ipv6 ospf6 interface json`. UNVERIFIED against a live payload (see the
+// VERIFICATION banner at the top of this file): field names grounded in FRR
+// ospf6d source (ospf6_interface.c ospf6_interface_show). There is no OSPFv3
+// neighbor endpoint in the quagga plugin API — interface state is the best
+// available proxy for adjacency.
+type frrOSPFv3InterfaceEntry struct {
+	Status                     string  `json:"status"`
+	Type                       string  `json:"type"`
+	AreaID                     string  `json:"areaId"`
+	Cost                       float64 `json:"cost"`
+	Priority                   float64 `json:"priority"`
+	State                      string  `json:"ospf6InterfaceState"`
+	NumberOfInterfaceScopedLsa float64 `json:"numberOfInterfaceScopedLsa"`
+	PendingLsaLsUpdateCount    float64 `json:"pendingLsaLsUpdateCount"`
+	PendingLsaLsAckCount       float64 `json:"pendingLsaLsAckCount"`
+}
+
+// frrOSPFv3InterfaceEnvelope wraps the API `{"response": ...}`.
+type frrOSPFv3InterfaceEnvelope struct {
+	Response json.RawMessage `json:"response"`
+}
+
+// FRROSPFv3Interface holds normalised per-OSPFv3-interface metrics.
+type FRROSPFv3Interface struct {
+	Interface, Area, State          string
+	Up, Cost                        float64
+	PendingLsaUpdate, PendingLsaAck float64
+}
+
+// FRROSPFv3Interfaces holds the aggregated result of FetchFRROSPFv3Interfaces.
+type FRROSPFv3Interfaces struct {
+	Present    bool
+	Interfaces []FRROSPFv3Interface
+}
+
+// FetchFRROSPFv3Interfaces calls api/quagga/diagnostics/ospfv3interface.
+// Interface labels are bounded by NIC count.
+//
+// A 404 (plugin absent) or the array fallback (`{"response":[]}`, ospf6d
+// disabled) returns Present=false, nil.
+func (c *Client) FetchFRROSPFv3Interfaces() (FRROSPFv3Interfaces, *APICallError) {
+	var data FRROSPFv3Interfaces
+
+	endpointURL, ok := c.endpoints["quaggaOspfv3Interface"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "quaggaOspfv3Interface",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var envelope frrOSPFv3InterfaceEnvelope
+	if err := c.do("GET", endpointURL, nil, &envelope); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, err
+	}
+
+	if len(envelope.Response) == 0 || envelope.Response[0] == '[' {
+		return data, nil
+	}
+
+	var ifaces map[string]frrOSPFv3InterfaceEntry
+	if jsonErr := json.Unmarshal(envelope.Response, &ifaces); jsonErr != nil {
+		return data, nil
+	}
+	if len(ifaces) == 0 {
+		return data, nil
+	}
+
+	data.Present = true
+	for name, iface := range ifaces {
+		up := 0.0
+		if iface.Status == "up" {
+			up = 1.0
+		}
+		data.Interfaces = append(data.Interfaces, FRROSPFv3Interface{
+			Interface:        name,
+			Area:             iface.AreaID,
+			State:            iface.State,
+			Up:               up,
+			Cost:             iface.Cost,
+			PendingLsaUpdate: iface.PendingLsaLsUpdateCount,
+			PendingLsaAck:    iface.PendingLsaLsAckCount,
+		})
+	}
+
+	return data, nil
+}
+
+// --- Routing-state volume gauges (#199, opt-in via --exporter.enable-frr-routes) ---
+
+// frrGeneralRouteRow is one flattened per-nexthop row from
+// search_generalroute4/6 (zebra RIB, `show ip[v6] route json`, flattened one
+// row per nexthop by the quagga plugin's searchGeneralroute4/6 action).
+type frrGeneralRouteRow struct {
+	Prefix   flexString `json:"prefix"`
+	Protocol flexString `json:"protocol"`
+}
+
+// frrGeneralRouteSearch is the bootgrid envelope for search_generalroute4/6.
+type frrGeneralRouteSearch struct {
+	Rows []frrGeneralRouteRow `json:"rows"`
+}
+
+// frrOSPFRouteRow is one row from search_ospfroute/search_ospfv3route (OSPF
+// route tables).
+type frrOSPFRouteRow struct {
+	Type flexString `json:"type"`
+}
+
+// frrOSPFRouteSearch is the bootgrid envelope for search_ospfroute/search_ospfv3route.
+type frrOSPFRouteSearch struct {
+	Rows []frrOSPFRouteRow `json:"rows"`
+}
+
+// frrOSPFDatabaseAreaEntry holds one area's per-LSA-type counts from
+// ospfdatabase (`show ip ospf database json`). router/network are verified
+// against the dev-box capture; the summary/asbr/nssa/opaque families FRR
+// emits when those LSA types are present are unverified (this box's lab
+// topology never exercised them).
+type frrOSPFDatabaseAreaEntry struct {
+	RouterLinkStatesCount       float64 `json:"routerLinkStatesCount"`
+	NetworkLinkStatesCount      float64 `json:"networkLinkStatesCount"`
+	SummaryLinkStatesCount      float64 `json:"summaryLinkStatesCount"`
+	AsbrSummaryLinkStatesCount  float64 `json:"asbrSummaryLinkStatesCount"`
+	NssaExternalLinkStatesCount float64 `json:"nssaExternalLinkStatesCount"`
+	OpaqueLinkLinkStatesCount   float64 `json:"opaqueLinkLinkStatesCount"`
+	OpaqueAreaLinkStatesCount   float64 `json:"opaqueAreaLinkStatesCount"`
+}
+
+// frrOSPFDatabaseBody holds the parsed ospfdatabase `response` object.
+type frrOSPFDatabaseBody struct {
+	Areas                     map[string]frrOSPFDatabaseAreaEntry `json:"areas"`
+	AsExternalLinkStatesCount float64                             `json:"asExternalLinkStatesCount"`
+}
+
+// frrOSPFDatabaseEnvelope wraps the API `{"response": ...}`.
+type frrOSPFDatabaseEnvelope struct {
+	Response json.RawMessage `json:"response"`
+}
+
+// frrOSPFv3DatabaseRow is one row from search_ospfv3database; "dbname" is the
+// LSA's flooding scope (link/area/AS-scoped) per the quagga plugin's
+// searchOspfv3database action. UNVERIFIED against a live payload (see the
+// VERIFICATION banner at the top of this file).
+type frrOSPFv3DatabaseRow struct {
+	Dbname flexString `json:"dbname"`
+}
+
+// frrOSPFv3DatabaseSearch is the bootgrid envelope for search_ospfv3database.
+type frrOSPFv3DatabaseSearch struct {
+	Rows []frrOSPFv3DatabaseRow `json:"rows"`
+}
+
+// FRRRouteCount holds a distinct-prefix and nexthop-row count for one
+// (af, protocol) pair from the zebra RIB.
+type FRRRouteCount struct {
+	AF, Protocol             string
+	RouteCount, NexthopCount float64
+}
+
+// FRRRouteTypeCount holds a row count for one OSPF/OSPFv3 route type.
+type FRRRouteTypeCount struct {
+	Type  string
+	Count float64
+}
+
+// FRROSPFLSACount holds an LSA count for one (area, lsa_type) pair.
+type FRROSPFLSACount struct {
+	Area, LSAType string
+	Count         float64
+}
+
+// FRROSPFv3LSAScopeCount holds an LSA count for one v3 flooding scope.
+type FRROSPFv3LSAScopeCount struct {
+	Scope string
+	Count float64
+}
+
+// FRRRouteVolumes holds the aggregated result of FetchFRRRouteVolumes.
+type FRRRouteVolumes struct {
+	Present      bool
+	Routes       []FRRRouteCount
+	OSPFRoutes   []FRRRouteTypeCount
+	OSPFv3Routes []FRRRouteTypeCount
+	OSPFLSA      []FRROSPFLSACount
+	OSPFv3LSA    []FRROSPFv3LSAScopeCount
+}
+
+// countGeneralRoutes fetches one zebra RIB search endpoint
+// (quaggaGeneralRoute4 or quaggaGeneralRoute6) and returns per-protocol
+// distinct-prefix and nexthop-row counts labelled with af. A nil, nil result
+// means the endpoint 404'd (plugin absent); a non-nil, possibly empty, slice
+// means the request succeeded (even with zero rows).
+func (c *Client) countGeneralRoutes(endpointName EndpointName, af string) ([]FRRRouteCount, *APICallError) {
+	endpointURL, ok := c.endpoints[endpointName]
+	if !ok {
+		return nil, &APICallError{Endpoint: string(endpointName), Message: "endpoint not found in client endpoints", StatusCode: 0}
+	}
+
+	var search frrGeneralRouteSearch
+	if err := c.do("GET", endpointURL, nil, &search); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	type protoKey struct{ protocol string }
+	prefixSets := map[protoKey]map[string]struct{}{}
+	nexthopCounts := map[protoKey]float64{}
+	var order []protoKey
+	for _, row := range search.Rows {
+		k := protoKey{protocol: row.Protocol.String()}
+		if _, ok := prefixSets[k]; !ok {
+			prefixSets[k] = map[string]struct{}{}
+			order = append(order, k)
+		}
+		prefixSets[k][row.Prefix.String()] = struct{}{}
+		nexthopCounts[k]++
+	}
+
+	counts := make([]FRRRouteCount, 0, len(order))
+	for _, k := range order {
+		counts = append(counts, FRRRouteCount{
+			AF:           af,
+			Protocol:     k.protocol,
+			RouteCount:   float64(len(prefixSets[k])),
+			NexthopCount: nexthopCounts[k],
+		})
+	}
+	return counts, nil
+}
+
+// countOSPFRoutes fetches one OSPF route-table search endpoint
+// (quaggaOspfRoute or quaggaOspfv3Route) and returns a row count per route
+// type. A nil, nil result means the endpoint 404'd (plugin absent); a
+// non-nil, possibly empty, slice means the request succeeded.
+func (c *Client) countOSPFRoutes(endpointName EndpointName) ([]FRRRouteTypeCount, *APICallError) {
+	endpointURL, ok := c.endpoints[endpointName]
+	if !ok {
+		return nil, &APICallError{Endpoint: string(endpointName), Message: "endpoint not found in client endpoints", StatusCode: 0}
+	}
+
+	var search frrOSPFRouteSearch
+	if err := c.do("GET", endpointURL, nil, &search); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	counts := map[string]float64{}
+	var order []string
+	for _, row := range search.Rows {
+		t := strings.TrimSpace(row.Type.String())
+		if _, ok := counts[t]; !ok {
+			order = append(order, t)
+		}
+		counts[t]++
+	}
+	result := make([]FRRRouteTypeCount, 0, len(order))
+	for _, t := range order {
+		result = append(result, FRRRouteTypeCount{Type: t, Count: counts[t]})
+	}
+	return result, nil
+}
+
+// fetchOSPFDatabaseCounts fetches quaggaOspfDatabase and returns an LSA count
+// per (area, lsa_type) pair, plus a synthetic area="" lsa_type="external" row
+// for the domain-wide (not area-scoped) AS-external LSA count. A nil, nil
+// result means the endpoint 404'd (plugin absent); a non-nil, possibly empty,
+// slice means the request succeeded.
+func (c *Client) fetchOSPFDatabaseCounts() ([]FRROSPFLSACount, *APICallError) {
+	endpointURL, ok := c.endpoints["quaggaOspfDatabase"]
+	if !ok {
+		return nil, &APICallError{Endpoint: "quaggaOspfDatabase", Message: "endpoint not found in client endpoints", StatusCode: 0}
+	}
+
+	var envelope frrOSPFDatabaseEnvelope
+	if err := c.do("GET", endpointURL, nil, &envelope); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	counts := []FRROSPFLSACount{}
+	if len(envelope.Response) == 0 || envelope.Response[0] == '[' {
+		return counts, nil
+	}
+
+	var body frrOSPFDatabaseBody
+	if jsonErr := json.Unmarshal(envelope.Response, &body); jsonErr != nil {
+		return counts, nil
+	}
+
+	areaIDs := make([]string, 0, len(body.Areas))
+	for areaID := range body.Areas {
+		areaIDs = append(areaIDs, areaID)
+	}
+	sort.Strings(areaIDs)
+	for _, areaID := range areaIDs {
+		area := body.Areas[areaID]
+		for _, lc := range []struct {
+			lsaType string
+			count   float64
+		}{
+			{"router", area.RouterLinkStatesCount},
+			{"network", area.NetworkLinkStatesCount},
+			{"summary", area.SummaryLinkStatesCount},
+			{"asbrSummary", area.AsbrSummaryLinkStatesCount},
+			{"nssaExternal", area.NssaExternalLinkStatesCount},
+			{"opaqueLink", area.OpaqueLinkLinkStatesCount},
+			{"opaqueArea", area.OpaqueAreaLinkStatesCount},
+		} {
+			counts = append(counts, FRROSPFLSACount{Area: areaID, LSAType: lc.lsaType, Count: lc.count})
+		}
+	}
+	counts = append(counts, FRROSPFLSACount{Area: "", LSAType: "external", Count: body.AsExternalLinkStatesCount})
+
+	return counts, nil
+}
+
+// fetchOSPFv3DatabaseCounts fetches quaggaOspfv3Database and returns an LSA
+// row count per flooding scope ("dbname"). A nil, nil result means the
+// endpoint 404'd (plugin absent); a non-nil, possibly empty, slice means the
+// request succeeded.
+func (c *Client) fetchOSPFv3DatabaseCounts() ([]FRROSPFv3LSAScopeCount, *APICallError) {
+	endpointURL, ok := c.endpoints["quaggaOspfv3Database"]
+	if !ok {
+		return nil, &APICallError{Endpoint: "quaggaOspfv3Database", Message: "endpoint not found in client endpoints", StatusCode: 0}
+	}
+
+	var search frrOSPFv3DatabaseSearch
+	if err := c.do("GET", endpointURL, nil, &search); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	counts := map[string]float64{}
+	var order []string
+	for _, row := range search.Rows {
+		scope := row.Dbname.String()
+		if _, ok := counts[scope]; !ok {
+			order = append(order, scope)
+		}
+		counts[scope]++
+	}
+	result := make([]FRROSPFv3LSAScopeCount, 0, len(order))
+	for _, scope := range order {
+		result = append(result, FRROSPFv3LSAScopeCount{Scope: scope, Count: counts[scope]})
+	}
+	return result, nil
+}
+
+// FetchFRRRouteVolumes fetches the zebra RIB, OSPF/OSPFv3 route tables and
+// OSPF/OSPFv3 LSDBs, and returns aggregate counts only — never a per-prefix or
+// per-LSA series. Deliberately excludes search_bgproute4/6 (catastrophic
+// payload size against a real BGP table; RIB size per AF is already covered by
+// FetchFRRBGP's bgp_rib_entries).
+//
+// Only called when --exporter.enable-frr-routes is set: the underlying
+// bootgrid endpoints have no success-body caching and their payload size
+// scales with route-table size (see cache.go).
+//
+// Present reflects whether any sub-endpoint answered at all (plugin present).
+// An individual sub-endpoint's own 404 (e.g. ospf6d disabled, or a route
+// family this device doesn't run) just omits that slice rather than failing
+// the whole fetch; a non-404 error still fails the whole fetch and is
+// returned to the caller.
+func (c *Client) FetchFRRRouteVolumes() (FRRRouteVolumes, *APICallError) {
+	var data FRRRouteVolumes
+	var sawAny bool
+
+	if v4, err := c.countGeneralRoutes("quaggaGeneralRoute4", "ipv4"); err != nil {
+		return data, err
+	} else if v4 != nil {
+		sawAny = true
+		data.Routes = append(data.Routes, v4...)
+	}
+
+	if v6, err := c.countGeneralRoutes("quaggaGeneralRoute6", "ipv6"); err != nil {
+		return data, err
+	} else if v6 != nil {
+		sawAny = true
+		data.Routes = append(data.Routes, v6...)
+	}
+
+	if ospfRoutes, err := c.countOSPFRoutes("quaggaOspfRoute"); err != nil {
+		return data, err
+	} else if ospfRoutes != nil {
+		sawAny = true
+		data.OSPFRoutes = ospfRoutes
+	}
+
+	if ospfv3Routes, err := c.countOSPFRoutes("quaggaOspfv3Route"); err != nil {
+		return data, err
+	} else if ospfv3Routes != nil {
+		sawAny = true
+		data.OSPFv3Routes = ospfv3Routes
+	}
+
+	if lsa, err := c.fetchOSPFDatabaseCounts(); err != nil {
+		return data, err
+	} else if lsa != nil {
+		sawAny = true
+		data.OSPFLSA = lsa
+	}
+
+	if v3lsa, err := c.fetchOSPFv3DatabaseCounts(); err != nil {
+		return data, err
+	} else if v3lsa != nil {
+		sawAny = true
+		data.OSPFv3LSA = v3lsa
+	}
+
+	data.Present = sawAny
 	return data, nil
 }

@@ -141,6 +141,16 @@ var schemaRegistry = map[EndpointName]any{
 	"natOneToOneRules":              natSearchRuleResponse{},
 	"natNPTRules":                   natSearchRuleResponse{},
 	"natDNATRules":                  natSearchRuleResponseDNAT{},
+	"quaggaBgpNeighbors":            frrBGPNeighborsEnvelope{},
+	"quaggaGeneralRoute4":           frrGeneralRouteSearch{},
+	"quaggaGeneralRoute6":           frrGeneralRouteSearch{},
+	"quaggaOspfDatabase":            frrOSPFDatabaseEnvelope{},
+	"quaggaOspfInterface":           frrOSPFInterfaceEnvelope{},
+	"quaggaOspfRoute":               frrOSPFRouteSearch{},
+	"quaggaOspfv3Database":          frrOSPFv3DatabaseSearch{},
+	"quaggaOspfv3Interface":         frrOSPFv3InterfaceEnvelope{},
+	"quaggaOspfv3Overview":          frrOSPFv3OverviewEnvelope{},
+	"quaggaOspfv3Route":             frrOSPFRouteSearch{},
 	"socketStatistics": struct {
 		Statistics map[string]json.RawMessage `json:"statistics"`
 	}{},

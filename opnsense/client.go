@@ -257,6 +257,16 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"natDNATRules":                  "api/firewall/d_nat/search_rule",
 		"natOneToOneRules":              "api/firewall/one_to_one/search_rule",
 		"natNPTRules":                   "api/firewall/npt/search_rule",
+		"quaggaBgpNeighbors":            "api/quagga/diagnostics/bgpneighbors",
+		"quaggaOspfInterface":           "api/quagga/diagnostics/ospfinterface",
+		"quaggaOspfDatabase":            "api/quagga/diagnostics/ospfdatabase",
+		"quaggaOspfRoute":               "api/quagga/diagnostics/search_ospfroute",
+		"quaggaOspfv3Overview":          "api/quagga/diagnostics/ospfv3overview",
+		"quaggaOspfv3Interface":         "api/quagga/diagnostics/ospfv3interface",
+		"quaggaOspfv3Route":             "api/quagga/diagnostics/search_ospfv3route",
+		"quaggaOspfv3Database":          "api/quagga/diagnostics/search_ospfv3database",
+		"quaggaGeneralRoute4":           "api/quagga/diagnostics/search_generalroute4",
+		"quaggaGeneralRoute6":           "api/quagga/diagnostics/search_generalroute6",
 	}
 }
 

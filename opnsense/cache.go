@@ -237,6 +237,18 @@ func PluginGatedEndpoints() []EndpointName {
 		"relaydStatusSum",
 		"siproxdRegistrations",
 
+		// FRR (quagga) session/interface detail (#197/#198) and opt-in
+		// route/LSDB volume gauges (#199). All ten are plain GETs on the
+		// registered (query-less) path — the search_* bootgrid endpoints rely on
+		// OPNsense's searchRecordsetBase default rowCount of 9999 rather than an
+		// explicit "?current=1&rowCount=-1" query string, so (unlike
+		// vnstatGetJsonData below) their negative-cache key always matches the
+		// actual request path.
+		"quaggaBgpNeighbors", "quaggaOspfInterface", "quaggaOspfDatabase",
+		"quaggaOspfRoute", "quaggaOspfv3Overview", "quaggaOspfv3Interface",
+		"quaggaOspfv3Route", "quaggaOspfv3Database", "quaggaGeneralRoute4",
+		"quaggaGeneralRoute6",
+
 		// Plugin data endpoints (POST). Only their 404 is cached; a successful POST
 		// response is body-dependent and always goes to the box (see the doc comment).
 		"crowdsecAlerts", "crowdsecDecisions", "crowdsecBouncers", "crowdsecMachines",

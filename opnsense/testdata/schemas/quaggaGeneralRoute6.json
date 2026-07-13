@@ -1,0 +1,27 @@
+{
+  "endpoint": "quaggaGeneralRoute6",
+  "method": "GET",
+  "path": "api/quagga/diagnostics/search_generalroute6",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].prefix",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].protocol",
+      "kind": "any"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "endpoint": "quaggaOspfv3Database",
+  "method": "GET",
+  "path": "api/quagga/diagnostics/search_ospfv3database",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].dbname",
+      "kind": "any"
+    }
+  ]
+}

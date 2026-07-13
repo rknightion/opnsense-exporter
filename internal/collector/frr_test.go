@@ -306,3 +306,273 @@ func TestFRRCollector_Update_BGPUptimeEmittedForEstablished(t *testing.T) {
 		t.Error("expected frr_bgp_peer_uptime_seconds metric for established peer 10.0.0.2")
 	}
 }
+
+// frrDetailMux extends frrCollectorMux with the #197/#198/#199 endpoints, so
+// tests can exercise the new metrics alongside the existing BGP/OSPF/BFD ones.
+func frrDetailMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+	mux := frrCollectorMux(t)
+
+	mux.HandleFunc("/api/quagga/diagnostics/bgpneighbors", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+  "response": {
+    "10.0.0.2": {
+      "remoteAs": 65002,
+      "bgpState": "Established",
+      "connectionsEstablished": 2,
+      "connectionsDropped": 1,
+      "lastResetTimerMsecs": 5000,
+      "lastResetDueTo": "Peer closed the session",
+      "messageStats": {
+        "depthInq": 0, "depthOutq": 1,
+        "opensSent": 1, "opensRecv": 1,
+        "updatesSent": 2, "updatesRecv": 3,
+        "keepalivesSent": 4, "keepalivesRecv": 4,
+        "notificationsSent": 0, "notificationsRecv": 0,
+        "routeRefreshSent": 0, "routeRefreshRecv": 0,
+        "capabilitySent": 0, "capabilityRecv": 0
+      },
+      "addressFamilyInfo": {
+        "ipv4Unicast": {"acceptedPrefixCounter": 20}
+      }
+    }
+  }
+}`))
+	})
+
+	mux.HandleFunc("/api/quagga/diagnostics/ospfinterface", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+  "response": {
+    "interfaces": {
+      "em0": {
+        "ifUp": true, "ospfEnabled": true, "area": "0.0.0.0",
+        "networkType": "BROADCAST", "cost": 10, "state": "DR",
+        "priority": 1, "nbrCount": 1, "nbrAdjacentCount": 1
+      }
+    }
+  }
+}`))
+	})
+
+	mux.HandleFunc("/api/quagga/diagnostics/ospfv3overview", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":[]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/ospfv3interface", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response":[]}`))
+	})
+
+	mux.HandleFunc("/api/quagga/diagnostics/search_generalroute4", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":[
+			{"prefix": "0.0.0.0/0", "protocol": "kernel", "afi": "ipv4"}
+		]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/search_generalroute6", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/search_ospfroute", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/search_ospfv3route", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/ospfdatabase", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"response": {"areas": {"0.0.0.0": {"routerLinkStatesCount": 1}}, "asExternalLinkStatesCount": 0}}`))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/search_ospfv3database", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+
+	return mux
+}
+
+func TestFRRCollector_Update_BGPNeighborDetail(t *testing.T) {
+	server := httptest.NewServer(frrDetailMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawConnEstablished, sawConnDropped, sawLastReset, sawMessages, sawPrefixes, sawQueueDepth bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		if labels["peer"] != "10.0.0.2" {
+			continue
+		}
+		switch {
+		case strings.Contains(desc, "frr_bgp_peer_connections_established_total"):
+			sawConnEstablished = true
+			if v := getMetricValue(m); v != 2 {
+				t.Errorf("connections_established_total: want 2, got %v", v)
+			}
+		case strings.Contains(desc, "frr_bgp_peer_connections_dropped_total"):
+			sawConnDropped = true
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("connections_dropped_total: want 1, got %v", v)
+			}
+		case strings.Contains(desc, "frr_bgp_peer_last_reset_seconds"):
+			sawLastReset = true
+			if v := getMetricValue(m); v != 5 {
+				t.Errorf("last_reset_seconds: want 5, got %v", v)
+			}
+		case strings.Contains(desc, "frr_bgp_peer_messages_by_type_total"):
+			sawMessages = true
+		case strings.Contains(desc, "frr_bgp_peer_prefixes_accepted"):
+			sawPrefixes = true
+			if labels["af"] == "ipv4" {
+				if v := getMetricValue(m); v != 20 {
+					t.Errorf("prefixes_accepted{af=ipv4}: want 20, got %v", v)
+				}
+			}
+		case strings.Contains(desc, "frr_bgp_peer_queue_depth"):
+			sawQueueDepth = true
+		}
+	}
+	if !sawConnEstablished || !sawConnDropped || !sawLastReset || !sawMessages || !sawPrefixes || !sawQueueDepth {
+		t.Errorf("missing BGP neighbor-detail metrics: established=%v dropped=%v lastReset=%v messages=%v prefixes=%v queueDepth=%v",
+			sawConnEstablished, sawConnDropped, sawLastReset, sawMessages, sawPrefixes, sawQueueDepth)
+	}
+}
+
+func TestFRRCollector_Update_OSPFInterfaceDetail(t *testing.T) {
+	server := httptest.NewServer(frrDetailMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawUp, sawCost, sawNeighbors, sawAdjacent bool
+	stateVals := map[string]float64{}
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		if labels["interface"] != "em0" {
+			continue
+		}
+		switch {
+		case strings.Contains(desc, "frr_ospf_interface_up"):
+			sawUp = true
+			if v := getMetricValue(m); v != 1 {
+				t.Errorf("ospf_interface_up: want 1, got %v", v)
+			}
+		case strings.Contains(desc, "frr_ospf_interface_cost"):
+			sawCost = true
+			if v := getMetricValue(m); v != 10 {
+				t.Errorf("ospf_interface_cost: want 10, got %v", v)
+			}
+		case strings.Contains(desc, "frr_ospf_interface_neighbors_adjacent"):
+			sawAdjacent = true
+		case strings.Contains(desc, "frr_ospf_interface_neighbors\""):
+			sawNeighbors = true
+		case strings.Contains(desc, "frr_ospf_interface_state"):
+			stateVals[labels["state"]] = getMetricValue(m)
+		}
+	}
+	if !sawUp || !sawCost || !sawNeighbors || !sawAdjacent {
+		t.Errorf("missing OSPF interface-detail metrics: up=%v cost=%v neighbors=%v adjacent=%v",
+			sawUp, sawCost, sawNeighbors, sawAdjacent)
+	}
+	if len(stateVals) != 6 {
+		t.Fatalf("expected 6 enum-style state series, got %d: %v", len(stateVals), stateVals)
+	}
+	if stateVals["DR"] != 1 {
+		t.Errorf("state=DR: want 1, got %v", stateVals["DR"])
+	}
+	for _, s := range []string{"BDR", "DROther", "PointToPoint", "Waiting", "Down"} {
+		if stateVals[s] != 0 {
+			t.Errorf("state=%s: want 0, got %v", s, stateVals[s])
+		}
+	}
+}
+
+// TestFRRCollector_Update_OSPFv3DisabledEmitsNoMetrics verifies that the
+// captured OSPFv3 disabled/empty shape (`{"response":[]}`) results in no
+// ospfv3_* series, mirroring the dev-box lab's environmental gap (no IPv6
+// stack -> ospf6d disabled).
+func TestFRRCollector_Update_OSPFv3DisabledEmitsNoMetrics(t *testing.T) {
+	server := httptest.NewServer(frrDetailMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "frr_ospfv3_") {
+			t.Errorf("expected no ospfv3_* series when ospf6d is disabled, got %s", m.Desc().String())
+		}
+	}
+}
+
+// TestFRRCollector_Update_RoutesDisabledByDefault verifies the opt-in
+// routing-state volume gauges (#199) are absent unless SetRoutesEnabled(true)
+// is called, and that FetchFRRRouteVolumes' endpoints are never even hit when
+// disabled (no handlers registered for them -> would 404 into a hard error if
+// called, since they're not plugin-gated from this test's point of view).
+func TestFRRCollector_Update_RoutesDisabledByDefault(t *testing.T) {
+	// Deliberately does NOT register the search_*/ospfdatabase endpoints, so a
+	// call to FetchFRRRouteVolumes while disabled would either 404 silently
+	// (tolerated) or, if somehow miswired to be mandatory, surface as an error.
+	mux := frrCollectorMux(t)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "frr_route_count") || strings.Contains(desc, "frr_route_nexthop_count") ||
+			strings.Contains(desc, "frr_ospf_route_count") || strings.Contains(desc, "frr_ospfv3_route_count") ||
+			strings.Contains(desc, "frr_ospf_lsa_count") || strings.Contains(desc, "frr_ospfv3_lsa_count") {
+			t.Errorf("expected no routing-volume series when routes disabled (default), got %s", desc)
+		}
+	}
+}
+
+func TestFRRCollector_Update_RoutesEnabled(t *testing.T) {
+	server := httptest.NewServer(frrDetailMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetRoutesEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawRouteCount, sawOSPFLSA bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		switch {
+		case strings.Contains(desc, "frr_route_count"):
+			sawRouteCount = true
+			if labels["af"] == "ipv4" && labels["protocol"] == "kernel" {
+				if v := getMetricValue(m); v != 1 {
+					t.Errorf("route_count{af=ipv4,protocol=kernel}: want 1, got %v", v)
+				}
+			}
+		case strings.Contains(desc, "frr_ospf_lsa_count"):
+			sawOSPFLSA = true
+		}
+	}
+	if !sawRouteCount {
+		t.Error("expected frr_route_count series when routes enabled")
+	}
+	if !sawOSPFLSA {
+		t.Error("expected frr_ospf_lsa_count series when routes enabled")
+	}
+}

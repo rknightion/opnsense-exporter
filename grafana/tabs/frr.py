@@ -6,12 +6,27 @@ Plugin-gated: tab and all rows hidden unless FRR metrics are present.
 
 Counters (bgp_peer_messages_received/sent_total,
 bfd_peer_control_packets_received/sent_total,
-bfd_peer_session_up/down_events_total, ospf_area_spf_executed_total)
+bfd_peer_session_up/down_events_total, ospf_area_spf_executed_total,
+bgp_peer_connections_established/dropped_total, bgp_peer_messages_by_type_total)
 are cumulative -> rate().
 Gauges shown raw: service_running, bgp_peers_total, bgp_failed_peers,
 bgp_rib_entries, bgp_peer_up, bgp_peer_prefixes_received/sent,
 bgp_peer_uptime_seconds, ospf_neighbors_total, ospf_neighbor_adjacency,
-ospf_area_*, bfd_peers_total, bfd_peer_up, bfd_peer_uptime_seconds.
+ospf_area_*, bfd_peers_total, bfd_peer_up, bfd_peer_uptime_seconds,
+bgp_peer_last_reset_seconds, bgp_peer_prefixes_accepted, bgp_peer_queue_depth,
+ospf_interface_up/cost/neighbors/neighbors_adjacent, ospfv3_interface_up/cost,
+ospfv3_area_lsa_count, ospfv3_interface_pending_lsa, and (opt-in) route_count,
+route_nexthop_count, ospf/ospfv3_route_count, ospf/ospfv3_lsa_count.
+
+ospf_interface_state/ospfv3_interface_state are enum-style gauges: one series
+per (interface, state) with exactly one state at value 1 per interface. Shown
+as an instant table filtered to the active row (value == 1), not a
+statetimeline.
+
+The routing-state volume gauges (route_count, route_nexthop_count,
+ospf_route_count, ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count) are
+opt-in (--exporter.enable-frr-routes) and gated behind their own
+has_frr_routes sentinel/row, since they are absent unless that flag is set.
 """
 
 from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
@@ -20,6 +35,8 @@ from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
 def build(b: Builder):
     b.sentinel("has_frr",
                "label_values(opnsense_frr_service_running, __name__)")
+    b.sentinel("has_frr_routes",
+               "label_values(opnsense_frr_route_count, __name__)")
 
     # ------------------------------------------------------------------ #
     # Row 1: FRR Service                                                   #
@@ -108,6 +125,50 @@ def build(b: Builder):
     )
 
     # ------------------------------------------------------------------ #
+    # Row 2b: BGP Peer Session Detail (flaps, per-message-type, per-AF)    #
+    # ------------------------------------------------------------------ #
+    bgp_conn_flaps = b.ts(
+        "BGP Peer Connection Flap Rate",
+        [
+            (f'rate({sel("opnsense_frr_bgp_peer_connections_established_total")}[{RATE}])',
+             "{{peer}} established"),
+            (f'rate({sel("opnsense_frr_bgp_peer_connections_dropped_total")}[{RATE}])',
+             "{{peer}} dropped"),
+        ],
+        unit="short", w=12, h=8,
+        desc="Rate of BGP session establish/drop events per peer — the canonical flap counters.",
+    )
+    bgp_last_reset = b.ts(
+        "BGP Peer Time Since Last Reset",
+        [(sel("opnsense_frr_bgp_peer_last_reset_seconds"), "{{peer}}")],
+        unit="s", w=12, h=8,
+        desc="Time since this BGP peer session was last reset. A recent drop to a low value "+
+             "indicates a reset even if the session has since re-established.",
+    )
+    bgp_msg_by_type_rate = b.ts(
+        "BGP Message Rate by Type",
+        [(f'rate({sel("opnsense_frr_bgp_peer_messages_by_type_total")}[{RATE}])',
+          "{{peer}} {{type}} {{direction}}")],
+        unit="short", w=12, h=8,
+        desc="Per-message-type BGP rate per peer (open/update/keepalive/notification/"+
+             "route_refresh/capability) — separates UPDATE churn from KEEPALIVE noise.",
+    )
+    bgp_pfx_accepted = b.ts(
+        "BGP Prefixes Accepted (post-policy)",
+        [(sel("opnsense_frr_bgp_peer_prefixes_accepted"), "{{peer}} {{af}}")],
+        unit="short", w=12, h=8,
+        desc="Number of prefixes accepted from each BGP peer after inbound policy "+
+             "(complements the pre-policy BGP Prefixes Received panel above).",
+    )
+    bgp_queue_depth = b.ts(
+        "BGP Peer Work-Queue Depth",
+        [(sel("opnsense_frr_bgp_peer_queue_depth"), "{{peer}} {{direction}}")],
+        unit="short", w=24, h=8,
+        desc="Current BGP in/out work-queue depth per peer — a persistently non-zero value "+
+             "indicates the peer is falling behind processing updates.",
+    )
+
+    # ------------------------------------------------------------------ #
     # Row 3: OSPF                                                          #
     # ------------------------------------------------------------------ #
     ospf_adj = b.statetimeline(
@@ -141,6 +202,123 @@ def build(b: Builder):
           "area {{area}}")],
         unit="short", w=24, h=8,
         desc="OSPF SPF (shortest path first) execution rate per area.",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 3b: OSPF Interface Detail                                       #
+    # ------------------------------------------------------------------ #
+    ospf_iface_up = b.statetimeline(
+        "OSPF Interface Link Status",
+        [(sel("opnsense_frr_ospf_interface_up"), "{{interface}} (area {{area}})")],
+        UPDOWN, w=12, h=8,
+        desc="OSPF interface underlying link state over time (ifUp).",
+    )
+    ospf_iface_cost = b.ts(
+        "OSPF Interface Cost",
+        [(sel("opnsense_frr_ospf_interface_cost"), "{{interface}} (area {{area}})")],
+        unit="short", w=6, h=8,
+        desc="OSPF cost configured per interface.",
+    )
+    ospf_iface_nbrs = b.ts(
+        "OSPF Interface Neighbors",
+        [
+            (sel("opnsense_frr_ospf_interface_neighbors"), "{{interface}} total"),
+            (sel("opnsense_frr_ospf_interface_neighbors_adjacent"), "{{interface}} adjacent"),
+        ],
+        unit="short", w=6, h=8,
+        desc="OSPF neighbor and Full-adjacency counts per interface.",
+    )
+    ospf_iface_state = b.table(
+        "OSPF Interface State (DR/BDR election)",
+        [f'{sel("opnsense_frr_ospf_interface_state")} == 1'],
+        w=24, h=6,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"interface": "Interface", "state": "State"},
+        desc="Current OSPF interface state (DR/BDR/DROther/PointToPoint/Waiting/Down) — one "+
+             "row per interface, the active state only.",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 3c: OSPFv3 (ospf6) Parity — UNVERIFIED against a live v3         #
+    # adjacency; see opnsense/frr.go's VERIFICATION banner. There is no    #
+    # OSPFv3 neighbor endpoint, so interface state is the adjacency proxy. #
+    # ------------------------------------------------------------------ #
+    ospfv3_iface_up = b.statetimeline(
+        "OSPFv3 Interface Status",
+        [(sel("opnsense_frr_ospfv3_interface_up"), "{{interface}} (area {{area}})")],
+        UPDOWN, w=12, h=8,
+        desc="OSPFv3 (ospf6) interface up/down state over time. No OSPFv3 neighbor endpoint "+
+             "exists in the quagga plugin API, so interface state is the best available "+
+             "adjacency proxy.",
+    )
+    ospfv3_iface_cost = b.ts(
+        "OSPFv3 Interface Cost",
+        [(sel("opnsense_frr_ospfv3_interface_cost"), "{{interface}} (area {{area}})")],
+        unit="short", w=6, h=8,
+        desc="OSPFv3 cost configured per interface.",
+    )
+    ospfv3_area_lsa = b.ts(
+        "OSPFv3 Area LSA Count",
+        [(sel("opnsense_frr_ospfv3_area_lsa_count"), "area {{area}}")],
+        unit="short", w=6, h=8,
+        desc="Number of LSAs in the OSPFv3 LSDB per area (v3 parity with OSPF Area LSA Count).",
+    )
+    ospfv3_iface_state = b.table(
+        "OSPFv3 Interface State (DR/BDR election)",
+        [f'{sel("opnsense_frr_ospfv3_interface_state")} == 1'],
+        w=12, h=6,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"interface": "Interface", "state": "State"},
+        desc="Current OSPFv3 interface state — one row per interface, the active state only.",
+    )
+    ospfv3_pending_lsa = b.ts(
+        "OSPFv3 Interface Pending LSA (Flooding Backlog)",
+        [(sel("opnsense_frr_ospfv3_interface_pending_lsa"), "{{interface}} {{queue}}")],
+        unit="short", w=12, h=8,
+        desc="Pending LSUpdate/LSAck queue depth per OSPFv3 interface — a growing backlog "+
+             "indicates an LSA flooding problem.",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 3d: Routing-State Volume (opt-in, --exporter.enable-frr-routes)  #
+    # ------------------------------------------------------------------ #
+    route_count = b.ts(
+        "Zebra RIB Route Count",
+        [(sel("opnsense_frr_route_count"), "{{af}} {{protocol}}")],
+        unit="short", w=12, h=8,
+        desc="Number of distinct routed prefixes in the zebra RIB, by address family and "+
+             "protocol — trend signal for redistribution accidents or route leaks.",
+    )
+    route_nexthop_count = b.ts(
+        "Zebra RIB Nexthop Count (ECMP Width)",
+        [(sel("opnsense_frr_route_nexthop_count"), "{{af}} {{protocol}}")],
+        unit="short", w=12, h=8,
+        desc="Number of nexthop rows in the zebra RIB, by address family and protocol — "+
+             "diverges from Route Count when ECMP is active.",
+    )
+    ospf_route_count = b.ts(
+        "OSPF Route Table Count",
+        [(sel("opnsense_frr_ospf_route_count"), "{{type}}")],
+        unit="short", w=12, h=8,
+        desc="Number of rows in the OSPF route table, by route type (N/R/N E2/...).",
+    )
+    ospfv3_route_count = b.ts(
+        "OSPFv3 Route Table Count",
+        [(sel("opnsense_frr_ospfv3_route_count"), "{{type}}")],
+        unit="short", w=12, h=8,
+        desc="Number of rows in the OSPFv3 route table, by route type.",
+    )
+    ospf_lsa_count = b.ts(
+        "OSPF LSDB Count",
+        [(sel("opnsense_frr_ospf_lsa_count"), "area {{area}} {{lsa_type}}")],
+        unit="short", w=12, h=8,
+        desc="Number of LSAs in the OSPF LSDB, by area and LSA type — catches LSA storms.",
+    )
+    ospfv3_lsa_count = b.ts(
+        "OSPFv3 LSDB Count",
+        [(sel("opnsense_frr_ospfv3_lsa_count"), "{{scope}}")],
+        unit="short", w=12, h=8,
+        desc="Number of LSAs in the OSPFv3 LSDB, by flooding scope.",
     )
 
     # ------------------------------------------------------------------ #
@@ -189,10 +367,25 @@ def build(b: Builder):
               [bgp_peer_state, bgp_pfx_recv, bgp_pfx_sent,
                bgp_uptime, bgp_msg_rate],
               present="has_frr"),
+        b.row("BGP Peer Session Detail",
+              [bgp_conn_flaps, bgp_last_reset, bgp_msg_by_type_rate,
+               bgp_pfx_accepted, bgp_queue_depth],
+              present="has_frr"),
         b.row("OSPF",
               [ospf_adj, ospf_area_ifaces, ospf_area_full,
                ospf_lsa, ospf_spf],
               present="has_frr"),
+        b.row("OSPF Interface Detail",
+              [ospf_iface_up, ospf_iface_cost, ospf_iface_nbrs, ospf_iface_state],
+              present="has_frr"),
+        b.row("OSPFv3 (ospf6) Parity",
+              [ospfv3_iface_up, ospfv3_iface_cost, ospfv3_area_lsa,
+               ospfv3_iface_state, ospfv3_pending_lsa],
+              present="has_frr"),
+        b.row("Routing-State Volume (opt-in: --exporter.enable-frr-routes)",
+              [route_count, route_nexthop_count, ospf_route_count,
+               ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count],
+              present="has_frr_routes"),
         b.row("BFD",
               [bfd_state, bfd_uptime, bfd_pkt_rate, bfd_events],
               present="has_frr"),

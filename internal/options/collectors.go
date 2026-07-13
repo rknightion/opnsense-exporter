@@ -226,6 +226,13 @@ var (
 		"exporter.disable-frr",
 		"Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FRR").Default("false").Bool()
+	frrRoutesEnabled = kingpin.Flag(
+		"exporter.enable-frr-routes",
+		"Enable FRR routing-state volume gauges (zebra RIB / OSPF route table / LSDB counts by "+
+			"protocol, route type, area and LSA type — never per-prefix or per-LSA series). Off by "+
+			"default: the underlying bootgrid endpoints have no success-body caching and their "+
+			"payload size scales with route-table size (up to 6 extra vtysh execs per scrape).",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES").Default("false").Bool()
 	monitCollectorDisabled = kingpin.Flag(
 		"exporter.disable-monit",
 		"Disable the scraping of Monit service check status (silent when Monit is not running)",
@@ -382,6 +389,7 @@ type CollectorsDisableSwitch struct {
 	HAProxy                bool
 	Nginx                  bool
 	FRR                    bool
+	FRRRoutes              bool
 	Monit                  bool
 	CrowdSec               bool
 	NUT                    bool
@@ -469,6 +477,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		HAProxy:                !*haproxyCollectorDisabled,
 		Nginx:                  !*nginxCollectorDisabled,
 		FRR:                    !*frrCollectorDisabled,
+		FRRRoutes:              *frrRoutesEnabled,
 		Monit:                  !*monitCollectorDisabled,
 		CrowdSec:               !*crowdsecCollectorDisabled,
 		NUT:                    !*nutCollectorDisabled,
@@ -565,6 +574,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-haproxy", Subsystem: "haproxy"},
 	{Flag: "exporter.disable-nginx", Subsystem: "nginx"},
 	{Flag: "exporter.disable-frr", Subsystem: "frr"},
+	{Flag: "exporter.enable-frr-routes", Subsystem: "frr", Detail: true},
 	{Flag: "exporter.disable-monit", Subsystem: "monit"},
 	{Flag: "exporter.disable-crowdsec", Subsystem: "crowdsec"},
 	{Flag: "exporter.disable-nut", Subsystem: "nut"},
