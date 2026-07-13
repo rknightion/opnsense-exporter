@@ -1,0 +1,15 @@
+{
+  "endpoint": "torHiddenServices",
+  "method": "GET",
+  "path": "api/tor/service/get_hidden_services",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

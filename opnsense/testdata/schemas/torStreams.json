@@ -1,0 +1,15 @@
+{
+  "endpoint": "torStreams",
+  "method": "GET",
+  "path": "api/tor/service/streams",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

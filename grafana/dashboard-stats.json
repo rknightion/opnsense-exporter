@@ -1,7 +1,7 @@
 {
-  "metrics": 656,
-  "panels": 532,
-  "tabs": 33,
+  "metrics": 662,
+  "panels": 541,
+  "tabs": 34,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -35,6 +35,7 @@
     "Traffic Shaper",
     "HA Sync",
     "Chrony",
+    "Tor",
     "Diagnostics"
   ]
 }

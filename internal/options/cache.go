@@ -93,6 +93,12 @@ func CacheTTLs() EndpointCacheTTLs {
 		// successful bodies are re-fetched every scrape like their alerts/
 		// decisions/bouncers/machines siblings.
 		ttls["crowdsecVersion"] = *cacheTTL
+
+		// Tor hidden-service hostnames (#206): the .onion hostname file for a
+		// configured hidden service is written once when Tor provisions it and
+		// otherwise wholly static — unlike circuits/streams, which are live
+		// control-port state and must never be cached.
+		ttls["torHiddenServices"] = *cacheTTL
 	}
 
 	return ttls

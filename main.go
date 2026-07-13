@@ -281,6 +281,12 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSMARTCollector())
 		logger.Info("smart collector disabled (opt-in via --exporter.enable-smart)")
 	}
+	if !collectorsSwitches.Tor {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutTorCollector())
+		logger.Info("tor collector disabled (opt-in via --exporter.enable-tor)")
+	} else {
+		logger.Info("tor collector enabled")
+	}
 	if !collectorsSwitches.DynDNS {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDynDNSCollector())
 		logger.Info("dyndns collector disabled")

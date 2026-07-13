@@ -79,6 +79,7 @@ const (
 	HardwareSubsystem      = "hardware"
 	VnstatSubsystem        = "vnstat"
 	NetbirdSubsystem       = "netbird"
+	TorSubsystem           = "tor"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -141,6 +142,7 @@ var SubsystemDisplayNames = map[string]string{
 	HardwareSubsystem:      "Hardware",
 	VnstatSubsystem:        "Vnstat Traffic Accounting",
 	NetbirdSubsystem:       "NetBird",
+	TorSubsystem:           "Tor",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -559,6 +561,12 @@ func WithoutVnstatCollector() Option {
 // removes the netbird collector from the list of collectors
 func WithoutNetbirdCollector() Option {
 	return withoutCollectorInstance(NetbirdSubsystem)
+}
+
+// WithoutTorCollector Option
+// removes the tor collector from the list of collectors
+func WithoutTorCollector() Option {
+	return withoutCollectorInstance(TorSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

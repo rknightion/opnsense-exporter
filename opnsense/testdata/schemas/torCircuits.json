@@ -1,0 +1,15 @@
+{
+  "endpoint": "torCircuits",
+  "method": "GET",
+  "path": "api/tor/service/circuits",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "any"
+    }
+  ]
+}

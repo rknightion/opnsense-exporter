@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 656
-- **Gauges:** 438
+- **Total metrics:** 662
+- **Gauges:** 444
 - **Counters:** 218
 
 ## General
@@ -850,6 +850,17 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_temperature_celsius | Gauge | device, type, device_seq | Temperature reading in Celsius | --exporter.disable-temperature |
+
+## Tor
+
+| Metric Name | Type | Labels | Description | Enable Flag |
+|-------------|------|--------|-------------|-------------|
+| opnsense_tor_control_port_up | Gauge | --- | Whether the Tor control port answered the last circuit and stream query (1 = up, 0 = unreachable/misconfigured) | --exporter.enable-tor |
+| opnsense_tor_circuits | Gauge | status | Number of Tor circuits by build status (unrecognised status values are bucketed as \"other\") | --exporter.enable-tor |
+| opnsense_tor_circuits_by_purpose | Gauge | purpose | Number of Tor circuits by purpose (unrecognised purpose values are bucketed as \"other\") | --exporter.enable-tor |
+| opnsense_tor_streams | Gauge | status | Number of Tor streams by status (unrecognised status values are bucketed as \"other\"); never labeled by destination | --exporter.enable-tor |
+| opnsense_tor_hidden_services | Gauge | --- | Number of configured Tor hidden services | --exporter.enable-tor |
+| opnsense_tor_hidden_service_hostname_available | Gauge | service | Whether a .onion hostname has been provisioned for a configured hidden service (1 = available, 0 = not available); the hostname itself is never exposed | --exporter.enable-tor |
 
 ## Traffic Shaper
 

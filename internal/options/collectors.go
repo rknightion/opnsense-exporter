@@ -160,6 +160,15 @@ var (
 		"exporter.enable-smart",
 		"Enable the SMART disk health collector. Off by default: each scrape does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").Bool()
+	// Tor is opt-in (default-off, #206): each scrape costs two extra configd execs
+	// (a Ruby script dialing the Tor control port for circuit-status and
+	// stream-status) on top of the plugin/control-port setup dependency, matching
+	// the CLAUDE.md convention that reserves enable-* for collectors with extra
+	// per-scrape API cost.
+	torEnabled = kingpin.Flag(
+		"exporter.enable-tor",
+		"Enable the Tor circuit/stream telemetry collector (control-port GETINFO via the os-tor plugin). Off by default: each scrape does two extra configd execs to query the control port, and requires the plugin's control port + password to be configured. Silent when the os-tor plugin is absent.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_TOR").Default("false").Bool()
 	dyndnsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-dyndns",
 		"Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent)",
@@ -330,6 +339,7 @@ type CollectorsDisableSwitch struct {
 	Dhcpv4Details          bool
 	ACME                   bool
 	SMART                  bool
+	Tor                    bool
 	DynDNS                 bool
 	Gateways               bool
 	Syslog                 bool
@@ -410,6 +420,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Dhcpv4Details:          *dhcpv4DetailsEnabled,
 		ACME:                   !*acmeCollectorDisabled,
 		SMART:                  *smartEnabled,
+		Tor:                    *torEnabled,
 		DynDNS:                 !*dyndnsCollectorDisabled,
 		Gateways:               !*gatewaysCollectorDisabled,
 		Syslog:                 !*syslogCollectorDisabled,
@@ -499,6 +510,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-dhcpv4-details", Subsystem: "dhcpv4", Detail: true},
 	{Flag: "exporter.disable-acme", Subsystem: "acme"},
 	{Flag: "exporter.enable-smart", Subsystem: "smart"},
+	{Flag: "exporter.enable-tor", Subsystem: "tor"},
 	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
 	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
 	{Flag: "exporter.disable-syslog", Subsystem: "syslog"},

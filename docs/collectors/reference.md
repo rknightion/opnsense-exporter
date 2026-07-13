@@ -56,6 +56,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | System | system | 12 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
 | Tailscale | tailscale | 11 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
+| Tor | tor | 6 | Disabled | --exporter.enable-tor | OPNSENSE_EXPORTER_ENABLE_TOR |
 | Traffic Shaper | trafficshaper | 14 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
 | Unbound DNS | unbound_dns | 44 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPNSENSE_EXPORTER_ENABLE_VNSTAT |
