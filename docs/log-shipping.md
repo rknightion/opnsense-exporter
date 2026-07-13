@@ -225,13 +225,85 @@ Stated honestly, because this pipeline is pull-based over a lossy source:
 - **One logs-enabled instance per firewall.** Running multiple logs-enabled
   replicas against the same firewall double-ships.
 
+## Sources
+
+### diaglog — the generic diagnostics-log reader
+
+`diaglog` is one Source that polls `api/diagnostics/log/<module>/<scope>` for
+every module/scope pair listed in `--logs.scopes`, and multiplexes them all
+through a single poller — there is one `source="diaglog"` label/state-file
+entry covering every configured scope, not one per scope. This is OPNsense's
+generic event backbone: config-change audit entries, dpinger gateway/latency
+alarms, CARP and other kernel events, captive-portal connect/disconnect, and
+DHCP lease events (`DHCPACK`/`DHCPREQUEST`/…) are all served through this one
+reader by selecting the right scope, rather than needing a dedicated API per
+event type (mostly there isn't one — see the caveat below).
+
+Enable/disable independently of the scope list with `--logs.diaglog.enabled`
+(default `true`). The default `--logs.scopes` covers five high-signal core
+scopes:
+
+| module/scope | what it carries |
+|---|---|
+| `core/audit` | Config-change trail (`Config::auditLogChange()`), API/GUI action log, login success/failure, sudo/sshd |
+| `core/gateways` | dpinger latency alarms and gateway up/down state transitions (no dedicated event API exists for these) |
+| `core/portalauth` | Captive-portal connect/disconnect |
+| `core/system` | Kernel messages, including CARP MASTER/BACKUP transitions |
+| `core/configd` | configd service-lifecycle events |
+
+Other scopes exist (`core/system` also covers general kernel noise; DHCP scopes
+are `core/dhcpd` for the legacy ISC server, `core/kea` and `core/dnsmasq` for
+those backends; plugin-provided scopes like `haproxy`/`suricata`/`ipsec` follow
+the same `api/diagnostics/log/<module>/<scope>` shape) — add any of them to
+`--logs.scopes` as `module/scope` pairs, comma-separated
+(`core/audit,core/gateways,core/portalauth,core/system,core/configd,core/kea`).
+Only `core/audit`, `core/gateways`, `core/portalauth`, `core/system`, and
+`core/configd` are exercised by the daily live-canary; a scope you add yourself
+is not schema-validated against a live box.
+
+**Cursor mechanics.** OPNsense's search endpoint pages backwards from newest to
+oldest and accepts a `validFrom` epoch-seconds bound: the server stops scanning
+the instant it passes a record older than `validFrom`, so the bound is
+**inclusive** — the record exactly at `validFrom` is returned again on the next
+poll. `diaglog` tracks one cursor per scope, dedupes that repeated boundary
+record client-side, and persists cursors (with `--logs.state-file` set) as
+`module/scope -> last-seen epoch`. A scope with no prior cursor (first run, or
+a scope newly added to `--logs.scopes`) bootstraps to "now" rather than
+replaying the box's full retained log for that scope — consistent with the
+pipeline's own "restart resumes from now" default — so nothing is shipped for
+that scope until the following poll.
+
+**Known limitation — timestamp timezone.** The rows this endpoint returns
+carry a naive wall-clock timestamp with no UTC offset
+(`"2026-07-13T20:22:11"`), and OPNsense's own backend interprets `validFrom`
+the same naive way, in the box's **local system timezone**. `diaglog` reads
+this timestamp as UTC, matching how this exporter already treats every other
+naive OPNsense timestamp. If the box's system clock is not UTC, the computed
+cursor is off by the box's UTC offset — harmless (just a wider rescan) when the
+box is behind UTC, but capable of skipping up to that many seconds of events
+immediately after a cursor advance when the box is ahead of UTC. Run the box on
+UTC to avoid this entirely; see
+[issue #230](https://github.com/rknightion/opnsense-exporter/issues/230) for
+the tracking discussion if you need proper timezone-aware correction.
+
+**Never the `/live` variant.** OPNsense also exposes
+`api/diagnostics/log/<module>/<scope>/live`, an SSE stream. It tails the
+scope's active log file with `tail -f` (not `-F`), so it silently stops
+receiving new lines the moment that file rotates — keepalive frames keep
+flowing, but no more events do. `diaglog` only ever uses the paged `validFrom`
+search action, never `/live`.
+
+**Attributes.** Every record carries `module`, `scope`, `process_name`, `pid`,
+and `facility`. `core/audit` config-change lines are additionally parsed into
+`config_user`, `config_revision`, and `config_uri`.
+
 ## Configuration
 
 The pipeline flags are listed in the [Configuration reference](configuration.md);
 the pipeline-level flags are `--logs.enabled`, `--logs.sink`,
 `--logs.poll-interval` (floor 5s), `--logs.buffer-size`, `--logs.batch-max`, and
 `--logs.state-file`. Per-source `--logs.<source>.enabled` flags are documented
-alongside each source as it lands.
+alongside each source above as it lands.
 
 ## Self-metrics
 

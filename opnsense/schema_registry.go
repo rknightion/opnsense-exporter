@@ -41,6 +41,7 @@ var schemaRegistry = map[EndpointName]any{
 	"crowdsecMachines":              crowdsecSearchEnvelope{},
 	"crowdsecServiceStatus":         serviceStatusResponse{},
 	"dechwPowerStatus":              dechwPowerStatusResponse{},
+	"diagLog":                       diagLogResponse{},
 	"crowdsecCollections":           crowdsecSearchEnvelope{},
 	"crowdsecScenarios":             crowdsecSearchEnvelope{},
 	"crowdsecParsers":               crowdsecSearchEnvelope{},

@@ -50,6 +50,11 @@ var captureRequests = map[EndpointName]CaptureRequest{
 	// window at the newest 1000 rows regardless of rowCount, so the capture probes
 	// with the same rowCount the live Fetch call uses (#233).
 	"unboundSearchQueries": {ContentType: formContentType, Body: "current=1&rowCount=1000"},
+	// diagLog's module/scope are path segments, not a body %s substitution — the
+	// canary resolves a representative path (core/audit, always present on any
+	// box) via getPathParamResolvers in cmd/apidrift/probe.go, alongside this
+	// fixed body.
+	"diagLog": {ContentType: jsonContentType, Body: `{"rowCount":5,"current":1}`},
 }
 
 // CaptureRequestFor returns the capture request for a POST endpoint. GET

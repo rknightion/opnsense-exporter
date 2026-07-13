@@ -104,26 +104,12 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 	method := "GET"
 	contentType, body := "", ""
 	path := s.Path
-	if resolver, ok := getPathParamResolvers[s.Endpoint]; ok {
-		// GET endpoint whose OPNsense route embeds positional path segments —
-		// unlike vnstat's get_json_data (an optional query string the router
-		// never requires), these have no valid "bare" request at all: a
-		// missing {provider}/{group} 404s at the routing layer, verified live
-		// (#207). Resolve the live segments here so the daily canary probes
-		// the real route instead of permanently reporting a false Absent.
-		segs, err := resolver(p)
-		if err != nil {
-			res.ProbeErr = fmt.Sprintf("resolving path parameter: %v", err)
-			return res
-		}
-		if len(segs) == 0 {
-			res.SkippedParam = true
-			return res
-		}
-		for _, seg := range segs {
-			path = path + "/" + url.PathEscape(seg)
-		}
-	} else if req, ok := opnsense.CaptureRequestFor(opnsense.EndpointName(s.Endpoint)); ok {
+
+	// A POST endpoint's own body is resolved first (independent of any path
+	// resolver below): diagLog is both POST (a fixed captureRequests body) AND
+	// path-parameterized (module/scope segments), unlike every earlier POST
+	// endpoint, which was body-parameterized at most.
+	if req, ok := opnsense.CaptureRequestFor(opnsense.EndpointName(s.Endpoint)); ok {
 		method, contentType, body = "POST", req.ContentType, req.Body
 		if req.Parameterized {
 			param, err := p.resolveParam(s.Endpoint)
@@ -141,6 +127,29 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 			} else {
 				body = fmt.Sprintf(body, url.QueryEscape(param))
 			}
+		}
+	}
+
+	if resolver, ok := getPathParamResolvers[s.Endpoint]; ok {
+		// Endpoint whose OPNsense route embeds positional path segments — unlike
+		// vnstat's get_json_data (an optional query string the router never
+		// requires), these have no valid "bare" request at all: a missing
+		// {provider}/{group} 404s at the routing layer, verified live (#207).
+		// Resolve the segments here so the daily canary probes the real route
+		// instead of permanently reporting a false Absent. This runs regardless
+		// of method — combined with the POST branch above for diagLog, or alone
+		// (leaving method GET) for the captive-portal voucher endpoints.
+		segs, err := resolver(p)
+		if err != nil {
+			res.ProbeErr = fmt.Sprintf("resolving path parameter: %v", err)
+			return res
+		}
+		if len(segs) == 0 {
+			res.SkippedParam = true
+			return res
+		}
+		for _, seg := range segs {
+			path = path + "/" + url.PathEscape(seg)
 		}
 	}
 
@@ -180,6 +189,13 @@ func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption
 // e.g. no voucher provider configured) — probeOne turns that into
 // SkippedParam, not an error.
 var getPathParamResolvers = map[string]func(p *prober) ([]string, error){
+	// diagLog's module/scope are configured, not discovered from live box
+	// state (unlike the voucher provider/group below) — core/audit is a
+	// built-in scope guaranteed present on any OPNsense install, so this is a
+	// constant, never SkippedParam.
+	"diagLog": func(*prober) ([]string, error) {
+		return []string{"core", "audit"}, nil
+	},
 	"captivePortalVoucherGroups": func(p *prober) ([]string, error) {
 		provider, err := p.firstCaptivePortalVoucherProvider()
 		if err != nil || provider == "" {

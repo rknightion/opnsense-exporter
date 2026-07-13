@@ -4,6 +4,7 @@
   "captivePortalServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "chronyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "crowdsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "diagLog": { "knownExtraTopKeys": ["filters"], "note": "echoes the request's searchPhrase filter string back (always empty in our capture requests, which never set it); not modelled" },
   "dnsmasqServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "dyndnsServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "firewallLog": {
