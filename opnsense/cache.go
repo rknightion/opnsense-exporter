@@ -223,6 +223,10 @@ func PluginGatedEndpoints() []EndpointName {
 		"dhcpv6Leases", "dhcpv6Prefixes", "dyndnsAccounts", "haproxyCounters",
 		"haproxyInfo", "ipsecPhase1", "ipsecPools", "monitStatus", "nginxVts",
 		"nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
+		"chronySources", "chronySourceStats", "chronyTracking", "dechwPowerStatus",
+		"dhcpv4", "dhcpv6Leases", "dhcpv6Prefixes", "dmidecodeInfo", "dyndnsAccounts",
+		"haproxyCounters", "haproxyInfo", "ipsecPhase1", "ipsecPools", "monitStatus",
+		"nginxVts", "nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
 		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus",
 		"trafficShaperStatistics", "lldpdNeighbors",
 

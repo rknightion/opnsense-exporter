@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 624
-- **Gauges:** 417
+- **Total metrics:** 626
+- **Gauges:** 419
 - **Counters:** 207
 
 ## General
@@ -375,6 +375,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_haproxy_server_check_failures_total | Counter | backend, server | Cumulative failed health checks on this server | --exporter.disable-haproxy |
 | opnsense_haproxy_server_downtime_seconds_total | Counter | backend, server | Cumulative downtime of this server in seconds | --exporter.disable-haproxy |
 | opnsense_haproxy_server_weight | Gauge | backend, server | Current effective weight of this server | --exporter.disable-haproxy |
+
+## Hardware
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_hardware_dmi_info | Gauge | manufacturer, product, version, serial, family, bios_vendor, bios_version, bios_release | DMI system and BIOS identity as reported by dmidecode (value is always 1; use labels). Silent when the os-dmidecode plugin is absent. | --exporter.disable-hardware |
+| opnsense_hardware_psu_status | Gauge | psu | Deciso DEC-series power supply status (1 = powered, 0 = not powered). Only emitted on hardware with a GPIO power-status device; silent when the os-dec-hw plugin is absent or no such hardware is detected. | --exporter.disable-hardware |
 
 ## IDS/IPS (Suricata)
 

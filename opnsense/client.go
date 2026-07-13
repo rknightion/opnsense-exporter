@@ -221,6 +221,8 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"idsRulesets":                "api/ids/settings/list_rulesets",
 		"idsSearchInstalledRules":    "api/ids/settings/searchInstalledRules",
 		"lldpdNeighbors":             "api/lldpd/service/neighbor",
+		"dmidecodeInfo":              "api/dmidecode/service/get",
+		"dechwPowerStatus":           "api/dechw/info/power_status",
 	}
 }
 

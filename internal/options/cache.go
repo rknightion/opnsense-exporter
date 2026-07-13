@@ -44,6 +44,13 @@ func CacheTTLs() EndpointCacheTTLs {
 		ttls["cpuType"] = *cacheTTL
 		ttls["systemInformation"] = *cacheTTL
 
+		// DMI/BIOS identity (os-dmidecode plugin): manufacturer/product/serial and BIOS
+		// vendor/version/release date only change when the hardware itself changes, so
+		// this is a prime response-cache candidate. Deliberately NOT the dechw PSU status
+		// endpoint alongside it: that payload is live GPIO hardware state and must be
+		// fetched every scrape (#217).
+		ttls["dmidecodeInfo"] = *cacheTTL
+
 		// Certificate inventory: descriptions and validity windows. Expiry is alerted on
 		// a days-to-weeks horizon, so an hour of staleness is invisible; these carry no
 		// counters, only notBefore/notAfter and in-use flags.

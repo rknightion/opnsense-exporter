@@ -272,6 +272,10 @@ var (
 		"exporter.disable-lldpd",
 		"Disable the scraping of LLDP neighbor table metrics (silent when the os-lldpd plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_LLDPD").Default("false").Bool()
+	hardwareCollectorDisabled = kingpin.Flag(
+		"exporter.disable-hardware",
+		"Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_HARDWARE").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -332,6 +336,7 @@ type CollectorsDisableSwitch struct {
 	Dhcpv6Details          bool
 	BPF                    bool
 	ClamAV                 bool
+	Hardware               bool
 	ArpDetails             bool
 	NdpDetails             bool
 	Interfaces             bool
@@ -413,6 +418,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		IDS:                    !*idsCollectorDisabled,
 		IDSAlerts:              *idsAlertsEnabled,
 		LLDPD:                  !*lldpdCollectorDisabled,
+		Hardware:               !*hardwareCollectorDisabled,
 	}
 }
 
@@ -498,4 +504,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-ids", Subsystem: "ids"},
 	{Flag: "exporter.enable-ids-alerts", Subsystem: "ids", Detail: true},
 	{Flag: "exporter.disable-lldpd", Subsystem: "lldp"},
+	{Flag: "exporter.disable-hardware", Subsystem: "hardware"},
 }

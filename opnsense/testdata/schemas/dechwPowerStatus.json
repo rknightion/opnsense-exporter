@@ -1,0 +1,25 @@
+{
+  "endpoint": "dechwPowerStatus",
+  "method": "GET",
+  "path": "api/dechw/info/power_status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "pwr1",
+    "pwr2",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "pwr1",
+      "kind": "any"
+    },
+    {
+      "path": "pwr2",
+      "kind": "any"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

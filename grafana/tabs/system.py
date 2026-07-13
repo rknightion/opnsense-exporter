@@ -13,7 +13,7 @@ Covers:
   - Snapshots subsystem (3 metrics) — ZFS boot environment inventory
 """
 
-from builder import Builder, sel, epoch_ms, RATE, YESNO
+from builder import Builder, sel, epoch_ms, RATE, YESNO, UPDOWN
 
 # opnsense_system_subsystem_status_code value -> (display text, colour). OPNsense's
 # SystemStatusCode enum: 2=OK, 1=NOTICE, 0=WARNING, -1=ERROR. OK is included for
@@ -31,6 +31,8 @@ def build(b: Builder):
     # ---- sentinels ----------------------------------------------------------
     b.sentinel("has_temperature", "label_values(opnsense_temperature_celsius, __name__)")
     b.sentinel("has_smart", "label_values(opnsense_smart_device_health, __name__)")
+    b.sentinel("has_hardware_dmi", "label_values(opnsense_hardware_dmi_info, __name__)")
+    b.sentinel("has_hardware_psu", "label_values(opnsense_hardware_psu_status, __name__)")
 
     # =========================================================================
     # Row: Host Info
@@ -717,6 +719,45 @@ def build(b: Builder):
     ])
 
     # =========================================================================
+    # Row: Hardware (#217 — DMI system/BIOS identity via os-dmidecode, Deciso
+    # DEC-series PSU status via os-dec-hw. Both plugin-gated, independently
+    # installable, so each gets its own gated row.)
+    # =========================================================================
+    dmi_tbl = b.table(
+        "DMI / BIOS Identity",
+        [sel("opnsense_hardware_dmi_info")],
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "manufacturer": "Manufacturer",
+            "product": "Product",
+            "version": "Version",
+            "serial": "Serial",
+            "family": "Family",
+            "bios_vendor": "BIOS Vendor",
+            "bios_version": "BIOS Version",
+            "bios_release": "BIOS Release",
+            "opnsense_instance": "Instance",
+        },
+        w=24,
+        h=6,
+        desc="opnsense_hardware_dmi_info: DMI system/BIOS identity labels (value is always 1). "
+             "Only present when the os-dmidecode plugin is installed.",
+    )
+    row_hardware_dmi = b.row("Hardware Identity", [dmi_tbl], present="has_hardware_dmi")
+
+    psu_timeline = b.statetimeline(
+        "PSU Status",
+        [(sel("opnsense_hardware_psu_status"), "PSU {{psu}}")],
+        UPDOWN,
+        w=24,
+        h=6,
+        desc="opnsense_hardware_psu_status: Deciso DEC-series power-supply status per PSU "
+             "(1 = powered, 0 = not powered). Only present on hardware with a GPIO "
+             "power-status device (os-dec-hw plugin).",
+    )
+    row_hardware_psu = b.row("Hardware Power Supply", [psu_timeline], present="has_hardware_psu")
+
+    # =========================================================================
     # Assemble tab
     # =========================================================================
     b.tab("System & Resources", [
@@ -733,4 +774,6 @@ def build(b: Builder):
         row_smart,
         row_smart_detail,
         row_mbuf,
+        row_hardware_dmi,
+        row_hardware_psu,
     ])

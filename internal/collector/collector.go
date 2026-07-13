@@ -76,6 +76,7 @@ const (
 	ClamAVSubsystem        = "clamav"
 	IDSSubsystem           = "ids"
 	LLDPSubsystem          = "lldp"
+	HardwareSubsystem      = "hardware"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -135,6 +136,7 @@ var SubsystemDisplayNames = map[string]string{
 	ClamAVSubsystem:        "ClamAV",
 	IDSSubsystem:           "IDS/IPS (Suricata)",
 	LLDPSubsystem:          "LLDP Neighbors",
+	HardwareSubsystem:      "Hardware",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -535,6 +537,12 @@ func WithoutClamAVCollector() Option {
 // removes the lldp (LLDP neighbor table) collector from the list of collectors
 func WithoutLLDPCollector() Option {
 	return withoutCollectorInstance(LLDPSubsystem)
+}
+
+// WithoutHardwareCollector Option
+// removes the hardware collector from the list of collectors
+func WithoutHardwareCollector() Option {
+	return withoutCollectorInstance(HardwareSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

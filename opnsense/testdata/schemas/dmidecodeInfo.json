@@ -1,0 +1,57 @@
+{
+  "endpoint": "dmidecodeInfo",
+  "method": "GET",
+  "path": "api/dmidecode/service/get",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "bios",
+    "status",
+    "system"
+  ],
+  "fields": [
+    {
+      "path": "bios",
+      "kind": "object"
+    },
+    {
+      "path": "bios.Release Date",
+      "kind": "string"
+    },
+    {
+      "path": "bios.Vendor",
+      "kind": "string"
+    },
+    {
+      "path": "bios.Version",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    },
+    {
+      "path": "system",
+      "kind": "object"
+    },
+    {
+      "path": "system.Family",
+      "kind": "string"
+    },
+    {
+      "path": "system.Manufacturer",
+      "kind": "string"
+    },
+    {
+      "path": "system.Product Name",
+      "kind": "string"
+    },
+    {
+      "path": "system.Serial Number",
+      "kind": "string"
+    },
+    {
+      "path": "system.Version",
+      "kind": "string"
+    }
+  ]
+}
