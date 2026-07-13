@@ -38,10 +38,51 @@ func (r ValidationResult) Clean() bool {
 // box states (MissingOK) and top-level keys the box serves that the exporter
 // deliberately does not model (KnownExtraTopKeys). Lives in the committed
 // opnsense/testdata/schemas/exemptions.json.
+//
+// A MissingOK entry is either an exact schema path ("memory.arc") or a subtree
+// prefix ending in ".*" ("data.num.*"), which exempts the bare parent
+// ("data.num") and every path beneath it. The prefix form keeps the ledger
+// readable for endpoints whose legacy surface is a whole sub-object.
 type SchemaExemption struct {
 	MissingOK         []string `json:"missingOK,omitempty"`
 	KnownExtraTopKeys []string `json:"knownExtraTopKeys,omitempty"`
 	Note              string   `json:"note,omitempty"`
+}
+
+// missingOKSet is the compiled MissingOK list: exact paths plus subtree
+// prefixes from ".*" entries.
+type missingOKSet struct {
+	exact    map[string]bool
+	prefixes []string // each with its trailing dot, e.g. "data.num."
+	parents  []string // the bare parent of each prefix, e.g. "data.num"
+}
+
+func compileMissingOK(entries []string) missingOKSet {
+	s := missingOKSet{exact: make(map[string]bool, len(entries))}
+	for _, p := range entries {
+		if stem, ok := strings.CutSuffix(p, ".*"); ok && stem != "" {
+			s.prefixes = append(s.prefixes, stem+".")
+			s.parents = append(s.parents, stem)
+			continue
+		}
+		s.exact[p] = true
+	}
+	return s
+}
+
+// has reports whether a schema path is exempt from Missing reporting. The
+// prefix match is dot-anchored, so "data.num.*" covers "data.num.query.tcp"
+// but never the sibling section "data.numx.foo".
+func (s missingOKSet) has(path string) bool {
+	if s.exact[path] {
+		return true
+	}
+	for i, prefix := range s.prefixes {
+		if path == s.parents[i] || strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // bootgridEnvelopeKeys are the standard OPNsense search-envelope keys. Any
@@ -54,10 +95,7 @@ var bootgridEnvelopeKeys = []string{"total", "rowCount", "current", "searchPhras
 // schema. The exemption suppresses Missing reports for known-optional paths
 // and UnknownTopKeys reports for acknowledged unmodeled keys.
 func ValidateResponseSchema(s EndpointSchema, raw []byte, ex SchemaExemption) (ValidationResult, error) {
-	missingOK := make(map[string]bool, len(ex.MissingOK))
-	for _, p := range ex.MissingOK {
-		missingOK[p] = true
-	}
+	missingOK := compileMissingOK(ex.MissingOK)
 	res := ValidationResult{Endpoint: s.Endpoint}
 
 	var root any
@@ -108,7 +146,7 @@ func ValidateResponseSchema(s EndpointSchema, raw []byte, ex SchemaExemption) (V
 // evaluateFieldPath resolves one schema path against the decoded response and
 // files it into exactly one bucket: present (kind-checked), Missing,
 // Unverified, or silently skipped when an ancestor path is already Missing.
-func evaluateFieldPath(f SchemaField, root any, missingOK map[string]bool, res *ValidationResult) {
+func evaluateFieldPath(f SchemaField, root any, missingOK missingOKSet, res *ValidationResult) {
 	segs := splitSchemaPath(f.Path)
 	cur := []any{root}
 	unverifiable := false // hit a null / empty container / PHP-empty-[] on the way
@@ -195,7 +233,7 @@ func evaluateFieldPath(f SchemaField, root any, missingOK map[string]bool, res *
 			}
 		}
 	case absentFinal > 0 && !unverifiable:
-		if !missingOK[f.Path] {
+		if !missingOK.has(f.Path) {
 			res.Missing = append(res.Missing, f.Path)
 		}
 	case unverifiable:

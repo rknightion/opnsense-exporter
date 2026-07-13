@@ -8,24 +8,109 @@
   "dyndnsServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "firmware": {
     "missingOK": ["last_check", "needs_reboot", "new_packages", "os_version", "product_abi", "product_id", "product_version", "upgrade_packages"],
-    "knownExtraTopKeys": ["status_msg"],
-    "note": "firmware/status serves a minimal envelope until a check has run since boot; fields appear after the first check"
+    "knownExtraTopKeys": ["all_packages", "all_sets", "api_version", "connection", "downgrade_packages", "download_size", "product_target", "reinstall_packages", "remove_packages", "repository", "status_msg", "status_reboot", "upgrade_major_message", "upgrade_major_version", "upgrade_needs_reboot", "upgrade_sets"],
+    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 10); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. The 26.7 full-inventory keys (all_packages/all_sets) are a #227 opportunity"
+  },
+  "firmwareInfo": {
+    "knownExtraTopKeys": ["changelog", "package", "product"],
+    "note": "release changelog metadata, the full package inventory (~380 KB payload) and the product detail object; not modelled. First validated 2026-07-13 — before the ForceAttemptHTTP2 fix this endpoint always failed to probe over HTTP/1.1, so these keys never surfaced"
   },
   "haproxyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "hasyncVersion": { "missingOK": ["message", "status"], "note": "present only for some HA peer states; box has no HA peer" },
+  "healthCheck": {
+    "missingOK": ["CrashReporter.*", "Firewall.*", "System.*", "metadata.CrashReporter.*", "metadata.Firewall.*", "metadata.System.status"],
+    "note": "legacy pre-26.1.11 health shape (top-level per-subsystem objects + metadata.<Subsystem>); 26.1.11+ serves only metadata.system plus metadata.subsystems, which the tolerant reader prefers. Prune when 26.1.10 and older leave the support window"
+  },
+  "interfaces": { "knownExtraTopKeys": ["time"], "note": "capture timestamp of the interface statistics snapshot; not modelled" },
+  "ipsecPools": { "knownExtraTopKeys": ["leases"], "note": "per-pool lease detail served alongside the pool rows; not modelled" },
   "ipsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "keaLeases4": { "knownExtraTopKeys": ["interfaces", "stats"], "note": "interface list and aggregate pool stats served with the lease rows; not modelled" },
+  "keaLeases6": { "knownExtraTopKeys": ["interfaces", "stats"], "note": "interface list and aggregate pool stats served with the lease rows; not modelled" },
   "keaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "keaSubnets4": {
+    "missingOK": ["rows[].%interface"],
+    "note": "legacy pre-26.7 subnet-row key; 26.7 rows carry the full subnet config (subnet/pools) instead. Prune when 26.1 leaves the support window"
+  },
+  "memoryStatistics": {
+    "missingOK": [
+      "mbuf-statistics.jumbop-cache",
+      "mbuf-statistics.jumbop-current",
+      "mbuf-statistics.jumbop-max",
+      "mbuf-statistics.jumbop-total",
+      "mbuf-statistics.mbuf-and-cluster",
+      "mbuf-statistics.mbuf-max",
+      "mbuf-statistics.percentage"
+    ],
+    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window"
+  },
   "monitServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "ndpTable": {
+    "missingOK": ["[].expire", "[].type"],
+    "note": "removed upstream in 26.1.11; kept for ≤ 26.1.10. Prune when 26.1 leaves the support window"
+  },
   "nginxServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "nginxVts": {
+    "knownExtraTopKeys": ["hostName", "loadMsec", "moduleVersion", "nginxVersion", "nowMsec"],
+    "note": "vts module identity and snapshot timestamps; not modelled"
+  },
   "nutServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "pfStatisticsByInterface": {
+    "missingOK": ["interfaces.*.interface"],
+    "note": "removed upstream in 26.1.11 (the interface name is the map key); kept for ≤ 26.1.10. Prune when 26.1 leaves the support window"
+  },
+  "pfStatsInfo": {
+    "missingOK": ["info.source-tracking-table.current-entries.rate", "info.state-table.current-entries.rate"],
+    "note": "removed upstream in 26.1.11 — a gauge has no rate; kept for ≤ 26.1.10. Prune when 26.1 leaves the support window"
+  },
+  "protocolStatistics": {
+    "missingOK": [
+      "statistics.tcp.ecn.ce-packets",
+      "statistics.tcp.ecn.ect0-packets",
+      "statistics.tcp.ecn.ect1-packets",
+      "statistics.tcp.received-acks-for-unsent-data",
+      "statistics.tcp.syncache.receivd-cookies",
+      "statistics.tcp.syncache.sent-cookies"
+    ],
+    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for ≤ 26.1.10 — prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}; decoded-only, no metric impact. syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7; decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window; the new syncookies section stays unmodelled"
+  },
   "quaggaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "smartInfo": {
     "missingOK": ["output.ata_smart_attributes", "output.nvme_smart_health_information_log", "output.power_on_time", "output.serial_number", "output.smart_status"],
     "note": "smartctl fields vary by drive type — the struct fields are pointers by design"
   },
   "syslogServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "systemMbuf": {
+    "missingOK": [
+      "mbuf-statistics.jumbop-cache",
+      "mbuf-statistics.jumbop-current",
+      "mbuf-statistics.jumbop-max",
+      "mbuf-statistics.jumbop-total",
+      "mbuf-statistics.mbuf-and-cluster",
+      "mbuf-statistics.mbuf-max",
+      "mbuf-statistics.percentage"
+    ],
+    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window"
+  },
   "systemResources": { "missingOK": ["memory.arc"], "note": "ARC exists only on ZFS installs; testbed VM is UFS" },
   "tailscaleServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "tailscaleStatus": {
+    "knownExtraTopKeys": ["AuthURL", "CertDomains", "ClientVersion", "CurrentTailnet", "HaveNodeKey", "Health", "MagicDNSSuffix", "TUN", "TailscaleIPs", "User"],
+    "note": "tailscaled status keys the exporter does not model (node identity, tailnet metadata, health text)"
+  },
+  "unboundDNSStatus": {
+    "missingOK": [
+      "data.dnscrypt_nonce.*",
+      "data.dnscrypt_shared_secret.*",
+      "data.infra.*",
+      "data.key.*",
+      "data.mem.*",
+      "data.msg.*",
+      "data.num.*",
+      "data.rrset.*",
+      "data.unwanted.*"
+    ],
+    "note": "extended unbound statistics — absent when the box runs extended-statistics: no, the 26.7 default; present on ≤ 26.1 and whenever an admin re-enables extended stats. Box state, not a version prune"
+  },
   "unboundServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "wireguardServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" }
 }

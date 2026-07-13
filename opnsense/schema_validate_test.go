@@ -125,6 +125,87 @@ func TestValidateResponseSchema(t *testing.T) {
 	}
 }
 
+// prefixFixtureSchema exercises the missingOK prefix form: a schema with a
+// legacy sub-object (data.num) and a same-stem sibling (data.numx) that a
+// prefix exemption must NOT swallow.
+func prefixFixtureSchema() EndpointSchema {
+	return EndpointSchema{
+		Endpoint:          "prefix",
+		TopLevelKind:      KindObject,
+		KnownTopLevelKeys: []string{"data", "other"},
+		Fields: []SchemaField{
+			{Path: "data", Kind: KindObject},
+			{Path: "data.num", Kind: KindObject},
+			{Path: "data.num.answer", Kind: KindNumber},
+			{Path: "data.num.query", Kind: KindObject},
+			{Path: "data.num.query.tcp", Kind: KindNumber},
+			{Path: "data.numx", Kind: KindObject},
+			{Path: "data.numx.foo", Kind: KindNumber},
+			{Path: "other", Kind: KindString},
+		},
+	}
+}
+
+// A missingOK entry ending in ".*" exempts the whole sub-tree under its prefix
+// (and the bare parent), so an endpoint with dozens of legacy siblings needs
+// one entry rather than dozens. Exact entries keep their exact semantics.
+func TestValidateResponseSchemaMissingOKPrefix(t *testing.T) {
+	cases := []struct {
+		name        string
+		raw         string
+		exemption   SchemaExemption
+		wantMissing []string
+	}{
+		{
+			name:        "no exemption reports every legacy path",
+			raw:         `{"data":{"num":{"query":{}},"numx":{}},"other":"x"}`,
+			wantMissing: []string{"data.num.answer", "data.num.query.tcp", "data.numx.foo"},
+		},
+		{
+			name:        "prefix exempts nested paths under it",
+			raw:         `{"data":{"num":{"query":{}},"numx":{"foo":1}},"other":"x"}`,
+			exemption:   SchemaExemption{MissingOK: []string{"data.num.*"}},
+			wantMissing: nil,
+		},
+		{
+			name:        "prefix does not exempt a same-stem sibling section",
+			raw:         `{"data":{"num":{"query":{}},"numx":{}},"other":"x"}`,
+			exemption:   SchemaExemption{MissingOK: []string{"data.num.*"}},
+			wantMissing: []string{"data.numx.foo"},
+		},
+		{
+			name:        "prefix exempts the bare parent path too",
+			raw:         `{"data":{"numx":{"foo":1}},"other":"x"}`,
+			exemption:   SchemaExemption{MissingOK: []string{"data.num.*"}},
+			wantMissing: nil,
+		},
+		{
+			name:        "exact entries are unaffected by prefix support",
+			raw:         `{"data":{"num":{"query":{}},"numx":{}},"other":"x"}`,
+			exemption:   SchemaExemption{MissingOK: []string{"data.num.answer", "data.numx.foo"}},
+			wantMissing: []string{"data.num.query.tcp"},
+		},
+		{
+			name:        "exact and prefix entries compose",
+			raw:         `{"data":{"num":{"query":{}},"numx":{}},"other":"x"}`,
+			exemption:   SchemaExemption{MissingOK: []string{"data.num.*", "data.numx.foo"}},
+			wantMissing: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := ValidateResponseSchema(prefixFixtureSchema(), []byte(tc.raw), tc.exemption)
+			if err != nil {
+				t.Fatalf("ValidateResponseSchema: %v", err)
+			}
+			if !reflect.DeepEqual(res.Missing, tc.wantMissing) {
+				t.Errorf("Missing = %v, want %v", res.Missing, tc.wantMissing)
+			}
+		})
+	}
+}
+
 // json.Number fields (KindNumeric) accept a JSON number or a numeric string —
 // OPNsense flips between them across releases (26.7 retyped many counters).
 func TestValidateResponseSchemaNumericKind(t *testing.T) {
