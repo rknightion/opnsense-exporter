@@ -16,28 +16,95 @@ func numToInt(n json.Number) int64 {
 	return i
 }
 
+// firstPresentNum resolves a counter across payload shapes: it returns the first
+// argument the box actually sent, so callers can pass the modern key first and the
+// legacy key as the fallback ("new wins when present, else legacy"). An absent JSON
+// key leaves json.Number at its zero value (""), which is what "not sent" means here
+// — a box that sends the key with value 0 yields "0" and is honoured as present.
+// This is how the reader stays version-tolerant without ever branching on version.
+func firstPresentNum(nums ...json.Number) json.Number {
+	for _, n := range nums {
+		if n != "" {
+			return n
+		}
+	}
+	return ""
+}
+
+// ecnStatistics is statistics.tcp.ecn. FreeBSD/OPNsense renamed the three received-side
+// ECN counters in current-stable 26.1.11 (ce-packets -> received-ce-packets, etc.), so
+// both spellings are declared and resolved by the ReceivedCe/Ect0/Ect1 accessors below.
+// The legacy fields MUST stay: older boxes still send only those, and dropping them
+// would zero the counters for every user who has not upgraded.
+//
+// The keys 26.1.11 added but we deliberately do not surface as metrics (out of scope,
+// see #227) are declared for completeness of the decoded shape only: ace-*-syn,
+// sent-ect0-packets, sent-ect1-packets.
+type ecnStatistics struct {
+	// ≤26.1.x only: superseded by ReceivedCePackets ("received-ce-packets") on 26.1.11+.
+	CePackets json.Number `json:"ce-packets"`
+	// ≤26.1.x only: superseded by ReceivedEct0Packets ("received-ect0-packets") on 26.1.11+.
+	Ect0Packets json.Number `json:"ect0-packets"`
+	// ≤26.1.x only: superseded by ReceivedEct1Packets ("received-ect1-packets") on 26.1.11+.
+	Ect1Packets json.Number `json:"ect1-packets"`
+
+	// 26.1.11+ spellings of the three counters above.
+	ReceivedCePackets   json.Number `json:"received-ce-packets"`
+	ReceivedEct0Packets json.Number `json:"received-ect0-packets"`
+	ReceivedEct1Packets json.Number `json:"received-ect1-packets"`
+
+	Handshakes           json.Number `json:"handshakes"`
+	CongestionReductions json.Number `json:"congestion-reductions"`
+
+	// 26.1.11+ additions, decoded but not exported as metrics (#227).
+	AceCeSyn        json.Number `json:"ace-ce-syn"`
+	AceEct0Syn      json.Number `json:"ace-ect0-syn"`
+	AceEct1Syn      json.Number `json:"ace-ect1-syn"`
+	AceNonEctSyn    json.Number `json:"ace-nonect-syn"`
+	SentEct0Packets json.Number `json:"sent-ect0-packets"`
+	SentEct1Packets json.Number `json:"sent-ect1-packets"`
+}
+
+// ReceivedCe resolves the received CE-marked packet counter across both key spellings.
+func (e ecnStatistics) ReceivedCe() json.Number {
+	return firstPresentNum(e.ReceivedCePackets, e.CePackets)
+}
+
+// ReceivedEct0 resolves the received ECT(0) packet counter across both key spellings.
+func (e ecnStatistics) ReceivedEct0() json.Number {
+	return firstPresentNum(e.ReceivedEct0Packets, e.Ect0Packets)
+}
+
+// ReceivedEct1 resolves the received ECT(1) packet counter across both key spellings.
+func (e ecnStatistics) ReceivedEct1() json.Number {
+	return firstPresentNum(e.ReceivedEct1Packets, e.Ect1Packets)
+}
+
 type protocolStatisticsResponse struct {
 	Statistics struct {
 		TCP struct {
-			SentPackets                           json.Number `json:"sent-packets"`
-			SentDataPackets                       json.Number `json:"sent-data-packets"`
-			SentDataBytes                         json.Number `json:"sent-data-bytes"`
-			SentRetransmittedPackets              json.Number `json:"sent-retransmitted-packets"`
-			SentRetransmittedBytes                json.Number `json:"sent-retransmitted-bytes"`
-			SentUnnecessaryRetransmittedPackets   json.Number `json:"sent-unnecessary-retransmitted-packets"`
-			SentResendsByMtuDiscovery             json.Number `json:"sent-resends-by-mtu-discovery"`
-			SentAckOnlyPackets                    json.Number `json:"sent-ack-only-packets"`
-			SentPacketsDelayed                    json.Number `json:"sent-packets-delayed"`
-			SentUrgOnlyPackets                    json.Number `json:"sent-urg-only-packets"`
-			SentWindowProbePackets                json.Number `json:"sent-window-probe-packets"`
-			SentWindowUpdatePackets               json.Number `json:"sent-window-update-packets"`
-			SentControlPackets                    json.Number `json:"sent-control-packets"`
-			ReceivedPackets                       json.Number `json:"received-packets"`
-			ReceivedAckPackets                    json.Number `json:"received-ack-packets"`
-			ReceivedAckBytes                      json.Number `json:"received-ack-bytes"`
-			ReceivedDuplicateAcks                 json.Number `json:"received-duplicate-acks"`
-			ReceivedUDPTunneledPkts               json.Number `json:"received-udp-tunneled-pkts"`
-			ReceivedBadUDPTunneledPkts            json.Number `json:"received-bad-udp-tunneled-pkts"`
+			SentPackets                         json.Number `json:"sent-packets"`
+			SentDataPackets                     json.Number `json:"sent-data-packets"`
+			SentDataBytes                       json.Number `json:"sent-data-bytes"`
+			SentRetransmittedPackets            json.Number `json:"sent-retransmitted-packets"`
+			SentRetransmittedBytes              json.Number `json:"sent-retransmitted-bytes"`
+			SentUnnecessaryRetransmittedPackets json.Number `json:"sent-unnecessary-retransmitted-packets"`
+			SentResendsByMtuDiscovery           json.Number `json:"sent-resends-by-mtu-discovery"`
+			SentAckOnlyPackets                  json.Number `json:"sent-ack-only-packets"`
+			SentPacketsDelayed                  json.Number `json:"sent-packets-delayed"`
+			SentUrgOnlyPackets                  json.Number `json:"sent-urg-only-packets"`
+			SentWindowProbePackets              json.Number `json:"sent-window-probe-packets"`
+			SentWindowUpdatePackets             json.Number `json:"sent-window-update-packets"`
+			SentControlPackets                  json.Number `json:"sent-control-packets"`
+			ReceivedPackets                     json.Number `json:"received-packets"`
+			ReceivedAckPackets                  json.Number `json:"received-ack-packets"`
+			ReceivedAckBytes                    json.Number `json:"received-ack-bytes"`
+			ReceivedDuplicateAcks               json.Number `json:"received-duplicate-acks"`
+			ReceivedUDPTunneledPkts             json.Number `json:"received-udp-tunneled-pkts"`
+			ReceivedBadUDPTunneledPkts          json.Number `json:"received-bad-udp-tunneled-pkts"`
+			// ≤26.1.x only: FreeBSD dropped "received-acks-for-unsent-data" in 26.1.11 with
+			// no replacement key, so this reads zero on newer boxes. Kept so older boxes,
+			// which still send it, keep reporting.
 			ReceivedAcksForUnsentData             json.Number `json:"received-acks-for-unsent-data"`
 			ReceivedInSequencePackets             json.Number `json:"received-in-sequence-packets"`
 			ReceivedInSequenceBytes               json.Number `json:"received-in-sequence-bytes"`
@@ -113,13 +180,7 @@ type protocolStatisticsResponse struct {
 				SentOptionBlocks    json.Number `json:"sent-option-blocks"`
 				ScoreboardOverflows json.Number `json:"scoreboard-overflows"`
 			} `json:"sack"`
-			Ecn struct {
-				CePackets            json.Number `json:"ce-packets"`
-				Ect0Packets          json.Number `json:"ect0-packets"`
-				Ect1Packets          json.Number `json:"ect1-packets"`
-				Handshakes           json.Number `json:"handshakes"`
-				CongestionReductions json.Number `json:"congestion-reductions"`
-			} `json:"ecn"`
+			Ecn          ecnStatistics `json:"ecn"`
 			TCPSignature struct {
 				ReceivedGoodSignature json.Number `json:"received-good-signature"`
 				ReceivedBadSignature  json.Number `json:"received-bad-signature"`
@@ -366,6 +427,13 @@ type ProtocolStatistics struct {
 	TCPSegmentsUpdatedRtt            int64
 	TCPBadConnectionAttempts         int64
 
+	// TCP ECN (statistics.tcp.ecn). Resolved across the 26.1.11 key rename
+	// (ce-packets -> received-ce-packets, ect0/ect1 likewise), so these carry the
+	// same values on an old box and a new one.
+	TCPEcnCePackets   int64
+	TCPEcnEct0Packets int64
+	TCPEcnEct1Packets int64
+
 	// ARP detailed
 	ARPSentFailures            int64
 	ARPSentReplies             int64
@@ -537,6 +605,11 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		TCPReceivedDuplicateBytes:        numToInt(resp.Statistics.TCP.ReceivedCompletelyDuplicateBytes),
 		TCPSegmentsUpdatedRtt:            numToInt(resp.Statistics.TCP.SegmentsUpdatedRtt),
 		TCPBadConnectionAttempts:         numToInt(resp.Statistics.TCP.BadConnectionAttempts),
+
+		// TCP ECN — accessors resolve the 26.1.11 rename (new key wins, legacy is the fallback).
+		TCPEcnCePackets:   numToInt(resp.Statistics.TCP.Ecn.ReceivedCe()),
+		TCPEcnEct0Packets: numToInt(resp.Statistics.TCP.Ecn.ReceivedEct0()),
+		TCPEcnEct1Packets: numToInt(resp.Statistics.TCP.Ecn.ReceivedEct1()),
 
 		// ARP detailed
 		ARPSentFailures:            numToInt(resp.Statistics.Arp.SentFailures),

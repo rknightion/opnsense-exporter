@@ -48,6 +48,78 @@ func TestFetchProtocolStatistics_IPv6(t *testing.T) {
 	}
 }
 
+// TestFetchProtocolStatistics_EcnKeyRenames covers the FreeBSD/OPNsense reshape of
+// statistics.tcp.ecn that landed on current-stable 26.1.11: ce-packets / ect0-packets /
+// ect1-packets were renamed to received-ce-packets / received-ect0-packets /
+// received-ect1-packets. The reader must resolve "new wins when present, else legacy"
+// so both an old box and a 26.1.11+ box report the same counters — without branching
+// on version. The 26.1.11 fixture below uses the REAL key set observed live (including
+// the ace-*/handshakes/sent-ect* keys we deliberately do not surface) with synthetic values.
+func TestFetchProtocolStatistics_EcnKeyRenames(t *testing.T) {
+	tests := []struct {
+		name                    string
+		ecn                     string
+		wantCe, wantEct0, want1 int64
+	}{
+		{
+			name: "legacy keys only (<=26.1.10)",
+			ecn: `{
+				"ce-packets": 11, "ect0-packets": 22, "ect1-packets": 33,
+				"handshakes": 44, "congestion-reductions": 55
+			}`,
+			wantCe: 11, wantEct0: 22, want1: 33,
+		},
+		{
+			name: "modern keys only (26.1.11, real key set)",
+			ecn: `{
+				"ace-ce-syn": 1, "ace-ect0-syn": 2, "ace-ect1-syn": 3, "ace-nonect-syn": 4,
+				"congestion-reductions": 55, "handshakes": 44,
+				"received-ce-packets": 11, "received-ect0-packets": 22, "received-ect1-packets": 33,
+				"sent-ect0-packets": 66, "sent-ect1-packets": 77
+			}`,
+			wantCe: 11, wantEct0: 22, want1: 33,
+		},
+		{
+			name: "both present: new wins over legacy",
+			ecn: `{
+				"ce-packets": 0, "ect0-packets": 0, "ect1-packets": 0,
+				"received-ce-packets": 11, "received-ect0-packets": 22, "received-ect1-packets": 33
+			}`,
+			wantCe: 11, wantEct0: 22, want1: 33,
+		},
+		{
+			name: "ecn block absent entirely",
+			ecn:  `{}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"statistics": {"tcp": {"sent-packets": 7, "ecn": ` + tt.ecn + `}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchProtocolStatistics()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if data.TCPSentPackets != 7 {
+				t.Errorf("unrelated counter mis-parsed: TCPSentPackets=%d, want 7", data.TCPSentPackets)
+			}
+			if data.TCPEcnCePackets != tt.wantCe {
+				t.Errorf("TCPEcnCePackets=%d, want %d", data.TCPEcnCePackets, tt.wantCe)
+			}
+			if data.TCPEcnEct0Packets != tt.wantEct0 {
+				t.Errorf("TCPEcnEct0Packets=%d, want %d", data.TCPEcnEct0Packets, tt.wantEct0)
+			}
+			if data.TCPEcnEct1Packets != tt.want1 {
+				t.Errorf("TCPEcnEct1Packets=%d, want %d", data.TCPEcnEct1Packets, tt.want1)
+			}
+		})
+	}
+}
+
 func TestFetchProtocolStatistics_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {

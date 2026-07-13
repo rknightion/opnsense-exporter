@@ -616,6 +616,22 @@
       "kind": "object"
     },
     {
+      "path": "statistics.tcp.ecn.ace-ce-syn",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.ace-ect0-syn",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.ace-ect1-syn",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.ace-nonect-syn",
+      "kind": "numeric"
+    },
+    {
       "path": "statistics.tcp.ecn.ce-packets",
       "kind": "numeric"
     },
@@ -633,6 +649,26 @@
     },
     {
       "path": "statistics.tcp.ecn.handshakes",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.received-ce-packets",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.received-ect0-packets",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.received-ect1-packets",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.sent-ect0-packets",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.ecn.sent-ect1-packets",
       "kind": "numeric"
     },
     {
