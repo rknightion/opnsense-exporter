@@ -220,6 +220,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"idsSettings":                "api/ids/settings/get",
 		"idsRulesets":                "api/ids/settings/list_rulesets",
 		"idsSearchInstalledRules":    "api/ids/settings/searchInstalledRules",
+		"lldpdNeighbors":             "api/lldpd/service/neighbor",
 	}
 }
 

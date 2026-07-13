@@ -393,6 +393,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithIDSAlerts(*options.IDSAlertLookback))
 		logger.Info("ids recent-alerts enabled", "lookback", options.IDSAlertLookback.String())
 	}
+	if !collectorsSwitches.LLDPD {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutLLDPCollector())
+		logger.Info("lldpd collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

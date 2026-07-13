@@ -1,17 +1,24 @@
 """
-Routing & Neighbors tab — ARP table, NDP, and Network Diagnostics metrics.
+Routing & Neighbors tab — ARP table, NDP, LLDP, and Network Diagnostics metrics.
 
 Rows:
   1. ARP table          — entry count stat, count by interface bargauge, detail table
   2. NDP (IPv6 Neighbors) — entry count stat, count by interface bargauge, detail table
-  3. NetISR (gated)     — dispatch/queue/handle/drop rate ts, queue length/watermark/limit ts
-  4. Sockets & Routes (gated) — sockets_active bargauge, sockets_unix_total stat,
+  3. LLDP Neighbors (gated) — neighbor count by local interface bargauge, detail table
+  4. NetISR (gated)     — dispatch/queue/handle/drop rate ts, queue length/watermark/limit ts
+  5. Sockets & Routes (gated) — sockets_active bargauge, sockets_unix_total stat,
                                 routes_total bargauge
-  5. pfsync (gated)     — pfsync_nodes_total stat, pfsync_node_info table
+  6. pfsync (gated)     — pfsync_nodes_total stat, pfsync_node_info table
+
+LLDP is placed here rather than the Interfaces tab: it is a neighbor-discovery table
+conceptually alongside ARP/NDP (a topology sensor — alert when a port stops seeing its
+expected switch/port), not an interface-throughput metric (#216).
 
 Coverage:
   opnsense_arp_table_entries
   opnsense_ndp_entries
+  opnsense_lldp_neighbors
+  opnsense_lldp_neighbor_info
   opnsense_network_diag_netisr_dispatched_total
   opnsense_network_diag_netisr_hybrid_dispatched_total
   opnsense_network_diag_netisr_queued_total
@@ -34,6 +41,10 @@ def build(b: Builder):
     # ---- Sentinels -------------------------------------------------------
     b.sentinel("has_network_diag",
                "label_values(opnsense_network_diag_sockets_unix_total, __name__)")
+    # opnsense_lldp_neighbors/neighbor_info are only emitted when at least one
+    # neighbor has been seen (os-lldpd present but quiet emits nothing at all),
+    # so this sentinel doubles as "plugin present AND has neighbors right now".
+    b.sentinel("has_lldp", "label_values(opnsense_lldp_neighbors, __name__)")
 
     # ======================================================================
     # Row 1 – ARP table
@@ -113,7 +124,38 @@ def build(b: Builder):
     )
 
     # ======================================================================
-    # Row 3 – NetISR (gated: has_network_diag)
+    # Row 3 – LLDP Neighbors (gated: has_lldp)
+    # ======================================================================
+    lldp_by_iface = b.bargauge(
+        "LLDP Neighbors by Local Interface",
+        [(sel("opnsense_lldp_neighbors"), "{{interface}}")],
+        unit="short",
+        w=8, h=8,
+        orient="horizontal",
+        instant=True,
+        desc="Number of LLDP neighbors currently seen on each local interface. A port that "
+             "normally reports 1 dropping to 0 indicates miscabling or a switch/port change; "
+             "requires the os-lldpd plugin.",
+    )
+    lldp_table = b.table(
+        "LLDP Neighbor Detail",
+        [sel("opnsense_lldp_neighbor_info")],
+        w=24, h=12,
+        excludes=["Value", "__name__", "job", "instance", "env", "opnsense_instance"],
+        renames={
+            "interface": "Local Interface",
+            "chassis_name": "Neighbor",
+            "port_id": "Neighbor Port ID",
+            "port_descr": "Neighbor Port Description",
+        },
+        sort_by="Local Interface",
+        desc="Full LLDP neighbor table — local interface paired with the remote device's "
+             "SysName, PortID, and PortDescr. A topology sensor: alert on an expected "
+             "(interface, neighbor) pairing going missing.",
+    )
+
+    # ======================================================================
+    # Row 4 – NetISR (gated: has_network_diag)
     # ======================================================================
     netisr_dispatch_ts = b.ts(
         "NetISR Dispatches & Handled (rate)",
@@ -157,7 +199,7 @@ def build(b: Builder):
     )
 
     # ======================================================================
-    # Row 4 – Sockets & Routes (gated: has_network_diag)
+    # Row 5 – Sockets & Routes (gated: has_network_diag)
     # ======================================================================
     sockets_active_bg = b.bargauge(
         "Active Sockets by Type",
@@ -188,7 +230,7 @@ def build(b: Builder):
     )
 
     # ======================================================================
-    # Row 5 – pfsync (gated: has_network_diag)
+    # Row 6 – pfsync (gated: has_network_diag)
     # ======================================================================
     pfsync_nodes_stat = b.stat(
         "pfsync Cluster Nodes",
@@ -218,6 +260,7 @@ def build(b: Builder):
     b.tab("Routing & Neighbors", [
         b.row("ARP Table", [arp_count, arp_by_iface, arp_table]),
         b.row("NDP (IPv6 Neighbors)", [ndp_count, ndp_by_iface, ndp_table]),
+        b.row("LLDP Neighbors", [lldp_by_iface, lldp_table], present="has_lldp"),
         b.row("NetISR (Network Interrupt Subsystem)", [netisr_dispatch_ts, netisr_queue_ts, netisr_len_ts],
               present="has_network_diag"),
         b.row("Sockets & Routes", [sockets_active_bg, sockets_unix_stat, routes_bg],

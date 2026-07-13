@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 622
-- **Gauges:** 415
+- **Total metrics:** 624
+- **Gauges:** 417
 - **Counters:** 207
 
 ## General
@@ -492,6 +492,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_kea_dhcp4_pool_used | Gauge | subnet | Number of Kea DHCPv4 leases whose address falls within this subnet's configured pool | --exporter.disable-kea |
 | opnsense_kea_dhcp6_pool_used | Gauge | subnet | Number of Kea DHCPv6 address (non-PD) leases whose address falls within this subnet's configured pool | --exporter.disable-kea |
 | opnsense_kea_dhcp6_pd_pool_size | Gauge | subnet, prefix | Delegable-prefix capacity of a configured Kea DHCPv6 prefix-delegation pool (2^(delegated_len-prefix_len)) | --exporter.disable-kea |
+
+## LLDP Neighbors
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_lldp_neighbors | Gauge | interface | Number of LLDP neighbors currently seen on this local interface | --exporter.disable-lldpd |
+| opnsense_lldp_neighbor_info | Gauge | interface, chassis_name, port_id, port_descr | LLDP neighbor information (value is always 1; use labels). SysDescr and MgmtIP are deliberately excluded from labels (free-text/unbounded) | --exporter.disable-lldpd |
 
 ## Mbuf
 

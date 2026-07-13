@@ -268,6 +268,10 @@ var (
 		"exporter.enable-ids-alerts",
 		"Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action). Off by default: each scrape triggers a reverse read of eve.json on the box. Window set by --exporter.ids-alert-lookback.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS").Default("false").Bool()
+	lldpdCollectorDisabled = kingpin.Flag(
+		"exporter.disable-lldpd",
+		"Disable the scraping of LLDP neighbor table metrics (silent when the os-lldpd plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_LLDPD").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -337,6 +341,7 @@ type CollectorsDisableSwitch struct {
 	Snapshots              bool
 	IDS                    bool
 	IDSAlerts              bool
+	LLDPD                  bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -407,6 +412,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		ClamAV:                 !*clamavCollectorDisabled,
 		IDS:                    !*idsCollectorDisabled,
 		IDSAlerts:              *idsAlertsEnabled,
+		LLDPD:                  !*lldpdCollectorDisabled,
 	}
 }
 
@@ -491,4 +497,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-clamav", Subsystem: "clamav"},
 	{Flag: "exporter.disable-ids", Subsystem: "ids"},
 	{Flag: "exporter.enable-ids-alerts", Subsystem: "ids", Detail: true},
+	{Flag: "exporter.disable-lldpd", Subsystem: "lldp"},
 }

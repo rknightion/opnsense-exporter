@@ -1,0 +1,15 @@
+{
+  "endpoint": "lldpdNeighbors",
+  "method": "GET",
+  "path": "api/lldpd/service/neighbor",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "response"
+  ],
+  "fields": [
+    {
+      "path": "response",
+      "kind": "string"
+    }
+  ]
+}

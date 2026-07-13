@@ -75,6 +75,7 @@ const (
 	SnapshotsSubsystem     = "snapshots"
 	ClamAVSubsystem        = "clamav"
 	IDSSubsystem           = "ids"
+	LLDPSubsystem          = "lldp"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -133,6 +134,7 @@ var SubsystemDisplayNames = map[string]string{
 	SnapshotsSubsystem:     "ZFS Boot Environments",
 	ClamAVSubsystem:        "ClamAV",
 	IDSSubsystem:           "IDS/IPS (Suricata)",
+	LLDPSubsystem:          "LLDP Neighbors",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -527,6 +529,12 @@ func WithoutSnapshotsCollector() Option {
 // removes the clamav collector from the list of collectors
 func WithoutClamAVCollector() Option {
 	return withoutCollectorInstance(ClamAVSubsystem)
+}
+
+// WithoutLLDPCollector Option
+// removes the lldp (LLDP neighbor table) collector from the list of collectors
+func WithoutLLDPCollector() Option {
+	return withoutCollectorInstance(LLDPSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

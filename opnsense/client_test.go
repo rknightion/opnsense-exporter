@@ -110,8 +110,8 @@ func TestNewClient_EndpointCount(t *testing.T) {
 	}
 
 	endpoints := client.Endpoints()
-	if len(endpoints) != 123 {
-		t.Errorf("expected 123 endpoints, got %d", len(endpoints))
+	if len(endpoints) != 124 {
+		t.Errorf("expected 124 endpoints, got %d", len(endpoints))
 	}
 	// Content equality, not just count: the live Client must use exactly the
 	// canonical defaultEndpoints() table. The fetch tests now build their clients
