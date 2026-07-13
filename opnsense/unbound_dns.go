@@ -54,7 +54,17 @@ type unboundDNSStatusResponse struct {
 			Up      string `json:"up"`
 			Elapsed string `json:"elapsed"`
 		} `json:"time"`
-		Mem struct {
+		// The sections below (mem, num, unwanted, msg, rrset, infra, key,
+		// dnscrypt_*) are unbound's EXTENDED statistics. They are served only when
+		// the resolver runs with `extended-statistics: yes` — on by default on
+		// OPNsense 26.1, OFF by default on 26.7, where the keys are simply absent
+		// from the payload. They are therefore POINTERS: nil means "the box did not
+		// report this section", which is distinguishable from "reported as zero".
+		// Mapping them unconditionally would decode absent sections to zeros and
+		// publish ~40 phantom zero series (see UnboundDNSOverview.ExtendedPresent).
+		// This is presence-gating, not removal — an admin re-enabling
+		// extended-statistics brings every section straight back.
+		Mem *struct {
 			Cache struct {
 				Rrset                string `json:"rrset"`
 				Message              string `json:"message"`
@@ -73,7 +83,7 @@ type unboundDNSStatusResponse struct {
 				ResponseBuffer string `json:"response_buffer"`
 			} `json:"http"`
 		} `json:"mem"`
-		Num struct {
+		Num *struct {
 			Query struct {
 				// data.num.query.type is dynamic: unbound-control emits a
 				// num.query.type.<T> key only for RR types actually queried, not a fixed
@@ -143,38 +153,38 @@ type unboundDNSStatusResponse struct {
 				Bogus string `json:"bogus"`
 			} `json:"rrset"`
 		} `json:"num"`
-		Unwanted struct {
+		Unwanted *struct {
 			Queries string `json:"queries"`
 			Replies string `json:"replies"`
 		} `json:"unwanted"`
-		Msg struct {
+		Msg *struct {
 			Cache struct {
 				Count         string `json:"count"`
 				MaxCollisions string `json:"max_collisions"`
 			} `json:"cache"`
 		} `json:"msg"`
-		Rrset struct {
+		Rrset *struct {
 			Cache struct {
 				Count         string `json:"count"`
 				MaxCollisions string `json:"max_collisions"`
 			} `json:"cache"`
 		} `json:"rrset"`
-		Infra struct {
+		Infra *struct {
 			Cache struct {
 				Count string `json:"count"`
 			} `json:"cache"`
 		} `json:"infra"`
-		Key struct {
+		Key *struct {
 			Cache struct {
 				Count string `json:"count"`
 			} `json:"cache"`
 		} `json:"key"`
-		DnscryptSharedSecret struct {
+		DnscryptSharedSecret *struct {
 			Cache struct {
 				Count string `json:"count"`
 			} `json:"cache"`
 		} `json:"dnscrypt_shared_secret"`
-		DnscryptNonce struct {
+		DnscryptNonce *struct {
 			Cache struct {
 				Count string `json:"count"`
 			} `json:"cache"`
@@ -189,6 +199,16 @@ type UnboundDNSOverview struct {
 	// collector gates all stats series on this so it never emits ~60 zero-valued
 	// counters that read as real zero-traffic and corrupt rate() (#90).
 	Present bool
+
+	// ExtendedPresent is false when the box serves only unbound's BASE statistics:
+	// OPNsense 26.7 ships the resolver with `extended-statistics: no` (26.1 had it
+	// on), so data.num / data.mem / data.msg / data.rrset / data.infra / data.key /
+	// data.unwanted are simply absent from the stats payload. The collector gates
+	// every extended-sourced series on this so those absent stats are never emitted
+	// as zeros — ~40 zero-valued counters/gauges that read as real zero-traffic and
+	// corrupt rate() (same failure class as Present, #90). Presence-gating, not
+	// removal: re-enabling extended-statistics brings all of them back.
+	ExtendedPresent bool
 
 	UptimeSeconds float64
 
@@ -303,50 +323,90 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.RecursiveReplies = safeAtoi(response.Data.Total.Num.Recursivereplies)
 	data.QueriesIPRateLimited = safeAtoi(response.Data.Total.Num.QueriesIPRatelimited)
 
-	// Query types — capture every RR type the API reported (dynamic key set), so
-	// nothing is silently dropped for want of a named struct field (#138).
-	data.QueryTypesByType = make(map[string]int64, len(response.Data.Num.Query.Type))
-	for rrType, count := range response.Data.Num.Query.Type {
-		data.QueryTypesByType[rrType] = safeAtoi(count)
+	// Extended statistics (data.num / data.mem / …) are absent on a box running
+	// with `extended-statistics: no` — the 26.7 default. Flag their presence so the
+	// collector can skip the series they feed instead of publishing them as zeros,
+	// and nil-guard every section below so an absent one leaves its fields at zero.
+	data.ExtendedPresent = response.Data.Num != nil || response.Data.Mem != nil
+
+	if num := response.Data.Num; num != nil {
+		// Query types — capture every RR type the API reported (dynamic key set), so
+		// nothing is silently dropped for want of a named struct field (#138).
+		data.QueryTypesByType = make(map[string]int64, len(num.Query.Type))
+		for rrType, count := range num.Query.Type {
+			data.QueryTypesByType[rrType] = safeAtoi(count)
+		}
+
+		// Query protocols
+		data.QueryTCP = safeAtoi(num.Query.TCP)
+		data.QueryTCPOut = safeAtoi(num.Query.Tcpout)
+		data.QueryUDPOut = safeAtoi(num.Query.Udpout)
+		data.QueryTLS = safeAtoi(num.Query.TLS.Value)
+		data.QueryIPv6 = safeAtoi(num.Query.Ipv6)
+		data.QueryHTTPS = safeAtoi(num.Query.HTTPS)
+
+		// Answer rcodes
+		data.AnswerRcodesByRcode = map[string]int64{
+			"NOERROR":  safeAtoi(num.Answer.Rcode.Noerror),
+			"FORMERR":  safeAtoi(num.Answer.Rcode.Formerr),
+			"SERVFAIL": safeAtoi(num.Answer.Rcode.Servfail),
+			"NXDOMAIN": safeAtoi(num.Answer.Rcode.Nxdomain),
+			"NOTIMPL":  safeAtoi(num.Answer.Rcode.Notimpl),
+			"REFUSED":  safeAtoi(num.Answer.Rcode.Refused),
+			"nodata":   safeAtoi(num.Answer.Rcode.Nodata),
+		}
+
+		// DNSSEC
+		data.AnswerSecureTotal = safeAtoi(num.Answer.Secure)
+		data.AnswerBogusTotal = safeAtoi(num.Answer.Bogus)
+		data.RrsetBogusTotal = safeAtoi(num.Rrset.Bogus)
+
+		// Query flags
+		data.FlagsByFlag = map[string]int64{
+			"QR": safeAtoi(num.Query.Flags.Qr),
+			"AA": safeAtoi(num.Query.Flags.Aa),
+			"TC": safeAtoi(num.Query.Flags.Tc),
+			"RD": safeAtoi(num.Query.Flags.Rd),
+			"RA": safeAtoi(num.Query.Flags.Ra),
+			"Z":  safeAtoi(num.Query.Flags.Z),
+			"AD": safeAtoi(num.Query.Flags.Ad),
+			"CD": safeAtoi(num.Query.Flags.Cd),
+		}
+
+		// EDNS
+		data.EdnsPresent = safeAtoi(num.Query.Edns.Present)
+		data.EdnsDO = safeAtoi(num.Query.Edns.Do)
 	}
-
-	// Query protocols
-	data.QueryTCP = safeAtoi(response.Data.Num.Query.TCP)
-	data.QueryTCPOut = safeAtoi(response.Data.Num.Query.Tcpout)
-	data.QueryUDPOut = safeAtoi(response.Data.Num.Query.Udpout)
-	data.QueryTLS = safeAtoi(response.Data.Num.Query.TLS.Value)
-	data.QueryIPv6 = safeAtoi(response.Data.Num.Query.Ipv6)
-	data.QueryHTTPS = safeAtoi(response.Data.Num.Query.HTTPS)
-
-	// Answer rcodes
-	data.AnswerRcodesByRcode = map[string]int64{
-		"NOERROR":  safeAtoi(response.Data.Num.Answer.Rcode.Noerror),
-		"FORMERR":  safeAtoi(response.Data.Num.Answer.Rcode.Formerr),
-		"SERVFAIL": safeAtoi(response.Data.Num.Answer.Rcode.Servfail),
-		"NXDOMAIN": safeAtoi(response.Data.Num.Answer.Rcode.Nxdomain),
-		"NOTIMPL":  safeAtoi(response.Data.Num.Answer.Rcode.Notimpl),
-		"REFUSED":  safeAtoi(response.Data.Num.Answer.Rcode.Refused),
-		"nodata":   safeAtoi(response.Data.Num.Answer.Rcode.Nodata),
-	}
-
-	// DNSSEC
-	data.AnswerSecureTotal = safeAtoi(response.Data.Num.Answer.Secure)
-	data.AnswerBogusTotal = safeAtoi(response.Data.Num.Answer.Bogus)
-	data.RrsetBogusTotal = safeAtoi(response.Data.Num.Rrset.Bogus)
 
 	// Cache entry counts
-	data.CacheRrsetCount = safeAtoi(response.Data.Rrset.Cache.Count)
-	data.CacheMessageCount = safeAtoi(response.Data.Msg.Cache.Count)
-	data.CacheInfraCount = safeAtoi(response.Data.Infra.Cache.Count)
-	data.CacheKeyCount = safeAtoi(response.Data.Key.Cache.Count)
+	if rrset := response.Data.Rrset; rrset != nil {
+		data.CacheRrsetCount = safeAtoi(rrset.Cache.Count)
+	}
+	if msg := response.Data.Msg; msg != nil {
+		data.CacheMessageCount = safeAtoi(msg.Cache.Count)
+	}
+	if infra := response.Data.Infra; infra != nil {
+		data.CacheInfraCount = safeAtoi(infra.Cache.Count)
+	}
+	if key := response.Data.Key; key != nil {
+		data.CacheKeyCount = safeAtoi(key.Cache.Count)
+	}
 
 	// Memory in bytes
-	data.MemCacheRrset = safeAtoi(response.Data.Mem.Cache.Rrset)
-	data.MemCacheMessage = safeAtoi(response.Data.Mem.Cache.Message)
-	data.MemModIterator = safeAtoi(response.Data.Mem.Mod.Iterator)
-	data.MemModValidator = safeAtoi(response.Data.Mem.Mod.Validator)
-	data.MemModRespip = safeAtoi(response.Data.Mem.Mod.Respip)
-	data.MemStreamwait = safeAtoi(response.Data.Mem.Streamwait)
+	if mem := response.Data.Mem; mem != nil {
+		data.MemCacheRrset = safeAtoi(mem.Cache.Rrset)
+		data.MemCacheMessage = safeAtoi(mem.Cache.Message)
+		data.MemModIterator = safeAtoi(mem.Mod.Iterator)
+		data.MemModValidator = safeAtoi(mem.Mod.Validator)
+		data.MemModRespip = safeAtoi(mem.Mod.Respip)
+		data.MemStreamwait = safeAtoi(mem.Streamwait)
+	}
+
+	// Unwanted
+	if unwanted := response.Data.Unwanted; unwanted != nil {
+		data.UnwantedQueries = safeAtoi(unwanted.Queries)
+		data.UnwantedReplies = safeAtoi(unwanted.Replies)
+	}
 
 	// Request list
 	data.RequestListAvg = safeParseFloat(response.Data.Total.Requestlist.Avg)
@@ -362,26 +422,6 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 
 	// TCP usage
 	data.TCPUsage = safeParseFloat(response.Data.Total.Tcpusage)
-
-	// Query flags
-	data.FlagsByFlag = map[string]int64{
-		"QR": safeAtoi(response.Data.Num.Query.Flags.Qr),
-		"AA": safeAtoi(response.Data.Num.Query.Flags.Aa),
-		"TC": safeAtoi(response.Data.Num.Query.Flags.Tc),
-		"RD": safeAtoi(response.Data.Num.Query.Flags.Rd),
-		"RA": safeAtoi(response.Data.Num.Query.Flags.Ra),
-		"Z":  safeAtoi(response.Data.Num.Query.Flags.Z),
-		"AD": safeAtoi(response.Data.Num.Query.Flags.Ad),
-		"CD": safeAtoi(response.Data.Num.Query.Flags.Cd),
-	}
-
-	// EDNS
-	data.EdnsPresent = safeAtoi(response.Data.Num.Query.Edns.Present)
-	data.EdnsDO = safeAtoi(response.Data.Num.Query.Edns.Do)
-
-	// Unwanted
-	data.UnwantedQueries = safeAtoi(response.Data.Unwanted.Queries)
-	data.UnwantedReplies = safeAtoi(response.Data.Unwanted.Replies)
 
 	return data, nil
 }

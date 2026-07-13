@@ -334,6 +334,170 @@ func TestFetchUnboundOverview_Success(t *testing.T) {
 	if data.UnwantedReplies != 10 {
 		t.Errorf("expected UnwantedReplies=10, got %d", data.UnwantedReplies)
 	}
+
+	// A full (extended-statistics: yes) payload must report the extended sections present.
+	if !data.ExtendedPresent {
+		t.Error("expected ExtendedPresent=true for a payload carrying data.num/data.mem")
+	}
+}
+
+// TestFetchUnboundOverview_ExtendedStatsAbsent covers the 26.7 default: OPNsense
+// 26.7 ships unbound with `extended-statistics: no`, so api/unbound/diagnostics/stats
+// serves ONLY data.total / data.time / data.threadN — every extended section
+// (data.num, data.mem, data.msg, data.rrset, data.infra, data.key, data.unwanted,
+// data.dnscrypt_*) is absent from the JSON. Those must be detected as absent
+// (ExtendedPresent=false) rather than decoded to zero, otherwise the collector
+// emits ~40 zero-valued series that read as real zero-traffic and corrupt rate()
+// — same failure class as the Present gate (#90).
+func TestFetchUnboundOverview_ExtendedStatsAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {
+						"queries": "4321",
+						"queries_ip_ratelimited": "3",
+						"queries_cookie_valid": "0",
+						"queries_cookie_client": "0",
+						"queries_cookie_invalid": "0",
+						"cachehits": "3000",
+						"cachemiss": "1321",
+						"prefetch": "40",
+						"queries_timed_out": "7",
+						"expired": "11",
+						"recursivereplies": "1300",
+						"queries_discard_timeout": "0",
+						"queries_wait_limit": "0",
+						"dns_error_reports": "0"
+					},
+					"query": {"queue_time_us": {"max": "12"}},
+					"requestlist": {
+						"avg": "2.25",
+						"max": "17",
+						"overwritten": "4",
+						"exceeded": "1",
+						"current": {"all": "6", "user": "2", "replies": "4"}
+					},
+					"recursion": {"time": {"avg": "0.031", "median": "0.019"}},
+					"tcpusage": "0.75"
+				},
+				"time": {"now": "1800000000", "up": "12345.5", "elapsed": "12345.5"},
+				"thread0": {
+					"num": {"queries": "1100", "cachehits": "700", "cachemiss": "400", "prefetch": "10", "expired": "3", "recursivereplies": "400", "queries_timed_out": "2", "queries_ip_ratelimited": "1"},
+					"query": {"queue_time_us": {"max": "12"}},
+					"requestlist": {"avg": "2.0", "max": "5", "overwritten": "1", "exceeded": "0", "current": {"all": "2", "user": "1", "replies": "1"}},
+					"recursion": {"time": {"avg": "0.030", "median": "0.018"}},
+					"tcpusage": "0.20"
+				},
+				"thread1": {
+					"num": {"queries": "1080", "cachehits": "760", "cachemiss": "320", "prefetch": "10", "expired": "3", "recursivereplies": "310", "queries_timed_out": "2", "queries_ip_ratelimited": "1"},
+					"query": {"queue_time_us": {"max": "9"}},
+					"requestlist": {"avg": "2.1", "max": "4", "overwritten": "1", "exceeded": "0", "current": {"all": "1", "user": "0", "replies": "1"}},
+					"recursion": {"time": {"avg": "0.032", "median": "0.020"}},
+					"tcpusage": "0.18"
+				},
+				"thread2": {
+					"num": {"queries": "1070", "cachehits": "770", "cachemiss": "300", "prefetch": "10", "expired": "3", "recursivereplies": "295", "queries_timed_out": "2", "queries_ip_ratelimited": "1"},
+					"query": {"queue_time_us": {"max": "8"}},
+					"requestlist": {"avg": "2.4", "max": "4", "overwritten": "1", "exceeded": "1", "current": {"all": "2", "user": "1", "replies": "1"}},
+					"recursion": {"time": {"avg": "0.031", "median": "0.019"}},
+					"tcpusage": "0.19"
+				},
+				"thread3": {
+					"num": {"queries": "1071", "cachehits": "770", "cachemiss": "301", "prefetch": "10", "expired": "2", "recursivereplies": "295", "queries_timed_out": "1", "queries_ip_ratelimited": "0"},
+					"query": {"queue_time_us": {"max": "7"}},
+					"requestlist": {"avg": "2.5", "max": "4", "overwritten": "1", "exceeded": "0", "current": {"all": "1", "user": "0", "replies": "1"}},
+					"recursion": {"time": {"avg": "0.031", "median": "0.019"}},
+					"tcpusage": "0.18"
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The envelope is "ok" and the base stats are real — those must still be exported.
+	if !data.Present {
+		t.Fatal("expected Present=true: the stats envelope is ok, only extended sections are absent")
+	}
+	if data.ExtendedPresent {
+		t.Error("expected ExtendedPresent=false when data.num/data.mem are absent (extended-statistics: no)")
+	}
+
+	// Core totals (data.total.num) — populated from the base payload.
+	if data.QueriesTotal != 4321 {
+		t.Errorf("expected QueriesTotal=4321, got %d", data.QueriesTotal)
+	}
+	if data.CacheHits != 3000 {
+		t.Errorf("expected CacheHits=3000, got %d", data.CacheHits)
+	}
+	if data.CacheMiss != 1321 {
+		t.Errorf("expected CacheMiss=1321, got %d", data.CacheMiss)
+	}
+	if data.Prefetch != 40 {
+		t.Errorf("expected Prefetch=40, got %d", data.Prefetch)
+	}
+	if data.QueriesTimedOut != 7 {
+		t.Errorf("expected QueriesTimedOut=7, got %d", data.QueriesTimedOut)
+	}
+	if data.ExpiredTotal != 11 {
+		t.Errorf("expected ExpiredTotal=11, got %d", data.ExpiredTotal)
+	}
+	if data.RecursiveReplies != 1300 {
+		t.Errorf("expected RecursiveReplies=1300, got %d", data.RecursiveReplies)
+	}
+	if data.QueriesIPRateLimited != 3 {
+		t.Errorf("expected QueriesIPRateLimited=3, got %d", data.QueriesIPRateLimited)
+	}
+
+	// Request list / recursion / tcpusage / uptime (data.total.*, data.time.*).
+	if data.UptimeSeconds != 12345.5 {
+		t.Errorf("expected UptimeSeconds=12345.5, got %f", data.UptimeSeconds)
+	}
+	if data.RequestListAvg != 2.25 {
+		t.Errorf("expected RequestListAvg=2.25, got %f", data.RequestListAvg)
+	}
+	if data.RequestListMax != 17 {
+		t.Errorf("expected RequestListMax=17, got %d", data.RequestListMax)
+	}
+	if data.RequestListOverwritten != 4 {
+		t.Errorf("expected RequestListOverwritten=4, got %d", data.RequestListOverwritten)
+	}
+	if data.RequestListExceeded != 1 {
+		t.Errorf("expected RequestListExceeded=1, got %d", data.RequestListExceeded)
+	}
+	if data.RequestListCurrentAll != 6 {
+		t.Errorf("expected RequestListCurrentAll=6, got %d", data.RequestListCurrentAll)
+	}
+	if data.RequestListCurrentUser != 2 {
+		t.Errorf("expected RequestListCurrentUser=2, got %d", data.RequestListCurrentUser)
+	}
+	if data.RecursionTimeAvg != 0.031 {
+		t.Errorf("expected RecursionTimeAvg=0.031, got %f", data.RecursionTimeAvg)
+	}
+	if data.RecursionTimeMedian != 0.019 {
+		t.Errorf("expected RecursionTimeMedian=0.019, got %f", data.RecursionTimeMedian)
+	}
+	if data.TCPUsage != 0.75 {
+		t.Errorf("expected TCPUsage=0.75, got %f", data.TCPUsage)
+	}
+
+	// Extended-sourced fields must stay at their zero value AND be flagged absent,
+	// so the collector can skip them rather than publish them as zeros.
+	if len(data.QueryTypesByType) != 0 {
+		t.Errorf("expected no query types, got %v", data.QueryTypesByType)
+	}
+	if len(data.AnswerRcodesByRcode) != 0 {
+		t.Errorf("expected no rcodes, got %v", data.AnswerRcodesByRcode)
+	}
+	if len(data.FlagsByFlag) != 0 {
+		t.Errorf("expected no flags, got %v", data.FlagsByFlag)
+	}
 }
 
 // TestFetchUnboundOverview_DynamicQueryTypes covers #138: the per-type breakdown must

@@ -282,6 +282,116 @@ func (c *unboundDNSCollector) emitServiceRunning(ch chan<- prometheus.Metric, cl
 	)
 }
 
+// updateExtended emits every series sourced from unbound's EXTENDED statistics
+// sections (data.num, data.mem, data.msg, data.rrset, data.infra, data.key,
+// data.unwanted). Called only when UnboundDNSOverview.ExtendedPresent is true —
+// i.e. the box actually reported those sections (`extended-statistics: yes`).
+func (c *unboundDNSCollector) updateExtended(data opnsense.UnboundDNSOverview, ch chan<- prometheus.Metric) {
+	// DNSSEC (data.num.answer / data.num.rrset)
+	ch <- prometheus.MustNewConstMetric(
+		c.answersSecureTotal, prometheus.CounterValue,
+		float64(data.AnswerSecureTotal), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.answersBogusTotal, prometheus.CounterValue,
+		float64(data.AnswerBogusTotal), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.rrsetBogusTotal, prometheus.CounterValue,
+		float64(data.RrsetBogusTotal), c.instance,
+	)
+
+	// Queries by type (data.num.query.type)
+	for qtype, count := range data.QueryTypesByType {
+		ch <- prometheus.MustNewConstMetric(
+			c.queriesByType, prometheus.CounterValue,
+			float64(count), qtype, c.instance,
+		)
+	}
+
+	// Queries by protocol (data.num.query.*)
+	protocols := map[string]int64{
+		"tcp":    data.QueryTCP,
+		"tcpout": data.QueryTCPOut,
+		"udpout": data.QueryUDPOut,
+		"tls":    data.QueryTLS,
+		"ipv6":   data.QueryIPv6,
+		"https":  data.QueryHTTPS,
+	}
+	for proto, count := range protocols {
+		ch <- prometheus.MustNewConstMetric(
+			c.queriesByProto, prometheus.CounterValue,
+			float64(count), proto, c.instance,
+		)
+	}
+
+	// Answers by rcode (data.num.answer.rcode)
+	for rcode, count := range data.AnswerRcodesByRcode {
+		ch <- prometheus.MustNewConstMetric(
+			c.answersByRcode, prometheus.CounterValue,
+			float64(count), rcode, c.instance,
+		)
+	}
+
+	// Unwanted (data.unwanted)
+	ch <- prometheus.MustNewConstMetric(
+		c.unwantedTotal, prometheus.CounterValue,
+		float64(data.UnwantedQueries), "queries", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.unwantedTotal, prometheus.CounterValue,
+		float64(data.UnwantedReplies), "replies", c.instance,
+	)
+
+	// Query flags (data.num.query.flags)
+	for flag, count := range data.FlagsByFlag {
+		ch <- prometheus.MustNewConstMetric(
+			c.queryFlagsTotal, prometheus.CounterValue,
+			float64(count), flag, c.instance,
+		)
+	}
+
+	// EDNS (data.num.query.edns)
+	ch <- prometheus.MustNewConstMetric(
+		c.ednsTotal, prometheus.CounterValue,
+		float64(data.EdnsPresent), "present", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.ednsTotal, prometheus.CounterValue,
+		float64(data.EdnsDO), "DO", c.instance,
+	)
+
+	// Cache counts (data.rrset/msg/infra/key .cache.count)
+	caches := map[string]int64{
+		"rrset":   data.CacheRrsetCount,
+		"message": data.CacheMessageCount,
+		"infra":   data.CacheInfraCount,
+		"key":     data.CacheKeyCount,
+	}
+	for cache, count := range caches {
+		ch <- prometheus.MustNewConstMetric(
+			c.cacheCount, prometheus.GaugeValue,
+			float64(count), cache, c.instance,
+		)
+	}
+
+	// Memory bytes (data.mem)
+	memComponents := map[string]int64{
+		"rrset_cache":   data.MemCacheRrset,
+		"message_cache": data.MemCacheMessage,
+		"iterator":      data.MemModIterator,
+		"validator":     data.MemModValidator,
+		"respip":        data.MemModRespip,
+		"streamwait":    data.MemStreamwait,
+	}
+	for component, bytes := range memComponents {
+		ch <- prometheus.MustNewConstMetric(
+			c.memoryBytes, prometheus.GaugeValue,
+			float64(bytes), component, c.instance,
+		)
+	}
+}
+
 func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
 	data, err := client.FetchUnboundOverview()
 	if err != nil {
@@ -339,78 +449,17 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.queriesIPRatelimited, prometheus.CounterValue,
 		float64(data.QueriesIPRateLimited), c.instance,
 	)
-	ch <- prometheus.MustNewConstMetric(
-		c.answersSecureTotal, prometheus.CounterValue,
-		float64(data.AnswerSecureTotal), c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.answersBogusTotal, prometheus.CounterValue,
-		float64(data.AnswerBogusTotal), c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.rrsetBogusTotal, prometheus.CounterValue,
-		float64(data.RrsetBogusTotal), c.instance,
-	)
 
-	// Queries by type
-	for qtype, count := range data.QueryTypesByType {
-		ch <- prometheus.MustNewConstMetric(
-			c.queriesByType, prometheus.CounterValue,
-			float64(count), qtype, c.instance,
-		)
+	// Extended statistics. Unbound only reports data.num/data.mem/data.msg/… when it
+	// runs with `extended-statistics: yes` — the OPNsense 26.1 default, but OFF by
+	// default on 26.7, where those sections are simply absent from the payload. Skip
+	// every series they feed when they are: emitting ~40 zeros would look like real
+	// zero-traffic and corrupt rate() with phantom resets, the same failure class as
+	// the stats-envelope gate above (#90). Re-enabling extended-statistics on the box
+	// brings them all straight back.
+	if data.ExtendedPresent {
+		c.updateExtended(data, ch)
 	}
-
-	// Queries by protocol
-	protocols := map[string]int64{
-		"tcp":    data.QueryTCP,
-		"tcpout": data.QueryTCPOut,
-		"udpout": data.QueryUDPOut,
-		"tls":    data.QueryTLS,
-		"ipv6":   data.QueryIPv6,
-		"https":  data.QueryHTTPS,
-	}
-	for proto, count := range protocols {
-		ch <- prometheus.MustNewConstMetric(
-			c.queriesByProto, prometheus.CounterValue,
-			float64(count), proto, c.instance,
-		)
-	}
-
-	// Answers by rcode
-	for rcode, count := range data.AnswerRcodesByRcode {
-		ch <- prometheus.MustNewConstMetric(
-			c.answersByRcode, prometheus.CounterValue,
-			float64(count), rcode, c.instance,
-		)
-	}
-
-	// Unwanted
-	ch <- prometheus.MustNewConstMetric(
-		c.unwantedTotal, prometheus.CounterValue,
-		float64(data.UnwantedQueries), "queries", c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.unwantedTotal, prometheus.CounterValue,
-		float64(data.UnwantedReplies), "replies", c.instance,
-	)
-
-	// Query flags
-	for flag, count := range data.FlagsByFlag {
-		ch <- prometheus.MustNewConstMetric(
-			c.queryFlagsTotal, prometheus.CounterValue,
-			float64(count), flag, c.instance,
-		)
-	}
-
-	// EDNS
-	ch <- prometheus.MustNewConstMetric(
-		c.ednsTotal, prometheus.CounterValue,
-		float64(data.EdnsPresent), "present", c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.ednsTotal, prometheus.CounterValue,
-		float64(data.EdnsDO), "DO", c.instance,
-	)
 
 	// Gauges without extra labels
 	ch <- prometheus.MustNewConstMetric(
@@ -429,36 +478,6 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.recursionTimeMedian, prometheus.GaugeValue,
 		data.RecursionTimeMedian, c.instance,
 	)
-
-	// Cache counts
-	caches := map[string]int64{
-		"rrset":   data.CacheRrsetCount,
-		"message": data.CacheMessageCount,
-		"infra":   data.CacheInfraCount,
-		"key":     data.CacheKeyCount,
-	}
-	for cache, count := range caches {
-		ch <- prometheus.MustNewConstMetric(
-			c.cacheCount, prometheus.GaugeValue,
-			float64(count), cache, c.instance,
-		)
-	}
-
-	// Memory bytes
-	memComponents := map[string]int64{
-		"rrset_cache":   data.MemCacheRrset,
-		"message_cache": data.MemCacheMessage,
-		"iterator":      data.MemModIterator,
-		"validator":     data.MemModValidator,
-		"respip":        data.MemModRespip,
-		"streamwait":    data.MemStreamwait,
-	}
-	for component, bytes := range memComponents {
-		ch <- prometheus.MustNewConstMetric(
-			c.memoryBytes, prometheus.GaugeValue,
-			float64(bytes), component, c.instance,
-		)
-	}
 
 	// Request list current
 	ch <- prometheus.MustNewConstMetric(

@@ -224,6 +224,131 @@ func TestUnboundDNSCollector_Update_StatsUnavailable(t *testing.T) {
 	}
 }
 
+// TestUnboundDNSCollector_Update_ExtendedStatsAbsent covers the OPNsense 26.7
+// default (`extended-statistics: no`): the stats payload carries only
+// data.total/data.time/data.threadN. Every series sourced from an extended
+// section must be skipped — emitting them as zeros would read as real
+// zero-traffic and corrupt rate(), the same failure class as #90. The base
+// series (totals, request list, recursion, tcpusage, uptime) must still be emitted.
+func TestUnboundDNSCollector_Update_ExtendedStatsAbsent(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/unbound/diagnostics/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {
+						"queries": "4321",
+						"queries_ip_ratelimited": "3",
+						"cachehits": "3000",
+						"cachemiss": "1321",
+						"prefetch": "40",
+						"queries_timed_out": "7",
+						"expired": "11",
+						"recursivereplies": "1300"
+					},
+					"query": {"queue_time_us": {"max": "12"}},
+					"requestlist": {
+						"avg": "2.25", "max": "17", "overwritten": "4", "exceeded": "1",
+						"current": {"all": "6", "user": "2", "replies": "4"}
+					},
+					"recursion": {"time": {"avg": "0.031", "median": "0.019"}},
+					"tcpusage": "0.75"
+				},
+				"time": {"now": "1800000000", "up": "12345.5", "elapsed": "12345.5"},
+				"thread0": {
+					"num": {"queries": "1100", "cachehits": "700", "cachemiss": "400"},
+					"requestlist": {"avg": "2.0", "max": "5", "current": {"all": "2", "user": "1", "replies": "1"}},
+					"recursion": {"time": {"avg": "0.030", "median": "0.018"}},
+					"tcpusage": "0.20"
+				},
+				"thread1": {
+					"num": {"queries": "1080", "cachehits": "760", "cachemiss": "320"},
+					"requestlist": {"avg": "2.1", "max": "4", "current": {"all": "1", "user": "0", "replies": "1"}},
+					"recursion": {"time": {"avg": "0.032", "median": "0.020"}},
+					"tcpusage": "0.18"
+				}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/unbound/overview/isBlockListEnabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled": true}`))
+	})
+	mux.HandleFunc("/api/unbound/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// No series sourced from an absent extended section may be emitted.
+	extendedOnly := []string{
+		"opnsense_unbound_dns_queries_by_type_total",
+		"opnsense_unbound_dns_queries_by_protocol_total",
+		"opnsense_unbound_dns_answers_by_rcode_total",
+		"opnsense_unbound_dns_query_flags_total",
+		"opnsense_unbound_dns_edns_total",
+		"opnsense_unbound_dns_unwanted_total",
+		"opnsense_unbound_dns_answers_secure_total",
+		"opnsense_unbound_dns_answers_bogus_total",
+		"opnsense_unbound_dns_rrset_bogus_total",
+		"opnsense_unbound_dns_cache_count",
+		"opnsense_unbound_dns_memory_bytes",
+	}
+	for _, name := range extendedOnly {
+		if got := metricsByDesc(metrics, name); len(got) != 0 {
+			t.Errorf("expected no %s series when extended stats are absent, got %d", name, len(got))
+		}
+	}
+
+	// The base series must still be there.
+	baseSeries := []string{
+		"opnsense_unbound_dns_uptime_seconds",
+		"opnsense_unbound_dns_queries_total",
+		"opnsense_unbound_dns_cache_hits_total",
+		"opnsense_unbound_dns_cache_miss_total",
+		"opnsense_unbound_dns_prefetch_total",
+		"opnsense_unbound_dns_expired_total",
+		"opnsense_unbound_dns_recursive_replies_total",
+		"opnsense_unbound_dns_queries_timed_out_total",
+		"opnsense_unbound_dns_queries_ip_ratelimited_total",
+		"opnsense_unbound_dns_request_list_avg",
+		"opnsense_unbound_dns_request_list_max",
+		"opnsense_unbound_dns_request_list_overwritten_total",
+		"opnsense_unbound_dns_request_list_exceeded_total",
+		"opnsense_unbound_dns_recursion_time_avg_seconds",
+		"opnsense_unbound_dns_recursion_time_median_seconds",
+		"opnsense_unbound_dns_tcp_usage_ratio",
+		"opnsense_unbound_dns_blocklist_enabled",
+		"opnsense_unbound_dns_service_running",
+	}
+	for _, name := range baseSeries {
+		if got := metricsByDesc(metrics, name); len(got) == 0 {
+			t.Errorf("expected %s to still be emitted when only extended stats are absent", name)
+		}
+	}
+	if got := metricsByDesc(metrics, "opnsense_unbound_dns_request_list_current"); len(got) != 2 {
+		t.Errorf("expected 2 request_list_current series (all, user), got %d", len(got))
+	}
+
+	// 1 uptime + 8 base counters + 4 base gauges + 2 request_list_current
+	// + 2 request-list counters + tcp_usage + blocklist + service_running = 20
+	if len(metrics) != 20 {
+		t.Errorf("expected 20 metrics on a base-stats-only box, got %d", len(metrics))
+	}
+
+	if got := getMetricValue(metricsByDesc(metrics, "opnsense_unbound_dns_queries_total")[0]); got != 4321 {
+		t.Errorf("expected queries_total=4321, got %v", got)
+	}
+}
+
 func TestUnboundDNSCollector_Name(t *testing.T) {
 	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
 	if c.Name() != UnboundDNSSubsystem {
