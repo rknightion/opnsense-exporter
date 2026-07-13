@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.2.0](https://github.com/rknightion/opnsense-exporter/compare/v2.1.0...v2.2.0) (2026-07-13)
+
+
+### Features
+
+* **otlp:** emit synthetic `up` series in OTLP push mode ([#240](https://github.com/rknightion/opnsense-exporter/issues/240)) ([80049a6](https://github.com/rknightion/opnsense-exporter/commit/80049a616b5230ba5f6871174df24a38d4877081))
+
+
+### Bug Fixes
+
+* **grafana:** set targetDatasourceUID on recording-rule manifests ([514d0ca](https://github.com/rknightion/opnsense-exporter/commit/514d0ca8ea9a7d12dbcd327d2356ffaa5a5fe4d2))
+
 ## [2.1.0](https://github.com/rknightion/opnsense-exporter/compare/v2.0.2...v2.1.0) (2026-07-13)
 
 
