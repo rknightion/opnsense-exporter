@@ -100,9 +100,9 @@ The complete, generated flag and collector reference lives in the
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
 <<<<<<< HEAD
-A single dynamic dashboard covers all 576 metrics across 30 tabs, auto-hiding
+A single dynamic dashboard covers all 577 metrics across 30 tabs, auto-hiding
 =======
-A single dynamic dashboard covers all 576 metrics across 30 tabs, auto-hiding
+A single dynamic dashboard covers all 577 metrics across 30 tabs, auto-hiding
 >>>>>>> worktree-agent-a3ce49f69eab58897
 tabs and rows for collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or
