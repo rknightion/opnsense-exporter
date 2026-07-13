@@ -1,7 +1,7 @@
 {
-  "metrics": 693,
-  "panels": 571,
-  "tabs": 34,
+  "metrics": 697,
+  "panels": 579,
+  "tabs": 35,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -25,6 +25,7 @@
     "NetFlow",
     "CARP / HA",
     "HAProxy",
+    "Relayd",
     "Nginx",
     "FRR Routing",
     "Monit",

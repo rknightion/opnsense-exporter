@@ -247,6 +247,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"captivePortalVoucherProviders": "api/captiveportal/voucher/list_providers",
 		"captivePortalVoucherGroups":    "api/captiveportal/voucher/list_voucher_groups",
 		"captivePortalVouchers":         "api/captiveportal/voucher/list_vouchers",
+		"relaydStatusSum":               "api/relayd/status/sum",
 	}
 }
 

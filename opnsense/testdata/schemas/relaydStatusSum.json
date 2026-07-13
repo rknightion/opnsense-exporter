@@ -1,0 +1,104 @@
+{
+  "endpoint": "relaydStatusSum",
+  "method": "GET",
+  "path": "api/relayd/status/sum",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "result",
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "result",
+      "kind": "string"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].id",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].status",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].tables",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].tables.*",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].tables.*.hosts",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.avlblty",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.name",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.properties",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.properties[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.properties[].enabled",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.properties[].name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.properties[].uuid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].tables.*.hosts.*.status",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].tables.*.name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].tables.*.status",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].tables.*.uuid",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].type",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
+    }
+  ]
+}

@@ -314,6 +314,10 @@ var (
 		"exporter.disable-hostdiscovery",
 		"Disable the scraping of the discovered-host inventory (Interfaces > Host discovery / hostwatch): interface+source host counts, low-cardinality. A core OPNsense feature (not a plugin); reads absent/silent on releases predating it.",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY").Default("false").Bool()
+	relaydCollectorDisabled = kingpin.Flag(
+		"exporter.disable-relayd",
+		"Disable the scraping of relayd virtual server/table/host health (silent when the os-relayd plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_RELAYD").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -392,6 +396,7 @@ type CollectorsDisableSwitch struct {
 	LLDPD                  bool
 	Auth                   bool
 	HostDiscovery          bool
+	Relayd                 bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -471,6 +476,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		NetbirdDetails:         *netbirdDetailsEnabled,
 		Auth:                   !*authCollectorDisabled,
 		HostDiscovery:          !*hostdiscoveryCollectorDisabled,
+		Relayd:                 !*relaydCollectorDisabled,
 	}
 }
 
@@ -564,4 +570,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true},
 	{Flag: "exporter.disable-auth", Subsystem: "auth"},
 	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},
+	{Flag: "exporter.disable-relayd", Subsystem: "relayd"},
 }

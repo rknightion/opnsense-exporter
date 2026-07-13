@@ -431,6 +431,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutHostDiscoveryCollector())
 		logger.Info("hostdiscovery collector disabled")
 	}
+	if !collectorsSwitches.Relayd {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutRelaydCollector())
+		logger.Info("relayd collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

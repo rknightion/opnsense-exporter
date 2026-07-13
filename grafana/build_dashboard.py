@@ -287,7 +287,7 @@ def register_subsystem_tabs(b: Builder):
         "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound",
         "dhcp", "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp",
-        "haproxy", "nginx", "frr", "monit",
+        "haproxy", "relayd", "nginx", "frr", "monit",
         "crowdsec", "ids", "ups", "captiveportal",
         "trafficshaper", "hasync", "chrony", "tor",
     ]

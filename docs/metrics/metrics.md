@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 693
-- **Gauges:** 475
+- **Total metrics:** 697
+- **Gauges:** 479
 - **Counters:** 218
 
 ## General
@@ -810,6 +810,15 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_qfeeds_addresses_blocked | Gauge | --- | Total current addresses blocked across all Q-Feeds feeds | --exporter.disable-qfeeds |
 | opnsense_qfeeds_license_info | Gauge | license | Q-Feeds license information (value is always 1; see labels) | --exporter.disable-qfeeds |
 | opnsense_qfeeds_license_expiry_timestamp_seconds | Gauge | --- | Unix timestamp of the Q-Feeds license expiry | --exporter.disable-qfeeds |
+
+## Relayd Load Balancer
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_relayd_virtualserver_status | Gauge | name, type | Relayd virtual server (redirect/relay) status (1 = active, 0 = otherwise) | --exporter.disable-relayd |
+| opnsense_relayd_table_active | Gauge | virtualserver, table | Relayd table status (1 = active with at least one host, 0 = otherwise) | --exporter.disable-relayd |
+| opnsense_relayd_host_up | Gauge | virtualserver, table, host, address | Relayd table host health check status (1 = up, 0 = otherwise) | --exporter.disable-relayd |
+| opnsense_relayd_host_availability_percent | Gauge | virtualserver, table, host, address | Relayd table host availability percentage from health checks (omitted when no checks have run yet) | --exporter.disable-relayd |
 
 ## SMART Disk Health
 

@@ -82,6 +82,7 @@ const (
 	TorSubsystem           = "tor"
 	AuthSubsystem          = "auth"
 	HostDiscoverySubsystem = "hostdiscovery"
+	RelaydSubsystem        = "relayd"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -147,6 +148,7 @@ var SubsystemDisplayNames = map[string]string{
 	TorSubsystem:           "Tor",
 	AuthSubsystem:          "Local Auth",
 	HostDiscoverySubsystem: "Host Discovery",
+	RelaydSubsystem:        "Relayd Load Balancer",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -583,6 +585,12 @@ func WithoutAuthCollector() Option {
 // removes the hostdiscovery collector from the list of collectors
 func WithoutHostDiscoveryCollector() Option {
 	return withoutCollectorInstance(HostDiscoverySubsystem)
+}
+
+// WithoutRelaydCollector Option
+// removes the relayd collector from the list of collectors
+func WithoutRelaydCollector() Option {
+	return withoutCollectorInstance(RelaydSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

@@ -52,6 +52,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 63 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
+| Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPNSENSE_EXPORTER_DISABLE_RELAYD |
 | SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
 | Services | services | 3 | Enabled | --exporter.disable-services | OPNSENSE_EXPORTER_DISABLE_SERVICES |
 | Syslog | syslog | 10 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |

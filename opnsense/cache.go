@@ -233,6 +233,7 @@ func PluginGatedEndpoints() []EndpointName {
 		"trafficShaperStatistics",
 		"trafficShaperStatistics", "crowdsecVersion",
 		"trafficShaperStatistics", "torCircuits", "torStreams", "torHiddenServices",
+		"relaydStatusSum",
 
 		// Plugin data endpoints (POST). Only their 404 is cached; a successful POST
 		// response is body-dependent and always goes to the box (see the doc comment).

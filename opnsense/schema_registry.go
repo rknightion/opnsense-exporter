@@ -131,6 +131,7 @@ var schemaRegistry = map[EndpointName]any{
 	"captivePortalVoucherProviders": []string{},
 	"captivePortalVoucherGroups":    []string{},
 	"captivePortalVouchers":         []captivePortalVoucherRow{},
+	"relaydStatusSum":               relaydStatusSumResponse{},
 	"socketStatistics": struct {
 		Statistics map[string]json.RawMessage `json:"statistics"`
 	}{},
