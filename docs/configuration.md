@@ -164,9 +164,30 @@ flags take precedence over those env vars.
 | `--otlp.tls-key-file` | `OPNSENSE_EXPORTER_OTLP_TLS_KEY_FILE` | -- | Path to a client key file for OTLP mutual TLS (requires --otlp.tls-cert-file). |
 <!-- docgen:end:flags-otlp -->
 
-The metric set exported over OTLP is byte-for-byte the same as the Prometheus
-catalogue (see the [metrics reference](metrics/metrics.md)); enabling OTLP adds no
-new metric names.
+The metric set exported over OTLP is the same as the Prometheus
+catalogue (see the [metrics reference](metrics/metrics.md)), with one addition
+described below: a synthetic `up` series.
+
+### Liveness (`up`) in push mode
+
+When Prometheus **scrapes** `/metrics` it synthesizes an `up` series per target for
+free — `1` when the scrape succeeded, `0`/absent when the exporter was unreachable —
+and liveness alerts (`up == 0`, `absent(up)`) key off it. In **OTLP push mode there
+is no scraper**, so nothing generates that series and those alerts silently stop
+working.
+
+To keep them working, the exporter emits its own `up` series, but **only over
+OTLP**: a gauge fixed at `1` while the exporter is running and exporting, labelled
+with `opnsense_instance`. When the exporter stops, it stops pushing and the series
+goes stale/absent — exactly the signal an `absent(up)` (or staleness) alert needs.
+This mirrors Prometheus target-up semantics: `up` reports whether the **exporter**
+is alive, not whether the firewall behind it is healthy (that is
+[`opnsense_up`](metrics/metrics.md), which reflects OPNsense API reachability).
+
+The synthetic `up` is deliberately **not** exposed at `/metrics`: a literal `up`
+there would collide with the `up` a Prometheus server generates for the scrape
+target. It therefore exists in the pushed OTLP stream alone, and does not appear in
+the [metrics reference](metrics/metrics.md) (which catalogues the pull endpoint).
 
 ### Grafana Cloud shortcut
 
