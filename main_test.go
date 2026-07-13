@@ -109,8 +109,9 @@ func TestGracefulShutdownDrainsInFlightRequest(t *testing.T) {
 
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
-	var otlpStopped, profStopped bool
+	var logsStopped, otlpStopped, profStopped bool
 	gracefulShutdown(ts.Config, syscall.SIGINT,
+		func() { logsStopped = true },
 		func() { otlpStopped = true },
 		func() { profStopped = true },
 		logger)
@@ -122,8 +123,8 @@ func TestGracefulShutdownDrainsInFlightRequest(t *testing.T) {
 	if res.status != http.StatusOK || res.body != "OK" {
 		t.Errorf("in-flight request did not complete cleanly: status=%d body=%q", res.status, res.body)
 	}
-	if !otlpStopped || !profStopped {
-		t.Errorf("stop hooks not run: otlp=%v prof=%v", otlpStopped, profStopped)
+	if !logsStopped || !otlpStopped || !profStopped {
+		t.Errorf("stop hooks not run: logs=%v otlp=%v prof=%v", logsStopped, otlpStopped, profStopped)
 	}
 	// SIGINT stringifies to "interrupt"; assert the actual signal, not a hardcoded one.
 	if !strings.Contains(buf.String(), "interrupt") {

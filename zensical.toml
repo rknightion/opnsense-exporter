@@ -1,6 +1,6 @@
 [project]
 site_name = "OPNsense Exporter"
-site_description = "A comprehensive Prometheus exporter for OPNsense firewalls providing 719 metrics across 60 collectors for firewall monitoring, network diagnostics, and system observability"
+site_description = "A comprehensive Prometheus exporter for OPNsense firewalls providing 736 metrics across 60 collectors for firewall monitoring, network diagnostics, and system observability"
 site_url = "https://m7kni.io/opnsense-exporter/"
 site_author = "Rob Knighton"
 repo_name = "rknightion/opnsense-exporter"
@@ -27,6 +27,7 @@ nav = [
       { "Complete Reference" = "metrics/metrics.md" }
     ] },
   { "Integration & Dashboards" = "integration-dashboards.md" },
+  { "Log Shipping" = "log-shipping.md" },
   { Troubleshooting = "troubleshooting.md" },
   { Upgrading = "upgrading.md" },
   { Compatibility = "compatibility.md" },

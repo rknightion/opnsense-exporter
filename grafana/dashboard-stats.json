@@ -1,7 +1,7 @@
 {
-  "metrics": 719,
-  "panels": 592,
-  "tabs": 36,
+  "metrics": 736,
+  "panels": 615,
+  "tabs": 37,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -38,6 +38,7 @@
     "Chrony",
     "Tor",
     "Siproxd",
+    "Log Shipping",
     "Diagnostics"
   ]
 }

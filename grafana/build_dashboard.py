@@ -284,12 +284,11 @@ def register_subsystem_tabs(b: Builder):
     are listed here in display order. Missing modules are skipped (lets the dashboard
     build incrementally during development)."""
     order = [
-        "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound",
-        "dhcp", "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
-        "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp",
-        "haproxy", "relayd", "nginx", "frr", "monit",
-        "crowdsec", "ids", "ups", "captiveportal",
-        "trafficshaper", "hasync", "chrony", "tor", "siproxd",
+        "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound", "dhcp",
+        "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
+        "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
+        "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
+        "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "logs",
     ]
     import importlib
     for mod in order:

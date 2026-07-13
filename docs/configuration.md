@@ -58,6 +58,12 @@ For secure credential management in containers and orchestrated environments, cr
 | `--exporter.scrape-timeout-offset` | `OPNSENSE_EXPORTER_SCRAPE_TIMEOUT_OFFSET` | `500ms` | Duration subtracted from Prometheus' X-Prometheus-Scrape-Timeout-Seconds header when deriving the scrape deadline, so the exporter finishes and responds before Prometheus gives up. If the offset would consume the whole budget, the raw header timeout is used. |
 | `--log.format` | -- | `logfmt` | Output format of log messages. One of: [logfmt, json] |
 | `--log.level` | -- | `info` | Only log messages with the given severity or above. One of: [debug, info, warn, error] |
+| `--logs.batch-max` | `OPNSENSE_EXPORTER_LOGS_BATCH_MAX` | `1000` | Maximum number of records the emitter hands to the sink per batch. |
+| `--logs.buffer-size` | `OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE` | `4096` | Capacity of the in-memory backpressure queue between pollers and the sink. On overflow the oldest record is dropped and counted (logs_dropped_total). |
+| `--logs.enabled` | `OPNSENSE_EXPORTER_LOGS_ENABLED` | `false` | Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and ships to Loki via OTLP). Off by default. Independent of --otlp.enabled (which gates metrics). |
+| `--logs.poll-interval` | `OPNSENSE_EXPORTER_LOGS_POLL_INTERVAL` | `10s` | Base interval between event polls per source (floor 5s). Sources may raise their own floor. |
+| `--logs.sink` | `OPNSENSE_EXPORTER_LOGS_SINK` | `otlp` | Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout (one JSON line per event). |
+| `--logs.state-file` | `OPNSENSE_EXPORTER_LOGS_STATE_FILE` | -- | Optional path to persist per-source cursors across restarts (atomic JSON). Empty = in-memory only (resume from now on restart). |
 | `--web.config.file` | -- | -- | Path to configuration file that can enable TLS or authentication. See: https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md |
 | `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
@@ -384,6 +390,12 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.scrape-timeout-offset` | `OPNSENSE_EXPORTER_SCRAPE_TIMEOUT_OFFSET` | `500ms` | Duration subtracted from Prometheus' X-Prometheus-Scrape-Timeout-Seconds header when deriving the scrape deadline, so the exporter finishes and responds before Prometheus gives up. If the offset would consume the whole budget, the raw header timeout is used. |
 | `--log.format` | -- | `logfmt` | Output format of log messages. One of: [logfmt, json] |
 | `--log.level` | -- | `info` | Only log messages with the given severity or above. One of: [debug, info, warn, error] |
+| `--logs.batch-max` | `OPNSENSE_EXPORTER_LOGS_BATCH_MAX` | `1000` | Maximum number of records the emitter hands to the sink per batch. |
+| `--logs.buffer-size` | `OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE` | `4096` | Capacity of the in-memory backpressure queue between pollers and the sink. On overflow the oldest record is dropped and counted (logs_dropped_total). |
+| `--logs.enabled` | `OPNSENSE_EXPORTER_LOGS_ENABLED` | `false` | Enable the opt-in log/event shipping pipeline (polls OPNsense event APIs and ships to Loki via OTLP). Off by default. Independent of --otlp.enabled (which gates metrics). |
+| `--logs.poll-interval` | `OPNSENSE_EXPORTER_LOGS_POLL_INTERVAL` | `10s` | Base interval between event polls per source (floor 5s). Sources may raise their own floor. |
+| `--logs.sink` | `OPNSENSE_EXPORTER_LOGS_SINK` | `otlp` | Log shipping sink: otlp (OTLP logs, reuses the --otlp.* transport) or stdout (one JSON line per event). |
+| `--logs.state-file` | `OPNSENSE_EXPORTER_LOGS_STATE_FILE` | -- | Optional path to persist per-source cursors across restarts (atomic JSON). Empty = in-memory only (resume from now on restart). |
 | `--opnsense.address` | `OPNSENSE_EXPORTER_OPS_API` | -- | **Required.** Hostname or IP address of OPNsense API |
 | `--opnsense.api-key` | `OPNSENSE_EXPORTER_OPS_API_KEY` | -- | API key to use to connect to OPNsense API. This flag/ENV or the OPS_API_KEY_FILE may be set. |
 | `--opnsense.api-secret` | `OPNSENSE_EXPORTER_OPS_API_SECRET` | -- | API secret to use to connect to OPNsense API. This flag/ENV or the OPS_API_SECRET_FILE may be set. |

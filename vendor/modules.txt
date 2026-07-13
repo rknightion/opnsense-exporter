@@ -119,6 +119,22 @@ go.opentelemetry.io/otel/propagation
 go.opentelemetry.io/otel/semconv/v1.37.0
 go.opentelemetry.io/otel/semconv/v1.41.0
 go.opentelemetry.io/otel/semconv/v1.41.0/otelconv
+# go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.20.0
+## explicit; go 1.25.0
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/observ
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/retry
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/transform
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/x
+# go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.20.0
+## explicit; go 1.25.0
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/observ
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/retry
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/transform
+go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp/internal/x
 # go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.44.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc
@@ -141,6 +157,11 @@ go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/oconf
 go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/retry
 go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/transform
 go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp/internal/x
+# go.opentelemetry.io/otel/log v0.20.0
+## explicit; go 1.25.0
+go.opentelemetry.io/otel/log
+go.opentelemetry.io/otel/log/embedded
+go.opentelemetry.io/otel/log/noop
 # go.opentelemetry.io/otel/metric v1.44.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/metric
@@ -152,6 +173,11 @@ go.opentelemetry.io/otel/sdk
 go.opentelemetry.io/otel/sdk/instrumentation
 go.opentelemetry.io/otel/sdk/internal/x
 go.opentelemetry.io/otel/sdk/resource
+# go.opentelemetry.io/otel/sdk/log v0.20.0
+## explicit; go 1.25.0
+go.opentelemetry.io/otel/sdk/log
+go.opentelemetry.io/otel/sdk/log/internal/observ
+go.opentelemetry.io/otel/sdk/log/internal/x
 # go.opentelemetry.io/otel/sdk/metric v1.44.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/sdk/metric
@@ -170,8 +196,10 @@ go.opentelemetry.io/otel/trace/internal/telemetry
 go.opentelemetry.io/otel/trace/noop
 # go.opentelemetry.io/proto/otlp v1.10.0
 ## explicit; go 1.24.0
+go.opentelemetry.io/proto/otlp/collector/logs/v1
 go.opentelemetry.io/proto/otlp/collector/metrics/v1
 go.opentelemetry.io/proto/otlp/common/v1
+go.opentelemetry.io/proto/otlp/logs/v1
 go.opentelemetry.io/proto/otlp/metrics/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 # go.yaml.in/yaml/v2 v2.4.4

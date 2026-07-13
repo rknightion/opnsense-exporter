@@ -236,14 +236,37 @@ func assembleOTLP(in otlpRawInputs) (*OTLPConfig, bool, error) {
 }
 
 // OTLP assembles the OTLP export configuration from flags/env. The returned bool
-// reports whether OTLP export is enabled (true only when --otlp.enabled is set).
-// Grafana Cloud instance ID and token support *_FILE secret variants, mirroring the
-// OPS_API_*_FILE precedence used elsewhere.
+// reports whether OTLP metrics export is enabled (true only when --otlp.enabled is
+// set). Grafana Cloud instance ID and token support *_FILE secret variants,
+// mirroring the OPS_API_*_FILE precedence used elsewhere.
 func OTLP() (*OTLPConfig, bool, error) {
 	if !*otlpEnabled {
 		return nil, false, nil
 	}
+	return resolveOTLPTransport()
+}
 
+// OTLPTransport resolves the OTLP transport configuration (endpoint, protocol,
+// TLS, headers, Grafana Cloud shortcut, service name) from the --otlp.* flags
+// WITHOUT the --otlp.enabled gate. It exists so the log-shipping OTLP sink can
+// reuse the exact same transport family: metrics stay gated by --otlp.enabled,
+// logs by --logs.enabled, and both share one transport config. It returns an
+// actionable error when the configuration is inconsistent (e.g. a Grafana Cloud
+// id without a token, or a missing endpoint) so a logs-only caller can report
+// exactly which --otlp.* flag is missing.
+func OTLPTransport() (*OTLPConfig, error) {
+	cfg, _, err := resolveOTLPTransport()
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// resolveOTLPTransport resolves secrets and assembles the transport with the
+// enabled flag forced true (so the transport is always built regardless of
+// --otlp.enabled). The returned bool is always true on success; it exists so
+// OTLP() can return it directly.
+func resolveOTLPTransport() (*OTLPConfig, bool, error) {
 	gcID, err := resolveSecret("OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE", *otlpGCInstanceID)
 	if err != nil {
 		return nil, false, err

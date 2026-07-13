@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 719
-- **Gauges:** 497
-- **Counters:** 222
+- **Total metrics:** 736
+- **Gauges:** 507
+- **Counters:** 229
 
 ## General
 
@@ -267,6 +267,11 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firewall_pf_states_current | Gauge | --- | Current number of active PF states | --exporter.disable-firewall |
 | opnsense_firewall_pf_states_limit | Gauge | --- | Maximum number of PF states allowed | --exporter.disable-firewall |
 | opnsense_firewall_interface_log_entries_recent | Gauge | interface | Firewall log entries per interface within the most recent ~5000-record log window (sliding, not a counter; interface=\"other\" is an aggregate of interfaces beyond the top 10) | --exporter.disable-firewall |
+| opnsense_firewall_geoip_alias_usages | Gauge | --- | Number of configured firewall aliases of type GeoIP, regardless of whether the GeoIP database itself has ever downloaded | --exporter.disable-firewall |
+| opnsense_firewall_geoip_addresses | Gauge | --- | Number of GeoIP addresses/networks currently loaded from the downloaded database (0 until a MaxMind/ipinfo key is configured and a download has succeeded) | --exporter.disable-firewall |
+| opnsense_firewall_geoip_files | Gauge | --- | Number of per-country GeoIP alias table files currently written (0 until a MaxMind/ipinfo key is configured and a download has succeeded) | --exporter.disable-firewall |
+| opnsense_firewall_geoip_last_update_timestamp_seconds | Gauge | --- | Unix timestamp of the last successful GeoIP database download. Absent until the first successful download; compare against time() to alert on a stale/failed GeoIP database (e.g. an expired MaxMind license key). | --exporter.disable-firewall |
+| opnsense_firewall_nat_rules | Gauge | type, enabled | Number of MVC-managed NAT rules by type and enabled state (source_nat, d_nat, one_to_one, npt). Rules created before an admin migrated to the MVC-managed NAT backend are not counted. | --exporter.disable-firewall |
 
 ## Firewall Aliases
 
@@ -716,6 +721,18 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_nginx_upstream_server_responses_total | Counter | upstream, server, code | Cumulative responses from this upstream server by HTTP status code class | --exporter.disable-nginx |
 | opnsense_nginx_upstream_server_down | Gauge | upstream, server | Whether this upstream server is marked down (1 = down, 0 = up) | --exporter.disable-nginx |
 | opnsense_nginx_upstream_server_response_time_seconds | Gauge | upstream, server | Average response time of this upstream server in seconds | --exporter.disable-nginx |
+| opnsense_nginx_server_zone_cache_responses_total | Counter | zone, cache_status | Cumulative responses by cache status for this server zone (only when the vts build reports cache status) | --exporter.disable-nginx |
+| opnsense_nginx_server_zone_request_seconds_total | Counter | zone | Cumulative sum of request processing time in seconds for this server zone | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_request_seconds_total | Counter | upstream, server | Cumulative sum of request processing time in seconds for this upstream server | --exporter.disable-nginx |
+| opnsense_nginx_upstream_server_response_seconds_total | Counter | upstream, server | Cumulative sum of response time in seconds for this upstream server | --exporter.disable-nginx |
+| opnsense_nginx_cache_zone_max_bytes | Gauge | zone | Maximum size of this proxy_cache_path zone in bytes | --exporter.disable-nginx |
+| opnsense_nginx_cache_zone_used_bytes | Gauge | zone | Currently used bytes of this proxy_cache_path zone | --exporter.disable-nginx |
+| opnsense_nginx_cache_zone_bytes_in_total | Counter | zone | Cumulative bytes received for this cache zone | --exporter.disable-nginx |
+| opnsense_nginx_cache_zone_bytes_out_total | Counter | zone | Cumulative bytes sent for this cache zone | --exporter.disable-nginx |
+| opnsense_nginx_cache_zone_responses_total | Counter | zone, cache_status | Cumulative responses by cache status for this cache zone | --exporter.disable-nginx |
+| opnsense_nginx_config_load_timestamp_seconds | Gauge | --- | Unix timestamp of the last nginx config (re)load, as reported by the vts module | --exporter.disable-nginx |
+| opnsense_nginx_bans | Gauge | --- | Current number of active autoblock bans | --exporter.disable-nginx |
+| opnsense_nginx_ban_last_timestamp_seconds | Gauge | --- | Unix timestamp of the most recent autoblock ban | --exporter.disable-nginx |
 
 ## OpenVPN
 

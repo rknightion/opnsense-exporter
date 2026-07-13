@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
 	"github.com/rknightion/opnsense-exporter/internal/server"
@@ -29,6 +30,10 @@ var version = ""
 // otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
 // export endpoint cannot hang process exit.
 const otlpShutdownTimeout = 10 * time.Second
+
+// logsShutdownTimeout bounds the log pipeline drain (queue flush + sink flush) on
+// graceful shutdown so a dead logs endpoint cannot hang process exit.
+const logsShutdownTimeout = 10 * time.Second
 
 // httpShutdownTimeout bounds the graceful HTTP drain on SIGTERM/SIGINT so an in-flight
 // scrape can finish, while staying comfortably under Kubernetes' default 30s
@@ -553,6 +558,47 @@ func main() {
 		}
 	}
 
+	// Log shipping is opt-in (--logs.enabled) and fully independent of OTLP metrics
+	// (--otlp.enabled): registered sources poll OPNsense event APIs on a background
+	// loop and ship to Loki via OTLP logs (reusing the --otlp.* transport) or stdout.
+	// It is long-lived, never a scrape-time collector. An invalid configuration is
+	// fatal; a transient sink outage degrades to counted loss (never blocks /metrics).
+	logsCfg, logsEnabled, err := options.Logs()
+	if err != nil {
+		logger.Error("invalid logs configuration", "err", err)
+		os.Exit(1)
+	}
+	var stopLogs func()
+	if logsEnabled {
+		var logsTransport *options.OTLPConfig
+		if logsCfg.Sink == "otlp" {
+			// Resolve the OTLP transport WITHOUT the --otlp.enabled gate so logs can
+			// ship even when metrics OTLP export is off. A resolution error (e.g. a
+			// Grafana Cloud id without a token) names the offending --otlp.* flag.
+			logsTransport, err = options.OTLPTransport()
+			if err != nil {
+				logger.Error("invalid otlp transport for logs sink", "err", err)
+				os.Exit(1)
+			}
+		}
+		stop, lerr := logship.Start(
+			context.Background(), logsCfg, logsTransport,
+			logship.Deps{Client: &opnsenseClient, Logger: logger},
+			version, instanceLabel, selfMetricsRegistry,
+		)
+		if lerr != nil {
+			logger.Error("failed to start log shipping", "err", lerr)
+			os.Exit(1)
+		}
+		stopLogs = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), logsShutdownTimeout)
+			defer cancel()
+			if err := stop(ctx); err != nil {
+				logger.Error("failed to flush log pipeline on shutdown", "err", err)
+			}
+		}
+	}
+
 	// Validate the metrics path before registering it: net/http.ServeMux panics on an
 	// empty/invalid pattern, so a templated-blank --web.telemetry-path would crash the
 	// process with a raw stack trace. Fail through the normal logged config-error path.
@@ -628,7 +674,7 @@ func main() {
 	for {
 		select {
 		case sig := <-term:
-			gracefulShutdown(srv, sig, stopOTLP, stopProfiling, logger)
+			gracefulShutdown(srv, sig, stopLogs, stopOTLP, stopProfiling, logger)
 			return
 		case <-srvClose:
 			os.Exit(1)
@@ -640,12 +686,18 @@ func main() {
 // telemetry and returning, so a scrape landing mid-response during a rollout/redeploy
 // finishes instead of being severed (which Prometheus records as up=0). The log line
 // reports the actual signal received rather than a hardcoded "SIGTERM" (#161).
-func gracefulShutdown(srv *http.Server, sig os.Signal, stopOTLP, stopProfiling func(), logger *slog.Logger) {
+func gracefulShutdown(srv *http.Server, sig os.Signal, stopLogs, stopOTLP, stopProfiling func(), logger *slog.Logger) {
 	logger.Info("received signal, shutting down gracefully", "signal", sig.String())
 	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("graceful HTTP shutdown failed; in-flight scrapes may have been cut", "err", err)
+	}
+	// Order: drain HTTP -> stop log pollers + flush the sink -> flush OTLP metrics ->
+	// flush profiling. Logs drain before OTLP metrics so a final scrape's data and the
+	// last log batch both leave before the process exits.
+	if stopLogs != nil {
+		stopLogs()
 	}
 	if stopOTLP != nil {
 		stopOTLP()
