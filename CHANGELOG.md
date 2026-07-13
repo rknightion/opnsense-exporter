@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/rknightion/opnsense-exporter/compare/v2.2.0...v2.2.1) (2026-07-13)
+
+
+### CI/CD
+
+* **release:** repin shared binaries workflow, grant attestations: write ([9fb6409](https://github.com/rknightion/opnsense-exporter/commit/9fb640920f52602937eec241872c48349ab7331d))
+
 ## [2.2.0](https://github.com/rknightion/opnsense-exporter/compare/v2.1.0...v2.2.0) (2026-07-13)
 
 
