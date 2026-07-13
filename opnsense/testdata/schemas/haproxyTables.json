@@ -1,0 +1,28 @@
+{
+  "endpoint": "haproxyTables",
+  "method": "GET",
+  "path": "api/haproxy/statistics/tables",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].size",
+      "kind": "string"
+    },
+    {
+      "path": "[].table",
+      "kind": "string"
+    },
+    {
+      "path": "[].type",
+      "kind": "string"
+    },
+    {
+      "path": "[].used",
+      "kind": "string"
+    }
+  ]
+}

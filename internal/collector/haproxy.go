@@ -50,6 +50,27 @@ type haproxyCollector struct {
 	serverDowntime    *prometheus.Desc
 	serverWeight      *prometheus.Desc
 
+	// Added for #201 (stick-table occupancy + show-stat latency/health-
+	// transition/capacity fields).
+	connectionLimit       *prometheus.Desc
+	sslCurrentConnections *prometheus.Desc
+	frontendRequestsTotal *prometheus.Desc
+	frontendSessionLimit  *prometheus.Desc
+	backendQueueTimeAvg   *prometheus.Desc
+	backendConnectTimeAvg *prometheus.Desc
+	backendRespTimeAvg    *prometheus.Desc
+	backendTotalTimeAvg   *prometheus.Desc
+	backendSelectedTotal  *prometheus.Desc
+	backendAbortsTotal    *prometheus.Desc
+	serverQueueTimeAvg    *prometheus.Desc
+	serverConnectTimeAvg  *prometheus.Desc
+	serverRespTimeAvg     *prometheus.Desc
+	serverTotalTimeAvg    *prometheus.Desc
+	serverCheckDowns      *prometheus.Desc
+	serverLastStateChange *prometheus.Desc
+	stickTableSize        *prometheus.Desc
+	stickTableUsed        *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -152,6 +173,53 @@ func (c *haproxyCollector) Register(namespace, instanceLabel string, log *slog.L
 		"Cumulative downtime of this server in seconds", srvLabels)
 	c.serverWeight = buildPrometheusDesc(c.subsystem, "server_weight",
 		"Current effective weight of this server", srvLabels)
+
+	// #201: process-level capacity.
+	c.connectionLimit = buildPrometheusDesc(c.subsystem, "connection_limit",
+		"HAProxy process-wide connection limit (Maxconn)", nil)
+	c.sslCurrentConnections = buildPrometheusDesc(c.subsystem, "ssl_current_connections",
+		"Current SSL/TLS connections on the HAProxy process", nil)
+
+	// #201: frontend capacity.
+	c.frontendRequestsTotal = buildPrometheusDesc(c.subsystem, "frontend_requests_total",
+		"Cumulative HTTP requests processed by this frontend", feLabels)
+	c.frontendSessionLimit = buildPrometheusDesc(c.subsystem, "frontend_session_limit",
+		"Configured session limit on this frontend", feLabels)
+
+	// #201: backend latency (rolling averages over the last 1024 requests).
+	c.backendQueueTimeAvg = buildPrometheusDesc(c.subsystem, "backend_queue_time_avg_seconds",
+		"Average time spent in queue on this backend, over the last 1024 requests", beLabels)
+	c.backendConnectTimeAvg = buildPrometheusDesc(c.subsystem, "backend_connect_time_avg_seconds",
+		"Average time to connect to a server on this backend, over the last 1024 requests", beLabels)
+	c.backendRespTimeAvg = buildPrometheusDesc(c.subsystem, "backend_response_time_avg_seconds",
+		"Average server response time on this backend, over the last 1024 requests", beLabels)
+	c.backendTotalTimeAvg = buildPrometheusDesc(c.subsystem, "backend_total_time_avg_seconds",
+		"Average total request time on this backend, over the last 1024 requests", beLabels)
+	c.backendSelectedTotal = buildPrometheusDesc(c.subsystem, "backend_selected_total",
+		"Cumulative number of times this backend was selected by the load balancer (lbtot)", beLabels)
+	c.backendAbortsTotal = buildPrometheusDesc(c.subsystem, "backend_aborts_total",
+		"Cumulative aborted requests on this backend, by side", []string{"backend", "side"})
+
+	// #201: server latency + health transitions.
+	c.serverQueueTimeAvg = buildPrometheusDesc(c.subsystem, "server_queue_time_avg_seconds",
+		"Average time spent in queue on this server, over the last 1024 requests", srvLabels)
+	c.serverConnectTimeAvg = buildPrometheusDesc(c.subsystem, "server_connect_time_avg_seconds",
+		"Average time to connect to this server, over the last 1024 requests", srvLabels)
+	c.serverRespTimeAvg = buildPrometheusDesc(c.subsystem, "server_response_time_avg_seconds",
+		"Average response time from this server, over the last 1024 requests", srvLabels)
+	c.serverTotalTimeAvg = buildPrometheusDesc(c.subsystem, "server_total_time_avg_seconds",
+		"Average total request time on this server, over the last 1024 requests", srvLabels)
+	c.serverCheckDowns = buildPrometheusDesc(c.subsystem, "server_check_downs_total",
+		"Cumulative number of UP->DOWN health-check transitions on this server", srvLabels)
+	c.serverLastStateChange = buildPrometheusDesc(c.subsystem, "server_last_state_change_seconds",
+		"Seconds since this server's last health-check state change", srvLabels)
+
+	// #201: stick-table occupancy.
+	tableLabels := []string{"table", "type"}
+	c.stickTableSize = buildPrometheusDesc(c.subsystem, "stick_table_size",
+		"Configured maximum entry count for this stick table", tableLabels)
+	c.stickTableUsed = buildPrometheusDesc(c.subsystem, "stick_table_used",
+		"Current entry count in this stick table", tableLabels)
 }
 
 func (c *haproxyCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -170,6 +238,15 @@ func (c *haproxyCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.serverBytesIn, c.serverBytesOut, c.serverQueue,
 		c.serverConnErrors, c.serverRespErrors, c.serverCheckFail,
 		c.serverDowntime, c.serverWeight,
+		c.connectionLimit, c.sslCurrentConnections,
+		c.frontendRequestsTotal, c.frontendSessionLimit,
+		c.backendQueueTimeAvg, c.backendConnectTimeAvg,
+		c.backendRespTimeAvg, c.backendTotalTimeAvg,
+		c.backendSelectedTotal, c.backendAbortsTotal,
+		c.serverQueueTimeAvg, c.serverConnectTimeAvg,
+		c.serverRespTimeAvg, c.serverTotalTimeAvg,
+		c.serverCheckDowns, c.serverLastStateChange,
+		c.stickTableSize, c.stickTableUsed,
 	} {
 		ch <- d
 	}
@@ -207,12 +284,25 @@ func (c *haproxyCollector) Update(_ context.Context, client *opnsense.Client, ch
 		return nil
 	}
 
+	// emitOpt emits a metric only when v is non-nil — several #201 fields go
+	// empty on rows/proxy-modes they don't apply to and must never be
+	// fabricated as a 0 (#164).
+	emitOpt := func(desc *prometheus.Desc, vt prometheus.ValueType, v *float64, labels ...string) {
+		if v == nil {
+			return
+		}
+		lbls := append(append([]string{}, labels...), c.instance)
+		ch <- prometheus.MustNewConstMetric(desc, vt, *v, lbls...)
+	}
+
 	if data.HasInfo {
 		ch <- prometheus.MustNewConstMetric(c.procUptime, prometheus.GaugeValue, data.Info.UptimeSeconds, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.procCurrConns, prometheus.GaugeValue, data.Info.CurrentConnections, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.procConnsTotal, prometheus.CounterValue, data.Info.ConnectionsTotal, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.procRequestsTotal, prometheus.CounterValue, data.Info.RequestsTotal, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.procIdlePercent, prometheus.GaugeValue, data.Info.IdlePercent, c.instance)
+		emitOpt(c.connectionLimit, prometheus.GaugeValue, data.Info.ConnectionLimit)
+		emitOpt(c.sslCurrentConnections, prometheus.GaugeValue, data.Info.SslCurrentConnections)
 	}
 
 	for _, fe := range data.Frontends {
@@ -226,6 +316,8 @@ func (c *haproxyCollector) Update(_ context.Context, client *opnsense.Client, ch
 		for code, v := range fe.ResponsesByCode {
 			ch <- prometheus.MustNewConstMetric(c.frontendResponses, prometheus.CounterValue, v, fe.Name, code, c.instance)
 		}
+		emitOpt(c.frontendRequestsTotal, prometheus.CounterValue, fe.RequestsTotal, fe.Name)
+		emitOpt(c.frontendSessionLimit, prometheus.GaugeValue, fe.SessionLimit, fe.Name)
 	}
 
 	for _, be := range data.Backends {
@@ -244,6 +336,13 @@ func (c *haproxyCollector) Update(_ context.Context, client *opnsense.Client, ch
 		for code, v := range be.ResponsesByCode {
 			ch <- prometheus.MustNewConstMetric(c.backendResponses, prometheus.CounterValue, v, be.Name, code, c.instance)
 		}
+		emitOpt(c.backendQueueTimeAvg, prometheus.GaugeValue, be.QueueTimeAvg, be.Name)
+		emitOpt(c.backendConnectTimeAvg, prometheus.GaugeValue, be.ConnectTimeAvg, be.Name)
+		emitOpt(c.backendRespTimeAvg, prometheus.GaugeValue, be.ResponseTimeAvg, be.Name)
+		emitOpt(c.backendTotalTimeAvg, prometheus.GaugeValue, be.TotalTimeAvg, be.Name)
+		emitOpt(c.backendSelectedTotal, prometheus.CounterValue, be.SelectedTotal, be.Name)
+		emitOpt(c.backendAbortsTotal, prometheus.CounterValue, be.ClientAborts, be.Name, "client")
+		emitOpt(c.backendAbortsTotal, prometheus.CounterValue, be.ServerAborts, be.Name, "server")
 	}
 
 	for _, srv := range data.Servers {
@@ -258,6 +357,17 @@ func (c *haproxyCollector) Update(_ context.Context, client *opnsense.Client, ch
 		ch <- prometheus.MustNewConstMetric(c.serverCheckFail, prometheus.CounterValue, srv.CheckFailures, srv.Backend, srv.Name, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.serverDowntime, prometheus.CounterValue, srv.DowntimeSeconds, srv.Backend, srv.Name, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.serverWeight, prometheus.GaugeValue, srv.Weight, srv.Backend, srv.Name, c.instance)
+		emitOpt(c.serverQueueTimeAvg, prometheus.GaugeValue, srv.QueueTimeAvg, srv.Backend, srv.Name)
+		emitOpt(c.serverConnectTimeAvg, prometheus.GaugeValue, srv.ConnectTimeAvg, srv.Backend, srv.Name)
+		emitOpt(c.serverRespTimeAvg, prometheus.GaugeValue, srv.ResponseTimeAvg, srv.Backend, srv.Name)
+		emitOpt(c.serverTotalTimeAvg, prometheus.GaugeValue, srv.TotalTimeAvg, srv.Backend, srv.Name)
+		emitOpt(c.serverCheckDowns, prometheus.CounterValue, srv.CheckDowns, srv.Backend, srv.Name)
+		emitOpt(c.serverLastStateChange, prometheus.GaugeValue, srv.LastStateChangeSeconds, srv.Backend, srv.Name)
+	}
+
+	for _, tbl := range data.StickTables {
+		ch <- prometheus.MustNewConstMetric(c.stickTableSize, prometheus.GaugeValue, tbl.Size, tbl.Table, tbl.Type, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.stickTableUsed, prometheus.GaugeValue, tbl.Used, tbl.Table, tbl.Type, c.instance)
 	}
 
 	status, present, sErr := client.FetchServiceStatusOptional("haproxyServiceStatus")

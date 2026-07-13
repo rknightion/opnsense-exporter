@@ -10,6 +10,22 @@ retries_total, redispatches_total, check_failures_total,
 downtime_seconds_total) are cumulative -> rate().
 Gauges shown raw: service_running, process_*, frontend/backend/server status,
 current_sessions, queue_current, active/backup_servers, weight.
+
+Added for #201 (stick-table occupancy + show-stat latency/health-transition/
+capacity fields — several go absent for tcp-mode proxies or older HAProxy
+builds and are simply not emitted, never a fabricated 0, so a "no data" panel
+is expected in that case):
+- connection_limit / ssl_current_connections: process-level capacity gauges.
+- frontend_requests_total (rate) / frontend_session_limit (gauge, saturation
+  vs current_sessions).
+- backend/server *_time_avg_seconds: rolling averages (last 1024 requests) ->
+  gauges, shown raw (never rate()'d — they are already an average, not a
+  counter).
+- backend_selected_total / backend_aborts_total: cumulative -> rate().
+- server_check_downs_total: cumulative UP->DOWN transitions -> rate().
+- server_last_state_change_seconds: gauge, seconds since last transition
+  (ticks up with wall-clock time, resets to ~0 on a transition) — shown raw.
+- stick_table_size / stick_table_used: gauges, table occupancy.
 """
 
 from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
@@ -18,6 +34,8 @@ from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
 def build(b: Builder):
     b.sentinel("has_haproxy",
                "label_values(opnsense_haproxy_frontend_status, __name__)")
+    b.sentinel("has_haproxy_stick_tables",
+               "label_values(opnsense_haproxy_stick_table_size, __name__)")
 
     # ------------------------------------------------------------------ #
     # Row 1: HAProxy Overview                                              #
@@ -63,6 +81,17 @@ def build(b: Builder):
         ],
         unit="short", w=8, h=4,
         desc="HAProxy process-level connection and HTTP request rates.",
+    )
+    conn_capacity = b.ts(
+        "Connection Capacity",
+        [
+            (sel("opnsense_haproxy_process_current_connections"), "current"),
+            (sel("opnsense_haproxy_connection_limit"), "limit (Maxconn)"),
+            (sel("opnsense_haproxy_ssl_current_connections"), "current SSL"),
+        ],
+        unit="short", w=12, h=4,
+        desc="HAProxy process-wide connection capacity (#201): current vs the "
+             "configured Maxconn limit, plus current SSL/TLS connections.",
     )
 
     # ------------------------------------------------------------------ #
@@ -115,6 +144,25 @@ def build(b: Builder):
           "{{frontend}} {{code}}")],
         unit="short", w=24, h=8, stack=True,
         desc="Frontend HTTP response rate by status code class (1xx–5xx, other).",
+    )
+    fe_req_rate = b.ts(
+        "Frontend HTTP Request Rate",
+        [(f'rate({sel("opnsense_haproxy_frontend_requests_total")}[{RATE}])',
+          "{{frontend}}")],
+        unit="short", w=12, h=8,
+        desc="HTTP requests per second per frontend (#201, req_tot — absent "
+             "for tcp-mode frontends).",
+    )
+    fe_session_limit = b.ts(
+        "Frontend Sessions vs Limit",
+        [
+            (sel("opnsense_haproxy_frontend_current_sessions"), "{{frontend}} current"),
+            (sel("opnsense_haproxy_frontend_session_limit"), "{{frontend}} limit"),
+        ],
+        unit="short", w=12, h=8,
+        desc="Current sessions against the configured session limit (#201, "
+             "slim) — approaching the limit means new connections start "
+             "queuing or getting refused.",
     )
 
     # ------------------------------------------------------------------ #
@@ -184,6 +232,31 @@ def build(b: Builder):
         unit="short", w=24, h=8, stack=True,
         desc="Backend HTTP response rate by status code class (1xx–5xx, other).",
     )
+    be_latency = b.ts(
+        "Backend Latency (avg over last 1024 requests)",
+        [
+            (sel("opnsense_haproxy_backend_queue_time_avg_seconds"), "{{backend}} queue"),
+            (sel("opnsense_haproxy_backend_connect_time_avg_seconds"), "{{backend}} connect"),
+            (sel("opnsense_haproxy_backend_response_time_avg_seconds"), "{{backend}} response"),
+            (sel("opnsense_haproxy_backend_total_time_avg_seconds"), "{{backend}} total"),
+        ],
+        unit="s", w=12, h=8,
+        desc="Rolling average queue/connect/response/total time per backend "
+             "(#201, qtime/ctime/rtime/ttime) — a rising queue time with "
+             "current_sessions climbing signals the backend is saturating.",
+    )
+    be_selected_aborts = b.ts(
+        "Backend Selections & Aborts",
+        [
+            (f'rate({sel("opnsense_haproxy_backend_selected_total")}[{RATE}])',
+             "{{backend}} selected"),
+            (f'rate({sel("opnsense_haproxy_backend_aborts_total")}[{RATE}])',
+             "{{backend}} {{side}} aborts"),
+        ],
+        unit="short", w=12, h=8,
+        desc="Load-balancer selection rate (#201, lbtot) and client/server "
+             "abort rate (cli_abrt/srv_abrt) per backend.",
+    )
 
     # ------------------------------------------------------------------ #
     # Row 4: Server Details                                                #
@@ -248,20 +321,84 @@ def build(b: Builder):
         unit="short", w=24, h=8,
         desc="Server-level error rates, check failures, and downtime accumulation rate.",
     )
+    srv_latency = b.ts(
+        "Server Latency (avg over last 1024 requests)",
+        [
+            (sel("opnsense_haproxy_server_queue_time_avg_seconds"), "{{backend}}/{{server}} queue"),
+            (sel("opnsense_haproxy_server_connect_time_avg_seconds"), "{{backend}}/{{server}} connect"),
+            (sel("opnsense_haproxy_server_response_time_avg_seconds"), "{{backend}}/{{server}} response"),
+            (sel("opnsense_haproxy_server_total_time_avg_seconds"), "{{backend}}/{{server}} total"),
+        ],
+        unit="s", w=12, h=8,
+        desc="Rolling average queue/connect/response/total time per server (#201).",
+    )
+    srv_health_transitions = b.ts(
+        "Server Health Transitions",
+        [
+            (f'rate({sel("opnsense_haproxy_server_check_downs_total")}[{RATE}])',
+             "{{backend}}/{{server}} down transitions/s"),
+            (sel("opnsense_haproxy_server_last_state_change_seconds"),
+             "{{backend}}/{{server}} time since change"),
+        ],
+        unit="s", w=12, h=8,
+        desc="UP->DOWN health-check transition rate (#201, chkdown) and "
+             "seconds since the last state change (lastchg, resets on every "
+             "transition) — a low 'time since change' value alongside "
+             "server_status flapping is a failing health check.",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 5: Stick Tables (#201) — only present when at least one frontend#
+    # or backend has `stick-table` configured.                             #
+    # ------------------------------------------------------------------ #
+    stick_table_occupancy = b.ts(
+        "Stick Table Occupancy",
+        [
+            (sel("opnsense_haproxy_stick_table_used"), "{{table}} ({{type}}) used"),
+            (sel("opnsense_haproxy_stick_table_size"), "{{table}} ({{type}}) size"),
+        ],
+        unit="short", w=16, h=8,
+        desc="Stick-table entry count vs configured maximum size (#201) — a "
+             "table pinned at size silently stops tracking new entries, "
+             "which degrades rate limiting / stickiness with no other signal.",
+    )
+    stick_table_table = b.table(
+        "Stick Tables",
+        [
+            sel("opnsense_haproxy_stick_table_size"),
+            sel("opnsense_haproxy_stick_table_used"),
+        ],
+        w=8, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "table": "Table",
+            "type": "Type",
+            "Value #A": "Size",
+            "Value #B": "Used",
+        },
+        sort_by="Table",
+        desc="Configured stick tables with their type, size and current entry count.",
+    )
 
     b.tab("HAProxy", [
         b.row("HAProxy Overview",
-              [svc, uptime, curr_conns, idle_pct, conn_rate],
+              [svc, uptime, curr_conns, idle_pct, conn_rate, conn_capacity],
               present="has_haproxy"),
         b.row("Frontend Traffic",
               [fe_status, fe_sess_rate, fe_curr_sess,
-               fe_bytes, fe_errors, fe_responses],
+               fe_bytes, fe_errors, fe_responses,
+               fe_req_rate, fe_session_limit],
               present="has_haproxy"),
         b.row("Backend Traffic",
               [be_status, be_sess_rate, be_curr_sess,
-               be_bytes, be_errors, be_servers, be_responses],
+               be_bytes, be_errors, be_servers, be_responses,
+               be_latency, be_selected_aborts],
               present="has_haproxy"),
         b.row("Server Details",
-              [srv_status, srv_table, srv_sess_rate, srv_bytes, srv_errors],
+              [srv_status, srv_table, srv_sess_rate, srv_bytes, srv_errors,
+               srv_latency, srv_health_transitions],
               present="has_haproxy"),
+        b.row("Stick Tables",
+              [stick_table_occupancy, stick_table_table],
+              present="has_haproxy_stick_tables"),
     ])

@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 697
-- **Gauges:** 479
-- **Counters:** 218
+- **Total metrics:** 715
+- **Gauges:** 493
+- **Counters:** 222
 
 ## General
 
@@ -381,6 +381,24 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_haproxy_server_check_failures_total | Counter | backend, server | Cumulative failed health checks on this server | --exporter.disable-haproxy |
 | opnsense_haproxy_server_downtime_seconds_total | Counter | backend, server | Cumulative downtime of this server in seconds | --exporter.disable-haproxy |
 | opnsense_haproxy_server_weight | Gauge | backend, server | Current effective weight of this server | --exporter.disable-haproxy |
+| opnsense_haproxy_connection_limit | Gauge | --- | HAProxy process-wide connection limit (Maxconn) | --exporter.disable-haproxy |
+| opnsense_haproxy_ssl_current_connections | Gauge | --- | Current SSL/TLS connections on the HAProxy process | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_requests_total | Counter | frontend | Cumulative HTTP requests processed by this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_frontend_session_limit | Gauge | frontend | Configured session limit on this frontend | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_queue_time_avg_seconds | Gauge | backend | Average time spent in queue on this backend, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_connect_time_avg_seconds | Gauge | backend | Average time to connect to a server on this backend, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_response_time_avg_seconds | Gauge | backend | Average server response time on this backend, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_total_time_avg_seconds | Gauge | backend | Average total request time on this backend, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_selected_total | Counter | backend | Cumulative number of times this backend was selected by the load balancer (lbtot) | --exporter.disable-haproxy |
+| opnsense_haproxy_backend_aborts_total | Counter | backend, side | Cumulative aborted requests on this backend, by side | --exporter.disable-haproxy |
+| opnsense_haproxy_server_queue_time_avg_seconds | Gauge | backend, server | Average time spent in queue on this server, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_server_connect_time_avg_seconds | Gauge | backend, server | Average time to connect to this server, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_server_response_time_avg_seconds | Gauge | backend, server | Average response time from this server, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_server_total_time_avg_seconds | Gauge | backend, server | Average total request time on this server, over the last 1024 requests | --exporter.disable-haproxy |
+| opnsense_haproxy_server_check_downs_total | Counter | backend, server | Cumulative number of UP->DOWN health-check transitions on this server | --exporter.disable-haproxy |
+| opnsense_haproxy_server_last_state_change_seconds | Gauge | backend, server | Seconds since this server's last health-check state change | --exporter.disable-haproxy |
+| opnsense_haproxy_stick_table_size | Gauge | table, type | Configured maximum entry count for this stick table | --exporter.disable-haproxy |
+| opnsense_haproxy_stick_table_used | Gauge | table, type | Current entry count in this stick table | --exporter.disable-haproxy |
 
 ## Hardware
 

@@ -11,11 +11,14 @@ import (
 // and converts the CSV to JSON objects (queryStats.php) — every value is a
 // JSON string ("" when HAProxy reports no value).
 //
-// VERIFICATION: unvalidated against a live os-haproxy box — shape derived from
+// VERIFICATION: confirmed against a live os-haproxy dev-box box (issue #201,
+// 2026-07-13 heavy-topology captures — a stick-table frontend + 2-server HTTP
+// backend, including a live health-check DOWN transition). Shape derived from
 // net/haproxy/src/opnsense/scripts/OPNsense/HAProxy/queryStats.php and the
-// HAProxy management API `show stat` CSV column set. Re-check on real hardware
-// when available: empty-string numerics, listener rows (type "3"), and the
-// stray non-object array elements queryStats leaves for incomplete CSV lines.
+// HAProxy management API `show stat` CSV column set. qtime/ctime/rtime/ttime,
+// chkdown, lastchg, slim, req_tot, lbtot and cli_abrt/srv_abrt are only
+// present on the rows they apply to (FRONTEND vs BACKEND vs server) and go
+// empty for tcp-mode proxies — never fabricate a 0 for an empty cell (#164).
 type haproxyStatRow struct {
 	PXName    string `json:"pxname"`
 	SVName    string `json:"svname"`
@@ -35,7 +38,18 @@ type haproxyStatRow struct {
 	Act       string `json:"act"`
 	Bck       string `json:"bck"`
 	Chkfail   string `json:"chkfail"`
+	Chkdown   string `json:"chkdown"`
+	Lastchg   string `json:"lastchg"`
 	Downtime  string `json:"downtime"`
+	Slim      string `json:"slim"`
+	ReqTot    string `json:"req_tot"`
+	LbTot     string `json:"lbtot"`
+	CliAbrt   string `json:"cli_abrt"`
+	SrvAbrt   string `json:"srv_abrt"`
+	Qtime     string `json:"qtime"`
+	Ctime     string `json:"ctime"`
+	Rtime     string `json:"rtime"`
+	Ttime     string `json:"ttime"`
 	Type      string `json:"type"`
 	Hrsp1xx   string `json:"hrsp_1xx"`
 	Hrsp2xx   string `json:"hrsp_2xx"`
@@ -56,6 +70,11 @@ type HAProxyFrontend struct {
 	RequestErrors   float64
 	RequestsDenied  float64
 	ResponsesByCode map[string]float64
+	// RequestsTotal (req_tot) and SessionLimit (slim) are nil when the CSV
+	// cell was empty (tcp-mode proxies leave req_tot blank) — never a
+	// fabricated 0 (#164).
+	RequestsTotal *float64
+	SessionLimit  *float64
 }
 
 // HAProxyBackend is the normalised per-backend statistics row.
@@ -74,6 +93,19 @@ type HAProxyBackend struct {
 	ActiveServers    float64
 	BackupServers    float64
 	ResponsesByCode  map[string]float64
+	// QueueTimeAvg/ConnectTimeAvg/ResponseTimeAvg/TotalTimeAvg are the
+	// show-stat qtime/ctime/rtime/ttime rolling averages (last 1024 requests)
+	// converted from milliseconds to seconds. SelectedTotal is lbtot
+	// (cumulative times this backend was selected); ClientAborts/ServerAborts
+	// are cli_abrt/srv_abrt. All nil when the CSV cell was empty (tcp-mode
+	// proxies leave several of these blank) — never a fabricated 0 (#164).
+	QueueTimeAvg    *float64
+	ConnectTimeAvg  *float64
+	ResponseTimeAvg *float64
+	TotalTimeAvg    *float64
+	SelectedTotal   *float64
+	ClientAborts    *float64
+	ServerAborts    *float64
 }
 
 // HAProxyServer is the normalised per-server statistics row.
@@ -91,6 +123,26 @@ type HAProxyServer struct {
 	CheckFailures    float64
 	DowntimeSeconds  float64
 	Weight           float64
+	// QueueTimeAvg/ConnectTimeAvg/ResponseTimeAvg/TotalTimeAvg mirror the
+	// backend-level rolling averages (see HAProxyBackend) but per server.
+	// CheckDowns (chkdown) counts UP->DOWN transitions; LastStateChangeSeconds
+	// (lastchg) is seconds since the last state change. All nil when the CSV
+	// cell was empty — never a fabricated 0 (#164).
+	QueueTimeAvg           *float64
+	ConnectTimeAvg         *float64
+	ResponseTimeAvg        *float64
+	TotalTimeAvg           *float64
+	CheckDowns             *float64
+	LastStateChangeSeconds *float64
+}
+
+// HAProxyStickTable is the normalised per-table row from
+// api/haproxy/statistics/tables ("show table" over the admin socket).
+type HAProxyStickTable struct {
+	Table string
+	Type  string
+	Size  float64
+	Used  float64
 }
 
 // HAProxyInfo is the normalised process-level `show info` data.
@@ -101,16 +153,32 @@ type HAProxyInfo struct {
 	ConnectionsTotal   float64
 	RequestsTotal      float64
 	IdlePercent        float64
+	// ConnectionLimit (Maxconn) and SslCurrentConnections (CurrSslConns) are
+	// nil when the field is absent from `show info` — never a fabricated 0.
+	ConnectionLimit       *float64
+	SslCurrentConnections *float64
+}
+
+// haproxyTableRow mirrors one element of the api/haproxy/statistics/tables
+// response ("show table" parsed by queryStats.php). Every value is a JSON
+// string, mirroring haproxyStatRow. VERIFIED against a live os-haproxy
+// dev-box (issue #201, 2026-07-13): a stick-table frontend with `used > 0`.
+type haproxyTableRow struct {
+	Table string `json:"table"`
+	Type  string `json:"type"`
+	Size  string `json:"size"`
+	Used  string `json:"used"`
 }
 
 // HAProxyStats holds the aggregated result of FetchHAProxyStats.
 type HAProxyStats struct {
-	Present   bool // false when the plugin is absent (counters endpoint 404s)
-	Frontends []HAProxyFrontend
-	Backends  []HAProxyBackend
-	Servers   []HAProxyServer
-	Info      HAProxyInfo
-	HasInfo   bool
+	Present     bool // false when the plugin is absent (counters endpoint 404s)
+	Frontends   []HAProxyFrontend
+	Backends    []HAProxyBackend
+	Servers     []HAProxyServer
+	StickTables []HAProxyStickTable
+	Info        HAProxyInfo
+	HasInfo     bool
 }
 
 // haproxyResponses builds the hrsp_* response-code map, including only the codes
@@ -147,6 +215,31 @@ func haproxyStatusUp(status string) float64 {
 	return 0
 }
 
+// haproxyOptFloat parses a show-stat CSV cell to *float64, returning nil for
+// an empty/unparseable cell instead of a fabricated 0 — several fields added
+// for #201 (qtime/ctime/rtime/ttime, chkdown, lastchg, slim, req_tot, lbtot,
+// cli_abrt/srv_abrt, Maxconn, CurrSslConns) go empty on rows or proxy modes
+// they don't apply to (tcp-mode proxies, FRONTEND rows lacking backend-only
+// timing fields, older HAProxy builds missing a `show info` key).
+func haproxyOptFloat(s string) *float64 {
+	v, ok := safeParseFloatOK(s)
+	if !ok {
+		return nil
+	}
+	return &v
+}
+
+// haproxyMillisToSeconds converts a show-stat *time field (milliseconds) to
+// seconds, preserving nil for an absent/empty cell (#164).
+func haproxyMillisToSeconds(s string) *float64 {
+	v := haproxyOptFloat(s)
+	if v == nil {
+		return nil
+	}
+	sec := *v / 1000
+	return &sec
+}
+
 // FetchHAProxyStats calls the HAProxy statistics endpoints and returns
 // aggregated frontend/backend/server and process-level data.
 //
@@ -173,19 +266,29 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 			StatusCode: 0,
 		}
 	}
+	tablesURL, ok := c.endpoints["haproxyTables"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "haproxyTables",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
 
-	// Fetch counters and info concurrently — independent endpoints written to separate
-	// local vars, processed single-threaded after the join, so wall time is the slower
-	// of the two rather than their sum (#129). Counters still gates plugin-presence.
-	// The counters payload is a heterogeneous JSON array: complete rows are objects,
-	// incomplete CSV lines survive as raw arrays. Decode elementwise.
+	// Fetch counters, info and tables concurrently — independent endpoints written to
+	// separate local vars, processed single-threaded after the join, so wall time is
+	// the slowest of the three rather than their sum (#129). Counters still gates
+	// plugin-presence. The counters payload is a heterogeneous JSON array: complete
+	// rows are objects, incomplete CSV lines survive as raw arrays. Decode elementwise.
 	var rawRows []json.RawMessage
 	var info map[string]flexString
+	var tableRows []haproxyTableRow
 	fetchErrs := runConcurrentFetches(
 		func() *APICallError { return c.do("GET", countersURL, nil, &rawRows) },
 		func() *APICallError { return c.do("GET", infoURL, nil, &info) },
+		func() *APICallError { return c.do("GET", tablesURL, nil, &tableRows) },
 	)
-	countersErr, infoErr := fetchErrs[0], fetchErrs[1]
+	countersErr, infoErr, tablesErr := fetchErrs[0], fetchErrs[1], fetchErrs[2]
 
 	if countersErr != nil {
 		if countersErr.StatusCode == http.StatusNotFound {
@@ -212,6 +315,8 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 				RequestErrors:   safeParseFloat(row.Ereq),
 				RequestsDenied:  safeParseFloat(row.Dreq),
 				ResponsesByCode: haproxyResponses(row),
+				RequestsTotal:   haproxyOptFloat(row.ReqTot),
+				SessionLimit:    haproxyOptFloat(row.Slim),
 			})
 		case row.SVName == "BACKEND":
 			data.Backends = append(data.Backends, HAProxyBackend{
@@ -229,22 +334,35 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 				ActiveServers:    safeParseFloat(row.Act),
 				BackupServers:    safeParseFloat(row.Bck),
 				ResponsesByCode:  haproxyResponses(row),
+				QueueTimeAvg:     haproxyMillisToSeconds(row.Qtime),
+				ConnectTimeAvg:   haproxyMillisToSeconds(row.Ctime),
+				ResponseTimeAvg:  haproxyMillisToSeconds(row.Rtime),
+				TotalTimeAvg:     haproxyMillisToSeconds(row.Ttime),
+				SelectedTotal:    haproxyOptFloat(row.LbTot),
+				ClientAborts:     haproxyOptFloat(row.CliAbrt),
+				ServerAborts:     haproxyOptFloat(row.SrvAbrt),
 			})
 		case row.Type == "2":
 			data.Servers = append(data.Servers, HAProxyServer{
-				Backend:          row.PXName,
-				Name:             row.SVName,
-				StatusUp:         haproxyStatusUp(row.Status),
-				CurrentSessions:  safeParseFloat(row.Scur),
-				SessionsTotal:    safeParseFloat(row.Stot),
-				BytesIn:          safeParseFloat(row.Bin),
-				BytesOut:         safeParseFloat(row.Bout),
-				QueueCurrent:     safeParseFloat(row.Qcur),
-				ConnectionErrors: safeParseFloat(row.Econ),
-				ResponseErrors:   safeParseFloat(row.Eresp),
-				CheckFailures:    safeParseFloat(row.Chkfail),
-				DowntimeSeconds:  safeParseFloat(row.Downtime),
-				Weight:           safeParseFloat(row.Weight),
+				Backend:                row.PXName,
+				Name:                   row.SVName,
+				StatusUp:               haproxyStatusUp(row.Status),
+				CurrentSessions:        safeParseFloat(row.Scur),
+				SessionsTotal:          safeParseFloat(row.Stot),
+				BytesIn:                safeParseFloat(row.Bin),
+				BytesOut:               safeParseFloat(row.Bout),
+				QueueCurrent:           safeParseFloat(row.Qcur),
+				ConnectionErrors:       safeParseFloat(row.Econ),
+				ResponseErrors:         safeParseFloat(row.Eresp),
+				CheckFailures:          safeParseFloat(row.Chkfail),
+				DowntimeSeconds:        safeParseFloat(row.Downtime),
+				Weight:                 safeParseFloat(row.Weight),
+				QueueTimeAvg:           haproxyMillisToSeconds(row.Qtime),
+				ConnectTimeAvg:         haproxyMillisToSeconds(row.Ctime),
+				ResponseTimeAvg:        haproxyMillisToSeconds(row.Rtime),
+				TotalTimeAvg:           haproxyMillisToSeconds(row.Ttime),
+				CheckDowns:             haproxyOptFloat(row.Chkdown),
+				LastStateChangeSeconds: haproxyOptFloat(row.Lastchg),
 			})
 		}
 		// listeners (type "3") and anything unclassified are skipped
@@ -261,13 +379,34 @@ func (c *Client) FetchHAProxyStats() (HAProxyStats, *APICallError) {
 	if len(info) > 0 {
 		data.HasInfo = true
 		data.Info = HAProxyInfo{
-			Version:            info["Version"].String(),
-			UptimeSeconds:      safeParseFloat(info["Uptime_sec"].String()),
-			CurrentConnections: safeParseFloat(info["CurrConns"].String()),
-			ConnectionsTotal:   safeParseFloat(info["CumConns"].String()),
-			RequestsTotal:      safeParseFloat(info["CumReq"].String()),
-			IdlePercent:        safeParseFloat(info["Idle_pct"].String()),
+			Version:               info["Version"].String(),
+			UptimeSeconds:         safeParseFloat(info["Uptime_sec"].String()),
+			CurrentConnections:    safeParseFloat(info["CurrConns"].String()),
+			ConnectionsTotal:      safeParseFloat(info["CumConns"].String()),
+			RequestsTotal:         safeParseFloat(info["CumReq"].String()),
+			IdlePercent:           safeParseFloat(info["Idle_pct"].String()),
+			ConnectionLimit:       haproxyOptFloat(info["Maxconn"].String()),
+			SslCurrentConnections: haproxyOptFloat(info["CurrSslConns"].String()),
 		}
+	}
+
+	if tablesErr != nil {
+		// Counters succeeded so the plugin exists; surface real tables errors
+		// but tolerate 404 (older os-haproxy builds without the tables
+		// controller route, or a service that has no stick tables configured
+		// and answers 404 for the summary — never fatal to the rest of the scrape).
+		if tablesErr.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, tablesErr
+	}
+	for _, row := range tableRows {
+		data.StickTables = append(data.StickTables, HAProxyStickTable{
+			Table: row.Table,
+			Type:  row.Type,
+			Size:  safeParseFloat(row.Size),
+			Used:  safeParseFloat(row.Used),
+		})
 	}
 
 	return data, nil

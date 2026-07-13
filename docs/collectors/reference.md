@@ -28,7 +28,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Firmware | firmware | 10 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
-| HAProxy | haproxy | 38 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
+| HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
 | Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPNSENSE_EXPORTER_DISABLE_HARDWARE |
 | Host Discovery | hostdiscovery | 2 | Enabled | --exporter.disable-hostdiscovery | OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY |
 | IDS/IPS (Suricata) | ids | 9 | Enabled | --exporter.disable-ids | OPNSENSE_EXPORTER_DISABLE_IDS |

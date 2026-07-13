@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -129,5 +130,146 @@ func TestHAProxyCollector_Name(t *testing.T) {
 	c := &haproxyCollector{subsystem: HAProxySubsystem}
 	if c.Name() != HAProxySubsystem {
 		t.Errorf("expected %s, got %s", HAProxySubsystem, c.Name())
+	}
+}
+
+// haproxyExtendedFieldsFixture is a trimmed replica of a real dev-box capture
+// (issue #201, captures/haproxy/stats_counters_populated.json): a frontend +
+// a 2-server HTTP backend, carrying qtime/ctime/rtime/ttime, slim, req_tot,
+// lbtot and cli_abrt/srv_abrt.
+const haproxyExtendedFieldsFixture = `[
+  {"pxname":"ft-heavy","svname":"FRONTEND","scur":"0","stot":"179","slim":"117337","dreq":"0","ereq":"0","req_tot":"179","status":"OPEN","type":"0","hrsp_2xx":"179","id":"ft-heavy/FRONTEND"},
+  {"pxname":"bk-heavy","svname":"heavy-1","qcur":"0","scur":"0","stot":"179","bin":"14678","bout":"34368","status":"UP","weight":"1","act":"1","bck":"0","chkfail":"0","chkdown":"0","lastchg":"54","downtime":"0","type":"2","qtime":"0","ctime":"0","rtime":"1","ttime":"1","lbtot":"1","id":"bk-heavy/heavy-1"},
+  {"pxname":"bk-heavy","svname":"BACKEND","qcur":"0","scur":"0","stot":"179","bin":"14678","bout":"34368","slim":"11734","status":"UP","weight":"2","act":"2","bck":"0","type":"1","qtime":"0","ctime":"0","rtime":"1","ttime":"1","lbtot":"1","cli_abrt":"0","srv_abrt":"0","hrsp_2xx":"179","id":"bk-heavy/BACKEND"}
+]`
+
+func haproxyExtendedMux(t *testing.T, tablesFixture string) *http.ServeMux {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/haproxy/statistics/counters", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(haproxyExtendedFieldsFixture))
+	})
+	mux.HandleFunc("/api/haproxy/statistics/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Name":"HAProxy","Version":"3.2.21","Uptime_sec":"53","CurrConns":"0","CumConns":"232","CumReq":"232","Idle_pct":"100","Maxconn":"117337","CurrSslConns":"0"}`))
+	})
+	mux.HandleFunc("/api/haproxy/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	if tablesFixture != "" {
+		mux.HandleFunc("/api/haproxy/statistics/tables", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(tablesFixture))
+		})
+	}
+	return mux
+}
+
+// metricsByName indexes collected metrics by their fq metric name (the part
+// of Desc().String() between the first pair of quotes) for easy lookup.
+func metricsByName(t *testing.T, metrics []prometheus.Metric) map[string][]prometheus.Metric {
+	t.Helper()
+	out := map[string][]prometheus.Metric{}
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		start := strings.Index(desc, `"`)
+		end := strings.Index(desc[start+1:], `"`)
+		name := desc[start+1 : start+1+end]
+		out[name] = append(out[name], m)
+	}
+	return out
+}
+
+// TestHAProxyCollector_Update_ExtendedFieldsAndStickTables guards issue #201:
+// the show-stat latency/health-transition/capacity fields and stick-table
+// occupancy metrics, using a trimmed replica of a real dev-box capture.
+func TestHAProxyCollector_Update_ExtendedFieldsAndStickTables(t *testing.T) {
+	const tablesFixture = `[{"table":"bk-heavy","type":"ip","size":"51200","used":"1"},{"table":"ft-heavy","type":"ip","size":"102400","used":"0"}]`
+	server := httptest.NewServer(haproxyExtendedMux(t, tablesFixture))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &haproxyCollector{subsystem: HAProxySubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	byName := metricsByName(t, metrics)
+
+	assertGauge := func(name string, wantLabels map[string]string, wantValue float64) {
+		t.Helper()
+		found := byName[name]
+		if len(found) == 0 {
+			t.Fatalf("expected at least one %s series, got none", name)
+		}
+		for _, m := range found {
+			labels := getMetricLabels(m)
+			match := true
+			for k, v := range wantLabels {
+				if labels[k] != v {
+					match = false
+					break
+				}
+			}
+			if match {
+				if got := getMetricValue(m); got != wantValue {
+					t.Errorf("%s{%v} = %v, want %v", name, wantLabels, got, wantValue)
+				}
+				return
+			}
+		}
+		t.Errorf("no %s series matched labels %v (have %d series)", name, wantLabels, len(found))
+	}
+
+	assertGauge("opnsense_haproxy_connection_limit", nil, 117337)
+	assertGauge("opnsense_haproxy_ssl_current_connections", nil, 0)
+	assertGauge("opnsense_haproxy_frontend_requests_total", map[string]string{"frontend": "ft-heavy"}, 179)
+	assertGauge("opnsense_haproxy_frontend_session_limit", map[string]string{"frontend": "ft-heavy"}, 117337)
+	assertGauge("opnsense_haproxy_backend_response_time_avg_seconds", map[string]string{"backend": "bk-heavy"}, 0.001)
+	assertGauge("opnsense_haproxy_backend_selected_total", map[string]string{"backend": "bk-heavy"}, 1)
+	assertGauge("opnsense_haproxy_backend_aborts_total", map[string]string{"backend": "bk-heavy", "side": "client"}, 0)
+	assertGauge("opnsense_haproxy_backend_aborts_total", map[string]string{"backend": "bk-heavy", "side": "server"}, 0)
+	assertGauge("opnsense_haproxy_server_response_time_avg_seconds", map[string]string{"backend": "bk-heavy", "server": "heavy-1"}, 0.001)
+	assertGauge("opnsense_haproxy_server_check_downs_total", map[string]string{"backend": "bk-heavy", "server": "heavy-1"}, 0)
+	assertGauge("opnsense_haproxy_server_last_state_change_seconds", map[string]string{"backend": "bk-heavy", "server": "heavy-1"}, 54)
+	assertGauge("opnsense_haproxy_stick_table_size", map[string]string{"table": "bk-heavy", "type": "ip"}, 51200)
+	assertGauge("opnsense_haproxy_stick_table_used", map[string]string{"table": "bk-heavy", "type": "ip"}, 1)
+	assertGauge("opnsense_haproxy_stick_table_used", map[string]string{"table": "ft-heavy", "type": "ip"}, 0)
+}
+
+// TestHAProxyCollector_Update_CheckDownTransition guards the live DOWN
+// transition captured for #201 (stats_counters_chkdown.json).
+func TestHAProxyCollector_Update_CheckDownTransition(t *testing.T) {
+	const fixture = `[
+	  {"pxname":"bk-heavy","svname":"heavy-2","qcur":"0","scur":"0","stot":"0","bin":"0","bout":"0","status":"DOWN","weight":"1","act":"1","bck":"0","chkfail":"1","chkdown":"1","lastchg":"12","downtime":"12","type":"2","qtime":"0","ctime":"0","rtime":"0","ttime":"0","lbtot":"0","id":"bk-heavy/heavy-2"}
+	]`
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/haproxy/statistics/counters", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fixture))
+	})
+	mux.HandleFunc("/api/haproxy/statistics/info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"Name":"HAProxy","Version":"3.2.21","Uptime_sec":"1","CurrConns":"0","CumConns":"0","CumReq":"0","Idle_pct":"100"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &haproxyCollector{subsystem: HAProxySubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	byName := metricsByName(t, metrics)
+
+	for _, m := range byName["opnsense_haproxy_server_status"] {
+		if getMetricValue(m) != 0 {
+			t.Errorf("expected server_status=0 for DOWN, got %v", getMetricValue(m))
+		}
+	}
+	for _, m := range byName["opnsense_haproxy_server_check_downs_total"] {
+		if getMetricValue(m) != 1 {
+			t.Errorf("expected server_check_downs_total=1, got %v", getMetricValue(m))
+		}
+	}
+	for _, m := range byName["opnsense_haproxy_server_last_state_change_seconds"] {
+		if getMetricValue(m) != 12 {
+			t.Errorf("expected server_last_state_change_seconds=12, got %v", getMetricValue(m))
+		}
 	}
 }

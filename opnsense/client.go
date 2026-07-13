@@ -248,6 +248,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"captivePortalVoucherGroups":    "api/captiveportal/voucher/list_voucher_groups",
 		"captivePortalVouchers":         "api/captiveportal/voucher/list_vouchers",
 		"relaydStatusSum":               "api/relayd/status/sum",
+		"haproxyTables":                 "api/haproxy/statistics/tables",
 	}
 }
 
