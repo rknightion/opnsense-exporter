@@ -61,6 +61,16 @@ func main() {
 		Timeout: 20 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: *insecure}, //nolint:gosec // opt-in for self-signed boxes
+			// Load-bearing, and easy to lose: setting TLSClientConfig on a custom
+			// Transport SILENTLY disables Go's HTTP/2 auto-negotiation unless
+			// ForceAttemptHTTP2 is also set. Without it this tool speaks HTTP/1.1,
+			// and lighttpd 1.4.84 (OPNsense 26.7) with server.stream-response-body=2
+			// deterministically truncates large chunked responses — firmwareInfo
+			// (~380 KB) dies at a fixed byte offset every time ("malformed chunked
+			// encoding"). Over HTTP/2 it serves cleanly. The production client
+			// (opnsense/client.go) already sets this; the dev tools must match it or
+			// they capture truncated contracts.
+			ForceAttemptHTTP2: true,
 		},
 	}
 

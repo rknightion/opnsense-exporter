@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -30,6 +31,11 @@ func loadExemptions(path string) (map[string]opnsense.SchemaExemption, error) {
 	return out, nil
 }
 
+// retryPause is how long fetchRaw waits before its single transport-error
+// retry. Deliberately conservative: 107 endpoints share the timeout budget, so
+// one short pause — no exponential backoff, no third attempt.
+const retryPause = 2 * time.Second
+
 // probeResult is the outcome of validating one endpoint against the live box.
 type probeResult struct {
 	Endpoint     string
@@ -39,6 +45,7 @@ type probeResult struct {
 	Absent       bool   // 404 — plugin uninstalled / route gone
 	ProbeErr     string // transport error, unexpected status, or non-JSON body
 	SkippedParam bool   // parameterized endpoint with no live parameter to use
+	Retried      bool   // a transport-level failure was retried for this probe
 }
 
 // prober fetches raw endpoint responses from one box.
@@ -48,6 +55,32 @@ type prober struct {
 	key      string
 	secret   string
 	captures string
+
+	// notes sinks retry chatter (defaults to os.Stderr). Box-side flakiness
+	// absorbed by the retry must stay visible rather than vanish silently.
+	notes io.Writer
+	// pause defers to time.Sleep when nil; tests inject a no-op.
+	pause func(time.Duration)
+	// retries counts transport-error retries attempted, across all endpoints.
+	retries int
+}
+
+// note writes one observability line about a retry.
+func (p *prober) note(format string, args ...any) {
+	w := p.notes
+	if w == nil {
+		w = os.Stderr
+	}
+	fmt.Fprintf(w, format+"\n", args...)
+}
+
+// sleep pauses between the failed attempt and its retry.
+func (p *prober) sleep(d time.Duration) {
+	if p.pause != nil {
+		p.pause(d)
+		return
+	}
+	time.Sleep(d)
 }
 
 // probeAll validates every schema against the live box, in schema order.
@@ -61,8 +94,12 @@ func (p *prober) probeAll(schemas []opnsense.EndpointSchema, exemptions map[stri
 
 // probeOne fetches one endpoint with the client's own request shape and
 // validates the response structure.
-func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption) probeResult {
-	res := probeResult{Endpoint: s.Endpoint, Path: s.Path}
+// The result is a NAMED return so the deferred retry-stamp below is written
+// into the value the caller actually receives, not a dead local copy.
+func (p *prober) probeOne(s opnsense.EndpointSchema, ex opnsense.SchemaExemption) (res probeResult) {
+	res = probeResult{Endpoint: s.Endpoint, Path: s.Path}
+	retriesBefore := p.retries
+	defer func() { res.Retried = p.retries > retriesBefore }()
 
 	method := "GET"
 	contentType, body := "", ""
@@ -170,13 +207,34 @@ func (p *prober) probeSource(endpoint string) ([]byte, int, error) {
 	return p.fetchRaw(method, string(ec.Path), contentType, body)
 }
 
-// fetchRaw performs one authenticated request and returns the raw body. It
-// retries once on transport errors. Non-2xx statuses are returned as errors
-// (the caller special-cases 404 before looking at err).
+// fetchRaw performs one authenticated request and returns the raw body.
+//
+// Retry policy: exactly ONE retry, after a short fixed pause, and only for a
+// transport-level failure — the roundtrip itself errored (connection reset,
+// client timeout / context deadline, truncated body), so no HTTP status was
+// ever obtained.
+//
+// This is a safety net, NOT the fix for the firmwareInfo truncation: that was
+// lighttpd 1.4.84 mangling large HTTP/1.1 chunked responses, and it is fixed
+// properly by ForceAttemptHTTP2 on the Transport in main.go — retrying it over
+// HTTP/1.1 would have failed identically every time. What the retry still buys
+// us is the genuinely transient case: the traffic sampler (interfaces) samples
+// server-side before responding and occasionally overruns the client timeout,
+// plus any box where HTTP/2 is unavailable and we fall back to 1.1.
+//
+// Anything that produced a real HTTP status is NOT retried: a 404 stays a
+// first-class "Absent" signal, and any other non-2xx is returned as-is. A 200
+// with an unparseable body is a schema matter and never reaches this retry.
 func (p *prober) fetchRaw(method, path, contentType, body string) ([]byte, int, error) {
 	target := strings.TrimRight(p.baseURL, "/") + "/" + strings.TrimLeft(path, "/")
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			p.retries++
+			p.note("apidrift: transport error on %s %s: %v — retrying once in %s", method, path, lastErr, retryPause)
+			p.sleep(retryPause)
+		}
+
 		req, err := http.NewRequest(method, target, strings.NewReader(body))
 		if err != nil {
 			return nil, 0, err
@@ -201,6 +259,9 @@ func (p *prober) fetchRaw(method, path, contentType, body string) ([]byte, int, 
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return raw, resp.StatusCode, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+		if attempt > 0 {
+			p.note("apidrift: %s %s succeeded on retry (intermittent box-side transport failure)", method, path)
 		}
 		return raw, resp.StatusCode, nil
 	}

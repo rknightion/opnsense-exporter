@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -27,13 +30,130 @@ func testSchema(endpoint, path string) opnsense.EndpointSchema {
 
 func newTestProber(t *testing.T, handler http.Handler) *prober {
 	t.Helper()
+	p, _ := newTestProberLogged(t, handler)
+	return p
+}
+
+// newTestProberLogged also hands back the prober's retry-note sink. retryPause
+// stays zero so the tests don't sit through the production 2s pause.
+func newTestProberLogged(t *testing.T, handler http.Handler) (*prober, *bytes.Buffer) {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
+	notes := &bytes.Buffer{}
 	return &prober{
 		client:  srv.Client(),
 		baseURL: srv.URL,
 		key:     "k",
 		secret:  "s",
+		notes:   notes,
+		pause:   func(time.Duration) {}, // no real 2s wait in tests
+	}, notes
+}
+
+// hijackAndCorrupt answers with a truncated chunked body and slams the
+// connection shut — the client sees a transport-level failure ("malformed
+// chunked encoding"), not an HTTP status. It stands in for any mid-body
+// transport fault (dropped connection, a timed-out traffic sample), which is
+// what the single retry exists to absorb. The specific firmwareInfo truncation
+// that prompted this (issue #235) is fixed at the source by ForceAttemptHTTP2
+// in main.go, not by the retry — see fetchRaw's doc comment.
+func hijackAndCorrupt(w http.ResponseWriter) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		panic("test server response writer is not a Hijacker")
+	}
+	conn, buf, err := hj.Hijack()
+	if err != nil {
+		panic(err)
+	}
+	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n40\r\n{\"total\":1")
+	_ = buf.Flush()
+	_ = conn.Close()
+}
+
+// A transport-level failure is retried exactly once, and a probe that only
+// succeeds on that retry says so — box-side flakiness must stay observable.
+func TestProbeOneRetriesOnceOnTransportError(t *testing.T) {
+	var hits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/test/flaky", func(w http.ResponseWriter, _ *http.Request) {
+		if atomic.AddInt32(&hits, 1) == 1 {
+			hijackAndCorrupt(w)
+			return
+		}
+		w.Write([]byte(`{"total":1,"rows":[{"name":"a"}]}`))
+	})
+	p, notes := newTestProberLogged(t, mux)
+
+	res := p.probeOne(testSchema("flaky", "api/test/flaky"), opnsense.SchemaExemption{})
+	if res.ProbeErr != "" || !res.Res.Clean() {
+		t.Fatalf("flaky endpoint should succeed on retry, got %+v", res)
+	}
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Errorf("request count = %d, want exactly 2 (one failure + one retry)", got)
+	}
+	if !res.Retried {
+		t.Errorf("probeResult.Retried = false, want true so the report can surface the flake")
+	}
+	if !bytes.Contains(notes.Bytes(), []byte("flaky")) || !bytes.Contains(notes.Bytes(), []byte("retry")) {
+		t.Errorf("retry note missing from stderr sink, got %q", notes.String())
+	}
+}
+
+// A persistent transport failure stops after the single retry — no third try.
+func TestProbeOneTransportErrorGivesUpAfterOneRetry(t *testing.T) {
+	var hits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/test/dead", func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		hijackAndCorrupt(w)
+	})
+	p := newTestProber(t, mux)
+
+	res := p.probeOne(testSchema("dead", "api/test/dead"), opnsense.SchemaExemption{})
+	if res.ProbeErr == "" {
+		t.Fatalf("persistent transport failure should report a probe error, got %+v", res)
+	}
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Errorf("request count = %d, want exactly 2 (attempt + one retry)", got)
+	}
+}
+
+// 404 is a first-class Absent signal, not a transport failure: probe it once.
+func TestProbeOne404IsNotRetried(t *testing.T) {
+	var hits int32
+	p := newTestProber(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		http.NotFound(w, r)
+	}))
+
+	res := p.probeOne(testSchema("gone", "api/test/gone"), opnsense.SchemaExemption{})
+	if !res.Absent || res.Retried {
+		t.Errorf("404 should be Absent and unretried, got %+v", res)
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Errorf("request count = %d, want exactly 1 (404 must not be retried)", got)
+	}
+}
+
+// A 200 carrying unparseable JSON is a schema matter, not a transport fault —
+// re-asking the box would not change the answer, so it must not be retried.
+func TestProbeOneBadJSONIsNotRetried(t *testing.T) {
+	var hits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/test/junk", func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Write([]byte(`not json at all`))
+	})
+	p := newTestProber(t, mux)
+
+	res := p.probeOne(testSchema("junk", "api/test/junk"), opnsense.SchemaExemption{})
+	if res.ProbeErr == "" {
+		t.Fatalf("unparseable body should report a probe error, got %+v", res)
+	}
+	if got := atomic.LoadInt32(&hits); got != 1 {
+		t.Errorf("request count = %d, want exactly 1 (bad JSON must not be retried)", got)
 	}
 }
 
