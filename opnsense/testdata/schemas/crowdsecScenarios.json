@@ -1,0 +1,20 @@
+{
+  "endpoint": "crowdsecScenarios",
+  "method": "POST",
+  "path": "api/crowdsec/scenarios/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

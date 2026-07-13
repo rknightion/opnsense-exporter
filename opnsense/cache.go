@@ -231,10 +231,13 @@ func PluginGatedEndpoints() []EndpointName {
 		"trafficShaperStatistics", "lldpdNeighbors",
 		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus", "netbirdStatus",
 		"trafficShaperStatistics",
+		"trafficShaperStatistics", "crowdsecVersion",
 
 		// Plugin data endpoints (POST). Only their 404 is cached; a successful POST
 		// response is body-dependent and always goes to the box (see the doc comment).
 		"crowdsecAlerts", "crowdsecDecisions", "crowdsecBouncers", "crowdsecMachines",
+		"crowdsecCollections", "crowdsecScenarios", "crowdsecParsers",
+		"crowdsecPostoverflows", "crowdsecAppsecConfigs", "crowdsecAppsecRules",
 		"captivePortalSessions", "ipsecPhase2", "quaggaOspfNeighbors",
 		"smartList", "smartInfo",
 

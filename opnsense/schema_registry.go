@@ -38,6 +38,12 @@ var schemaRegistry = map[EndpointName]any{
 	"crowdsecMachines":           crowdsecSearchEnvelope{},
 	"crowdsecServiceStatus":      serviceStatusResponse{},
 	"dechwPowerStatus":           dechwPowerStatusResponse{},
+	"crowdsecCollections":        crowdsecSearchEnvelope{},
+	"crowdsecScenarios":          crowdsecSearchEnvelope{},
+	"crowdsecParsers":            crowdsecSearchEnvelope{},
+	"crowdsecPostoverflows":      crowdsecSearchEnvelope{},
+	"crowdsecAppsecConfigs":      crowdsecSearchEnvelope{},
+	"crowdsecAppsecRules":        crowdsecSearchEnvelope{},
 	"dhcpv4":                     dhcpv4LeaseResponse{},
 	"dhcpv6Leases":               dhcpv6LeaseResponse{},
 	"dhcpv6Prefixes":             dhcpv6PrefixResponse{},
@@ -147,8 +153,14 @@ var schemaRegistry = map[EndpointName]any{
 }
 
 // schemaExemptEndpoints lists endpoints that deliberately have no schema, with
-// the reason why. Currently every endpoint has a decodable response struct.
-var schemaExemptEndpoints = map[EndpointName]string{}
+// the reason why.
+var schemaExemptEndpoints = map[EndpointName]string{
+	// version/get passes cscli's raw multi-line text output straight through —
+	// it is not JSON at all, so no structural schema applies. FetchCrowdSecStatus
+	// parses it tolerantly (parseCrowdSecVersion); the live canary has no
+	// coverage for this endpoint (#205).
+	"crowdsecVersion": "raw multi-line cscli version text, not JSON — no structural schema applies",
+}
 
 // SchemaExemptions returns the endpoints excluded from schema derivation and
 // the reasons, for the drift report.

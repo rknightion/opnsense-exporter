@@ -187,6 +187,13 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"crowdsecBouncers":           "api/crowdsec/bouncers/search",
 		"crowdsecMachines":           "api/crowdsec/machines/search",
 		"crowdsecServiceStatus":      "api/crowdsec/service/status",
+		"crowdsecCollections":        "api/crowdsec/collections/search",
+		"crowdsecScenarios":          "api/crowdsec/scenarios/search",
+		"crowdsecParsers":            "api/crowdsec/parsers/search",
+		"crowdsecPostoverflows":      "api/crowdsec/postoverflows/search",
+		"crowdsecAppsecConfigs":      "api/crowdsec/appsecconfigs/search",
+		"crowdsecAppsecRules":        "api/crowdsec/appsecrules/search",
+		"crowdsecVersion":            "api/crowdsec/version/get",
 		"nutUpsStatus":               "api/nut/diagnostics/upsstatus",
 		"nutServiceStatus":           "api/nut/service/status",
 		"apcupsdUpsStatus":           "api/apcupsd/service/getUpsStatus",
@@ -654,6 +661,16 @@ func (c *Client) readResponse(method string, path EndpointPath, resp *http.Respo
 // doWithContentType so a cached body is decoded exactly as a fresh one is,
 // giving each caller its own copy of the data.
 func unmarshalBody(path EndpointPath, body []byte, statusCode int, responseStruct any) *APICallError {
+	// A *[]byte target opts out of JSON decoding entirely. A handful of OPNsense
+	// endpoints (crowdsec's version/get, which passes cscli's raw multi-line
+	// text straight through) do not return JSON at all, so json.Unmarshal would
+	// always fail on them. The caller gets the exact bytes the box sent back and
+	// owns its own tolerant parsing; this is shared by both the live-response
+	// path and the cache-hit path since both call unmarshalBody.
+	if raw, ok := responseStruct.(*[]byte); ok {
+		*raw = append([]byte(nil), body...)
+		return nil
+	}
 	if err := json.Unmarshal(body, &responseStruct); err != nil {
 		return &APICallError{
 			Endpoint:   string(path),

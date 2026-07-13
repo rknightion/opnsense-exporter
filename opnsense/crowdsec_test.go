@@ -65,6 +65,51 @@ func registerCrowdSecHandlers(
 	})
 }
 
+// crowdsecHubEnabledFixture is a minimal single-row bootgrid fixture with a
+// plain "enabled" (non-tainted, non-outdated) status, reused by every hub
+// component search endpoint in tests that don't care about hub-item detail.
+const crowdsecHubEnabledFixture = `{"total": 1, "rowCount": 1, "current": 1, "rows": [
+  {"name": "crowdsecurity/test", "status": "enabled", "local_version": "0.1",
+   "local_path": "x.yaml", "description": ""}]}`
+
+// crowdsecHubEmptyFixture is the empty-but-valid bootgrid shape the dev-box
+// capture shows for appsecconfigs/appsecrules when nothing is configured.
+const crowdsecHubEmptyFixture = `{"total": 0, "rowCount": 0, "current": 1, "rows": []}`
+
+// crowdsecVersionFixture is the raw multi-line cscli version text captured
+// live 2026-07-13 — NOT JSON.
+const crowdsecVersionFixture = "version: v1.7.8_1-6322745\nCodename: alphaga\nBuildDate: 2026-07-06_19:00:16\n"
+
+// registerCrowdSecHubAndVersionHandlers registers all six hub-component search
+// endpoints (one "enabled" row each, except the two appsec endpoints which are
+// empty-but-valid) plus version/get, so tests exercising the original four
+// endpoints keep Present=true after #205 added these as additional fetches in
+// the same FetchCrowdSecStatus call.
+func registerCrowdSecHubAndVersionHandlers(t *testing.T, mux *http.ServeMux) {
+	t.Helper()
+	for _, path := range []string{
+		"/api/crowdsec/collections/search",
+		"/api/crowdsec/scenarios/search",
+		"/api/crowdsec/parsers/search",
+		"/api/crowdsec/postoverflows/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(crowdsecHubEnabledFixture))
+		})
+	}
+	for _, path := range []string{
+		"/api/crowdsec/appsecconfigs/search",
+		"/api/crowdsec/appsecrules/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(crowdsecHubEmptyFixture))
+		})
+	}
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecVersionFixture))
+	})
+}
+
 func TestFetchCrowdSecStatus_Normal(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
@@ -88,6 +133,7 @@ func TestFetchCrowdSecStatus_Normal(t *testing.T) {
 	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
+	registerCrowdSecHubAndVersionHandlers(t, mux)
 
 	data, err := client.FetchCrowdSecStatus()
 	if err != nil {
@@ -153,6 +199,32 @@ func TestFetchCrowdSecStatus_Normal(t *testing.T) {
 	if !m.HasLastHeartbeat {
 		t.Error("expected HasLastHeartbeat=true")
 	}
+
+	// Hub items (#205): four components report one "enabled" row each; the two
+	// appsec endpoints are empty-but-valid and contribute no entries.
+	if !data.HasHubItems {
+		t.Fatal("expected HasHubItems=true")
+	}
+	wantHubItems := []CrowdSecHubItemCount{
+		{Component: "collection", Status: "enabled", Count: 1},
+		{Component: "parser", Status: "enabled", Count: 1},
+		{Component: "postoverflow", Status: "enabled", Count: 1},
+		{Component: "scenario", Status: "enabled", Count: 1},
+	}
+	if len(data.HubItems) != len(wantHubItems) {
+		t.Fatalf("expected %d hub item counts, got %d: %+v", len(wantHubItems), len(data.HubItems), data.HubItems)
+	}
+	for i, want := range wantHubItems {
+		if data.HubItems[i] != want {
+			t.Errorf("hub item[%d] = %+v, want %+v", i, data.HubItems[i], want)
+		}
+	}
+
+	// Engine version (#205).
+	if !data.HasVersion || data.Version != "v1.7.8_1-6322745" {
+		t.Errorf("expected HasVersion=true Version=%q, got HasVersion=%v Version=%q",
+			"v1.7.8_1-6322745", data.HasVersion, data.Version)
+	}
 }
 
 // TestFetchCrowdSecStatus_UndecodableRows guards #104: when the envelope decodes
@@ -183,6 +255,7 @@ func TestFetchCrowdSecStatus_UndecodableRows(t *testing.T) {
 	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
+	registerCrowdSecHubAndVersionHandlers(t, mux)
 
 	data, err := client.FetchCrowdSecStatus()
 	if err != nil {
@@ -232,6 +305,7 @@ func TestFetchCrowdSecStatus_MessageEnvelope(t *testing.T) {
 		crowdsecBouncersFixture,
 		crowdsecMachinesFixture,
 	)
+	registerCrowdSecHubAndVersionHandlers(t, mux)
 
 	data, err := client.FetchCrowdSecStatus()
 	if err != nil {
@@ -269,6 +343,7 @@ func TestFetchCrowdSecStatus_EmptyLastSeen(t *testing.T) {
 		bouncersNoLastSeen,
 		crowdsecMachinesFixture,
 	)
+	registerCrowdSecHubAndVersionHandlers(t, mux)
 
 	data, err := client.FetchCrowdSecStatus()
 	if err != nil {
@@ -337,5 +412,290 @@ func TestFetchCrowdSecStatus_BouncersRowCountParam(t *testing.T) {
 
 	if bouncersRowCount != "-1" {
 		t.Errorf("expected bouncers rowCount=-1, got %q", bouncersRowCount)
+	}
+}
+
+// TestNormalizeCrowdSecHubStatus covers the confirmed live vocabulary
+// ("enabled", "enabled,tainted") plus defensive handling of whitespace and
+// unknown future tokens.
+func TestNormalizeCrowdSecHubStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"enabled", "enabled", "enabled"},
+		{"tainted, no space (live capture)", "enabled,tainted", "enabled,tainted"},
+		{"tainted, with space", "enabled, tainted", "enabled,tainted"},
+		{"disabled", "disabled", "disabled"},
+		{"unknown future token passes through", "enabled,update-available", "enabled,update-available"},
+		{"empty", "", "unknown"},
+		{"only commas/whitespace", " , ", "unknown"},
+		{"leading/trailing whitespace", "  enabled  ", "enabled"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeCrowdSecHubStatus(tt.in); got != tt.want {
+				t.Errorf("normalizeCrowdSecHubStatus(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseCrowdSecVersion covers the confirmed live cscli version text shape
+// plus tolerant handling of malformed/unexpected input (must never error the
+// scrape — just omit the metric).
+func TestParseCrowdSecVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		wantVer string
+		wantOK  bool
+	}{
+		{
+			name:    "live capture shape (2026-07-13)",
+			in:      "version: v1.7.8_1-6322745\nCodename: alphaga\nBuildDate: 2026-07-06_19:00:16\n",
+			wantVer: "v1.7.8_1-6322745",
+			wantOK:  true,
+		},
+		{"single line, no trailing newline", "version: v1.6.3", "v1.6.3", true},
+		{"case-insensitive key, extra spaces", "  Version :  v1.2.3  \nCodename: x", "v1.2.3", true},
+		{"empty", "", "", false},
+		{"whitespace only", "   \n  ", "", false},
+		{"no colon on first line", "not a key value line\nversion: v1.2.3", "", false},
+		{"wrong first-line key", "Codename: alphaga\nversion: v1.2.3", "", false},
+		{"colon but empty value", "version: \nCodename: x", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotVer, gotOK := parseCrowdSecVersion(tt.in)
+			if gotOK != tt.wantOK || gotVer != tt.wantVer {
+				t.Errorf("parseCrowdSecVersion(%q) = (%q, %v), want (%q, %v)",
+					tt.in, gotVer, gotOK, tt.wantVer, tt.wantOK)
+			}
+		})
+	}
+}
+
+// TestFetchCrowdSecStatus_HubItemsTainted mirrors the live dev-box capture
+// (scenarios_search_tainted.json, 2026-07-13): 7 scenarios "enabled", 1
+// "enabled,tainted" after a local edit.
+func TestFetchCrowdSecStatus_HubItemsTainted(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	registerCrowdSecHandlers(t, mux, crowdsecAlertsFixture, crowdsecDecisionsFixture,
+		crowdsecBouncersFixture, crowdsecMachinesFixture)
+
+	scenariosTainted := `{"total": 8, "rowCount": 8, "current": 1, "rows": [
+	  {"name": "crowdsecurity/opnsense-gui-bf", "status": "enabled", "local_version": "0.3"},
+	  {"name": "crowdsecurity/ssh-bf", "status": "enabled,tainted", "local_version": "?"},
+	  {"name": "crowdsecurity/ssh-cve-2024-6387", "status": "enabled", "local_version": "0.2"},
+	  {"name": "crowdsecurity/ssh-generic-test", "status": "enabled", "local_version": "0.2"},
+	  {"name": "crowdsecurity/ssh-refused-conn", "status": "enabled", "local_version": "0.1"},
+	  {"name": "crowdsecurity/ssh-slow-bf", "status": "enabled", "local_version": "0.4"},
+	  {"name": "crowdsecurity/ssh-time-based-bf", "status": "enabled", "local_version": "0.3"},
+	  {"name": "firewallservices/pf-scan-multi_ports", "status": "enabled", "local_version": "0.5"}]}`
+
+	mux.HandleFunc("/api/crowdsec/collections/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/scenarios/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(scenariosTainted))
+	})
+	mux.HandleFunc("/api/crowdsec/parsers/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/postoverflows/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/appsecconfigs/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/appsecrules/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecVersionFixture))
+	})
+
+	data, err := client.FetchCrowdSecStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.HasHubItems {
+		t.Fatal("expected HasHubItems=true")
+	}
+	want := []CrowdSecHubItemCount{
+		{Component: "scenario", Status: "enabled", Count: 7},
+		{Component: "scenario", Status: "enabled,tainted", Count: 1},
+	}
+	if len(data.HubItems) != len(want) {
+		t.Fatalf("expected %d hub item counts, got %d: %+v", len(want), len(data.HubItems), data.HubItems)
+	}
+	for i, w := range want {
+		if data.HubItems[i] != w {
+			t.Errorf("hub item[%d] = %+v, want %+v", i, data.HubItems[i], w)
+		}
+	}
+}
+
+// TestFetchCrowdSecStatus_HubItemsMessageEnvelope: one hub component (parsers)
+// returns the cscli-failure message envelope; the others still contribute.
+func TestFetchCrowdSecStatus_HubItemsMessageEnvelope(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	registerCrowdSecHandlers(t, mux, crowdsecAlertsFixture, crowdsecDecisionsFixture,
+		crowdsecBouncersFixture, crowdsecMachinesFixture)
+
+	mux.HandleFunc("/api/crowdsec/collections/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEnabledFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/scenarios/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEnabledFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/parsers/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecMessageEnvelope))
+	})
+	mux.HandleFunc("/api/crowdsec/postoverflows/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEnabledFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/appsecconfigs/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/appsecrules/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecVersionFixture))
+	})
+
+	data, err := client.FetchCrowdSecStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.HasHubItems {
+		t.Fatal("expected HasHubItems=true (other components succeeded)")
+	}
+	for _, item := range data.HubItems {
+		if item.Component == "parser" {
+			t.Errorf("expected no parser entries (message envelope), got %+v", item)
+		}
+	}
+	if len(data.HubItems) != 3 { // collection, scenario, postoverflow
+		t.Errorf("expected 3 hub item counts (parsers omitted), got %d: %+v", len(data.HubItems), data.HubItems)
+	}
+}
+
+// TestFetchCrowdSecStatus_HubItemsUndecodableRows mirrors the bouncers/machines
+// #104 guard: an undecodable rows shape for one component must not silently
+// contribute a false zero, and must not discard the other components.
+func TestFetchCrowdSecStatus_HubItemsUndecodableRows(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	var buf bytes.Buffer
+	client.log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	registerCrowdSecHandlers(t, mux, crowdsecAlertsFixture, crowdsecDecisionsFixture,
+		crowdsecBouncersFixture, crowdsecMachinesFixture)
+
+	mux.HandleFunc("/api/crowdsec/collections/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEnabledFixture))
+	})
+	// rows is an object, not an array.
+	mux.HandleFunc("/api/crowdsec/scenarios/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total": 1, "rowCount": 1, "current": 1, "rows": {"unexpected": "object"}}`))
+	})
+	mux.HandleFunc("/api/crowdsec/parsers/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/postoverflows/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/appsecconfigs/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/appsecrules/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecHubEmptyFixture))
+	})
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecVersionFixture))
+	})
+
+	data, err := client.FetchCrowdSecStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.HasHubItems {
+		t.Fatal("expected HasHubItems=true (collections succeeded)")
+	}
+	for _, item := range data.HubItems {
+		if item.Component == "scenario" {
+			t.Errorf("expected no scenario entries on decode failure, got %+v", item)
+		}
+	}
+	if !strings.Contains(buf.String(), "decode hub item rows") {
+		t.Errorf("expected a warning about hub item decode failure; got: %q", buf.String())
+	}
+}
+
+// TestFetchCrowdSecStatus_HubItems404 documents the design decision that a 404
+// on any of the new hub/version endpoints is treated the same as the existing
+// bouncers/machines siblings: the whole plugin is marked absent, not just that
+// one series.
+func TestFetchCrowdSecStatus_HubItems404(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	registerCrowdSecHandlers(t, mux, crowdsecAlertsFixture, crowdsecDecisionsFixture,
+		crowdsecBouncersFixture, crowdsecMachinesFixture)
+	mux.HandleFunc("/api/crowdsec/collections/search", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	// scenarios/parsers/postoverflows/appsec*/version are left unregistered
+	// (404 by default) — irrelevant, collections 404s first.
+
+	data, err := client.FetchCrowdSecStatus()
+	if err != nil {
+		t.Fatalf("expected nil error on 404, got: %v", err)
+	}
+	if data.Present {
+		t.Error("expected Present=false when a hub-item endpoint 404s")
+	}
+}
+
+// TestFetchCrowdSecStatus_VersionUnparseable: version/get returns text that
+// doesn't match the expected "version: ..." shape — HasVersion must be false,
+// and the scrape must not error.
+func TestFetchCrowdSecStatus_VersionUnparseable(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	registerCrowdSecHandlers(t, mux, crowdsecAlertsFixture, crowdsecDecisionsFixture,
+		crowdsecBouncersFixture, crowdsecMachinesFixture)
+	for _, path := range []string{
+		"/api/crowdsec/collections/search", "/api/crowdsec/scenarios/search",
+		"/api/crowdsec/parsers/search", "/api/crowdsec/postoverflows/search",
+		"/api/crowdsec/appsecconfigs/search", "/api/crowdsec/appsecrules/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(crowdsecHubEmptyFixture))
+		})
+	}
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not the expected format\n"))
+	})
+
+	data, err := client.FetchCrowdSecStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.HasVersion {
+		t.Errorf("expected HasVersion=false for unparseable version text, got Version=%q", data.Version)
+	}
+	if !data.Present {
+		t.Error("expected Present=true (an unparseable version body is not an HTTP error)")
 	}
 }

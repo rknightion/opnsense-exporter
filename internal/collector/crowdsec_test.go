@@ -27,6 +27,44 @@ const crowdsecCollectorMachinesFixture = `{"total": 1, "rowCount": 1, "current":
 // crowdsecMessageEnvelopeCollector is the HTTP-200 error envelope.
 const crowdsecMessageEnvelopeCollector = `{"message": "unable to retrieve data"}`
 
+// crowdsecCollectorHubEnabledFixture is a single-row "enabled" hub-component fixture.
+const crowdsecCollectorHubEnabledFixture = `{"total": 1, "rowCount": 1, "current": 1, "rows": [
+  {"name": "crowdsecurity/test", "status": "enabled", "local_version": "0.1"}]}`
+
+// crowdsecCollectorHubEmptyFixture is the empty-but-valid bootgrid shape.
+const crowdsecCollectorHubEmptyFixture = `{"total": 0, "rowCount": 0, "current": 1, "rows": []}`
+
+// crowdsecCollectorVersionFixture is the raw multi-line cscli version text — NOT JSON.
+const crowdsecCollectorVersionFixture = "version: v1.7.8_1-6322745\nCodename: alphaga\n"
+
+// registerCrowdSecCollectorHubAndVersionHandlers registers the six hub-component
+// search endpoints (collections/scenarios/parsers/postoverflows get one
+// "enabled" row; the two appsec endpoints are empty-but-valid) plus
+// version/get, mirroring the real dev-box capture shape.
+func registerCrowdSecCollectorHubAndVersionHandlers(mux *http.ServeMux) {
+	for _, path := range []string{
+		"/api/crowdsec/collections/search",
+		"/api/crowdsec/scenarios/search",
+		"/api/crowdsec/parsers/search",
+		"/api/crowdsec/postoverflows/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(crowdsecCollectorHubEnabledFixture))
+		})
+	}
+	for _, path := range []string{
+		"/api/crowdsec/appsecconfigs/search",
+		"/api/crowdsec/appsecrules/search",
+	} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(crowdsecCollectorHubEmptyFixture))
+		})
+	}
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(crowdsecCollectorVersionFixture))
+	})
+}
+
 // crowdsecCollectorMux builds a ServeMux for the "normal" case (all endpoints OK).
 func crowdsecCollectorMux(t *testing.T) *http.ServeMux {
 	t.Helper()
@@ -46,16 +84,20 @@ func crowdsecCollectorMux(t *testing.T) *http.ServeMux {
 	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
+	registerCrowdSecCollectorHubAndVersionHandlers(mux)
 	return mux
 }
 
-// TestCrowdSecCollector_Update_Normal expects 9 metrics:
+// TestCrowdSecCollector_Update_Normal expects 14 metrics:
 //
 //	alerts_total (1) + decisions_total (1) + bouncers_total (1) + machines_total (1)
 //	+ bouncer_valid (1) + bouncer_last_pull (1)
 //	+ machine_validated (1) + machine_heartbeat (1)
 //	+ service_running (1)
-//	= 9
+//	+ hub_items (4: collection/scenario/parser/postoverflow, each "enabled" — the
+//	  two appsec endpoints are empty and contribute none)
+//	+ version_info (1)
+//	= 14
 func TestCrowdSecCollector_Update_Normal(t *testing.T) {
 	server := httptest.NewServer(crowdsecCollectorMux(t))
 	defer server.Close()
@@ -66,7 +108,7 @@ func TestCrowdSecCollector_Update_Normal(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expected := 9
+	expected := 14
 	if len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 		for _, m := range metrics {
@@ -74,6 +116,7 @@ func TestCrowdSecCollector_Update_Normal(t *testing.T) {
 		}
 	}
 
+	var hubItemCount, versionInfoCount int
 	for _, m := range metrics {
 		desc := m.Desc().String()
 		labels := getMetricLabels(m)
@@ -107,7 +150,28 @@ func TestCrowdSecCollector_Update_Normal(t *testing.T) {
 			if val != 1 {
 				t.Errorf("service_running wrong: %v (expected 1)", val)
 			}
+		case strings.Contains(desc, "crowdsec_hub_items"):
+			hubItemCount++
+			if labels["status"] != "enabled" || val != 1 {
+				t.Errorf("hub_items wrong: labels=%v val=%v", labels, val)
+			}
+			switch labels["component"] {
+			case "collection", "scenario", "parser", "postoverflow":
+			default:
+				t.Errorf("unexpected hub_items component: %v", labels["component"])
+			}
+		case strings.Contains(desc, "crowdsec_version_info"):
+			versionInfoCount++
+			if labels["version"] != "v1.7.8_1-6322745" || val != 1 {
+				t.Errorf("version_info wrong: labels=%v val=%v", labels, val)
+			}
 		}
+	}
+	if hubItemCount != 4 {
+		t.Errorf("expected 4 hub_items series, got %d", hubItemCount)
+	}
+	if versionInfoCount != 1 {
+		t.Errorf("expected 1 version_info series, got %d", versionInfoCount)
 	}
 }
 
@@ -130,6 +194,7 @@ func TestCrowdSecCollector_Update_MessageEnvelope(t *testing.T) {
 	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
+	registerCrowdSecCollectorHubAndVersionHandlers(mux)
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -140,7 +205,7 @@ func TestCrowdSecCollector_Update_MessageEnvelope(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expected := 8 // no decisions_total
+	expected := 13 // no decisions_total (8 - 1 + hub_items(4) + version_info(1))
 	if len(metrics) != expected {
 		t.Errorf("expected %d metrics (no decisions_total), got %d", expected, len(metrics))
 		for _, m := range metrics {
@@ -176,6 +241,7 @@ func TestCrowdSecCollector_Update_UndecodableRows(t *testing.T) {
 	mux.HandleFunc("/api/crowdsec/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
+	registerCrowdSecCollectorHubAndVersionHandlers(mux)
 
 	server := httptest.NewServer(mux)
 	defer server.Close()

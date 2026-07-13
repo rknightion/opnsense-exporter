@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 654
-- **Gauges:** 436
+- **Total metrics:** 656
+- **Gauges:** 438
 - **Counters:** 218
 
 ## General
@@ -189,6 +189,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_crowdsec_machines_total | Gauge | --- | Total number of registered CrowdSec machines (agents) | --exporter.disable-crowdsec |
 | opnsense_crowdsec_machine_validated | Gauge | name | Whether the machine registration has been validated (1 = validated, 0 = pending) | --exporter.disable-crowdsec |
 | opnsense_crowdsec_machine_last_heartbeat_timestamp_seconds | Gauge | name | Unix timestamp of the last heartbeat from this machine (omitted when absent) | --exporter.disable-crowdsec |
+| opnsense_crowdsec_hub_items | Gauge | component, status | Number of installed CrowdSec hub items per component and status (e.g. component=\"scenario\" status=\"enabled,tainted\") | --exporter.disable-crowdsec |
+| opnsense_crowdsec_version_info | Gauge | version | CrowdSec engine version (value always 1; version is a label) | --exporter.disable-crowdsec |
 
 ## Dnsmasq DHCP
 

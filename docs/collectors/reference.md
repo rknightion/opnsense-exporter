@@ -18,7 +18,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPNSENSE_EXPORTER_DISABLE_CLAMAV |
 | Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPNSENSE_EXPORTER_DISABLE_BACKUP |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
-| CrowdSec | crowdsec | 9 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
+| CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
 | FRR Routing (BGP/OSPF/BFD) | frr | 23 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |

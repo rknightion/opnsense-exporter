@@ -1,0 +1,20 @@
+{
+  "endpoint": "crowdsecAppsecConfigs",
+  "method": "POST",
+  "path": "api/crowdsec/appsecconfigs/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

@@ -7,6 +7,11 @@ Counts (alerts_total, decisions_total, bouncers_total, machines_total) are
 instantaneous gauges — show raw, never rate().
 bouncer_last_pull_timestamp_seconds / machine_last_heartbeat_timestamp_seconds
 are unix timestamps — shown as age: time() - <ts>.
+
+hub_items (component, status) is an aggregated instantaneous gauge — never
+rate(), never per-item name labels (a collection pulls in 50-200
+scenarios/parsers). version_info is an info metric (value always 1) — table
+only, per AUTHORING.md rule 7.
 """
 
 from builder import Builder, sel, RUNSTOP
@@ -15,6 +20,10 @@ from builder import Builder, sel, RUNSTOP
 def build(b: Builder):
     b.sentinel("has_crowdsec",
                "label_values(opnsense_crowdsec_service_running, __name__)")
+    b.sentinel("has_crowdsec_hub_items",
+               "label_values(opnsense_crowdsec_hub_items, __name__)")
+    b.sentinel("has_crowdsec_version",
+               "label_values(opnsense_crowdsec_version_info, __name__)")
 
     # ------------------------------------------------------------------ #
     # Row 1: CrowdSec Overview                                             #
@@ -124,6 +133,64 @@ def build(b: Builder):
         ),
     )
 
+    # ------------------------------------------------------------------ #
+    # Row 4: Hub Component Health (#205)                                   #
+    # ------------------------------------------------------------------ #
+    hub_tainted_sel = sel("opnsense_crowdsec_hub_items", 'status=~".*tainted.*"')
+    hub_outdated_sel = sel("opnsense_crowdsec_hub_items", 'status=~".*outdated.*"')
+    hub_tainted = b.stat(
+        "Tainted Hub Items",
+        "sum(" + hub_tainted_sel + ") or vector(0)",
+        unit="short", w=4, h=4,
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "red", "value": 1},
+        ],
+        color_mode="background",
+        desc='Total installed hub items (any component) whose status includes "tainted" — locally modified since install.',
+    )
+    hub_outdated = b.stat(
+        "Outdated Hub Items",
+        "sum(" + hub_outdated_sel + ") or vector(0)",
+        unit="short", w=4, h=4,
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "orange", "value": 1},
+        ],
+        color_mode="background",
+        desc='Total installed hub items (any component) whose status includes "outdated" — a newer hub version is available.',
+    )
+    hub_items_table = b.table(
+        "Hub Component Health",
+        [sel("opnsense_crowdsec_hub_items")],
+        w=24, h=10,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "component": "Component",
+            "status": "Status",
+            "Value": "Count",
+        },
+        sort_by="Component",
+        desc=(
+            "Installed hub item counts per component (collection/scenario/parser/"
+            "postoverflow/appsec_config/appsec_rule) and status. Aggregated only — "
+            "never per-item name, since a single collection can pull in 50-200 "
+            "scenarios/parsers."
+        ),
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 5: Engine Version (#205)                                         #
+    # ------------------------------------------------------------------ #
+    version_table = b.table(
+        "Engine Version",
+        [sel("opnsense_crowdsec_version_info")],
+        w=24, h=4,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"version": "Engine Version"},
+        desc="CrowdSec engine (cscli) version, parsed from cscli version's raw text output.",
+    )
+
     b.tab("CrowdSec", [
         b.row("CrowdSec Overview",
               [svc, alerts, decisions, bouncers, machines],
@@ -134,4 +201,10 @@ def build(b: Builder):
         b.row("Machine Details",
               [machine_validated_ts, machine_table],
               present="has_crowdsec"),
+        b.row("Hub Component Health",
+              [hub_tainted, hub_outdated, hub_items_table],
+              present="has_crowdsec_hub_items"),
+        b.row("Engine Version",
+              [version_table],
+              present="has_crowdsec_version"),
     ])

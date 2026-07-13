@@ -29,6 +29,8 @@ type crowdsecCollector struct {
 	machinesTotal    *prometheus.Desc
 	machineValidated *prometheus.Desc
 	machineHeartbeat *prometheus.Desc
+	hubItems         *prometheus.Desc
+	versionInfo      *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -68,6 +70,11 @@ func (c *crowdsecCollector) Register(namespace, instanceLabel string, log *slog.
 		"Whether the machine registration has been validated (1 = validated, 0 = pending)", machineLabels)
 	c.machineHeartbeat = buildPrometheusDesc(c.subsystem, "machine_last_heartbeat_timestamp_seconds",
 		"Unix timestamp of the last heartbeat from this machine (omitted when absent)", machineLabels)
+	c.hubItems = buildPrometheusDesc(c.subsystem, "hub_items",
+		"Number of installed CrowdSec hub items per component and status (e.g. component=\"scenario\" status=\"enabled,tainted\")",
+		[]string{"component", "status"})
+	c.versionInfo = buildPrometheusDesc(c.subsystem, "version_info",
+		"CrowdSec engine version (value always 1; version is a label)", []string{"version"})
 }
 
 func (c *crowdsecCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -81,6 +88,8 @@ func (c *crowdsecCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.machinesTotal,
 		c.machineValidated,
 		c.machineHeartbeat,
+		c.hubItems,
+		c.versionInfo,
 	} {
 		ch <- d
 	}
@@ -142,6 +151,22 @@ func (c *crowdsecCollector) Update(_ context.Context, client *opnsense.Client, c
 					m.LastHeartbeatSeconds, m.Name, c.instance)
 			}
 		}
+	}
+
+	// Hub component health (#205): aggregated counts per component + normalised
+	// status. Never per-item name labels — a collection pulls in 50-200
+	// scenarios/parsers.
+	if data.HasHubItems {
+		for _, item := range data.HubItems {
+			ch <- prometheus.MustNewConstMetric(c.hubItems, prometheus.GaugeValue,
+				float64(item.Count), item.Component, item.Status, c.instance)
+		}
+	}
+
+	// Engine version (#205).
+	if data.HasVersion {
+		ch <- prometheus.MustNewConstMetric(c.versionInfo, prometheus.GaugeValue,
+			1, data.Version, c.instance)
 	}
 
 	// Service status — always fetched when plugin is present.

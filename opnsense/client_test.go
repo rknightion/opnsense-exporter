@@ -110,8 +110,8 @@ func TestNewClient_EndpointCount(t *testing.T) {
 	}
 
 	endpoints := client.Endpoints()
-	if len(endpoints) != 130 {
-		t.Errorf("expected 130 endpoints, got %d", len(endpoints))
+	if len(endpoints) != 137 {
+		t.Errorf("expected 137 endpoints, got %d", len(endpoints))
 	}
 	// Content equality, not just count: the live Client must use exactly the
 	// canonical defaultEndpoints() table. The fetch tests now build their clients
@@ -565,5 +565,68 @@ func TestWithContextBackgroundStillWorks(t *testing.T) {
 	}
 	if out["ok"] != true {
 		t.Errorf("expected ok=true in response, got %v", out)
+	}
+}
+
+// TestDo_RawBytesSentinel covers the *[]byte bypass added for #205
+// (crowdsec's version/get, which is not JSON at all): a *[]byte responseStruct
+// must receive the exact response bytes, verbatim, with no JSON decoding
+// attempted — including bodies that are not valid JSON.
+func TestDo_RawBytesSentinel(t *testing.T) {
+	const rawBody = "version: v1.7.8_1-6322745\nCodename: alphaga\n"
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, rawBody)
+	})
+	defer server.Close()
+
+	var out []byte
+	if apiErr := client.do("GET", "api/test/raw", nil, &out); apiErr != nil {
+		t.Fatalf("expected success, got %v", apiErr)
+	}
+	if string(out) != rawBody {
+		t.Errorf("expected raw body %q, got %q", rawBody, string(out))
+	}
+}
+
+// TestDo_RawBytesSentinel_CacheRoundtrip verifies the *[]byte bypass also
+// works correctly when the response is served from the cache (the second
+// GET below never reaches the server), since unmarshalBody is shared by both
+// the live-response and cache-hit paths. Uses the real crowdsecVersion
+// endpoint so SetEndpointCacheTTL resolves a valid path.
+func TestDo_RawBytesSentinel_CacheRoundtrip(t *testing.T) {
+	const rawBody = "version: v1.7.8_1-6322745\nCodename: alphaga\n"
+	var hits int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/crowdsec/version/get", func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		fmt.Fprint(w, rawBody)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := &Client{
+		httpClient: server.Client(),
+		baseURL:    server.URL,
+		key:        "test-key",
+		secret:     "test-secret",
+		log:        slog.Default(),
+		headers:    map[string]string{},
+		endpoints:  defaultEndpoints(),
+		maxRetries: MaxRetries,
+	}
+	client.SetEndpointCacheTTL("crowdsecVersion", time.Hour)
+	path := client.endpoints["crowdsecVersion"]
+
+	for i := 0; i < 2; i++ {
+		var out []byte
+		if apiErr := client.do("GET", path, nil, &out); apiErr != nil {
+			t.Fatalf("call %d: expected success, got %v", i, apiErr)
+		}
+		if string(out) != rawBody {
+			t.Errorf("call %d: expected raw body %q, got %q", i, rawBody, string(out))
+		}
+	}
+	if hits != 1 {
+		t.Errorf("expected the server to be hit once (second call served from cache), got %d", hits)
 	}
 }

@@ -85,6 +85,14 @@ func CacheTTLs() EndpointCacheTTLs {
 		// a few times a day, so re-fetching this on every scrape only costs
 		// firewall CPU (a configd shell-out + clamconf parse).
 		ttls["clamavVersion"] = *cacheTTL
+		// CrowdSec engine version (raw cscli version text): changes only when
+		// the crowdsec package itself is upgraded, not on scrape cadence. The
+		// six hub-item search endpoints (collections/scenarios/parsers/
+		// postoverflows/appsecconfigs/appsecrules) are POST bootgrid searches,
+		// so only their 404 is ever cacheable (see PluginGatedEndpoints) — their
+		// successful bodies are re-fetched every scrape like their alerts/
+		// decisions/bouncers/machines siblings.
+		ttls["crowdsecVersion"] = *cacheTTL
 	}
 
 	return ttls
