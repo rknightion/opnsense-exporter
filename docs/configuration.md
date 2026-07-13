@@ -209,6 +209,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | Gateways | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
 | `--exporter.disable-haproxy` | `OPNSENSE_EXPORTER_DISABLE_HAPROXY` | HAProxy | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-hardware` | `OPNSENSE_EXPORTER_DISABLE_HARDWARE` | Hardware | Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed. |
+| `--exporter.disable-hostdiscovery` | `OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY` | Host Discovery | Disable the scraping of the discovered-host inventory (Interfaces > Host discovery / hostwatch): interface+source host counts, low-cardinality. A core OPNsense feature (not a plugin); reads absent/silent on releases predating it. |
 | `--exporter.disable-ids` | `OPNSENSE_EXPORTER_DISABLE_IDS` | IDS/IPS (Suricata) | Disable the scraping of Suricata IDS/IPS metrics (service status, IPS mode, eve log and ruleset inventory, installed-rule count; silent structures when IDS is unconfigured) |
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | IPsec | Disable the scraping of IPSec service |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | ISC DHCPv4 | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |
@@ -321,6 +322,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-gateways` | `OPNSENSE_EXPORTER_DISABLE_GATEWAYS` | `false` | Disable the scraping of gateway status metrics (RTT, packet loss, gateway state) |
 | `--exporter.disable-haproxy` | `OPNSENSE_EXPORTER_DISABLE_HAPROXY` | `false` | Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent) |
 | `--exporter.disable-hardware` | `OPNSENSE_EXPORTER_DISABLE_HARDWARE` | `false` | Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed. |
+| `--exporter.disable-hostdiscovery` | `OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY` | `false` | Disable the scraping of the discovered-host inventory (Interfaces > Host discovery / hostwatch): interface+source host counts, low-cardinality. A core OPNsense feature (not a plugin); reads absent/silent on releases predating it. |
 | `--exporter.disable-ids` | `OPNSENSE_EXPORTER_DISABLE_IDS` | `false` | Disable the scraping of Suricata IDS/IPS metrics (service status, IPS mode, eve log and ruleset inventory, installed-rule count; silent structures when IDS is unconfigured) |
 | `--exporter.disable-interfaces` | `OPNSENSE_EXPORTER_DISABLE_INTERFACES` | `false` | Disable the interfaces collector (per-interface traffic/link metrics) |
 | `--exporter.disable-ipsec` | `OPNSENSE_EXPORTER_DISABLE_IPSEC` | `false` | Disable the scraping of IPSec service |

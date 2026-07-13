@@ -243,6 +243,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"authUsers":                  "api/auth/user/search",
 		"authAPIKeys":                "api/auth/user/search_api_key",
 		"authGroups":                 "api/auth/group/search",
+		"hostdiscoverySearch":        "api/hostdiscovery/service/search",
 	}
 }
 

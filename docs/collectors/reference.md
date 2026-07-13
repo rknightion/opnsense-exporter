@@ -30,6 +30,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
 | HAProxy | haproxy | 38 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
 | Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPNSENSE_EXPORTER_DISABLE_HARDWARE |
+| Host Discovery | hostdiscovery | 2 | Enabled | --exporter.disable-hostdiscovery | OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY |
 | IDS/IPS (Suricata) | ids | 9 | Enabled | --exporter.disable-ids | OPNSENSE_EXPORTER_DISABLE_IDS |
 | IPsec | ipsec | 26 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |

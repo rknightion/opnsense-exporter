@@ -310,6 +310,10 @@ var (
 		"exporter.disable-auth",
 		"Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only — no per-user data)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_AUTH").Default("false").Bool()
+	hostdiscoveryCollectorDisabled = kingpin.Flag(
+		"exporter.disable-hostdiscovery",
+		"Disable the scraping of the discovered-host inventory (Interfaces > Host discovery / hostwatch): interface+source host counts, low-cardinality. A core OPNsense feature (not a plugin); reads absent/silent on releases predating it.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_HOSTDISCOVERY").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -387,6 +391,7 @@ type CollectorsDisableSwitch struct {
 	IDSAlerts              bool
 	LLDPD                  bool
 	Auth                   bool
+	HostDiscovery          bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -465,6 +470,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Netbird:                !*netbirdCollectorDisabled,
 		NetbirdDetails:         *netbirdDetailsEnabled,
 		Auth:                   !*authCollectorDisabled,
+		HostDiscovery:          !*hostdiscoveryCollectorDisabled,
 	}
 }
 
@@ -557,4 +563,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-netbird", Subsystem: "netbird"},
 	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true},
 	{Flag: "exporter.disable-auth", Subsystem: "auth"},
+	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},
 }

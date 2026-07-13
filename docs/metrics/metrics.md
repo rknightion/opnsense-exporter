@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 689
-- **Gauges:** 471
+- **Total metrics:** 691
+- **Gauges:** 473
 - **Counters:** 218
 
 ## General
@@ -386,6 +386,13 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_hardware_dmi_info | Gauge | manufacturer, product, version, serial, family, bios_vendor, bios_version, bios_release | DMI system and BIOS identity as reported by dmidecode (value is always 1; use labels). Silent when the os-dmidecode plugin is absent. | --exporter.disable-hardware |
 | opnsense_hardware_psu_status | Gauge | psu | Deciso DEC-series power supply status (1 = powered, 0 = not powered). Only emitted on hardware with a GPIO power-status device; silent when the os-dec-hw plugin is absent or no such hardware is detected. | --exporter.disable-hardware |
+
+## Host Discovery
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_hostdiscovery_hosts | Gauge | interface, source | Number of hosts in the discovered-host inventory, by interface and source. source is \"discovery\" when the hostwatch daemon is enabled (persistent inventory, survives reboots and cache expiry) or \"arp-ndp\" when it is disabled (a live fallback that duplicates the arp_table/ndp collectors). Aggregate only: never a per-host series. | --exporter.disable-hostdiscovery |
+| opnsense_hostdiscovery_hosts_recent | Gauge | interface, source | Number of hosts in the discovered-host inventory whose last_seen falls within a 15 minute window, by interface and source. Always 0 for source=\"arp-ndp\" rows, which carry no last_seen timestamp to judge recency from. | --exporter.disable-hostdiscovery |
 
 ## IDS/IPS (Suricata)
 

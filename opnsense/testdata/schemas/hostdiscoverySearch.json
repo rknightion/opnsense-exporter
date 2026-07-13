@@ -1,0 +1,62 @@
+{
+  "endpoint": "hostdiscoverySearch",
+  "method": "GET",
+  "path": "api/hostdiscovery/service/search",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "current",
+    "rowCount",
+    "rows",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "current",
+      "kind": "number"
+    },
+    {
+      "path": "rowCount",
+      "kind": "number"
+    },
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].ether_address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].first_seen",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].interface_name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].ip_address",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].last_seen",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].organization_name",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].source",
+      "kind": "string"
+    },
+    {
+      "path": "total",
+      "kind": "number"
+    }
+  ]
+}

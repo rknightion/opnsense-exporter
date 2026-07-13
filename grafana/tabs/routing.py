@@ -1,24 +1,31 @@
 """
-Routing & Neighbors tab — ARP table, NDP, LLDP, and Network Diagnostics metrics.
+Routing & Neighbors tab — ARP table, NDP, LLDP, Host Discovery, and Network
+Diagnostics metrics.
 
 Rows:
   1. ARP table          — entry count stat, count by interface bargauge, detail table
   2. NDP (IPv6 Neighbors) — entry count stat, count by interface bargauge, detail table
   3. LLDP Neighbors (gated) — neighbor count by local interface bargauge, detail table
-  4. NetISR (gated)     — dispatch/queue/handle/drop rate ts, queue length/watermark/limit ts
-  5. Sockets & Routes (gated) — sockets_active bargauge, sockets_unix_total stat,
+  4. Host Discovery     — hosts/hosts_recent by interface+source bargauges
+  5. NetISR (gated)     — dispatch/queue/handle/drop rate ts, queue length/watermark/limit ts
+  6. Sockets & Routes (gated) — sockets_active bargauge, sockets_unix_total stat,
                                 routes_total bargauge
-  6. pfsync (gated)     — pfsync_nodes_total stat, pfsync_node_info table
+  7. pfsync (gated)     — pfsync_nodes_total stat, pfsync_node_info table
 
 LLDP is placed here rather than the Interfaces tab: it is a neighbor-discovery table
 conceptually alongside ARP/NDP (a topology sensor — alert when a port stops seeing its
-expected switch/port), not an interface-throughput metric (#216).
+expected switch/port), not an interface-throughput metric (#216). Host Discovery
+(the core hostwatch persistent inventory, #223) joins them for the same reason: it is
+a neighbor/host-visibility signal, not throughput — and its "arp-ndp" fallback source
+(hostwatch disabled) is a live read of the same ARP/NDP tables shown above it.
 
 Coverage:
   opnsense_arp_table_entries
   opnsense_ndp_entries
   opnsense_lldp_neighbors
   opnsense_lldp_neighbor_info
+  opnsense_hostdiscovery_hosts
+  opnsense_hostdiscovery_hosts_recent
   opnsense_network_diag_netisr_dispatched_total
   opnsense_network_diag_netisr_hybrid_dispatched_total
   opnsense_network_diag_netisr_queued_total
@@ -155,7 +162,38 @@ def build(b: Builder):
     )
 
     # ======================================================================
-    # Row 4 – NetISR (gated: has_network_diag)
+    # Row 4 – Host Discovery (core hostwatch inventory, #223)
+    # ======================================================================
+    # Never gated: this is a core, default-on collector (like ARP/NDP above),
+    # not an opt-in/plugin feature. Series legend carries both interface and
+    # source so the "arp-ndp" fallback (hostwatch disabled) is distinguishable
+    # from "discovery" (hostwatch enabled) rather than silently merged.
+    hostdiscovery_by_iface = b.bargauge(
+        "Discovered Hosts by Interface",
+        [(sel("opnsense_hostdiscovery_hosts"), "{{interface}} ({{source}})")],
+        unit="short",
+        w=12, h=8,
+        orient="horizontal",
+        instant=True,
+        desc="Number of hosts in the discovered-host inventory per interface. source=discovery "
+             "means the hostwatch daemon is enabled (persistent inventory, survives reboots and "
+             "cache expiry); source=arp-ndp means it is disabled and this is a live ARP/NDP-table "
+             "fallback (see the ARP/NDP rows above) with no history.",
+    )
+    hostdiscovery_recent_by_iface = b.bargauge(
+        "Recently Seen Hosts (15m) by Interface",
+        [(sel("opnsense_hostdiscovery_hosts_recent"), "{{interface}} ({{source}})")],
+        unit="short",
+        w=12, h=8,
+        orient="horizontal",
+        instant=True,
+        desc="Subset of the discovered-host inventory last seen within 15 minutes, per interface. "
+             "Always 0 for source=arp-ndp, which carries no last_seen timestamp to judge recency "
+             "from. A sustained drop signals hosts going quiet on that interface.",
+    )
+
+    # ======================================================================
+    # Row 5 – NetISR (gated: has_network_diag)
     # ======================================================================
     netisr_dispatch_ts = b.ts(
         "NetISR Dispatches & Handled (rate)",
@@ -199,7 +237,7 @@ def build(b: Builder):
     )
 
     # ======================================================================
-    # Row 5 – Sockets & Routes (gated: has_network_diag)
+    # Row 6 – Sockets & Routes (gated: has_network_diag)
     # ======================================================================
     sockets_active_bg = b.bargauge(
         "Active Sockets by Type",
@@ -230,7 +268,7 @@ def build(b: Builder):
     )
 
     # ======================================================================
-    # Row 6 – pfsync (gated: has_network_diag)
+    # Row 7 – pfsync (gated: has_network_diag)
     # ======================================================================
     pfsync_nodes_stat = b.stat(
         "pfsync Cluster Nodes",
@@ -261,6 +299,7 @@ def build(b: Builder):
         b.row("ARP Table", [arp_count, arp_by_iface, arp_table]),
         b.row("NDP (IPv6 Neighbors)", [ndp_count, ndp_by_iface, ndp_table]),
         b.row("LLDP Neighbors", [lldp_by_iface, lldp_table], present="has_lldp"),
+        b.row("Host Discovery", [hostdiscovery_by_iface, hostdiscovery_recent_by_iface]),
         b.row("NetISR (Network Interrupt Subsystem)", [netisr_dispatch_ts, netisr_queue_ts, netisr_len_ts],
               present="has_network_diag"),
         b.row("Sockets & Routes", [sockets_active_bg, sockets_unix_stat, routes_bg],

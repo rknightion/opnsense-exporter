@@ -81,6 +81,7 @@ const (
 	NetbirdSubsystem       = "netbird"
 	TorSubsystem           = "tor"
 	AuthSubsystem          = "auth"
+	HostDiscoverySubsystem = "hostdiscovery"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -145,6 +146,7 @@ var SubsystemDisplayNames = map[string]string{
 	NetbirdSubsystem:       "NetBird",
 	TorSubsystem:           "Tor",
 	AuthSubsystem:          "Local Auth",
+	HostDiscoverySubsystem: "Host Discovery",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -575,6 +577,12 @@ func WithoutTorCollector() Option {
 // removes the auth collector from the list of collectors
 func WithoutAuthCollector() Option {
 	return withoutCollectorInstance(AuthSubsystem)
+}
+
+// WithoutHostDiscoveryCollector Option
+// removes the hostdiscovery collector from the list of collectors
+func WithoutHostDiscoveryCollector() Option {
+	return withoutCollectorInstance(HostDiscoverySubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

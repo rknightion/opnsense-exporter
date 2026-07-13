@@ -427,6 +427,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutAuthCollector())
 		logger.Info("auth collector disabled")
 	}
+	if !collectorsSwitches.HostDiscovery {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutHostDiscoveryCollector())
+		logger.Info("hostdiscovery collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

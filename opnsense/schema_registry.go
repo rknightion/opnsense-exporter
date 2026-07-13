@@ -68,6 +68,7 @@ var schemaRegistry = map[EndpointName]any{
 	"hasyncServices":             hasyncServicesBootgrid{},
 	"hasyncVersion":              hasyncVersionResponse{},
 	"healthCheck":                HealthCheckResponse{},
+	"hostdiscoverySearch":        hostDiscoverySearchResponse{},
 	"idsStatus":                  serviceStatusResponse{},
 	"idsAlertLogs":               []idsAlertLogEntry{},
 	"idsQueryAlerts":             idsAlertsResponse{},
