@@ -4,12 +4,74 @@
   "path": "api/nginx/service/vts",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
+    "cacheZones",
     "connections",
+    "loadMsec",
     "serverZones",
     "sharedZones",
     "upstreamZones"
   ],
   "fields": [
+    {
+      "path": "cacheZones",
+      "kind": "object"
+    },
+    {
+      "path": "cacheZones.*",
+      "kind": "object"
+    },
+    {
+      "path": "cacheZones.*.inBytes",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.maxSize",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.outBytes",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses",
+      "kind": "object"
+    },
+    {
+      "path": "cacheZones.*.responses.bypass",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.expired",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.hit",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.miss",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.revalidated",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.scarce",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.stale",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.responses.updating",
+      "kind": "number"
+    },
+    {
+      "path": "cacheZones.*.usedSize",
+      "kind": "number"
+    },
     {
       "path": "connections",
       "kind": "object"
@@ -43,6 +105,10 @@
       "kind": "number"
     },
     {
+      "path": "loadMsec",
+      "kind": "number"
+    },
+    {
       "path": "serverZones",
       "kind": "object"
     },
@@ -60,6 +126,10 @@
     },
     {
       "path": "serverZones.*.requestCounter",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.requestMsecCounter",
       "kind": "number"
     },
     {
@@ -84,6 +154,38 @@
     },
     {
       "path": "serverZones.*.responses.5xx",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.bypass",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.expired",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.hit",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.miss",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.revalidated",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.scarce",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.stale",
+      "kind": "number"
+    },
+    {
+      "path": "serverZones.*.responses.updating",
       "kind": "number"
     },
     {
@@ -131,7 +233,15 @@
       "kind": "number"
     },
     {
+      "path": "upstreamZones.*[].requestMsecCounter",
+      "kind": "number"
+    },
+    {
       "path": "upstreamZones.*[].responseMsec",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].responseMsecCounter",
       "kind": "number"
     },
     {

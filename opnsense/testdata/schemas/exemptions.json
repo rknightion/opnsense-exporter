@@ -74,8 +74,8 @@
     "note": "api/ntpd/service/gps and api/ntpd/service/status both wrap the same `ntpd status` configd script output; ntpq_servers duplicates the peer rows already modelled via ntpStatus's \"rows\" key (statusAction re-wraps the same array through searchRecordsetBase). Intentionally not modelled a second time here (#224)"
   },
   "nginxVts": {
-    "knownExtraTopKeys": ["hostName", "loadMsec", "moduleVersion", "nginxVersion", "nowMsec"],
-    "note": "vts module identity and snapshot timestamps; not modelled"
+    "knownExtraTopKeys": ["hostName", "moduleVersion", "nginxVersion", "nowMsec"],
+    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list"
   },
   "nutServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "pfStatisticsByInterface": {

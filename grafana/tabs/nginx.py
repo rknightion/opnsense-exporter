@@ -8,19 +8,31 @@ on the VTS endpoint so ALL metrics are absent (fully silent; the tab hides).
 
 Counters (connections_accepted_total, connections_handled_total,
 requests_total, server_zone_requests_total, server_zone_bytes_in/out_total,
-server_zone_responses_total, upstream_server_requests_total,
-upstream_server_bytes_in/out_total, upstream_server_responses_total)
-are cumulative -> rate().
+server_zone_responses_total, server_zone_cache_responses_total,
+server_zone_request_seconds_total, upstream_server_requests_total,
+upstream_server_bytes_in/out_total, upstream_server_responses_total,
+upstream_server_request/response_seconds_total, cache_zone_bytes_in/out_total,
+cache_zone_responses_total) are cumulative -> rate().
 Gauges shown raw: service_running, connections_active/reading/writing/waiting,
-shared_memory_*, upstream_server_down, upstream_server_response_time_seconds.
+shared_memory_*, upstream_server_down, upstream_server_response_time_seconds,
+cache_zone_max/used_bytes, config_load_timestamp_seconds, bans,
+ban_last_timestamp_seconds.
+
+Cache zone metrics (#200) are additionally gated on has_nginx_cache: a vts
+build without the cache-status extension, or a box with no proxy_cache_path
+configured, never emits opnsense_nginx_cache_zone_* nor
+server_zone_cache_responses_total, so that row hides independently of the
+rest of the tab.
 """
 
-from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
+from builder import Builder, sel, epoch_ms, RATE, RUNSTOP, UPDOWN
 
 
 def build(b: Builder):
     b.sentinel("has_nginx",
                "label_values(opnsense_nginx_connections_active, __name__)")
+    b.sentinel("has_nginx_cache",
+               "label_values(opnsense_nginx_cache_zone_max_bytes, __name__)")
 
     # ------------------------------------------------------------------ #
     # Row 1: nginx Overview                                                #
@@ -171,6 +183,101 @@ def build(b: Builder):
         unit="short", w=24, h=8, stack=True,
         desc="Upstream server HTTP response rate by status code class.",
     )
+    up_req_latency = b.ts(
+        "Upstream Server Avg Request Time",
+        [(f'rate({sel("opnsense_nginx_upstream_server_request_seconds_total")}[{RATE}])'
+          f' / rate({sel("opnsense_nginx_upstream_server_requests_total")}[{RATE}])',
+          "{{upstream}}/{{server}}")],
+        unit="s", w=12, h=8,
+        desc="Average request processing time per upstream server, derived from the "
+             "cumulative request-time counter (rate/rate — distinct from the "
+             "instantaneous responseMsec moving average above).",
+    )
+    up_resp_latency = b.ts(
+        "Upstream Server Avg Response Time",
+        [(f'rate({sel("opnsense_nginx_upstream_server_response_seconds_total")}[{RATE}])'
+          f' / rate({sel("opnsense_nginx_upstream_server_requests_total")}[{RATE}])',
+          "{{upstream}}/{{server}}")],
+        unit="s", w=12, h=8,
+        desc="Average upstream response time per upstream server, derived from the "
+             "cumulative response-time counter (rate/rate).",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 5: Server Zone Cache Status & Latency                            #
+    # ------------------------------------------------------------------ #
+    zone_cache_responses = b.ts(
+        "Server Zone Cache Status",
+        [(f'rate({sel("opnsense_nginx_server_zone_cache_responses_total")}[{RATE}])',
+          "{{zone}} {{cache_status}}")],
+        unit="short", w=24, h=8, stack=True,
+        desc="Per-server-zone response rate by cache outcome (hit/miss/bypass/…); "
+             "only present when this vts build reports cache status.",
+    )
+    zone_avg_latency = b.ts(
+        "Server Zone Avg Request Time",
+        [(f'rate({sel("opnsense_nginx_server_zone_request_seconds_total")}[{RATE}])'
+          f' / rate({sel("opnsense_nginx_server_zone_requests_total")}[{RATE}])',
+          "{{zone}}")],
+        unit="s", w=24, h=8,
+        desc="Average request processing time per server zone, derived from the "
+             "cumulative request-time counter (rate/rate).",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 6: Cache Zones (proxy_cache_path) — hidden with no cache configured
+    # ------------------------------------------------------------------ #
+    cz_size = b.ts(
+        "Cache Zone Size (Max vs Used)",
+        [
+            (sel("opnsense_nginx_cache_zone_max_bytes"), "{{zone}} max"),
+            (sel("opnsense_nginx_cache_zone_used_bytes"), "{{zone}} used"),
+        ],
+        unit="bytes", w=12, h=8,
+        desc="Configured maximum and currently used size of each proxy_cache_path zone.",
+    )
+    cz_throughput = b.ts(
+        "Cache Zone Throughput",
+        [
+            (f'rate({sel("opnsense_nginx_cache_zone_bytes_in_total")}[{RATE}])*8',
+             "{{zone}} in"),
+            (f'rate({sel("opnsense_nginx_cache_zone_bytes_out_total")}[{RATE}])*8',
+             "{{zone}} out"),
+        ],
+        unit="bps", w=12, h=8,
+        desc="Cache zone bytes in/out per second (×8 for bits).",
+    )
+    cz_responses = b.ts(
+        "Cache Zone Responses by Status",
+        [(f'rate({sel("opnsense_nginx_cache_zone_responses_total")}[{RATE}])',
+          "{{zone}} {{cache_status}}")],
+        unit="short", w=24, h=8, stack=True,
+        desc="Per-cache-zone response rate by cache outcome (hit/miss/bypass/…).",
+    )
+
+    # ------------------------------------------------------------------ #
+    # Row 7: Config Reload & Autoblock                                     #
+    # ------------------------------------------------------------------ #
+    reload_ts = b.stat(
+        "Last Config Reload",
+        epoch_ms(sel("opnsense_nginx_config_load_timestamp_seconds")),
+        unit="dateTimeAsIso", w=8, h=4,
+        desc="Time of the last nginx config (re)load, as reported by the vts module.",
+    )
+    bans_stat = b.stat(
+        "Active Autoblock Bans",
+        sel("opnsense_nginx_bans"),
+        unit="short", w=8, h=4,
+        thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+        desc="Current number of IPs banned by the nginx autoblock cron "
+             "(bot User-Agent / request-rate ACL matches).",
+    )
+    ban_last_ts = b.stat(
+        "Last Autoblock Ban",
+        epoch_ms(sel("opnsense_nginx_ban_last_timestamp_seconds")),
+        unit="dateTimeAsIso", w=8, h=4,
+        desc="Time of the most recent autoblock ban.",
+    )
 
     b.tab("Nginx", [
         b.row("Nginx Overview",
@@ -183,6 +290,16 @@ def build(b: Builder):
               [zone_req_rate, zone_bytes, zone_responses],
               present="has_nginx"),
         b.row("Upstream Servers",
-              [up_down, up_req_rate, up_bytes, up_resp_time, up_responses],
+              [up_down, up_req_rate, up_bytes, up_resp_time, up_responses,
+               up_req_latency, up_resp_latency],
+              present="has_nginx"),
+        b.row("Server Zone Cache Status & Latency",
+              [zone_cache_responses, zone_avg_latency],
+              present="has_nginx"),
+        b.row("Cache Zones",
+              [cz_size, cz_throughput, cz_responses],
+              present="has_nginx_cache"),
+        b.row("Config Reload & Autoblock",
+              [reload_ts, bans_stat, ban_last_ts],
               present="has_nginx"),
     ])

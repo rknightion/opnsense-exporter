@@ -30,18 +30,34 @@ type nginxCollector struct {
 	sharedUsedNodes *prometheus.Desc
 
 	// per-server-zone counters + responses
-	szRequests  *prometheus.Desc
-	szBytesIn   *prometheus.Desc
-	szBytesOut  *prometheus.Desc
-	szResponses *prometheus.Desc // labels: zone, code
+	szRequests       *prometheus.Desc
+	szBytesIn        *prometheus.Desc
+	szBytesOut       *prometheus.Desc
+	szResponses      *prometheus.Desc // labels: zone, code
+	szCacheResponses *prometheus.Desc // labels: zone, cache_status
+	szRequestSeconds *prometheus.Desc // labels: zone
 
 	// per-upstream-server counters + gauges
-	usRequests     *prometheus.Desc
-	usBytesIn      *prometheus.Desc
-	usBytesOut     *prometheus.Desc
-	usResponses    *prometheus.Desc // labels: upstream, server, code
-	usDown         *prometheus.Desc
-	usResponseTime *prometheus.Desc
+	usRequests        *prometheus.Desc
+	usBytesIn         *prometheus.Desc
+	usBytesOut        *prometheus.Desc
+	usResponses       *prometheus.Desc // labels: upstream, server, code
+	usDown            *prometheus.Desc
+	usResponseTime    *prometheus.Desc
+	usRequestSeconds  *prometheus.Desc // labels: upstream, server
+	usResponseSeconds *prometheus.Desc // labels: upstream, server
+
+	// per-cache-zone gauges + counters (proxy_cache_path)
+	czMaxBytes  *prometheus.Desc // labels: zone
+	czUsedBytes *prometheus.Desc // labels: zone
+	czBytesIn   *prometheus.Desc // labels: zone
+	czBytesOut  *prometheus.Desc // labels: zone
+	czResponses *prometheus.Desc // labels: zone, cache_status
+
+	// config reload / autoblock ban gauges
+	configLoadTimestamp *prometheus.Desc
+	bansCount           *prometheus.Desc
+	banLastTimestamp    *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -112,6 +128,37 @@ func (c *nginxCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"Whether this upstream server is marked down (1 = down, 0 = up)", upstreamLabels)
 	c.usResponseTime = buildPrometheusDesc(c.subsystem, "upstream_server_response_time_seconds",
 		"Average response time of this upstream server in seconds", upstreamLabels)
+
+	c.szCacheResponses = buildPrometheusDesc(c.subsystem, "server_zone_cache_responses_total",
+		"Cumulative responses by cache status for this server zone (only when the vts build reports cache status)",
+		[]string{"zone", "cache_status"})
+	c.szRequestSeconds = buildPrometheusDesc(c.subsystem, "server_zone_request_seconds_total",
+		"Cumulative sum of request processing time in seconds for this server zone", zoneLabels)
+
+	c.usRequestSeconds = buildPrometheusDesc(c.subsystem, "upstream_server_request_seconds_total",
+		"Cumulative sum of request processing time in seconds for this upstream server", upstreamLabels)
+	c.usResponseSeconds = buildPrometheusDesc(c.subsystem, "upstream_server_response_seconds_total",
+		"Cumulative sum of response time in seconds for this upstream server", upstreamLabels)
+
+	c.czMaxBytes = buildPrometheusDesc(c.subsystem, "cache_zone_max_bytes",
+		"Maximum size of this proxy_cache_path zone in bytes", zoneLabels)
+	c.czUsedBytes = buildPrometheusDesc(c.subsystem, "cache_zone_used_bytes",
+		"Currently used bytes of this proxy_cache_path zone", zoneLabels)
+	c.czBytesIn = buildPrometheusDesc(c.subsystem, "cache_zone_bytes_in_total",
+		"Cumulative bytes received for this cache zone", zoneLabels)
+	c.czBytesOut = buildPrometheusDesc(c.subsystem, "cache_zone_bytes_out_total",
+		"Cumulative bytes sent for this cache zone", zoneLabels)
+	c.czResponses = buildPrometheusDesc(c.subsystem, "cache_zone_responses_total",
+		"Cumulative responses by cache status for this cache zone",
+		[]string{"zone", "cache_status"})
+
+	c.configLoadTimestamp = buildPrometheusDesc(c.subsystem, "config_load_timestamp_seconds",
+		"Unix timestamp of the last nginx config (re)load, as reported by the vts module", nil)
+
+	c.bansCount = buildPrometheusDesc(c.subsystem, "bans",
+		"Current number of active autoblock bans", nil)
+	c.banLastTimestamp = buildPrometheusDesc(c.subsystem, "ban_last_timestamp_seconds",
+		"Unix timestamp of the most recent autoblock ban", nil)
 }
 
 func (c *nginxCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -121,8 +168,11 @@ func (c *nginxCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.connAccepted, c.connHandled, c.reqTotal,
 		c.sharedMaxBytes, c.sharedUsedBytes, c.sharedUsedNodes,
 		c.szRequests, c.szBytesIn, c.szBytesOut, c.szResponses,
+		c.szCacheResponses, c.szRequestSeconds,
 		c.usRequests, c.usBytesIn, c.usBytesOut, c.usResponses,
-		c.usDown, c.usResponseTime,
+		c.usDown, c.usResponseTime, c.usRequestSeconds, c.usResponseSeconds,
+		c.czMaxBytes, c.czUsedBytes, c.czBytesIn, c.czBytesOut, c.czResponses,
+		c.configLoadTimestamp, c.bansCount, c.banLastTimestamp,
 	} {
 		ch <- d
 	}
@@ -180,6 +230,17 @@ func (c *nginxCollector) Update(ctx context.Context, client *opnsense.Client, ch
 			ch <- prometheus.MustNewConstMetric(c.szResponses, prometheus.CounterValue,
 				v, sz.Zone, code, c.instance)
 		}
+		ch <- prometheus.MustNewConstMetric(c.szRequestSeconds, prometheus.CounterValue,
+			sz.RequestSecondsTotal, sz.Zone, c.instance)
+		// Cache-status counters only mean something when this vts build
+		// actually reports cache status (see NginxVTS.CacheStatusPresent) —
+		// otherwise they'd just be a wall of meaningless zeros.
+		if data.CacheStatusPresent {
+			for status, v := range sz.CacheResponsesByCode {
+				ch <- prometheus.MustNewConstMetric(c.szCacheResponses, prometheus.CounterValue,
+					v, sz.Zone, status, c.instance)
+			}
+		}
 	}
 
 	// Per-upstream-server metrics
@@ -202,9 +263,36 @@ func (c *nginxCollector) Update(ctx context.Context, client *opnsense.Client, ch
 			downVal, us.Upstream, us.Server, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.usResponseTime, prometheus.GaugeValue,
 			us.ResponseTimeSeconds, us.Upstream, us.Server, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.usRequestSeconds, prometheus.CounterValue,
+			us.RequestSecondsTotal, us.Upstream, us.Server, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.usResponseSeconds, prometheus.CounterValue,
+			us.ResponseSecondsTotal, us.Upstream, us.Server, c.instance)
 	}
 
-	// Service status — fetched last; absent (404) means we skip gracefully
+	// Per-cache-zone metrics (proxy_cache_path); empty slice when none
+	// configured or the vts build lacks the cache-status extension.
+	for _, cz := range data.CacheZones {
+		ch <- prometheus.MustNewConstMetric(c.czMaxBytes, prometheus.GaugeValue,
+			cz.MaxBytes, cz.Zone, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.czUsedBytes, prometheus.GaugeValue,
+			cz.UsedBytes, cz.Zone, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.czBytesIn, prometheus.CounterValue,
+			cz.BytesIn, cz.Zone, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.czBytesOut, prometheus.CounterValue,
+			cz.BytesOut, cz.Zone, c.instance)
+		for status, v := range cz.ResponsesByCode {
+			ch <- prometheus.MustNewConstMetric(c.czResponses, prometheus.CounterValue,
+				v, cz.Zone, status, c.instance)
+		}
+	}
+
+	// Config (re)load timestamp — only when this vts build reports loadMsec.
+	if data.ConfigLoadTimestampSeconds > 0 {
+		ch <- prometheus.MustNewConstMetric(c.configLoadTimestamp, prometheus.GaugeValue,
+			data.ConfigLoadTimestampSeconds, c.instance)
+	}
+
+	// Service status — fetched next; absent (404) means we skip gracefully
 	status, present, sErr := client.FetchServiceStatusOptional("nginxServiceStatus")
 	if sErr != nil {
 		c.log.Warn("failed to fetch nginx service status", "err", sErr)
@@ -215,6 +303,21 @@ func (c *nginxCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		}
 		ch <- prometheus.MustNewConstMetric(c.serviceRunning, prometheus.GaugeValue,
 			running, c.instance)
+	}
+
+	// Autoblock bans — fetched last; a plugin-absent 404 (unexpected given VTS
+	// just answered, but the endpoints are independent controllers) is skipped
+	// gracefully, same pattern as service status above.
+	bans, bErr := client.FetchNginxBans()
+	if bErr != nil {
+		c.log.Warn("failed to fetch nginx bans", "err", bErr)
+	} else if bans.Present {
+		ch <- prometheus.MustNewConstMetric(c.bansCount, prometheus.GaugeValue,
+			float64(bans.Count), c.instance)
+		if bans.LastBanTimestampSeconds > 0 {
+			ch <- prometheus.MustNewConstMetric(c.banLastTimestamp, prometheus.GaugeValue,
+				bans.LastBanTimestampSeconds, c.instance)
+		}
 	}
 
 	return nil

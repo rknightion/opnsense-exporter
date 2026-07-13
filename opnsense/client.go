@@ -251,6 +251,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"haproxyTables":                 "api/haproxy/statistics/tables",
 		"ntpGPS":                        "api/ntpd/service/gps",
 		"siproxdRegistrations":          "api/siproxd/service/showregistrations",
+		"nginxBans":                     "api/nginx/bans/searchban",
 	}
 }
 

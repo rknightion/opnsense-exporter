@@ -135,6 +135,7 @@ var schemaRegistry = map[EndpointName]any{
 	"haproxyTables":                 []haproxyTableRow{},
 	"ntpGPS":                        ntpGPSResponse{},
 	"siproxdRegistrations":          siproxdRegistrationsResponse{},
+	"nginxBans":                     nginxBanSearchResponse{},
 	"socketStatistics": struct {
 		Statistics map[string]json.RawMessage `json:"statistics"`
 	}{},

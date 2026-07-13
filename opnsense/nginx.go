@@ -3,7 +3,11 @@ package opnsense
 import "net/http"
 
 // nginxVtsResponses holds HTTP response counts by status code class, as
-// reported by the nginx vhost_traffic_status module.
+// reported for upstreamZones entries. Upstream servers are never cache-aware
+// (a cache sits in front of a server zone, not a specific upstream peer), so
+// this shape carries no cache-status fields — verified against a live
+// heavy-topology capture (#200, 2026-07-13): upstreamZones.*[].responses only
+// ever has 1xx..5xx keys.
 type nginxVtsResponses struct {
 	R1xx float64 `json:"1xx"`
 	R2xx float64 `json:"2xx"`
@@ -12,29 +16,86 @@ type nginxVtsResponses struct {
 	R5xx float64 `json:"5xx"`
 }
 
+// nginxVtsServerZoneResponses holds a serverZones entry's responses object:
+// the HTTP status code classes PLUS cache-status counts. The cache-status
+// fields (miss/bypass/expired/stale/updating/revalidated/hit/scarce) are only
+// actually sent when this vts build has the cache-status extension compiled
+// in — on builds without it they are simply absent from the JSON (not
+// present-as-zero), so NginxVTS.CacheStatusPresent gates whether the
+// exporter treats them as meaningful rather than reading a false zero.
+type nginxVtsServerZoneResponses struct {
+	R1xx float64 `json:"1xx"`
+	R2xx float64 `json:"2xx"`
+	R3xx float64 `json:"3xx"`
+	R4xx float64 `json:"4xx"`
+	R5xx float64 `json:"5xx"`
+
+	Miss        float64 `json:"miss"`
+	Bypass      float64 `json:"bypass"`
+	Expired     float64 `json:"expired"`
+	Stale       float64 `json:"stale"`
+	Updating    float64 `json:"updating"`
+	Revalidated float64 `json:"revalidated"`
+	Hit         float64 `json:"hit"`
+	Scarce      float64 `json:"scarce"`
+}
+
+// nginxVtsCacheZoneResponses holds a cacheZones entry's responses object:
+// cache-status counts only. Verified live: a cache zone's responses object
+// never carries 1xx..5xx keys (a cache zone doesn't see raw HTTP status
+// codes, only cache outcomes) — distinct from nginxVtsServerZoneResponses.
+type nginxVtsCacheZoneResponses struct {
+	Miss        float64 `json:"miss"`
+	Bypass      float64 `json:"bypass"`
+	Expired     float64 `json:"expired"`
+	Stale       float64 `json:"stale"`
+	Updating    float64 `json:"updating"`
+	Revalidated float64 `json:"revalidated"`
+	Hit         float64 `json:"hit"`
+	Scarce      float64 `json:"scarce"`
+}
+
 // nginxVtsServerZone is one entry from the serverZones map in the VTS payload.
 type nginxVtsServerZone struct {
-	RequestCounter float64           `json:"requestCounter"`
-	InBytes        float64           `json:"inBytes"`
-	OutBytes       float64           `json:"outBytes"`
-	Responses      nginxVtsResponses `json:"responses"`
+	RequestCounter     float64                     `json:"requestCounter"`
+	InBytes            float64                     `json:"inBytes"`
+	OutBytes           float64                     `json:"outBytes"`
+	Responses          nginxVtsServerZoneResponses `json:"responses"`
+	RequestMsecCounter float64                     `json:"requestMsecCounter"` // cumulative sum of request times, ms
 }
 
 // nginxVtsUpstream is one upstream server entry inside the upstreamZones map.
 type nginxVtsUpstream struct {
-	Server         string            `json:"server"`
-	RequestCounter float64           `json:"requestCounter"`
-	InBytes        float64           `json:"inBytes"`
-	OutBytes       float64           `json:"outBytes"`
-	Responses      nginxVtsResponses `json:"responses"`
-	ResponseMsec   float64           `json:"responseMsec"`
-	Down           bool              `json:"down"`
+	Server              string            `json:"server"`
+	RequestCounter      float64           `json:"requestCounter"`
+	InBytes             float64           `json:"inBytes"`
+	OutBytes            float64           `json:"outBytes"`
+	Responses           nginxVtsResponses `json:"responses"`
+	ResponseMsec        float64           `json:"responseMsec"`
+	RequestMsecCounter  float64           `json:"requestMsecCounter"`  // cumulative sum of request times, ms
+	ResponseMsecCounter float64           `json:"responseMsecCounter"` // cumulative sum of response times, ms
+	Down                bool              `json:"down"`
+}
+
+// nginxVtsCacheZone is one entry from the cacheZones map in the VTS payload —
+// one per configured proxy_cache_path. Zone names are cache_path model UUIDs
+// with the dashes stripped (nginx module naming); relabeling them to the
+// configured path would need an extra api/nginx/settings/get call, which #200
+// Part 1 deliberately rules out ("zero new API calls"), so they are exported
+// raw, same as the vhost-name-keyed serverZones.
+type nginxVtsCacheZone struct {
+	MaxSize   float64                    `json:"maxSize"`
+	UsedSize  float64                    `json:"usedSize"`
+	InBytes   float64                    `json:"inBytes"`
+	OutBytes  float64                    `json:"outBytes"`
+	Responses nginxVtsCacheZoneResponses `json:"responses"`
 }
 
 // nginxVtsResponse is the raw JSON structure returned by the nginx VTS endpoint
 // (api/nginx/service/vts). VTS values are real JSON numbers (produced by nginx,
 // not PHP-mangled), so float64 fields decode directly without flexString.
 type nginxVtsResponse struct {
+	LoadMsec    float64 `json:"loadMsec"` // config-load (reload) time, epoch ms; 0 on old vts builds that omit it
 	Connections struct {
 		Active   float64 `json:"active"`
 		Reading  float64 `json:"reading"`
@@ -51,6 +112,7 @@ type nginxVtsResponse struct {
 	} `json:"sharedZones"`
 	ServerZones   map[string]nginxVtsServerZone `json:"serverZones"`
 	UpstreamZones map[string][]nginxVtsUpstream `json:"upstreamZones"`
+	CacheZones    map[string]nginxVtsCacheZone  `json:"cacheZones"`
 }
 
 // NginxServerZone holds normalised per-virtual-host traffic statistics.
@@ -59,6 +121,8 @@ type NginxServerZone struct {
 	Zone                        string
 	Requests, BytesIn, BytesOut float64
 	ResponsesByCode             map[string]float64 // keys: 1xx, 2xx, 3xx, 4xx, 5xx
+	CacheResponsesByCode        map[string]float64 // keys: hit, miss, bypass, expired, stale, updating, revalidated, scarce
+	RequestSecondsTotal         float64            // requestMsecCounter / 1000 (cumulative)
 }
 
 // NginxUpstreamServer holds normalised per-upstream-server statistics.
@@ -67,7 +131,17 @@ type NginxUpstreamServer struct {
 	Requests, BytesIn, BytesOut float64
 	ResponsesByCode             map[string]float64 // keys: 1xx, 2xx, 3xx, 4xx, 5xx
 	Down                        bool
-	ResponseTimeSeconds         float64 // responseMsec / 1000
+	ResponseTimeSeconds         float64 // responseMsec / 1000 (instantaneous moving average)
+	RequestSecondsTotal         float64 // requestMsecCounter / 1000 (cumulative)
+	ResponseSecondsTotal        float64 // responseMsecCounter / 1000 (cumulative)
+}
+
+// NginxCacheZone holds normalised per-proxy_cache_path statistics.
+type NginxCacheZone struct {
+	Zone                string
+	MaxBytes, UsedBytes float64
+	BytesIn, BytesOut   float64
+	ResponsesByCode     map[string]float64 // keys: hit, miss, bypass, expired, stale, updating, revalidated, scarce
 }
 
 // NginxVTS holds the aggregated result of FetchNginxVTS.
@@ -81,10 +155,24 @@ type NginxVTS struct {
 
 	ServerZones     []NginxServerZone     // zone "*" is excluded
 	UpstreamServers []NginxUpstreamServer // flattened from upstreamZones map
+	CacheZones      []NginxCacheZone      // flattened from cacheZones map; empty when none configured
+
+	// CacheStatusPresent reports whether this vts build reports cache-status
+	// response fields at all (derived from the top-level "cacheZones" key
+	// being present in the payload, even as an empty object) — distinct from
+	// "no cache configured" (CacheZones simply empty). Older vts builds
+	// without the cache-status extension never send this key, so per-server-
+	// zone cache-status counters would otherwise be meaningless zeros.
+	CacheStatusPresent bool
+
+	// ConfigLoadTimestampSeconds is the nginx config (re)load time (loadMsec /
+	// 1000); 0 when the vts build omits loadMsec.
+	ConfigLoadTimestampSeconds float64
 }
 
-// nginxVtsResponsesToMap converts the VTS responses struct to the common
-// map[string]float64 keyed by code class string ("1xx"…"5xx").
+// nginxVtsResponsesToMap converts the upstreamZones VTS responses struct to
+// the common map[string]float64 keyed by HTTP status code class string
+// ("1xx"…"5xx").
 func nginxVtsResponsesToMap(r nginxVtsResponses) map[string]float64 {
 	return map[string]float64{
 		"1xx": r.R1xx,
@@ -95,6 +183,49 @@ func nginxVtsResponsesToMap(r nginxVtsResponses) map[string]float64 {
 	}
 }
 
+// nginxVtsServerZoneHTTPResponsesToMap converts the HTTP-status-code half of a
+// serverZones responses object to the common map[string]float64.
+func nginxVtsServerZoneHTTPResponsesToMap(r nginxVtsServerZoneResponses) map[string]float64 {
+	return map[string]float64{
+		"1xx": r.R1xx,
+		"2xx": r.R2xx,
+		"3xx": r.R3xx,
+		"4xx": r.R4xx,
+		"5xx": r.R5xx,
+	}
+}
+
+// nginxVtsServerZoneCacheResponsesToMap converts the cache-status half of a
+// serverZones responses object to the common map[string]float64 keyed by
+// cache status string.
+func nginxVtsServerZoneCacheResponsesToMap(r nginxVtsServerZoneResponses) map[string]float64 {
+	return map[string]float64{
+		"hit":         r.Hit,
+		"miss":        r.Miss,
+		"bypass":      r.Bypass,
+		"expired":     r.Expired,
+		"stale":       r.Stale,
+		"updating":    r.Updating,
+		"revalidated": r.Revalidated,
+		"scarce":      r.Scarce,
+	}
+}
+
+// nginxVtsCacheZoneResponsesToMap converts a cacheZones responses object to
+// the common map[string]float64 keyed by cache status string.
+func nginxVtsCacheZoneResponsesToMap(r nginxVtsCacheZoneResponses) map[string]float64 {
+	return map[string]float64{
+		"hit":         r.Hit,
+		"miss":        r.Miss,
+		"bypass":      r.Bypass,
+		"expired":     r.Expired,
+		"stale":       r.Stale,
+		"updating":    r.Updating,
+		"revalidated": r.Revalidated,
+		"scarce":      r.Scarce,
+	}
+}
+
 // FetchNginxVTS fetches the nginx vhost_traffic_status VTS data from the
 // api/nginx/service/vts endpoint.
 //
@@ -102,10 +233,13 @@ func nginxVtsResponsesToMap(r nginxVtsResponses) map[string]float64 {
 // HTTP 404 with body "[]" when nginx is stopped or VTS has no data. Both cases
 // are treated as "plugin absent or no data" — empty result, no error.
 //
-// VERIFICATION: unvalidated against a live os-nginx box with VTS enabled.
-// Shape derived from www/nginx src/opnsense/mvc/app/controllers/OPNsense/Nginx/Api/ServiceController.php
-// and the nginx-module-vts JSON output format. Re-check field names on real
-// hardware when available.
+// VERIFICATION: validated against a live os-nginx box (OPNsense 26.7-devel
+// testbed, 2026-07-13) with a vhost, a 2-server upstream and a proxy_cache
+// zone driving real traffic — see opnsense/testdata/schemas for the golden
+// shape and the issue #200 capture notes for the raw payload. Shape also
+// cross-checked against www/nginx
+// src/opnsense/mvc/app/controllers/OPNsense/Nginx/Api/ServiceController.php
+// and the nginx-module-vts JSON output format.
 func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 	var data NginxVTS
 
@@ -127,6 +261,8 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 	}
 
 	data.Present = true
+	data.CacheStatusPresent = raw.CacheZones != nil
+	data.ConfigLoadTimestampSeconds = raw.LoadMsec / 1000
 
 	// Top-level connection stats
 	data.ConnectionsActive = raw.Connections.Active
@@ -148,11 +284,13 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 			continue
 		}
 		data.ServerZones = append(data.ServerZones, NginxServerZone{
-			Zone:            zone,
-			Requests:        sz.RequestCounter,
-			BytesIn:         sz.InBytes,
-			BytesOut:        sz.OutBytes,
-			ResponsesByCode: nginxVtsResponsesToMap(sz.Responses),
+			Zone:                 zone,
+			Requests:             sz.RequestCounter,
+			BytesIn:              sz.InBytes,
+			BytesOut:             sz.OutBytes,
+			ResponsesByCode:      nginxVtsServerZoneHTTPResponsesToMap(sz.Responses),
+			CacheResponsesByCode: nginxVtsServerZoneCacheResponsesToMap(sz.Responses),
+			RequestSecondsTotal:  sz.RequestMsecCounter / 1000,
 		})
 	}
 
@@ -160,15 +298,107 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 	for upstream, servers := range raw.UpstreamZones {
 		for _, srv := range servers {
 			data.UpstreamServers = append(data.UpstreamServers, NginxUpstreamServer{
-				Upstream:            upstream,
-				Server:              srv.Server,
-				Requests:            srv.RequestCounter,
-				BytesIn:             srv.InBytes,
-				BytesOut:            srv.OutBytes,
-				ResponsesByCode:     nginxVtsResponsesToMap(srv.Responses),
-				Down:                srv.Down,
-				ResponseTimeSeconds: srv.ResponseMsec / 1000,
+				Upstream:             upstream,
+				Server:               srv.Server,
+				Requests:             srv.RequestCounter,
+				BytesIn:              srv.InBytes,
+				BytesOut:             srv.OutBytes,
+				ResponsesByCode:      nginxVtsResponsesToMap(srv.Responses),
+				Down:                 srv.Down,
+				ResponseTimeSeconds:  srv.ResponseMsec / 1000,
+				RequestSecondsTotal:  srv.RequestMsecCounter / 1000,
+				ResponseSecondsTotal: srv.ResponseMsecCounter / 1000,
 			})
+		}
+	}
+
+	// Cache zones — one per configured proxy_cache_path; empty map when none
+	// configured (or on vts builds without the cache-status extension).
+	for zone, cz := range raw.CacheZones {
+		data.CacheZones = append(data.CacheZones, NginxCacheZone{
+			Zone:            zone,
+			MaxBytes:        cz.MaxSize,
+			UsedBytes:       cz.UsedSize,
+			BytesIn:         cz.InBytes,
+			BytesOut:        cz.OutBytes,
+			ResponsesByCode: nginxVtsCacheZoneResponsesToMap(cz.Responses),
+		})
+	}
+
+	return data, nil
+}
+
+// nginxBanRow mirrors one row from the api/nginx/bans/searchban bootgrid
+// endpoint — an autoblock-banned IP, keyed by the ban model's uuid.
+//
+// Despite living under nginx/bans (a "settings" style controller path), these
+// rows are runtime state: created by the autoblock cron when a client's
+// User-Agent matches the configured bot list or trips the request-rate ACL,
+// and pruned once ban_ttl (nginx/settings general.ban_ttl, minutes) expires —
+// there is no separate "ban expiry" event to poll for, only this list shrinking.
+type nginxBanRow struct {
+	UUID string     `json:"uuid"`
+	IP   string     `json:"ip"`
+	Time flexString `json:"time"` // unix ban timestamp, seconds; PHP int, but flexString for resilience
+}
+
+// nginxBanSearchResponse is the raw bootgrid envelope for nginx/bans/searchban.
+type nginxBanSearchResponse struct {
+	Total    int           `json:"total"`
+	RowCount int           `json:"rowCount"`
+	Current  int           `json:"current"`
+	Rows     []nginxBanRow `json:"rows"`
+}
+
+// NginxBans holds the aggregated result of FetchNginxBans.
+type NginxBans struct {
+	Present bool // false when the os-nginx plugin is not installed (HTTP 404)
+	Count   int  // current number of active autoblock bans
+
+	// LastBanTimestampSeconds is the maximum `time` across all returned rows
+	// (the most recent ban); 0 when there are no active bans.
+	LastBanTimestampSeconds float64
+}
+
+// FetchNginxBans calls the nginx autoblock ban list search endpoint
+// (api/nginx/bans/searchban) and returns the current ban count plus the most
+// recent ban's timestamp.
+//
+// Deliberately does NOT export per-IP rows as labels: banned IPs are
+// attacker-controlled input, so turning them into a label would make the
+// series cardinality unbounded. Only the aggregate count and a single scalar
+// "most recent ban" timestamp are exported (#200).
+//
+// If the os-nginx plugin is not installed the endpoint returns HTTP 404
+// (verified against a live OPNsense 26.7-devel box, 2026-07-13, same as
+// FetchNginxVTS). That is treated as "feature absent" — empty data with no
+// error — mirroring FetchACMECertificates.
+func (c *Client) FetchNginxBans() (NginxBans, *APICallError) {
+	var resp nginxBanSearchResponse
+	var data NginxBans
+
+	url, ok := c.endpoints["nginxBans"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "nginxBans",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	if err := c.do("GET", url, nil, &resp); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return data, nil
+		}
+		return data, err
+	}
+
+	data.Present = true
+	data.Count = resp.Total
+
+	for _, row := range resp.Rows {
+		if ts := safeParseFloat(row.Time.String()); ts > data.LastBanTimestampSeconds {
+			data.LastBanTimestampSeconds = ts
 		}
 	}
 
