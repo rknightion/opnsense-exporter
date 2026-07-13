@@ -36,7 +36,8 @@ nav = [
       { Contributing = "development/contributing.md" },
       { "Adding a Collector" = "development/adding-collector.md" },
       { "Release Process" = "development/release-process.md" },
-      { "API Landmines" = "development/api-landmines.md" }
+      { "API Landmines" = "development/api-landmines.md" },
+      { "API-Absent Telemetry" = "development/api-absent-telemetry.md" }
     ] }
 ]
 extra_css = ["stylesheets/extra.css", "stylesheets/brand.css"]
