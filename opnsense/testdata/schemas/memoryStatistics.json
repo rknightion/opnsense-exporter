@@ -44,6 +44,22 @@
       "kind": "number"
     },
     {
+      "path": "mbuf-statistics.jumbo-cache",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo-count",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo-max",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo-total",
+      "kind": "number"
+    },
+    {
       "path": "mbuf-statistics.jumbo16-failures",
       "kind": "number"
     },

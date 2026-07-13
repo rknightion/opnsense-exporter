@@ -1,30 +1,49 @@
 package opnsense
 
+// mbufStatisticsData is the `mbuf-statistics` object returned by BOTH systemMbuf and
+// memoryStatistics (they wrap the same `netstat -m` output). OPNsense modernised that
+// payload in 26.1.11: several keys were renamed and a few dropped, while older 26.1.x /
+// 25.7 boxes still send the original names. Every legacy key is therefore kept and
+// resolved new-wins-else-legacy at read time — never branch on a version number.
 type mbufStatisticsData struct {
-	MbufCurrent    int   `json:"mbuf-current"`
-	MbufCache      int   `json:"mbuf-cache"`
-	MbufTotal      int   `json:"mbuf-total"`
-	MbufMax        int   `json:"mbuf-max"`
-	ClusterCurrent int   `json:"cluster-current"`
-	ClusterCache   int   `json:"cluster-cache"`
-	ClusterTotal   int   `json:"cluster-total"`
-	ClusterMax     int   `json:"cluster-max"`
-	MbufFails      int   `json:"mbuf-failures"`
-	ClusterFails   int   `json:"cluster-failures"`
-	PacketFails    int   `json:"packet-failures"`
-	MbufSleeps     int   `json:"mbuf-sleeps"`
-	ClusterSleeps  int   `json:"cluster-sleeps"`
-	PacketSleeps   int   `json:"packet-sleeps"`
-	JumbopCurrent  int   `json:"jumbop-current"`
-	JumbopCache    int   `json:"jumbop-cache"`
-	JumbopTotal    int   `json:"jumbop-total"`
-	JumbopMax      int   `json:"jumbop-max"`
-	JumbopFails    int   `json:"jumbop-failures"`
-	JumbopSleeps   int   `json:"jumbop-sleeps"`
-	BytesInUse     int64 `json:"bytes-in-use"`
-	BytesTotal     int64 `json:"bytes-total"`
-	BytesPercent   int   `json:"percentage"`
-	MbufAndCluster int   `json:"mbuf-and-cluster"`
+	MbufCurrent int `json:"mbuf-current"`
+	MbufCache   int `json:"mbuf-cache"`
+	MbufTotal   int `json:"mbuf-total"`
+	// ≤26.1.x only: removed upstream, reads zero on ≥26.1.11 (unused by any metric).
+	MbufMax        int `json:"mbuf-max"`
+	ClusterCurrent int `json:"cluster-current"`
+	ClusterCache   int `json:"cluster-cache"`
+	ClusterTotal   int `json:"cluster-total"`
+	ClusterMax     int `json:"cluster-max"`
+	MbufFails      int `json:"mbuf-failures"`
+	ClusterFails   int `json:"cluster-failures"`
+	PacketFails    int `json:"packet-failures"`
+	MbufSleeps     int `json:"mbuf-sleeps"`
+	ClusterSleeps  int `json:"cluster-sleeps"`
+	PacketSleeps   int `json:"packet-sleeps"`
+	// Jumbo-page pool, legacy names. ≤26.1.x only: replaced on ≥26.1.11 by
+	// jumbo-count / jumbo-cache / jumbo-total / jumbo-max below. Resolved by
+	// jumboPage*(); pointers so nil == "key absent" rather than "present and zero".
+	JumbopCurrent *int `json:"jumbop-current"`
+	JumbopCache   *int `json:"jumbop-cache"`
+	JumbopTotal   *int `json:"jumbop-total"`
+	JumbopMax     *int `json:"jumbop-max"`
+	// NOT renamed — jumbop-failures / jumbop-sleeps keep their names on ≥26.1.11.
+	JumbopFails  int `json:"jumbop-failures"`
+	JumbopSleeps int `json:"jumbop-sleeps"`
+	// Jumbo-page pool, ≥26.1.11 names. Nil on older releases, where the jumbop-*
+	// fields above carry the same values.
+	JumboCount *int `json:"jumbo-count"`
+	JumboCache *int `json:"jumbo-cache"`
+	JumboTotal *int `json:"jumbo-total"`
+	JumboMax   *int `json:"jumbo-max"`
+
+	BytesInUse int64 `json:"bytes-in-use"`
+	BytesTotal int64 `json:"bytes-total"`
+	// ≤26.1.x only: removed upstream, reads zero on ≥26.1.11 (unused by any metric).
+	BytesPercent int `json:"percentage"`
+	// ≤26.1.x only: removed upstream, reads zero on ≥26.1.11 (unused by any metric).
+	MbufAndCluster int `json:"mbuf-and-cluster"`
 	// Extended fields present in systemMbuf on OPNsense 26.1+ (both endpoints wrap the
 	// same `netstat -m` output). Pointers so a nil distinguishes "key absent" (older
 	// release) from "present with value 0", which decides whether the redundant
@@ -36,6 +55,39 @@ type mbufStatisticsData struct {
 	SendfileSyscalls  *int `json:"sendfile-syscalls"`
 	SendfileIOCount   *int `json:"sendfile-io-count"`
 	SendfilePagesSent *int `json:"sendfile-pages-sent"`
+}
+
+// jumboPageCurrent resolves the jumbo-page pool's in-use count across the 26.1.11
+// rename: the new jumbo-count key wins when the box sends it, else the legacy
+// jumbop-current. Zero when neither is present.
+func (s mbufStatisticsData) jumboPageCurrent() int {
+	return firstPresentInt(s.JumboCount, s.JumbopCurrent)
+}
+
+// jumboPageCache resolves jumbo-cache (≥26.1.11) else jumbop-cache (≤26.1.x).
+func (s mbufStatisticsData) jumboPageCache() int {
+	return firstPresentInt(s.JumboCache, s.JumbopCache)
+}
+
+// jumboPageTotal resolves jumbo-total (≥26.1.11) else jumbop-total (≤26.1.x).
+func (s mbufStatisticsData) jumboPageTotal() int {
+	return firstPresentInt(s.JumboTotal, s.JumbopTotal)
+}
+
+// jumboPageMax resolves jumbo-max (≥26.1.11) else jumbop-max (≤26.1.x).
+func (s mbufStatisticsData) jumboPageMax() int {
+	return firstPresentInt(s.JumboMax, s.JumbopMax)
+}
+
+// firstPresentInt returns the first non-nil pointer's value, or 0 when all are nil
+// (i.e. none of the candidate JSON keys was sent).
+func firstPresentInt(candidates ...*int) int {
+	for _, c := range candidates {
+		if c != nil {
+			return *c
+		}
+	}
+	return 0
 }
 
 type mbufResponse struct {
@@ -64,6 +116,12 @@ type MbufStatistics struct {
 	ClusterCache   int
 	ClusterTotal   int
 	ClusterMax     int
+	// Jumbo-page pool, already resolved across the 26.1.11 key rename (jumbop-* on
+	// ≤26.1.x, jumbo-* on ≥26.1.11) — callers never see the two spellings.
+	JumboPageCurrent int
+	JumboPageCache   int
+	JumboPageTotal   int
+	JumboPageMax     int
 	// int64: byte totals ×1024 can exceed 2^31 on large-memory boxes (#103).
 	BytesInUse        int64
 	BytesTotal        int64
@@ -100,6 +158,10 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 	data.ClusterCache = s.ClusterCache
 	data.ClusterTotal = s.ClusterTotal
 	data.ClusterMax = s.ClusterMax
+	data.JumboPageCurrent = s.jumboPageCurrent()
+	data.JumboPageCache = s.jumboPageCache()
+	data.JumboPageTotal = s.jumboPageTotal()
+	data.JumboPageMax = s.jumboPageMax()
 	// OPNsense sources these from netstat -m, which reports the mbuf memory
 	// pool in KILOBYTES. The exporter's bytes_in_use / bytes_total metrics are
 	// declared in bytes, so convert here.
