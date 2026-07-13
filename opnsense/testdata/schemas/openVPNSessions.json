@@ -27,6 +27,22 @@
       "kind": "object"
     },
     {
+      "path": "rows[].bytes_received",
+      "kind": "numeric"
+    },
+    {
+      "path": "rows[].bytes_sent",
+      "kind": "numeric"
+    },
+    {
+      "path": "rows[].common_name",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].connected_since__time_t_",
+      "kind": "numeric"
+    },
+    {
       "path": "rows[].description",
       "kind": "string"
     },

@@ -230,3 +230,158 @@ func TestFetchOpenVPNSessions_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+// TestFetchOpenVPNSessions_TrafficFields guards #212: real per-client session
+// rows (is_client:true) additionally carry cumulative byte counters, a
+// connected-since unix timestamp (the double-underscore-mangled
+// "connected_since__time_t_" field), and a TLS common_name. The live dev-box
+// payload (26.7-devel, verified 2026-07-13) sends bytes_received/bytes_sent
+// as quoted numeric strings and connected_since__time_t_ as a quoted numeric
+// string too, so json.Number (via numToInt) must accept both shapes.
+func TestFetchOpenVPNSessions_TrafficFields(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"description": "Road Warrior",
+					"username": "UNDEF",
+					"common_name": "ovpn-client",
+					"real_address": "udp4:203.0.113.10:1194",
+					"virtual_address": "10.8.0.2",
+					"status": "ok",
+					"is_client": true,
+					"bytes_received": "477913",
+					"bytes_sent": "484828",
+					"connected_since__time_t_": "1783879957"
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchOpenVPNSessions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rows) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(data.Rows))
+	}
+
+	s := data.Rows[0]
+	if s.BytesReceived != 477913 {
+		t.Errorf("expected BytesReceived=477913, got %d", s.BytesReceived)
+	}
+	if s.BytesTransmitted != 484828 {
+		t.Errorf("expected BytesTransmitted=484828, got %d", s.BytesTransmitted)
+	}
+	if s.ConnectedSince != 1783879957 {
+		t.Errorf("expected ConnectedSince=1783879957, got %d", s.ConnectedSince)
+	}
+	if s.CommonName != "ovpn-client" {
+		t.Errorf("expected CommonName='ovpn-client', got %q", s.CommonName)
+	}
+	// common_name present and non-UNDEF username -> Identity() prefers common_name.
+	if id := s.Identity(); id != "ovpn-client" {
+		t.Errorf("expected Identity()='ovpn-client', got %q", id)
+	}
+}
+
+// TestFetchOpenVPNSessions_TrafficFieldsNumeric confirms the numeric-JSON shape
+// (rather than a quoted string) also decodes correctly, since KindNumeric
+// fields must tolerate both wire shapes across OPNsense releases.
+func TestFetchOpenVPNSessions_TrafficFieldsNumeric(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"description": "Road Warrior",
+					"username": "user1",
+					"common_name": null,
+					"real_address": "203.0.113.10:1194",
+					"virtual_address": "10.8.0.2",
+					"status": "ok",
+					"is_client": true,
+					"bytes_received": 477913,
+					"bytes_sent": 484828,
+					"connected_since__time_t_": 1783879957
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchOpenVPNSessions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s := data.Rows[0]
+	if s.BytesReceived != 477913 {
+		t.Errorf("expected BytesReceived=477913, got %d", s.BytesReceived)
+	}
+	if s.BytesTransmitted != 484828 {
+		t.Errorf("expected BytesTransmitted=484828, got %d", s.BytesTransmitted)
+	}
+	if s.ConnectedSince != 1783879957 {
+		t.Errorf("expected ConnectedSince=1783879957, got %d", s.ConnectedSince)
+	}
+	if s.CommonName != "" {
+		t.Errorf("expected CommonName='' (null common_name), got %q", s.CommonName)
+	}
+	// common_name absent -> Identity() falls back to username.
+	if id := s.Identity(); id != "user1" {
+		t.Errorf("expected Identity()='user1' (fallback), got %q", id)
+	}
+}
+
+// TestFetchOpenVPNSessions_TrafficFieldsAbsent guards backwards compatibility:
+// older OPNsense releases (or the local client-role instance's own status row,
+// which never has is_client:true and is already filtered out) may omit these
+// fields entirely. Absent fields must decode to their zero value rather than
+// failing the scrape.
+func TestFetchOpenVPNSessions_TrafficFieldsAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"description": "Legacy VPN",
+					"username": "user1",
+					"real_address": "203.0.113.10:1194",
+					"virtual_address": "10.8.0.2",
+					"status": "ok",
+					"is_client": true
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchOpenVPNSessions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	s := data.Rows[0]
+	if s.BytesReceived != 0 {
+		t.Errorf("expected BytesReceived=0 when absent, got %d", s.BytesReceived)
+	}
+	if s.BytesTransmitted != 0 {
+		t.Errorf("expected BytesTransmitted=0 when absent, got %d", s.BytesTransmitted)
+	}
+	if s.ConnectedSince != 0 {
+		t.Errorf("expected ConnectedSince=0 when absent, got %d", s.ConnectedSince)
+	}
+	if s.CommonName != "" {
+		t.Errorf("expected CommonName='' when absent, got %q", s.CommonName)
+	}
+	if id := s.Identity(); id != "user1" {
+		t.Errorf("expected Identity()='user1' (fallback), got %q", id)
+	}
+}

@@ -11,7 +11,9 @@ Rows:
   3. WireGuard Peers       gated has_wireguard_peers: peer status statetimeline,
                             RX/TX rate ts, last-handshake table, handshake age stat
   4. OpenVPN               gated has_openvpn: session count ts, per-instance sessions ts,
-                            instances table, per-session details table (opt-in metric)
+                            instances table, per-session details table (opt-in metric),
+                            instance traffic ts (always-on), per-session traffic ts +
+                            connected-since table (opt-in, --exporter.enable-openvpn-details)
   5. IPsec Tunnels         gated has_ipsec_tunnels: phase1 statetimeline + ts,
                             phase2 tables + ts
   6. IPsec Pools           gated has_ipsec_pools: mode-cfg pool utilization
@@ -188,6 +190,56 @@ def build(b: Builder):
             "with --exporter.enable-openvpn-details."
         ),
     )
+    ovpn_instance_traffic = b.ts(
+        "OpenVPN Instance Traffic",
+        [
+            (f'rate({sel("opnsense_openvpn_instance_received_bytes_total")}[{RATE}])',
+             "{{description}} rx"),
+            (f'rate({sel("opnsense_openvpn_instance_transmitted_bytes_total")}[{RATE}])',
+             "{{description}} tx"),
+        ],
+        unit="Bps", w=12, h=8,
+        desc=(
+            "Bytes received/transmitted per second, summed across all active "
+            "sessions on each OpenVPN instance. Always populated (no identity label)."
+        ),
+    )
+    ovpn_session_traffic = b.ts(
+        "OpenVPN Session Traffic",
+        [
+            (f'rate({sel("opnsense_openvpn_session_received_bytes_total")}[{RATE}])',
+             "{{username}} rx"),
+            (f'rate({sel("opnsense_openvpn_session_transmitted_bytes_total")}[{RATE}])',
+             "{{username}} tx"),
+        ],
+        unit="Bps", w=12, h=8,
+        desc=(
+            "Bytes received/transmitted per second for each connected OpenVPN "
+            "session. The 'username' series label prefers the client's TLS "
+            "common name when present, else the OpenVPN username. Only "
+            "populated when the exporter runs with --exporter.enable-openvpn-details."
+        ),
+    )
+    ovpn_connected_since = b.table(
+        "OpenVPN Session Connected Since",
+        [epoch_ms(sel("opnsense_openvpn_session_connected_since_timestamp_seconds"))],
+        w=24, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "description": "Instance",
+            "real_address": "Real Address",
+            "virtual_address": "Virtual Address",
+            "username": "Identity",
+            "Value": "Connected Since",
+        },
+        unit_overrides={"Connected Since": "dateTimeAsIso"},
+        sort_by="Instance",
+        desc=(
+            "Unix timestamp of when each OpenVPN session connected, displayed "
+            "as ISO datetime. Only populated when the exporter runs with "
+            "--exporter.enable-openvpn-details."
+        ),
+    )
 
     # ================================================================
     # Row 5: IPsec Tunnels — Phase 1
@@ -327,7 +379,8 @@ def build(b: Builder):
               present="has_wireguard_peers"),
         b.row("OpenVPN",
               [ovpn_sessions_total, ovpn_sessions_by_instance,
-               ovpn_instances, ovpn_sessions],
+               ovpn_instances, ovpn_sessions,
+               ovpn_instance_traffic, ovpn_session_traffic, ovpn_connected_since],
               present="has_openvpn"),
         b.row("IPsec Phase 1",
               [ipsec_p1_state, ipsec_p1_install, ipsec_p1_bytes, ipsec_p1_pkts],

@@ -40,7 +40,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | NetFlow | netflow | 7 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
 | Network Diagnostics | network_diag | 13 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
 | Nginx | nginx | 21 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
-| OpenVPN | openvpn | 4 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
+| OpenVPN | openvpn | 9 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 59 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |

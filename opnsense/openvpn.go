@@ -1,6 +1,9 @@
 package opnsense
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 const fetchOpenVPNPayload = `{"current":1,"rowCount":-1,"sort":{},"searchPhrase":""}`
 
@@ -31,6 +34,22 @@ type openVPNSearchSessionsResponse struct {
 		// be counted as sessions (#88). Defaults to false when the field is
 		// absent (older fixtures / API shapes).
 		IsClient flexBool `json:"is_client"`
+		// CommonName is the TLS certificate common name of the connected
+		// client. Present for cert-based sessions; null for username/password-
+		// only sessions (#212). flexString tolerates the null/absent shapes.
+		CommonName flexString `json:"common_name"`
+		// BytesReceived/BytesSent are cumulative per-connection byte counters
+		// (resets on reconnect — expected counter behaviour). OPNsense sends
+		// these as quoted numeric strings on 26.7-devel (verified against a
+		// live box), but json.Number also accepts a bare JSON number, so both
+		// wire shapes decode (#212).
+		BytesReceived json.Number `json:"bytes_received"`
+		BytesSent     json.Number `json:"bytes_sent"`
+		// ConnectedSince is connected_since__time_t_ (the double-underscore
+		// comes from upstream's PHP field-name mangling), a unix-seconds
+		// timestamp. json.Number so it tolerates a quoted numeric string, a
+		// bare number, or an absent/null field (#212).
+		ConnectedSince json.Number `json:"connected_since__time_t_"`
 	} `json:"rows"`
 	RowCount int `json:"rowCount"`
 	Total    int `json:"total"`
@@ -49,14 +68,33 @@ type OpenVPNInstances struct {
 }
 
 type Sessions struct {
-	Description    string
-	Username       string
-	RealAddress    string
-	VirtualAddress string
-	Status         int
+	Description      string
+	Username         string
+	CommonName       string
+	RealAddress      string
+	VirtualAddress   string
+	Status           int
+	BytesReceived    int64
+	BytesTransmitted int64
+	// ConnectedSince is a unix-seconds timestamp, or 0 if the box did not send
+	// connected_since__time_t_ (absent field or an unparseable value).
+	ConnectedSince int64
 }
 type OpenVPNSessions struct {
 	Rows []Sessions
+}
+
+// Identity returns the session's display identity for metric labels: the TLS
+// common name when present (cert-based auth), falling back to the OpenVPN
+// username field. OPNsense reports username as the literal string "UNDEF" for
+// sessions that used no username/password auth, but the common_name fallback
+// preference here means that literal is only ever surfaced when both fields
+// are genuinely empty/unset (#212).
+func (s Sessions) Identity() string {
+	if s.CommonName != "" {
+		return s.CommonName
+	}
+	return s.Username
 }
 
 func (c *Client) FetchOpenVPNInstances() (OpenVPNInstances, *APICallError) {
@@ -118,11 +156,15 @@ func (c *Client) FetchOpenVPNSessions() (OpenVPNSessions, *APICallError) {
 			continue
 		}
 		data.Rows = append(data.Rows, Sessions{
-			Description:    v.Description,
-			Username:       v.Username,
-			RealAddress:    v.RealAddress,
-			VirtualAddress: v.VirtualAddress,
-			Status:         parseOpenVPNsessionStatusToInt(v.Status),
+			Description:      v.Description,
+			Username:         v.Username,
+			CommonName:       v.CommonName.String(),
+			RealAddress:      v.RealAddress,
+			VirtualAddress:   v.VirtualAddress,
+			Status:           parseOpenVPNsessionStatusToInt(v.Status),
+			BytesReceived:    numToInt(v.BytesReceived),
+			BytesTransmitted: numToInt(v.BytesSent),
+			ConnectedSince:   numToInt(v.ConnectedSince),
 		})
 	}
 

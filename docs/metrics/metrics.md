@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 571
-- **Gauges:** 369
-- **Counters:** 202
+- **Total metrics:** 576
+- **Gauges:** 370
+- **Counters:** 206
 
 ## General
 
@@ -577,6 +577,11 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_openvpn_sessions | Gauge | description, real_address, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_total | Gauge | --- | Total number of OpenVPN sessions | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_by_instance | Gauge | description | Number of OpenVPN sessions per instance | --exporter.disable-openvpn |
+| opnsense_openvpn_session_received_bytes_total | Counter | description, real_address, virtual_address, username | Cumulative bytes received for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_session_transmitted_bytes_total | Counter | description, real_address, virtual_address, username | Cumulative bytes transmitted for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_session_connected_since_timestamp_seconds | Gauge | description, real_address, virtual_address, username | Unix timestamp of when this OpenVPN session connected. Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_instance_received_bytes_total | Counter | description | Cumulative bytes received across all active sessions on this OpenVPN instance | --exporter.disable-openvpn |
+| opnsense_openvpn_instance_transmitted_bytes_total | Counter | description | Cumulative bytes transmitted across all active sessions on this OpenVPN instance | --exporter.disable-openvpn |
 
 ## PF Statistics
 
