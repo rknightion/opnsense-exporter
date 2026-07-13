@@ -96,3 +96,9 @@ The pipeline exposes its own health metrics (visible at `/metrics` and on the
   most recent shipped event (cursor lag).
 - `opnsense_exporter_logs_queue_length` / `opnsense_exporter_logs_queue_capacity` —
   backpressure queue depth and capacity.
+
+## See also
+
+- [Native Log Export](log-export-native.md) — the syslog-ng/Alloy/NetFlow
+  alternative to this pipeline, and the decision matrix for choosing between
+  the two paths per log type.

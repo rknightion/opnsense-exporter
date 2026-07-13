@@ -6,7 +6,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense-exporter/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense-exporter)
 
 A Prometheus exporter for [OPNsense](https://opnsense.org/) firewalls. It polls the
-OPNsense REST API and exposes 736 metrics across 60 collectors — firewall and PF
+OPNsense REST API and exposes 758 metrics across 60 collectors — firewall and PF
 statistics, interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq,
 ISC), Unbound DNS, certificates and ACME, hardware temperatures, SMART disk health,
 system resources, and more. Metrics are served at `/metrics` and can optionally be

@@ -21,7 +21,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | CrowdSec | crowdsec | 11 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |
 | Dnsmasq DHCP | dnsmasq | 7 | Enabled | --exporter.disable-dnsmasq | OPNSENSE_EXPORTER_DISABLE_DNSMASQ |
 | DynDNS | dyndns | 5 | Enabled | --exporter.disable-dyndns | OPNSENSE_EXPORTER_DISABLE_DYNDNS |
-| FRR Routing (BGP/OSPF/BFD) | frr | 23 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
+| FRR Routing (BGP/OSPF/BFD) | frr | 45 | Enabled | --exporter.disable-frr | OPNSENSE_EXPORTER_DISABLE_FRR |
 | Firewall | firewall | 24 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |

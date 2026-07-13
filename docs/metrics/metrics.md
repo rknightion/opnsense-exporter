@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 736
-- **Gauges:** 507
-- **Counters:** 229
+- **Total metrics:** 758
+- **Gauges:** 526
+- **Counters:** 232
 
 ## General
 
@@ -230,12 +230,28 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_bgp_peer_uptime_seconds | Gauge | peer, remote_as, af | Uptime of this BGP peer session in seconds | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_messages_received_total | Counter | peer, remote_as, af | Cumulative BGP messages received from this peer | --exporter.disable-frr |
 | opnsense_frr_bgp_peer_messages_sent_total | Counter | peer, remote_as, af | Cumulative BGP messages sent to this peer | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_connections_established_total | Counter | peer | Cumulative number of times this BGP peer session has been established (flap counter) | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_connections_dropped_total | Counter | peer | Cumulative number of times this BGP peer session has been dropped (flap counter) | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_messages_by_type_total | Counter | peer, type, direction | Cumulative BGP messages exchanged with this peer, by message type and direction | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_last_reset_seconds | Gauge | peer | Time since this BGP peer session was last reset, in seconds. The reset reason (FRR's lastResetDueTo) is logged at debug level rather than carried as a label (unbounded free-text value). | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_prefixes_accepted | Gauge | peer, af | Number of prefixes accepted from this BGP peer after inbound policy, by address family (complements the pre-policy opnsense_frr_bgp_peer_prefixes_received) | --exporter.disable-frr |
+| opnsense_frr_bgp_peer_queue_depth | Gauge | peer, direction | Current BGP work-queue depth for this peer, by direction (in = inbound, out = outbound) | --exporter.disable-frr |
 | opnsense_frr_ospf_neighbors_total | Gauge | --- | Total number of OSPF neighbors | --exporter.disable-frr |
 | opnsense_frr_ospf_neighbor_adjacency | Gauge | neighbor_id, address, interface | Whether this OSPF neighbor is in Full adjacency state (1 = Full, 0 = otherwise) | --exporter.disable-frr |
 | opnsense_frr_ospf_area_interfaces_active | Gauge | area | Number of active interfaces in this OSPF area | --exporter.disable-frr |
 | opnsense_frr_ospf_area_neighbors_full_adjacent | Gauge | area | Number of neighbors in Full adjacency state in this OSPF area | --exporter.disable-frr |
 | opnsense_frr_ospf_area_lsa_count | Gauge | area | Number of LSAs in this OSPF area | --exporter.disable-frr |
 | opnsense_frr_ospf_area_spf_executed_total | Counter | area | Cumulative number of SPF calculations executed in this OSPF area | --exporter.disable-frr |
+| opnsense_frr_ospf_interface_up | Gauge | interface, area | Whether this OSPF interface's underlying link is up (1 = up, 0 = down) | --exporter.disable-frr |
+| opnsense_frr_ospf_interface_cost | Gauge | interface, area | OSPF cost configured on this interface | --exporter.disable-frr |
+| opnsense_frr_ospf_interface_neighbors | Gauge | interface, area | Number of OSPF neighbors seen on this interface | --exporter.disable-frr |
+| opnsense_frr_ospf_interface_neighbors_adjacent | Gauge | interface, area | Number of OSPF neighbors in Full adjacency on this interface | --exporter.disable-frr |
+| opnsense_frr_ospf_interface_state | Gauge | interface, state | OSPF interface state (enum-style: 1 for the current state, 0 for the others in the fixed set DR/BDR/DROther/PointToPoint/Waiting/Down) | --exporter.disable-frr |
+| opnsense_frr_ospfv3_interface_up | Gauge | interface, area | Whether this OSPFv3 interface is up (1 = up, 0 = down) | --exporter.disable-frr |
+| opnsense_frr_ospfv3_interface_cost | Gauge | interface, area | OSPFv3 cost configured on this interface | --exporter.disable-frr |
+| opnsense_frr_ospfv3_interface_state | Gauge | interface, state | OSPFv3 interface state (enum-style: 1 for the current state, 0 for the others in the fixed set DR/BDR/DROther/PointToPoint/Waiting/Down). There is no OSPFv3 neighbor endpoint in the quagga plugin API, so interface state is the best available proxy for adjacency. | --exporter.disable-frr |
+| opnsense_frr_ospfv3_area_lsa_count | Gauge | area | Number of LSAs in this OSPFv3 area (v3 parity with opnsense_frr_ospf_area_lsa_count) | --exporter.disable-frr |
+| opnsense_frr_ospfv3_interface_pending_lsa | Gauge | interface, queue | OSPFv3 flooding backlog on this interface: pending LSAs by queue (update = LSUpdate, ack = LSAck) | --exporter.disable-frr |
 | opnsense_frr_bfd_peers_total | Gauge | --- | Total number of configured BFD peers | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_up | Gauge | peer, interface | Whether this BFD peer session is up (1 = up, 0 = down) | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_uptime_seconds | Gauge | peer | Uptime of this BFD peer session in seconds | --exporter.disable-frr |
@@ -243,6 +259,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_bfd_peer_control_packets_sent_total | Counter | peer | Cumulative BFD control packets sent to this peer | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_session_up_events_total | Counter | peer | Cumulative BFD session-up events for this peer | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_session_down_events_total | Counter | peer | Cumulative BFD session-down events for this peer | --exporter.disable-frr |
+| opnsense_frr_route_count | Gauge | af, protocol | Number of distinct routed prefixes in the zebra RIB, by address family and protocol. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+| opnsense_frr_route_nexthop_count | Gauge | af, protocol | Number of nexthop rows in the zebra RIB (ECMP width), by address family and protocol. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+| opnsense_frr_ospf_route_count | Gauge | type | Number of rows in the OSPF route table, by route type. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+| opnsense_frr_ospfv3_route_count | Gauge | type | Number of rows in the OSPFv3 route table, by route type. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+| opnsense_frr_ospf_lsa_count | Gauge | area, lsa_type | Number of LSAs in the OSPF LSDB, by area and LSA type. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+| opnsense_frr_ospfv3_lsa_count | Gauge | scope | Number of LSAs in the OSPFv3 LSDB, by flooding scope. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
 
 ## Firewall
 
