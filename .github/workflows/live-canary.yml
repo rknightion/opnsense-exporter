@@ -189,7 +189,9 @@ jobs:
           fi
 
       - name: Close drift issue when clean
-        if: steps.drift.outputs.drift == 'false' && steps.drift.outputs.warnings == 'false' && steps.smoke.outputs.failed == '0' && github.event_name == 'schedule'
+        # Any clean run closes the issue — scheduled or manually dispatched;
+        # both exercise the identical validation against the same box.
+        if: steps.drift.outputs.drift == 'false' && steps.drift.outputs.warnings == 'false' && steps.smoke.outputs.failed == '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
