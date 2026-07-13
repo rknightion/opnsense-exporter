@@ -16,7 +16,35 @@
       "kind": "object"
     },
     {
+      "path": "rows[].alert",
+      "kind": "any"
+    },
+    {
       "path": "rows[].alert_action",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].alert_sid",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].dest_ip",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].flow_id",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].in_iface",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].proto",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].src_ip",
       "kind": "any"
     },
     {

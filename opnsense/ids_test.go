@@ -3,6 +3,7 @@ package opnsense
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -221,6 +222,130 @@ func TestFetchIDSRecentAlerts_EmptyKeepsSeries(t *testing.T) {
 		if v, ok := act.ByAction[action]; !ok || v != 0 {
 			t.Errorf("ByAction[%q] = (%v, present=%v), want 0/present", action, v, ok)
 		}
+	}
+}
+
+// idsAlertRecordFixture is the live capture from the #203 provisioning box
+// (dev-box, TESTLAN): one real GPL ATTACK_RESPONSE alert with a full eve
+// record, including fields FetchIDSAlertRecords does not model as typed
+// fields (the nested "flow" object, "app_proto", "event_type", "ip_v",
+// "pkt_src", "direction", "filepos", "fileid") — these must still survive
+// verbatim in Body.
+const idsAlertRecordFixture = `{"filters":[],"rows":[{"timestamp":"2026-07-13T18:15:59.475210+0100",` +
+	`"flow_id":2219106199071770,"in_iface":"vtnet2","event_type":"alert","src_ip":"52.85.47.113",` +
+	`"src_port":80,"dest_ip":"172.16.9.50","dest_port":57018,"proto":"TCP","ip_v":4,` +
+	`"pkt_src":"wire/pcap","alert":"GPL ATTACK_RESPONSE id check returned root","app_proto":"http",` +
+	`"direction":"to_client","flow":{"pkts_toserver":5,"pkts_toclient":4,"bytes_toserver":430,` +
+	`"bytes_toclient":810,"start":"2026-07-13T18:15:59.451139+0100","src_ip":"172.16.9.50",` +
+	`"dest_ip":"52.85.47.113","src_port":57018,"dest_port":80},"filepos":1993,"fileid":"",` +
+	`"alert_sid":2100498,"alert_action":"allowed"}],"origin":"eve.json","rowCount":1,"total":1,"current":1}`
+
+func TestFetchIDSAlertRecords_FullRecord(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	var gotRowCount string
+	mux.HandleFunc("/api/ids/service/query_alerts", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotRowCount = r.FormValue("rowCount")
+		w.Write([]byte(idsAlertRecordFixture))
+	})
+
+	records, err := client.FetchIDSAlertRecords()
+	if err != nil {
+		t.Fatalf("FetchIDSAlertRecords: %v", err)
+	}
+	if gotRowCount != "500" {
+		t.Errorf("query_alerts rowCount = %q, want 500 (shared cap with FetchIDSRecentAlerts)", gotRowCount)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %d, want 1", len(records))
+	}
+
+	r := records[0]
+	wantTS, perr := time.Parse("2006-01-02T15:04:05.999999-0700", "2026-07-13T18:15:59.475210+0100")
+	if perr != nil {
+		t.Fatalf("test fixture timestamp parse: %v", perr)
+	}
+	if !r.Timestamp.Equal(wantTS) {
+		t.Errorf("Timestamp = %v, want %v", r.Timestamp, wantTS)
+	}
+	if r.FlowID != 2219106199071770 {
+		t.Errorf("FlowID = %d, want 2219106199071770", r.FlowID)
+	}
+	if r.AlertSID != 2100498 {
+		t.Errorf("AlertSID = %d, want 2100498", r.AlertSID)
+	}
+	if r.AlertAction != "allowed" {
+		t.Errorf("AlertAction = %q, want allowed", r.AlertAction)
+	}
+	if r.Signature != "GPL ATTACK_RESPONSE id check returned root" {
+		t.Errorf("Signature = %q", r.Signature)
+	}
+	if r.SrcIP != "52.85.47.113" || r.DestIP != "172.16.9.50" {
+		t.Errorf("SrcIP/DestIP = %q/%q", r.SrcIP, r.DestIP)
+	}
+	if r.InIface != "vtnet2" {
+		t.Errorf("InIface = %q, want vtnet2", r.InIface)
+	}
+	if r.Proto != "TCP" {
+		t.Errorf("Proto = %q, want TCP", r.Proto)
+	}
+
+	// Body must carry the FULL record verbatim, including fields no typed field
+	// above models (this is "ship full alert records", not a lossy subset).
+	for _, want := range []string{
+		`"flow_id":2219106199071770`, `"app_proto":"http"`, `"event_type":"alert"`,
+		`"filepos":1993`, `"fileid":""`, `"ip_v":4`, `"pkt_src":"wire/pcap"`,
+		`"direction":"to_client"`, `"flow":{`, `"pkts_toserver":5`,
+	} {
+		if !strings.Contains(r.Body, want) {
+			t.Errorf("Body missing %q; got %s", want, r.Body)
+		}
+	}
+	// Body must be compact (no indentation/newlines).
+	if strings.ContainsAny(r.Body, "\n\t") {
+		t.Errorf("Body is not compact: %s", r.Body)
+	}
+}
+
+func TestFetchIDSAlertRecords_DropsRowWithoutTimestamp(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ids/service/query_alerts", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"rows":[
+		  {"timestamp":"","alert_sid":1,"alert_action":"allowed"},
+		  {"timestamp":"2026-07-13T18:15:59.475210+0100","alert_sid":2,"alert_action":"blocked","flow_id":42}
+		],"rowCount":2,"total":2,"current":1}`))
+	})
+
+	records, err := client.FetchIDSAlertRecords()
+	if err != nil {
+		t.Fatalf("FetchIDSAlertRecords: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %d, want 1 (the timestamp-less row must be dropped)", len(records))
+	}
+	if records[0].AlertSID != 2 {
+		t.Errorf("surviving record AlertSID = %d, want 2", records[0].AlertSID)
+	}
+}
+
+func TestFetchIDSAlertRecords_Empty(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/ids/service/query_alerts", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+
+	records, err := client.FetchIDSAlertRecords()
+	if err != nil {
+		t.Fatalf("FetchIDSAlertRecords: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("records = %d, want 0", len(records))
 	}
 }
 

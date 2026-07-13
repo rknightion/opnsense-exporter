@@ -55,6 +55,50 @@ Cardinality discipline is enforced by construction:
 - **Everything else** — IPs, ports, SIDs, domains, rule ids — is structured
   metadata or body. It is never a label.
 
+## Sources
+
+### IDS (Suricata EVE alerts)
+
+`--logs.ids.enabled` (off by default; requires `--logs.enabled`) ships full
+Suricata EVE **alert** records — not just the aggregate counts the IDS metrics
+collector exposes (`opnsense_ids_recent_alerts`, gated separately by
+`--exporter.enable-ids-alerts`). It polls `POST api/ids/service/query_alerts`,
+the same endpoint the metrics collector's opt-in alert-activity series already
+uses, reading up to the newest 500 eve rows per poll (the same cap the metrics
+collector's alert count is a floor against).
+
+- **Body** is the compact JSON of the complete raw eve alert record exactly as
+  Suricata wrote it — every field it emits, not a reconstructed subset. This
+  includes fields the exporter never parses into typed metadata (the nested
+  `flow` object, `app_proto`, `event_type`, `filepos`/`fileid`, …).
+- **Structured metadata** (never a label): `alert_sid`, `alert_action`,
+  `src_ip`, `dest_ip`, `in_iface`, `proto`, `signature`.
+- **Severity** is `warn` for a `blocked` alert, `info` otherwise.
+- **Cursor**: the record's own `timestamp` is the true cursor, with a
+  `flow_id`+`alert_sid` dedupe ring scoped to records sharing the cursor's
+  exact timestamp. `filepos`/`fileid` are never used to cursor — log rotation
+  shifts `fileid`s, so they are fragile across restarts.
+- **Gap accounting**: `query_alerts` is a windowed, saturating read. If a poll
+  returns a full 500-row window whose oldest row is still newer than the prior
+  cursor, the read could not reach back far enough to cover everything since
+  the last poll — some alerts in that range were never observed. This is
+  accepted, bounded loss: the source ships one synthetic gap record
+  (`event=gap_detected` structured metadata, `warn` severity, a JSON body
+  naming the gap bounds) instead of silently dropping it, so the loss is
+  visible and queryable in Loki (e.g. `{source="ids"} | json | event="gap_detected"`).
+- **First poll**: with no prior cursor (fresh start, or `--logs.state-file` not
+  set/empty/corrupt), the whole initial window ships as a startup catch-up
+  rather than being silently skipped or treated as a gap.
+
+!!! note "Prefer native `syslog_eve` where it fits"
+    OPNsense's IDS settings also offer `syslog_eve` (ships the identical EVE
+    JSON via syslog — alerts only, with metadata and a community id) and
+    `syslog` (fastlog lines). If the box already forwards EVE JSON via
+    `syslog_eve` to your log pipeline, enable that instead of this source —
+    running both double-ships the same alerts. `syslog_eve` shares the
+    `suricata`/`local5` facility with engine logs, so a demux step is needed on
+    that path (not a concern for the API-polling source documented here).
+
 ## Delivery semantics
 
 Stated honestly, because this pipeline is pull-based over a lossy source:

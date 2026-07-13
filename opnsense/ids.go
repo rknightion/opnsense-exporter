@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/url"
 	"strconv"
@@ -13,6 +14,14 @@ import (
 // busy box. recent-alert counts are therefore a FLOOR: if more than this many
 // alerts land inside the lookback window, the surplus is not counted.
 const idsAlertRowCap = 500
+
+// IDSAlertRowCap exports idsAlertRowCap for callers outside the package. The
+// logs.ids log-shipping source (internal/logship/ids.go) uses it to detect
+// when a query_alerts read hit the row cap — the trigger for its
+// window-overflow gap accounting, since a full window whose oldest row is
+// still newer than the source's cursor means older alerts fell outside what
+// this read could reach.
+const IDSAlertRowCap = idsAlertRowCap
 
 // idsSelectOption is one entry of an OPNsense "field with options" map
 // (e.g. general.mode). Only the selected flag is consumed; the human-readable
@@ -95,6 +104,17 @@ type idsAlertsResponse struct {
 type idsAlertRow struct {
 	Timestamp   flexString `json:"timestamp"`
 	AlertAction flexString `json:"alert_action"`
+	// The remaining fields are consumed only by FetchIDSAlertRecords (the
+	// logs.ids log source): flow_id/alert_sid key its cursor dedupe ring, the
+	// rest feed the bounded structured-metadata attributes documented on
+	// IDSAlertRecord. FetchIDSRecentAlerts (the metrics collector) ignores them.
+	FlowID   flexInt    `json:"flow_id"`
+	InIface  flexString `json:"in_iface"`
+	SrcIP    flexString `json:"src_ip"`
+	DestIP   flexString `json:"dest_ip"`
+	Proto    flexString `json:"proto"`
+	Alert    flexString `json:"alert"`
+	AlertSID flexInt    `json:"alert_sid"`
 }
 
 // IDSAlertLog is one normalised Suricata eve log file.
@@ -223,6 +243,96 @@ func (c *Client) FetchIDSRecentAlerts(lookback time.Duration) (IDSAlertActivity,
 		act.ByAction[action]++
 	}
 	return act, nil
+}
+
+// idsAlertRecordsResponse is the bootgrid envelope from service/query_alerts,
+// decoded with the rows kept as raw JSON so FetchIDSAlertRecords can ship each
+// eve record byte-for-byte (only whitespace-compacted) as the log body while
+// still parsing the bounded fields below out of the very same bytes.
+type idsAlertRecordsResponse struct {
+	Rows []json.RawMessage `json:"rows"`
+}
+
+// IDSAlertRecord is one full Suricata EVE alert record read via query_alerts,
+// for the logs.ids log-shipping source (never the metrics collector, which
+// only needs the bounded action count from FetchIDSRecentAlerts). Body is the
+// compact JSON of the raw eve record exactly as received: full fidelity, not a
+// reconstruction from the typed fields below, so every key Suricata emits —
+// including ones this struct does not model, e.g. the nested "flow" object,
+// "app_proto", "filepos"/"fileid", "event_type" — travels through unmodified.
+// The typed fields exist only to key the log source's cursor/dedupe and its
+// bounded structured-metadata attributes (never IPs/SIDs as metric labels).
+type IDSAlertRecord struct {
+	Timestamp   time.Time
+	FlowID      int64
+	AlertSID    int
+	AlertAction string
+	Signature   string
+	SrcIP       string
+	DestIP      string
+	InIface     string
+	Proto       string
+	Body        string // compact JSON of the full raw eve record
+}
+
+// FetchIDSAlertRecords fetches up to IDSAlertRowCap of the newest eve alert
+// records, newest-first exactly as the wire returns them — the caller (the
+// logs.ids source) owns cursor/dedupe/gap accounting, mirroring the "chase"
+// pattern of keeping the raw shape and resolving semantics in the accessor
+// rather than in the decode step.
+//
+// This reuses the exact query_alerts POST contract FetchIDSRecentAlerts
+// already uses (current=1, rowCount=IDSAlertRowCap): one endpoint, one
+// request shape, two consumers — no new endpoint/contract entry is needed.
+//
+// A row with no parseable timestamp is dropped: without a timestamp there is
+// nothing to cursor it on, so it can neither be deduplicated nor ordered
+// safely. Every other per-row decode failure is best-effort — flexString/
+// flexInt already degrade to zero values rather than erroring, so a
+// partially-shaped row still ships (with its raw Body intact) rather than
+// losing the whole batch.
+func (c *Client) FetchIDSAlertRecords() ([]IDSAlertRecord, *APICallError) {
+	var resp idsAlertRecordsResponse
+	alertsURL := c.endpoints["idsQueryAlerts"]
+	form := url.Values{"current": {"1"}, "rowCount": {strconv.Itoa(idsAlertRowCap)}}
+	if err := c.doForm(alertsURL, form, &resp); err != nil {
+		return nil, err
+	}
+
+	records := make([]IDSAlertRecord, 0, len(resp.Rows))
+	for _, raw := range resp.Rows {
+		var row idsAlertRow
+		_ = json.Unmarshal(raw, &row) // best-effort; see doc comment above
+		ts, ok := parseIDSAlertTime(row.Timestamp.String())
+		if !ok {
+			continue
+		}
+		records = append(records, IDSAlertRecord{
+			Timestamp:   ts,
+			FlowID:      int64(row.FlowID.Int()),
+			AlertSID:    row.AlertSID.Int(),
+			AlertAction: row.AlertAction.String(),
+			Signature:   row.Alert.String(),
+			SrcIP:       row.SrcIP.String(),
+			DestIP:      row.DestIP.String(),
+			InIface:     row.InIface.String(),
+			Proto:       row.Proto.String(),
+			Body:        compactAlertJSON(raw),
+		})
+	}
+	return records, nil
+}
+
+// compactAlertJSON strips insignificant whitespace from a raw eve record.
+// OPNsense's own JSON encoding is already compact in practice, but this makes
+// no assumption about it; on a (should-never-happen) compact error the raw
+// bytes ship as-is rather than dropping the record.
+func compactAlertJSON(raw []byte) string {
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, raw); err != nil {
+		return string(raw)
+	}
+	return buf.String()
 }
 
 // idsAlertTimeLayouts covers the Suricata eve timestamp shapes: microsecond
