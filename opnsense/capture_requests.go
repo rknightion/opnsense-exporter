@@ -36,6 +36,10 @@ var captureRequests = map[EndpointName]CaptureRequest{
 	"smartList":             {ContentType: formContentType, Body: ""},
 	"smartInfo":             {ContentType: formContentType, Body: "device=%s&type=a&json=1", Parameterized: true},
 	"ipsecPhase2":           {ContentType: jsonContentType, Body: `{"id":"%s"}`, Parameterized: true},
+	// IDS: query_alerts reads up to idsAlertRowCap newest eve rows; searchInstalledRules
+	// reads a single row purely for the envelope total (count-only).
+	"idsQueryAlerts":          {ContentType: formContentType, Body: "current=1&rowCount=500"},
+	"idsSearchInstalledRules": {ContentType: formContentType, Body: "current=1&rowCount=1"},
 }
 
 // CaptureRequestFor returns the capture request for a POST endpoint. GET

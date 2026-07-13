@@ -5,7 +5,7 @@ OPNsense Exporter:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 31 tabs that auto-show/hide based on which metrics your exporter emits. |
+| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 32 tabs that auto-show/hide based on which metrics your exporter emits. |
 | `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
@@ -25,10 +25,10 @@ separate firewall-logs dashboard.
 
 ## The dashboard
 
-One dashboard, 31 tabs (generated list, do not hand-edit):
+One dashboard, 32 tabs (generated list, do not hand-edit):
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Interfaces, Firewall & PF, Aliases, Gateways & WAN, DNS — Unbound, DHCP, VPN, Tailscale, Routing & Neighbors, Protocol Stats, NTP, Certificates, ClamAV, Services, Cron & DynDNS, Syslog, Q-Feeds, NetFlow, CARP / HA, HAProxy, Nginx, FRR Routing, Monit, CrowdSec, UPS, Captive Portal, Traffic Shaper, HA Sync, Chrony, Diagnostics
+Overview, System & Resources, Interfaces, Firewall & PF, Aliases, Gateways & WAN, DNS — Unbound, DHCP, VPN, Tailscale, Routing & Neighbors, Protocol Stats, NTP, Certificates, ClamAV, Services, Cron & DynDNS, Syslog, Q-Feeds, NetFlow, CARP / HA, HAProxy, Nginx, FRR Routing, Monit, CrowdSec, IDS/IPS, UPS, Captive Portal, Traffic Shaper, HA Sync, Chrony, Diagnostics
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the

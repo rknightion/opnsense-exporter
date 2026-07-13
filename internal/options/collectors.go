@@ -260,6 +260,14 @@ var (
 		"exporter.disable-clamav",
 		"Disable the scraping of ClamAV engine version and signature database freshness metrics (silent when the os-clamav plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_CLAMAV").Default("false").Bool()
+	idsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-ids",
+		"Disable the scraping of Suricata IDS/IPS metrics (service status, IPS mode, eve log and ruleset inventory, installed-rule count; silent structures when IDS is unconfigured)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_IDS").Default("false").Bool()
+	idsAlertsEnabled = kingpin.Flag(
+		"exporter.enable-ids-alerts",
+		"Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action). Off by default: each scrape triggers a reverse read of eve.json on the box. Window set by --exporter.ids-alert-lookback.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -327,6 +335,8 @@ type CollectorsDisableSwitch struct {
 	Services               bool
 	Backup                 bool
 	Snapshots              bool
+	IDS                    bool
+	IDSAlerts              bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -395,6 +405,8 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Backup:                 !*backupCollectorDisabled,
 		Snapshots:              !*snapshotsCollectorDisabled,
 		ClamAV:                 !*clamavCollectorDisabled,
+		IDS:                    !*idsCollectorDisabled,
+		IDSAlerts:              *idsAlertsEnabled,
 	}
 }
 
@@ -477,4 +489,6 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-backup", Subsystem: "backup"},
 	{Flag: "exporter.disable-snapshots", Subsystem: "snapshots"},
 	{Flag: "exporter.disable-clamav", Subsystem: "clamav"},
+	{Flag: "exporter.disable-ids", Subsystem: "ids"},
+	{Flag: "exporter.enable-ids-alerts", Subsystem: "ids", Detail: true},
 }

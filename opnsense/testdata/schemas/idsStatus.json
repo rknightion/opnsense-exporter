@@ -1,0 +1,15 @@
+{
+  "endpoint": "idsStatus",
+  "method": "GET",
+  "path": "api/ids/service/status",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

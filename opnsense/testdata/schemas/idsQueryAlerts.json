@@ -1,0 +1,27 @@
+{
+  "endpoint": "idsQueryAlerts",
+  "method": "POST",
+  "path": "api/ids/service/query_alerts",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].alert_action",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].timestamp",
+      "kind": "any"
+    }
+  ]
+}

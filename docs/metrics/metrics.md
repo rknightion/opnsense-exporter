@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 613
-- **Gauges:** 406
+- **Total metrics:** 622
+- **Gauges:** 415
 - **Counters:** 207
 
 ## General
@@ -375,6 +375,20 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_haproxy_server_check_failures_total | Counter | backend, server | Cumulative failed health checks on this server | --exporter.disable-haproxy |
 | opnsense_haproxy_server_downtime_seconds_total | Counter | backend, server | Cumulative downtime of this server in seconds | --exporter.disable-haproxy |
 | opnsense_haproxy_server_weight | Gauge | backend, server | Current effective weight of this server | --exporter.disable-haproxy |
+
+## IDS/IPS (Suricata)
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_ids_status | Gauge | --- | Suricata IDS/IPS service status (1 = running, 0 = stopped, -1 = disabled/unconfigured) | --exporter.disable-ids |
+| opnsense_ids_ips_mode_enabled | Gauge | --- | Whether Suricata runs inline as an IPS that drops traffic (1) rather than a passive IDS (0) | --exporter.disable-ids |
+| opnsense_ids_promiscuous_mode_enabled | Gauge | --- | Whether the IDS monitoring interface is in promiscuous mode (1 = yes, 0 = no) | --exporter.disable-ids |
+| opnsense_ids_alert_log_files | Gauge | --- | Number of Suricata eve log files on disk (the live eve.json plus rotated copies) | --exporter.disable-ids |
+| opnsense_ids_alert_log_size_bytes | Gauge | filename | Size in bytes of each Suricata eve log file | --exporter.disable-ids |
+| opnsense_ids_recent_alerts | Gauge | action | Suricata alerts observed within the lookback window (--exporter.ids-alert-lookback), by action. A GAUGE, not a counter (query_alerts reads a windowed, saturating backend); a floor when more than 500 alerts fall inside the window. Requires --exporter.enable-ids-alerts. | --exporter.disable-ids |
+| opnsense_ids_ruleset_enabled | Gauge | ruleset | Whether an installable Suricata ruleset is enabled (1) or disabled (0), by ruleset filename | --exporter.disable-ids |
+| opnsense_ids_ruleset_last_updated_timestamp_seconds | Gauge | ruleset | Unix timestamp of the last download of a ruleset (best-effort from the box-local modified time; omitted when never downloaded) | --exporter.disable-ids |
+| opnsense_ids_installed_rules_total | Gauge | --- | Total number of installed Suricata rules in the rule cache (a current count; treat as RAW, not rate) | --exporter.disable-ids |
 
 ## IPsec
 

@@ -44,6 +44,11 @@ var (
 		"Upper bound on a single collection when the caller supplies no deadline of its own (a header-less /metrics scrape or the OTLP-bridge periodic gather). Prevents a stalled/blackholed firewall from holding the shared collector lock unbounded and blacking out every concurrent deadline-bound scrape.",
 	).Envar("OPNSENSE_EXPORTER_MAX_SCRAPE_DURATION").Default("50s").Duration()
 
+	IDSAlertLookback = kingpin.Flag(
+		"exporter.ids-alert-lookback",
+		"Lookback window over which opnsense_ids_recent_alerts counts Suricata eve alerts (a gauge). Only used when --exporter.enable-ids-alerts is set. Counts are a floor when more than 500 alerts fall inside the window.",
+	).Envar("OPNSENSE_EXPORTER_IDS_ALERT_LOOKBACK").Default("15m").Duration()
+
 	WebConfig = kingpinflag.AddFlags(kingpin.CommandLine, ":8080")
 )
 

@@ -16,6 +16,12 @@
     "note": "release changelog metadata, the full package inventory (~380 KB payload) and the product detail object; not modelled. First validated 2026-07-13 — before the ForceAttemptHTTP2 fix this endpoint always failed to probe over HTTP/1.1, so these keys never surfaced"
   },
   "haproxyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "idsStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "idsQueryAlerts": { "knownExtraTopKeys": ["filters", "origin"], "note": "bootgrid query metadata (active filters, the eve.json origin) served alongside the alert rows; not modelled" },
+  "idsSettings": {
+    "missingOK": ["ids.general.ips", "ids.general.mode.*"],
+    "note": "cross-generation IPS-mode representation: <= 26.1 carries the boolean ids.general.ips, 26.7 replaced it with the ids.general.mode pcap/netmap/divert selector. The exporter reads whichever is present. Prune ids.general.ips when 26.1 leaves the support window; ids.general.mode.* covers the reverse (mode absent on <= 26.1)"
+  },
   "hasyncVersion": { "missingOK": ["message", "status"], "note": "present only for some HA peer states; box has no HA peer" },
   "healthCheck": {
     "missingOK": ["CrashReporter.*", "Firewall.*", "System.*", "metadata.CrashReporter.*", "metadata.Firewall.*", "metadata.System.status"],

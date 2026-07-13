@@ -1,0 +1,39 @@
+{
+  "endpoint": "idsSettings",
+  "method": "GET",
+  "path": "api/ids/settings/get",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "ids"
+  ],
+  "fields": [
+    {
+      "path": "ids",
+      "kind": "object"
+    },
+    {
+      "path": "ids.general",
+      "kind": "object"
+    },
+    {
+      "path": "ids.general.ips",
+      "kind": "any"
+    },
+    {
+      "path": "ids.general.mode",
+      "kind": "object"
+    },
+    {
+      "path": "ids.general.mode.*",
+      "kind": "object"
+    },
+    {
+      "path": "ids.general.mode.*.selected",
+      "kind": "any"
+    },
+    {
+      "path": "ids.general.promisc",
+      "kind": "any"
+    }
+  ]
+}

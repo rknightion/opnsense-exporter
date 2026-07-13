@@ -74,6 +74,7 @@ const (
 	BackupSubsystem        = "backup"
 	SnapshotsSubsystem     = "snapshots"
 	ClamAVSubsystem        = "clamav"
+	IDSSubsystem           = "ids"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -131,6 +132,7 @@ var SubsystemDisplayNames = map[string]string{
 	BackupSubsystem:        "Config Backup",
 	SnapshotsSubsystem:     "ZFS Boot Environments",
 	ClamAVSubsystem:        "ClamAV",
+	IDSSubsystem:           "IDS/IPS (Suricata)",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -693,6 +695,27 @@ func WithAliasDetails() Option {
 		for _, c := range o.collectors {
 			if ac, ok := c.(*aliasCollector); ok {
 				ac.SetDetailsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// WithoutIDSCollector Option
+// removes the ids collector from the list of collectors
+func WithoutIDSCollector() Option {
+	return withoutCollectorInstance(IDSSubsystem)
+}
+
+// WithIDSAlerts enables the opt-in Suricata recent-alerts series on the ids
+// collector, counting alerts within the given lookback window from query_alerts
+// (an extra reverse read of eve.json per scrape).
+func WithIDSAlerts(lookback time.Duration) Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if ic, ok := c.(*idsCollector); ok {
+				ic.SetAlertsEnabled(true, lookback)
 				return nil
 			}
 		}

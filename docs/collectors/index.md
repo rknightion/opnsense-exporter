@@ -1,6 +1,6 @@
 ---
 title: Collectors
-description: Overview of all 50 OPNsense Exporter collectors, their auto-registration pattern, and configuration options
+description: Overview of all 51 OPNsense Exporter collectors, their auto-registration pattern, and configuration options
 tags:
   - Monitoring
   - Configuration
@@ -8,7 +8,7 @@ tags:
 
 # Collectors
 
-The OPNsense Exporter runs 50 sub-collectors concurrently via goroutines, each targeting a specific OPNsense subsystem. On every Prometheus scrape, all enabled collectors fan out in parallel, query the OPNsense REST API, and emit their metrics.
+The OPNsense Exporter runs 51 sub-collectors concurrently via goroutines, each targeting a specific OPNsense subsystem. On every Prometheus scrape, all enabled collectors fan out in parallel, query the OPNsense REST API, and emit their metrics.
 
 ## Scrape flow
 

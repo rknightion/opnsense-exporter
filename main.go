@@ -385,6 +385,14 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutClamAVCollector())
 		logger.Info("clamav collector disabled")
 	}
+	if !collectorsSwitches.IDS {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutIDSCollector())
+		logger.Info("ids collector disabled")
+	}
+	if collectorsSwitches.IDSAlerts {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithIDSAlerts(*options.IDSAlertLookback))
+		logger.Info("ids recent-alerts enabled", "lookback", options.IDSAlertLookback.String())
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

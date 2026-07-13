@@ -1,0 +1,24 @@
+{
+  "endpoint": "idsAlertLogs",
+  "method": "GET",
+  "path": "api/ids/service/get_alert_logs",
+  "topLevelKind": "array",
+  "fields": [
+    {
+      "path": "[]",
+      "kind": "object"
+    },
+    {
+      "path": "[].filename",
+      "kind": "any"
+    },
+    {
+      "path": "[].modified",
+      "kind": "any"
+    },
+    {
+      "path": "[].size",
+      "kind": "any"
+    }
+  ]
+}

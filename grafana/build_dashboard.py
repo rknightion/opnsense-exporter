@@ -288,7 +288,7 @@ def register_subsystem_tabs(b: Builder):
         "dhcp", "vpn", "tailscale", "routing", "protocols", "ntp", "certificates",
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp",
         "haproxy", "nginx", "frr", "monit",
-        "crowdsec", "ups", "captiveportal",
+        "crowdsec", "ids", "ups", "captiveportal",
         "trafficshaper", "hasync", "chrony",
     ]
     import importlib

@@ -214,6 +214,12 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"snapshotsSearch":            "api/core/snapshots/search",
 		"snapshotsIsSupported":       "api/core/snapshots/is_supported",
 		"clamavVersion":              "api/clamav/service/version",
+		"idsStatus":                  "api/ids/service/status",
+		"idsAlertLogs":               "api/ids/service/get_alert_logs",
+		"idsQueryAlerts":             "api/ids/service/query_alerts",
+		"idsSettings":                "api/ids/settings/get",
+		"idsRulesets":                "api/ids/settings/list_rulesets",
+		"idsSearchInstalledRules":    "api/ids/settings/searchInstalledRules",
 	}
 }
 

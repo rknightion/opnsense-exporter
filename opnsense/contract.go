@@ -16,20 +16,22 @@ type EndpointContract struct {
 // GET. Add the key here (and bump the golden count in contract_test.go) when you add a
 // POST endpoint; the test tells you exactly which key is missing/stale (#145).
 var postEndpoints = map[EndpointName]struct{}{
-	"arp":                   {},
-	"captivePortalSessions": {},
-	"cronJobs":              {},
-	"crowdsecAlerts":        {},
-	"crowdsecDecisions":     {},
-	"crowdsecBouncers":      {},
-	"crowdsecMachines":      {},
-	"firewallRules":         {},
-	"quaggaOspfNeighbors":   {},
-	"hasyncServices":        {},
-	"ipsecPhase2":           {},
-	"openVPNInstances":      {},
-	"smartList":             {},
-	"smartInfo":             {},
+	"arp":                     {},
+	"captivePortalSessions":   {},
+	"cronJobs":                {},
+	"crowdsecAlerts":          {},
+	"crowdsecDecisions":       {},
+	"crowdsecBouncers":        {},
+	"crowdsecMachines":        {},
+	"firewallRules":           {},
+	"quaggaOspfNeighbors":     {},
+	"hasyncServices":          {},
+	"ipsecPhase2":             {},
+	"openVPNInstances":        {},
+	"smartList":               {},
+	"smartInfo":               {},
+	"idsQueryAlerts":          {},
+	"idsSearchInstalledRules": {},
 }
 
 // ContractManifest returns the endpoint name→{path, method} contract derived

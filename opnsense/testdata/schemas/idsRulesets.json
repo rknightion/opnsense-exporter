@@ -1,0 +1,31 @@
+{
+  "endpoint": "idsRulesets",
+  "method": "GET",
+  "path": "api/ids/settings/list_rulesets",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "rows"
+  ],
+  "fields": [
+    {
+      "path": "rows",
+      "kind": "array"
+    },
+    {
+      "path": "rows[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].enabled",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].filename",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].modified_local",
+      "kind": "any"
+    }
+  ]
+}

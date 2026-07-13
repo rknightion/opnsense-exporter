@@ -1,9 +1,9 @@
 ---
 title: Metrics Reference
 <<<<<<< HEAD
-description: Overview of all 613 Prometheus metrics exposed by the OPNsense Exporter
+description: Overview of all 622 Prometheus metrics exposed by the OPNsense Exporter
 =======
-description: Overview of all 613 Prometheus metrics exposed by the OPNsense Exporter
+description: Overview of all 622 Prometheus metrics exposed by the OPNsense Exporter
 >>>>>>> worktree-agent-a3ce49f69eab58897
 tags:
   - Prometheus
@@ -13,9 +13,9 @@ tags:
 # Metrics Reference
 
 <<<<<<< HEAD
-The OPNsense Exporter provides 613 Prometheus metrics across 50 collectors, covering every major subsystem of the OPNsense firewall platform.
+The OPNsense Exporter provides 622 Prometheus metrics across 51 collectors, covering every major subsystem of the OPNsense firewall platform.
 =======
-The OPNsense Exporter provides 613 Prometheus metrics across 50 collectors, covering every major subsystem of the OPNsense firewall platform.
+The OPNsense Exporter provides 622 Prometheus metrics across 51 collectors, covering every major subsystem of the OPNsense firewall platform.
 >>>>>>> worktree-agent-a3ce49f69eab58897
 
 <div class="grid cards" markdown>
@@ -41,9 +41,9 @@ The OPNsense Exporter provides 613 Prometheus metrics across 50 collectors, cove
 ## Quick facts
 
 <<<<<<< HEAD
-- **613 metrics** across 50 collectors
+- **622 metrics** across 51 collectors
 =======
-- **613 metrics** across 50 collectors
+- **622 metrics** across 51 collectors
 >>>>>>> worktree-agent-a3ce49f69eab58897
 - **Naming convention:** `opnsense_<subsystem>_<metric_name>`
 - **Common label:** `opnsense_instance` on every metric

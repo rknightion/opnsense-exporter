@@ -1,7 +1,7 @@
 {
-  "metrics": 613,
-  "panels": 492,
-  "tabs": 31,
+  "metrics": 622,
+  "panels": 501,
+  "tabs": 32,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -28,6 +28,7 @@
     "FRR Routing",
     "Monit",
     "CrowdSec",
+    "IDS/IPS",
     "UPS",
     "Captive Portal",
     "Traffic Shaper",
