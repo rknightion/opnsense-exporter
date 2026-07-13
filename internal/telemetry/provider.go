@@ -42,6 +42,17 @@ func Start(
 		return nil, fmt.Errorf("build otlp exporter: %w", err)
 	}
 
+	// Append a synthetic `up = 1` gatherer scoped to the OTLP stream only. It
+	// reinstates the target-up series that a Prometheus scraper would generate for
+	// free but that push mode has no source for, so `up`-based liveness alerts keep
+	// working over OTLP. It is intentionally NOT part of the /metrics registries
+	// (where a literal `up` would collide with the scraper's own).
+	upGatherer, err := newSyntheticUpGatherer(instance)
+	if err != nil {
+		return nil, fmt.Errorf("build synthetic up gatherer: %w", err)
+	}
+	gatherers = append(gatherers, upGatherer)
+
 	// One WithGatherer per registry so the bridge's per-gatherer error handling keeps
 	// them isolated; each is wrapped so a partial-gather error yields the successfully
 	// gathered families (mirroring promhttp.ContinueOnError) instead of nothing.
