@@ -12,9 +12,11 @@ Rows:
                                (stats RAW), leases_by_interface (bargauge), service_running (stat)
     2. dnsmasq lease details — gated has_dnsmasq_details: lease_info table
   Kea:
-    3. Kea summary           — gated has_kea: DHCPv4 + DHCPv6 totals/reserved/dynamic + by_iface
+    3. Kea summary           — gated has_kea: DHCPv4 + DHCPv6 totals/reserved/dynamic + by_iface,
+                               by_state, DHCPv6 by_type, pool size/used/utilization by subnet
     4. Kea DHCPv4 details    — gated has_kea4_details: kea_dhcp4_lease_info table
     5. Kea DHCPv6 details    — gated has_kea6_details: kea_dhcp6_lease_info table
+    5b. Kea DHCPv6 PD pools  — gated has_kea_pd_pools: prefix-delegation pool capacity (#208)
   ISC DHCPv4:
     6. ISC DHCPv4 summary    — gated has_dhcpv4_isc: leases totals + by_iface
     7. ISC DHCPv4 details    — gated has_dhcpv4_details: dhcpv4_lease_info table
@@ -45,6 +47,8 @@ def build(b: Builder):
                "label_values(opnsense_kea_dhcp4_lease_info, __name__)")
     b.sentinel("has_kea6_details",
                "label_values(opnsense_kea_dhcp6_lease_info, __name__)")
+    b.sentinel("has_kea_pd_pools",
+               "label_values(opnsense_kea_dhcp6_pd_pool_size, __name__)")
     b.sentinel("has_dhcpv4_isc",
                "label_values(opnsense_dhcpv4_leases_total, __name__)")
     b.sentinel("has_dhcpv4_details",
@@ -181,6 +185,32 @@ def build(b: Builder):
         unit="short", w=12, h=4, orient="horizontal",
         desc="Kea DHCPv6 leases active per interface.",
     )
+    kea4_by_state = b.bargauge(
+        "Kea DHCPv4 Leases by State",
+        [(sel("opnsense_kea_dhcp4_leases_by_state"), "{{state}}")],
+        unit="short", w=12, h=4, orient="horizontal",
+        desc=(
+            "Kea DHCPv4 leases by lease state. declined/expired-reclaimed indicate address "
+            "conflicts or DHCPDECLINE activity worth investigating."
+        ),
+    )
+    kea6_by_state = b.bargauge(
+        "Kea DHCPv6 Leases by State",
+        [(sel("opnsense_kea_dhcp6_leases_by_state"), "{{state}}")],
+        unit="short", w=12, h=4, orient="horizontal",
+        desc=(
+            "Kea DHCPv6 leases by lease state. declined/expired-reclaimed indicate address "
+            "conflicts or DHCPDECLINE activity worth investigating."
+        ),
+    )
+    kea6_by_type = b.bargauge(
+        "Kea DHCPv6 Leases by Type",
+        [(sel("opnsense_kea_dhcp6_leases_by_type"), "{{type}}")],
+        unit="short", w=12, h=4, orient="horizontal",
+        desc=(
+            "Kea DHCPv6 leases by lease type: IA_NA (address) vs IA_PD (prefix delegation)."
+        ),
+    )
 
     kea_svc = b.stat(
         "Kea Service",
@@ -214,6 +244,41 @@ def build(b: Builder):
           "v6 {{interface}}")],
         unit="percent", w=8, h=8,
         desc="Kea DHCP pool utilization per interface (leases / pool size).",
+    )
+    kea4_pool_used = b.bargauge(
+        "DHCPv4 Pool Used by Subnet",
+        [(sel("opnsense_kea_dhcp4_pool_used"), "{{subnet}}")],
+        unit="short", w=8, h=8, orient="horizontal",
+        desc=(
+            "Client-side CIDR match: number of current Kea DHCPv4 leases whose address falls "
+            "within each configured subnet's pool."
+        ),
+    )
+    kea6_pool_used = b.bargauge(
+        "DHCPv6 Pool Used by Subnet",
+        [(sel("opnsense_kea_dhcp6_pool_used"), "{{subnet}}")],
+        unit="short", w=8, h=8, orient="horizontal",
+        desc=(
+            "Client-side CIDR match: number of current Kea DHCPv6 address (non-PD) leases whose "
+            "address falls within each configured subnet's pool."
+        ),
+    )
+    kea_subnet_util = b.ts(
+        "Kea Pool Utilization % by Subnet",
+        [(f'100 * {sel("opnsense_kea_dhcp4_pool_used")} '
+          f'/ on(subnet, opnsense_instance) '
+          f'{sel("opnsense_kea_dhcp4_pool_size")}',
+          "v4 {{subnet}}"),
+         (f'100 * {sel("opnsense_kea_dhcp6_pool_used")} '
+          f'/ on(subnet, opnsense_instance) '
+          f'{sel("opnsense_kea_dhcp6_pool_size")}',
+          "v6 {{subnet}}")],
+        unit="percent", w=8, h=8,
+        desc=(
+            "Per-subnet Kea DHCP pool utilization (leases matched into the subnet's CIDR / "
+            "configured pool size). Finer-grained than the per-interface panel above when a "
+            "single interface hosts several Kea subnets."
+        ),
     )
 
     # ================================================================
@@ -259,6 +324,20 @@ def build(b: Builder):
         desc=(
             "Per-lease DHCPv6 detail. The Expires column shows the lease expiry as an ISO date. "
             "Only emitted with --exporter.enable-kea-details."
+        ),
+    )
+
+    # ================================================================
+    # KEA — Row 5b: DHCPv6 prefix-delegation pool capacity (#208)
+    # ================================================================
+    kea6_pd_pool = b.bargauge(
+        "Kea DHCPv6 PD Pool Capacity",
+        [(sel("opnsense_kea_dhcp6_pd_pool_size"), "{{subnet}} ({{prefix}})")],
+        unit="short", w=24, h=8, orient="horizontal",
+        desc=(
+            "Delegable-prefix capacity of each configured DHCPv6 prefix-delegation pool "
+            "(2^(delegated_len-prefix_len)). Compare against the IA_PD series of "
+            "\"Kea DHCPv6 Leases by Type\" above to gauge PD exhaustion."
         ),
     )
 
@@ -392,7 +471,9 @@ def build(b: Builder):
         b.row("Kea DHCP",
               [kea4_total, kea4_reserved, kea4_dynamic, kea4_by_iface,
                kea6_total, kea6_reserved, kea6_dynamic, kea6_by_iface,
-               kea_svc, kea4_pool, kea6_pool, kea_util],
+               kea4_by_state, kea6_by_state, kea6_by_type,
+               kea_svc, kea4_pool, kea6_pool, kea_util,
+               kea4_pool_used, kea6_pool_used, kea_subnet_util],
               present="has_kea"),
         b.row("Kea DHCPv4 Lease Details",
               [kea4_lease_table],
@@ -400,6 +481,9 @@ def build(b: Builder):
         b.row("Kea DHCPv6 Lease Details",
               [kea6_lease_table],
               present="has_kea6_details"),
+        b.row("Kea DHCPv6 Prefix Delegation",
+              [kea6_pd_pool],
+              present="has_kea_pd_pools"),
         b.row("ISC DHCPv4",
               [dhcpv4_total, dhcpv4_reserved, dhcpv4_dynamic, dhcpv4_by_iface],
               present="has_dhcpv4_isc"),

@@ -25,6 +25,9 @@ func keaTestMux(t *testing.T, v4Response, v6Response string) *http.ServeMux {
 	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
 	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
 	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
@@ -54,7 +57,8 @@ func TestKeaCollector_Update(t *testing.T) {
 				"is_reserved": "0"
 			}
 		],
-		"interfaces": {"em0": "LAN"}
+		"interfaces": {"em0": "LAN"},
+		"stats": {"active": 2, "inactive": 0, "total": 2}
 	}`
 
 	v6Response := `{
@@ -71,7 +75,8 @@ func TestKeaCollector_Update(t *testing.T) {
 				"is_reserved": "0"
 			}
 		],
-		"interfaces": {"em0": "LAN"}
+		"interfaces": {"em0": "LAN"},
+		"stats": {"active": 1, "inactive": 0, "total": 1}
 	}`
 
 	mux := keaTestMux(t, v4Response, v6Response)
@@ -85,10 +90,12 @@ func TestKeaCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) = 4
-	// v6: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN) = 4
-	// + 1 kea_service_running = 9
-	expectedCount := 9
+	// v4: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN)
+	//     + 1 leasesByState (active) = 5
+	// v6: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN)
+	//     + 1 leasesByState (active) = 5 (no leasesByType: rows carry no "type")
+	// + 1 kea_service_running = 11
+	expectedCount := 11
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -117,6 +124,16 @@ func TestKeaCollector_Update(t *testing.T) {
 		if strings.Contains(desc, "dhcp6_leases_total") && labels["opnsense_instance"] == "test" {
 			if value != 1 {
 				t.Errorf("expected dhcp6_leases_total=1, got %v", value)
+			}
+		}
+		if strings.Contains(desc, "dhcp4_leases_by_state") {
+			if labels["state"] != "active" || value != 2 {
+				t.Errorf("expected dhcp4_leases_by_state{state=active}=2, got state=%q value=%v", labels["state"], value)
+			}
+		}
+		if strings.Contains(desc, "dhcp6_leases_by_state") {
+			if labels["state"] != "active" || value != 1 {
+				t.Errorf("expected dhcp6_leases_by_state{state=active}=1, got state=%q value=%v", labels["state"], value)
 			}
 		}
 	}
@@ -177,10 +194,10 @@ func TestKeaCollector_Update_WithDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 3 summary + 1 leasesByIface (LAN) + 2 leaseInfo = 6
-	// v6: 3 summary + 1 leasesByIface (LAN) + 1 leaseInfo = 5
-	// + 1 kea_service_running = 12
-	expectedCount := 12
+	// v4: 3 summary + 1 leasesByIface (LAN) + 1 leasesByState (active) + 2 leaseInfo = 7
+	// v6: 3 summary + 1 leasesByIface (LAN) + 1 leasesByState (active) + 1 leaseInfo = 6
+	// + 1 kea_service_running = 14
+	expectedCount := 14
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -228,8 +245,8 @@ func TestKeaCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
-	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
+	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState (no rows)
+	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState (no rows)
 	// + 1 kea_service_running = 7
 	expectedCount := 7
 	if len(metrics) != expectedCount {
@@ -276,6 +293,9 @@ func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
 	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
 	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
 	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"stopped"}`))
 	})
@@ -289,8 +309,8 @@ func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
-	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface
+	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState
+	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState
 	// + 1 kea_service_running (value=0, stopped) = 7
 	expectedCount := 7
 	if len(metrics) != expectedCount {
@@ -326,6 +346,9 @@ func TestKeaCollector_PoolAndService(t *testing.T) {
 	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
 	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
 	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status":"running"}`))
 	})
@@ -337,7 +360,7 @@ func TestKeaCollector_PoolAndService(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 
 	metrics := collectMetrics(t, c, client)
-	var sawPool, sawService bool
+	var sawPool, sawService, sawPoolUsed bool
 	for _, m := range metrics {
 		desc := m.Desc().String()
 		if strings.Contains(desc, "kea_dhcp4_pool_size") {
@@ -347,6 +370,13 @@ func TestKeaCollector_PoolAndService(t *testing.T) {
 				t.Errorf("bad pool_size: value=%v labels=%v", getMetricValue(m), labels)
 			}
 		}
+		if strings.Contains(desc, "kea_dhcp4_pool_used") {
+			sawPoolUsed = true
+			labels := getMetricLabels(m)
+			if labels["subnet"] != "10.0.0.0/24" || getMetricValue(m) != 0 {
+				t.Errorf("bad pool_used: value=%v labels=%v", getMetricValue(m), labels)
+			}
+		}
 		if strings.Contains(desc, "kea_service_running") {
 			sawService = true
 			if getMetricValue(m) != 1 {
@@ -354,7 +384,149 @@ func TestKeaCollector_PoolAndService(t *testing.T) {
 			}
 		}
 	}
-	if !sawPool || !sawService {
-		t.Errorf("missing metrics: pool=%v service=%v", sawPool, sawService)
+	if !sawPool || !sawService || !sawPoolUsed {
+		t.Errorf("missing metrics: pool=%v service=%v poolUsed=%v", sawPool, sawService, sawPoolUsed)
+	}
+}
+
+func TestKeaCollector_PoolUsed_MatchesLeaseAddress(t *testing.T) {
+	// A configured subnet with one matching v4 lease and one out-of-range
+	// lease: pool_used must count only the matching address.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":2,"rowCount":2,"current":1,"rows":[
+			{"address":"10.0.0.150","hwaddr":"aa:bb:cc:dd:ee:01","hostname":"h1","expire":1,"if_descr":"LAN","is_reserved":"0"},
+			{"address":"192.168.99.5","hwaddr":"aa:bb:cc:dd:ee:02","hostname":"h2","expire":2,"if_descr":"WAN","is_reserved":"0"}
+		]}`))
+	})
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"u1","subnet":"10.0.0.0/24","pools":"10.0.0.110 - 10.0.0.240","interface":"lan","%interface":"LAN"}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	found := false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "kea_dhcp4_pool_used") {
+			found = true
+			labels := getMetricLabels(m)
+			if labels["subnet"] != "10.0.0.0/24" || getMetricValue(m) != 1 {
+				t.Errorf("expected pool_used{subnet=10.0.0.0/24}=1, got labels=%v value=%v", labels, getMetricValue(m))
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a kea_dhcp4_pool_used metric")
+	}
+}
+
+func TestKeaCollector_PdPoolCapacity(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"uuid":"sub6-uuid","subnet":"fd00:1::/64","pools":"fd00:1::1000 - fd00:1::1fff","interface":"opt1","%interface":"TESTLAN"}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"subnet":"sub6-uuid","%subnet":"opt1 fd00:1::/64","prefix":"fd00:1:1000::","prefix_len":56,"delegated_len":60}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	found := false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "kea_dhcp6_pd_pool_size") {
+			found = true
+			labels := getMetricLabels(m)
+			// delegated_len(60) - prefix_len(56) = 4 bits -> 2^4 = 16
+			if labels["subnet"] != "fd00:1::/64" || labels["prefix"] != "fd00:1:1000::" || getMetricValue(m) != 16 {
+				t.Errorf("bad pd_pool_size: labels=%v value=%v", labels, getMetricValue(m))
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a kea_dhcp6_pd_pool_size metric")
+	}
+}
+
+func TestKeaCollector_PdPoolCapacity_UUIDJoinMiss_FallsBackToDisplay(t *testing.T) {
+	// When the PD pool's subnet UUID has no matching subnet row (e.g. a stale
+	// reference), the subnet label must fall back to parsing the CIDR out of
+	// OPNsense's own "%subnet" display string ("<if-key> <cidr>"), never drop
+	// the series.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv4/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchSubnet", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[{"subnet":"missing-uuid","%subnet":"opt1 fd00:2::/64","prefix":"fd00:2:1000::","prefix_len":56,"delegated_len":64}],"rowCount":1,"total":1,"current":1}`))
+	})
+	mux.HandleFunc("/api/kea/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	found := false
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, "kea_dhcp6_pd_pool_size") {
+			found = true
+			labels := getMetricLabels(m)
+			if labels["subnet"] != "fd00:2::/64" {
+				t.Errorf("expected subnet label parsed from %%subnet fallback, got %q", labels["subnet"])
+			}
+		}
+	}
+	if !found {
+		t.Error("expected a kea_dhcp6_pd_pool_size metric")
 	}
 }

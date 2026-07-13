@@ -26,6 +26,10 @@
     {
       "path": "rows[].subnet",
       "kind": "string"
+    },
+    {
+      "path": "rows[].uuid",
+      "kind": "string"
     }
   ]
 }

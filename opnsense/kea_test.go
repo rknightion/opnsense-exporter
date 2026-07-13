@@ -393,4 +393,235 @@ func TestFetchKeaSubnets6_Success(t *testing.T) {
 	if subnets[0].Subnet != "2001:db8:100::/64" || subnets[0].Interface != "MGMT" || subnets[0].PoolSize != 4096 {
 		t.Errorf("unexpected subnet[0]: %+v", subnets[0])
 	}
+	if subnets[0].UUID != "99d70a8d" {
+		t.Errorf("expected UUID '99d70a8d', got %q", subnets[0].UUID)
+	}
+}
+
+// TestFetchKeaLeases6_TypeAndState covers issue #208: per-row `type`
+// (DHCPv6 IA_NA/IA_PD) and `state` (0=active, 1=declined,
+// 2=expired-reclaimed) breakdowns, plus the top-level `stats` object
+// (confirmed live on OPNsense 26.7/26.1.11 — dev-box comment 2026-07-13).
+func TestFetchKeaLeases6_TypeAndState(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 4,
+			"rowCount": 4,
+			"current": 1,
+			"rows": [
+				{"address":"fd00::10","hwaddr":"aa:bb:cc:dd:ee:01","hostname":"h1","expire":1,"if_descr":"LAN","is_reserved":"0","type":"IA_NA","state":0},
+				{"address":"fd00::20","hwaddr":"aa:bb:cc:dd:ee:02","hostname":"h2","expire":2,"if_descr":"LAN","is_reserved":"0","type":"IA_PD","state":0},
+				{"address":"fd00::30","hwaddr":"aa:bb:cc:dd:ee:03","hostname":"h3","expire":3,"if_descr":"LAN","is_reserved":"0","type":"IA_NA","state":1},
+				{"address":"fd00::40","hwaddr":"aa:bb:cc:dd:ee:04","hostname":"h4","expire":4,"if_descr":"LAN","is_reserved":"0","type":"IA_NA","state":2}
+			],
+			"stats": {"active": 2, "inactive": 2, "total": 4},
+			"interfaces": {"em0": "LAN"}
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases6()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if data.LeasesByType["IA_NA"] != 3 {
+		t.Errorf("expected LeasesByType[IA_NA]=3, got %d", data.LeasesByType["IA_NA"])
+	}
+	if data.LeasesByType["IA_PD"] != 1 {
+		t.Errorf("expected LeasesByType[IA_PD]=1, got %d", data.LeasesByType["IA_PD"])
+	}
+	if data.LeasesByState["active"] != 2 {
+		t.Errorf("expected LeasesByState[active]=2, got %d", data.LeasesByState["active"])
+	}
+	if data.LeasesByState["declined"] != 1 {
+		t.Errorf("expected LeasesByState[declined]=1, got %d", data.LeasesByState["declined"])
+	}
+	if data.LeasesByState["expired-reclaimed"] != 1 {
+		t.Errorf("expected LeasesByState[expired-reclaimed]=1, got %d", data.LeasesByState["expired-reclaimed"])
+	}
+
+	if data.Leases[0].Type != "IA_NA" || data.Leases[0].State != 0 {
+		t.Errorf("unexpected lease[0]: type=%q state=%d", data.Leases[0].Type, data.Leases[0].State)
+	}
+	if data.Leases[1].Type != "IA_PD" {
+		t.Errorf("expected lease[1].Type=IA_PD, got %q", data.Leases[1].Type)
+	}
+}
+
+// TestFetchKeaLeases4_NoTypeField covers the DHCPv4 side: get_kea_leases.py
+// always sends type:"" for v4 (Kea has no lease-type concept there), so
+// LeasesByType must stay empty — the dhcp6-only by_type metric has nothing
+// to emit for v4.
+func TestFetchKeaLeases4_NoTypeField(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{"address":"10.0.0.5","hwaddr":"aa:bb:cc:dd:ee:01","hostname":"h1","expire":1,"if_descr":"LAN","is_reserved":"0","type":"","state":0}
+			]
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.LeasesByType) != 0 {
+		t.Errorf("expected empty LeasesByType for DHCPv4, got %v", data.LeasesByType)
+	}
+	if data.LeasesByState["active"] != 1 {
+		t.Errorf("expected LeasesByState[active]=1, got %d", data.LeasesByState["active"])
+	}
+}
+
+func TestFetchKeaPdPools_Success(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{
+			"rows": [
+				{"subnet":"sub6-uuid","%subnet":"opt1 fd00:1::/64","prefix":"fd00:1:1000::","prefix_len":56,"delegated_len":60}
+			],
+			"rowCount": 1, "total": 1, "current": 1
+		}`))
+	})
+
+	pools, err := client.FetchKeaPdPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(pools))
+	}
+	p := pools[0]
+	if p.SubnetUUID != "sub6-uuid" {
+		t.Errorf("expected SubnetUUID 'sub6-uuid', got %q", p.SubnetUUID)
+	}
+	if p.SubnetDisplay != "opt1 fd00:1::/64" {
+		t.Errorf("expected SubnetDisplay 'opt1 fd00:1::/64', got %q", p.SubnetDisplay)
+	}
+	if p.Prefix != "fd00:1:1000::" {
+		t.Errorf("expected Prefix 'fd00:1:1000::', got %q", p.Prefix)
+	}
+	// delegated_len(60) - prefix_len(56) = 4 -> 2^4 = 16
+	if p.Capacity != 16 {
+		t.Errorf("expected Capacity=16, got %v", p.Capacity)
+	}
+}
+
+func TestFetchKeaPdPools_Empty(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows":[],"rowCount":0,"total":0,"current":1}`))
+	})
+
+	pools, err := client.FetchKeaPdPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pools) != 0 {
+		t.Errorf("expected 0 pools, got %d", len(pools))
+	}
+}
+
+func TestFetchKeaPdPools_InvalidPrefixLengths(t *testing.T) {
+	// A delegated length shorter than the pool's own prefix is invalid Kea
+	// config; contribute 0 rather than a negative/garbage capacity.
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/dhcpv6/searchPdPool", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{"subnet":"sub6-uuid","%subnet":"opt1 fd00:1::/64","prefix":"fd00:1::","prefix_len":64,"delegated_len":56}
+			],
+			"rowCount": 1, "total": 1, "current": 1
+		}`))
+	})
+
+	pools, err := client.FetchKeaPdPools()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(pools))
+	}
+	if pools[0].Capacity != 0 {
+		t.Errorf("expected Capacity=0 for invalid lengths, got %v", pools[0].Capacity)
+	}
+}
+
+func TestKeaPoolUsedBySubnet(t *testing.T) {
+	subnets := []KeaSubnet{
+		{UUID: "u1", Subnet: "10.0.0.0/24", Interface: "LAN"},
+		{UUID: "u2", Subnet: "192.168.1.0/24", Interface: "OPT1"},
+	}
+	leases := []KeaLease{
+		{Address: "10.0.0.50"},
+		{Address: "10.0.0.51"},
+		{Address: "192.168.1.5"},
+		{Address: "172.16.0.1"},             // matches no subnet
+		{Address: "not-an-ip"},              // unparseable, skipped
+		{Address: "fd00::1", Type: "IA_PD"}, // PD lease, excluded regardless of address
+	}
+
+	used := KeaPoolUsedBySubnet(leases, subnets)
+	if used["10.0.0.0/24"] != 2 {
+		t.Errorf("expected 10.0.0.0/24 used=2, got %d", used["10.0.0.0/24"])
+	}
+	if used["192.168.1.0/24"] != 1 {
+		t.Errorf("expected 192.168.1.0/24 used=1, got %d", used["192.168.1.0/24"])
+	}
+}
+
+func TestKeaPoolUsedBySubnet_ExcludesPDLeases(t *testing.T) {
+	subnets := []KeaSubnet{
+		{UUID: "u1", Subnet: "fd00:1::/64", Interface: "LAN"},
+	}
+	leases := []KeaLease{
+		{Address: "fd00:1::10", Type: "IA_NA"},
+		{Address: "fd00:1::20", Type: "IA_PD"}, // excluded: PD prefix, not an address lease
+	}
+
+	used := KeaPoolUsedBySubnet(leases, subnets)
+	if used["fd00:1::/64"] != 1 {
+		t.Errorf("expected fd00:1::/64 used=1 (IA_PD excluded), got %d", used["fd00:1::/64"])
+	}
+}
+
+func TestKeaPoolUsedBySubnet_ZeroFillsUnmatchedSubnets(t *testing.T) {
+	subnets := []KeaSubnet{
+		{UUID: "u1", Subnet: "10.0.0.0/24", Interface: "LAN"},
+	}
+	used := KeaPoolUsedBySubnet(nil, subnets)
+	if got, ok := used["10.0.0.0/24"]; !ok || got != 0 {
+		t.Errorf("expected zero-filled entry for 10.0.0.0/24, got %d (ok=%v)", got, ok)
+	}
+}
+
+func TestKeaPoolUsedBySubnet_UnparseableSubnetCIDRSkipped(t *testing.T) {
+	subnets := []KeaSubnet{
+		{UUID: "u1", Subnet: "not-a-cidr", Interface: "LAN"},
+	}
+	leases := []KeaLease{{Address: "10.0.0.5"}}
+	used := KeaPoolUsedBySubnet(leases, subnets)
+	// The bad subnet still gets its zero-filled entry (so the series exists),
+	// but never matches leases.
+	if got := used["not-a-cidr"]; got != 0 {
+		t.Errorf("expected 0 for unparseable subnet, got %d", got)
+	}
 }

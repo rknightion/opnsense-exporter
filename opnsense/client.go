@@ -166,6 +166,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"keaSubnets4":                "api/kea/dhcpv4/searchSubnet",
 		"keaSubnets6":                "api/kea/dhcpv6/searchSubnet",
 		"keaServiceStatus":           "api/kea/service/status",
+		"keaPdPools6":                "api/kea/dhcpv6/searchPdPool",
 		"dnsmasqRanges":              "api/dnsmasq/settings/searchRange",
 		"caCertificates":             "api/trust/ca/search",
 		"haproxyCounters":            "api/haproxy/statistics/counters",

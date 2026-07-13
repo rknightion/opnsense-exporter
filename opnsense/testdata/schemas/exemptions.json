@@ -28,8 +28,6 @@
   },
   "ipsecPools": { "knownExtraTopKeys": ["leases"], "note": "per-pool lease detail served alongside the pool rows; not modelled" },
   "ipsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "keaLeases4": { "knownExtraTopKeys": ["interfaces", "stats"], "note": "interface list and aggregate pool stats served with the lease rows; not modelled" },
-  "keaLeases6": { "knownExtraTopKeys": ["interfaces", "stats"], "note": "interface list and aggregate pool stats served with the lease rows; not modelled" },
   "keaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "keaSubnets4": {
     "missingOK": ["rows[].%interface"],

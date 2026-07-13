@@ -63,6 +63,7 @@ var schemaRegistry = map[EndpointName]any{
 	"ipsecServiceStatus":         serviceStatusResponse{},
 	"keaLeases4":                 keaLeaseResponse{},
 	"keaLeases6":                 keaLeaseResponse{},
+	"keaPdPools6":                keaPdPoolResponse{},
 	"keaServiceStatus":           serviceStatusResponse{},
 	"keaSubnets4":                keaSubnetResponse{},
 	"keaSubnets6":                keaSubnetResponse{},
