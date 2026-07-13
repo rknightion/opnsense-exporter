@@ -37,9 +37,8 @@ func firstPresentNum(nums ...json.Number) json.Number {
 // The legacy fields MUST stay: older boxes still send only those, and dropping them
 // would zero the counters for every user who has not upgraded.
 //
-// The keys 26.1.11 added but we deliberately do not surface as metrics (out of scope,
-// see #227) are declared for completeness of the decoded shape only: ace-*-syn,
-// sent-ect0-packets, sent-ect1-packets.
+// The ace-*-syn and sent-ect{0,1}-packets keys 26.1.11 added are exported as
+// presence-gated metrics (#237, see AccEcnPresent/SentEctPresent below).
 type ecnStatistics struct {
 	// ≤26.1.x only: superseded by ReceivedCePackets ("received-ce-packets") on 26.1.11+.
 	CePackets json.Number `json:"ce-packets"`
@@ -56,13 +55,28 @@ type ecnStatistics struct {
 	Handshakes           json.Number `json:"handshakes"`
 	CongestionReductions json.Number `json:"congestion-reductions"`
 
-	// 26.1.11+ additions, decoded but not exported as metrics (#227).
+	// 26.1.11+ additions (#237). AccECN handshake counters (FreeBSD 15) and the
+	// send-side twins of the received-* ECT counters above. Both groups are new
+	// fields (not renames), so presence is checked before exporting — absent on
+	// an older box must read as "not reported", never a fabricated zero.
 	AceCeSyn        json.Number `json:"ace-ce-syn"`
 	AceEct0Syn      json.Number `json:"ace-ect0-syn"`
 	AceEct1Syn      json.Number `json:"ace-ect1-syn"`
 	AceNonEctSyn    json.Number `json:"ace-nonect-syn"`
 	SentEct0Packets json.Number `json:"sent-ect0-packets"`
 	SentEct1Packets json.Number `json:"sent-ect1-packets"`
+}
+
+// SentEctPresent reports whether the box sends the 26.1.11+ send-side ECT
+// counters (sent-ect0-packets / sent-ect1-packets are introduced together).
+func (e ecnStatistics) SentEctPresent() bool {
+	return e.SentEct0Packets != "" || e.SentEct1Packets != ""
+}
+
+// AccEcnPresent reports whether the box sends the FreeBSD 15 AccECN handshake
+// counters (the four ace-*-syn fields are introduced together).
+func (e ecnStatistics) AccEcnPresent() bool {
+	return e.AceCeSyn != "" || e.AceEct0Syn != "" || e.AceEct1Syn != "" || e.AceNonEctSyn != ""
 }
 
 // ReceivedCe resolves the received CE-marked packet counter across both key spellings.
@@ -104,8 +118,15 @@ type protocolStatisticsResponse struct {
 			ReceivedBadUDPTunneledPkts          json.Number `json:"received-bad-udp-tunneled-pkts"`
 			// ≤26.1.x only: FreeBSD dropped "received-acks-for-unsent-data" in 26.1.11 with
 			// no replacement key, so this reads zero on newer boxes. Kept so older boxes,
-			// which still send it, keep reporting.
-			ReceivedAcksForUnsentData             json.Number `json:"received-acks-for-unsent-data"`
+			// which still send it, keep reporting. Decoded only — the split below is the
+			// exported metric (#237).
+			ReceivedAcksForUnsentData json.Number `json:"received-acks-for-unsent-data"`
+			// 26.7+ three-way split of the legacy field above. Introduced together, so
+			// presence is checked once (ReceivedAcksForDataSplitPresent) rather than per
+			// field.
+			ReceivedAcksForDataNotYetSent         json.Number `json:"received-acks-for-data-not-yet-sent"`
+			ReceivedAcksForDataNeverBeenSent      json.Number `json:"received-acks-for-data-never-been-sent"`
+			ReceivedAcksForDataBeingTooOld        json.Number `json:"received-acks-for-data-being-too-old"`
 			ReceivedInSequencePackets             json.Number `json:"received-in-sequence-packets"`
 			ReceivedInSequenceBytes               json.Number `json:"received-in-sequence-bytes"`
 			ReceivedCompletelyDuplicatePackets    json.Number `json:"received-completely-duplicate-packets"`
@@ -168,6 +189,19 @@ type protocolStatisticsResponse struct {
 				SentCookies    json.Number `json:"sent-cookies"`
 				ReceivdCookies json.Number `json:"receivd-cookies"`
 			} `json:"syncache"`
+			// Syncookies is a new 26.7+ top-level section: the syncache cookie
+			// counters moved out of statistics.tcp.syncache.{sent-cookies,receivd-cookies}
+			// (upstream's typo included) into their own object, gaining
+			// failed/spurious counters and fixing the "receivd" typo along the way.
+			// A pointer so nil means the box predates the move (#237); the legacy
+			// syncache fields above stay decoded for the support window but never fed
+			// a metric, so there is nothing to fall back to.
+			Syncookies *struct {
+				SentCookies     json.Number `json:"sent-cookies"`
+				ReceivedCookies json.Number `json:"received-cookies"`
+				FailedCookies   json.Number `json:"failed-cookies"`
+				SpuriousCookies json.Number `json:"spurious-cookies"`
+			} `json:"syncookies"`
 			Hostcache struct {
 				EntriesAdded    json.Number `json:"entries-added"`
 				BufferOverflows json.Number `json:"buffer-overflows"`
@@ -434,6 +468,38 @@ type ProtocolStatistics struct {
 	TCPEcnEct0Packets int64
 	TCPEcnEct1Packets int64
 
+	// TCP ECN send-side (statistics.tcp.ecn.sent-ect{0,1}-packets, 26.1.11+): twins of
+	// the received-side counters above. New fields, not a rename, so gated on
+	// TCPEcnSentPresent — absent on an older box, never a fabricated zero (#237).
+	TCPEcnSentPresent     bool
+	TCPEcnSentEct0Packets int64
+	TCPEcnSentEct1Packets int64
+
+	// TCP AccECN handshake counters (statistics.tcp.ecn.ace-*-syn, FreeBSD 15 /
+	// 26.1.11+). Gated on TCPEcnAccEcnPresent (#237).
+	TCPEcnAccEcnPresent bool
+	TCPEcnAceCeSyn      int64
+	TCPEcnAceEct0Syn    int64
+	TCPEcnAceEct1Syn    int64
+	TCPEcnAceNonEctSyn  int64
+
+	// TCP syncookies (statistics.tcp.syncookies, 26.7+): replaces the legacy
+	// syncache.{sent-cookies,receivd-cookies} pair, which never fed a metric. Gated
+	// on TCPSyncookiesPresent (#237).
+	TCPSyncookiesPresent         bool
+	TCPSyncookiesSentCookies     int64
+	TCPSyncookiesReceivedCookies int64
+	TCPSyncookiesFailedCookies   int64
+	TCPSyncookiesSpuriousCookies int64
+
+	// TCP received-acks-for-data 3-way split (26.7+): replaces the legacy
+	// received-acks-for-unsent-data aggregate, which never fed a metric. Gated on
+	// TCPReceivedAcksForDataSplitPresent (#237).
+	TCPReceivedAcksForDataSplitPresent  bool
+	TCPReceivedAcksForDataNotYetSent    int64
+	TCPReceivedAcksForDataNeverBeenSent int64
+	TCPReceivedAcksForDataBeingTooOld   int64
+
 	// ARP detailed
 	ARPSentFailures            int64
 	ARPSentReplies             int64
@@ -611,6 +677,27 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		TCPEcnEct0Packets: numToInt(resp.Statistics.TCP.Ecn.ReceivedEct0()),
 		TCPEcnEct1Packets: numToInt(resp.Statistics.TCP.Ecn.ReceivedEct1()),
 
+		// TCP ECN send-side (26.1.11+, #237) — presence-gated, new fields not a rename.
+		TCPEcnSentPresent:     resp.Statistics.TCP.Ecn.SentEctPresent(),
+		TCPEcnSentEct0Packets: numToInt(resp.Statistics.TCP.Ecn.SentEct0Packets),
+		TCPEcnSentEct1Packets: numToInt(resp.Statistics.TCP.Ecn.SentEct1Packets),
+
+		// TCP AccECN handshake counters (26.1.11+, #237) — presence-gated.
+		TCPEcnAccEcnPresent: resp.Statistics.TCP.Ecn.AccEcnPresent(),
+		TCPEcnAceCeSyn:      numToInt(resp.Statistics.TCP.Ecn.AceCeSyn),
+		TCPEcnAceEct0Syn:    numToInt(resp.Statistics.TCP.Ecn.AceEct0Syn),
+		TCPEcnAceEct1Syn:    numToInt(resp.Statistics.TCP.Ecn.AceEct1Syn),
+		TCPEcnAceNonEctSyn:  numToInt(resp.Statistics.TCP.Ecn.AceNonEctSyn),
+
+		// TCP received-acks-for-data 3-way split (26.7+, #237) — presence-gated;
+		// the legacy aggregate (received-acks-for-unsent-data) never fed a metric.
+		TCPReceivedAcksForDataSplitPresent: resp.Statistics.TCP.ReceivedAcksForDataNotYetSent != "" ||
+			resp.Statistics.TCP.ReceivedAcksForDataNeverBeenSent != "" ||
+			resp.Statistics.TCP.ReceivedAcksForDataBeingTooOld != "",
+		TCPReceivedAcksForDataNotYetSent:    numToInt(resp.Statistics.TCP.ReceivedAcksForDataNotYetSent),
+		TCPReceivedAcksForDataNeverBeenSent: numToInt(resp.Statistics.TCP.ReceivedAcksForDataNeverBeenSent),
+		TCPReceivedAcksForDataBeingTooOld:   numToInt(resp.Statistics.TCP.ReceivedAcksForDataBeingTooOld),
+
 		// ARP detailed
 		ARPSentFailures:            numToInt(resp.Statistics.Arp.SentFailures),
 		ARPSentReplies:             numToInt(resp.Statistics.Arp.SentReplies),
@@ -619,6 +706,16 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		ARPDroppedNoEntry:          numToInt(resp.Statistics.Arp.DroppedNoEntry),
 		ARPEntriesTimeout:          numToInt(resp.Statistics.Arp.EntriesTimeout),
 		ARPDroppedDuplicateAddress: numToInt(resp.Statistics.Arp.DroppedDuplicateAddress),
+	}
+
+	// TCP syncookies (26.7+, #237): a whole new top-level section, so presence is a
+	// nil pointer check rather than a per-field empty-string check.
+	if sc := resp.Statistics.TCP.Syncookies; sc != nil {
+		out.TCPSyncookiesPresent = true
+		out.TCPSyncookiesSentCookies = numToInt(sc.SentCookies)
+		out.TCPSyncookiesReceivedCookies = numToInt(sc.ReceivedCookies)
+		out.TCPSyncookiesFailedCookies = numToInt(sc.FailedCookies)
+		out.TCPSyncookiesSpuriousCookies = numToInt(sc.SpuriousCookies)
 	}
 
 	return out, nil

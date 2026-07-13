@@ -40,7 +40,7 @@ func TestFirmwareCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 6
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -101,7 +101,7 @@ func TestFirmwareCollector_Update_StatusNone(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 6
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -135,7 +135,7 @@ func TestFirmwareCollector_Update_NeedsReboot(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 6
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -205,23 +205,24 @@ func TestFirmwareCollector_Update_DetailsEnabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 6 base metrics + 1 package_update_available + 1 plugin_installed = 8
-	expectedCount := 8
+	// 8 base metrics (#237 adds downgrade/reinstall package counts) + 1
+	// package_update_available + 1 plugin_installed = 10
+	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics with details enabled, got %d", expectedCount, len(metrics))
 	}
 
-	// metrics[6] = package_update_available for curl
-	pkgLabels := getMetricLabels(metrics[6])
+	// metrics[8] = package_update_available for curl
+	pkgLabels := getMetricLabels(metrics[8])
 	if pkgLabels["name"] != "curl" || pkgLabels["installed_version"] != "8.8.0" || pkgLabels["new_version"] != "8.9.1" {
 		t.Errorf("unexpected package_update_available labels: %v", pkgLabels)
 	}
-	if v := getMetricValue(metrics[6]); v != 1 {
+	if v := getMetricValue(metrics[8]); v != 1 {
 		t.Errorf("expected package_update_available=1, got %v", v)
 	}
 
-	// metrics[7] = plugin_installed for os-ddclient (os-acme-client is not installed)
-	plgLabels := getMetricLabels(metrics[7])
+	// metrics[9] = plugin_installed for os-ddclient (os-acme-client is not installed)
+	plgLabels := getMetricLabels(metrics[9])
 	if plgLabels["name"] != "os-ddclient" || plgLabels["version"] != "1.31" {
 		t.Errorf("unexpected plugin_installed labels: %v", plgLabels)
 	}
@@ -245,7 +246,7 @@ func TestFirmwareCollector_Update_DetailsDisabledByDefault(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 6
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics with details disabled, got %d", expectedCount, len(metrics))
 	}

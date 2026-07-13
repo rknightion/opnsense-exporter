@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 643
-- **Gauges:** 433
-- **Counters:** 210
+- **Total metrics:** 654
+- **Gauges:** 436
+- **Counters:** 218
 
 ## General
 
@@ -298,6 +298,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firmware_last_check_timestamp_seconds | Gauge | --- | Unix timestamp of the last firmware update check | --exporter.disable-firmware |
 | opnsense_firmware_new_packages_count | Gauge | --- | Number of new packages available | --exporter.disable-firmware |
 | opnsense_firmware_upgrade_packages_count | Gauge | --- | Number of packages with available upgrades | --exporter.disable-firmware |
+| opnsense_firmware_downgrade_packages_count | Gauge | --- | Number of packages available to downgrade | --exporter.disable-firmware |
+| opnsense_firmware_reinstall_packages_count | Gauge | --- | Number of packages available to reinstall | --exporter.disable-firmware |
 | opnsense_firmware_package_update_available | Gauge | name, installed_version, new_version | Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 | opnsense_firmware_plugin_installed | Gauge | name, version | Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 
@@ -743,6 +745,10 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_protocol_tcp_syncache_dropped_total | Counter | --- | Total TCP syncache entries dropped | --exporter.disable-protocol |
 | opnsense_protocol_ip_sent_fragments_total | Counter | --- | Total IP fragments sent | --exporter.disable-protocol |
 | opnsense_protocol_arp_dropped_duplicate_address_total | Counter | --- | Total ARP packets dropped due to duplicate address | --exporter.disable-protocol |
+| opnsense_protocol_tcp_ecn_packets_total | Counter | direction, mark | Total TCP packets carrying an ECN mark, by direction and mark. The sent direction is only emitted on OPNsense 26.1.11+. | --exporter.disable-protocol |
+| opnsense_protocol_tcp_ecn_accecn_handshakes_total | Counter | mark | Total TCP AccECN (FreeBSD 15) handshake SYNs by mark. Only emitted on OPNsense 26.1.11+. | --exporter.disable-protocol |
+| opnsense_protocol_tcp_syncookies_total | Counter | result | Total TCP SYN cookies by result. Only emitted on OPNsense 26.7+. | --exporter.disable-protocol |
+| opnsense_protocol_tcp_received_acks_for_data_total | Counter | reason | Total TCP ACKs received for data by reason. Only emitted on OPNsense 26.7+. | --exporter.disable-protocol |
 
 ## Q-Feeds
 
@@ -830,6 +836,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_tailscale_info | Gauge | version, relay | Tailscale node information (value is always 1; see labels) | --exporter.disable-tailscale |
 | opnsense_tailscale_peers_total | Gauge | --- | Number of tailnet peers known to this node | --exporter.disable-tailscale |
 | opnsense_tailscale_peers_with_active_session | Gauge | --- | Number of tailnet peers with an established WireGuard session from this node (derived from local last-handshake presence, not coordination-server online state) | --exporter.disable-tailscale |
+| opnsense_tailscale_health_warnings | Gauge | --- | Number of live health warning strings reported by the local tailscaled client (e.g. update available, DERP unreachable, key expiry). The warning text itself is never exported as a label. | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_session_active | Gauge | peer | Whether this node has an established WireGuard session with the peer (1 = a handshake has been recorded since tailscaled start). Node-local; deliberately not the coordination-server online flag. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_direct | Gauge | peer | Whether the established session to the peer uses a direct (non-relayed) path (1 = direct, 0 = DERP-relayed). Only emitted for peers with a WireGuard session and when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
 | opnsense_tailscale_peer_rx_bytes_total | Counter | peer | Bytes received from this peer by this node since tailscaled start. Only emitted when --exporter.enable-tailscale-peer-details is set. | --exporter.disable-tailscale |
@@ -877,6 +884,10 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_unbound_dns_answers_secure_total | Counter | --- | Total number of DNSSEC secure answers | --exporter.disable-unbound |
 | opnsense_unbound_dns_answers_bogus_total | Counter | --- | Total number of DNSSEC bogus answers | --exporter.disable-unbound |
 | opnsense_unbound_dns_rrset_bogus_total | Counter | --- | Total number of DNSSEC bogus rrsets | --exporter.disable-unbound |
+| opnsense_unbound_dns_queries_discard_timeout_total | Counter | --- | Total number of queries discarded after timing out waiting for a reply | --exporter.disable-unbound |
+| opnsense_unbound_dns_queries_wait_limit_total | Counter | --- | Total number of queries dropped because the per-IP wait limit was reached | --exporter.disable-unbound |
+| opnsense_unbound_dns_queries_replyaddr_limit_total | Counter | --- | Total number of queries dropped because the per-reply-address rate limit was reached | --exporter.disable-unbound |
+| opnsense_unbound_dns_dns_error_reports_total | Counter | --- | Total number of RFC 9567 DNS error reports generated | --exporter.disable-unbound |
 | opnsense_unbound_dns_queries_by_type_total | Counter | type | Total queries by DNS record type | --exporter.disable-unbound |
 | opnsense_unbound_dns_queries_by_protocol_total | Counter | protocol | Total queries by protocol | --exporter.disable-unbound |
 | opnsense_unbound_dns_answers_by_rcode_total | Counter | rcode | Total answers by response code | --exporter.disable-unbound |

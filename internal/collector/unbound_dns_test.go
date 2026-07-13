@@ -172,6 +172,8 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 	// 1 uptime
 	// 11 counters without labels (queriesTotal, cacheHits, cacheMiss, prefetch, expired,
 	//    recursiveReplies, queriesTimedOut, queriesIPRatelimited, answersSecure, answersBogus, rrsetBogus)
+	// 4 base-stat drop/limit counters (#237: queriesDiscardTimeout, queriesWaitLimit,
+	//    queriesReplyAddrLimit, dnsErrorReports)
 	// 14 queriesByType (A, SOA, PTR, MX, TXT, AAAA, SRV, SVCB, HTTPS, NS, CNAME, NAPTR, DNSKEY, ANY)
 	// 6 queriesByProto (tcp, tcpout, udpout, tls, ipv6, https)
 	// 7 answersByRcode (NOERROR, FORMERR, SERVFAIL, NXDOMAIN, NOTIMPL, REFUSED, nodata)
@@ -181,13 +183,13 @@ func TestUnboundDNSCollector_Update(t *testing.T) {
 	// 4 gauges without labels (requestListAvg, requestListMax, recursionTimeAvg, recursionTimeMedian)
 	// 4 cacheCount (rrset, message, infra, key)
 	// 6 memoryBytes (rrset_cache, message_cache, iterator, validator, respip, streamwait)
-	// 2 requestListCurrent (all, user)
+	// 3 requestListCurrent (all, user, replies (#237))
 	// 2 requestListOverwritten, requestListExceeded
 	// 1 tcpUsage
 	// 1 blocklistEnabled
 	// 1 serviceRunning
-	// Total: 1+11+14+6+7+2+8+2+4+4+6+2+2+1+1+1 = 72
-	expectedCount := 72
+	// Total: 1+11+4+14+6+7+2+8+2+4+4+6+3+2+1+1+1 = 77
+	expectedCount := 77
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -319,6 +321,10 @@ func TestUnboundDNSCollector_Update_ExtendedStatsAbsent(t *testing.T) {
 		"opnsense_unbound_dns_recursive_replies_total",
 		"opnsense_unbound_dns_queries_timed_out_total",
 		"opnsense_unbound_dns_queries_ip_ratelimited_total",
+		"opnsense_unbound_dns_queries_discard_timeout_total",
+		"opnsense_unbound_dns_queries_wait_limit_total",
+		"opnsense_unbound_dns_queries_replyaddr_limit_total",
+		"opnsense_unbound_dns_dns_error_reports_total",
 		"opnsense_unbound_dns_request_list_avg",
 		"opnsense_unbound_dns_request_list_max",
 		"opnsense_unbound_dns_request_list_overwritten_total",
@@ -334,14 +340,15 @@ func TestUnboundDNSCollector_Update_ExtendedStatsAbsent(t *testing.T) {
 			t.Errorf("expected %s to still be emitted when only extended stats are absent", name)
 		}
 	}
-	if got := metricsByDesc(metrics, "opnsense_unbound_dns_request_list_current"); len(got) != 2 {
-		t.Errorf("expected 2 request_list_current series (all, user), got %d", len(got))
+	if got := metricsByDesc(metrics, "opnsense_unbound_dns_request_list_current"); len(got) != 3 {
+		t.Errorf("expected 3 request_list_current series (all, user, replies (#237)), got %d", len(got))
 	}
 
-	// 1 uptime + 8 base counters + 4 base gauges + 2 request_list_current
-	// + 2 request-list counters + tcp_usage + blocklist + service_running = 20
-	if len(metrics) != 20 {
-		t.Errorf("expected 20 metrics on a base-stats-only box, got %d", len(metrics))
+	// 1 uptime + 8 base counters + 4 base-stat drop/limit counters (#237)
+	// + 4 base gauges + 3 request_list_current (#237 adds replies)
+	// + 2 request-list counters + tcp_usage + blocklist + service_running = 25
+	if len(metrics) != 25 {
+		t.Errorf("expected 25 metrics on a base-stats-only box, got %d", len(metrics))
 	}
 
 	if got := getMetricValue(metricsByDesc(metrics, "opnsense_unbound_dns_queries_total")[0]); got != 4321 {

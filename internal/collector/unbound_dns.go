@@ -25,6 +25,13 @@ type unboundDNSCollector struct {
 	answersBogusTotal    *prometheus.Desc
 	rrsetBogusTotal      *prometheus.Desc
 
+	// Query drop/limit counters and error reporting (#237) — base statistics,
+	// unlike the extended-only descriptors above.
+	queriesDiscardTimeoutTotal *prometheus.Desc
+	queriesWaitLimitTotal      *prometheus.Desc
+	queriesReplyAddrLimitTotal *prometheus.Desc
+	dnsErrorReportsTotal       *prometheus.Desc
+
 	// Counter descriptors (with labels)
 	queriesByType   *prometheus.Desc
 	queriesByProto  *prometheus.Desc
@@ -143,6 +150,25 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 	)
 	c.rrsetBogusTotal = buildPrometheusDesc(c.subsystem, "rrset_bogus_total",
 		"Total number of DNSSEC bogus rrsets",
+		nil,
+	)
+
+	// Query drop/limit counters and error reporting (#237). These are base
+	// statistics — populated even with extended-statistics: no, the 26.7 default.
+	c.queriesDiscardTimeoutTotal = buildPrometheusDesc(c.subsystem, "queries_discard_timeout_total",
+		"Total number of queries discarded after timing out waiting for a reply",
+		nil,
+	)
+	c.queriesWaitLimitTotal = buildPrometheusDesc(c.subsystem, "queries_wait_limit_total",
+		"Total number of queries dropped because the per-IP wait limit was reached",
+		nil,
+	)
+	c.queriesReplyAddrLimitTotal = buildPrometheusDesc(c.subsystem, "queries_replyaddr_limit_total",
+		"Total number of queries dropped because the per-reply-address rate limit was reached",
+		nil,
+	)
+	c.dnsErrorReportsTotal = buildPrometheusDesc(c.subsystem, "dns_error_reports_total",
+		"Total number of RFC 9567 DNS error reports generated",
 		nil,
 	)
 
@@ -300,6 +326,10 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.answersSecureTotal
 	ch <- c.answersBogusTotal
 	ch <- c.rrsetBogusTotal
+	ch <- c.queriesDiscardTimeoutTotal
+	ch <- c.queriesWaitLimitTotal
+	ch <- c.queriesReplyAddrLimitTotal
+	ch <- c.dnsErrorReportsTotal
 	ch <- c.queriesByType
 	ch <- c.queriesByProto
 	ch <- c.answersByRcode
@@ -517,6 +547,27 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 		float64(data.QueriesIPRateLimited), c.instance,
 	)
 
+	// Query drop/limit counters and error reporting (#237). Base statistics —
+	// populated even with extended-statistics: no, so these are emitted
+	// unconditionally alongside the other base counters above, gated only on
+	// data.Present like the rest of this block.
+	ch <- prometheus.MustNewConstMetric(
+		c.queriesDiscardTimeoutTotal, prometheus.CounterValue,
+		float64(data.QueriesDiscardTimeout), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.queriesWaitLimitTotal, prometheus.CounterValue,
+		float64(data.QueriesWaitLimit), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.queriesReplyAddrLimitTotal, prometheus.CounterValue,
+		float64(data.QueriesReplyAddrLimit), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.dnsErrorReportsTotal, prometheus.CounterValue,
+		float64(data.DNSErrorReports), c.instance,
+	)
+
 	// Extended statistics. Unbound only reports data.num/data.mem/data.msg/… when it
 	// runs with `extended-statistics: yes` — the OPNsense 26.1 default, but OFF by
 	// default on 26.7, where those sections are simply absent from the payload. Skip
@@ -554,6 +605,10 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 	ch <- prometheus.MustNewConstMetric(
 		c.requestListCurrent, prometheus.GaugeValue,
 		float64(data.RequestListCurrentUser), "user", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.requestListCurrent, prometheus.GaugeValue,
+		float64(data.RequestListCurrentReplies), "replies", c.instance,
 	)
 
 	// Request list counters

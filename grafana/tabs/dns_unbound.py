@@ -115,11 +115,13 @@ def build(b: Builder):
             (u("request_list_max"), "high-water"),
             (u('request_list_current', 'scope="all"'), "current (all)"),
             (u('request_list_current', 'scope="user"'), "current (user)"),
+            (u('request_list_current', 'scope="replies"'), "current (replies)"),
             (r("request_list_overwritten_total"), "overwritten/s"),
             (r("request_list_exceeded_total"), "exceeded/s"),
         ],
         unit="short", w=12, h=8, stack=False,
-        desc="Internal request list depth, overwritten entries, and capacity exceedances.",
+        desc="Internal request list depth, overwritten entries, and capacity exceedances. "
+             "The 'replies' scope (#237) is a base statistic present on all supported releases.",
     )
 
     row_cache = b.row("Cache & Recursion", [cache_activity, recursion_ts, recursion_times, req_list_ts])
@@ -143,9 +145,15 @@ def build(b: Builder):
             (r("unwanted_total"), "unwanted"),
             (r("queries_timed_out_total"), "timed out"),
             (r("queries_ip_ratelimited_total"), "IP rate-limited"),
+            (r("queries_discard_timeout_total"), "discarded (wait timeout)"),
+            (r("queries_wait_limit_total"), "dropped (wait limit)"),
+            (r("queries_replyaddr_limit_total"), "dropped (reply-addr limit)"),
+            (r("dns_error_reports_total"), "RFC 9567 error reports"),
         ],
         unit="reqps", w=12, h=8,
-        desc="Unwanted traffic, timed-out queries, and IP-rate-limited queries per second.",
+        desc="Unwanted traffic, timed-out/discarded/rate-limited queries, and RFC 9567 DNS "
+             "error reports per second (#237: the four drop/limit/report counters are base "
+             "statistics, so they populate even with extended-statistics: no).",
     )
 
     row_dnssec = b.row("DNSSEC & Anomalies", [dnssec_ts, anomalies_ts])

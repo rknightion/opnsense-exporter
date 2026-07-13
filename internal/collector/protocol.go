@@ -92,6 +92,16 @@ type protocolCollector struct {
 	// Expanded ARP metrics
 	arpDroppedDuplicateAddress *prometheus.Desc
 
+	// TCP ECN send-side / AccECN handshake counters (26.1.11+, #237) — presence-gated.
+	tcpEcnPacketsTotal          *prometheus.Desc
+	tcpEcnAccEcnHandshakesTotal *prometheus.Desc
+
+	// TCP syncookies (26.7+, #237) — presence-gated.
+	tcpSyncookiesTotal *prometheus.Desc
+
+	// TCP received-acks-for-data 3-way split (26.7+, #237) — presence-gated.
+	tcpReceivedAcksForDataTotal *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -356,6 +366,32 @@ func (c *protocolCollector) Register(namespace, instanceLabel string, log *slog.
 		"Total ARP packets dropped due to duplicate address",
 		nil,
 	)
+
+	// TCP ECN packet counters, both directions. "received" is always emitted
+	// (resolved across the 26.1.11 ce/ect0/ect1 rename); "sent" (ect0/ect1 only —
+	// there is no sent-side CE mark) is only emitted on 26.1.11+ boxes that report it.
+	c.tcpEcnPacketsTotal = buildPrometheusDesc(c.subsystem, "tcp_ecn_packets_total",
+		"Total TCP packets carrying an ECN mark, by direction and mark. The sent direction is only emitted on OPNsense 26.1.11+.",
+		[]string{"direction", "mark"},
+	)
+	c.tcpEcnAccEcnHandshakesTotal = buildPrometheusDesc(c.subsystem, "tcp_ecn_accecn_handshakes_total",
+		"Total TCP AccECN (FreeBSD 15) handshake SYNs by mark. Only emitted on OPNsense 26.1.11+.",
+		[]string{"mark"},
+	)
+
+	// TCP syncookies (26.7+): replaces the legacy syncache sent-cookies/receivd-cookies
+	// pair, which never fed a metric.
+	c.tcpSyncookiesTotal = buildPrometheusDesc(c.subsystem, "tcp_syncookies_total",
+		"Total TCP SYN cookies by result. Only emitted on OPNsense 26.7+.",
+		[]string{"result"},
+	)
+
+	// TCP received-acks-for-data 3-way split (26.7+): replaces the legacy
+	// received-acks-for-unsent-data aggregate, which never fed a metric.
+	c.tcpReceivedAcksForDataTotal = buildPrometheusDesc(c.subsystem, "tcp_received_acks_for_data_total",
+		"Total TCP ACKs received for data by reason. Only emitted on OPNsense 26.7+.",
+		[]string{"reason"},
+	)
 }
 
 func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -436,6 +472,12 @@ func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
 
 	// Expanded ARP
 	ch <- c.arpDroppedDuplicateAddress
+
+	// TCP ECN / syncookies / acks-for-data (#237)
+	ch <- c.tcpEcnPacketsTotal
+	ch <- c.tcpEcnAccEcnHandshakesTotal
+	ch <- c.tcpSyncookiesTotal
+	ch <- c.tcpReceivedAcksForDataTotal
 }
 
 func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -675,6 +717,73 @@ func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client,
 	ch <- prometheus.MustNewConstMetric(
 		c.arpDroppedDuplicateAddress, prometheus.CounterValue, float64(data.ARPDroppedDuplicateAddress), c.instance,
 	)
+
+	// TCP ECN — received direction is resolved across the 26.1.11 rename and always
+	// present; sent direction (no CE mark on the send side) is 26.1.11+ only.
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpEcnPacketsTotal, prometheus.CounterValue, float64(data.TCPEcnCePackets), "received", "ce", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpEcnPacketsTotal, prometheus.CounterValue, float64(data.TCPEcnEct0Packets), "received", "ect0", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpEcnPacketsTotal, prometheus.CounterValue, float64(data.TCPEcnEct1Packets), "received", "ect1", c.instance,
+	)
+	if data.TCPEcnSentPresent {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpEcnPacketsTotal, prometheus.CounterValue, float64(data.TCPEcnSentEct0Packets), "sent", "ect0", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpEcnPacketsTotal, prometheus.CounterValue, float64(data.TCPEcnSentEct1Packets), "sent", "ect1", c.instance,
+		)
+	}
+
+	// TCP AccECN handshake counters — 26.1.11+ only.
+	if data.TCPEcnAccEcnPresent {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpEcnAccEcnHandshakesTotal, prometheus.CounterValue, float64(data.TCPEcnAceCeSyn), "ce", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpEcnAccEcnHandshakesTotal, prometheus.CounterValue, float64(data.TCPEcnAceEct0Syn), "ect0", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpEcnAccEcnHandshakesTotal, prometheus.CounterValue, float64(data.TCPEcnAceEct1Syn), "ect1", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpEcnAccEcnHandshakesTotal, prometheus.CounterValue, float64(data.TCPEcnAceNonEctSyn), "nonect", c.instance,
+		)
+	}
+
+	// TCP syncookies — 26.7+ only (replaces the legacy syncache pair, which never
+	// fed a metric).
+	if data.TCPSyncookiesPresent {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpSyncookiesTotal, prometheus.CounterValue, float64(data.TCPSyncookiesSentCookies), "sent", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpSyncookiesTotal, prometheus.CounterValue, float64(data.TCPSyncookiesReceivedCookies), "received", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpSyncookiesTotal, prometheus.CounterValue, float64(data.TCPSyncookiesFailedCookies), "failed", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpSyncookiesTotal, prometheus.CounterValue, float64(data.TCPSyncookiesSpuriousCookies), "spurious", c.instance,
+		)
+	}
+
+	// TCP received-acks-for-data 3-way split — 26.7+ only (replaces the legacy
+	// received-acks-for-unsent-data aggregate, which never fed a metric).
+	if data.TCPReceivedAcksForDataSplitPresent {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpReceivedAcksForDataTotal, prometheus.CounterValue, float64(data.TCPReceivedAcksForDataNotYetSent), "not_yet_sent", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpReceivedAcksForDataTotal, prometheus.CounterValue, float64(data.TCPReceivedAcksForDataNeverBeenSent), "never_been_sent", c.instance,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpReceivedAcksForDataTotal, prometheus.CounterValue, float64(data.TCPReceivedAcksForDataBeingTooOld), "being_too_old", c.instance,
+		)
+	}
 
 	return nil
 }

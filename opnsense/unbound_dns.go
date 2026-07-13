@@ -23,6 +23,7 @@ type unboundDNSStatusResponse struct {
 				Recursivereplies      string `json:"recursivereplies"`
 				QueriesDiscardTimeout string `json:"queries_discard_timeout"`
 				QueriesWaitLimit      string `json:"queries_wait_limit"`
+				QueriesReplyaddrLimit string `json:"queries_replyaddr_limit"`
 				DNSErrorReports       string `json:"dns_error_reports"`
 				Dnscrypt              struct {
 					Crypted   string `json:"crypted"`
@@ -42,8 +43,9 @@ type unboundDNSStatusResponse struct {
 				Overwritten string `json:"overwritten"`
 				Exceeded    string `json:"exceeded"`
 				Current     struct {
-					All  string `json:"all"`
-					User string `json:"user"`
+					All     string `json:"all"`
+					User    string `json:"user"`
+					Replies string `json:"replies"`
 				} `json:"current"`
 			} `json:"requestlist"`
 			Recursion struct {
@@ -227,6 +229,15 @@ type UnboundDNSOverview struct {
 	RecursiveReplies     int64
 	QueriesIPRateLimited int64
 
+	// Query drop/limit counters and error reporting (from data.total.num, #237).
+	// These live in unbound's BASE statistics (unlike everything gated on
+	// ExtendedPresent), so they populate even with extended-statistics: no — the
+	// 26.7 default — and are read unconditionally like their siblings above.
+	QueriesDiscardTimeout int64
+	QueriesWaitLimit      int64
+	QueriesReplyAddrLimit int64
+	DNSErrorReports       int64
+
 	// Query types (from data.num.query.type) - map label->count
 	QueryTypesByType map[string]int64
 
@@ -267,6 +278,9 @@ type UnboundDNSOverview struct {
 	RequestListExceeded    int64
 	RequestListCurrentAll  int64
 	RequestListCurrentUser int64
+	// RequestListCurrentReplies (#237): base statistic, read unconditionally like
+	// RequestListCurrentAll/User above.
+	RequestListCurrentReplies int64
 
 	// Recursion time
 	RecursionTimeAvg    float64
@@ -327,6 +341,10 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.ExpiredTotal = safeAtoi(response.Data.Total.Num.Expired)
 	data.RecursiveReplies = safeAtoi(response.Data.Total.Num.Recursivereplies)
 	data.QueriesIPRateLimited = safeAtoi(response.Data.Total.Num.QueriesIPRatelimited)
+	data.QueriesDiscardTimeout = safeAtoi(response.Data.Total.Num.QueriesDiscardTimeout)
+	data.QueriesWaitLimit = safeAtoi(response.Data.Total.Num.QueriesWaitLimit)
+	data.QueriesReplyAddrLimit = safeAtoi(response.Data.Total.Num.QueriesReplyaddrLimit)
+	data.DNSErrorReports = safeAtoi(response.Data.Total.Num.DNSErrorReports)
 
 	// Extended statistics (data.num / data.mem / …) are absent on a box running
 	// with `extended-statistics: no` — the 26.7 default. Flag their presence so the
@@ -420,6 +438,7 @@ func (c *Client) FetchUnboundOverview() (UnboundDNSOverview, *APICallError) {
 	data.RequestListExceeded = safeAtoi(response.Data.Total.Requestlist.Exceeded)
 	data.RequestListCurrentAll = safeAtoi(response.Data.Total.Requestlist.Current.All)
 	data.RequestListCurrentUser = safeAtoi(response.Data.Total.Requestlist.Current.User)
+	data.RequestListCurrentReplies = safeAtoi(response.Data.Total.Requestlist.Current.Replies)
 
 	// Recursion time
 	data.RecursionTimeAvg = safeParseFloat(response.Data.Total.Recursion.Time.Avg)

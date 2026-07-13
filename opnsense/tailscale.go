@@ -35,6 +35,12 @@ type tailscaleStatusResponse struct {
 	BackendState string                         `json:"BackendState"`
 	Self         tailscaleStatusPeer            `json:"Self"`
 	Peer         map[string]tailscaleStatusPeer `json:"Peer"`
+	// Health carries live warning strings from the local tailscaled client (e.g.
+	// update available, DERP unreachable, key expiry). The strings themselves are
+	// unbounded free text and are never exported as a label — only the count is a
+	// metric (#237). Absent/empty means "no warnings", not "not reported": the
+	// local client always includes this key, empty when healthy.
+	Health []string `json:"Health"`
 }
 
 // TailscalePeer is the node-local view of one tailnet peer.
@@ -56,6 +62,7 @@ type TailscaleStatus struct {
 	Peers                  []TailscalePeer
 	PeersTotal             int
 	PeersWithActiveSession int // peers with a recorded WireGuard handshake
+	HealthWarnings         int // count of live client health warning strings (#237)
 }
 
 // peerName derives a stable, unique peer label: the first DNS label of the
@@ -97,6 +104,7 @@ func (c *Client) FetchTailscaleStatus() (TailscaleStatus, *APICallError) {
 	data.BackendState = resp.BackendState
 	data.SelfRelay = resp.Self.Relay
 	data.PeersTotal = len(resp.Peer)
+	data.HealthWarnings = len(resp.Health)
 
 	seen := make(map[string]bool, len(resp.Peer))
 	for _, p := range resp.Peer {

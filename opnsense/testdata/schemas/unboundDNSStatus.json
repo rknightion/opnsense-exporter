@@ -449,6 +449,10 @@
       "kind": "string"
     },
     {
+      "path": "data.total.num.queries_replyaddr_limit",
+      "kind": "string"
+    },
+    {
       "path": "data.total.num.queries_timed_out",
       "kind": "string"
     },
@@ -502,6 +506,10 @@
     },
     {
       "path": "data.total.requestlist.current.all",
+      "kind": "string"
+    },
+    {
+      "path": "data.total.requestlist.current.replies",
       "kind": "string"
     },
     {

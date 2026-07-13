@@ -5,6 +5,7 @@
   "topLevelKind": "object",
   "knownTopLevelKeys": [
     "BackendState",
+    "Health",
     "Peer",
     "Self",
     "Version"
@@ -12,6 +13,14 @@
   "fields": [
     {
       "path": "BackendState",
+      "kind": "string"
+    },
+    {
+      "path": "Health",
+      "kind": "array"
+    },
+    {
+      "path": "Health[]",
       "kind": "string"
     },
     {

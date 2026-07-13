@@ -4,6 +4,7 @@
   "path": "api/core/firmware/status",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
+    "downgrade_packages",
     "last_check",
     "needs_reboot",
     "new_packages",
@@ -12,10 +13,35 @@
     "product_abi",
     "product_id",
     "product_version",
+    "reinstall_packages",
     "status",
     "upgrade_packages"
   ],
   "fields": [
+    {
+      "path": "downgrade_packages",
+      "kind": "array"
+    },
+    {
+      "path": "downgrade_packages[]",
+      "kind": "object"
+    },
+    {
+      "path": "downgrade_packages[].current_version",
+      "kind": "string"
+    },
+    {
+      "path": "downgrade_packages[].name",
+      "kind": "string"
+    },
+    {
+      "path": "downgrade_packages[].new_version",
+      "kind": "string"
+    },
+    {
+      "path": "downgrade_packages[].repository",
+      "kind": "string"
+    },
     {
       "path": "last_check",
       "kind": "string"
@@ -70,6 +96,26 @@
     },
     {
       "path": "product_version",
+      "kind": "string"
+    },
+    {
+      "path": "reinstall_packages",
+      "kind": "array"
+    },
+    {
+      "path": "reinstall_packages[]",
+      "kind": "object"
+    },
+    {
+      "path": "reinstall_packages[].name",
+      "kind": "string"
+    },
+    {
+      "path": "reinstall_packages[].repository",
+      "kind": "string"
+    },
+    {
+      "path": "reinstall_packages[].version",
       "kind": "string"
     },
     {

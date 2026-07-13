@@ -1,11 +1,13 @@
 """
-Protocol Stats tab — covers all 51 opnsense_protocol_* metrics plus BPF statistics.
+Protocol Stats tab — covers all opnsense_protocol_* metrics plus BPF statistics.
 
 Rows:
   TCP Traffic         — sent/received packets rate ts
   TCP Connection Lifecycle — request/accept/established/closed/drop/bad-attempt rate ts
   TCP Retransmit & Queue — retransmit/keepalive/syncache/listen-queue rate ts
   TCP Bytes           — sent/retransmit/in-seq/dup bytes (Bps) rate ts + RTT segments
+  TCP ECN & SYN Cookies (26.1.11+/26.7+) — ECN packets by direction/mark, AccECN
+                         handshakes, SYN cookies by result, acks-for-data by reason (#237)
   TCP Connection State (gauge) — statetimeline + piechart of current state distribution
   UDP                 — delivered/output/received rate ts + dropped-by-reason table
   IP                  — received/forwarded/sent/fragment rate ts + dropped-by-reason table
@@ -112,6 +114,58 @@ def build(b: Builder):
         unit="short",
         w=12, h=8,
         desc="Rate of TCP segments that caused an RTT sample update.",
+    )
+
+    # TCP — ECN / AccECN / SYN cookies / acks-for-data (#237). All four are
+    # presence-gated on the box's OPNsense version — older boxes simply never
+    # populate these series, so the panels render empty rather than erroring.
+    tcp_ecn = b.ts(
+        "TCP ECN Packets (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_ecn_packets_total')}[{RATE}])",
+             "{{direction}} {{mark}}"),
+        ],
+        unit="pps",
+        w=8, h=8,
+        desc="opnsense_protocol_tcp_ecn_packets_total: TCP packets carrying an ECN mark, "
+             "by direction (received/sent) and mark (ce/ect0/ect1). The received direction "
+             "is resolved across the 26.1.11 key rename; sent is 26.1.11+ only.",
+    )
+    tcp_accecn = b.ts(
+        "TCP AccECN Handshakes (rate, 26.1.11+)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_ecn_accecn_handshakes_total')}[{RATE}])",
+             "{{mark}}"),
+        ],
+        unit="short",
+        w=8, h=8,
+        desc="opnsense_protocol_tcp_ecn_accecn_handshakes_total: FreeBSD 15 AccECN "
+             "handshake SYNs by mark (ce/ect0/ect1/nonect). OPNsense 26.1.11+ only.",
+    )
+    tcp_syncookies = b.ts(
+        "TCP SYN Cookies (rate, 26.7+)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_syncookies_total')}[{RATE}])",
+             "{{result}}"),
+        ],
+        unit="short",
+        w=8, h=8,
+        desc="opnsense_protocol_tcp_syncookies_total: SYN cookies by result "
+             "(sent/received/failed/spurious). Replaces the legacy syncache "
+             "sent-cookies/receivd-cookies pair, which never fed a metric. OPNsense 26.7+ only.",
+    )
+    tcp_acks_for_data = b.ts(
+        "TCP Acks For Data (rate, 26.7+)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_received_acks_for_data_total')}[{RATE}])",
+             "{{reason}}"),
+        ],
+        unit="short",
+        w=8, h=8,
+        desc="opnsense_protocol_tcp_received_acks_for_data_total: ACKs received for data "
+             "by reason (not_yet_sent/never_been_sent/being_too_old) — the 26.7 three-way "
+             "split of the legacy received-acks-for-unsent-data aggregate, which never fed "
+             "a metric. OPNsense 26.7+ only.",
     )
 
     # TCP — Connection state: statetimeline (gauge — raw)
@@ -449,6 +503,8 @@ def build(b: Builder):
         b.row("TCP Traffic", [tcp_traffic, tcp_lifecycle]),
         b.row("TCP Retransmit & Queue", [tcp_retransmit, tcp_bytes]),
         b.row("TCP Bytes & RTT", [tcp_rtt, tcp_state_pie]),
+        b.row("TCP ECN & SYN Cookies (26.1.11+/26.7+)",
+              [tcp_ecn, tcp_accecn, tcp_syncookies, tcp_acks_for_data]),
         b.row("TCP Connection State", [tcp_state_tl]),
         b.row("UDP", [udp_traffic, udp_drops]),
         b.row("IP", [ip_traffic, ip_frags, ip_drops]),

@@ -222,6 +222,58 @@ func TestFetchMbufStatistics_ExtendedFromSystemMbuf(t *testing.T) {
 	}
 }
 
+// TestFetchMbufStatistics_Sfbufs covers #237: the sfbufs-alloc-{failed,wait}
+// allocation-pressure counters (26.1.11+) are folded into the existing
+// FailuresByType/SleepsByType maps under the "sfbufs" key, gated separately
+// from the jumbo9/jumbo16/sendfile presence check they ride alongside since
+// they landed slightly later.
+func TestFetchMbufStatistics_Sfbufs(t *testing.T) {
+	t.Run("present with nonzero values", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"mbuf-statistics": {` + baseMbufFields + `,
+				"jumbo9-failures": 0, "jumbo16-failures": 0, "jumbo9-sleeps": 0, "jumbo16-sleeps": 0,
+				"sendfile-syscalls": 1, "sendfile-io-count": 1, "sendfile-pages-sent": 1,
+				"sfbufs-alloc-failed": 3, "sfbufs-alloc-wait": 7}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchMbufStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := data.FailuresByType["sfbufs"]; got != 3 {
+			t.Errorf("FailuresByType[sfbufs] = %d, want 3", got)
+		}
+		if got := data.SleepsByType["sfbufs"]; got != 7 {
+			t.Errorf("SleepsByType[sfbufs] = %d, want 7", got)
+		}
+	})
+
+	t.Run("absent on a release predating sfbufs (jumbo9/sendfile present)", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"mbuf-statistics": {` + baseMbufFields + `,
+				"jumbo9-failures": 15, "jumbo16-failures": 22, "jumbo9-sleeps": 8, "jumbo16-sleeps": 11,
+				"sendfile-syscalls": 42, "sendfile-io-count": 100, "sendfile-pages-sent": 500}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchMbufStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := data.FailuresByType["sfbufs"]; ok {
+			t.Error("expected sfbufs not present in FailuresByType when the key is absent")
+		}
+		if _, ok := data.SleepsByType["sfbufs"]; ok {
+			t.Error("expected sfbufs not present in SleepsByType when the key is absent")
+		}
+		// jumbo9/16 must still resolve — proves the two presence checks are independent.
+		if data.FailuresByType["jumbo9"] != 15 || data.SendfileSyscalls != 42 {
+			t.Errorf("jumbo9/sendfile should still resolve: failures=%v sendfile=%d", data.FailuresByType, data.SendfileSyscalls)
+		}
+	})
+}
+
 // TestFetchMbufStatistics_FallsBackWhenExtendedAbsent covers #137 acceptance #3: an
 // older-release systemMbuf without the extended keys still uses the memoryStatistics
 // fallback exactly once.

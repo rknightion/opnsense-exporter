@@ -21,6 +21,22 @@ type firmwareStatusResponse struct {
 		NewVersion     string `json:"new_version"`
 		Size           string `json:"size,omitempty"`
 	} `json:"upgrade_packages"`
+	// DowngradePackages / ReinstallPackages are state-dependent supersets that
+	// appear once a firmware check has run (#237): packages available to downgrade
+	// (shape mirrors upgrade_packages: current_version/new_version) and packages
+	// available to reinstall (shape mirrors new_packages: a single version field).
+	// Only counts are exported — see FirmwareStatus.DowngradePackages/ReinstallPackages.
+	DowngradePackages []struct {
+		Name           string `json:"name"`
+		Repository     string `json:"repository"`
+		CurrentVersion string `json:"current_version"`
+		NewVersion     string `json:"new_version"`
+	} `json:"downgrade_packages"`
+	ReinstallPackages []struct {
+		Name       string `json:"name"`
+		Repository string `json:"repository"`
+		Version    string `json:"version"`
+	} `json:"reinstall_packages"`
 	Product struct {
 		ProductCheck struct {
 			UpgradeNeedsReboot string `json:"upgrade_needs_reboot"`
@@ -41,6 +57,11 @@ type FirmwareStatus struct {
 	UpgradeNeedsReboot    bool
 	LastCheckTimestamp    float64
 	UpgradePackageDetails []FirmwarePackageUpgrade
+	// DowngradePackages / ReinstallPackages (#237): counts only, siblings of
+	// NewPackages/UpgradePackages. Populated only once a firmware check has run
+	// since boot, same as the rest of this state-dependent envelope.
+	DowngradePackages int
+	ReinstallPackages int
 }
 
 func NewFirmwareStatus() FirmwareStatus {
@@ -115,6 +136,8 @@ func (c *Client) FetchFirmwareStatus() (FirmwareStatus, *APICallError) {
 		data.LastCheckTimestamp = parseLastCheckTimestamp(resp.LastCheck)
 		data.NewPackages = len(resp.NewPackages)
 		data.UpgradePackages = len(resp.UpgradePackages)
+		data.DowngradePackages = len(resp.DowngradePackages)
+		data.ReinstallPackages = len(resp.ReinstallPackages)
 		for _, p := range resp.UpgradePackages {
 			data.UpgradePackageDetails = append(data.UpgradePackageDetails, FirmwarePackageUpgrade{
 				Name:           p.Name,

@@ -341,6 +341,93 @@ func TestFetchUnboundOverview_Success(t *testing.T) {
 	}
 }
 
+// TestFetchUnboundOverview_BaseStatDrops covers #237: queries_discard_timeout,
+// queries_wait_limit, queries_replyaddr_limit, dns_error_reports and
+// requestlist.current.replies all live in unbound's BASE statistics (data.total.num
+// / data.total.requestlist), so they populate even with extended-statistics: no —
+// unlike everything gated on ExtendedPresent — and are read unconditionally.
+func TestFetchUnboundOverview_BaseStatDrops(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {
+						"queries": "305",
+						"cachehits": "200",
+						"cachemiss": "105",
+						"queries_discard_timeout": "1",
+						"queries_wait_limit": "2",
+						"queries_replyaddr_limit": "3",
+						"dns_error_reports": "4"
+					},
+					"requestlist": {
+						"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0",
+						"current": {"all": "0", "user": "0", "replies": "5"}
+					},
+					"recursion": {"time": {"avg": "0", "median": "0"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "1", "up": "1", "elapsed": "1"}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.QueriesDiscardTimeout != 1 {
+		t.Errorf("QueriesDiscardTimeout = %d, want 1", data.QueriesDiscardTimeout)
+	}
+	if data.QueriesWaitLimit != 2 {
+		t.Errorf("QueriesWaitLimit = %d, want 2", data.QueriesWaitLimit)
+	}
+	if data.QueriesReplyAddrLimit != 3 {
+		t.Errorf("QueriesReplyAddrLimit = %d, want 3", data.QueriesReplyAddrLimit)
+	}
+	if data.DNSErrorReports != 4 {
+		t.Errorf("DNSErrorReports = %d, want 4", data.DNSErrorReports)
+	}
+	if data.RequestListCurrentReplies != 5 {
+		t.Errorf("RequestListCurrentReplies = %d, want 5", data.RequestListCurrentReplies)
+	}
+}
+
+// TestFetchUnboundOverview_BaseStatDropsAbsent covers an older box that predates
+// queries_replyaddr_limit / requestlist.current.replies: they must read 0, not
+// error, same as any other absent base-stat field (tolerant safeAtoi("") = 0).
+func TestFetchUnboundOverview_BaseStatDropsAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"data": {
+				"total": {
+					"num": {"queries": "10"},
+					"requestlist": {
+						"avg": "0", "max": "0", "overwritten": "0", "exceeded": "0",
+						"current": {"all": "0", "user": "0"}
+					},
+					"recursion": {"time": {"avg": "0", "median": "0"}},
+					"tcpusage": "0"
+				},
+				"time": {"now": "1", "up": "1", "elapsed": "1"}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchUnboundOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.QueriesReplyAddrLimit != 0 || data.RequestListCurrentReplies != 0 {
+		t.Errorf("expected zero for absent fields, got QueriesReplyAddrLimit=%d RequestListCurrentReplies=%d",
+			data.QueriesReplyAddrLimit, data.RequestListCurrentReplies)
+	}
+}
+
 // TestFetchUnboundOverview_ExtendedStatsAbsent covers the 26.7 default: OPNsense
 // 26.7 ships unbound with `extended-statistics: no`, so api/unbound/diagnostics/stats
 // serves ONLY data.total / data.time / data.threadN — every extended section

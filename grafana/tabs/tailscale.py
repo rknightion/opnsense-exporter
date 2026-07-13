@@ -25,8 +25,15 @@ def build(b: Builder):
                       unit="short", w=4, h=4,
                       desc="Peers with an established WireGuard session from this node "
                            "(handshake-derived; NOT coordination-server online status).")
+    health = b.stat("Health Warnings", sel("opnsense_tailscale_health_warnings"),
+                    unit="short", w=4, h=4,
+                    thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+                    color_mode="background",
+                    desc="opnsense_tailscale_health_warnings: count of live warning strings "
+                         "reported by the local tailscaled client (update available, DERP "
+                         "unreachable, key expiry, ...). The warning text itself is not exported.")
     info = b.table("Node Info", [sel("opnsense_tailscale_info")],
-                   w=8, h=4,
+                   w=4, h=4,
                    excludes=["Value", "__name__", "job", "instance"],
                    renames={"version": "Version", "relay": "DERP Relay"})
 
@@ -57,7 +64,7 @@ def build(b: Builder):
                              sort_by="Value", sort_desc=True)
 
     b.tab("Tailscale", [
-        b.row("Tailscale Node", [svc, backend, total, sessions, info],
+        b.row("Tailscale Node", [svc, backend, total, sessions, health, info],
               present="has_tailscale"),
         b.row("Tailscale Peers (details flag)",
               [peer_traffic, peer_session, peer_direct, peer_handshake],

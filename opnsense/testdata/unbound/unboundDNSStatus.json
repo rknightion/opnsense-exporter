@@ -16,6 +16,7 @@
 						"recursivereplies": "24000",
 						"queries_discard_timeout": "0",
 						"queries_wait_limit": "0",
+						"queries_replyaddr_limit": "0",
 						"dns_error_reports": "0",
 						"dnscrypt": {
 							"crypted": "0",
@@ -34,7 +35,8 @@
 						"exceeded": "1",
 						"current": {
 							"all": "10",
-							"user": "5"
+							"user": "5",
+							"replies": "3"
 						}
 					},
 					"recursion": {

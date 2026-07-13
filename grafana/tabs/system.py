@@ -353,7 +353,30 @@ def build(b: Builder):
         desc="opnsense_firmware_upgrade_packages_count: count of packages with available upgrades.",
     )
 
-    row_firmware = b.row("Firmware", [fw_info, fw_needs_reboot, fw_upgrade_reboot, fw_last_check, fw_new_pkgs, fw_upgrade_pkgs])
+    fw_downgrade_pkgs = b.stat(
+        "Downgrade Packages",
+        sel("opnsense_firmware_downgrade_packages_count"),
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 1}],
+        color_mode="background",
+        w=3,
+        h=4,
+        desc="opnsense_firmware_downgrade_packages_count: count of packages available to downgrade.",
+    )
+
+    fw_reinstall_pkgs = b.stat(
+        "Reinstall Packages",
+        sel("opnsense_firmware_reinstall_packages_count"),
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 1}],
+        color_mode="background",
+        w=3,
+        h=4,
+        desc="opnsense_firmware_reinstall_packages_count: count of packages available to reinstall.",
+    )
+
+    row_firmware = b.row("Firmware", [
+        fw_info, fw_needs_reboot, fw_upgrade_reboot, fw_last_check, fw_new_pkgs, fw_upgrade_pkgs,
+        fw_downgrade_pkgs, fw_reinstall_pkgs,
+    ])
 
     # =========================================================================
     # Row: Firmware Packages (gated — requires --exporter.enable-firmware-package-details)

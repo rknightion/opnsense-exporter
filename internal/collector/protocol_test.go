@@ -257,8 +257,12 @@ func TestProtocolCollector_Update(t *testing.T) {
 	//   reassembled + 10 dropped_by_reason) → 5+10=15, plus icmp6 1 calls + 5
 	//   dropped_by_reason = 6; the dropped_by_reason maps are always emitted (fixed keys)
 	//   even when the fixture omits the ip6/icmp6 blocks (all zero).
-	// Total: 105 + 21 = 126
-	expectedCount := 126
+	// TCP ECN received (#237): 3 (ce, ect0, ect1) — always emitted, resolved across
+	//   the 26.1.11 rename. The sent/AccECN/syncookies/acks-for-data groups are
+	//   presence-gated and this fixture sends none of those keys, so they
+	//   contribute 0.
+	// Total: 105 + 21 + 3 = 129
+	expectedCount := 129
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

@@ -150,6 +150,14 @@
     {
       "path": "mbuf-statistics.sendfile-syscalls",
       "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.sfbufs-alloc-failed",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.sfbufs-alloc-wait",
+      "kind": "number"
     }
   ]
 }

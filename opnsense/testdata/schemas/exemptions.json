@@ -8,8 +8,8 @@
   "dyndnsServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "firmware": {
     "missingOK": ["last_check", "needs_reboot", "new_packages", "os_version", "product_abi", "product_id", "product_version", "upgrade_packages"],
-    "knownExtraTopKeys": ["all_packages", "all_sets", "api_version", "connection", "downgrade_packages", "download_size", "product_target", "reinstall_packages", "remove_packages", "repository", "status_msg", "status_reboot", "upgrade_major_message", "upgrade_major_version", "upgrade_needs_reboot", "upgrade_sets"],
-    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 10); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. The 26.7 full-inventory keys (all_packages/all_sets) are a #227 opportunity"
+    "knownExtraTopKeys": ["all_packages", "all_sets", "api_version", "connection", "download_size", "product_target", "remove_packages", "repository", "status_msg", "status_reboot", "upgrade_major_message", "upgrade_major_version", "upgrade_needs_reboot", "upgrade_sets"],
+    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 12); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. downgrade_packages/reinstall_packages are now modelled as count gauges (#237). The 26.7 full-inventory keys (all_packages/all_sets) remain a #227 opportunity"
   },
   "firmwareInfo": {
     "knownExtraTopKeys": ["changelog", "package", "product"],
@@ -88,7 +88,7 @@
       "statistics.tcp.syncache.receivd-cookies",
       "statistics.tcp.syncache.sent-cookies"
     ],
-    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for ≤ 26.1.10 — prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}; decoded-only, no metric impact. syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7; decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window; the new syncookies section stays unmodelled"
+    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for ≤ 26.1.10 — prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}, which are now modelled as a presence-gated counter (#237); the legacy aggregate stays decoded-only (never fed a metric). syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7, now modelled as a presence-gated counter (#237); decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window"
   },
   "quaggaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "smartInfo": {
@@ -111,8 +111,8 @@
   "systemResources": { "missingOK": ["memory.arc"], "note": "ARC exists only on ZFS installs; testbed VM is UFS" },
   "tailscaleServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "tailscaleStatus": {
-    "knownExtraTopKeys": ["AuthURL", "CertDomains", "ClientVersion", "CurrentTailnet", "HaveNodeKey", "Health", "MagicDNSSuffix", "TUN", "TailscaleIPs", "User"],
-    "note": "tailscaled status keys the exporter does not model (node identity, tailnet metadata, health text)"
+    "knownExtraTopKeys": ["AuthURL", "CertDomains", "ClientVersion", "CurrentTailnet", "HaveNodeKey", "MagicDNSSuffix", "TUN", "TailscaleIPs", "User"],
+    "note": "tailscaled status keys the exporter does not model (node identity, tailnet metadata). Health (array of live warning strings) is modelled as a count-only gauge (#237) and no longer exempted"
   },
   "unboundDNSStatus": {
     "missingOK": [

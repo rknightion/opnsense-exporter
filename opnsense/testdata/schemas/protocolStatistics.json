@@ -736,6 +736,18 @@
       "kind": "numeric"
     },
     {
+      "path": "statistics.tcp.received-acks-for-data-being-too-old",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.received-acks-for-data-never-been-sent",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.received-acks-for-data-not-yet-sent",
+      "kind": "numeric"
+    },
+    {
       "path": "statistics.tcp.received-acks-for-unsent-data",
       "kind": "numeric"
     },
@@ -961,6 +973,26 @@
     },
     {
       "path": "statistics.tcp.syncache.zone-failures",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.syncookies",
+      "kind": "object"
+    },
+    {
+      "path": "statistics.tcp.syncookies.failed-cookies",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.syncookies.received-cookies",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.syncookies.sent-cookies",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.syncookies.spurious-cookies",
       "kind": "numeric"
     },
     {

@@ -23,6 +23,7 @@ type tailscaleCollector struct {
 	info                   *prometheus.Desc
 	peersTotal             *prometheus.Desc
 	peersWithActiveSession *prometheus.Desc
+	healthWarnings         *prometheus.Desc
 	peerSessionActive      *prometheus.Desc
 	peerDirect             *prometheus.Desc
 	peerRxBytes            *prometheus.Desc
@@ -68,6 +69,8 @@ func (c *tailscaleCollector) Register(namespace, instanceLabel string, log *slog
 		"Number of tailnet peers known to this node", nil)
 	c.peersWithActiveSession = buildPrometheusDesc(c.subsystem, "peers_with_active_session",
 		"Number of tailnet peers with an established WireGuard session from this node (derived from local last-handshake presence, not coordination-server online state)", nil)
+	c.healthWarnings = buildPrometheusDesc(c.subsystem, "health_warnings",
+		"Number of live health warning strings reported by the local tailscaled client (e.g. update available, DERP unreachable, key expiry). The warning text itself is never exported as a label.", nil)
 	c.peerSessionActive = buildPrometheusDesc(c.subsystem, "peer_session_active",
 		"Whether this node has an established WireGuard session with the peer (1 = a handshake has been recorded since tailscaled start). Node-local; deliberately not the coordination-server online flag. Only emitted when --exporter.enable-tailscale-peer-details is set.",
 		peerLabels)
@@ -91,6 +94,7 @@ func (c *tailscaleCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.info
 	ch <- c.peersTotal
 	ch <- c.peersWithActiveSession
+	ch <- c.healthWarnings
 	ch <- c.peerSessionActive
 	ch <- c.peerDirect
 	ch <- c.peerRxBytes
@@ -121,6 +125,8 @@ func (c *tailscaleCollector) Update(ctx context.Context, client *opnsense.Client
 		float64(data.PeersTotal), c.instance)
 	ch <- prometheus.MustNewConstMetric(c.peersWithActiveSession, prometheus.GaugeValue,
 		float64(data.PeersWithActiveSession), c.instance)
+	ch <- prometheus.MustNewConstMetric(c.healthWarnings, prometheus.GaugeValue,
+		float64(data.HealthWarnings), c.instance)
 
 	if c.detailsEnabled {
 		for _, p := range data.Peers {

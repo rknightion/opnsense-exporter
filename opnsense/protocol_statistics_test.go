@@ -120,6 +120,107 @@ func TestFetchProtocolStatistics_EcnKeyRenames(t *testing.T) {
 	}
 }
 
+// TestFetchProtocolStatistics_NewTcpCounters covers #237: syncookies, send-side
+// ECN, AccECN handshake counters and the received-acks-for-data 3-way split are
+// all new (not renamed) fields, introduced together in 26.1.11/26.7. Each group
+// is presence-gated: absent entirely on an older box, never a fabricated zero.
+func TestFetchProtocolStatistics_NewTcpCounters(t *testing.T) {
+	t.Run("all groups present (26.7 real key set)", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {
+				"sent-packets": 1,
+				"received-acks-for-data-not-yet-sent": 1,
+				"received-acks-for-data-never-been-sent": 2,
+				"received-acks-for-data-being-too-old": 3,
+				"syncache": {"sent-cookies": 0, "receivd-cookies": 0},
+				"syncookies": {
+					"sent-cookies": 100, "received-cookies": 0,
+					"failed-cookies": 1, "spurious-cookies": 2
+				},
+				"ecn": {
+					"received-ce-packets": 0, "received-ect0-packets": 10, "received-ect1-packets": 0,
+					"sent-ect0-packets": 20, "sent-ect1-packets": 5,
+					"ace-ce-syn": 1, "ace-ect0-syn": 2, "ace-ect1-syn": 3, "ace-nonect-syn": 4
+				}
+			}}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !data.TCPSyncookiesPresent {
+			t.Fatal("expected TCPSyncookiesPresent=true")
+		}
+		if data.TCPSyncookiesSentCookies != 100 || data.TCPSyncookiesReceivedCookies != 0 ||
+			data.TCPSyncookiesFailedCookies != 1 || data.TCPSyncookiesSpuriousCookies != 2 {
+			t.Errorf("unexpected syncookies: %+v", data)
+		}
+
+		if !data.TCPEcnSentPresent {
+			t.Fatal("expected TCPEcnSentPresent=true")
+		}
+		if data.TCPEcnSentEct0Packets != 20 || data.TCPEcnSentEct1Packets != 5 {
+			t.Errorf("unexpected sent ECN: ect0=%d ect1=%d", data.TCPEcnSentEct0Packets, data.TCPEcnSentEct1Packets)
+		}
+		// Received side must still resolve normally alongside the new sent side.
+		if data.TCPEcnEct0Packets != 10 {
+			t.Errorf("expected received ect0=10, got %d", data.TCPEcnEct0Packets)
+		}
+
+		if !data.TCPEcnAccEcnPresent {
+			t.Fatal("expected TCPEcnAccEcnPresent=true")
+		}
+		if data.TCPEcnAceCeSyn != 1 || data.TCPEcnAceEct0Syn != 2 || data.TCPEcnAceEct1Syn != 3 || data.TCPEcnAceNonEctSyn != 4 {
+			t.Errorf("unexpected AccECN counters: %+v", data)
+		}
+
+		if !data.TCPReceivedAcksForDataSplitPresent {
+			t.Fatal("expected TCPReceivedAcksForDataSplitPresent=true")
+		}
+		if data.TCPReceivedAcksForDataNotYetSent != 1 || data.TCPReceivedAcksForDataNeverBeenSent != 2 ||
+			data.TCPReceivedAcksForDataBeingTooOld != 3 {
+			t.Errorf("unexpected acks-for-data split: %+v", data)
+		}
+	})
+
+	t.Run("all groups absent (pre-26.1.11 box)", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {
+				"sent-packets": 1,
+				"received-acks-for-unsent-data": 9,
+				"syncache": {"sent-cookies": 5, "receivd-cookies": 6},
+				"ecn": {"ce-packets": 0, "ect0-packets": 0, "ect1-packets": 0}
+			}}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if data.TCPSyncookiesPresent {
+			t.Error("expected TCPSyncookiesPresent=false when syncookies section is absent")
+		}
+		if data.TCPEcnSentPresent {
+			t.Error("expected TCPEcnSentPresent=false when sent-ect keys are absent")
+		}
+		if data.TCPEcnAccEcnPresent {
+			t.Error("expected TCPEcnAccEcnPresent=false when ace-*-syn keys are absent")
+		}
+		if data.TCPReceivedAcksForDataSplitPresent {
+			t.Error("expected TCPReceivedAcksForDataSplitPresent=false when the split keys are absent")
+		}
+		// All presence-gated counters must read zero-value, not fabricated.
+		if data.TCPSyncookiesSentCookies != 0 || data.TCPEcnSentEct0Packets != 0 ||
+			data.TCPEcnAceCeSyn != 0 || data.TCPReceivedAcksForDataNotYetSent != 0 {
+			t.Errorf("expected zero-value fields when groups absent, got %+v", data)
+		}
+	})
+}
+
 func TestFetchProtocolStatistics_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {

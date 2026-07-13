@@ -16,6 +16,7 @@ func tailscaleTestServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{
 			"Version": "1.96.4",
 			"BackendState": "Running",
+			"Health": ["update available", "some peers are advertising routes but --accept-routes is false"],
 			"Self": {"HostName":"opnsense","DNSName":"opnsense.example-tailnet.ts.net.","Relay":"lhr","Online":true,"RxBytes":0,"TxBytes":0,"CurAddr":"","LastHandshake":"0001-01-01T00:00:00Z"},
 			"Peer": {
 				"nodekey:aaa": {"HostName":"server-a","DNSName":"server-a.example-tailnet.ts.net.","OS":"linux","Online":true,"RxBytes":123456,"TxBytes":654321,"CurAddr":"192.0.2.10:41641","Relay":"lhr","LastHandshake":"2026-06-09T22:30:00Z"},
@@ -38,10 +39,12 @@ func TestTailscaleCollector_Update_Default(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 
 	metrics := collectMetrics(t, c, client)
-	// service_running + backend_running + info + peers_total + peers_with_active_session = 5
-	if len(metrics) != 5 {
-		t.Fatalf("expected 5 metrics without details, got %d", len(metrics))
+	// service_running + backend_running + info + peers_total + peers_with_active_session
+	// + health_warnings = 6
+	if len(metrics) != 6 {
+		t.Fatalf("expected 6 metrics without details, got %d", len(metrics))
 	}
+	var sawHealthWarnings bool
 	for _, m := range metrics {
 		desc := m.Desc().String()
 		if strings.Contains(desc, "peers_with_active_session") && getMetricValue(m) != 1 {
@@ -53,6 +56,15 @@ func TestTailscaleCollector_Update_Default(t *testing.T) {
 				t.Errorf("bad info labels: %v", labels)
 			}
 		}
+		if strings.Contains(desc, "health_warnings") {
+			sawHealthWarnings = true
+			if getMetricValue(m) != 2 {
+				t.Errorf("expected health_warnings=2, got %v", getMetricValue(m))
+			}
+		}
+	}
+	if !sawHealthWarnings {
+		t.Error("expected a health_warnings metric")
 	}
 }
 
@@ -66,13 +78,13 @@ func TestTailscaleCollector_Update_Details(t *testing.T) {
 	c.SetDetailsEnabled(true)
 
 	metrics := collectMetrics(t, c, client)
-	// 5 default + per-peer:
+	// 6 default + per-peer:
 	//   server-a (handshake): session_active/direct/rx/tx/last_handshake (5)
 	//   laptop-b (no handshake): session_active/rx/tx (3 — direct and
 	//   last_handshake are omitted without a session)
-	// = 13
-	if len(metrics) != 13 {
-		t.Fatalf("expected 13 metrics with details, got %d", len(metrics))
+	// = 14
+	if len(metrics) != 14 {
+		t.Fatalf("expected 14 metrics with details, got %d", len(metrics))
 	}
 	var sawRx, sawDirectForB bool
 	for _, m := range metrics {

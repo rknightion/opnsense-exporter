@@ -17,6 +17,8 @@ type firmwareCollector struct {
 	lastCheckTimestamp     *prometheus.Desc
 	newPackagesCount       *prometheus.Desc
 	upgradePackagesCount   *prometheus.Desc
+	downgradePackagesCount *prometheus.Desc
+	reinstallPackagesCount *prometheus.Desc
 	packageUpdateAvailable *prometheus.Desc
 	pluginInstalled        *prometheus.Desc
 
@@ -59,6 +61,12 @@ func (c *firmwareCollector) Register(namespace, instanceLabel string, log *slog.
 	c.upgradePackagesCount = buildPrometheusDesc(c.subsystem, "upgrade_packages_count",
 		"Number of packages with available upgrades", nil)
 
+	c.downgradePackagesCount = buildPrometheusDesc(c.subsystem, "downgrade_packages_count",
+		"Number of packages available to downgrade", nil)
+
+	c.reinstallPackagesCount = buildPrometheusDesc(c.subsystem, "reinstall_packages_count",
+		"Number of packages available to reinstall", nil)
+
 	c.packageUpdateAvailable = buildPrometheusDesc(c.subsystem, "package_update_available",
 		"Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set.",
 		[]string{"name", "installed_version", "new_version"})
@@ -81,6 +89,8 @@ func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.lastCheckTimestamp
 	ch <- c.newPackagesCount
 	ch <- c.upgradePackagesCount
+	ch <- c.downgradePackagesCount
+	ch <- c.reinstallPackagesCount
 	ch <- c.packageUpdateAvailable
 	ch <- c.pluginInstalled
 }
@@ -111,6 +121,10 @@ func (c *firmwareCollector) Update(ctx context.Context, client *opnsense.Client,
 	ch <- prometheus.MustNewConstMetric(c.newPackagesCount, prometheus.GaugeValue, float64(data.NewPackages), c.instance)
 
 	ch <- prometheus.MustNewConstMetric(c.upgradePackagesCount, prometheus.GaugeValue, float64(data.UpgradePackages), c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.downgradePackagesCount, prometheus.GaugeValue, float64(data.DowngradePackages), c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.reinstallPackagesCount, prometheus.GaugeValue, float64(data.ReinstallPackages), c.instance)
 
 	if c.detailsEnabled {
 		for _, p := range data.UpgradePackageDetails {

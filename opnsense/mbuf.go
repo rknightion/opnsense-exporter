@@ -55,6 +55,13 @@ type mbufStatisticsData struct {
 	SendfileSyscalls  *int `json:"sendfile-syscalls"`
 	SendfileIOCount   *int `json:"sendfile-io-count"`
 	SendfilePagesSent *int `json:"sendfile-pages-sent"`
+
+	// Sfbufs allocation-pressure counters, present alongside the jumbo9/16/sendfile
+	// keys above on OPNsense 26.1.11+ (#237). Pointers so nil distinguishes "key
+	// absent" (older release) from "present with value 0" — same convention as the
+	// jumbo9/jumbo16/sendfile fields.
+	SfbufsAllocFailed *int `json:"sfbufs-alloc-failed"`
+	SfbufsAllocWait   *int `json:"sfbufs-alloc-wait"`
 }
 
 // jumboPageCurrent resolves the jumbo-page pool's in-use count across the 26.1.11
@@ -193,6 +200,15 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 		data.SendfileSyscalls = derefInt(s.SendfileSyscalls)
 		data.SendfileIOCount = derefInt(s.SendfileIOCount)
 		data.SendfilePagesSent = derefInt(s.SendfilePagesSent)
+
+		// Sfbufs allocation-pressure counters (26.1.11+, #237): gated separately
+		// since they landed slightly after the jumbo9/jumbo16/sendfile keys above —
+		// a nil pointer here means an older release within this same branch.
+		if s.SfbufsAllocFailed != nil || s.SfbufsAllocWait != nil {
+			data.FailuresByType["sfbufs"] = derefInt(s.SfbufsAllocFailed)
+			data.SleepsByType["sfbufs"] = derefInt(s.SfbufsAllocWait)
+		}
+
 		return data, nil
 	}
 

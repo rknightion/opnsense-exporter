@@ -223,6 +223,83 @@ func TestFetchFirmwareStatus_UpgradePackageDetails(t *testing.T) {
 	}
 }
 
+// TestFetchFirmwareStatus_DowngradeReinstallPackages covers #237: the
+// downgrade_packages/reinstall_packages arrays (state-dependent superset,
+// present alongside new_packages/upgrade_packages once a firmware check has
+// run) are counted the same way as the existing package-count fields.
+func TestFetchFirmwareStatus_DowngradeReinstallPackages(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"last_check": "2026-06-09T10:13:17",
+			"needs_reboot": "0",
+			"os_version": "26.7",
+			"product_id": "opnsense",
+			"product_version": "26.7",
+			"product_abi": "26.7",
+			"new_packages": [],
+			"upgrade_packages": [],
+			"downgrade_packages": [
+				{"name": "pkgA", "repository": "OPNsense", "current_version": "2.0", "new_version": "1.0"}
+			],
+			"reinstall_packages": [
+				{"name": "pkgB", "repository": "OPNsense", "version": "1.0"},
+				{"name": "pkgC", "repository": "OPNsense", "version": "2.0"}
+			],
+			"product": {
+				"product_check": {
+					"upgrade_needs_reboot": "0"
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.DowngradePackages != 1 {
+		t.Errorf("expected DowngradePackages=1, got %d", firmware.DowngradePackages)
+	}
+	if firmware.ReinstallPackages != 2 {
+		t.Errorf("expected ReinstallPackages=2, got %d", firmware.ReinstallPackages)
+	}
+}
+
+// TestFetchFirmwareStatus_DowngradeReinstallAbsent covers the common case (no
+// firmware check has surfaced downgrade/reinstall candidates): both counts
+// must read 0, not error.
+func TestFetchFirmwareStatus_DowngradeReinstallAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"last_check": "2026-06-09T10:13:17",
+			"needs_reboot": "0",
+			"os_version": "26.1",
+			"product_id": "opnsense",
+			"product_version": "26.1.9",
+			"product_abi": "26.1",
+			"new_packages": [],
+			"upgrade_packages": [],
+			"product": {
+				"product_check": {
+					"upgrade_needs_reboot": "0"
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.DowngradePackages != 0 || firmware.ReinstallPackages != 0 {
+		t.Errorf("expected zero downgrade/reinstall counts, got %d/%d", firmware.DowngradePackages, firmware.ReinstallPackages)
+	}
+}
+
 func TestFetchFirmwareInfo_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {

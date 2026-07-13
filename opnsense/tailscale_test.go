@@ -115,6 +115,52 @@ func TestFetchTailscaleStatus_Success(t *testing.T) {
 	}
 }
 
+// TestFetchTailscaleStatus_HealthWarnings covers #237: the Health array of live
+// client warning strings is counted, never exported as label text.
+func TestFetchTailscaleStatus_HealthWarnings(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{
+			name: "no Health key (healthy client, older tailscaled)",
+			body: `{"Version": "1.96.4", "BackendState": "Running", "Self": {}, "Peer": {}}`,
+			want: 0,
+		},
+		{
+			name: "empty Health array (healthy)",
+			body: `{"Version": "1.96.4", "BackendState": "Running", "Health": [], "Self": {}, "Peer": {}}`,
+			want: 0,
+		},
+		{
+			name: "two warnings",
+			body: `{"Version": "1.96.4", "BackendState": "Running", "Health": [
+				"update available: 1.98.0",
+				"some peers are advertising routes but --accept-routes is false"
+			], "Self": {}, "Peer": {}}`,
+			want: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(tt.body))
+			})
+			defer server.Close()
+
+			data, err := client.FetchTailscaleStatus()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if data.HealthWarnings != tt.want {
+				t.Errorf("HealthWarnings = %d, want %d", data.HealthWarnings, tt.want)
+			}
+		})
+	}
+}
+
 func TestFetchTailscaleStatus_PluginAbsent(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
