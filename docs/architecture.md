@@ -138,7 +138,7 @@ sequenceDiagram
 
 1. Prometheus sends `GET /metrics`.
 2. The `Collector.Collect()` method acquires a mutex and runs a health check against the OPNsense system status API.
-3. The health check populates `opnsense_up` (API reachability), `opnsense_system_status_code`, and the per-subsystem `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges. `opnsense_up` is 0 only when the API call itself fails; a reachable but degraded box stays `opnsense_up=1`.
+3. The health check populates `opnsense_up` (API reachability), `opnsense_system_status_code`, the per-subsystem `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the health-check payload reports — disk space, root lock, plugin overrides, and anything else beyond the two dedicated gauges). `opnsense_up` is 0 only when the API call itself fails; a reachable but degraded box stays `opnsense_up=1`.
 4. All enabled sub-collectors are launched concurrently as goroutines **regardless of the health-check outcome** — a failed health check sets `opnsense_up=0` but does not stop the sub-collectors.
 5. Each sub-collector calls its `Update()` method, which invokes one or more `Fetch*()` methods on the API client and emits metrics to the shared channel.
 6. The main collector waits for all goroutines to complete, then increments the scrape counter and emits endpoint error counters.

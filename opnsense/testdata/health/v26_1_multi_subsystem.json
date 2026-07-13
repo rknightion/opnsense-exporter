@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "system": { "status": "ERROR", "message": "No pending messages", "title": "System" },
+    "translations": {},
+    "subsystems": []
+  },
+  "subsystems": {
+    "diskspace": {
+      "title": "Disk Space",
+      "statusCode": -1,
+      "message": "Disk space on the root filesystem is critically full (95.00G or 98% used, 2.00G available). Please consider cleaning up or expanding storage.",
+      "location": null,
+      "timestamp": 1783881961,
+      "persistent": true,
+      "isBanner": false,
+      "priority": 5,
+      "status": "ERROR",
+      "age": "2 hours ago"
+    },
+    "rootlock": {
+      "title": "Root lock",
+      "statusCode": -1,
+      "message": "Strict security mode disabled, but requires \"/var/run/www_non_root\" to be removed manually from disk. Refusing to run as root in the meantime.",
+      "location": null,
+      "timestamp": 1783881961,
+      "persistent": true,
+      "isBanner": true,
+      "priority": 2,
+      "status": "ERROR",
+      "age": "2 hours ago"
+    },
+    "monitoverride": {
+      "title": "Monit",
+      "statusCode": 0,
+      "message": "The configuration for this component has been changed outside of this plugin.",
+      "location": "/ui/monit/settings",
+      "timestamp": 1783881961,
+      "persistent": false,
+      "isBanner": false,
+      "priority": 20,
+      "status": "WARNING",
+      "age": "2 hours ago"
+    }
+  }
+}

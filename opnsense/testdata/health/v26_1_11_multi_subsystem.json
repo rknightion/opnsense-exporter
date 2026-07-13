@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "subsystems": {
+      "diskspace": {
+        "title": "Disk Space",
+        "statusCode": -1,
+        "message": "Disk space on the root filesystem is critically full (95.00G or 98% used, 2.00G available). Please consider cleaning up or expanding storage.",
+        "location": null,
+        "timestamp": 1783881961,
+        "persistent": true,
+        "isBanner": false,
+        "priority": 5,
+        "status": "ERROR",
+        "age": "2 hours ago"
+      },
+      "unboundblocklist": {
+        "title": "Unbound Blocklist",
+        "statusCode": 1,
+        "message": "The DNS blocklist could not be downloaded, using the previous list.",
+        "location": "/ui/unbound/blocklist",
+        "timestamp": 1783881961,
+        "persistent": false,
+        "isBanner": false,
+        "priority": 30,
+        "status": "NOTICE",
+        "age": "2 hours ago"
+      }
+    },
+    "system": {
+      "message": "Issues were detected",
+      "status": -1,
+      "title": "System"
+    },
+    "translations": {
+      "dialogCloseButton": "Close",
+      "dialogTitle": "System status"
+    }
+  }
+}

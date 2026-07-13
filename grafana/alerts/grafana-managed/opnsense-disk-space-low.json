@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-disk-space-low",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseDiskSpaceLow",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "10m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense root filesystem disk space low ({{ $labels.opnsense_instance }})",
+      "description": "opnsense_system_subsystem_status_code{subsystem=\"diskspace\"} has reported below OK (2 = OK, 1 = NOTICE, 0 = WARNING nearly full, -1 = ERROR critically full) for 10m. Absent means healthy \u2014 OPNsense omits an OK subsystem from the health-check payload.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "opnsense_system_subsystem_status_code{subsystem=\"diskspace\"}",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  2,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

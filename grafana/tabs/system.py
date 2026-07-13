@@ -3,6 +3,7 @@ System & Resources tab for the OPNsense Exporter dashboard.
 
 Covers:
   - System subsystem (12 metrics)
+  - General health: opnsense_system_subsystem_status_code (per-subsystem health-check detail)
   - Activity subsystem (9 metrics)
   - Mbuf subsystem (14 metrics)
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
@@ -11,6 +12,17 @@ Covers:
 """
 
 from builder import Builder, sel, epoch_ms, RATE, YESNO
+
+# opnsense_system_subsystem_status_code value -> (display text, colour). OPNsense's
+# SystemStatusCode enum: 2=OK, 1=NOTICE, 0=WARNING, -1=ERROR. OK is included for
+# completeness even though OPNsense never reports an OK subsystem (only unhealthy ones
+# appear in the payload — see collector.go's AllSubsystems doc).
+_SUBSYS_STATUS = {
+    "-1": ("Error", "red"),
+    "0": ("Warning", "orange"),
+    "1": ("Notice", "yellow"),
+    "2": ("OK", "green"),
+}
 
 
 def build(b: Builder):
@@ -92,6 +104,34 @@ def build(b: Builder):
     )
 
     row_host = b.row("Host", [info_tbl, uptime, load1, load5, load15, config_change])
+
+    # =========================================================================
+    # Row: Subsystem Health (#218 — every health-check subsystem, not just
+    # firewall/crashreporter: disk space, root lock, plugin config overrides, ...)
+    # =========================================================================
+    subsys_unhealthy_count = b.stat(
+        "Unhealthy Subsystems",
+        f'count({sel("opnsense_system_subsystem_status_code")} < 2) or vector(0)',
+        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+        color_mode="background",
+        w=4,
+        h=6,
+        desc="Count of health-check subsystems currently NOT OK (opnsense_system_subsystem_status_code < 2). "
+             "0 when every subsystem is healthy — OPNsense omits healthy subsystems from the payload.",
+    )
+
+    subsys_timeline = b.statetimeline(
+        "Subsystem Status",
+        [(sel("opnsense_system_subsystem_status_code"), "{{subsystem}}")],
+        _SUBSYS_STATUS,
+        w=20,
+        h=6,
+        desc="opnsense_system_subsystem_status_code: per-subsystem SystemStatusCode (disk space, root lock, "
+             "crash reporter, firewall, plugin config overrides, ...). A subsystem's series is present only "
+             "while unhealthy; its absence from the panel means it is OK.",
+    )
+
+    row_subsystem_health = b.row("Subsystem Health", [subsys_unhealthy_count, subsys_timeline])
 
     # =========================================================================
     # Row: Memory & Swap
@@ -604,6 +644,7 @@ def build(b: Builder):
     # =========================================================================
     b.tab("System & Resources", [
         row_host,
+        row_subsystem_health,
         row_mem,
         row_cpu,
         row_disk,

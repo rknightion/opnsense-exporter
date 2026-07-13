@@ -44,6 +44,7 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 | `opnsense_firewall_status` | Gauge | Firewall health status from system health check (1 = ok, 0 = errors); absent when OPNsense is unreachable |
 | `opnsense_crash_reporter_status` | Gauge | Crash reporter status (1 = ok/no crash reports, 0 = crash reports present); absent when OPNsense is unreachable |
 | `opnsense_system_status_code` | Gauge | Numeric OPNsense system status code from health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1); absent when unreachable |
+| `opnsense_system_subsystem_status_code` | Gauge | Numeric SystemStatusCode for every health-check subsystem present in the response, by `subsystem` label (e.g. `diskspace`, `rootlock`, `crashreporter`, `firewall`, plugin overrides). OPNsense omits healthy subsystems, so a series is present only while unhealthy |
 | `opnsense_exporter_scrapes_total` | Counter | Total number of scrapes performed |
 | `opnsense_exporter_endpoint_errors_total` | Counter | Total API errors by endpoint |
 

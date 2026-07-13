@@ -1,6 +1,10 @@
 ---
 title: OPNsense Exporter
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 576 metrics across 47 collectors
+<<<<<<< HEAD
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 577 metrics across 47 collectors
+=======
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 577 metrics across 47 collectors
+>>>>>>> worktree-agent-a3ce49f69eab58897
 image: assets/social-card.png
 ---
 
@@ -10,7 +14,11 @@ image: assets/social-card.png
 
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
-A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 576 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+<<<<<<< HEAD
+A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 577 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+=======
+A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 577 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+>>>>>>> worktree-agent-a3ce49f69eab58897
 
 <div class="hero-badges" markdown>
 
@@ -45,7 +53,11 @@ A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes
 
     ---
 
-    Browse all 576 Prometheus metrics with types, labels, and PromQL examples.
+<<<<<<< HEAD
+    Browse all 577 Prometheus metrics with types, labels, and PromQL examples.
+=======
+    Browse all 577 Prometheus metrics with types, labels, and PromQL examples.
+>>>>>>> worktree-agent-a3ce49f69eab58897
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 

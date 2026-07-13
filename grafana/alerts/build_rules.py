@@ -50,6 +50,18 @@ RULES = [
          A="opnsense_crash_reporter_status", op="lt", params=[1, 0], for_min=5, severity="warning",
          summary="OPNsense crash reports present ({{ $labels.opnsense_instance }})",
          description="opnsense_crash_reporter_status is 0 — one or more crash reports are present."),
+    # #218: the root filesystem "diskspace" health-check subsystem, surfaced by the generic
+    # opnsense_system_subsystem_status_code gauge (no dedicated gauge for this one). OPNsense
+    # omits a healthy subsystem from the payload entirely, so the series is ABSENT (not 0/OK)
+    # on a healthy box — noDataState is deliberately left at the default "Ok" (see nodata=
+    # default below) rather than "Alerting", unlike opnsense-exporter-down.
+    dict(name="opnsense-disk-space-low", title="OPNsenseDiskSpaceLow",
+         A='opnsense_system_subsystem_status_code{subsystem="diskspace"}', op="lt", params=[2, 0],
+         for_min=10, severity="warning",
+         summary="OPNsense root filesystem disk space low ({{ $labels.opnsense_instance }})",
+         description="opnsense_system_subsystem_status_code{subsystem=\"diskspace\"} has reported below OK "
+                     "(2 = OK, 1 = NOTICE, 0 = WARNING nearly full, -1 = ERROR critically full) for 10m. "
+                     "Absent means healthy — OPNsense omits an OK subsystem from the health-check payload."),
     # The alert-condition window MUST be short (2m) so the long for:15m actually measures how long
     # errors PERSIST. If the window equals for (both 15m), increase()>0 stays true for 15m after the
     # last error, so for:15m is satisfied by any burst spanning >1 eval interval and the alert fires

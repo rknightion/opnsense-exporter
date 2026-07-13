@@ -6,7 +6,11 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense-exporter/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense-exporter)
 
 A Prometheus exporter for [OPNsense](https://opnsense.org/) firewalls. It polls the
-OPNsense REST API and exposes 576 metrics across 47 collectors — firewall and PF
+<<<<<<< HEAD
+OPNsense REST API and exposes 577 metrics across 47 collectors — firewall and PF
+=======
+OPNsense REST API and exposes 577 metrics across 47 collectors — firewall and PF
+>>>>>>> worktree-agent-a3ce49f69eab58897
 statistics, interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq,
 ISC), Unbound DNS, certificates and ACME, hardware temperatures, SMART disk health,
 system resources, and more. Metrics are served at `/metrics` and can optionally be
@@ -95,7 +99,11 @@ The complete, generated flag and collector reference lives in the
 > **Minimum Grafana version: 13+** — the dashboard uses the v2 dynamic schema
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
+<<<<<<< HEAD
 A single dynamic dashboard covers all 576 metrics across 30 tabs, auto-hiding
+=======
+A single dynamic dashboard covers all 576 metrics across 30 tabs, auto-hiding
+>>>>>>> worktree-agent-a3ce49f69eab58897
 tabs and rows for collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or
 GitOps. Alert and recording rules ship alongside it in

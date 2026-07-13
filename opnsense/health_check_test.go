@@ -1,7 +1,10 @@
 package opnsense
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -165,5 +168,126 @@ func TestHealthCheck_ServerError(t *testing.T) {
 	_, err := client.HealthCheck()
 	if err == nil {
 		t.Fatal("expected error for server error response")
+	}
+}
+
+func TestHealthCheckSubsystem_ResolvedStatusCode(t *testing.T) {
+	tests := []struct {
+		name     string
+		entry    HealthCheckSubsystem
+		expected int
+	}{
+		{"string ERROR wins over stale numeric", HealthCheckSubsystem{Status: "ERROR", StatusCode: 2}, -1},
+		{"string OK", HealthCheckSubsystem{Status: "OK", StatusCode: 2}, 2},
+		{"string WARNING", HealthCheckSubsystem{Status: "WARNING", StatusCode: 0}, 0},
+		{"string NOTICE", HealthCheckSubsystem{Status: "NOTICE", StatusCode: 1}, 1},
+		{"empty status falls back to numeric", HealthCheckSubsystem{Status: "", StatusCode: -1}, -1},
+		{"unrecognized status falls back to numeric", HealthCheckSubsystem{Status: "bogus", StatusCode: 0}, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.entry.ResolvedStatusCode(); got != tc.expected {
+				t.Errorf("ResolvedStatusCode() = %d; want %d", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestAllSubsystems(t *testing.T) {
+	t.Run("nil when both maps empty", func(t *testing.T) {
+		h := &HealthCheckResponse{}
+		if got := h.AllSubsystems(); got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("top-level 26.1 map only", func(t *testing.T) {
+		h := &HealthCheckResponse{
+			Subsystems: subsystemMap{
+				"diskspace": {Status: "ERROR", StatusCode: -1},
+				"rootlock":  {Status: "ERROR", StatusCode: -1},
+			},
+		}
+		got := h.AllSubsystems()
+		if len(got) != 2 {
+			t.Fatalf("expected 2 subsystems, got %d", len(got))
+		}
+		if got["diskspace"].StatusCode != -1 {
+			t.Errorf("diskspace StatusCode = %d, want -1", got["diskspace"].StatusCode)
+		}
+	})
+
+	t.Run("metadata 26.1.11 map only", func(t *testing.T) {
+		h := &HealthCheckResponse{}
+		h.Metadata.Subsystems = subsystemMap{
+			"unboundblocklist": {Status: "NOTICE", StatusCode: 1},
+		}
+		got := h.AllSubsystems()
+		if len(got) != 1 {
+			t.Fatalf("expected 1 subsystem, got %d", len(got))
+		}
+		if got["unboundblocklist"].StatusCode != 1 {
+			t.Errorf("unboundblocklist StatusCode = %d, want 1", got["unboundblocklist"].StatusCode)
+		}
+	})
+
+	t.Run("top-level wins on key collision", func(t *testing.T) {
+		h := &HealthCheckResponse{
+			Subsystems: subsystemMap{
+				"firewall": {Status: "ERROR", StatusCode: -1},
+			},
+		}
+		h.Metadata.Subsystems = subsystemMap{
+			"firewall": {Status: "OK", StatusCode: 2},
+		}
+		got := h.AllSubsystems()
+		if got["firewall"].StatusCode != -1 {
+			t.Errorf("expected top-level entry to win, got StatusCode=%d", got["firewall"].StatusCode)
+		}
+	})
+}
+
+func TestHealthCheck_MultiSubsystemFixtures(t *testing.T) {
+	tests := []struct {
+		fixture string
+		want    map[string]int // subsystem -> resolved status code
+	}{
+		{
+			"v26_1_multi_subsystem.json",
+			map[string]int{"diskspace": -1, "rootlock": -1, "monitoverride": 0},
+		},
+		{
+			"v26_1_11_multi_subsystem.json",
+			map[string]int{"diskspace": -1, "unboundblocklist": 1},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.fixture, func(t *testing.T) {
+			body, err := os.ReadFile(filepath.Join("testdata", "health", tc.fixture))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			var resp HealthCheckResponse
+			if err := json.Unmarshal(body, &resp); err != nil {
+				t.Fatalf("unmarshal fixture: %v", err)
+			}
+
+			got := resp.AllSubsystems()
+			if len(got) != len(tc.want) {
+				t.Fatalf("AllSubsystems() = %d entries, want %d (%v)", len(got), len(tc.want), got)
+			}
+			for name, wantCode := range tc.want {
+				entry, ok := got[name]
+				if !ok {
+					t.Errorf("missing subsystem %q", name)
+					continue
+				}
+				if code := entry.ResolvedStatusCode(); code != wantCode {
+					t.Errorf("subsystem %q ResolvedStatusCode() = %d, want %d", name, code, wantCode)
+				}
+			}
+		})
 	}
 }

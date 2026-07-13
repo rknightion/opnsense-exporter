@@ -395,6 +395,7 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 	c.firewallHealthStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_firewall_status_test", Help: "h"})
 	c.crashReporterStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_crash_reporter_status_test", Help: "h"})
 	c.systemStatusCode = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_system_status_code_test", Help: "h"})
+	c.subsystemStatusCode = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "opnsense_system_subsystem_status_code_test", Help: "h"}, []string{"subsystem"})
 	c.scrapes = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{Name: "opnsense_exporter_scrapes_total_test", Help: "h"},
 		[]string{"opnsense_instance"},
@@ -851,6 +852,9 @@ func newHealthTestCollector(client *opnsense.Client) *Collector {
 		firewallHealthStatus: g("firewall_status"),
 		crashReporterStatus:  g("crash_reporter_status"),
 		systemStatusCode:     g("system_status_code"),
+		subsystemStatusCode: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace, Name: "system_subsystem_status_code",
+		}, []string{"subsystem"}),
 	}
 }
 
@@ -875,6 +879,22 @@ func gatherHealthGauges(ch chan prometheus.Metric) map[string]float64 {
 				out[name] = getMetricValue(m)
 			}
 		}
+	}
+	return out
+}
+
+// gatherSubsystemGauges drains the channel into a subsystem-label->value map for the
+// opnsense_system_subsystem_status_code gauge vec, ignoring every other metric on the
+// channel (the plain health gauges use a different fqName).
+func gatherSubsystemGauges(ch chan prometheus.Metric) map[string]float64 {
+	out := map[string]float64{}
+	for m := range ch {
+		desc := m.Desc().String()
+		if !strings.Contains(desc, `fqName: "opnsense_system_subsystem_status_code"`) {
+			continue
+		}
+		labels := getMetricLabels(m)
+		out[labels["subsystem"]] = getMetricValue(m)
 	}
 	return out
 }
@@ -951,6 +971,107 @@ func TestCollectHealthMetrics_Unreachable(t *testing.T) {
 		if _, ok := got[absent]; ok {
 			t.Errorf("%s should be absent when unreachable, got %v", absent, got[absent])
 		}
+	}
+}
+
+// TestCollectHealthMetrics_Subsystems verifies opnsense_system_subsystem_status_code is
+// emitted for every subsystem present in the response — including ones the exporter has
+// no dedicated gauge for (disk space, root lock, plugin overrides) — carrying the
+// resolved SystemStatusCode, across both the OPNsense 26.1 top-level "subsystems" map and
+// the 26.1.11 metadata-only shape (#218).
+func TestCollectHealthMetrics_Subsystems(t *testing.T) {
+	cases := []struct {
+		fixture string
+		want    map[string]float64
+	}{
+		{"v26_1_ok.json", map[string]float64{}},
+		{"v26_1_ok_empty_map.json", map[string]float64{}},
+		{"v26_1_crash_error.json", map[string]float64{"crashreporter": -1}},
+		{"v26_1_multi_subsystem.json", map[string]float64{
+			"diskspace":     -1,
+			"rootlock":      -1,
+			"monitoverride": 0,
+		}},
+		{"v26_1_11_multi_subsystem.json", map[string]float64{
+			"diskspace":        -1,
+			"unboundblocklist": 1,
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.fixture, func(t *testing.T) {
+			body, err := os.ReadFile(filepath.Join("..", "..", "opnsense", "testdata", "health", tc.fixture))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			client := newCollectorTestClient(t, healthServer(t, http.StatusOK, body))
+			c := newHealthTestCollector(client)
+			ch := make(chan prometheus.Metric, 32)
+			if err := c.collectHealthMetrics(client, ch); err != nil {
+				t.Fatalf("collectHealthMetrics returned error: %v", err)
+			}
+			close(ch)
+			got := gatherSubsystemGauges(ch)
+
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d subsystem series, want %d: %v", len(got), len(tc.want), got)
+			}
+			for name, wantVal := range tc.want {
+				gotVal, ok := got[name]
+				if !ok {
+					t.Errorf("missing subsystem series %q", name)
+					continue
+				}
+				if gotVal != wantVal {
+					t.Errorf("subsystem %q = %v, want %v", name, gotVal, wantVal)
+				}
+			}
+		})
+	}
+}
+
+// TestCollectHealthMetrics_SubsystemsResetAcrossScrapes verifies a subsystem that
+// recovers between scrapes stops being reported: the gauge vec must be Reset() each
+// scrape, not accumulate stale label sets from a previous unhealthy state (#218).
+func TestCollectHealthMetrics_SubsystemsResetAcrossScrapes(t *testing.T) {
+	unhealthy, err := os.ReadFile(filepath.Join("..", "..", "opnsense", "testdata", "health", "v26_1_multi_subsystem.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	healthy, err := os.ReadFile(filepath.Join("..", "..", "opnsense", "testdata", "health", "v26_1_ok_empty_map.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	bodies := [][]byte{unhealthy, healthy}
+	var call int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bodies[call])
+		call++
+	}))
+	t.Cleanup(server.Close)
+	client := newCollectorTestClient(t, server)
+	c := newHealthTestCollector(client)
+
+	ch1 := make(chan prometheus.Metric, 32)
+	if err := c.collectHealthMetrics(client, ch1); err != nil {
+		t.Fatalf("collectHealthMetrics (scrape 1) returned error: %v", err)
+	}
+	close(ch1)
+	first := gatherSubsystemGauges(ch1)
+	if len(first) != 3 {
+		t.Fatalf("scrape 1: got %d subsystem series, want 3: %v", len(first), first)
+	}
+
+	ch2 := make(chan prometheus.Metric, 32)
+	if err := c.collectHealthMetrics(client, ch2); err != nil {
+		t.Fatalf("collectHealthMetrics (scrape 2) returned error: %v", err)
+	}
+	close(ch2)
+	second := gatherSubsystemGauges(ch2)
+	if len(second) != 0 {
+		t.Errorf("scrape 2: expected 0 subsystem series (all recovered), got %v", second)
 	}
 }
 

@@ -202,6 +202,41 @@ func (h *HealthCheckResponse) subsystemHealthy(name, legacyStatus string, metaSt
 	return true
 }
 
+// ResolvedStatusCode resolves this subsystem entry's numeric SystemStatusCode (2=OK,
+// 1=NOTICE, 0=WARNING, -1=ERROR), preferring the string status enum (authoritative — same
+// precedence as isHealthy) and falling back to the raw StatusCode field when the string is
+// absent or unrecognized.
+func (s HealthCheckSubsystem) ResolvedStatusCode() int {
+	if code, ok := systemStatusStringToCode(s.Status); ok {
+		return code
+	}
+	return s.StatusCode
+}
+
+// AllSubsystems returns the union of the top-level "subsystems" map (OPNsense 26.1) and
+// the metadata.subsystems map (OPNsense 26.1.11+), keyed by subsystem short name — e.g.
+// "diskspace", "rootlock", "crashreporter", "firewall", or any plugin-contributed key.
+// OPNsense's SystemStatus::collectStatus() omits every subsystem currently reporting OK,
+// so a present entry is always worth reporting; an absent key means that subsystem is
+// healthy (same convention as CrashReporterIsHealthy/FirewallIsHealthy). When the same key
+// exists in both maps (never observed on a real box — 26.1 and 26.1.11 populate exactly
+// one of the two) the top-level entry wins, matching subsystemHealthy's precedence.
+// Returns nil when no subsystem is reported (a fully healthy box, or a pre-26.1 firewall
+// that has neither map).
+func (h *HealthCheckResponse) AllSubsystems() map[string]HealthCheckSubsystem {
+	if len(h.Subsystems) == 0 && len(h.Metadata.Subsystems) == 0 {
+		return nil
+	}
+	merged := make(map[string]HealthCheckSubsystem, len(h.Subsystems)+len(h.Metadata.Subsystems))
+	for k, v := range h.Metadata.Subsystems {
+		merged[k] = v
+	}
+	for k, v := range h.Subsystems {
+		merged[k] = v
+	}
+	return merged
+}
+
 // CrashReporterIsHealthy reports whether the crash reporter subsystem is healthy
 // (no crash reports present), tolerating the 26.1 subsystems map and the legacy /
 // 25.1 metadata shapes.

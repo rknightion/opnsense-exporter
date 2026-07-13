@@ -154,6 +154,7 @@ type Collector struct {
 	firewallHealthStatus prometheus.Gauge
 	crashReporterStatus  prometheus.Gauge
 	systemStatusCode     prometheus.Gauge
+	subsystemStatusCode  *prometheus.GaugeVec
 	scrapes              prometheus.CounterVec
 	scrapeSkips          prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
@@ -785,6 +786,15 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		},
 	})
 
+	c.subsystemStatusCode = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Name:      "system_subsystem_status_code",
+		Help:      "Numeric OPNsense SystemStatusCode (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) for every health-check subsystem present in the response, by subsystem short name (e.g. diskspace, rootlock, crashreporter, firewall, plus any plugin-contributed key). OPNsense omits healthy subsystems from the report, so a subsystem's series is present only while it is unhealthy; absence should be read as healthy, the same convention as opnsense_firewall_status and opnsense_crash_reporter_status.",
+		ConstLabels: prometheus.Labels{
+			instanceLabelName: instanceName,
+		},
+	}, []string{"subsystem"})
+
 	c.scrapes = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_scrapes_total",
@@ -933,6 +943,13 @@ func (c *Collector) collectExporterInfo(ch chan<- prometheus.Metric) {
 // page distinct from a benign degraded-subsystem notice. On the unreachable path the
 // per-subsystem and status-code gauges are left absent rather than emitting a
 // misleading 0 (0 is the WARNING status code, not "unknown").
+//
+// opnsense_system_subsystem_status_code (#218) generalizes this to EVERY subsystem the
+// health-check payload reports — not just firewall/crashreporter — including ones the
+// exporter has no dedicated gauge for (disk space, root lock, and the various plugin
+// "override" statuses). It is purely additive: the existing firewall/crashreporter
+// gauges stay for backwards compatibility. Zero extra API cost, since the payload is
+// already fetched.
 func (c *Collector) collectHealthMetrics(client *opnsense.Client, ch chan<- prometheus.Metric) error {
 	systemStatus, err := client.HealthCheck()
 	if err != nil {
@@ -948,10 +965,19 @@ func (c *Collector) collectHealthMetrics(client *opnsense.Client, ch chan<- prom
 	c.crashReporterStatus.Set(boolToGauge(systemStatus.CrashReporterIsHealthy()))
 	c.firewallHealthStatus.Set(boolToGauge(firewallIsHealthy(systemStatus)))
 
+	// Reset before repopulating: subsystems appear/disappear scrape to scrape (OPNsense
+	// omits healthy ones), so a stale label set from a previous unhealthy state must not
+	// linger once the subsystem recovers.
+	c.subsystemStatusCode.Reset()
+	for name, entry := range systemStatus.AllSubsystems() {
+		c.subsystemStatusCode.WithLabelValues(name).Set(float64(entry.ResolvedStatusCode()))
+	}
+
 	c.isUp.Collect(ch)
 	c.firewallHealthStatus.Collect(ch)
 	c.crashReporterStatus.Collect(ch)
 	c.systemStatusCode.Collect(ch)
+	c.subsystemStatusCode.Collect(ch)
 	return nil
 }
 
