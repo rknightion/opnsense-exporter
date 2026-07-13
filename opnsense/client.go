@@ -126,7 +126,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"systemMbuf":                 "api/diagnostics/system/systemMbuf",
 		"ntpStatus":                  "api/ntpd/service/status",
 		"certificates":               "api/trust/cert/search",
-		"unboundBlockList":           "api/unbound/overview/isBlockListEnabled",
+		"unboundBlocklistPolicies":   "api/unbound/overview/get_policies",
 		"carpStatus":                 "api/diagnostics/interface/get_vip_status",
 		"systemActivity":             "api/diagnostics/activity/get_activity",
 		"keaLeases4":                 "api/kea/leases4/search",

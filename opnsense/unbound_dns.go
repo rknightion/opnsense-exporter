@@ -1,5 +1,10 @@
 package opnsense
 
+import (
+	"bytes"
+	"encoding/json"
+)
+
 type unboundDNSStatusResponse struct {
 	Status string `json:"status"`
 	Data   struct {
@@ -486,18 +491,52 @@ func (c *Client) FetchUnboundInfra() (UnboundInfra, *APICallError) {
 	return data, nil
 }
 
-type unboundBlockListResponse struct {
-	Enabled bool `json:"enabled"`
+// unboundPolicyEntry is one dnsbl policy from the get_policies response,
+// keyed by policy UUID. Only the enabled flag is needed here; the model's
+// BooleanField serializes it as the string "1"/"0" (via getNodeContent()'s
+// getValue(), not a native JSON boolean), so this uses flexBool rather than
+// a plain bool.
+type unboundPolicyEntry struct {
+	Enabled flexBool `json:"enabled"`
 }
 
-// FetchUnboundBlockListStatus checks if the Unbound DNS blocklist is enabled
-func (c *Client) FetchUnboundBlockListStatus() (bool, *APICallError) {
-	var resp unboundBlockListResponse
+// unboundPoliciesResponse is the api/unbound/overview/get_policies payload: a
+// PHP associative array keyed by policy UUID. Like subsystemMap
+// (health_check.go), an empty PHP array serializes as JSON "[]" rather than
+// "{}" — verified against a live OPNsense 26.7-devel box with no dnsbl
+// policies configured — so this type tolerates that shape as "no policies".
+type unboundPoliciesResponse map[string]unboundPolicyEntry
 
-	url, ok := c.endpoints["unboundBlockList"]
+// UnmarshalJSON implements json.Unmarshaler.
+func (m *unboundPoliciesResponse) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] == '[' || string(trimmed) == "null" {
+		*m = nil
+		return nil
+	}
+	var raw map[string]unboundPolicyEntry
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return err
+	}
+	*m = raw
+	return nil
+}
+
+// FetchUnboundBlockListStatus reports whether any Unbound DNS blocklist
+// (dnsbl) policy is enabled. It calls api/unbound/overview/get_policies —
+// the replacement for the deprecated isBlockListEnabled endpoint, which OPNsense
+// core removes in 26.7 (#210) — and derives the same "any policy enabled"
+// result the old endpoint computed server-side
+// (array_filter($nodes, fn($v) => $v['enabled'])). get_policies is a core
+// (non-plugin-gated) endpoint present across the whole 26.1/26.7 support
+// window, so no legacy fallback is needed.
+func (c *Client) FetchUnboundBlockListStatus() (bool, *APICallError) {
+	var resp unboundPoliciesResponse
+
+	url, ok := c.endpoints["unboundBlocklistPolicies"]
 	if !ok {
 		return false, &APICallError{
-			Endpoint:   "unboundBlockList",
+			Endpoint:   "unboundBlocklistPolicies",
 			Message:    "endpoint not found in client endpoints",
 			StatusCode: 0,
 		}
@@ -507,5 +546,11 @@ func (c *Client) FetchUnboundBlockListStatus() (bool, *APICallError) {
 		return false, err
 	}
 
-	return resp.Enabled, nil
+	for _, policy := range resp {
+		if policy.Enabled.Bool() {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

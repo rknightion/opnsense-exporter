@@ -14,7 +14,7 @@ var (
 
 	cacheTTL = kingpin.Flag(
 		"exporter.cache-ttl",
-		"How long to cache responses from slow-moving API endpoints (system/CPU identity, certificate inventory) and to remember that a plugin-gated endpoint is absent (its 404). This data changes only on an admin action — a config edit, a certificate renewal, a plugin install — so re-fetching it every scrape only costs firewall CPU. The cost is staleness: a newly installed plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch everything on every scrape. Live data (counters, rates, service run-state) is never cached regardless of this setting.",
+		"How long to cache responses from slow-moving API endpoints (system/CPU identity, certificate inventory, Unbound DNS blocklist policy config) and to remember that a plugin-gated endpoint is absent (its 404). This data changes only on an admin action — a config edit, a certificate renewal, a plugin install — so re-fetching it every scrape only costs firewall CPU. The cost is staleness: a newly installed plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch everything on every scrape. Live data (counters, rates, service run-state) is never cached regardless of this setting.",
 	).Envar("OPNSENSE_EXPORTER_CACHE_TTL").Default("1h").Duration()
 )
 
@@ -50,6 +50,10 @@ func CacheTTLs() EndpointCacheTTLs {
 		ttls["certificates"] = *cacheTTL
 		ttls["caCertificates"] = *cacheTTL
 		ttls["acmeCertificates"] = *cacheTTL
+
+		// Unbound DNS blocklist (dnsbl) policy config: whether policies are
+		// enabled changes only on an admin config edit, not on scrape cadence.
+		ttls["unboundBlocklistPolicies"] = *cacheTTL
 	}
 
 	return ttls

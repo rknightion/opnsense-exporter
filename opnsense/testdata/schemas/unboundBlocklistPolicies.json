@@ -1,0 +1,7 @@
+{
+  "endpoint": "unboundBlocklistPolicies",
+  "method": "GET",
+  "path": "api/unbound/overview/get_policies",
+  "topLevelKind": "any",
+  "fields": []
+}

@@ -650,14 +650,38 @@ func TestFetchUnboundOverview_StatusFailed(t *testing.T) {
 	}
 }
 
+// TestFetchUnboundBlockListStatus_Success covers the get_policies migration
+// (#210): isBlockListEnabled is deprecated and removed in OPNsense 26.7, so
+// blocklist_enabled is now derived from api/unbound/overview/get_policies —
+// a PHP associative array keyed by policy UUID, each carrying a string
+// "enabled" flag ("1"/"0", per the model's BooleanField). Verified against a
+// live 26.7-devel box (empty policy set serializes as "[]", never "{}").
 func TestFetchUnboundBlockListStatus_Success(t *testing.T) {
 	tests := []struct {
 		name     string
 		json     string
 		expected bool
 	}{
-		{"Enabled", `{"enabled": true}`, true},
-		{"Disabled", `{"enabled": false}`, false},
+		{"NoPolicies_EmptyArray", `[]`, false},
+		{"NoPolicies_EmptyObject", `{}`, false},
+		{"NoPolicies_Null", `null`, false},
+		{
+			"AllDisabled",
+			`{"1c9c5d5e-0000-0000-0000-000000000001":{"enabled":"0","description":"a"},` +
+				`"1c9c5d5e-0000-0000-0000-000000000002":{"enabled":"0","description":"b"}}`,
+			false,
+		},
+		{
+			"OneEnabledOneDisabled",
+			`{"1c9c5d5e-0000-0000-0000-000000000001":{"enabled":"1","description":"a"},` +
+				`"1c9c5d5e-0000-0000-0000-000000000002":{"enabled":"0","description":"b"}}`,
+			true,
+		},
+		{
+			"AllEnabled",
+			`{"1c9c5d5e-0000-0000-0000-000000000001":{"enabled":"1","description":"a"}}`,
+			true,
+		},
 	}
 
 	for _, tc := range tests {

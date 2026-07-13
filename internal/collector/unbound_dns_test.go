@@ -144,8 +144,8 @@ func unboundTestMux(t *testing.T) *http.ServeMux {
 		}`))
 	})
 
-	mux.HandleFunc("/api/unbound/overview/isBlockListEnabled", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"enabled": true}`))
+	mux.HandleFunc("/api/unbound/overview/get_policies", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"1c9c5d5e-0000-0000-0000-000000000001":{"enabled":"1","description":"test policy"}}`))
 	})
 
 	mux.HandleFunc("/api/unbound/service/status", func(w http.ResponseWriter, r *http.Request) {
@@ -271,8 +271,8 @@ func TestUnboundDNSCollector_Update_ExtendedStatsAbsent(t *testing.T) {
 			}
 		}`))
 	})
-	mux.HandleFunc("/api/unbound/overview/isBlockListEnabled", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"enabled": true}`))
+	mux.HandleFunc("/api/unbound/overview/get_policies", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"1c9c5d5e-0000-0000-0000-000000000001":{"enabled":"1","description":"test policy"}}`))
 	})
 	mux.HandleFunc("/api/unbound/service/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"status": "running"}`))
