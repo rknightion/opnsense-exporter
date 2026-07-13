@@ -200,7 +200,7 @@ jobs:
             --jq '.[] | select(.title == "OPNsense live-box canary drift") | .number' \
             | head -n1)
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Live-box canary clean on the latest scheduled run. Closing."
+            gh issue comment "$existing" --body "Live-box canary clean on the latest run. Closing."
             gh issue close "$existing"
           fi
 
