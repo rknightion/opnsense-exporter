@@ -43,6 +43,10 @@ var (
 		"exporter.enable-unbound-infra",
 		"Enable per-upstream infra cache RTT metrics from Unbound (cardinality scales with the resolver's infra cache; one series pair per upstream ip/host)",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA").Default("false").Bool()
+	unboundQStatsEnabled = kingpin.Flag(
+		"exporter.enable-unbound-qstats",
+		"Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scrape) — skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scrape once it is on.",
+	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS").Default("false").Bool()
 	openVPNCollectorDisabled = kingpin.Flag(
 		"exporter.disable-openvpn",
 		"Disable the scraping of OpenVPN service",
@@ -254,6 +258,7 @@ type CollectorsDisableSwitch struct {
 	IPsec                  bool
 	Unbound                bool
 	UnboundInfra           bool
+	UnboundQStats          bool
 	OpenVPN                bool
 	OpenVPNDetails         bool
 	Firewall               bool
@@ -323,6 +328,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		IPsec:                  !*ipsecCollectorDisabled,
 		Unbound:                !*unboundCollectorDisabled,
 		UnboundInfra:           *unboundInfraEnabled,
+		UnboundQStats:          *unboundQStatsEnabled,
 		OpenVPN:                !*openVPNCollectorDisabled,
 		OpenVPNDetails:         *openVPNDetailsEnabled,
 		Firewall:               !*firewallCollectorDisabled,
@@ -401,6 +407,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-ipsec", Subsystem: "ipsec"},
 	{Flag: "exporter.disable-unbound", Subsystem: "unbound_dns"},
 	{Flag: "exporter.enable-unbound-infra", Subsystem: "unbound_dns", Detail: true},
+	{Flag: "exporter.enable-unbound-qstats", Subsystem: "unbound_dns", Detail: true},
 	{Flag: "exporter.disable-openvpn", Subsystem: "openvpn"},
 	{Flag: "exporter.enable-openvpn-details", Subsystem: "openvpn", Detail: true},
 	{Flag: "exporter.disable-firewall", Subsystem: "firewall"},

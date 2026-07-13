@@ -51,6 +51,6 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Tailscale | tailscale | 10 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
 | Traffic Shaper | trafficshaper | 14 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
-| Unbound DNS | unbound_dns | 32 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
+| Unbound DNS | unbound_dns | 40 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |
 

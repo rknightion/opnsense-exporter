@@ -54,6 +54,15 @@ func CacheTTLs() EndpointCacheTTLs {
 		// Unbound DNS blocklist (dnsbl) policy config: whether policies are
 		// enabled changes only on an admin config edit, not on scrape cadence.
 		ttls["unboundBlocklistPolicies"] = *cacheTTL
+
+		// Unbound local-zone/local-data/insecure-domain diagnostics (#209): wholly
+		// slow-moving resolver configuration (unbound-control listlocalzones/
+		// listlocaldata/listinsecure), changing only on an admin config edit —
+		// unlike the DNSBL query-stats totals, which carry live counters and must
+		// never be cached.
+		ttls["unboundLocalZones"] = *cacheTTL
+		ttls["unboundLocalData"] = *cacheTTL
+		ttls["unboundInsecureDomains"] = *cacheTTL
 	}
 
 	return ttls

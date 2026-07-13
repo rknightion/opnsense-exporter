@@ -777,3 +777,252 @@ func TestFetchUnboundInfra_ServerError(t *testing.T) {
 		t.Fatal("expected error for server error response")
 	}
 }
+
+// TestFetchUnboundQueryStats_StatsDisabled verifies the #209 gate: when
+// is_enabled reports off, FetchUnboundQueryStats must NOT call the expensive
+// totals endpoint at all — captured ground truth
+// (overview_totals_1_stats_disabled.json) shows totals does not self-gate and
+// keeps returning its full historical payload even with stats off, so the
+// caller has to skip the call itself to actually save the cost.
+func TestFetchUnboundQueryStats_StatsDisabled(t *testing.T) {
+	totalsCalled := false
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"0"}`))
+	})
+	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+		totalsCalled = true
+		w.Write([]byte(`{"total":1,"blocklist_size":1,"passed":1,"resolved":{"total":1,"pcnt":"1"},"blocked":{"total":1,"pcnt":"1"},"local":{"total":1,"pcnt":"1"},"start_time":1,"top":{},"top_blocked":{}}`))
+	})
+
+	data, err := client.FetchUnboundQueryStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.Enabled {
+		t.Error("expected Enabled=false")
+	}
+	if data.TotalsPresent {
+		t.Error("expected TotalsPresent=false when stats are disabled")
+	}
+	if totalsCalled {
+		t.Error("expected the expensive totals endpoint NOT to be called when stats are disabled")
+	}
+	if data.QueriesTotal7d != 0 || data.BlocklistSize != 0 {
+		t.Errorf("expected all totals fields to stay zero, got %+v", data)
+	}
+}
+
+// TestFetchUnboundQueryStats_Success uses the real captured payload
+// (overview_totals_1.json, captured against a live OPNsense 26.7-devel box
+// with a real DNSBL policy + real blocked/passed drill queries) to validate
+// field mapping.
+func TestFetchUnboundQueryStats_Success(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{"total":16236,"blocklist_size":528587,"passed":10396,"resolved":{"total":3197,"pcnt":"19.69"},"blocked":{"total":13,"pcnt":"0.08"},"local":{"total":145,"pcnt":"0.89"},"start_time":1783872391,"top":{"enc0?network.":{"total":2780,"pcnt":"26.74"}},"top_blocked":{"ade.googlesyndication.com.":{"total":4,"pcnt":"30.77","blocklist":"AdGuard List","latest_policy_uuid":"6b882f48-abe5-4a80-9670-5d7a6b81c66f","category":"General Blocklists"}}}`))
+	})
+
+	data, err := client.FetchUnboundQueryStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Enabled || !data.TotalsPresent {
+		t.Fatalf("expected Enabled and TotalsPresent, got %+v", data)
+	}
+	if data.QueriesTotal7d != 16236 {
+		t.Errorf("expected QueriesTotal7d=16236, got %d", data.QueriesTotal7d)
+	}
+	if data.BlocklistSize != 528587 {
+		t.Errorf("expected BlocklistSize=528587, got %d", data.BlocklistSize)
+	}
+	if data.PassedTotal7d != 10396 {
+		t.Errorf("expected PassedTotal7d=10396, got %d", data.PassedTotal7d)
+	}
+	if data.ResolvedTotal7d != 3197 {
+		t.Errorf("expected ResolvedTotal7d=3197, got %d", data.ResolvedTotal7d)
+	}
+	if data.BlockedTotal7d != 13 {
+		t.Errorf("expected BlockedTotal7d=13, got %d", data.BlockedTotal7d)
+	}
+	if data.LocalTotal7d != 145 {
+		t.Errorf("expected LocalTotal7d=145, got %d", data.LocalTotal7d)
+	}
+	if data.StartTimeSeconds != 1783872391 {
+		t.Errorf("expected StartTimeSeconds=1783872391, got %d", data.StartTimeSeconds)
+	}
+}
+
+// TestFetchUnboundQueryStats_EmptyDB is a synthesized zero-value fixture (the
+// dev box could not be captured in a true zero-query state — see #209
+// captures README) exercising the empty/zero-data shape the issue calls out.
+func TestFetchUnboundQueryStats_EmptyDB(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":0,"blocklist_size":0,"passed":0,"resolved":{"total":0,"pcnt":"0.00"},"blocked":{"total":0,"pcnt":"0.00"},"local":{"total":0,"pcnt":"0.00"},"start_time":0,"top":{},"top_blocked":{}}`))
+	})
+
+	data, err := client.FetchUnboundQueryStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Enabled || !data.TotalsPresent {
+		t.Fatalf("expected Enabled and TotalsPresent even with zero data, got %+v", data)
+	}
+	if data.QueriesTotal7d != 0 || data.BlocklistSize != 0 || data.PassedTotal7d != 0 ||
+		data.ResolvedTotal7d != 0 || data.BlockedTotal7d != 0 || data.LocalTotal7d != 0 ||
+		data.StartTimeSeconds != 0 {
+		t.Errorf("expected all fields zero, got %+v", data)
+	}
+}
+
+func TestFetchUnboundQueryStats_IsEnabledError(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+
+	_, err := client.FetchUnboundQueryStats()
+	if err == nil {
+		t.Fatal("expected error when is_enabled call fails")
+	}
+}
+
+func TestFetchUnboundQueryStats_TotalsError(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"enabled":"1"}`))
+	})
+	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+
+	_, err := client.FetchUnboundQueryStats()
+	if err == nil {
+		t.Fatal("expected error when totals call fails")
+	}
+}
+
+// TestFetchUnboundLocalData_Success uses the real captured payloads for the
+// three #209 rider diagnostics endpoints.
+func TestFetchUnboundLocalData_Success(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Write([]byte(`{"status":"ok","data":[
+			{"zone":"home.arpa.","type":"static"},
+			{"zone":"10.in-addr.arpa.","type":"static"},
+			{"zone":"example.lan","type":"transparent"},
+			{"zone":"blocked.example","type":"redirect"}
+		]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocaldata", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[
+			{"name":"home.arpa.","ttl":"10800","type":"IN","rrtype":"NS","value":"localhost."},
+			{"name":"home.arpa.","ttl":"10800","type":"IN","rrtype":"SOA","value":"localhost."},
+			{"name":"router.lan.","ttl":"10800","type":"IN","rrtype":"A","value":"192.0.2.1"}
+		]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":["insecure.example.","legacy.example."]}`))
+	})
+
+	data, err := client.FetchUnboundLocalData()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ZonesByType["static"] != 2 {
+		t.Errorf("expected 2 static zones, got %d", data.ZonesByType["static"])
+	}
+	if data.ZonesByType["transparent"] != 1 {
+		t.Errorf("expected 1 transparent zone, got %d", data.ZonesByType["transparent"])
+	}
+	if data.ZonesByType["redirect"] != 1 {
+		t.Errorf("expected 1 redirect zone, got %d", data.ZonesByType["redirect"])
+	}
+	if data.LocalDataRecords != 3 {
+		t.Errorf("expected 3 local data records, got %d", data.LocalDataRecords)
+	}
+	if data.InsecureDomains != 2 {
+		t.Errorf("expected 2 insecure domains, got %d", data.InsecureDomains)
+	}
+}
+
+// TestFetchUnboundLocalData_DegenerateInsecureShape reproduces the exact
+// captured shape (diagnostics_listinsecure.json) from a box with NO insecure
+// domains configured: {"status":"ok","data":[""]} — one empty-string entry,
+// not a truly empty array. Must count as zero, not one.
+func TestFetchUnboundLocalData_DegenerateInsecureShape(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocaldata", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[""]}`))
+	})
+
+	data, err := client.FetchUnboundLocalData()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.InsecureDomains != 0 {
+		t.Errorf("expected the degenerate single-empty-string shape to count as 0, got %d", data.InsecureDomains)
+	}
+	if len(data.ZonesByType) != 0 {
+		t.Errorf("expected no zones, got %+v", data.ZonesByType)
+	}
+	if data.LocalDataRecords != 0 {
+		t.Errorf("expected 0 local data records, got %d", data.LocalDataRecords)
+	}
+}
+
+func TestFetchUnboundLocalData_PartialFailure(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocaldata", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[""]}`))
+	})
+
+	_, err := client.FetchUnboundLocalData()
+	if err == nil {
+		t.Fatal("expected error when one sub-fetch fails")
+	}
+}

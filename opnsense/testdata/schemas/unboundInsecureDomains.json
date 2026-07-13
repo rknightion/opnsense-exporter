@@ -1,0 +1,24 @@
+{
+  "endpoint": "unboundInsecureDomains",
+  "method": "GET",
+  "path": "api/unbound/diagnostics/listinsecure",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "data",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "data",
+      "kind": "array"
+    },
+    {
+      "path": "data[]",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

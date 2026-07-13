@@ -554,3 +554,267 @@ func (c *Client) FetchUnboundBlockListStatus() (bool, *APICallError) {
 
 	return false, nil
 }
+
+// unboundIsEnabledResponse is the api/unbound/overview/is_enabled payload:
+// whether Unbound's query-stats logging (general.stats) is on. Serialized as
+// the string "1"/"0" (verified against a live OPNsense 26.7-devel box), so
+// this uses flexBool rather than a plain bool.
+type unboundIsEnabledResponse struct {
+	Enabled flexBool `json:"enabled"`
+}
+
+// unboundOverviewTotalsResponse is the api/unbound/overview/totals/{max}
+// payload — a flat object, not the {"status":"ok","data":...} envelope used
+// by the diagnostics/* endpoints. total, blocklist_size and start_time arrive
+// as JSON numbers on the validated box; flexInt tolerates a string
+// representation too, matching the tolerant-reader convention used
+// everywhere else numeric fields cross OPNsense API generations.
+//
+// top/top_blocked are intentionally NOT modelled: they are per-domain query
+// counts keyed by domain name, which is unbounded cardinality (#209) — never
+// turn them into metrics or struct fields, and see
+// testdata/schemas/exemptions.json for the matching knownExtraTopKeys entry.
+type unboundOverviewTotalsResponse struct {
+	Total         flexInt `json:"total"`
+	BlocklistSize flexInt `json:"blocklist_size"`
+	Passed        flexInt `json:"passed"`
+	Resolved      struct {
+		Total flexInt `json:"total"`
+	} `json:"resolved"`
+	Blocked struct {
+		Total flexInt `json:"total"`
+	} `json:"blocked"`
+	Local struct {
+		Total flexInt `json:"total"`
+	} `json:"local"`
+	StartTime flexInt `json:"start_time"`
+}
+
+// UnboundQueryStats holds the DNSBL query-stats totals reported by Unbound's
+// overview/totals backend, plus the loaded blocklist size. This is a
+// DIFFERENT data source from unbound-control's stats (UnboundDNSOverview
+// above): dnsbl blocking happens in OPNsense's own python dnsbl module, so
+// these are the only numbers that show blocked-vs-passed-vs-local-vs-resolved
+// outcomes and the loaded blocklist size.
+//
+// CRITICAL — every count here is a GAUGE, never a counter. logger.py
+// truncates the underlying query table to a rolling 7-day window (hourly
+// DELETE) and a `qstats reset` truncates it entirely, so these totals can and
+// do decrease — a counter would read that as a phantom reset (#227).
+//
+// The backend is expensive: configd spawns python+pandas+DuckDB per call
+// (~1s), so callers should only fetch this when explicitly opted in
+// (--exporter.enable-unbound-qstats) and should treat Enabled=false as a
+// signal to skip the call entirely rather than pay for it — see
+// FetchUnboundQueryStats.
+type UnboundQueryStats struct {
+	// Enabled reports whether Unbound's query-stats logging (general.stats) is
+	// on, from the cheap api/unbound/overview/is_enabled config read.
+	Enabled bool
+
+	// TotalsPresent is true only when the expensive totals call was actually
+	// made and succeeded (i.e. Enabled was true). When false, every field below
+	// is zero and must NOT be published as a metric — the #90 lesson: a zero
+	// derived from a call we chose not to make reads as real zero-traffic and
+	// corrupts rate()/analysis downstream, even though these series are gauges.
+	TotalsPresent bool
+
+	// QueriesTotal7d is the overall query count over the rolling window (the
+	// payload's top-level "total").
+	QueriesTotal7d int64
+
+	// BlocklistSize is the number of entries in the currently loaded DNSBL
+	// blocklist (0 when no blocklist is loaded).
+	BlocklistSize int64
+
+	// Outcome breakdown over the rolling window.
+	PassedTotal7d   int64
+	ResolvedTotal7d int64
+	BlockedTotal7d  int64
+	LocalTotal7d    int64
+
+	// StartTimeSeconds is the unix timestamp the rolling-window data starts
+	// from. A jump forward (other than the expected daily roll-off) signals the
+	// underlying qstats database was reset.
+	StartTimeSeconds int64
+}
+
+// FetchUnboundQueryStats reports Unbound DNSBL query-stats totals and the
+// loaded blocklist size (#209). It first makes the cheap is_enabled config
+// read; only when query-stats logging is on does it pay for the expensive
+// totals call (configd + python + pandas + DuckDB, ~1s). This mirrors what
+// OPNsense's own UI does and avoids spending the expensive call merely to
+// discover stats are off — verified against a live OPNsense 26.7-devel box:
+// the totals endpoint itself does NOT self-gate on is_enabled (it still
+// returns the full historical rolling-window payload from existing DuckDB
+// rows when general.stats is off), so the caller must check is_enabled first.
+func (c *Client) FetchUnboundQueryStats() (UnboundQueryStats, *APICallError) {
+	var data UnboundQueryStats
+
+	enabledURL, ok := c.endpoints["unboundQueryStatsEnabled"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "unboundQueryStatsEnabled",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+	var enabledResp unboundIsEnabledResponse
+	if err := c.do("GET", enabledURL, nil, &enabledResp); err != nil {
+		return data, err
+	}
+	data.Enabled = enabledResp.Enabled.Bool()
+	if !data.Enabled {
+		return data, nil
+	}
+
+	totalsURL, ok := c.endpoints["unboundQueryStatsTotals"]
+	if !ok {
+		return data, &APICallError{
+			Endpoint:   "unboundQueryStatsTotals",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+	var totals unboundOverviewTotalsResponse
+	if err := c.do("GET", totalsURL, nil, &totals); err != nil {
+		return data, err
+	}
+
+	data.TotalsPresent = true
+	data.QueriesTotal7d = int64(totals.Total.Int())
+	data.BlocklistSize = int64(totals.BlocklistSize.Int())
+	data.PassedTotal7d = int64(totals.Passed.Int())
+	data.ResolvedTotal7d = int64(totals.Resolved.Total.Int())
+	data.BlockedTotal7d = int64(totals.Blocked.Total.Int())
+	data.LocalTotal7d = int64(totals.Local.Total.Int())
+	data.StartTimeSeconds = int64(totals.StartTime.Int())
+
+	return data, nil
+}
+
+// unboundLocalZonesResponse is the api/unbound/diagnostics/listlocalzones
+// payload: the standard {"status":"ok","data":[...]} diagnostics envelope
+// wrapping unbound-control's `list_local_zones` output.
+type unboundLocalZonesResponse struct {
+	Status string `json:"status"`
+	Data   []struct {
+		Zone string `json:"zone"`
+		Type string `json:"type"`
+	} `json:"data"`
+}
+
+// unboundLocalDataResponse is the api/unbound/diagnostics/listlocaldata
+// payload wrapping unbound-control's `list_local_data` output. Only the
+// record count is exported; per-record name/value are unbounded cardinality.
+type unboundLocalDataResponse struct {
+	Status string `json:"status"`
+	Data   []struct {
+		Name   string `json:"name"`
+		TTL    string `json:"ttl"`
+		Type   string `json:"type"`
+		RRType string `json:"rrtype"`
+		Value  string `json:"value"`
+	} `json:"data"`
+}
+
+// unboundInsecureDomainsResponse is the api/unbound/diagnostics/listinsecure
+// payload wrapping unbound-control's `list_insecure` output: a plain list of
+// domain names. Verified against a live OPNsense 26.7-devel box with no
+// insecure domains configured: the degenerate shape is {"data":[""]} — one
+// empty-string entry, not a truly empty array — so a naive len(Data) would
+// overcount "0 insecure domains configured" as 1.
+type unboundInsecureDomainsResponse struct {
+	Status string   `json:"status"`
+	Data   []string `json:"data"`
+}
+
+// UnboundLocalData holds counts derived from Unbound's local-zone, local-data
+// and insecure-domain diagnostics — the #209 "rider" data. Unlike
+// UnboundQueryStats these are cheap unbound-control commands, not the
+// DuckDB-backed qstats backend, and are wholly slow-moving configuration
+// (ideal --exporter.cache-ttl response-cache candidates). They are still
+// gated behind the same --exporter.enable-unbound-qstats flag as the qstats
+// metrics because, like qstats, they cost an extra API call per scrape.
+type UnboundLocalData struct {
+	// ZonesByType counts configured local zones grouped by zone type (e.g.
+	// "static", "transparent", "redirect" — a small, fixed enum, not the zone
+	// names themselves, so cardinality stays bounded).
+	ZonesByType map[string]int64
+
+	// LocalDataRecords is the total number of local-data resource records
+	// configured, aggregated (per-record name/value are unbounded cardinality
+	// and are never exported, per the issue's no-per-domain-labels constraint).
+	LocalDataRecords int64
+
+	// InsecureDomains is the number of domains configured as DNSSEC-insecure.
+	// The degenerate single-empty-string shape (see
+	// unboundInsecureDomainsResponse) is treated as zero.
+	InsecureDomains int64
+}
+
+// FetchUnboundLocalData calls Unbound's listlocalzones/listlocaldata/listinsecure
+// diagnostics endpoints and returns aggregated counts (#209 rider data). The
+// three sub-fetches are independent GETs writing disjoint fields, so they run
+// concurrently (#129); a failure on one does not block the others — partial
+// data is returned along with the first error encountered, matching the
+// tolerant-partial-failure convention used by FetchPFStatistics.
+func (c *Client) FetchUnboundLocalData() (UnboundLocalData, *APICallError) {
+	data := UnboundLocalData{ZonesByType: make(map[string]int64)}
+
+	fetchZones := func() *APICallError {
+		url, ok := c.endpoints["unboundLocalZones"]
+		if !ok {
+			return &APICallError{Endpoint: "unboundLocalZones", Message: "endpoint not found in client endpoints"}
+		}
+		var resp unboundLocalZonesResponse
+		if err := c.do("GET", url, nil, &resp); err != nil {
+			return err
+		}
+		for _, z := range resp.Data {
+			data.ZonesByType[z.Type]++
+		}
+		return nil
+	}
+
+	fetchLocalData := func() *APICallError {
+		url, ok := c.endpoints["unboundLocalData"]
+		if !ok {
+			return &APICallError{Endpoint: "unboundLocalData", Message: "endpoint not found in client endpoints"}
+		}
+		var resp unboundLocalDataResponse
+		if err := c.do("GET", url, nil, &resp); err != nil {
+			return err
+		}
+		data.LocalDataRecords = int64(len(resp.Data))
+		return nil
+	}
+
+	fetchInsecure := func() *APICallError {
+		url, ok := c.endpoints["unboundInsecureDomains"]
+		if !ok {
+			return &APICallError{Endpoint: "unboundInsecureDomains", Message: "endpoint not found in client endpoints"}
+		}
+		var resp unboundInsecureDomainsResponse
+		if err := c.do("GET", url, nil, &resp); err != nil {
+			return err
+		}
+		var count int64
+		for _, d := range resp.Data {
+			if d != "" {
+				count++
+			}
+		}
+		data.InsecureDomains = count
+		return nil
+	}
+
+	errs := runConcurrentFetches(fetchZones, fetchLocalData, fetchInsecure)
+	for _, err := range errs {
+		if err != nil {
+			return data, err
+		}
+	}
+
+	return data, nil
+}

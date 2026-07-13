@@ -1,0 +1,32 @@
+{
+  "endpoint": "unboundLocalZones",
+  "method": "GET",
+  "path": "api/unbound/diagnostics/listlocalzones",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "data",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "data",
+      "kind": "array"
+    },
+    {
+      "path": "data[]",
+      "kind": "object"
+    },
+    {
+      "path": "data[].type",
+      "kind": "string"
+    },
+    {
+      "path": "data[].zone",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

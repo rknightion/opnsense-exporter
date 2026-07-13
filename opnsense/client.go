@@ -205,6 +205,11 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"dhcpv6Leases":               "api/dhcpv6/leases/searchLease",
 		"dhcpv6Prefixes":             "api/dhcpv6/leases/searchPrefix",
 		"bpfStatistics":              "api/diagnostics/interface/get_bpf_statistics",
+		"unboundQueryStatsEnabled":   "api/unbound/overview/is_enabled",
+		"unboundQueryStatsTotals":    "api/unbound/overview/totals/1",
+		"unboundLocalZones":          "api/unbound/diagnostics/listlocalzones",
+		"unboundLocalData":           "api/unbound/diagnostics/listlocaldata",
+		"unboundInsecureDomains":     "api/unbound/diagnostics/listinsecure",
 	}
 }
 

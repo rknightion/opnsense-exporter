@@ -113,6 +113,10 @@
     ],
     "note": "extended unbound statistics — absent when the box runs extended-statistics: no, the 26.7 default; present on ≤ 26.1 and whenever an admin re-enables extended stats. Box state, not a version prune"
   },
+  "unboundQueryStatsTotals": {
+    "knownExtraTopKeys": ["top", "top_blocked"],
+    "note": "per-domain query/blocked-domain leaderboards keyed by domain name — unbounded cardinality (#209); never modelled or exported as metrics"
+  },
   "unboundServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
   "wireguardServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" }
 }

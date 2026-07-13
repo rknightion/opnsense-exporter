@@ -596,6 +596,21 @@ func WithUnboundInfra() Option {
 	}
 }
 
+// WithUnboundQStats enables the DNSBL query-stats totals, blocklist size,
+// and local-zone/data/insecure-domain rider metrics for the unbound_dns
+// collector (#209).
+func WithUnboundQStats() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if uc, ok := c.(*unboundDNSCollector); ok {
+				uc.SetQStatsEnabled(true)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithTailscalePeerDetails enables per-peer detail metrics for the tailscale collector
 func WithTailscalePeerDetails() Option {
 	return func(o *Collector) error {

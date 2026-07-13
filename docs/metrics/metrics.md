@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 595
-- **Gauges:** 388
+- **Total metrics:** 603
+- **Gauges:** 396
 - **Counters:** 207
 
 ## General
@@ -833,6 +833,14 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_unbound_dns_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-unbound |
 | opnsense_unbound_dns_infra_rtt_seconds | Gauge | ip, host | Smoothed round-trip time to an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set. | --exporter.disable-unbound |
 | opnsense_unbound_dns_infra_rto_seconds | Gauge | ip, host | Retransmission timeout for an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set. | --exporter.disable-unbound |
+| opnsense_unbound_dns_qstats_enabled | Gauge | --- | Whether Unbound query-stats logging (general.stats) is on (1 = enabled, 0 = disabled). Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
+| opnsense_unbound_dns_dnsbl_blocklist_size | Gauge | --- | Number of entries in the currently loaded DNSBL blocklist. Gauge: reflects whatever list is loaded right now. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on. | --exporter.disable-unbound |
+| opnsense_unbound_dns_qstats_queries_7d | Gauge | result | DNSBL query-stats outcome totals over Unbound's rolling query-stats window (typically the last 7 days), by result. Gauge, not a counter: the underlying window is truncated hourly and can decrease. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on. | --exporter.disable-unbound |
+| opnsense_unbound_dns_qstats_queries_total_7d | Gauge | --- | Total DNS queries over Unbound's rolling query-stats window. Gauge, not a counter, for the same reason as qstats_queries_7d. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on. | --exporter.disable-unbound |
+| opnsense_unbound_dns_qstats_start_time_seconds | Gauge | --- | Unix timestamp the current query-stats rolling window starts from. A jump forward beyond the expected daily roll-off signals the underlying qstats database was reset. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on. | --exporter.disable-unbound |
+| opnsense_unbound_dns_local_zones | Gauge | type | Number of configured Unbound local zones, by zone type. Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
+| opnsense_unbound_dns_local_data_records | Gauge | --- | Total number of configured Unbound local-data resource records. Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
+| opnsense_unbound_dns_insecure_domains | Gauge | --- | Number of domains configured as DNSSEC-insecure in Unbound. Only emitted when --exporter.enable-unbound-qstats is set. | --exporter.disable-unbound |
 
 ## Wireguard
 

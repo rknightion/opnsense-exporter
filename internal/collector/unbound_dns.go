@@ -59,6 +59,23 @@ type unboundDNSCollector struct {
 
 	infraEnabled bool
 
+	// DNSBL query-stats + local-data descriptors (#209) — only emitted when
+	// qstatsEnabled (--exporter.enable-unbound-qstats). Every one of these is
+	// a GAUGE: the underlying qstats backend is a rolling 7-day window that
+	// can and does decrease (logger.py truncates it hourly, and `qstats
+	// reset` truncates it entirely), so a counter would read that as a
+	// phantom reset.
+	qstatsEnabledDesc  *prometheus.Desc
+	dnsblBlocklistSize *prometheus.Desc
+	qstatsQueries7d    *prometheus.Desc
+	qstatsQueriesTotal *prometheus.Desc
+	qstatsStartTime    *prometheus.Desc
+	localZones         *prometheus.Desc
+	localDataRecords   *prometheus.Desc
+	insecureDomains    *prometheus.Desc
+
+	qstatsEnabled bool
+
 	subsystem string
 	instance  string
 }
@@ -220,12 +237,54 @@ func (c *unboundDNSCollector) Register(namespace, instanceLabel string, log *slo
 		"Retransmission timeout for an upstream server in Unbound's infra cache. Only emitted when --exporter.enable-unbound-infra is set.",
 		[]string{"ip", "host"},
 	)
+
+	// DNSBL query-stats + local-data (#209). Only emitted when
+	// --exporter.enable-unbound-qstats is set: the query-stats backend is
+	// expensive (configd spawns python+pandas+DuckDB per call, ~1s).
+	c.qstatsEnabledDesc = buildPrometheusDesc(c.subsystem, "qstats_enabled",
+		"Whether Unbound query-stats logging (general.stats) is on (1 = enabled, 0 = disabled). Only emitted when --exporter.enable-unbound-qstats is set.",
+		nil,
+	)
+	c.dnsblBlocklistSize = buildPrometheusDesc(c.subsystem, "dnsbl_blocklist_size",
+		"Number of entries in the currently loaded DNSBL blocklist. Gauge: reflects whatever list is loaded right now. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on.",
+		nil,
+	)
+	c.qstatsQueries7d = buildPrometheusDesc(c.subsystem, "qstats_queries_7d",
+		"DNSBL query-stats outcome totals over Unbound's rolling query-stats window (typically the last 7 days), by result. Gauge, not a counter: the underlying window is truncated hourly and can decrease. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on.",
+		[]string{"result"},
+	)
+	c.qstatsQueriesTotal = buildPrometheusDesc(c.subsystem, "qstats_queries_total_7d",
+		"Total DNS queries over Unbound's rolling query-stats window. Gauge, not a counter, for the same reason as qstats_queries_7d. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on.",
+		nil,
+	)
+	c.qstatsStartTime = buildPrometheusDesc(c.subsystem, "qstats_start_time_seconds",
+		"Unix timestamp the current query-stats rolling window starts from. A jump forward beyond the expected daily roll-off signals the underlying qstats database was reset. Only emitted when --exporter.enable-unbound-qstats is set and query-stats logging is on.",
+		nil,
+	)
+	c.localZones = buildPrometheusDesc(c.subsystem, "local_zones",
+		"Number of configured Unbound local zones, by zone type. Only emitted when --exporter.enable-unbound-qstats is set.",
+		[]string{"type"},
+	)
+	c.localDataRecords = buildPrometheusDesc(c.subsystem, "local_data_records",
+		"Total number of configured Unbound local-data resource records. Only emitted when --exporter.enable-unbound-qstats is set.",
+		nil,
+	)
+	c.insecureDomains = buildPrometheusDesc(c.subsystem, "insecure_domains",
+		"Number of domains configured as DNSSEC-insecure in Unbound. Only emitted when --exporter.enable-unbound-qstats is set.",
+		nil,
+	)
 }
 
 // SetInfraEnabled toggles the per-upstream infra cache metrics
 // (--exporter.enable-unbound-infra).
 func (c *unboundDNSCollector) SetInfraEnabled(enabled bool) {
 	c.infraEnabled = enabled
+}
+
+// SetQStatsEnabled toggles the DNSBL query-stats totals, blocklist size and
+// local-zone/data/insecure-domain rider metrics (--exporter.enable-unbound-qstats, #209).
+func (c *unboundDNSCollector) SetQStatsEnabled(enabled bool) {
+	c.qstatsEnabled = enabled
 }
 
 func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -261,6 +320,14 @@ func (c *unboundDNSCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.serviceRunning
 	ch <- c.infraRTT
 	ch <- c.infraRTO
+	ch <- c.qstatsEnabledDesc
+	ch <- c.dnsblBlocklistSize
+	ch <- c.qstatsQueries7d
+	ch <- c.qstatsQueriesTotal
+	ch <- c.qstatsStartTime
+	ch <- c.localZones
+	ch <- c.localDataRecords
+	ch <- c.insecureDomains
 }
 
 // emitServiceRunning fetches the unbound service running-state and emits the
@@ -538,5 +605,84 @@ func (c *unboundDNSCollector) Update(ctx context.Context, client *opnsense.Clien
 		}
 	}
 
+	if c.qstatsEnabled {
+		c.updateQStats(ctx, client, ch)
+	}
+
 	return nil
+}
+
+// updateQStats emits the #209 DNSBL query-stats totals, blocklist size and
+// local-zone/data/insecure-domain rider metrics. Only called when
+// --exporter.enable-unbound-qstats is set.
+func (c *unboundDNSCollector) updateQStats(_ context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) {
+	stats, qErr := client.FetchUnboundQueryStats()
+	if qErr != nil {
+		c.log.Warn("failed to fetch unbound query stats", "err", qErr)
+	} else {
+		qstatsEnabledVal := 0.0
+		if stats.Enabled {
+			qstatsEnabledVal = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.qstatsEnabledDesc, prometheus.GaugeValue,
+			qstatsEnabledVal, c.instance,
+		)
+
+		// TotalsPresent is false when query-stats logging is off — the
+		// expensive totals call was skipped entirely rather than paying for it
+		// just to derive zeros (the #90 lesson). Emitting the rest of these as
+		// zero here would look like real zero-traffic and corrupt downstream
+		// analysis even though these series are gauges, so skip them.
+		if stats.TotalsPresent {
+			ch <- prometheus.MustNewConstMetric(
+				c.dnsblBlocklistSize, prometheus.GaugeValue,
+				float64(stats.BlocklistSize), c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.qstatsQueriesTotal, prometheus.GaugeValue,
+				float64(stats.QueriesTotal7d), c.instance,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.qstatsStartTime, prometheus.GaugeValue,
+				float64(stats.StartTimeSeconds), c.instance,
+			)
+
+			results := map[string]int64{
+				"passed":   stats.PassedTotal7d,
+				"resolved": stats.ResolvedTotal7d,
+				"blocked":  stats.BlockedTotal7d,
+				"local":    stats.LocalTotal7d,
+			}
+			for result, count := range results {
+				ch <- prometheus.MustNewConstMetric(
+					c.qstatsQueries7d, prometheus.GaugeValue,
+					float64(count), result, c.instance,
+				)
+			}
+		}
+	}
+
+	// Rider metrics (#209): cheap, slow-moving unbound-control diagnostics,
+	// independent of whether query-stats logging is on.
+	localData, lErr := client.FetchUnboundLocalData()
+	if lErr != nil {
+		c.log.Warn("failed to fetch unbound local zone/data diagnostics", "err", lErr)
+		return
+	}
+
+	for zoneType, count := range localData.ZonesByType {
+		ch <- prometheus.MustNewConstMetric(
+			c.localZones, prometheus.GaugeValue,
+			float64(count), zoneType, c.instance,
+		)
+	}
+	ch <- prometheus.MustNewConstMetric(
+		c.localDataRecords, prometheus.GaugeValue,
+		float64(localData.LocalDataRecords), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.insecureDomains, prometheus.GaugeValue,
+		float64(localData.InsecureDomains), c.instance,
+	)
 }

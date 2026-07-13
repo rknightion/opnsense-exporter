@@ -1,0 +1,15 @@
+{
+  "endpoint": "unboundQueryStatsEnabled",
+  "method": "GET",
+  "path": "api/unbound/overview/is_enabled",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "enabled"
+  ],
+  "fields": [
+    {
+      "path": "enabled",
+      "kind": "any"
+    }
+  ]
+}

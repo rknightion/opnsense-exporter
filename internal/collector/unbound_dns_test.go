@@ -413,3 +413,181 @@ func TestUnboundDNSCollector_Update_InfraDisabledByDefault(t *testing.T) {
 		t.Errorf("expected no infra metrics by default, got %d", len(got))
 	}
 }
+
+// unboundQStatsMuxHandlers registers the #209 query-stats + local-data
+// endpoints on top of unboundTestMux. enabled controls the is_enabled reply.
+func unboundQStatsMuxHandlers(t *testing.T, mux *http.ServeMux, enabled bool, totalsCalled *bool) {
+	t.Helper()
+
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		if enabled {
+			w.Write([]byte(`{"enabled":"1"}`))
+		} else {
+			w.Write([]byte(`{"enabled":"0"}`))
+		}
+	})
+	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+		if totalsCalled != nil {
+			*totalsCalled = true
+		}
+		w.Write([]byte(`{"total":16236,"blocklist_size":528587,"passed":10396,"resolved":{"total":3197,"pcnt":"19.69"},"blocked":{"total":13,"pcnt":"0.08"},"local":{"total":145,"pcnt":"0.89"},"start_time":1783872391,"top":{},"top_blocked":{}}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[{"zone":"home.arpa.","type":"static"},{"zone":"example.lan","type":"transparent"}]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocaldata", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[{"name":"home.arpa.","ttl":"10800","type":"IN","rrtype":"NS","value":"localhost."}]}`))
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listinsecure", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","data":[""]}`))
+	})
+}
+
+// TestUnboundDNSCollector_Update_QStatsDisabledByDefault guards #209 the same
+// way infra does: without --exporter.enable-unbound-qstats, none of the new
+// endpoints should be called and none of the new series emitted.
+func TestUnboundDNSCollector_Update_QStatsDisabledByDefault(t *testing.T) {
+	mux := unboundTestMux(t)
+	mux.HandleFunc("/api/unbound/overview/is_enabled", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("is_enabled must not be called when qstats metrics are disabled")
+	})
+	mux.HandleFunc("/api/unbound/overview/totals/1", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("totals must not be called when qstats metrics are disabled")
+	})
+	mux.HandleFunc("/api/unbound/diagnostics/listlocalzones", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("listlocalzones must not be called when qstats metrics are disabled")
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	for _, name := range []string{
+		"opnsense_unbound_dns_qstats_enabled",
+		"opnsense_unbound_dns_dnsbl_blocklist_size",
+		"opnsense_unbound_dns_qstats_queries_7d",
+		"opnsense_unbound_dns_qstats_queries_total_7d",
+		"opnsense_unbound_dns_qstats_start_time_seconds",
+		"opnsense_unbound_dns_local_zones",
+		"opnsense_unbound_dns_local_data_records",
+		"opnsense_unbound_dns_insecure_domains",
+	} {
+		if got := metricsByDesc(metrics, name); len(got) != 0 {
+			t.Errorf("expected no %s metrics by default, got %d", name, len(got))
+		}
+	}
+}
+
+// TestUnboundDNSCollector_Update_QStatsEnabled_StatsOff covers the #90-style
+// gate: when qstats metrics are opted in but the box has query-stats logging
+// off, only qstats_enabled=0 should be emitted — the expensive totals call
+// must be skipped entirely (never call it just to throw away a zero).
+func TestUnboundDNSCollector_Update_QStatsEnabled_StatsOff(t *testing.T) {
+	mux := unboundTestMux(t)
+	var totalsCalled bool
+	unboundQStatsMuxHandlers(t, mux, false, &totalsCalled)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetQStatsEnabled(true)
+	metrics := collectMetrics(t, c, client)
+
+	if totalsCalled {
+		t.Error("expected the expensive totals endpoint NOT to be called when stats logging is off")
+	}
+
+	qe := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_enabled")
+	if len(qe) != 1 {
+		t.Fatalf("expected exactly 1 qstats_enabled metric, got %d", len(qe))
+	}
+	if got := getMetricValue(qe[0]); got != 0 {
+		t.Errorf("expected qstats_enabled=0, got %v", got)
+	}
+
+	for _, name := range []string{
+		"opnsense_unbound_dns_dnsbl_blocklist_size",
+		"opnsense_unbound_dns_qstats_queries_7d",
+		"opnsense_unbound_dns_qstats_queries_total_7d",
+		"opnsense_unbound_dns_qstats_start_time_seconds",
+	} {
+		if got := metricsByDesc(metrics, name); len(got) != 0 {
+			t.Errorf("expected no %s metrics when stats logging is off, got %d", name, len(got))
+		}
+	}
+
+	// Rider metrics are independent of query-stats logging and should still emit.
+	if got := metricsByDesc(metrics, "opnsense_unbound_dns_local_zones"); len(got) != 2 {
+		t.Errorf("expected 2 local_zones metrics, got %d", len(got))
+	}
+}
+
+// TestUnboundDNSCollector_Update_QStatsEnabled_Full covers the fully-enabled
+// path with the real captured payload values (#209).
+func TestUnboundDNSCollector_Update_QStatsEnabled_Full(t *testing.T) {
+	mux := unboundTestMux(t)
+	unboundQStatsMuxHandlers(t, mux, true, nil)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &unboundDNSCollector{subsystem: UnboundDNSSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetQStatsEnabled(true)
+	metrics := collectMetrics(t, c, client)
+
+	qe := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_enabled")
+	if len(qe) != 1 || getMetricValue(qe[0]) != 1 {
+		t.Errorf("expected qstats_enabled=1, got %v", qe)
+	}
+
+	blocklistSize := metricsByDesc(metrics, "opnsense_unbound_dns_dnsbl_blocklist_size")
+	if len(blocklistSize) != 1 || getMetricValue(blocklistSize[0]) != 528587 {
+		t.Errorf("expected dnsbl_blocklist_size=528587, got %v", blocklistSize)
+	}
+
+	total7d := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_queries_total_7d")
+	if len(total7d) != 1 || getMetricValue(total7d[0]) != 16236 {
+		t.Errorf("expected qstats_queries_total_7d=16236, got %v", total7d)
+	}
+
+	startTime := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_start_time_seconds")
+	if len(startTime) != 1 || getMetricValue(startTime[0]) != 1783872391 {
+		t.Errorf("expected qstats_start_time_seconds=1783872391, got %v", startTime)
+	}
+
+	byResult := metricsByDesc(metrics, "opnsense_unbound_dns_qstats_queries_7d")
+	if len(byResult) != 4 {
+		t.Fatalf("expected 4 qstats_queries_7d series (passed/resolved/blocked/local), got %d", len(byResult))
+	}
+	want := map[string]float64{"passed": 10396, "resolved": 3197, "blocked": 13, "local": 145}
+	got := map[string]float64{}
+	for _, m := range byResult {
+		labels := getMetricLabels(m)
+		got[labels["result"]] = getMetricValue(m)
+	}
+	for result, expected := range want {
+		if got[result] != expected {
+			t.Errorf("expected result=%s to be %v, got %v", result, expected, got[result])
+		}
+	}
+
+	// Rider metrics: 2 zone types from unboundQStatsMuxHandlers's fixture.
+	zones := metricsByDesc(metrics, "opnsense_unbound_dns_local_zones")
+	if len(zones) != 2 {
+		t.Fatalf("expected 2 local_zones series, got %d", len(zones))
+	}
+	localData := metricsByDesc(metrics, "opnsense_unbound_dns_local_data_records")
+	if len(localData) != 1 || getMetricValue(localData[0]) != 1 {
+		t.Errorf("expected local_data_records=1, got %v", localData)
+	}
+	insecure := metricsByDesc(metrics, "opnsense_unbound_dns_insecure_domains")
+	if len(insecure) != 1 || getMetricValue(insecure[0]) != 0 {
+		t.Errorf("expected insecure_domains=0 (degenerate single-empty-string shape), got %v", insecure)
+	}
+}

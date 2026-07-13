@@ -195,6 +195,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithUnboundInfra())
 		logger.Info("unbound per-upstream infra cache metrics enabled")
 	}
+	if collectorsSwitches.UnboundQStats {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithUnboundQStats())
+		logger.Info("unbound DNSBL query-stats totals and blocklist size metrics enabled")
+	}
 	if !collectorsSwitches.Dnsmasq {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutDnsmasqCollector())
 		logger.Info("dnsmasq collector disabled")

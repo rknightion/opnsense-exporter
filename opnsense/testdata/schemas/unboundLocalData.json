@@ -1,0 +1,44 @@
+{
+  "endpoint": "unboundLocalData",
+  "method": "GET",
+  "path": "api/unbound/diagnostics/listlocaldata",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "data",
+    "status"
+  ],
+  "fields": [
+    {
+      "path": "data",
+      "kind": "array"
+    },
+    {
+      "path": "data[]",
+      "kind": "object"
+    },
+    {
+      "path": "data[].name",
+      "kind": "string"
+    },
+    {
+      "path": "data[].rrtype",
+      "kind": "string"
+    },
+    {
+      "path": "data[].ttl",
+      "kind": "string"
+    },
+    {
+      "path": "data[].type",
+      "kind": "string"
+    },
+    {
+      "path": "data[].value",
+      "kind": "string"
+    },
+    {
+      "path": "status",
+      "kind": "string"
+    }
+  ]
+}

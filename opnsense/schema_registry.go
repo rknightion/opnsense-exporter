@@ -120,6 +120,11 @@ var schemaRegistry = map[EndpointName]any{
 	"unboundDNSStatus":         unboundDNSStatusResponse{},
 	"unboundInfra":             unboundInfraResponse{},
 	"unboundServiceStatus":     serviceStatusResponse{},
+	"unboundQueryStatsEnabled": unboundIsEnabledResponse{},
+	"unboundQueryStatsTotals":  unboundOverviewTotalsResponse{},
+	"unboundLocalZones":        unboundLocalZonesResponse{},
+	"unboundLocalData":         unboundLocalDataResponse{},
+	"unboundInsecureDomains":   unboundInsecureDomainsResponse{},
 	"wireguardClients":         wireguardClientsResponse{},
 	"wireguardServiceStatus":   serviceStatusResponse{},
 }

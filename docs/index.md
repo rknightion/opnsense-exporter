@@ -1,9 +1,9 @@
 ---
 title: OPNsense Exporter
 <<<<<<< HEAD
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 595 metrics across 47 collectors
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 603 metrics across 47 collectors
 =======
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 595 metrics across 47 collectors
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 603 metrics across 47 collectors
 >>>>>>> worktree-agent-a3ce49f69eab58897
 image: assets/social-card.png
 ---
@@ -15,9 +15,9 @@ image: assets/social-card.png
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
 <<<<<<< HEAD
-A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 595 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 603 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
 =======
-A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 595 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 603 metrics across 47 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
 >>>>>>> worktree-agent-a3ce49f69eab58897
 
 <div class="hero-badges" markdown>
@@ -54,9 +54,9 @@ A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes
     ---
 
 <<<<<<< HEAD
-    Browse all 595 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 603 Prometheus metrics with types, labels, and PromQL examples.
 =======
-    Browse all 595 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 603 Prometheus metrics with types, labels, and PromQL examples.
 >>>>>>> worktree-agent-a3ce49f69eab58897
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)

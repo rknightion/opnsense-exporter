@@ -1,0 +1,57 @@
+{
+  "endpoint": "unboundQueryStatsTotals",
+  "method": "GET",
+  "path": "api/unbound/overview/totals/1",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "blocked",
+    "blocklist_size",
+    "local",
+    "passed",
+    "resolved",
+    "start_time",
+    "total"
+  ],
+  "fields": [
+    {
+      "path": "blocked",
+      "kind": "object"
+    },
+    {
+      "path": "blocked.total",
+      "kind": "any"
+    },
+    {
+      "path": "blocklist_size",
+      "kind": "any"
+    },
+    {
+      "path": "local",
+      "kind": "object"
+    },
+    {
+      "path": "local.total",
+      "kind": "any"
+    },
+    {
+      "path": "passed",
+      "kind": "any"
+    },
+    {
+      "path": "resolved",
+      "kind": "object"
+    },
+    {
+      "path": "resolved.total",
+      "kind": "any"
+    },
+    {
+      "path": "start_time",
+      "kind": "any"
+    },
+    {
+      "path": "total",
+      "kind": "any"
+    }
+  ]
+}

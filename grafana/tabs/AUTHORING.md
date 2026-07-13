@@ -100,6 +100,7 @@ Register with `b.sentinel(name, query)` then gate the tab/row with `present=name
 | has_carp | `label_values(opnsense_carp_allow, __name__)` |
 | has_carp_vips | `query_result(opnsense_carp_vips_total > 0)` |
 | has_unbound | `label_values(opnsense_unbound_dns_uptime_seconds, __name__)` |
+| has_unbound_qstats | `label_values(opnsense_unbound_dns_qstats_enabled, __name__)` |
 | has_ntp | `label_values(opnsense_ntp_peer_info, __name__)` |
 | has_acme | `label_values(opnsense_acme_certificates_total, __name__)` |
 | has_netflow | `label_values(opnsense_netflow_active, __name__)` |

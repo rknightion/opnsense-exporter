@@ -1,12 +1,14 @@
 """
 DNS — Unbound tab for the OPNsense Exporter dashboard.
 
-Covers all 30 opnsense_unbound_dns_* metrics across five rows:
+Covers all opnsense_unbound_dns_* metrics across seven rows:
   1. Service         — uptime, service running, blocklist, queries qps, cache hit ratio
   2. Cache & Recursion — prefetch/expired/recursive/recursion times/request list
   3. DNSSEC & Anomalies — secure/bogus/rrset_bogus/unwanted/timed_out/ratelimited
   4. Query Breakdowns   — by type / protocol / rcode / flags / edns
   5. Cache & Memory     — cache_count, memory_bytes, tcp_usage_ratio
+  6. Upstream Infra Cache (opt-in) — infra_rtt/rto
+  7. DNSBL / Query Stats (opt-in)  — qstats totals, blocklist size, local zones/data/insecure domains
 """
 
 from builder import Builder, sel, RATE, RUNSTOP, ENABLED
@@ -16,6 +18,8 @@ def build(b: Builder):
     b.sentinel("has_unbound", "label_values(opnsense_unbound_dns_uptime_seconds, __name__)")
     b.sentinel("has_unbound_infra",
                "label_values(opnsense_unbound_dns_infra_rtt_seconds, __name__)")
+    b.sentinel("has_unbound_qstats",
+               "label_values(opnsense_unbound_dns_qstats_enabled, __name__)")
 
     # ---- convenience shorthands -----------------------------------------
     def u(metric, extra=""):
@@ -260,10 +264,100 @@ def build(b: Builder):
     row_infra = b.row("Upstream Infra Cache", [infra_rtt, infra_rto], present="has_unbound_infra")
 
     # =====================================================================
+    # Row 7: DNSBL / Query Stats (opt-in, gated on has_unbound_qstats)
+    #
+    # All qstats_* series are GAUGES, never counters: the underlying qstats
+    # backend is a rolling ~7-day window that Unbound's logger.py truncates
+    # hourly (and a `qstats reset` truncates entirely), so the totals can and
+    # do decrease. No rate()/increase() on any of these.
+    # =====================================================================
+    qstats_enabled_stat = b.stat(
+        "Query-Stats Logging", u("qstats_enabled"),
+        mappings=ENABLED,
+        color_mode="background",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        w=4, h=4,
+        desc="opnsense_unbound_dns_qstats_enabled: whether Unbound query-stats "
+             "logging (general.stats) is on. Requires --exporter.enable-unbound-qstats.",
+    )
+    blocklist_size = b.stat(
+        "DNSBL Blocklist Size", u("dnsbl_blocklist_size"),
+        unit="short", w=4, h=4,
+        color_mode="value",
+        thresholds=[{"color": "blue", "value": None}],
+        desc="opnsense_unbound_dns_dnsbl_blocklist_size: number of entries in the "
+             "currently loaded DNSBL blocklist.",
+    )
+    total_7d = b.stat(
+        "Total Queries (7d window)", u("qstats_queries_total_7d"),
+        unit="short", w=4, h=4,
+        color_mode="value",
+        thresholds=[{"color": "blue", "value": None}],
+        desc="opnsense_unbound_dns_qstats_queries_total_7d: total queries over "
+             "Unbound's rolling query-stats window (typically 7 days). Gauge, not a rate.",
+    )
+    window_age = b.stat(
+        "Query-Stats Window Age",
+        f"time() - {u('qstats_start_time_seconds')}",
+        unit="s", w=6, h=4,
+        color_mode="value",
+        thresholds=[{"color": "blue", "value": None}],
+        desc="Time since the current query-stats rolling window started "
+             "(time() - opnsense_unbound_dns_qstats_start_time_seconds). A sudden drop "
+             "close to zero signals the underlying qstats database was reset.",
+    )
+    queries_by_result = b.piechart(
+        "Queries by Result (7d window)",
+        [(
+            f"sum by (result) ({u('qstats_queries_7d')})",
+            "{{result}}",
+        )],
+        unit="short", w=10, h=8,
+        desc="opnsense_unbound_dns_qstats_queries_7d: DNSBL query outcome totals "
+             "(passed/resolved/blocked/local) over the rolling query-stats window. Gauge, not a rate.",
+    )
+    local_zones = b.bargauge(
+        "Local Zones by Type",
+        [(
+            f"sum by (type) ({u('local_zones')})",
+            "{{type}}",
+        )],
+        unit="short", w=8, h=8,
+        orient="horizontal",
+        desc="opnsense_unbound_dns_local_zones: configured Unbound local zones, "
+             "aggregated by zone type.",
+    )
+    local_data_records = b.stat(
+        "Local Data Records", u("local_data_records"),
+        unit="short", w=4, h=4,
+        color_mode="value",
+        thresholds=[{"color": "blue", "value": None}],
+        desc="opnsense_unbound_dns_local_data_records: total configured Unbound "
+             "local-data resource records.",
+    )
+    insecure_domains = b.stat(
+        "Insecure Domains", u("insecure_domains"),
+        unit="short", w=4, h=4,
+        color_mode="value",
+        thresholds=[{"color": "blue", "value": None}],
+        desc="opnsense_unbound_dns_insecure_domains: domains configured as "
+             "DNSSEC-insecure.",
+    )
+
+    row_qstats = b.row(
+        "DNSBL / Query Stats",
+        [
+            qstats_enabled_stat, blocklist_size, total_7d, window_age,
+            queries_by_result, local_zones, local_data_records, insecure_domains,
+        ],
+        present="has_unbound_qstats",
+    )
+
+    # =====================================================================
     # Assemble the tab
     # =====================================================================
     b.tab(
         "DNS — Unbound",
-        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra],
+        [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra, row_qstats],
         present="has_unbound",
     )
