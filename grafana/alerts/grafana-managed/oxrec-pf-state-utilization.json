@@ -13,7 +13,7 @@
   "spec": {
     "title": "instance:opnsense_pf_state:utilization",
     "metric": "instance:opnsense_pf_state:utilization",
-    "targetDatasourceUID": "",
+    "targetDatasourceUID": "grafanacloud-prom",
     "paused": false,
     "trigger": {
       "interval": "1m"

@@ -13,7 +13,7 @@
   "spec": {
     "title": "instance:opnsense_system_mem:utilization",
     "metric": "instance:opnsense_system_mem:utilization",
-    "targetDatasourceUID": "",
+    "targetDatasourceUID": "grafanacloud-prom",
     "paused": false,
     "trigger": {
       "interval": "1m"

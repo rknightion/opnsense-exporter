@@ -13,7 +13,7 @@
   "spec": {
     "title": "instance:opnsense_gateway_loss:ratio",
     "metric": "instance:opnsense_gateway_loss:ratio",
-    "targetDatasourceUID": "",
+    "targetDatasourceUID": "grafanacloud-prom",
     "paused": false,
     "trigger": {
       "interval": "1m"

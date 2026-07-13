@@ -253,7 +253,7 @@ def emit_grafana_managed(ds: str, folder: str, stack: bool):
                          "annotations": {"grafana.app/folder": folder},
                          "labels": {"grafana.app/folder": folder}},
             "spec": {"title": r["metric"], "metric": r["metric"],
-                     "targetDatasourceUID": "", "paused": False,
+                     "targetDatasourceUID": ds, "paused": False,
                      "trigger": {"interval": "1m"}, "labels": labels,
                      "expressions": {"A": {"datasourceUID": ds,
                                            "relativeTimeRange": {"from": "10m0s", "to": "0s"},

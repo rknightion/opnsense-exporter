@@ -13,7 +13,7 @@
   "spec": {
     "title": "instance:opnsense_firewall_block_packets:rate5m",
     "metric": "instance:opnsense_firewall_block_packets:rate5m",
-    "targetDatasourceUID": "",
+    "targetDatasourceUID": "grafanacloud-prom",
     "paused": false,
     "trigger": {
       "interval": "1m"

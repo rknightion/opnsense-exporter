@@ -13,7 +13,7 @@
   "spec": {
     "title": "instance:opnsense_interface_rx_bits:rate5m",
     "metric": "instance:opnsense_interface_rx_bits:rate5m",
-    "targetDatasourceUID": "",
+    "targetDatasourceUID": "grafanacloud-prom",
     "paused": false,
     "trigger": {
       "interval": "1m"

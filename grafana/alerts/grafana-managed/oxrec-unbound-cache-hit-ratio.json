@@ -13,7 +13,7 @@
   "spec": {
     "title": "instance:opnsense_unbound_cache:hit_ratio",
     "metric": "instance:opnsense_unbound_cache:hit_ratio",
-    "targetDatasourceUID": "",
+    "targetDatasourceUID": "grafanacloud-prom",
     "paused": false,
     "trigger": {
       "interval": "1m"
