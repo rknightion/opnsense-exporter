@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "subsystems": [],
+    "system": {
+      "message": "System is operational",
+      "status": 2,
+      "title": "System"
+    },
+    "translations": {
+      "dialogCloseButton": "Close",
+      "dialogTitle": "System status"
+    }
+  }
+}

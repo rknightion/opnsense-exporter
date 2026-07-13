@@ -96,6 +96,10 @@
       "kind": "any"
     },
     {
+      "path": "metadata.subsystems",
+      "kind": "any"
+    },
+    {
       "path": "subsystems",
       "kind": "any"
     }

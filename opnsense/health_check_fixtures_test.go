@@ -40,6 +40,14 @@ func TestHealthCheckResponse_Shapes(t *testing.T) {
 		{"v26_1_ok_empty_map.json", 2, true, true},
 		{"v26_1_crash_error.json", -1, false, true},
 		{"v26_1_firewall_error.json", -1, true, false},
+		// OPNsense 26.1.11 (current stable): the top level carries ONLY "metadata" —
+		// no top-level System/CrashReporter/Firewall and no top-level "subsystems" map.
+		// metadata.system.status is a NUMBER (SystemStatusCode, 2 == OK) rather than the
+		// string enum earlier 26.1 builds sent, and the per-subsystem detail moved to
+		// metadata.subsystems (an empty ARRAY on a healthy box, an OBJECT when something
+		// is wrong).
+		{"v26_1_11_ok.json", 2, true, true},
+		{"v26_1_11_metadata_subsystems_error.json", -1, false, false},
 		// OPNsense 25.1: numeric metadata.System.status; healthy subsystems omitted.
 		{"v25_1_ok.json", 2, true, true},
 		{"v25_1_crash_error.json", -1, false, true},

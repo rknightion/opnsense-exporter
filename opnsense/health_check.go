@@ -79,6 +79,14 @@ type HealthCheckResponse struct {
 			Status     any    `json:"status"`
 			StatusCode int    `json:"statusCode"`
 		} `json:"Firewall"`
+		// Subsystems is the per-subsystem map as served by OPNsense 26.1.11 and later,
+		// where the whole health payload collapsed into "metadata" (no top-level
+		// System/CrashReporter/Firewall, no top-level "subsystems"). Same shape and same
+		// PHP assoc-array quirk as the top-level map — an OBJECT when subsystems are
+		// reported, an empty ARRAY ("[]") on a healthy box — so it reuses the
+		// array-tolerant subsystemMap type. Read ALONGSIDE the top-level map, never
+		// instead of it: older generations populate only the top-level one.
+		Subsystems subsystemMap `json:"subsystems"`
 	} `json:"metadata"`
 	// Subsystems is the top-level per-subsystem map introduced in OPNsense 26.1.
 	// metadata.system.status holds the rolled-up overall status (a string enum) while
@@ -155,13 +163,16 @@ func (h *HealthCheckResponse) GetMetadataFirewallStatus() int {
 }
 
 // subsystemHealthy resolves a single subsystem's health across every response shape:
-// the 26.1 top-level "subsystems" map, the legacy <25.1 top-level string status, and
-// the 25.1 metadata status (string or numeric). A subsystem is healthy unless some
-// present source reports a non-OK status; an absent/empty status is treated as healthy
-// because OPNsense omits healthy subsystems from the report (a perfectly healthy 25.1+
-// box carries no per-subsystem entry at all).
+// the 26.1.11 metadata.subsystems map, the 26.1 top-level "subsystems" map, the legacy
+// <25.1 top-level string status, and the 25.1 metadata status (string or numeric). A
+// subsystem is healthy unless some present source reports a non-OK status; an
+// absent/empty status is treated as healthy because OPNsense omits healthy subsystems
+// from the report (a perfectly healthy 25.1+ box carries no per-subsystem entry at all).
 func (h *HealthCheckResponse) subsystemHealthy(name, legacyStatus string, metaStatus any) bool {
 	if entry, ok := h.Subsystems[name]; ok && !entry.isHealthy() {
+		return false
+	}
+	if entry, ok := h.Metadata.Subsystems[name]; ok && !entry.isHealthy() {
 		return false
 	}
 	if legacyStatus != "" && legacyStatus != HealthCheckStatusOK {

@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "subsystems": {
+      "crashreporter": {
+        "title": "Crash Reporter",
+        "statusCode": -1,
+        "message": "An issue was detected and can be reviewed using the firmware crash reporter.",
+        "location": "/crash_reporter.php",
+        "timestamp": 1782048070,
+        "persistent": false,
+        "isBanner": false,
+        "priority": 10,
+        "status": "ERROR",
+        "age": "1 hour ago"
+      },
+      "firewall": {
+        "title": "Firewall",
+        "statusCode": -1,
+        "message": "The firewall rules could not be loaded.",
+        "location": "/firewall_rules.php",
+        "timestamp": 1782048090,
+        "persistent": false,
+        "isBanner": false,
+        "priority": 20,
+        "status": "ERROR",
+        "age": "1 hour ago"
+      }
+    },
+    "system": {
+      "message": "Issues were detected",
+      "status": -1,
+      "title": "System"
+    },
+    "translations": {
+      "dialogCloseButton": "Close",
+      "dialogTitle": "System status"
+    }
+  }
+}
