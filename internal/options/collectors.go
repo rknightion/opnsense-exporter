@@ -256,6 +256,10 @@ var (
 		"exporter.disable-snapshots",
 		"Disable the scraping of ZFS boot-environment inventory metrics (silent/zero on non-ZFS filesystems such as UFS)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_SNAPSHOTS").Default("false").Bool()
+	clamavCollectorDisabled = kingpin.Flag(
+		"exporter.disable-clamav",
+		"Disable the scraping of ClamAV engine version and signature database freshness metrics (silent when the os-clamav plugin is absent)",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CLAMAV").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -315,6 +319,7 @@ type CollectorsDisableSwitch struct {
 	Dhcpv6                 bool
 	Dhcpv6Details          bool
 	BPF                    bool
+	ClamAV                 bool
 	ArpDetails             bool
 	NdpDetails             bool
 	Interfaces             bool
@@ -389,6 +394,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		BPF:                    !*bpfCollectorDisabled,
 		Backup:                 !*backupCollectorDisabled,
 		Snapshots:              !*snapshotsCollectorDisabled,
+		ClamAV:                 !*clamavCollectorDisabled,
 	}
 }
 
@@ -470,4 +476,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-bpf", Subsystem: "bpf"},
 	{Flag: "exporter.disable-backup", Subsystem: "backup"},
 	{Flag: "exporter.disable-snapshots", Subsystem: "snapshots"},
+	{Flag: "exporter.disable-clamav", Subsystem: "clamav"},
 }

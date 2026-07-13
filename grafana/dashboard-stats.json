@@ -1,7 +1,7 @@
 {
-  "metrics": 609,
-  "panels": 487,
-  "tabs": 30,
+  "metrics": 613,
+  "panels": 492,
+  "tabs": 31,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -17,6 +17,7 @@
     "Protocol Stats",
     "NTP",
     "Certificates",
+    "ClamAV",
     "Services, Cron & DynDNS",
     "Syslog",
     "Q-Feeds",

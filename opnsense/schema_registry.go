@@ -29,6 +29,7 @@ var schemaRegistry = map[EndpointName]any{
 	"chronySources":              chronyResponseEnvelope{},
 	"chronySourceStats":          chronyResponseEnvelope{},
 	"chronyTracking":             chronyResponseEnvelope{},
+	"clamavVersion":              clamavVersionResponse{},
 	"cpuType":                    []string{},
 	"cronJobs":                   cronSearchResponse{},
 	"crowdsecAlerts":             crowdsecSearchEnvelope{},

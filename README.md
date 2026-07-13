@@ -7,9 +7,9 @@
 
 A Prometheus exporter for [OPNsense](https://opnsense.org/) firewalls. It polls the
 <<<<<<< HEAD
-OPNsense REST API and exposes 609 metrics across 49 collectors — firewall and PF
+OPNsense REST API and exposes 613 metrics across 50 collectors — firewall and PF
 =======
-OPNsense REST API and exposes 609 metrics across 49 collectors — firewall and PF
+OPNsense REST API and exposes 613 metrics across 50 collectors — firewall and PF
 >>>>>>> worktree-agent-a3ce49f69eab58897
 statistics, interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq,
 ISC), Unbound DNS, certificates and ACME, hardware temperatures, SMART disk health,
@@ -100,9 +100,9 @@ The complete, generated flag and collector reference lives in the
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
 <<<<<<< HEAD
-A single dynamic dashboard covers all 609 metrics across 30 tabs, auto-hiding
+A single dynamic dashboard covers all 613 metrics across 31 tabs, auto-hiding
 =======
-A single dynamic dashboard covers all 609 metrics across 30 tabs, auto-hiding
+A single dynamic dashboard covers all 613 metrics across 31 tabs, auto-hiding
 >>>>>>> worktree-agent-a3ce49f69eab58897
 tabs and rows for collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or

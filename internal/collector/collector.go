@@ -73,6 +73,7 @@ const (
 	BPFSubsystem           = "bpf"
 	BackupSubsystem        = "backup"
 	SnapshotsSubsystem     = "snapshots"
+	ClamAVSubsystem        = "clamav"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -129,6 +130,7 @@ var SubsystemDisplayNames = map[string]string{
 	BPFSubsystem:           "BPF Statistics",
 	BackupSubsystem:        "Config Backup",
 	SnapshotsSubsystem:     "ZFS Boot Environments",
+	ClamAVSubsystem:        "ClamAV",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -517,6 +519,12 @@ func WithoutBackupCollector() Option {
 // removes the snapshots (ZFS boot environment) collector from the list of collectors
 func WithoutSnapshotsCollector() Option {
 	return withoutCollectorInstance(SnapshotsSubsystem)
+}
+
+// WithoutClamAVCollector Option
+// removes the clamav collector from the list of collectors
+func WithoutClamAVCollector() Option {
+	return withoutCollectorInstance(ClamAVSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

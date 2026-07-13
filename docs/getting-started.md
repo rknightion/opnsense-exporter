@@ -119,5 +119,5 @@ scrape_configs:
 - **[Configuration](configuration.md)** -- Full reference for all CLI flags, environment variables, and collector switches
 - **[Deployment](deployment.md)** -- Production deployment guides for Docker, Kubernetes, and systemd
 - **[Security](security.md)** -- API key permissions, TLS configuration, and file-based secrets
-- **[Collectors](collectors/index.md)** -- Overview of all 49 collectors and what they monitor
+- **[Collectors](collectors/index.md)** -- Overview of all 50 collectors and what they monitor
 - **[Integration & Dashboards](integration-dashboards.md)** -- Grafana dashboard setup and PromQL examples

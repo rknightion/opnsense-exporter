@@ -286,7 +286,7 @@ def register_subsystem_tabs(b: Builder):
     order = [
         "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound",
         "dhcp", "vpn", "tailscale", "routing", "protocols", "ntp", "certificates",
-        "services_cron", "syslog", "qfeeds", "netflow", "carp",
+        "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp",
         "haproxy", "nginx", "frr", "monit",
         "crowdsec", "ups", "captiveportal",
         "trafficshaper", "hasync", "chrony",

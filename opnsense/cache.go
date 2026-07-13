@@ -219,7 +219,7 @@ func PluginGatedEndpoints() []EndpointName {
 
 		// Plugin data endpoints (GET).
 		"acmeCertificates", "apcupsdUpsStatus", "bpfStatistics", "captivePortalZones",
-		"chronySources", "chronySourceStats", "chronyTracking", "dhcpv4",
+		"chronySources", "chronySourceStats", "chronyTracking", "clamavVersion", "dhcpv4",
 		"dhcpv6Leases", "dhcpv6Prefixes", "dyndnsAccounts", "haproxyCounters",
 		"haproxyInfo", "ipsecPhase1", "ipsecPools", "monitStatus", "nginxVts",
 		"nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",

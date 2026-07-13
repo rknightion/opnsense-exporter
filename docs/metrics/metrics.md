@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 609
-- **Gauges:** 402
+- **Total metrics:** 613
+- **Gauges:** 406
 - **Counters:** 207
 
 ## General
@@ -152,6 +152,15 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_chrony_source_offset_seconds | Gauge | source, mode | Measured offset of the source (seconds) | --exporter.disable-chrony |
 | opnsense_chrony_source_offset_stddev_seconds | Gauge | source | Estimated standard deviation of the source offset (seconds) | --exporter.disable-chrony |
 | opnsense_chrony_source_samples | Gauge | source | Number of samples currently held in the regression (sourcestats) | --exporter.disable-chrony |
+
+## ClamAV
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_clamav_version_info | Gauge | version | ClamAV engine version information (value is always 1; use labels) | --exporter.disable-clamav |
+| opnsense_clamav_signatures | Gauge | --- | Total number of ClamAV virus signatures loaded across all databases (0 both when freshclam has never run and when the field is unavailable) | --exporter.disable-clamav |
+| opnsense_clamav_signature_db_version | Gauge | db | Version number of a ClamAV signature database (increments on every freshclam update), by database | --exporter.disable-clamav |
+| opnsense_clamav_signature_db_built_timestamp_seconds | Gauge | db | Unix timestamp of when a ClamAV signature database was built, from the freshclam build metadata, by database. Absent when the build-date fragment could not be parsed. | --exporter.disable-clamav |
 
 ## Config Backup
 

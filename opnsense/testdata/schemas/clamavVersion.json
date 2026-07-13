@@ -1,0 +1,35 @@
+{
+  "endpoint": "clamavVersion",
+  "method": "GET",
+  "path": "api/clamav/service/version",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "version"
+  ],
+  "fields": [
+    {
+      "path": "version",
+      "kind": "object"
+    },
+    {
+      "path": "version.bytecode",
+      "kind": "any"
+    },
+    {
+      "path": "version.clamav",
+      "kind": "any"
+    },
+    {
+      "path": "version.daily",
+      "kind": "any"
+    },
+    {
+      "path": "version.main",
+      "kind": "any"
+    },
+    {
+      "path": "version.signatures",
+      "kind": "any"
+    }
+  ]
+}

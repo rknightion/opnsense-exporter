@@ -381,6 +381,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSnapshotsCollector())
 		logger.Info("snapshots collector disabled")
 	}
+	if !collectorsSwitches.ClamAV {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutClamAVCollector())
+		logger.Info("clamav collector disabled")
+	}
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

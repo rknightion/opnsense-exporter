@@ -194,6 +194,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-captiveportal` | `OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL` | Captive Portal | Disable the scraping of captive portal zone/session metrics (silent when no zones are configured) |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | Certificates | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-chrony` | `OPNSENSE_EXPORTER_DISABLE_CHRONY` | Chrony | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
+| `--exporter.disable-clamav` | `OPNSENSE_EXPORTER_DISABLE_CLAMAV` | ClamAV | Disable the scraping of ClamAV engine version and signature database freshness metrics (silent when the os-clamav plugin is absent) |
 | `--exporter.disable-backup` | `OPNSENSE_EXPORTER_DISABLE_BACKUP` | Config Backup | Disable the scraping of config backup freshness metrics (last backup timestamp/count/size) |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | Cron | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | CrowdSec | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
@@ -294,6 +295,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-carp` | `OPNSENSE_EXPORTER_DISABLE_CARP` | `false` | Disable the scraping of CARP/VIP status metrics |
 | `--exporter.disable-certificates` | `OPNSENSE_EXPORTER_DISABLE_CERTIFICATES` | `false` | Disable the scraping of certificate expiry metrics |
 | `--exporter.disable-chrony` | `OPNSENSE_EXPORTER_DISABLE_CHRONY` | `false` | Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent) |
+| `--exporter.disable-clamav` | `OPNSENSE_EXPORTER_DISABLE_CLAMAV` | `false` | Disable the scraping of ClamAV engine version and signature database freshness metrics (silent when the os-clamav plugin is absent) |
 | `--exporter.disable-cron-table` | `OPNSENSE_EXPORTER_DISABLE_CRON_TABLE` | `false` | Disable the scraping of the cron table |
 | `--exporter.disable-crowdsec` | `OPNSENSE_EXPORTER_DISABLE_CROWDSEC` | `false` | Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent when the os-crowdsec plugin is absent) |
 | `--exporter.disable-dhcpv4` | `OPNSENSE_EXPORTER_DISABLE_DHCPV4` | `false` | Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent) |

@@ -15,6 +15,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Captive Portal | captiveportal | 4 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |
+| ClamAV | clamav | 4 | Enabled | --exporter.disable-clamav | OPNSENSE_EXPORTER_DISABLE_CLAMAV |
 | Config Backup | backup | 3 | Enabled | --exporter.disable-backup | OPNSENSE_EXPORTER_DISABLE_BACKUP |
 | Cron | cron | 1 | Enabled | --exporter.disable-cron-table | OPNSENSE_EXPORTER_DISABLE_CRON_TABLE |
 | CrowdSec | crowdsec | 9 | Enabled | --exporter.disable-crowdsec | OPNSENSE_EXPORTER_DISABLE_CROWDSEC |

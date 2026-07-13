@@ -74,6 +74,10 @@ func CacheTTLs() EndpointCacheTTLs {
 		// re-running it every scrape buys nothing (#220).
 		ttls["snapshotsSearch"] = *cacheTTL
 		ttls["snapshotsIsSupported"] = *cacheTTL
+		// ClamAV engine/signature-database version info: freshclam runs at most
+		// a few times a day, so re-fetching this on every scrape only costs
+		// firewall CPU (a configd shell-out + clamconf parse).
+		ttls["clamavVersion"] = *cacheTTL
 	}
 
 	return ttls

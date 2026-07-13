@@ -213,6 +213,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"backupHistory":              "api/core/backup/backups/this",
 		"snapshotsSearch":            "api/core/snapshots/search",
 		"snapshotsIsSupported":       "api/core/snapshots/is_supported",
+		"clamavVersion":              "api/clamav/service/version",
 	}
 }
 
