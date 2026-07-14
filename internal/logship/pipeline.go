@@ -33,9 +33,10 @@ type pipeline struct {
 	cfg     *options.LogsConfig
 	log     *slog.Logger
 
-	sources   []Source
-	stateful  []StatefulSource
-	stateFile string
+	sources     []Source
+	pushSources []PushSource
+	stateful    []StatefulSource
+	stateFile   string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -75,9 +76,13 @@ func Start(
 	if err != nil {
 		return nil, fmt.Errorf("build log sources: %w", err)
 	}
-	if len(sources) == 0 {
+	pushSources, err := buildPushSources(deps)
+	if err != nil {
+		return nil, fmt.Errorf("build push log sources: %w", err)
+	}
+	if len(sources) == 0 && len(pushSources) == 0 {
 		deps.Logger.Warn("log shipping enabled but no source is enabled; nothing will be shipped " +
-			"(enable a source, e.g. --logs.firewall.enabled)")
+			"(enable a source, e.g. --logs.syslog.enabled)")
 		return func(context.Context) error { return nil }, nil
 	}
 
@@ -88,14 +93,15 @@ func Start(
 
 	pctx, cancel := context.WithCancel(context.Background())
 	p := &pipeline{
-		sink:      sink,
-		cfg:       cfg,
-		log:       deps.Logger,
-		sources:   sources,
-		stateFile: cfg.StateFile,
-		ctx:       pctx,
-		cancel:    cancel,
-		limiter:   newLogLimiter(errorLogInterval),
+		sink:        sink,
+		cfg:         cfg,
+		log:         deps.Logger,
+		sources:     sources,
+		pushSources: pushSources,
+		stateFile:   cfg.StateFile,
+		ctx:         pctx,
+		cancel:      cancel,
+		limiter:     newLogLimiter(errorLogInterval),
 	}
 	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
 		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
@@ -118,14 +124,27 @@ func Start(
 		go p.runPoller(s, interval)
 	}
 
+	// Push sources are registered on pollerWG too, so stop() waits for them: each
+	// Run must return on ctx cancel (pollerWG.Wait() is unbounded).
+	for _, s := range pushSources {
+		p.pollerWG.Add(1)
+		go func(s PushSource) {
+			defer p.pollerWG.Done()
+			p.runPushSource(p.ctx, s)
+		}(s)
+	}
+
 	if p.stateFile != "" && len(p.stateful) > 0 {
 		p.pollerWG.Add(1)
 		go p.runStateFlusher()
 	}
 
-	names := make([]string, len(sources))
-	for i, s := range sources {
-		names[i] = s.Name()
+	names := make([]string, 0, len(sources)+len(pushSources))
+	for _, s := range sources {
+		names = append(names, s.Name())
+	}
+	for _, s := range pushSources {
+		names = append(names, s.Name())
 	}
 	deps.Logger.Info("log shipping enabled", "sink", cfg.Sink, "sources", names,
 		"poll_interval", cfg.PollInterval.String(), "buffer_size", cfg.BufferSize)

@@ -747,3 +747,79 @@ func TestFetchInterfacesOverview_BridgeWithMembers(t *testing.T) {
 		t.Errorf("expected sorted members ix2, ix3, got %+v", data.BridgeMembers)
 	}
 }
+
+// TestFetchInterfacesOverview_Addresses covers #248: interfaces_info carries the
+// interface's configured addresses ("ipv4"/"ipv6" arrays of {"ipaddr": "<cidr>"}),
+// which log enrichment needs to classify a packet's scope (self/local/remote).
+// A row with no address keys at all must yield empty slices, never an error.
+func TestFetchInterfacesOverview_Addresses(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 3, "rowCount": 3, "current": 1,
+			"rows": [
+				{
+					"device": "vtnet0",
+					"identifier": "lan",
+					"description": "LAN",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"is_physical": true,
+					"addr4": "10.0.0.114/24",
+					"addr6": "fd6b:1111:2222:3333::/64",
+					"ipv4": [{"ipaddr": "10.0.0.114/24"}],
+					"ipv6": [
+						{"ipaddr": "fd6b:1111:2222:3333::d512/64"},
+						{"ipaddr": "fe80::1a2b:3cff:fe4d:5e6f/64", "link-local": true}
+					]
+				},
+				{
+					"device": "vtnet1",
+					"identifier": "",
+					"description": "Unassigned Interface",
+					"status": "no carrier",
+					"is_physical": true
+				},
+				{
+					"device": "vtnet2",
+					"identifier": "opt1",
+					"description": "DMZ",
+					"status": "up",
+					"is_physical": true,
+					"ipv4": null,
+					"ipv6": []
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Interfaces) != 3 {
+		t.Fatalf("expected 3 interfaces, got %d", len(data.Interfaces))
+	}
+
+	lan := data.Interfaces[0]
+	if len(lan.IPv4) != 1 || lan.IPv4[0] != "10.0.0.114/24" {
+		t.Errorf("expected lan IPv4 [10.0.0.114/24], got %v", lan.IPv4)
+	}
+	if len(lan.IPv6) != 2 ||
+		lan.IPv6[0] != "fd6b:1111:2222:3333::d512/64" ||
+		lan.IPv6[1] != "fe80::1a2b:3cff:fe4d:5e6f/64" {
+		t.Errorf("expected both lan IPv6 CIDRs (incl. link-local), got %v", lan.IPv6)
+	}
+
+	// Missing keys entirely: empty, not an error.
+	unassigned := data.Interfaces[1]
+	if len(unassigned.IPv4) != 0 || len(unassigned.IPv6) != 0 {
+		t.Errorf("expected no addresses on unassigned iface, got %v / %v", unassigned.IPv4, unassigned.IPv6)
+	}
+
+	// Explicit null / empty array: also empty, not an error.
+	dmz := data.Interfaces[2]
+	if len(dmz.IPv4) != 0 || len(dmz.IPv6) != 0 {
+		t.Errorf("expected no addresses on dmz iface, got %v / %v", dmz.IPv4, dmz.IPv6)
+	}
+}

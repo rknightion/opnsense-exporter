@@ -1,0 +1,27 @@
+{
+  "endpoint": "firewallRuleIDs",
+  "method": "GET",
+  "path": "api/diagnostics/firewall/list_rule_ids",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "items"
+  ],
+  "fields": [
+    {
+      "path": "items",
+      "kind": "array"
+    },
+    {
+      "path": "items[]",
+      "kind": "object"
+    },
+    {
+      "path": "items[].descr",
+      "kind": "string"
+    },
+    {
+      "path": "items[].id",
+      "kind": "string"
+    }
+  ]
+}

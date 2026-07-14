@@ -18,6 +18,11 @@ var (
 	).Envar("OPNSENSE_EXPORTER_CACHE_TTL").Default("1h").Duration()
 )
 
+// ruleIDsCacheTTL bounds how long the firewall rule-id map may be served from
+// the client response cache. Short by design: it exists to absorb a burst of
+// unknown-rid lookups, not to hold the map for the whole *cacheTTL window.
+const ruleIDsCacheTTL = time.Minute
+
 // EndpointCacheTTLs maps an OPNsense API endpoint name to how long a successful
 // GET response for it may be served from cache instead of re-fetched. Only
 // endpoints whose payload is wholly slow-moving belong here: anything carrying a
@@ -120,6 +125,16 @@ func CacheTTLs() EndpointCacheTTLs {
 		ttls["natDNATRules"] = *cacheTTL
 		ttls["natOneToOneRules"] = *cacheTTL
 		ttls["natNPTRules"] = *cacheTTL
+
+		// Firewall rule-id map (#248): the rid -> description table log
+		// enrichment resolves filterlog lines against. It changes only when the
+		// ruleset is reloaded, so it is cacheable — but deliberately on a SHORT
+		// TTL, not the full *cacheTTL: the enrichment refresher re-fetches this
+		// endpoint when it sees an unknown rid, and an hour-long client cache
+		// would hand it back the same stale map and leave a freshly added rule
+		// unlabelled for that hour. Capped by *cacheTTL so that setting the flag
+		// lower (or to 0) still disables caching as documented.
+		ttls["firewallRuleIDs"] = min(*cacheTTL, ruleIDsCacheTTL)
 	}
 
 	return ttls

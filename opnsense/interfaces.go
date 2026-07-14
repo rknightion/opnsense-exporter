@@ -171,6 +171,16 @@ type interfaceOverviewRow struct {
 	} `json:"vlan"`
 	IsPhysical bool `json:"is_physical"`
 
+	// Configured addresses. OPNsense serves these as arrays of objects, one per
+	// address, each carrying the address in CIDR form ("ipaddr": "10.0.0.114/24").
+	// An interface with no address of a family omits the key entirely (or sends
+	// null), so both must degrade to an empty slice. The scalar "addr4"/"addr6"
+	// keys alongside them carry only the primary address and are deliberately
+	// not parsed: log enrichment needs every address the box answers on
+	// (including link-local IPv6), not just the first.
+	IPv4Addrs []interfaceAddressRaw `json:"ipv4"`
+	IPv6Addrs []interfaceAddressRaw `json:"ipv6"`
+
 	// LAGG (link aggregation) fields. Populated only when Device is itself a
 	// lagg(4) interface. Source: legacy_interfaces_details() in OPNsense
 	// core's src/etc/inc/interfaces.lib.inc, which parses `ifconfig -Lmv`:
@@ -200,6 +210,13 @@ type interfaceOverviewRow struct {
 	// on OPNsense 26.1) report only the identity keys, never DOM. Source:
 	// interfaces.lib.inc lines 401-424.
 	SFP map[string]string `json:"sfp"`
+}
+
+// interfaceAddressRaw is one entry of an interfaces_info row's "ipv4"/"ipv6"
+// array. Only the CIDR-form address is modelled; the sibling keys OPNsense may
+// add (e.g. "link-local", "tunnel") are ignored.
+type interfaceAddressRaw struct {
+	IPAddr string `json:"ipaddr"`
 }
 
 type interfaceLaggStatisticsRaw struct {
@@ -232,6 +249,15 @@ type InterfaceOverview struct {
 	VlanParent  string // parent device for VLAN interfaces
 	AdminUp     bool   // ifconfig UP flag present
 	Physical    bool
+
+	// IPv4/IPv6 are the interface's configured addresses in CIDR form
+	// (e.g. "10.0.0.114/24", "fe80::1a2b:3cff:fe4d:5e6f/64"), in the order the
+	// box reports them. Both are empty for an interface with no address of that
+	// family — never an error. IPv6 includes link-local addresses: the firewall
+	// genuinely answers on them, and log enrichment classifies packet scope
+	// (self/local/remote) from this set.
+	IPv4 []string
+	IPv6 []string
 }
 
 // LaggInfo is a LAGG (link aggregation) interface's protocol/hash
@@ -340,6 +366,22 @@ func leadingFloat(s string) (float64, bool) {
 		return 0, false
 	}
 	return safeParseFloatOK(m)
+}
+
+// parseInterfaceAddresses flattens an interfaces_info address array into CIDR
+// strings. A missing key, an explicit null, an empty array and an entry with an
+// empty "ipaddr" all yield no address — never an error.
+func parseInterfaceAddresses(raw []interfaceAddressRaw) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	addrs := make([]string, 0, len(raw))
+	for _, a := range raw {
+		if s := strings.TrimSpace(a.IPAddr); s != "" {
+			addrs = append(addrs, s)
+		}
+	}
+	return addrs
 }
 
 // parseLaggInfo extracts LaggInfo from a row that is itself a lagg device.
@@ -505,6 +547,8 @@ func (c *Client) FetchInterfacesOverview() (InterfacesOverview, *APICallError) {
 			VlanTag:     row.VlanTag,
 			AdminUp:     adminUp,
 			Physical:    row.IsPhysical,
+			IPv4:        parseInterfaceAddresses(row.IPv4Addrs),
+			IPv6:        parseInterfaceAddresses(row.IPv6Addrs),
 		}
 		if row.Vlan != nil {
 			iface.VlanParent = row.Vlan.Parent

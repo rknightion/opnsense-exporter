@@ -36,6 +36,30 @@
       "kind": "string"
     },
     {
+      "path": "rows[].ipv4",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].ipv4[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].ipv4[].ipaddr",
+      "kind": "string"
+    },
+    {
+      "path": "rows[].ipv6",
+      "kind": "array"
+    },
+    {
+      "path": "rows[].ipv6[]",
+      "kind": "object"
+    },
+    {
+      "path": "rows[].ipv6[].ipaddr",
+      "kind": "string"
+    },
+    {
       "path": "rows[].is_physical",
       "kind": "boolean"
     },

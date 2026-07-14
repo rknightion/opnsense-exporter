@@ -110,8 +110,8 @@ func TestNewClient_EndpointCount(t *testing.T) {
 	}
 
 	endpoints := client.Endpoints()
-	if len(endpoints) != 173 {
-		t.Errorf("expected 173 endpoints, got %d", len(endpoints))
+	if len(endpoints) != 174 {
+		t.Errorf("expected 174 endpoints, got %d", len(endpoints))
 	}
 
 	// Content equality, not just count: the live Client must use exactly the

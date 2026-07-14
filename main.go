@@ -18,6 +18,8 @@ import (
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog" // registers the syslog push source
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
 	"github.com/rknightion/opnsense-exporter/internal/server"
@@ -585,12 +587,43 @@ func main() {
 				os.Exit(1)
 			}
 		}
+		// Log enrichment: a lock-free snapshot of OPNsense API data (firewall rule
+		// descriptions, interface names, DHCP hostnames, MACs, local subnets) that the
+		// syslog receiver reads per log line. The refresher owns the network I/O on its
+		// own goroutine; the receiver never makes an API call on its read path.
+		deps := logship.Deps{
+			Client:     &opnsenseClient,
+			Logger:     logger,
+			Registerer: selfMetricsRegistry,
+		}
+		syslogCfg, syslogEnabled, serr := options.LogsSyslog()
+		if serr != nil {
+			logger.Error("invalid syslog receiver configuration", "err", serr)
+			os.Exit(1)
+		}
+		var stopEnrich context.CancelFunc
+		if syslogEnabled && syslogCfg.Enrich {
+			cache := enrich.NewCache()
+			refresher := enrich.NewRefresher(
+				&opnsenseClient, cache, enrich.NewMetrics(selfMetricsRegistry), logger)
+			ectx, cancel := context.WithCancel(context.Background())
+			stopEnrich = cancel
+			go refresher.Run(ectx)
+			deps.Cache = cache
+			deps.Miss = refresher.NoteMiss
+			logger.Info("syslog log enrichment enabled",
+				"lookups", "rule descriptions, interface names, hostnames, MACs, scope, services")
+		}
+
 		stop, lerr := logship.Start(
 			context.Background(), logsCfg, logsTransport,
-			logship.Deps{Client: &opnsenseClient, Logger: logger},
+			deps,
 			version, instanceLabel, selfMetricsRegistry,
 		)
 		if lerr != nil {
+			if stopEnrich != nil {
+				stopEnrich()
+			}
 			logger.Error("failed to start log shipping", "err", lerr)
 			os.Exit(1)
 		}
@@ -599,6 +632,12 @@ func main() {
 			defer cancel()
 			if err := stop(ctx); err != nil {
 				logger.Error("failed to flush log pipeline on shutdown", "err", err)
+			}
+			// Stop the enrichment refresher only after the pipeline has drained: records
+			// still in flight are enriched from the snapshot, and a refresher torn down
+			// first would strand them.
+			if stopEnrich != nil {
+				stopEnrich()
 			}
 		}
 	}

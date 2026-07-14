@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -44,10 +46,30 @@ type IntervalSource interface {
 	MinInterval() time.Duration
 }
 
-// Deps are the shared dependencies handed to every SourceFactory.
+// Deps are the shared dependencies handed to every SourceFactory and
+// PushSourceFactory.
+//
+// Cache/Miss/Registerer serve the push (syslog) path. They are plumbed through
+// Deps rather than reached for directly because the pipeline's own `metrics` type
+// is unexported and a source package cannot see it — and because a source package
+// importing logship (as the syslog receiver must, for Record and PushSource) means
+// logship cannot import it back. Handing over a Registerer lets each source
+// package own and register its own metrics without a cycle.
 type Deps struct {
 	Client *opnsense.Client
 	Logger *slog.Logger
+
+	// Cache is the log-enrichment snapshot cache. Reads are lock-free. It is never
+	// nil when the pipeline is started by main; a cold cache simply misses every
+	// lookup and records ship unenriched.
+	Cache *enrich.Cache
+	// Miss reports an enrichment lookup miss for the named table. It MUST NOT block
+	// and MUST NOT perform I/O — it is called on the receiver goroutine, and a
+	// synchronous API call there would stall the socket read loop and silently drop
+	// datagrams. May be nil (misses are then simply not reported).
+	Miss func(table string)
+	// Registerer is where a source registers its own self-metrics.
+	Registerer prometheus.Registerer
 }
 
 // SourceFactory builds a Source from shared dependencies, or returns (nil, nil)

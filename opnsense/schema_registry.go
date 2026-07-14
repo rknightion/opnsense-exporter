@@ -58,6 +58,7 @@ var schemaRegistry = map[EndpointName]any{
 	"dyndnsAccounts":                dyndnsAccountSearchResponse{},
 	"dyndnsServiceStatus":           serviceStatusResponse{},
 	"firewallLog":                   []FirewallLogRecord{},
+	"firewallRuleIDs":               firewallRuleIDsResponse{},
 	"firewallRules":                 firewallRuleSearchResponse{},
 	"firewallRuleStats":             firewallRuleStatsResponse{},
 	"firewallStats":                 []firewallStatEntry{},
