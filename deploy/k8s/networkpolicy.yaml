@@ -34,3 +34,17 @@ spec:
         # metrics-http containerPort in deployment.yaml
         - protocol: TCP
           port: 8080
+    # The syslog receiver (--logs.syslog.enabled), off by default. WITHOUT THIS RULE
+    # the CNI silently drops everything the firewall sends and the receiver looks
+    # broken while being perfectly healthy. Narrow the ipBlock to the firewall's own
+    # address: syslog is unauthenticated, so anything that can reach the port can
+    # inject log records. Delete this whole rule if you do not use the receiver.
+    - from:
+        - ipBlock:
+            # Placeholder: your OPNsense firewall's address
+            cidr: 10.0.0.254/32
+      ports:
+        - protocol: UDP
+          port: 5514
+        - protocol: TCP
+          port: 5514

@@ -78,8 +78,62 @@ def build(b: Builder):
              "non-zero means the source cannot keep up with event volume at its poll interval.",
     )
 
+    # --- Syslog receiver (--logs.syslog.enabled, #248) -------------------------
+    # The receiver is a PUSH source: OPNsense forwards its logs to us. These panels
+    # cover the two things that can go wrong on that path but still look healthy
+    # from the throughput panels above -- input refused before it is ever parsed,
+    # and enrichment quietly going stale.
+
+    parse_errors = b.ts(
+        "Syslog Parse Errors (rate)",
+        [(f'sum by (stage) (rate({sel("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))', "{{stage}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_parse_errors_total: received lines that failed to parse, "
+             "by stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a malformed pf "
+             "log row). These records are NOT dropped -- they ship with their raw body -- so this "
+             "counts fidelity lost, not data lost.",
+    )
+    rejected = b.ts(
+        "Syslog Input Rejected (rate)",
+        [(f'sum by (reason) (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))', "{{reason}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_rejected_total: syslog input refused before parsing. "
+             "reason=peer means a sender outside --logs.syslog.allowed-peers (check this first "
+             "when the receiver appears to receive nothing); reason=oversized means a frame "
+             "beyond the 64KB message cap.",
+    )
+    enrich_misses = b.ts(
+        "Enrichment Misses (rate)",
+        [(f'sum by (table) (rate({sel("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by "
+             "table. A sustained rate on table=rules means the rule snapshot is behind the box's "
+             "ruleset, so log lines are shipping without a rule description. A miss triggers a "
+             "rate-limited refresh, so a brief spike after a ruleset change is normal.",
+    )
+    enrich_errors = b.ts(
+        "Enrichment Refresh Errors (rate)",
+        [(f'sum by (table) (rate({sel("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
+          "{{table}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes "
+             "against the OPNsense API, by table. The previous snapshot keeps serving, so records "
+             "still ship -- enriched with increasingly stale data. Pair with the staleness panel.",
+    )
+    enrich_stale = b.ts(
+        "Enrichment Staleness",
+        [(f'time() - {sel("opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds")}', "{{table}}")],
+        unit="s",
+        desc="Seconds since each enrichment table last refreshed successfully, derived from "
+             "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every "
+             "60s, interfaces every 5m, leases every 60s -- a value climbing far past those means "
+             "the API is failing and enrichment is silently going stale.",
+    )
+
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),
         b.row("Queue & Errors", [queue_len, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [cursor_lag, possible_gaps], present="has_logs"),
+        b.row("Syslog Receiver", [parse_errors, rejected], present="has_logs"),
+        b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
     ])

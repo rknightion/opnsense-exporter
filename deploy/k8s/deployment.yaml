@@ -42,6 +42,16 @@ spec:
             # Default value for --web.listen-address= is 8080
             - name: metrics-http
               containerPort: 8080
+            # The syslog receiver (--logs.syslog.enabled), off by default. Both
+            # protocols are declared because OPNsense can be configured to send over
+            # either; the exporter listens on both by default. Port 5514, not 514:
+            # 514 is privileged and this container runs as a non-root user.
+            - name: syslog-udp
+              containerPort: 5514
+              protocol: UDP
+            - name: syslog-tcp
+              containerPort: 5514
+              protocol: TCP
           # /-/healthy: process liveness only — no firewall dependency. Do NOT
           # point readinessProbe at /-/ready here: when Prometheus scrapes via
           # Service endpoints, a not-ready pod stops being scraped and the
@@ -114,3 +124,16 @@ spec:
       protocol: TCP
       port: 8080
       targetPort: 8080
+    # Syslog receiver (--logs.syslog.enabled), off by default. A ClusterIP is only
+    # reachable from inside the cluster, so the firewall cannot push to it as-is:
+    # to use the receiver, expose these via a LoadBalancer/NodePort Service (or set
+    # `type: LoadBalancer` here) and point the OPNsense logging target at that
+    # address. See docs/syslog-receiver.md.
+    - name: syslog-udp
+      protocol: UDP
+      port: 5514
+      targetPort: 5514
+    - name: syslog-tcp
+      protocol: TCP
+      port: 5514
+      targetPort: 5514

@@ -67464,6 +67464,451 @@
         "kind": "Panel",
         "spec": {
           "id": 621,
+          "title": "Syslog Parse Errors (rate)",
+          "description": "opnsense_exporter_logs_parse_errors_total: received lines that failed to parse, by stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a malformed pf log row). These records are NOT dropped -- they ship with their raw body -- so this counts fidelity lost, not data lost.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (stage) (rate(opnsense_exporter_logs_parse_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{stage}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-622": {
+        "kind": "Panel",
+        "spec": {
+          "id": 622,
+          "title": "Syslog Input Rejected (rate)",
+          "description": "opnsense_exporter_logs_rejected_total: syslog input refused before parsing. reason=peer means a sender outside --logs.syslog.allowed-peers (check this first when the receiver appears to receive nothing); reason=oversized means a frame beyond the 64KB message cap.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (reason) (rate(opnsense_exporter_logs_rejected_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{reason}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-623": {
+        "kind": "Panel",
+        "spec": {
+          "id": 623,
+          "title": "Enrichment Misses (rate)",
+          "description": "opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by table. A sustained rate on table=rules means the rule snapshot is behind the box's ruleset, so log lines are shipping without a rule description. A miss triggers a rate-limited refresh, so a brief spike after a ruleset change is normal.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (table) (rate(opnsense_exporter_logs_enrich_misses_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{table}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-624": {
+        "kind": "Panel",
+        "spec": {
+          "id": 624,
+          "title": "Enrichment Refresh Errors (rate)",
+          "description": "opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes against the OPNsense API, by table. The previous snapshot keeps serving, so records still ship -- enriched with increasingly stale data. Pair with the staleness panel.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (table) (rate(opnsense_exporter_logs_enrich_refresh_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{table}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-625": {
+        "kind": "Panel",
+        "spec": {
+          "id": 625,
+          "title": "Enrichment Staleness",
+          "description": "Seconds since each enrichment table last refreshed successfully, derived from opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every 60s, interfaces every 5m, leases every 60s -- a value climbing far past those means the API is failing and enrichment is silently going stale.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "time() - opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}",
+                        "refId": "A",
+                        "legendFormat": "{{table}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-626": {
+        "kind": "Panel",
+        "spec": {
+          "id": 626,
           "title": "Scrape Success (opnsense_up)",
           "description": "",
           "links": [],
@@ -67561,10 +68006,10 @@
           }
         }
       },
-      "panel-622": {
+      "panel-627": {
         "kind": "Panel",
         "spec": {
-          "id": 622,
+          "id": 627,
           "title": "Scrape & Skip Rate",
           "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
@@ -67676,10 +68121,10 @@
           }
         }
       },
-      "panel-623": {
+      "panel-628": {
         "kind": "Panel",
         "spec": {
-          "id": 623,
+          "id": 628,
           "title": "Endpoint Errors (rate)",
           "description": "",
           "links": [],
@@ -67765,10 +68210,10 @@
           }
         }
       },
-      "panel-624": {
+      "panel-629": {
         "kind": "Panel",
         "spec": {
-          "id": 624,
+          "id": 629,
           "title": "Endpoint Errors (total)",
           "description": "",
           "links": [],
@@ -67869,10 +68314,10 @@
           }
         }
       },
-      "panel-625": {
+      "panel-630": {
         "kind": "Panel",
         "spec": {
-          "id": 625,
+          "id": 630,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -67976,10 +68421,10 @@
           }
         }
       },
-      "panel-626": {
+      "panel-631": {
         "kind": "Panel",
         "spec": {
-          "id": 626,
+          "id": 631,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -68084,10 +68529,10 @@
           }
         }
       },
-      "panel-627": {
+      "panel-632": {
         "kind": "Panel",
         "spec": {
-          "id": 627,
+          "id": 632,
           "title": "Collector Scrape Duration",
           "description": "",
           "links": [],
@@ -68173,10 +68618,10 @@
           }
         }
       },
-      "panel-628": {
+      "panel-633": {
         "kind": "Panel",
         "spec": {
-          "id": 628,
+          "id": 633,
           "title": "Collector Scrape Success",
           "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
           "links": [],
@@ -68281,10 +68726,10 @@
           }
         }
       },
-      "panel-629": {
+      "panel-634": {
         "kind": "Panel",
         "spec": {
-          "id": 629,
+          "id": 634,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -68370,10 +68815,10 @@
           }
         }
       },
-      "panel-630": {
+      "panel-635": {
         "kind": "Panel",
         "spec": {
-          "id": 630,
+          "id": 635,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -68485,10 +68930,10 @@
           }
         }
       },
-      "panel-631": {
+      "panel-636": {
         "kind": "Panel",
         "spec": {
-          "id": 631,
+          "id": 636,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -68574,10 +69019,10 @@
           }
         }
       },
-      "panel-632": {
+      "panel-637": {
         "kind": "Panel",
         "spec": {
-          "id": 632,
+          "id": 637,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -68663,10 +69108,10 @@
           }
         }
       },
-      "panel-633": {
+      "panel-638": {
         "kind": "Panel",
         "spec": {
-          "id": 633,
+          "id": 638,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -68752,10 +69197,10 @@
           }
         }
       },
-      "panel-634": {
+      "panel-639": {
         "kind": "Panel",
         "spec": {
-          "id": 634,
+          "id": 639,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -68837,10 +69282,10 @@
           }
         }
       },
-      "panel-635": {
+      "panel-640": {
         "kind": "Panel",
         "spec": {
-          "id": 635,
+          "id": 640,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -68926,10 +69371,10 @@
           }
         }
       },
-      "panel-636": {
+      "panel-641": {
         "kind": "Panel",
         "spec": {
-          "id": 636,
+          "id": 641,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -82028,6 +82473,133 @@
                           }
                         }
                       }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Syslog Receiver",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-621"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-622"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_logs",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Enrichment",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-623"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-624"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 8,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-625"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_logs",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   ]
                 }
@@ -82060,7 +82632,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-621"
+                                    "name": "panel-626"
                                   }
                                 }
                               },
@@ -82073,7 +82645,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-622"
+                                    "name": "panel-627"
                                   }
                                 }
                               },
@@ -82086,7 +82658,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-623"
+                                    "name": "panel-628"
                                   }
                                 }
                               },
@@ -82099,7 +82671,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-624"
+                                    "name": "panel-629"
                                   }
                                 }
                               }
@@ -82126,7 +82698,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-627"
+                                    "name": "panel-632"
                                   }
                                 }
                               },
@@ -82139,7 +82711,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-628"
+                                    "name": "panel-633"
                                   }
                                 }
                               }
@@ -82166,7 +82738,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-632"
+                                    "name": "panel-637"
                                   }
                                 }
                               },
@@ -82179,7 +82751,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-633"
+                                    "name": "panel-638"
                                   }
                                 }
                               }
@@ -82206,7 +82778,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-634"
+                                    "name": "panel-639"
                                   }
                                 }
                               },
@@ -82219,7 +82791,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-635"
+                                    "name": "panel-640"
                                   }
                                 }
                               },
@@ -82232,7 +82804,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-636"
+                                    "name": "panel-641"
                                   }
                                 }
                               }
@@ -82259,7 +82831,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-625"
+                                    "name": "panel-630"
                                   }
                                 }
                               },
@@ -82272,7 +82844,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-626"
+                                    "name": "panel-631"
                                   }
                                 }
                               }
@@ -82299,7 +82871,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-629"
+                                    "name": "panel-634"
                                   }
                                 }
                               },
@@ -82312,7 +82884,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-630"
+                                    "name": "panel-635"
                                   }
                                 }
                               },
@@ -82325,7 +82897,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-631"
+                                    "name": "panel-636"
                                   }
                                 }
                               }

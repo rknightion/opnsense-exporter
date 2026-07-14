@@ -7,3 +7,13 @@ exporter.disable
 exporter.enable
 # Tutorial placeholder in docs/development/adding-collector.md:
 OPNSENSE_EXPORTER_DISABLE_EXAMPLE
+
+# Retired by the syslog receiver (#248). These are no longer registered flags, but the
+# migration notes in docs/syslog-receiver.md and the changelog MUST still name them --
+# a user upgrading is searching for exactly these strings.
+logs.firewall.enabled
+logs.diaglog.enabled
+logs.scopes
+OPNSENSE_EXPORTER_LOGS_FIREWALL_ENABLED
+OPNSENSE_EXPORTER_LOGS_DIAGLOG_ENABLED
+OPNSENSE_EXPORTER_LOGS_SCOPES
