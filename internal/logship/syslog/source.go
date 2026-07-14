@@ -43,11 +43,12 @@ func init() {
 // holding finished records. Nothing on this path may ever make a network call — see
 // enrich.Refresher.NoteMiss, which is deliberately non-blocking for exactly this reason.
 type source struct {
-	l     *Listener
-	cache *enrich.Cache
-	miss  func(table string)
-	m     *Metrics
-	log   *slog.Logger
+	l      *Listener
+	cache  *enrich.Cache
+	miss   func(table string)
+	m      *Metrics
+	filter *Filter
+	log    *slog.Logger
 
 	// emit is set by Run before the listener's read goroutines exist. Goroutine
 	// creation is a happens-before edge, so a plain field is safe here: no reader
@@ -63,10 +64,11 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		cache = enrich.NewCache()
 	}
 	s := &source{
-		cache: cache,
-		miss:  d.Miss,
-		m:     NewMetrics(d.Registerer),
-		log:   d.Logger,
+		cache:  cache,
+		miss:   d.Miss,
+		m:      NewMetrics(d.Registerer),
+		filter: NewFilter(cfg.IncludePrograms, cfg.ExcludePrograms, cfg.MinSeverity, cfg.HasMinSeverity),
+		log:    d.Logger,
 	}
 	s.l = NewListener(Config{
 		UDPAddr:      cfg.UDPAddr,
@@ -103,6 +105,14 @@ func (s *source) handle(line []byte, _ netip.Addr) {
 		// useless — it looks healthy while losing data.
 		s.m.parseError("envelope")
 		emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
+		return
+	}
+	// Filtering is opt-in and defaults to passing everything. It is applied AFTER the
+	// envelope parse because that is where the program and severity come from, and
+	// BEFORE the (more expensive) body parse and enrichment -- no point enriching a
+	// record we are about to drop.
+	if s.filter.Enabled() && !s.filter.Allow(env.Program, env.Severity) {
+		s.m.reject("filtered")
 		return
 	}
 	emit(BuildRecord(env, s.cache.Load(), s.miss))

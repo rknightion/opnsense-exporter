@@ -54,6 +54,28 @@ var (
 			"growth on an unauthenticated ingress.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_MAX_CONNS").Default("64").Int()
 
+	// Filtering is OPT-IN. The receiver's contract is that nothing is silently
+	// discarded; a user with no ingest limits would rather have the data than have
+	// the exporter decide for them.
+	logsSyslogExclude = kingpin.Flag(
+		"logs.syslog.exclude-programs",
+		"Comma-separated syslog programs to DROP (e.g. radvd,cron). Empty ships everything. "+
+			"Dropped records are counted in opnsense_exporter_logs_rejected_total{reason=\"filtered\"} "+
+			"— never silently discarded.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_EXCLUDE_PROGRAMS").Default("").String()
+
+	logsSyslogInclude = kingpin.Flag(
+		"logs.syslog.include-programs",
+		"Comma-separated syslog programs to ship, dropping everything else. Empty ships "+
+			"everything. Mutually exclusive with --logs.syslog.exclude-programs.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_INCLUDE_PROGRAMS").Default("").String()
+
+	logsSyslogMinSeverity = kingpin.Flag(
+		"logs.syslog.min-severity",
+		"Drop records less severe than this (emerg, alert, crit, err, warning, notice, info, "+
+			"debug). E.g. notice drops info and debug. Empty ships every severity.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_MIN_SEVERITY").Default("").String()
+
 	logsSyslogEnrich = kingpin.Flag(
 		"logs.syslog.enrich",
 		"Enrich received syslog records from the OPNsense API: firewall rule descriptions "+
@@ -64,11 +86,29 @@ var (
 
 // SyslogConfig is the resolved configuration for the syslog receiver.
 type SyslogConfig struct {
-	UDPAddr      string
-	TCPAddr      string
-	AllowedPeers []netip.Prefix
-	MaxConns     int
-	Enrich       bool
+	UDPAddr         string
+	TCPAddr         string
+	AllowedPeers    []netip.Prefix
+	MaxConns        int
+	Enrich          bool
+	IncludePrograms []string
+	ExcludePrograms []string
+	MinSeverity     int
+	HasMinSeverity  bool
+}
+
+// severityNames maps RFC5424 severity keywords to their numeric level. LOWER IS
+// WORSE (0 emerg … 7 debug), which is the opposite of most people's intuition and is
+// why --logs.syslog.min-severity takes a name rather than a number.
+var severityNames = map[string]int{
+	"emerg": 0, "emergency": 0, "panic": 0,
+	"alert": 1,
+	"crit":  2, "critical": 2,
+	"err": 3, "error": 3,
+	"warning": 4, "warn": 4,
+	"notice": 5,
+	"info":   6, "informational": 6,
+	"debug": 7,
 }
 
 // LogsSyslogEnabled reports whether the syslog receiver is enabled.
@@ -101,7 +141,38 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		return nil, false, err
 	}
 	cfg.AllowedPeers = peers
+
+	cfg.IncludePrograms = splitList(*logsSyslogInclude)
+	cfg.ExcludePrograms = splitList(*logsSyslogExclude)
+	if len(cfg.IncludePrograms) > 0 && len(cfg.ExcludePrograms) > 0 {
+		// Silently picking a precedence would leave the user with a log stream they
+		// cannot explain. Make them say what they mean.
+		return nil, false, fmt.Errorf(
+			"logs.syslog: --logs.syslog.include-programs and --logs.syslog.exclude-programs " +
+				"are mutually exclusive; set one or the other")
+	}
+	if sev := strings.TrimSpace(strings.ToLower(*logsSyslogMinSeverity)); sev != "" {
+		n, ok := severityNames[sev]
+		if !ok {
+			return nil, false, fmt.Errorf(
+				"logs.syslog.min-severity: unknown severity %q (want one of: emerg, alert, "+
+					"crit, err, warning, notice, info, debug)", sev)
+		}
+		cfg.MinSeverity = n
+		cfg.HasMinSeverity = true
+	}
 	return cfg, true, nil
+}
+
+// splitList parses a comma-separated list, dropping empties and whitespace.
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // parseCIDRList parses a comma-separated CIDR allowlist. A bare address (no /len)
