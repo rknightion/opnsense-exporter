@@ -1,50 +1,165 @@
 {
-  "apcupsdServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "apcupsdUpsStatus": { "knownExtraTopKeys": ["output"], "note": "raw apcaccess text echoed alongside the parsed fields; never consumed" },
-  "captivePortalServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "chronyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "crowdsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "diagLog": { "knownExtraTopKeys": ["filters"], "note": "echoes the request's searchPhrase filter string back (always empty in our capture requests, which never set it); not modelled" },
-  "dnsmasqServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "dyndnsServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "firewallLog": {
-    "missingOK": ["[].srcport", "[].dstport", "[].tcpflags"],
-    "note": "per-protocol filterlog columns: srcport/dstport are emitted only for port-bearing protocols (tcp/udp) and tcpflags only for tcp, so an icmp/igmp/esp-only poll window omits the keys. Verified live 2026-07-13 (icmp/igmp rows carry neither). Box/traffic state, not a version prune"
+  "apcupsdServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "apcupsdUpsStatus": {
+    "knownExtraTopKeys": [
+      "output"
+    ],
+    "note": "raw apcaccess text echoed alongside the parsed fields; never consumed"
+  },
+  "captivePortalServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "chronyServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "crowdsecServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "dnsmasqServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "dyndnsServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
   },
   "firmware": {
-    "missingOK": ["last_check", "needs_reboot", "new_packages", "os_version", "product_abi", "product_id", "product_version", "upgrade_packages"],
-    "knownExtraTopKeys": ["all_packages", "all_sets", "api_version", "connection", "download_size", "product_target", "remove_packages", "repository", "status_msg", "status_reboot", "upgrade_major_message", "upgrade_major_version", "upgrade_needs_reboot", "upgrade_sets"],
+    "missingOK": [
+      "last_check",
+      "needs_reboot",
+      "new_packages",
+      "os_version",
+      "product_abi",
+      "product_id",
+      "product_version",
+      "upgrade_packages"
+    ],
+    "knownExtraTopKeys": [
+      "all_packages",
+      "all_sets",
+      "api_version",
+      "connection",
+      "download_size",
+      "product_target",
+      "remove_packages",
+      "repository",
+      "status_msg",
+      "status_reboot",
+      "upgrade_major_message",
+      "upgrade_major_version",
+      "upgrade_needs_reboot",
+      "upgrade_sets"
+    ],
     "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 12); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. downgrade_packages/reinstall_packages are now modelled as count gauges (#237). The 26.7 full-inventory keys (all_packages/all_sets) remain a #227 opportunity"
   },
   "firmwareInfo": {
-    "knownExtraTopKeys": ["changelog", "package", "product"],
-    "note": "release changelog metadata, the full package inventory (~380 KB payload) and the product detail object; not modelled. First validated 2026-07-13 — before the ForceAttemptHTTP2 fix this endpoint always failed to probe over HTTP/1.1, so these keys never surfaced"
+    "knownExtraTopKeys": [
+      "changelog",
+      "package",
+      "product"
+    ],
+    "note": "release changelog metadata, the full package inventory (~380 KB payload) and the product detail object; not modelled. First validated 2026-07-13 \u2014 before the ForceAttemptHTTP2 fix this endpoint always failed to probe over HTTP/1.1, so these keys never surfaced"
   },
-  "haproxyServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "idsStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "idsQueryAlerts": { "knownExtraTopKeys": ["filters", "origin"], "note": "bootgrid query metadata (active filters, the eve.json origin) served alongside the alert rows; not modelled" },
+  "haproxyServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "idsStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "idsQueryAlerts": {
+    "knownExtraTopKeys": [
+      "filters",
+      "origin"
+    ],
+    "note": "bootgrid query metadata (active filters, the eve.json origin) served alongside the alert rows; not modelled"
+  },
   "idsSettings": {
-    "missingOK": ["ids.general.ips", "ids.general.mode.*"],
+    "missingOK": [
+      "ids.general.ips",
+      "ids.general.mode.*"
+    ],
     "note": "cross-generation IPS-mode representation: <= 26.1 carries the boolean ids.general.ips, 26.7 replaced it with the ids.general.mode pcap/netmap/divert selector. The exporter reads whichever is present. Prune ids.general.ips when 26.1 leaves the support window; ids.general.mode.* covers the reverse (mode absent on <= 26.1)"
   },
-  "hasyncVersion": { "missingOK": ["message", "status"], "note": "present only for some HA peer states; box has no HA peer" },
+  "hasyncVersion": {
+    "missingOK": [
+      "message",
+      "status"
+    ],
+    "note": "present only for some HA peer states; box has no HA peer"
+  },
   "healthCheck": {
-    "missingOK": ["CrashReporter.*", "Firewall.*", "System.*", "metadata.CrashReporter.*", "metadata.Firewall.*", "metadata.System.status"],
+    "missingOK": [
+      "CrashReporter.*",
+      "Firewall.*",
+      "System.*",
+      "metadata.CrashReporter.*",
+      "metadata.Firewall.*",
+      "metadata.System.status"
+    ],
     "note": "legacy pre-26.1.11 health shape (top-level per-subsystem objects + metadata.<Subsystem>); 26.1.11+ serves only metadata.system plus metadata.subsystems, which the tolerant reader prefers. Prune when 26.1.10 and older leave the support window"
   },
-  "interfaces": { "knownExtraTopKeys": ["time"], "note": "capture timestamp of the interface statistics snapshot; not modelled" },
+  "interfaces": {
+    "knownExtraTopKeys": [
+      "time"
+    ],
+    "note": "capture timestamp of the interface statistics snapshot; not modelled"
+  },
   "interfacesOverview": {
-    "missingOK": ["rows[].laggproto", "rows[].lagghash", "rows[].laggstatistics.*", "rows[].laggport.*", "rows[].members.*"],
-    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport) and bridge (members) fields are hardware/config-dependent — only served by a row that is itself a lagg(4)/bridge(4) interface. Verified empirically 2026-07-13: absent on both the live prod box (no lagg, no bridge configured) and the 26.7-devel VM (virtio-only, no lagg/bridge module loaded). rows[].sfp.* already covers every sfp key uniformly (including the DOM-only temperature/voltage/lane_*_rx_power/lane_*_tx_bias keys) via the map wildcard, so no separate exemption is needed there — a copper RJ45 SFP's identity-only keys (verified live: UBNT UF-RJ45-1G) already satisfy the wildcard (#214)"
+    "missingOK": [
+      "rows[].laggproto",
+      "rows[].lagghash",
+      "rows[].laggstatistics.*",
+      "rows[].laggport.*",
+      "rows[].members.*"
+    ],
+    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport) and bridge (members) fields are hardware/config-dependent \u2014 only served by a row that is itself a lagg(4)/bridge(4) interface. Verified empirically 2026-07-13: absent on both the live prod box (no lagg, no bridge configured) and the 26.7-devel VM (virtio-only, no lagg/bridge module loaded). rows[].sfp.* already covers every sfp key uniformly (including the DOM-only temperature/voltage/lane_*_rx_power/lane_*_tx_bias keys) via the map wildcard, so no separate exemption is needed there \u2014 a copper RJ45 SFP's identity-only keys (verified live: UBNT UF-RJ45-1G) already satisfy the wildcard (#214)"
   },
   "ipsecSad": {
-    "missingOK": ["rows[].nat"],
+    "missingOK": [
+      "rows[].nat"
+    ],
     "note": "the NAT-T marker is emitted by list_sad.py only when the SA is NAT-traversed (setkey reports a NAT src/dst); absent as a key otherwise. Box state (whether a peer sits behind NAT), not a version prune. #213"
   },
-  "ipsecServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "keaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "ipsecServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "keaServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "keaSubnets4": {
-    "missingOK": ["rows[].%interface"],
+    "missingOK": [
+      "rows[].%interface"
+    ],
     "note": "legacy pre-26.7 subnet-row key; 26.7 rows carry the full subnet config (subnet/pools) instead. Prune when 26.1 leaves the support window"
   },
   "memoryStatistics": {
@@ -57,39 +172,81 @@
       "mbuf-statistics.mbuf-max",
       "mbuf-statistics.percentage"
     ],
-    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window"
+    "note": "legacy \u2264 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window"
   },
-  "monitServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "monitServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "ndpTable": {
-    "missingOK": ["[].expire", "[].type"],
-    "note": "removed upstream in 26.1.11; kept for ≤ 26.1.10. Prune when 26.1 leaves the support window"
+    "missingOK": [
+      "[].expire",
+      "[].type"
+    ],
+    "note": "removed upstream in 26.1.11; kept for \u2264 26.1.10. Prune when 26.1 leaves the support window"
   },
   "netbirdStatus": {
     "knownExtraTopKeys": [
-      "dnsServers", "events", "forwardingRules", "fqdn", "lazyConnectionEnabled",
-      "netbirdIp", "netbirdIpv6", "networks", "profileName", "publicKey",
-      "quantumResistance", "quantumResistancePermissive", "sessionExpiresAt",
-      "sshServer", "usesKernelInterface", "wireguardPort"
+      "dnsServers",
+      "events",
+      "forwardingRules",
+      "fqdn",
+      "lazyConnectionEnabled",
+      "netbirdIp",
+      "netbirdIpv6",
+      "networks",
+      "profileName",
+      "publicKey",
+      "quantumResistance",
+      "quantumResistancePermissive",
+      "sessionExpiresAt",
+      "sshServer",
+      "usesKernelInterface",
+      "wireguardPort"
     ],
-    "note": "netbird CLI status --json (client/status.OutputOverview, github.com/netbirdio/netbird) node identity/config/session fields the exporter does not model — an #211 opportunity if a future metric needs them. Separately (not expressible as an exemption here): the daemon-down state serves a bare `[]` instead of this object (verified live 2026-07-13); a canary run that catches the box in that state will report a top-level Mismatch for this endpoint — that is the documented daemon-down fallback (see opnsense/netbird.go), not drift"
+    "note": "netbird CLI status --json (client/status.OutputOverview, github.com/netbirdio/netbird) node identity/config/session fields the exporter does not model \u2014 an #211 opportunity if a future metric needs them. Separately (not expressible as an exemption here): the daemon-down state serves a bare `[]` instead of this object (verified live 2026-07-13); a canary run that catches the box in that state will report a top-level Mismatch for this endpoint \u2014 that is the documented daemon-down fallback (see opnsense/netbird.go), not drift"
   },
-  "nginxServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "nginxServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "ntpGPS": {
-    "knownExtraTopKeys": ["ntpq_servers"],
+    "knownExtraTopKeys": [
+      "ntpq_servers"
+    ],
     "note": "api/ntpd/service/gps and api/ntpd/service/status both wrap the same `ntpd status` configd script output; ntpq_servers duplicates the peer rows already modelled via ntpStatus's \"rows\" key (statusAction re-wraps the same array through searchRecordsetBase). Intentionally not modelled a second time here (#224)"
   },
   "nginxVts": {
-    "knownExtraTopKeys": ["hostName", "moduleVersion", "nginxVersion", "nowMsec"],
+    "knownExtraTopKeys": [
+      "hostName",
+      "moduleVersion",
+      "nginxVersion",
+      "nowMsec"
+    ],
     "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list"
   },
-  "nutServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "nutServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "pfStatisticsByInterface": {
-    "missingOK": ["interfaces.*.interface"],
-    "note": "removed upstream in 26.1.11 (the interface name is the map key); kept for ≤ 26.1.10. Prune when 26.1 leaves the support window"
+    "missingOK": [
+      "interfaces.*.interface"
+    ],
+    "note": "removed upstream in 26.1.11 (the interface name is the map key); kept for \u2264 26.1.10. Prune when 26.1 leaves the support window"
   },
   "pfStatsInfo": {
-    "missingOK": ["info.source-tracking-table.current-entries.rate", "info.state-table.current-entries.rate"],
-    "note": "removed upstream in 26.1.11 — a gauge has no rate; kept for ≤ 26.1.10. Prune when 26.1 leaves the support window"
+    "missingOK": [
+      "info.source-tracking-table.current-entries.rate",
+      "info.state-table.current-entries.rate"
+    ],
+    "note": "removed upstream in 26.1.11 \u2014 a gauge has no rate; kept for \u2264 26.1.10. Prune when 26.1 leaves the support window"
   },
   "protocolStatistics": {
     "missingOK": [
@@ -100,14 +257,30 @@
       "statistics.tcp.syncache.receivd-cookies",
       "statistics.tcp.syncache.sent-cookies"
     ],
-    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for ≤ 26.1.10 — prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}, which are now modelled as a presence-gated counter (#237); the legacy aggregate stays decoded-only (never fed a metric). syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7, now modelled as a presence-gated counter (#237); decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window"
+    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for \u2264 26.1.10 \u2014 prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}, which are now modelled as a presence-gated counter (#237); the legacy aggregate stays decoded-only (never fed a metric). syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7, now modelled as a presence-gated counter (#237); decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window"
   },
-  "quaggaServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "quaggaServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "smartInfo": {
-    "missingOK": ["output.ata_smart_attributes", "output.nvme_smart_health_information_log", "output.power_on_time", "output.serial_number", "output.smart_status"],
-    "note": "smartctl fields vary by drive type — the struct fields are pointers by design"
+    "missingOK": [
+      "output.ata_smart_attributes",
+      "output.nvme_smart_health_information_log",
+      "output.power_on_time",
+      "output.serial_number",
+      "output.smart_status"
+    ],
+    "note": "smartctl fields vary by drive type \u2014 the struct fields are pointers by design"
   },
-  "syslogServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "syslogServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "systemMbuf": {
     "missingOK": [
       "mbuf-statistics.jumbop-cache",
@@ -118,12 +291,32 @@
       "mbuf-statistics.mbuf-max",
       "mbuf-statistics.percentage"
     ],
-    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window"
+    "note": "legacy \u2264 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window"
   },
-  "systemResources": { "missingOK": ["memory.arc"], "note": "ARC exists only on ZFS installs; testbed VM is UFS" },
-  "tailscaleServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
+  "systemResources": {
+    "missingOK": [
+      "memory.arc"
+    ],
+    "note": "ARC exists only on ZFS installs; testbed VM is UFS"
+  },
+  "tailscaleServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
   "tailscaleStatus": {
-    "knownExtraTopKeys": ["AuthURL", "CertDomains", "ClientVersion", "CurrentTailnet", "HaveNodeKey", "MagicDNSSuffix", "TUN", "TailscaleIPs", "User"],
+    "knownExtraTopKeys": [
+      "AuthURL",
+      "CertDomains",
+      "ClientVersion",
+      "CurrentTailnet",
+      "HaveNodeKey",
+      "MagicDNSSuffix",
+      "TUN",
+      "TailscaleIPs",
+      "User"
+    ],
     "note": "tailscaled status keys the exporter does not model (node identity, tailnet metadata). Health (array of live warning strings) is modelled as a count-only gauge (#237) and no longer exempted"
   },
   "unboundDNSStatus": {
@@ -138,12 +331,25 @@
       "data.rrset.*",
       "data.unwanted.*"
     ],
-    "note": "extended unbound statistics — absent when the box runs extended-statistics: no, the 26.7 default; present on ≤ 26.1 and whenever an admin re-enables extended stats. Box state, not a version prune"
+    "note": "extended unbound statistics \u2014 absent when the box runs extended-statistics: no, the 26.7 default; present on \u2264 26.1 and whenever an admin re-enables extended stats. Box state, not a version prune"
   },
   "unboundQueryStatsTotals": {
-    "knownExtraTopKeys": ["top", "top_blocked"],
-    "note": "per-domain query/blocked-domain leaderboards keyed by domain name — unbounded cardinality (#209); never modelled or exported as metrics"
+    "knownExtraTopKeys": [
+      "top",
+      "top_blocked"
+    ],
+    "note": "per-domain query/blocked-domain leaderboards keyed by domain name \u2014 unbounded cardinality (#209); never modelled or exported as metrics"
   },
-  "unboundServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" },
-  "wireguardServiceStatus": { "knownExtraTopKeys": ["widget"], "note": "GUI widget metadata on service-status responses; never consumed" }
+  "unboundServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "wireguardServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
+  }
 }

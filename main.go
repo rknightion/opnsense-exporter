@@ -80,6 +80,13 @@ func main() {
 	// prints the ldflags-embedded version and exits — used by the publish/CI
 	// smoke check to prove the built image embeds a real version (see #79).
 	kingpin.Version(version)
+	// Fail fast on settings retired by the syslog receiver (#248) BEFORE parsing.
+	// kingpin rejects an unknown --flag on its own, but a retired ENV VAR would just
+	// be read by nothing — the user would get an empty log stream and no explanation.
+	if err := options.CheckRemovedFlagsFromProcess(); err != nil {
+		fmt.Fprintln(os.Stderr, "error: "+err.Error())
+		os.Exit(1)
+	}
 	options.Init()
 	logger := promslog.New(options.PromLogConfig)
 
