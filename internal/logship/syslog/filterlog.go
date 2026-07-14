@@ -103,8 +103,8 @@ func parseFilterlog(env Envelope, snap *enrich.Snapshot, miss func(table string)
 	// (NAT and floating matches); it is NOT a cache miss, so we neither look it
 	// up nor signal a miss.
 	rid := f[fRid]
-	switch {
-	case rid == "" || rid == "0":
+	switch rid {
+	case "", "0":
 		set("rule.ref", ruleRef(f[fRulenr], f[fSubrulenr]))
 	default:
 		set("rule.id", rid)

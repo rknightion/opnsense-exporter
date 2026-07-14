@@ -90,12 +90,14 @@ func (l *Listener) Start() error {
 	if l.cfg.TCPAddr != "" {
 		addr, err := net.ResolveTCPAddr("tcp", l.cfg.TCPAddr)
 		if err != nil {
-			l.closeSockets()
+			// Roll back the already-bound UDP socket. Its close error is deliberately
+			// discarded: the bind failure below is the one the operator needs to see.
+			_ = l.closeSockets()
 			return fmt.Errorf("syslog: resolve TCP %q: %w", l.cfg.TCPAddr, err)
 		}
 		ln, err := net.ListenTCP("tcp", addr)
 		if err != nil {
-			l.closeSockets()
+			_ = l.closeSockets()
 			return fmt.Errorf("syslog: listen TCP %q: %w", l.cfg.TCPAddr, err)
 		}
 		l.tcp = ln
