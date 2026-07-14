@@ -29,6 +29,7 @@ nav = [
   { "Integration & Dashboards" = "integration-dashboards.md" },
   { "Log Shipping" = [
       "log-shipping.md",
+      { "Syslog Receiver" = "syslog-receiver.md" },
       { "Native Log Export" = "log-export-native.md" }
     ] },
   { Troubleshooting = "troubleshooting.md" },
