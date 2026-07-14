@@ -54,6 +54,9 @@ ports:
 | `--logs.syslog.allowed-peers` | *(any)* | CIDR allowlist of permitted senders. |
 | `--logs.syslog.max-conns` | `64` | Cap on concurrent TCP connections. |
 | `--logs.syslog.enrich` | `true` | Enrich records from the OPNsense API. |
+| `--logs.syslog.exclude-programs` | *(none)* | Programs to drop, e.g. `radvd,cron`. |
+| `--logs.syslog.include-programs` | *(none)* | If set, ship ONLY these. Mutually exclusive with exclude. |
+| `--logs.syslog.min-severity` | *(none)* | Drop below this severity, e.g. `notice` drops info and debug. |
 
 ## Set up the firewall
 
@@ -87,7 +90,49 @@ format. The receiver parses both, so it will work either way — but RFC5424 car
 proper timestamp with a UTC offset, where the legacy format has no year at all and
 must be inferred.
 
+## Filtering (optional, off by default)
+
+The receiver ships **everything** unless you tell it otherwise — an unknown program is
+never dropped, because that is the point of a catch-all receiver and your box runs
+plugins we have never heard of.
+
+If you do pay per GB of ingest, a firewall at debug level is loud. `radvd` logs a timer
+tick every two minutes and says nothing; HAProxy logs every request. So:
+
+```bash
+--logs.syslog.exclude-programs=radvd,cron     # drop the known-useless
+--logs.syslog.min-severity=notice             # drop info and debug, keep notice and worse
+```
+
+Syslog severity is **inverted** (0 = emerg, 7 = debug), so `--min-severity=notice` keeps
+everything *at or above* notice. Anything dropped is counted in
+`opnsense_exporter_logs_rejected_total{reason="filtered"}` — never silently discarded.
+
+You can also filter on the firewall itself (the target's Applications/Levels/Facilities
+selectors). Use that for coarse cuts you never want to see; use the exporter for tuning
+you might change your mind about, since it needs no firewall config edit.
+
 ## What you get
+
+**Structured parsers** run for these programs; everything else ships as a generic
+record with its message body verbatim and its envelope as metadata.
+
+| Program | Parsed into |
+| --- | --- |
+| `filterlog` | Firewall packet decisions — see below |
+| `audit`, `configd.py` | `config_user`, `config_revision`, `config_uri` (who changed the config), plus configd authorisation and RPC events |
+| `sshd`, `sshd-session` | `auth.result` (accepted/failed/invalid-user), `auth.user`, `auth.method`, key fingerprint, source address. A failed login is raised to **warning** — sshd logs a rejected login at the same severity as a successful one, and you should not have to know that to find it. |
+| `dhcpd`, `dnsmasq`, `kea-dhcp4`, `kea-dhcp6` | `dhcp.action`, `dhcp.ip`, `dhcp.mac`, `dhcp.hostname`, `dhcp.lease_seconds` — **normalised across all three backends**, so you can query DHCP activity without caring which one your box runs |
+| `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode |
+
+**Every record**, structured or generic, also gets:
+
+- a `subsystem` attribute (`firewall`, `auth`, `dhcp`, `ipsec`, `vpn`, `proxy`, `routing`, `ups`, …) so you can select a whole class of events without enumerating program names;
+- any **IP address** mentioned anywhere in the message resolved to a hostname, MAC and scope (`self`/`local`/`remote`);
+- any **interface device** resolved to its friendly name (`vtnet0` → `LAN`);
+- for IPsec and OpenVPN, the **tunnel UUID resolved to its name** — `charon` logs `<5e891b0c-…|8> sending DPD request`, which is unreadable; the exporter turns it into `ipsec.connection: "site-to-site"` because it already has the API.
+
+### Firewall lines specifically
 
 Firewall (`filterlog`) lines are parsed into structured fields and enriched:
 
