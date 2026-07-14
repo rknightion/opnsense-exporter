@@ -166,8 +166,22 @@ logins, "action allowed X for user root"), configd, unbound, dnsmasq, kea, hapro
 frr, ipsec, openvpn, package installs, and a catch-all for everything else — ships as
 a generic record with its raw body and its envelope attributes.
 
-Records go to Loki as **structured metadata, never as labels**. See the
+Record attributes go to Loki as **structured metadata**. The one exception is
+`subsystem`, which the exporter puts on the OTLP *resource* so that you can promote
+it to an index label if you want to — see the
 [Loki label model](log-shipping.md#loki-label-model).
+
+### Multi-line messages
+
+syslog-ng frames with newlines, not octet counts, so a message that itself contains
+newlines — a configd Python traceback, a cron command spanning lines — arrives as
+several frames of which only the first carries a `<PRI>` header. The receiver rejoins
+them: a line that does not begin with `<` cannot start a new message, so it is
+appended to the previous one. The assembled message is capped at 64KB like any other
+(the overflowing tail is dropped and counted as `oversized`), and a message with no
+successor to complete it is flushed after 250ms rather than waiting for the next line.
+Octet-counted frames carry their own length and are passed through untouched, as are
+UDP datagrams — one datagram is always exactly one message.
 
 ### The rule description is the interesting one
 

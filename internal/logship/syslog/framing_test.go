@@ -88,7 +88,7 @@ func TestFrameSplitterSkipsOversizedLargerThanBuffer(t *testing.T) {
 	in := strconv.Itoa(n) + " " + strings.Repeat("A", n) + "5 good!"
 	oversized := 0
 	split := newFrameSplitter(func() { oversized++ })
-	got := scanWith(t, strings.NewReader(in), split, maxMessageBytes)
+	got := scanWith(t, strings.NewReader(in), split.splitFunc(), maxMessageBytes)
 	wantTokens(t, got, "good!")
 	if oversized != 1 {
 		t.Fatalf("oversized count = %d, want 1", oversized)
@@ -101,7 +101,7 @@ func TestFrameSplitterSkipsOversizedByteAtATime(t *testing.T) {
 	in := strconv.Itoa(n) + " " + strings.Repeat("B", n) + "5 good!"
 	oversized := 0
 	split := newFrameSplitter(func() { oversized++ })
-	got := scanWith(t, iotest.OneByteReader(strings.NewReader(in)), split, maxMessageBytes)
+	got := scanWith(t, iotest.OneByteReader(strings.NewReader(in)), split.splitFunc(), maxMessageBytes)
 	wantTokens(t, got, "good!")
 	if oversized != 1 {
 		t.Fatalf("oversized count = %d, want 1", oversized)

@@ -8,9 +8,12 @@
 // Source owns its cursor + dedup ring), at-most-once across restarts (in-memory
 // cursors resume from now unless --logs.state-file persists them), never
 // exactly-once. High-cardinality data (IPs, ports, SIDs, domains) travels as
-// structured metadata / body and NEVER as a Loki label — the only labels are the
-// resource identity (service.name + service.instance.id) plus the promotable
-// `source` attribute.
+// structured metadata / body and can NEVER become a Loki label, because Loki only
+// ever promotes RESOURCE attributes and those stay on the record. The resource
+// carries just four things: the identity (service.name, service.instance.id,
+// service.version) plus the two closed, code-defined keys worth selecting a stream
+// on — `source` and `subsystem`. Promoting those to index labels is a tenant-side
+// opt-in that costs the exporter nothing; see sink_otlp.go.
 package logship
 
 import "time"
@@ -40,6 +43,21 @@ const (
 	attrServiceName       = "service.name"
 	attrServiceInstanceID = "service.instance.id"
 )
+
+// attrSubsystem is a coarse, CODE-DEFINED grouping a Source may set on a Record
+// ("firewall", "dns", "auth", …). Unlike the keys above it is NOT reserved —
+// Sources are expected to set it.
+//
+// The OTLP sink HOISTS it, along with `source`, off the record and onto the OTLP
+// resource. That is not cosmetic: Loki can only promote a RESOURCE attribute to an
+// index label — `otlp_config` has no index_label action for log attributes — so an
+// attribute left on the record can never be indexed, whatever the tenant config
+// says. See sink_otlp.go.
+//
+// Only put a CLOSED, code-defined set of values behind this key. Anything derived
+// from the wire (a syslog program name, an IP) would become unbounded label
+// cardinality the moment a tenant promotes it.
+const attrSubsystem = "subsystem"
 
 // reservedAttributeKeys is the set the pipeline defensively removes from every
 // Record.Attributes before shipping. Kept as a package var so tests assert the

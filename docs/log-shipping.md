@@ -13,8 +13,8 @@ and logs are gated by separate flags and neither turns the other on.
 
 High-cardinality event data (IP addresses, ports, Suricata SIDs, domains) is
 shipped as log **body** and Loki **structured metadata** — never as a metric and
-never as a Loki label. The only labels are the resource identity plus a promotable
-`source` attribute (see [Loki label model](#loki-label-model)).
+never as a Loki label. The only labels are the resource identity, plus `source` and
+`subsystem` if you choose to promote them (see [Loki label model](#loki-label-model)).
 
 !!! note "Sources are added incrementally"
     Enabling `--logs.enabled` starts the pipeline, but nothing is shipped until at
@@ -199,16 +199,68 @@ promoted to structured metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
 
 ## Loki label model
 
-Cardinality discipline is enforced by construction:
+Loki promotes **only OTLP resource attributes** to index labels. Scope and log
+attributes can never become labels — `otlp_config` has no `index_label` action for
+them, whatever the tenant config says. Cardinality discipline therefore falls out of
+*where an attribute is put*, not out of policy:
 
-- **Labels** (resource identity): `service.name` (from `--otlp.service-name`) and
-  `service.instance.id` (the resolved instance label). No host or SDK detectors are
-  attached to the resource, so nothing else can leak into the label set.
-- **`source`** (`firewall`, `ids`, `audit`, …): shipped as an OTLP attribute, so it
-  lands as Loki structured metadata by default. It can be promoted to a label
-  through Grafana Cloud / Loki OTLP config if you want to filter on it.
-- **Everything else** — IPs, ports, SIDs, domains, rule ids — is structured
-  metadata or body. It is never a label.
+**On the resource** (promotable — a closed, code-defined set):
+
+| attribute | value | indexed by default? |
+| --- | --- | --- |
+| `service.name` | `--otlp.service-name` | **yes** |
+| `service.instance.id` | the resolved instance label | **yes** |
+| `service.version` | the exporter version | no |
+| `source` | `syslog`, `unbound`, `ids`, `crowdsec` | no — opt in below |
+| `subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (~22) | no — opt in below |
+
+`service.name` and `service.instance.id` are indexed because they are on Loki's
+[default promotion list][otlp-defaults]. No host or SDK resource detectors are
+attached, so nothing else can leak into that set.
+
+**On the record** (structured metadata — never promotable): everything else.
+`program`, `action`, `rule_id`, `rule_description`, IPs, ports, MACs, hostnames,
+SIDs, `tcp_*`, `dhcp_*`, `auth_*`. Note `program` in particular: it comes off the
+syslog wire and *any* process on the firewall can pick its own tag with `logger(1)`,
+so it is deliberately kept where it cannot become a label.
+
+### Promoting `source` and `subsystem` (optional)
+
+Out of the box both land in structured metadata, so you filter with `|`:
+
+```logql
+{service_name="opnsense-exporter"} | subsystem="firewall" | action="block"
+```
+
+That scans every chunk for the instance. To turn it into a stream selection instead,
+promote the two on the Loki side — self-hosted, or on Grafana Cloud via a support
+request:
+
+```yaml
+limits_config:
+  otlp_config:
+    resource_attributes:
+      # leave ignore_defaults false, or service.name stops being a label too
+      attributes_config:
+        - action: index_label
+          attributes: [source, subsystem]
+```
+
+Then the same query becomes:
+
+```logql
+{service_name="opnsense-exporter", subsystem="firewall"} | action="block"
+```
+
+Cost: at most `sources × subsystems` ≈ **26 streams** per instance, because both are
+closed sets defined in the exporter's own code. A promoted attribute moves out of
+structured metadata and into the label, so `| subsystem=…` stops matching once
+`{subsystem=…}` starts — switch your queries when you switch the config.
+
+Do **not** promote anything else. `src_ip` as a label is one stream per address: the
+classic Loki cardinality footgun, and the reason the exporter keeps it out of reach.
+
+[otlp-defaults]: https://grafana.com/docs/loki/latest/send-data/otel/
 
 ## Delivery semantics
 

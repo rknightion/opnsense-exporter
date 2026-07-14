@@ -344,3 +344,77 @@ func TestMetricsNilSafe(t *testing.T) {
 	m.parseError("envelope") // must not panic
 	m.reject("peer")
 }
+
+// End-to-end #262: a multi-line message written to a real newline-framed TCP
+// connection must arrive as ONE line at the handler, with its body intact — not as
+// a truncated head plus a train of junk fragments.
+func TestListenerTCPReassemblesMultiLineMessage(t *testing.T) {
+	c := newCollector()
+	l := startListener(t, Config{TCPAddr: "127.0.0.1:0"}, c.handle, nil)
+
+	conn, err := net.Dial("tcp", l.TCPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// syslog-ng writes the whole message, embedded newlines and all, then a delimiter.
+	if _, err := conn.Write([]byte(configdTraceback + "\n<134>after\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if got := c.await(t, 3*time.Second); got != configdTraceback {
+		t.Fatalf("multi-line message was not reassembled:\ngot:  %q\nwant: %q", got, configdTraceback)
+	}
+	if got := c.await(t, 3*time.Second); got != "<134>after" {
+		t.Fatalf("the following message was corrupted: %q", got)
+	}
+
+	// And nothing else: no fragment records.
+	select {
+	case extra := <-c.ch:
+		t.Fatalf("a fragment shipped as its own record: %q", extra)
+	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+// The last message on a quiet connection has no successor to prove it complete. It
+// must still ship, on the assembler's own idle timer, well before the connection
+// closes.
+func TestListenerTCPShipsLastMessageOnIdleConnection(t *testing.T) {
+	c := newCollector()
+	l := startListener(t, Config{TCPAddr: "127.0.0.1:0"}, c.handle, nil)
+
+	conn, err := net.Dial("tcp", l.TCPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if _, err := conn.Write([]byte("<134>only message\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// The connection stays OPEN and silent: only the idle flush can deliver this.
+	if got := c.await(t, 3*time.Second); got != "<134>only message" {
+		t.Fatalf("got %q, want the pending message flushed on idle", got)
+	}
+}
+
+// UDP has no continuation problem: one datagram is one message, always. A datagram
+// containing newlines must be delivered whole and never reassembled or split.
+func TestListenerUDPMultiLineDatagramIsUntouched(t *testing.T) {
+	c := newCollector()
+	l := startListener(t, Config{UDPAddr: "127.0.0.1:0"}, c.handle, nil)
+
+	conn, err := net.Dial("udp", l.UDPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Write([]byte(configdTraceback)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := c.await(t, 3*time.Second); got != configdTraceback {
+		t.Fatalf("UDP datagram was altered:\ngot:  %q\nwant: %q", got, configdTraceback)
+	}
+}

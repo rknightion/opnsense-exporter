@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -22,17 +24,75 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// maxLogResources bounds the number of distinct OTLP resources — and therefore
+// LoggerProviders — the sink will build.
+//
+// Both dimensions of the resource key are closed sets defined in OUR code: ~4
+// sources and ~22 subsystems. The cap is therefore unreachable in practice. It
+// exists so that a future Source which put something wire-derived behind
+// `subsystem` could not leak providers here, nor (once a tenant promotes the
+// attribute) explode Loki's label cardinality. Past the cap we degrade to the base
+// resource: records still ship, they just stop being partitioned.
+const maxLogResources = 64
+
 // otlpSink ships records over OTLP logs. It reuses the exporter's --otlp.*
 // transport family. The SDK LoggerProvider's BatchProcessor owns the network
 // batching and retry; the pipeline's own bounded queue is the primary,
 // COUNTED backpressure valve in front of it (the SDK batch queue drops silently).
 //
+// LABELS VS STRUCTURED METADATA (#263). Loki promotes only RESOURCE attributes to
+// index labels; scope and log attributes can only ever become structured metadata,
+// because `otlp_config` has no index_label action for them. So the two attributes
+// worth selecting a stream on — `source` and `subsystem` — are hoisted off the
+// record onto the resource, which means one resource, and one LoggerProvider, per
+// distinct (source, subsystem) pair. The otel logs SDK binds a Resource to a
+// LoggerProvider, not to a Record, so there is no cheaper way to vary it.
+//
+// This is safe by construction ONLY because both keys are closed code-defined sets
+// (see attrSubsystem). Everything genuinely high-cardinality — IPs, ports, rule
+// ids, hostnames, MACs, SIDs — stays on the record and therefore can never be
+// promoted, which is the point.
+//
+// Whether they ARE promoted is the tenant's choice and costs us nothing either way:
+// an unpromoted resource attribute lands in structured metadata, exactly where these
+// two used to live, so queries keep working unchanged until an operator opts in with
+//
+//	limits_config:
+//	  otlp_config:
+//	    resource_attributes:
+//	      attributes_config:
+//	        - action: index_label
+//	          attributes: [source, subsystem]
+//
+// The providers share ONE exporter, so partitioning costs no extra connections.
+//
 // The pre-1.0 otel logs SDK is deliberately confined to this file (pinned +
 // Renovate) so the rest of the codebase never imports it.
 type otlpSink struct {
+	exporter sdklog.Exporter
+	base     []attribute.KeyValue
+
+	mu        sync.Mutex
+	providers map[resourceKey]*resourceLogger
+	order     []resourceKey // creation order, so Shutdown is deterministic
+}
+
+// resourceKey identifies one OTLP resource. Both fields are closed sets.
+type resourceKey struct{ source, subsystem string }
+
+type resourceLogger struct {
 	provider *sdklog.LoggerProvider
 	logger   otellog.Logger
 }
+
+// sharedExporter lends the one real exporter to many LoggerProviders. Shutdown is
+// suppressed: a provider shutting down would otherwise close the exporter out from
+// under its siblings, and whichever of them still had records queued would fail to
+// flush them. otlpSink.Shutdown closes the real exporter once, after every provider
+// has drained.
+type sharedExporter struct{ sdklog.Exporter }
+
+func (sharedExporter) Shutdown(context.Context) error { return nil }
 
 // newOTLPSink builds the OTLP logs sink. It fails fast with an actionable error
 // when no endpoint is resolvable (neither --otlp.endpoint / Grafana Cloud nor an
@@ -50,24 +110,24 @@ func newOTLPSink(cfg *options.OTLPConfig, version, instance string, _ *slog.Logg
 		return nil, fmt.Errorf("build otlp log exporter: %w", err)
 	}
 
-	res, err := buildLogResource(context.Background(), cfg.ServiceName, version, instance)
-	if err != nil {
-		return nil, fmt.Errorf("build otlp log resource: %w", err)
-	}
-
-	provider := sdklog.NewLoggerProvider(
-		sdklog.WithResource(res),
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
-	)
 	return &otlpSink{
-		provider: provider,
-		logger:   provider.Logger("github.com/rknightion/opnsense-exporter/logship"),
+		exporter:  exporter,
+		base:      baseLogAttributes(cfg.ServiceName, version, instance),
+		providers: make(map[resourceKey]*resourceLogger),
 	}, nil
 }
 
 func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 	now := time.Now()
 	for _, e := range batch {
+		lg, err := s.loggerFor(ctx, resourceKey{
+			source:    e.Source,
+			subsystem: e.Record.Attributes[attrSubsystem],
+		})
+		if err != nil {
+			return err
+		}
+
 		var r otellog.Record
 		ts := e.Record.Timestamp
 		if ts.IsZero() {
@@ -77,19 +137,91 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 		r.SetObservedTimestamp(now)
 		r.SetBody(otellog.StringValue(e.Record.Body))
 		r.SetSeverity(otlpSeverity(e.Record.Severity))
-		// `source` is the promotable identity attribute; everything else is
-		// structured metadata. Reserved keys were already stripped upstream.
-		r.AddAttributes(otellog.String(attrSource, e.Source))
 		for k, v := range e.Record.Attributes {
+			// `source` and `subsystem` live on the resource, not the record: emitting
+			// them here as well would duplicate them into structured metadata beside
+			// the label. (`source` was stripped from Attributes upstream anyway; the
+			// pipeline carries it in Entry.Source.)
+			if k == attrSubsystem || k == attrSource {
+				continue
+			}
 			r.AddAttributes(otellog.String(k, v))
 		}
-		s.logger.Emit(ctx, r)
+		lg.Emit(ctx, r)
 	}
 	return nil
 }
 
+// loggerFor returns the logger bound to key's resource, building it on first use.
+func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logger, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if rl, ok := s.providers[key]; ok {
+		return rl.logger, nil
+	}
+	// Unreachable with the current closed key sets. Degrade rather than leak: ship
+	// under the base resource instead of building an unbounded provider set. The
+	// +1 reserves the last slot FOR that base resource, so the cap holds exactly
+	// even when the base is itself the provider we are about to create.
+	if len(s.providers)+1 >= maxLogResources {
+		key = resourceKey{}
+		if rl, ok := s.providers[key]; ok {
+			return rl.logger, nil
+		}
+	}
+
+	attrs := make([]attribute.KeyValue, 0, len(s.base)+2)
+	attrs = append(attrs, s.base...)
+	if key.source != "" {
+		attrs = append(attrs, attribute.String(attrSource, key.source))
+	}
+	if key.subsystem != "" {
+		attrs = append(attrs, attribute.String(attrSubsystem, key.subsystem))
+	}
+	res, err := resource.New(ctx, resource.WithAttributes(attrs...))
+	if err != nil {
+		return nil, fmt.Errorf("build otlp log resource: %w", err)
+	}
+
+	provider := sdklog.NewLoggerProvider(
+		sdklog.WithResource(res),
+		// Every provider batches through the SAME exporter, so partitioning the
+		// resource costs extra batch queues but no extra connections.
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(sharedExporter{s.exporter})),
+	)
+	rl := &resourceLogger{
+		provider: provider,
+		logger:   provider.Logger("github.com/rknightion/opnsense-exporter/logship"),
+	}
+	s.providers[key] = rl
+	s.order = append(s.order, key)
+	return rl.logger, nil
+}
+
+// Shutdown drains every provider, THEN closes the shared exporter. The order is
+// load-bearing: closing the exporter first would discard whatever the providers
+// still had queued.
 func (s *otlpSink) Shutdown(ctx context.Context) error {
-	return s.provider.Shutdown(ctx)
+	s.mu.Lock()
+	providers := make([]*resourceLogger, 0, len(s.order))
+	for _, k := range s.order {
+		providers = append(providers, s.providers[k])
+	}
+	s.providers = make(map[resourceKey]*resourceLogger)
+	s.order = nil
+	s.mu.Unlock()
+
+	var errs []error
+	for _, rl := range providers {
+		if err := rl.provider.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := s.exporter.Shutdown(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // otlpSeverity maps a logship Severity to an OTLP severity number.
@@ -126,23 +258,27 @@ func endpointResolvable(explicit string) bool {
 	return false
 }
 
-// buildLogResource composes the OTLP resource with ONLY the identity attributes
-// that the Loki OTLP ingest promotes to labels (service.name, service.instance.id)
-// plus service.version (structured metadata). No host/SDK detectors are added, so
-// no other attribute can leak into the fixed Loki label set. Plain attribute keys
-// avoid a schema-URL conflict.
-func buildLogResource(ctx context.Context, serviceName, version, instance string) (*resource.Resource, error) {
+// baseLogAttributes are the identity attributes every log resource carries:
+// service.name and service.instance.id (which Loki's DEFAULT OTLP config promotes
+// to index labels) plus service.version (which it does not, so it lands in
+// structured metadata). loggerFor adds `source` and `subsystem` on top.
+//
+// No host/SDK resource detectors are added. That is deliberate: a detector would
+// contribute host.name, os.type and friends, and any attribute matching Loki's
+// default promotion list would silently become part of the label set. Plain
+// attribute keys also avoid a schema-URL conflict.
+func baseLogAttributes(serviceName, version, instance string) []attribute.KeyValue {
 	attrs := make([]attribute.KeyValue, 0, 3)
 	if serviceName != "" {
-		attrs = append(attrs, attribute.String("service.name", serviceName))
+		attrs = append(attrs, attribute.String(attrServiceName, serviceName))
 	}
 	if version != "" {
 		attrs = append(attrs, attribute.String("service.version", version))
 	}
 	if instance != "" {
-		attrs = append(attrs, attribute.String("service.instance.id", instance))
+		attrs = append(attrs, attribute.String(attrServiceInstanceID, instance))
 	}
-	return resource.New(ctx, resource.WithAttributes(attrs...))
+	return attrs
 }
 
 // newLogExporter builds an OTLP log exporter for the configured protocol,

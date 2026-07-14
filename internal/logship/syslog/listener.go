@@ -292,9 +292,40 @@ func (l *Listener) serveConn(conn *net.TCPConn, peer netip.Addr) {
 		}
 	}()
 
+	fs := newFrameSplitter(func() { l.m.reject("oversized") })
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 4096), maxMessageBytes)
-	sc.Split(newFrameSplitter(func() { l.m.reject("oversized") }))
+	sc.Split(fs.splitFunc())
+
+	// Multi-line messages arrive as several newline-framed lines and must be rejoined
+	// before they are parsed (see assembler). An over-cap assembled message is counted
+	// as oversized, exactly like an over-cap frame: same condition, same reason.
+	asm := newAssembler(
+		func(msg []byte) { l.handle(msg, peer) },
+		func() { l.m.reject("oversized") },
+	)
+	defer asm.close() // the last message has no successor to complete it
+
+	// A pending message is only proven complete by the NEXT header, so on a quiet
+	// connection the final line would otherwise sit in the assembler indefinitely.
+	// This ticker bounds that wait. It joins l.conns so Close() waits for it and it
+	// can never call handle after the listener has shut down.
+	tickerDone := make(chan struct{})
+	defer close(tickerDone)
+	l.conns.Add(1)
+	go func() {
+		defer l.conns.Done()
+		t := time.NewTicker(continuationWait)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				asm.flushIdle(continuationWait)
+			case <-tickerDone:
+				return
+			}
+		}
+	}()
 
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(connIdleTimeout)); err != nil {
@@ -310,7 +341,7 @@ func (l *Listener) serveConn(conn *net.TCPConn, peer netip.Addr) {
 		if len(line) == 0 {
 			continue
 		}
-		l.handle(line, peer)
+		asm.add(line, fs.octet)
 	}
 }
 
