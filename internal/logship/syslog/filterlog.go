@@ -36,6 +36,12 @@ const (
 	filterlogHeaderLen
 )
 
+func init() {
+	// filterlog resolves its own positional src/dst addresses, so BuildRecord does
+	// not re-scan its body for peer.* addresses.
+	RegisterParser(parseFilterlog, "filterlog")
+}
+
 // parseFilterlog turns a filterlog CSV payload into an enriched Record. It
 // returns ok=false for a row it cannot make sense of (too short, unknown IP
 // version) so the caller can fall back to a generic record — a malformed line is

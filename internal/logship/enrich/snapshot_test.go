@@ -122,8 +122,11 @@ func TestColdCacheMissesEverythingAndNeverNil(t *testing.T) {
 	if _, ok := s.MAC("x"); ok {
 		t.Error("cold cache should miss")
 	}
-	if got := s.Scope("10.0.0.6"); got != "remote" {
-		t.Errorf("cold Scope = %q, want remote", got)
+	// A cold cache knows no topology, so it must say NOTHING about scope. Calling a
+	// LAN address "remote" because we have not loaded the subnets yet is a confident
+	// lie; an absent attribute is merely an absence.
+	if got := s.Scope("10.0.0.6"); got != "" {
+		t.Errorf("cold Scope = %q, want \"\" (unknown, not a guess)", got)
 	}
 }
 
@@ -190,5 +193,22 @@ func TestServiceName(t *testing.T) {
 func TestServiceNameProtoIsCaseInsensitive(t *testing.T) {
 	if got, ok := ServiceName("443", "TCP"); !ok || got != "https" {
 		t.Errorf("ServiceName(443,TCP) = %q,%v want https,true", got, ok)
+	}
+}
+
+// A cold or failed snapshot knows no topology. It must say NOTHING about scope
+// rather than confidently labelling every LAN address "remote" — an absence is
+// recoverable, a lie is not. (Caught by the #250 universal-enrichment tests: the
+// same bug would have mislabelled filterlog records on a cold cache.)
+func TestScopeSaysNothingWithoutTopology(t *testing.T) {
+	cold := &Snapshot{}
+	for _, ip := range []string{"10.0.0.6", "8.8.8.8", "fe80::1"} {
+		if got := cold.Scope(ip); got != "" {
+			t.Errorf("cold snapshot Scope(%q) = %q, want \"\" (unknown, not a guess)", ip, got)
+		}
+	}
+	// With topology, it answers normally.
+	if got := testSnapshot().Scope("8.8.8.8"); got != "remote" {
+		t.Errorf("warm snapshot Scope(8.8.8.8) = %q, want remote", got)
 	}
 }

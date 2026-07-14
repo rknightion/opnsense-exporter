@@ -76,6 +76,14 @@ func (s *Snapshot) Scope(ip string) string {
 	}
 	addr = addr.Unmap()
 
+	// Without the box's own addresses and subnets we do not know the topology, and
+	// "remote" would be a confident LIE rather than an absence — every LAN address
+	// on a cold or failed snapshot would be labelled as though it came from the
+	// internet. Say nothing instead.
+	if len(s.SelfIPs) == 0 && len(s.LocalNets) == 0 {
+		return ""
+	}
+
 	if s.SelfIPs[addr] {
 		return "self"
 	}

@@ -7,34 +7,58 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 )
 
-// BuildRecord turns one parsed syslog Envelope into a logship.Record, dispatching
-// on the program (app-name / tag).
+// BuildRecord turns one parsed syslog Envelope into a logship.Record.
 //
-// Only filterlog gets a structured parser in v1. Everything else — including
-// Suricata — ships as a generic record with its message body verbatim: an
-// unknown program is NEVER dropped, since shipping it is the entire point of a
-// catch-all receiver.
+// Dispatch is by program, through the parser registry (registry.go): each parser
+// lane registers itself from an init() in its own file. A program with no
+// registered parser -- or whose parser cannot make sense of the line -- ships as a
+// generic record carrying the message verbatim. AN UNKNOWN PROGRAM IS NEVER
+// DROPPED: shipping it is the entire point of a catch-all receiver, and a box runs
+// plugins we have never heard of.
 //
-// Suricata is deliberately generic. internal/logship/ids.go already ships full
-// EVE alert records from the file-based eve.json, which is richer than the
-// syslog copy (alerts-only, payload-free). Parsing EVE here as well would ship
-// every alert TWICE into Loki with no dedupe, so structured EVE-over-syslog is a
-// v2 item that needs a dedupe story first.
+// Every record, structured or generic, then gets:
+//   - a `subsystem` attribute, so Loki can select "everything DHCP" without
+//     enumerating the three backends that might be serving it;
+//   - universal enrichment of any address or interface device mentioned in the
+//     message (see enrichgeneric.go). Structured parsers that already resolved
+//     their own positional addresses (filterlog's src/dst) skip this.
 func BuildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) logship.Record {
-	if env.Program == "filterlog" {
-		if rec, ok := parseFilterlog(env, snap, miss); ok {
+	if p, ok := parserFor(env.Program); ok {
+		if rec, ok := p(env, snap, miss); ok {
+			addCommon(&rec, env, snap, false)
 			return rec
 		}
-		// A row we could not parse degrades to a generic record carrying the
-		// raw body — never a drop.
+		// A line the parser could not make sense of degrades to generic, carrying the
+		// raw body -- never a drop.
 	}
-	return genericRecord(env)
+	rec := genericRecord(env)
+	addCommon(&rec, env, snap, true)
+	return rec
+}
+
+// addCommon adds the attributes every record gets regardless of how it was parsed.
+// enrichBody is false for parsers that already emitted positional addresses of
+// their own (filterlog's src.*/dst.*): re-scanning their body would emit the same
+// addresses a second time under peer.* keys.
+func addCommon(rec *logship.Record, env Envelope, snap *enrich.Snapshot, enrichBody bool) {
+	if rec.Attributes == nil {
+		rec.Attributes = make(map[string]string, 4)
+	}
+	set := func(k, v string) {
+		if v != "" {
+			rec.Attributes[k] = v
+		}
+	}
+	set("subsystem", subsystemFor(env.Program))
+	if enrichBody {
+		enrichMessage(env.Message, snap, set)
+	}
 }
 
 // genericRecord ships the message verbatim with the syslog envelope as
 // structured metadata.
 func genericRecord(env Envelope) logship.Record {
-	attrs := make(map[string]string, 5)
+	attrs := make(map[string]string, 8)
 	set := func(k, v string) {
 		if v != "" {
 			attrs[k] = v
@@ -52,6 +76,20 @@ func genericRecord(env Envelope) logship.Record {
 		Attributes: attrs,
 		Severity:   syslogSeverity(env.Severity),
 	}
+}
+
+// newRecord is the helper every structured parser uses to build its record, so
+// they all carry the same envelope metadata (program/host/pid/facility/severity)
+// as a generic record does. A parser then adds its own structured attributes on
+// top.
+func newRecord(env Envelope) (logship.Record, func(k, v string)) {
+	rec := genericRecord(env)
+	set := func(k, v string) {
+		if v != "" {
+			rec.Attributes[k] = v
+		}
+	}
+	return rec, set
 }
 
 // syslogSeverity maps an RFC5424 severity (0 emerg … 7 debug) onto the pipeline's
