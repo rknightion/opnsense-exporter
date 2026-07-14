@@ -166,10 +166,52 @@ logins, "action allowed X for user root"), configd, unbound, dnsmasq, kea, hapro
 frr, ipsec, openvpn, package installs, and a catch-all for everything else — ships as
 a generic record with its raw body and its envelope attributes.
 
-Record attributes go to Loki as **structured metadata**. The one exception is
-`subsystem`, which the exporter puts on the OTLP *resource* so that you can promote
-it to an index label if you want to — see the
-[Loki label model](log-shipping.md#loki-label-model).
+## Querying it in Loki
+
+!!! warning "Attribute names lose their dots"
+    The exporter emits OTLP attributes with dots (`rule.description`, `src.ip`) — the
+    names used throughout this page. **Loki sanitises dots to underscores.** What you
+    type in LogQL is `rule_description` and `src_ip`. A query written with the dotted
+    name matches nothing and reports no error, which is the single easiest way to
+    waste an afternoon here.
+
+Two index labels select the stream; everything else is structured metadata, filtered
+with `|` after it:
+
+```logql
+{service_name="opnsense-exporter", service_instance_id="opnsense"}
+  | subsystem="firewall" | action="block" | src_scope="remote"
+```
+
+A real record from a live box, as it lands:
+
+```json
+{
+  "action": "pass", "direction": "in",
+  "interface": "pppoe0", "interface_name": "AAISP",
+  "rule_description": "[AAISP] Allow inbound ICMP (monitors)",
+  "rule_id": "7ed3ec06-ecf8-4ca8-9a2a-bb346967850f",
+  "src_ip": "3.123.217.248", "src_scope": "remote",
+  "dst_ip": "81.187.237.31", "dst_scope": "self",
+  "protocol": "icmp", "ip_version": "4",
+  "source": "syslog", "subsystem": "firewall"
+}
+```
+
+Useful starting points:
+
+```logql
+{service_name="opnsense-exporter"} | subsystem="audit"                    # who changed the config
+{service_name="opnsense-exporter"} | subsystem="auth" | auth_result="failed"
+{service_name="opnsense-exporter"} | subsystem="firewall" | action="block" | dst_scope="self"
+{service_name="opnsense-exporter"} | program="filterlog" | src_hostname="WINSRV"
+```
+
+`source` and `subsystem` are the two attributes worth *indexing* if you query them
+often. Both ride on the OTLP resource for exactly that reason, and both can be
+promoted to real Loki labels with a one-off tenant config change — see the
+[Loki label model](log-shipping.md#loki-label-model). Nothing else should be
+promoted: `src_ip` as a label is one stream per address.
 
 ### Multi-line messages
 
@@ -205,7 +247,8 @@ have no usable syslog path, and their poll lanes remain:
   errors), which is a different stream entirely.
 - **CrowdSec** (`--logs.crowdsec.enabled`) — CrowdSec logs to file only. Nothing it
   produces reaches syslog, and it ships no syslog notification plugin.
-- **CrowdSec** and **per-query DNS** — see above.
+- **Suricata payloads** (`--logs.ids.enabled`) — the syslog copy of an EVE alert never
+  carries the packet payload. See below.
 
 ## Suricata alerts: pick ONE path
 
