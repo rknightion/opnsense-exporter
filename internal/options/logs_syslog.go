@@ -151,6 +151,24 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 			"logs.syslog: --logs.syslog.include-programs and --logs.syslog.exclude-programs " +
 				"are mutually exclusive; set one or the other")
 	}
+	// The syslog receiver parses Suricata EVE alerts when the box forwards them
+	// (the box's `syslog_eve` setting). The `ids` poll lane ships the SAME alerts from
+	// the file-based eve.json. Running both means every alert lands in Loki TWICE,
+	// with no dedupe -- and a duplicated security alert is worse than a missing one,
+	// because it silently inflates every count anyone builds on it.
+	//
+	// We cannot detect from here whether the box actually has syslog_eve on, so we
+	// refuse the ambiguous configuration rather than guess. The user picks a path.
+	if LogsIDSEnabled() {
+		return nil, false, fmt.Errorf(
+			"logs.syslog + logs.ids: both the syslog receiver and the IDS poll lane are " +
+				"enabled. If the box forwards Suricata EVE over syslog (the IDS 'syslog_eve' " +
+				"setting), every alert would be shipped TWICE with no dedupe. Choose one: " +
+				"drop --logs.ids.enabled and let the receiver take the alerts (push, lossless, " +
+				"but alerts-only and payload-free), or keep --logs.ids.enabled and leave " +
+				"syslog_eve off on the firewall")
+	}
+
 	if sev := strings.TrimSpace(strings.ToLower(*logsSyslogMinSeverity)); sev != "" {
 		n, ok := severityNames[sev]
 		if !ok {

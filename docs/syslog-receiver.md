@@ -191,11 +191,32 @@ have no usable syslog path, and their poll lanes remain:
   errors), which is a different stream entirely.
 - **CrowdSec** (`--logs.crowdsec.enabled`) — CrowdSec logs to file only. Nothing it
   produces reaches syslog, and it ships no syslog notification plugin.
-- **Suricata alerts** (`--logs.ids.enabled`) — the IDS lane ships full EVE alert
-  records. OPNsense *can* mirror alerts to syslog (the `syslog_eve` setting), but that
-  copy is alerts-only and payload-free. The receiver deliberately ships anything under
-  `program("suricata")` as a generic record rather than parsing it, so that enabling
-  both does not ship every alert twice.
+- **CrowdSec** and **per-query DNS** — see above.
+
+## Suricata alerts: pick ONE path
+
+The receiver **does** parse Suricata EVE alerts when the box forwards them (the IDS
+`syslog_eve` setting, off by default). So does the `ids` poll lane, from the richer
+file-based `eve.json`.
+
+**Running both would ship every alert into Loki twice, with no dedupe** — and a
+duplicated security alert is worse than a missing one, because it silently inflates
+every count anyone builds on it. The exporter therefore **refuses to start** with
+`--logs.syslog.enabled` and `--logs.ids.enabled` both set, rather than guessing which
+you meant.
+
+| | syslog receiver | `ids` poll lane |
+|---|---|---|
+| delivery | push, lossless, immediate | polled, up to one interval late |
+| cost on the firewall | none | an API call per poll |
+| event types | **alerts only** | alerts only |
+| payload | **never** (OPNsense forces `payload: no` on the syslog copy) | available |
+
+Take the receiver unless you need the payload. Then turn `syslog_eve` **on** in the
+IDS settings and leave `--logs.ids.enabled` off.
+
+Records from both paths carry the **same attribute names** (`alert_sid`, `signature`,
+`src_ip`, …), so a dashboard or alert rule does not care which path you chose.
 
 ## Security
 

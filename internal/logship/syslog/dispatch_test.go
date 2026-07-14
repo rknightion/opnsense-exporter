@@ -52,27 +52,24 @@ func TestBuildRecord_SuricataEngineLineShipsGeneric(t *testing.T) {
 	}
 }
 
-// Regression guard on the v1 duplication decision: internal/logship/ids.go
-// already ships full EVE alert records from the richer file-based eve.json.
-// Parsing EVE here too would ship every alert TWICE into Loki with no dedupe.
-// So an EVE JSON line over syslog must ship as a generic record with its body
-// verbatim and NO extracted alert fields.
-func TestBuildRecord_SuricataEVEJSONShipsGenericWithoutAlertFields(t *testing.T) {
-	eve := `{"timestamp":"2026-07-14T12:00:00.000000+0000","flow_id":1234,"event_type":"alert",` +
-		`"src_ip":"10.0.0.6","src_port":51000,"dest_ip":"1.1.1.1","dest_port":443,"proto":"TCP",` +
-		`"alert":{"action":"allowed","gid":1,"signature_id":2013028,"rev":7,` +
-		`"signature":"ET POLICY curl User-Agent Outbound","category":"Attempted Information Leak","severity":2}}`
+// The v1 decision (ship EVE as generic to avoid double-shipping against the ids poll
+// lane) was REVERSED by #253: the receiver now parses EVE, and running both paths at
+// once is refused at startup instead — see options.LogsSyslog. Parsing is covered in
+// suricata_test.go; what this guards is the OTHER half of the discrimination, which
+// is easy to break: the engine's plain-text log arrives under the SAME program name
+// and must never be mistaken for an alert.
+func TestBuildRecord_SuricataEngineTextIsNotAnAlert(t *testing.T) {
+	const engine = `[207442] <Warning> -- flowbit 'ET.JS.Obfus.Func' is checked but not set.`
 
-	rec := BuildRecord(envelopeFor("suricata", eve, 5), nil, nil)
+	rec := BuildRecord(envelopeFor("suricata", engine, 4), nil, nil)
 
-	if rec.Body != eve {
-		t.Errorf("Body = %q, want the EVE JSON verbatim", rec.Body)
+	if rec.Body != engine {
+		t.Errorf("Body = %q, want the engine line verbatim", rec.Body)
 	}
 	assertAttr(t, rec, "program", "suricata")
-	for _, k := range []string{"alert.signature", "alert.signature_id", "alert.category", "alert.severity", "src.ip", "dst.ip"} {
+	for _, k := range []string{"signature", "alert_sid", "alert_action", "event_type"} {
 		if v, ok := rec.Attributes[k]; ok {
-			t.Errorf("v1 must NOT parse Suricata EVE over syslog (ids.go already ships it from eve.json): "+
-				"attribute %q was extracted (%q) — that would duplicate every alert in Loki", k, v)
+			t.Errorf("engine text was parsed as an alert: attribute %q = %q", k, v)
 		}
 	}
 }
