@@ -22,10 +22,13 @@ func enrichSnap() *enrich.Snapshot {
 // The whole point of #250: the SAME address that is fully enriched in a filterlog
 // line was, before this, an opaque string in an sshd line.
 func TestEnrichMessage_ResolvesAddressInAnyProgram(t *testing.T) {
+	// A program with NO registered parser: this is the generic path, which is what
+	// peer.* enrichment is for. (sshd/filterlog/dhcp have their own parsers and own
+	// their addresses positionally as src.*/dst.*.)
 	env := Envelope{
-		Program:  "sshd-session",
-		Message:  "Accepted publickey for root from 10.0.0.6 port 34776 ssh2: ED25519 SHA256:abc",
-		Severity: 6,
+		Program:  "upsmon",
+		Message:  "Poll UPS [10.0.0.6] failed - Protocol error",
+		Severity: 3,
 	}
 	rec := BuildRecord(env, enrichSnap(), nil)
 	a := rec.Attributes
@@ -34,14 +37,14 @@ func TestEnrichMessage_ResolvesAddressInAnyProgram(t *testing.T) {
 		"peer.hostname": "robs-laptop",
 		"peer.mac":      "7c:10:c9:5e:84:86",
 		"peer.scope":    "local",
-		"subsystem":     "auth",
+		"subsystem":     "ups",
 	} {
 		if a[k] != want {
 			t.Errorf("attr %q = %q, want %q", k, a[k], want)
 		}
 	}
 	// The body must survive verbatim -- enrichment adds context, it never rewrites.
-	if !strings.Contains(rec.Body, "Accepted publickey") {
+	if !strings.Contains(rec.Body, "Poll UPS") {
 		t.Errorf("body was mangled: %q", rec.Body)
 	}
 }
@@ -70,7 +73,8 @@ func TestEnrichMessage_MultipleAddresses(t *testing.T) {
 // A MAC address is colon-separated hex and would match a naive IPv6 regex. It must
 // not be mistaken for an address.
 func TestEnrichMessage_MACIsNotAnIP(t *testing.T) {
-	env := Envelope{Program: "dhcpd", Message: "DHCPACK on 10.0.0.6 to bc:24:11:eb:db:3d (laptop) via vtnet0"}
+	// monit has no parser: the generic path. (dhcpd has its own parser now, #256.)
+	env := Envelope{Program: "monit", Message: "host 10.0.0.6 at bc:24:11:eb:db:3d on vtnet0 failed"}
 	rec := BuildRecord(env, enrichSnap(), nil)
 	if got := rec.Attributes["peer.ip"]; got != "10.0.0.6" {
 		t.Errorf("peer.ip = %q, want the real IP 10.0.0.6 (a MAC must never be read as an address)", got)

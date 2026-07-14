@@ -67,6 +67,14 @@ func newTestRefresher(now func() time.Time) *testRefresher {
 		rulesTTL:     time.Hour,
 		ifacesTTL:    time.Hour,
 		leasesTTL:    time.Hour,
+		tunnelsTTL:   time.Hour,
+	}
+	r.refreshTunnels = func() error {
+		r.update("tunnels", func(s *Snapshot) {
+			s.Tunnels = map[string]string{"5e891b0c-ca13-4e38-a7c0-a2aa891c30b4": "test ipsec conn"}
+			s.VPNInstances = map[string]string{"6f86d5cd-44f2-47ea-a882-f8773b65c190": "test server"}
+		})
+		return nil
 	}
 	r.refreshRules = func() error {
 		r.update("rules", func(s *Snapshot) {
@@ -297,5 +305,36 @@ func TestNewMetricsRegisters(t *testing.T) {
 		if !seen {
 			t.Errorf("metric %s not registered", name)
 		}
+	}
+}
+
+// A rebuild of ONE table must not wipe the others. clone() has to carry every map
+// forward, and it is trivially easy to add a new table to the Snapshot and forget
+// it there — at which point tunnel names would silently vanish every 60s when the
+// rules table refreshed. Guard the whole snapshot, not just the table under test.
+func TestRefreshOneTableKeepsTheOthers(t *testing.T) {
+	r := newTestRefresher(time.Now)
+	r.tick("tunnels", r.refreshTunnels)
+	r.tick("interfaces", r.refreshIfaces)
+
+	if _, ok := r.cache.Load().Tunnel("5e891b0c-ca13-4e38-a7c0-a2aa891c30b4"); !ok {
+		t.Fatal("precondition: tunnels table should be populated")
+	}
+
+	// Refresh an unrelated table.
+	r.tick("rules", r.refreshRules)
+
+	s := r.cache.Load()
+	if _, ok := s.Tunnel("5e891b0c-ca13-4e38-a7c0-a2aa891c30b4"); !ok {
+		t.Error("a rules refresh wiped the tunnels table (clone() is not carrying it forward)")
+	}
+	if _, ok := s.VPNInstance("6f86d5cd-44f2-47ea-a882-f8773b65c190"); !ok {
+		t.Error("a rules refresh wiped the VPN-instances table")
+	}
+	if len(s.IfaceNames) == 0 {
+		t.Error("a rules refresh wiped the interfaces table")
+	}
+	if _, ok := s.RuleLabel("rid1"); !ok {
+		t.Error("the rules table itself did not land")
 	}
 }

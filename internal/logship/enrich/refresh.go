@@ -17,6 +17,10 @@ const (
 	rulesTTL  = 60 * time.Second
 	ifacesTTL = 5 * time.Minute
 	leasesTTL = 60 * time.Second
+	// Tunnel and VPN-instance names change only when an admin edits the config, so
+	// this is the slowest table. It is also the cheapest: both endpoints are already
+	// fetched by the metrics collectors.
+	tunnelsTTL = 10 * time.Minute
 
 	// missInterval rate-limits miss-triggered refreshes. Without it, a flood of
 	// unknown rids (a rule was just deleted; a scanner is hammering the WAN) would
@@ -59,13 +63,15 @@ type Refresher struct {
 	missInterval time.Duration
 	missCh       chan struct{}
 
-	rulesTTL  time.Duration
-	ifacesTTL time.Duration
-	leasesTTL time.Duration
+	rulesTTL   time.Duration
+	ifacesTTL  time.Duration
+	leasesTTL  time.Duration
+	tunnelsTTL time.Duration
 
-	refreshRules  func() error
-	refreshIfaces func() error
-	refreshLeases func() error
+	refreshRules   func() error
+	refreshIfaces  func() error
+	refreshLeases  func() error
+	refreshTunnels func() error
 }
 
 // NewRefresher wires a Refresher to the API client and the cache it publishes to.
@@ -82,10 +88,12 @@ func NewRefresher(c *opnsense.Client, cache *Cache, m *Metrics, log *slog.Logger
 		rulesTTL:     rulesTTL,
 		ifacesTTL:    ifacesTTL,
 		leasesTTL:    leasesTTL,
+		tunnelsTTL:   tunnelsTTL,
 	}
 	r.refreshRules = r.doRefreshRules
 	r.refreshIfaces = r.doRefreshIfaces
 	r.refreshLeases = r.doRefreshLeases
+	r.refreshTunnels = r.doRefreshTunnels
 	return r
 }
 
@@ -121,6 +129,7 @@ func (r *Refresher) Run(ctx context.Context) {
 	r.tick("rules", r.refreshRules)
 	r.tick("interfaces", r.refreshIfaces)
 	r.tick("leases", r.refreshLeases)
+	r.tick("tunnels", r.refreshTunnels)
 
 	rulesT := time.NewTicker(r.rulesTTL)
 	defer rulesT.Stop()
@@ -128,6 +137,8 @@ func (r *Refresher) Run(ctx context.Context) {
 	defer ifacesT.Stop()
 	leasesT := time.NewTicker(r.leasesTTL)
 	defer leasesT.Stop()
+	tunnelsT := time.NewTicker(r.tunnelsTTL)
+	defer tunnelsT.Stop()
 
 	for {
 		select {
@@ -139,6 +150,8 @@ func (r *Refresher) Run(ctx context.Context) {
 			r.tick("interfaces", r.refreshIfaces)
 		case <-leasesT.C:
 			r.tick("leases", r.refreshLeases)
+		case <-tunnelsT.C:
+			r.tick("tunnels", r.refreshTunnels)
 		case <-r.missCh:
 			// A miss means the log named something we have never seen. Any of the
 			// three tables could be the stale one, and this is rate-limited to once
@@ -154,6 +167,9 @@ func (r *Refresher) Run(ctx context.Context) {
 // warns (rate-limited) and LEAVES THE CACHE UNTOUCHED: stale enrichment beats
 // none, and enrichment must never drop a record.
 func (r *Refresher) tick(table string, fn func() error) {
+	if fn == nil {
+		return // table not wired (only reachable in tests); never panic the pipeline
+	}
 	r.buildMu.Lock()
 	defer r.buildMu.Unlock()
 
@@ -366,4 +382,60 @@ func parseAddrPrefix(cidr string) (netip.Addr, netip.Prefix, error) {
 		return netip.Addr{}, netip.Prefix{}, err
 	}
 	return p.Addr().Unmap(), p.Masked(), nil
+}
+
+// doRefreshTunnels rebuilds the IPsec-connection and OpenVPN-instance UUID tables.
+//
+// charon and OpenVPN both log an opaque UUID and nothing else — "<5e891b0c-…|8>
+// sending DPD request", "instance-6f86d5cd-….sock". Nobody can read that. Both
+// endpoints are ALREADY fetched by the metrics collectors, so resolving the UUID to
+// its configured description costs no extra API call.
+//
+// Verified against a live OPNsense 26.7 box: the UUID charon logs is exactly the
+// `ikeid` that ipsec/sessions/search_phase1 returns alongside `phase1desc`, and the
+// UUID in OpenVPN's socket path is exactly the `uuid` from openvpn/instances/search.
+//
+// A box running neither is the normal case: an empty table is not an error, and a
+// failure here must never stop the other tables (each refresher is ticked
+// independently and a failure leaves the previous snapshot in place).
+func (r *Refresher) doRefreshTunnels() error {
+	tunnels := map[string]string{}
+	p1, err := r.client.FetchIPsecPhase1()
+	if e := skipAbsent(err); e != nil {
+		return e
+	}
+	if err == nil {
+		for _, row := range p1.Rows {
+			if row.IkeId == "" {
+				continue
+			}
+			// Fall back to the connection's own name when it has no description, so a
+			// nameless tunnel still resolves to something rather than nothing.
+			desc := row.Phase1desc
+			if desc == "" {
+				desc = row.Name
+			}
+			tunnels[row.IkeId] = desc
+		}
+	}
+
+	instances := map[string]string{}
+	ov, verr := r.client.FetchOpenVPNInstances()
+	if e := skipAbsent(verr); e != nil {
+		return e
+	}
+	if verr == nil {
+		for _, row := range ov.Rows {
+			if row.UUID == "" {
+				continue
+			}
+			instances[row.UUID] = row.Description
+		}
+	}
+
+	r.update("tunnels", func(s *Snapshot) {
+		s.Tunnels = tunnels
+		s.VPNInstances = instances
+	})
+	return nil
 }

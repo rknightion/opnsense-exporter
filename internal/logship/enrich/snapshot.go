@@ -27,7 +27,15 @@ type Snapshot struct {
 	MACs        map[string]string    // "10.0.0.6" -> "aa:bb:cc:dd:ee:ff"
 	LocalNets   []netip.Prefix       // every subnet configured on the firewall
 	SelfIPs     map[netip.Addr]bool  // addresses the firewall itself holds
-	LastRefresh map[string]time.Time // per TABLE: "rules" | "interfaces" | "leases"
+	LastRefresh map[string]time.Time // per TABLE: "rules" | "interfaces" | "leases" | "tunnels"
+
+	// Tunnels maps an IPsec connection UUID to its description. charon logs the
+	// tunnel as a bare UUID ("<5e891b0c-...|8> sending DPD request"), which is
+	// unreadable without the API — and the exporter is the one component that has it.
+	Tunnels map[string]string
+	// VPNInstances maps an OpenVPN instance UUID to its description. OpenVPN names
+	// the instance only in a management socket path (instance-<uuid>.sock).
+	VPNInstances map[string]string
 }
 
 // emptySnapshot backs a cold Cache: every lookup misses, nothing panics.
@@ -44,6 +52,18 @@ func (s *Snapshot) RuleLabel(rid string) (string, bool) {
 // ("LAN").
 func (s *Snapshot) InterfaceName(dev string) (string, bool) {
 	v, ok := s.IfaceNames[dev]
+	return v, ok && v != ""
+}
+
+// Tunnel resolves an IPsec connection UUID to its configured description.
+func (s *Snapshot) Tunnel(uuid string) (string, bool) {
+	v, ok := s.Tunnels[uuid]
+	return v, ok && v != ""
+}
+
+// VPNInstance resolves an OpenVPN instance UUID to its configured description.
+func (s *Snapshot) VPNInstance(uuid string) (string, bool) {
+	v, ok := s.VPNInstances[uuid]
 	return v, ok && v != ""
 }
 
@@ -100,13 +120,15 @@ func (s *Snapshot) Scope(ip string) string {
 // mutated after Store; LastRefresh is copied because every rebuild writes to it.
 func (s *Snapshot) clone() *Snapshot {
 	next := &Snapshot{
-		RuleLabels:  s.RuleLabels,
-		IfaceNames:  s.IfaceNames,
-		Hostnames:   s.Hostnames,
-		MACs:        s.MACs,
-		LocalNets:   s.LocalNets,
-		SelfIPs:     s.SelfIPs,
-		LastRefresh: make(map[string]time.Time, len(s.LastRefresh)+1),
+		RuleLabels:   s.RuleLabels,
+		IfaceNames:   s.IfaceNames,
+		Hostnames:    s.Hostnames,
+		MACs:         s.MACs,
+		LocalNets:    s.LocalNets,
+		SelfIPs:      s.SelfIPs,
+		Tunnels:      s.Tunnels,
+		VPNInstances: s.VPNInstances,
+		LastRefresh:  make(map[string]time.Time, len(s.LastRefresh)+1),
 	}
 	for k, v := range s.LastRefresh {
 		next.LastRefresh[k] = v

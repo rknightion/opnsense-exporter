@@ -53,6 +53,10 @@ func addCommon(rec *logship.Record, env Envelope, snap *enrich.Snapshot, enrichB
 	if enrichBody {
 		enrichMessage(env.Message, snap, set)
 	}
+	// Tunnel/instance UUIDs are resolved for structured and generic records alike:
+	// an IPsec or OpenVPN line names its tunnel as a bare UUID wherever it appears,
+	// and no parser is going to make that readable on its own.
+	enrichTunnels(env.Program, env.Message, snap, set)
 }
 
 // genericRecord ships the message verbatim with the syslog envelope as

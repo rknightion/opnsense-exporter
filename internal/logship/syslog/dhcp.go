@@ -1,0 +1,330 @@
+package syslog
+
+import (
+	"net/netip"
+	"regexp"
+	"strings"
+
+	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+)
+
+// DHCP lease events, normalised across the three backends an OPNsense box might
+// be running. A lease *gauge* tells you a lease exists; a lease *event* tells you
+// when the device appeared. Whichever backend serves the box, the record carries
+// the same attributes, so a query for "which device joined my network, and when"
+// does not have to know which one it is:
+//
+//	dhcp.action  discover|offer|request|ack|nak|release|expire|alloc|reuse
+//	dhcp.ip, dhcp.mac, dhcp.hostname, dhcp.lease_seconds
+//	interface (raw device) + interface.name (resolved)
+//
+// The three wire formats (all captured verbatim from a live 26.7 box):
+//
+//	ISC dhcpd   DHCPACK on 172.16.30.100 to bc:24:11:eb:db:3d (exporter-traffgen) via vlan02
+//	dnsmasq     DHCPACK(vlan01) 172.16.20.117 bc:24:11:3c:79:6b exporter-traffgen
+//	Kea         DHCP4_LEASE_ALLOC [hwtype=1 bc:24:11:a5:a6:34], cid=[no info], tid=0x8a1b2c3d: lease 172.16.9.100 has been allocated for 4000 s
+//
+// These programs also emit plenty that is NOT a lease event — Kea's
+// COMMAND_RECEIVED control-plane chatter, dnsmasq's DNS query log, dhcpd's
+// housekeeping. Those return ok=false and ship as generic records, verbatim.
+func init() {
+	RegisterParser(parseDHCP, "dhcpd", "dnsmasq", "kea-dhcp4", "kea-dhcp6", "dhcrelay")
+}
+
+// iscActions is the allowlist of DHCP message types we normalise from the
+// ISC/dnsmasq wire words. It is an allowlist on purpose: an unknown verb is a
+// shape we have not seen on a real box, and guessing at it is how parsers start
+// lying. Anything not here degrades to a generic record.
+var iscActions = map[string]string{
+	"DHCPDISCOVER": "discover",
+	"DHCPOFFER":    "offer",
+	"DHCPREQUEST":  "request",
+	"DHCPACK":      "ack",
+	"DHCPNAK":      "nak",
+	"DHCPRELEASE":  "release",
+	"DHCPEXPIRE":   "expire",
+}
+
+// keaActions maps the tail of a Kea DHCP{4,6}_LEASE_* message id onto the same
+// action vocabulary.
+var keaActions = map[string]string{
+	"ALLOC":  "alloc",
+	"OFFER":  "offer",
+	"REUSE":  "reuse",
+	"RENEW":  "request",
+	"EXPIRE": "expire",
+}
+
+var (
+	// dnsmasqLineRE matches "DHCPACK(vlan01) 172.16.20.117 bc:… hostname": the
+	// interface is welded onto the action word in parentheses.
+	dnsmasqLineRE = regexp.MustCompile(`^(DHCP[A-Z]+)\(([^)]*)\)\s*(.*)$`)
+
+	macRE = regexp.MustCompile(`^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$`)
+
+	// keaLevelRE / keaLoggerRE strip the optional leading level word and
+	// "[logger.0xPTR]" prefix Kea puts on some shapes.
+	keaLevelRE  = regexp.MustCompile(`^(?:INFO|WARN|WARNING|ERROR|FATAL|DEBUG)\s+`)
+	keaLoggerRE = regexp.MustCompile(`^\[[^\]]*\]\s+`)
+
+	keaMsgIDRE = regexp.MustCompile(`^DHCP[46]_LEASE_([A-Z]+)$`)
+	// keaHWRE takes the MAC only from an explicit "[hwtype=1 <mac>]" block. A
+	// DHCPv6 DUID is also colon-separated hex and a looser scan would happily
+	// slice its first six octets and call them a MAC.
+	keaHWRE = regexp.MustCompile(`\[hwtype=\d+\s+((?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})]`)
+	// keaLeaseRE reads the address out of "…: lease <addr> has been allocated…"
+	// (v6 spells it "lease for address <addr>").
+	keaLeaseRE = regexp.MustCompile(`lease (?:for address )?([^\s,]+)`)
+	// keaSecsRE reads the duration, spelled "for 4000 s" or "for 3869 seconds".
+	keaSecsRE = regexp.MustCompile(`\bfor (\d+) (?:s|secs?|seconds?)\b`)
+)
+
+// dhcpFields is the backend-independent shape all three parsers produce.
+type dhcpFields struct {
+	action       string
+	ip           string
+	mac          string
+	hostname     string
+	iface        string
+	serverIP     string
+	leaseSeconds string
+}
+
+// parseDHCP dispatches on the shape of the line, not on the program name: a box
+// can run more than one backend, and dhcrelay/dnsmasq both emit lines that are
+// not lease events at all. Returns ok=false for anything it does not recognise,
+// so the caller ships it as a generic record — never a drop, never a panic.
+//
+// miss is unused: an address the snapshot does not know is normal (the lease is
+// being created by the very line we are reading), so a lookup failure here is not
+// evidence of a stale snapshot.
+func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logship.Record, bool) {
+	msg := strings.TrimSpace(env.Message)
+	if msg == "" {
+		return logship.Record{}, false
+	}
+
+	var (
+		f  dhcpFields
+		ok bool
+	)
+	switch {
+	case dnsmasqLineRE.MatchString(msg):
+		f, ok = parseDnsmasqDHCP(msg)
+	case isISCDHCPLine(msg):
+		f, ok = parseISCDHCP(msg)
+	default:
+		f, ok = parseKeaDHCP(msg)
+	}
+	if !ok {
+		return logship.Record{}, false
+	}
+
+	rec, set := newRecord(env)
+	set("dhcp.action", f.action)
+	set("dhcp.ip", f.ip)
+	set("dhcp.mac", f.mac)
+	set("dhcp.hostname", f.hostname)
+	set("dhcp.server_ip", f.serverIP)
+	set("dhcp.lease_seconds", f.leaseSeconds)
+	set("interface", f.iface)
+
+	if name, ok := ifaceName(snap, f.iface); ok {
+		set("interface.name", name)
+	}
+
+	// Best-effort enrichment of the leased address, exactly as filterlog does it:
+	// the hostname/MAC the box already knows fills the gaps a line leaves (a
+	// DHCPDISCOVER carries neither), and the scope says where the address sits.
+	// A lookup that misses is normal and is NEVER reported as a cache miss.
+	if f.ip != "" && snap != nil {
+		if f.hostname == "" {
+			if host, ok := snap.Hostname(f.ip); ok {
+				set("dhcp.hostname", host)
+			}
+		}
+		if f.mac == "" {
+			if mac, ok := snap.MAC(f.ip); ok {
+				set("dhcp.mac", mac)
+			}
+		}
+		set("dhcp.scope", snap.Scope(f.ip))
+	}
+
+	return rec, true
+}
+
+// isISCDHCPLine reports whether the line opens with a bare ISC action word. Kea's
+// "DHCP4_LEASE_ALLOC" also starts with "DHCP", so the test is an exact lookup of
+// the first token, not a prefix.
+func isISCDHCPLine(msg string) bool {
+	first, _, _ := strings.Cut(msg, " ")
+	_, ok := iscActions[first]
+	return ok
+}
+
+// parseISCDHCP walks the ISC dhcpd token stream. The grammar varies per message
+// type — "on <ip> to <mac>", "for <ip> (<server>) from <mac>", "from <mac>" —
+// so we read the prepositions rather than fixing on field positions, and classify
+// each value by its own shape.
+//
+// The parenthetical is overloaded: it is the server identifier after an address
+// ("(172.16.30.1)"), the client hostname after a MAC ("(exporter-traffgen)"), and
+// on a DHCPRELEASE a trailing "(found)" that is neither. Only a parenthetical
+// directly following the MAC is taken as a hostname.
+func parseISCDHCP(msg string) (dhcpFields, bool) {
+	var f dhcpFields
+	tok := strings.Fields(msg)
+	if len(tok) == 0 {
+		return f, false
+	}
+	action, ok := iscActions[tok[0]]
+	if !ok {
+		return f, false
+	}
+	f.action = action
+
+	afterMAC := false
+	for i := 1; i < len(tok); i++ {
+		t := tok[i]
+
+		if strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")") {
+			v := strings.TrimSuffix(strings.TrimPrefix(t, "("), ")")
+			switch {
+			case isIPAddr(v):
+				if f.serverIP == "" {
+					f.serverIP = v
+				}
+			case isMAC(v):
+				if f.mac == "" {
+					f.mac = v
+				}
+			case afterMAC && f.hostname == "":
+				f.hostname = v
+			}
+			continue
+		}
+		afterMAC = false
+
+		switch t {
+		case "via":
+			if i+1 < len(tok) {
+				f.iface = tok[i+1]
+				i++
+			}
+		case "on", "for", "of", "to", "from":
+			if i+1 >= len(tok) {
+				continue
+			}
+			v := tok[i+1]
+			switch {
+			case isMAC(v):
+				if f.mac == "" {
+					f.mac = v
+				}
+				afterMAC = true
+				i++
+			case isIPAddr(v):
+				if f.ip == "" {
+					f.ip = v
+				}
+				i++
+			}
+		}
+	}
+
+	// An action word with neither a client nor an address is not an event worth
+	// structuring — ship it verbatim instead of inventing a lease from nothing.
+	if f.ip == "" && f.mac == "" {
+		return dhcpFields{}, false
+	}
+	return f, true
+}
+
+// parseDnsmasqDHCP handles "DHCPACK(vlan01) 172.16.20.117 bc:… exporter-traffgen":
+// the interface is parenthesised onto the action and the remaining tokens are
+// positional-ish, so each is classified by shape (address, MAC, otherwise the
+// hostname).
+func parseDnsmasqDHCP(msg string) (dhcpFields, bool) {
+	var f dhcpFields
+	m := dnsmasqLineRE.FindStringSubmatch(msg)
+	if m == nil {
+		return f, false
+	}
+	action, ok := iscActions[m[1]]
+	if !ok {
+		return f, false
+	}
+	f.action = action
+	f.iface = m[2]
+
+	for _, t := range strings.Fields(m[3]) {
+		switch {
+		case isMAC(t):
+			if f.mac == "" {
+				f.mac = t
+			}
+		case isIPAddr(t):
+			if f.ip == "" {
+				f.ip = t
+			}
+		default:
+			if f.hostname == "" {
+				f.hostname = t
+			}
+		}
+	}
+
+	if f.ip == "" && f.mac == "" {
+		return dhcpFields{}, false
+	}
+	return f, true
+}
+
+// parseKeaDHCP handles Kea's structured message ids. The line may carry a leading
+// level word and a "[logger.0xPTR]" prefix; both are stripped before the message
+// id is read.
+//
+// Only the DHCP{4,6}_LEASE_* ids are lease events. COMMAND_RECEIVED and the rest
+// of Kea's control-plane chatter return ok=false and ship generic — an admin's
+// "lease6-get-page" API call is not a device joining the network.
+func parseKeaDHCP(msg string) (dhcpFields, bool) {
+	var f dhcpFields
+
+	s := keaLevelRE.ReplaceAllString(msg, "")
+	s = keaLoggerRE.ReplaceAllString(s, "")
+
+	id, rest, _ := strings.Cut(s, " ")
+	m := keaMsgIDRE.FindStringSubmatch(id)
+	if m == nil {
+		return f, false
+	}
+	action, ok := keaActions[m[1]]
+	if !ok {
+		return f, false
+	}
+	f.action = action
+
+	if hw := keaHWRE.FindStringSubmatch(rest); hw != nil {
+		f.mac = hw[1]
+	}
+	if lease := keaLeaseRE.FindStringSubmatch(rest); lease != nil && isIPAddr(lease[1]) {
+		f.ip = lease[1]
+	}
+	if secs := keaSecsRE.FindStringSubmatch(rest); secs != nil {
+		f.leaseSeconds = secs[1]
+	}
+
+	if f.ip == "" && f.mac == "" {
+		return dhcpFields{}, false
+	}
+	return f, true
+}
+
+func isMAC(s string) bool { return macRE.MatchString(s) }
+
+func isIPAddr(s string) bool {
+	_, err := netip.ParseAddr(s)
+	return err == nil
+}
