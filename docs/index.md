@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
-A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes 764 metrics across 61 concurrent collectors -- covering firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and much more.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 764 metrics across 61 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more.
 
 <div class="hero-badges" markdown>
 
@@ -77,7 +77,7 @@ A production-ready Prometheus exporter that polls OPNsense REST APIs and exposes
 
 ## About
 
-OPNsense Exporter focuses specifically on OPNsense, providing deep insight into the firewall, its plugin ecosystem, and the services running on it. It is designed to complement `node_exporter` -- while `node_exporter` must be installed on the firewall itself, this exporter can run on any machine with network access to the OPNsense API.
+OPNsense Exporter targets OPNsense specifically, covering the firewall, its plugin ecosystem, and the services running on it. It complements `node_exporter`: `node_exporter` has to run on the firewall itself, but this exporter can run on any machine with network access to the OPNsense API.
 
 Key highlights:
 
@@ -85,8 +85,8 @@ Key highlights:
 - **Concurrent collection** via goroutines for fast scrapes
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail
-- **File-based secrets** for secure credential management in containers
-- **Continuous profiling** (opt-in) pushed to Grafana Cloud Pyroscope for operational visibility
+- **File-based secrets** for credentials outside plain environment variables
+- **Continuous profiling** (opt-in) pushed to Grafana Cloud Pyroscope
 
 !!! info "Fork notice"
-    This is a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter). Full credit to the original authors for building the foundation. This fork includes significant additions -- 14 new collectors, enhanced existing collectors, modernized build infrastructure, and many bug fixes -- that go beyond the scope of the upstream project.
+    This is a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter). Credit to the original authors for the foundation this builds on. This fork adds 14 new collectors, extends the existing ones, modernizes the build infrastructure, and fixes bugs beyond what the upstream project covers.

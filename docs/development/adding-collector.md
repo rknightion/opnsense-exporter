@@ -7,7 +7,7 @@ tags:
 
 # Adding a Collector
 
-This guide walks through adding a new collector to the OPNsense Exporter. The process involves five steps across three packages.
+This guide adds a new collector to the OPNsense Exporter: five steps across three packages.
 
 ## Overview
 
@@ -110,7 +110,7 @@ func (c *exampleCollector) Update(
 
 ## Step 2: Auto-registration
 
-The `init()` function in the collector file (shown above) handles registration. It appends the collector instance to the global `collectorInstances` slice. No changes to any central registry file are needed.
+The `init()` function in the collector file (shown above) handles registration: it appends the collector instance to the global `collectorInstances` slice. No central registry file to touch.
 
 Add a subsystem constant to `internal/collector/collector.go`:
 
@@ -228,7 +228,7 @@ go test ./opnsense/ -run TestFetchExample
 
 ## Step 6: Update the documentation
 
-Documentation is generated — never hand-edit content between `<!-- docgen:begin/end -->` markers
+Documentation is generated. Never hand-edit content between `<!-- docgen:begin/end -->` markers
 or the docgen-generated pages. After the code is in place:
 
 1. Add the subsystem's display name to `SubsystemDisplayNames` in

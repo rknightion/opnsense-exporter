@@ -16,40 +16,40 @@ data if polled the way a Prometheus scraper polls. This page is the permanent re
 groups, plus the modules the audit confirmed have nothing left to collect.
 
 **This list is not a TODO. Do not re-audit any endpoint or module named here** without first
-reading the reasoning below — each entry was checked against OPNsense source, not guessed at. If a
+reading the reasoning below: each entry was checked against OPNsense source, not guessed at. If a
 future OPNsense release changes one of these controllers, update the entry in place rather than
 re-running the survey from scratch.
 
 ## Never-scrape endpoints
 
 These are verified in OPNsense source (`os-*` plugin repos and core). Every one of them looks like
-a status read from its name or its GET method, and none of them are — calling one on a scrape
+a status read from its name or its GET method, and none of them are: calling one on a scrape
 interval starts a service, mutates config, or ships data off-box.
 
 | Endpoint | Method | Why it must never be scraped |
 | --- | --- | --- |
-| `api/iperf/instance/query` | GET | If the iperf-manager socket is absent, `send_command()` falls through to configd `iperf restart`/`start` — a GET request that starts a service and rewrites pf anchor rules. It also only ever returns manually-launched one-shot test results, purged after an hour, so there is no steady-state series to collect anyway. |
+| `api/iperf/instance/query` | GET | If the iperf-manager socket is absent, `send_command()` falls through to configd `iperf restart`/`start` (a GET request that starts a service and rewrites pf anchor rules). It also only ever returns manually-launched one-shot test results, purged after an hour, so there is no steady-state series to collect anyway. |
 | `api/redis/service/resetdb` | GET | Flushes the Redis database. |
-| `api/haproxy/maintenance/*` | POST | Every action in this controller looks like a status read but responds only to POST and fires `configdRun('template reload OPNsense/HAProxy')` on every single call — full config regeneration per scrape. The server-state data it exposes is redundant with `show stat` anyway. |
+| `api/haproxy/maintenance/*` | POST | Every action in this controller looks like a status read but responds only to POST and fires `configdRun('template reload OPNsense/HAProxy')` on every single call: full config regeneration per scrape. The server-state data it exposes is redundant with `show stat` anyway. |
 | `api/hwprobe/service/report` | GET | Runs `hw-probe -all -upload`, which uploads the box's hardware profile to linux-hardware.org. An exporter must never cause outbound data exfiltration as a side effect of a scrape. |
 | `api/tailscale/status/net` | GET | Runs `tailscale netcheck`, an active multi-second network probe, and returns plain text rather than structured JSON. |
-| `api/diagnostics/carp_status` | POST | A setter despite the read-sounding name — it enables/disables CARP or flips maintenance mode. |
+| `api/diagnostics/carp_status` | POST | A setter despite the read-sounding name: it enables/disables CARP or flips maintenance mode. |
 | `api/unbound/diagnostics/dumpcache` | GET | Dumps the entire unbound message cache. The payload is unbounded and scales with resolver traffic, not with anything worth graphing. |
 | `api/diagnostics/traffic/_top` | GET | An iftop-style sampling capture that runs for up to 10 seconds per call, with unbounded per-host cardinality. Not something a scrape interval should be triggering. |
 | `api/nginx/bans/get` | GET | Inherited `getAction()` behaviour returns the entire nginx model just to expose two fields. Use `searchban` instead if ban data is ever wanted. |
 
 ## Lossy or sampling transports
 
-These endpoints are safe to call — nothing mutates and nothing gets uploaded — but their transport
+These endpoints are safe to call (nothing mutates and nothing gets uploaded), but their transport
 or caching behaviour silently drops or samples data under a naive poll-on-interval pattern. They
 are not "do not call," they are "do not use as an ingestion source the way you'd expect."
 
 | Endpoint | Why |
 | --- | --- |
 | `api/diagnostics/firewall/stream_log` (SSE) | Lossy by design: the streamer throttles to 10 lines per 100ms window and silently drops the rest, including the line straddling the window boundary (`read_log.py:207-214`). The paged `?digest=` endpoint is the lossless path; never wire this SSE stream up as an ingestion transport. |
-| `api/diagnostics/log/<module>/<scope>/live` (SSE) | Tails with `tail -f`, not `-F` — it silently stalls after the underlying log rotates, while keepalive frames keep flowing so nothing looks broken. Poll with `validFrom` instead of holding this stream open. |
+| `api/diagnostics/log/<module>/<scope>/live` (SSE) | Tails with `tail -f`, not `-F`: it silently stalls after the underlying log rotates, while keepalive frames keep flowing so nothing looks broken. Poll with `validFrom` instead of holding this stream open. |
 | `api/qfeeds/settings/search_events` | A filtered, 300s-configd-cached, port-only re-parse of the firewall log restricted to qfeeds tables. It is strictly a stale subset of the firewall log endpoint, where qfeeds blocks already appear natively with their rule label. |
-| `api/unbound/overview/search_queries` without a client filter | Only ever returns the latest 1000 rows — the `client` + `timeStart` + `timeEnd` form is the only mode that gets a real time range. Naive polling silently samples on a busy resolver. See [#233](https://github.com/rknightion/opnsense-exporter/issues/233) for the accepted-loss design this drove. |
+| `api/unbound/overview/search_queries` without a client filter | Only ever returns the latest 1000 rows: the `client` + `timeStart` + `timeEnd` form is the only mode that gets a real time range. Naive polling silently samples on a busy resolver. See [#233](https://github.com/rknightion/opnsense-exporter/issues/233) for the accepted-loss design this drove. |
 
 ## Won't-build
 
@@ -57,8 +57,8 @@ Recorded so the same collector idea does not get proposed twice.
 
 - **A "watched plugin services" collector** fanning out to per-plugin `service/status` endpoints.
   Every relevant plugin already registers in `api/core/service/search`, which the exporter exports
-  as `opnsense_services_status{name}`. The one plugin that does not register there — os-beats, which
-  ships no `plugins.inc.d` file — is too thin on its own to justify a dedicated collector.
+  as `opnsense_services_status{name}`. The one plugin that does not register there (os-beats, which
+  ships no `plugins.inc.d` file) is too thin on its own to justify a dedicated collector.
 - **`hostdiscovery/service/search`** silently falls back to ARP+NDP (`source: "arp-ndp"`) when the
   discovery daemon is off. Any future consumer of this data must stay source-aware rather than
   assuming active discovery is always what produced a row.

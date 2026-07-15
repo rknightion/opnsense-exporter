@@ -8,7 +8,7 @@ tags:
 
 # Metrics Reference
 
-The OPNsense Exporter provides 764 Prometheus metrics across 61 collectors, covering every major subsystem of the OPNsense firewall platform.
+The OPNsense Exporter provides 764 Prometheus metrics across 61 collectors, covering every major subsystem of the firewall platform.
 
 <div class="grid cards" markdown>
 

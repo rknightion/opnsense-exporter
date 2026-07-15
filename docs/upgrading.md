@@ -41,8 +41,8 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   `grafana/alerts/grafana-managed/` (pushed as Grafana resources). See
   [Integration & Dashboards](integration-dashboards.md).
 - **Unknown link state no longer reported as down** — interfaces whose link state the
-  API reports as unknown (e.g. some PPPoE WANs) are now distinguished from genuinely
-  down interfaces instead of being flattened to down. Alerts that treated "not up" as
+  API reports as unknown (e.g. some PPPoE WANs) are now distinguished from interfaces
+  that are actually down instead of being flattened to down. Alerts that treated "not up" as
   "down" may fire differently; check any rules built on interface link-state metrics.
 
 ## Upgrading to v1.0 from v0.x

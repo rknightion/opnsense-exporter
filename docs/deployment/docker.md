@@ -113,7 +113,7 @@ secrets:
 
 ## Health check configuration
 
-Add a health check to your compose file to ensure the container is restarted if the exporter becomes unresponsive:
+Add a health check to your compose file so the container gets restarted if the exporter becomes unresponsive:
 
 ```yaml
 services:
@@ -188,5 +188,5 @@ services:
       - ./private-ca.pem:/certs/private-ca.pem:ro
 ```
 
-Avoid `--opnsense.insecure` outside of testing — it disables certificate
+Avoid `--opnsense.insecure` outside of testing. It disables certificate
 verification entirely.

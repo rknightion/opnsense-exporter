@@ -46,7 +46,7 @@ If your OPNsense instance has a large number of interfaces, firewall rules, or D
 
 ### Scrape interval
 
-A 30-60 second scrape interval works well for most deployments. The exporter makes multiple API calls per scrape (one per enabled collector), so very aggressive intervals (under 15s) may put unnecessary load on the OPNsense API.
+A 30-60 second scrape interval works well for most deployments. The exporter makes multiple API calls per scrape (one per enabled collector), so aggressive intervals (under 15s) may put unnecessary load on the OPNsense API.
 
 ### Multiple OPNsense instances
 

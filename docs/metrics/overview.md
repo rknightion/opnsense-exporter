@@ -8,7 +8,7 @@ tags:
 
 # Metrics Overview
 
-This page describes the naming conventions, label schemas, and metric types used by the OPNsense Exporter, along with practical PromQL examples.
+This page covers the naming conventions, label schemas, and metric types the OPNsense Exporter uses, along with practical PromQL examples.
 
 ## Naming convention
 

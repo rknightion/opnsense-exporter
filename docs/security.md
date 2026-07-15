@@ -156,13 +156,13 @@ sudo chown root:root /etc/opnsense-exporter/api-key /etc/opnsense-exporter/api-s
 
 ## OPNsense settings
 
-Certain collectors require specific OPNsense settings to be enabled:
+One collector needs an extra OPNsense setting enabled:
 
 - **Unbound DNS collector:** Enable **Unbound DNS > Advanced > Extended Statistics** in the OPNsense web UI for full DNS metrics.
 
 ## Container security
 
-The official container image follows security best practices:
+The official container image is hardened:
 
 - **Distroless base image** -- minimal attack surface with no shell, package manager, or unnecessary binaries
 - **Non-root execution** -- runs as UID 65532 (nonroot)

@@ -172,11 +172,11 @@ opnsense-exporter \
   --logs.syslog.tls-client-ca-file=/etc/exporter/senders-ca.pem   # optional, see below
 ```
 
-`--logs.syslog.tls-client-ca-file` is worth setting: with it, a sender **must** present
-a client certificate signed by that CA, which is the only real sender authentication
-syslog offers — the peer allowlist filters by IP, it does not prove who is on the other
-end. Left empty, the listener encrypts but accepts any TLS client. On the firewall, set
-the target's Transport to `TLS(4)` and point it at the TLS port.
+Set `--logs.syslog.tls-client-ca-file` too: it's the only real sender authentication
+syslog has. With it, a sender **must** present a client certificate signed by that CA —
+the peer allowlist only filters by IP, it doesn't prove who's on the other end. Left
+empty, the listener encrypts but accepts any TLS client. On the firewall, set the
+target's Transport to `TLS(4)` and point it at the TLS port.
 
 ## What you get
 

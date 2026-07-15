@@ -40,7 +40,7 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `opnsense_up` | Gauge | Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable but degraded box stays 1 — see `opnsense_system_status_code` |
+| `opnsense_up` | Gauge | Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable but degraded box stays 1; see `opnsense_system_status_code` |
 | `opnsense_firewall_status` | Gauge | Firewall health status from system health check (1 = ok, 0 = errors); absent when OPNsense is unreachable |
 | `opnsense_crash_reporter_status` | Gauge | Crash reporter status (1 = ok/no crash reports, 0 = crash reports present); absent when OPNsense is unreachable |
 | `opnsense_system_status_code` | Gauge | Numeric OPNsense system status code from health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1); absent when unreachable |
@@ -133,7 +133,7 @@ derived purely from handshakes (`peer_session_active`,
 `peers_with_active_session`, direct-vs-DERP path for established sessions,
 last-handshake timestamps), plus the plugin/backend service state. The
 coordination-server `Online` flag is intentionally **never parsed or
-exported** — it is fleet data relayed to the node, not a local observation,
+exported**: it is fleet data relayed to the node, not a local observation,
 and it lives in tailscale2otel along with peer last-seen and exit-node
 inventory. Per-peer metrics are opt-in via
 `--exporter.enable-tailscale-peer-details`.

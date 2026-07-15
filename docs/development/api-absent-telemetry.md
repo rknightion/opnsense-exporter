@@ -9,7 +9,7 @@ tags:
 # API-Absent Telemetry
 
 A recurring request is an SSH-based channel for the small set of signals OPNsense's REST API
-does not expose at all — chiefly ZFS pool health and CARP demotion state. This was spiked
+does not expose at all, chiefly ZFS pool health and CARP demotion state. This was spiked
 end-to-end in [#225](https://github.com/rknightion/opnsense-exporter/issues/225) against a real
 26.7-devel box. **Verdict: no.** This page is the permanent record of why, and the recipe to get
 those two signals without the exporter ever holding a shell credential.
@@ -27,34 +27,34 @@ $user_shell = $is_admin && !empty($user['shell']) ? $user['shell'] : '/usr/sbin/
 
 Any account without the full `page-all` admin privilege is force-set to shell `/usr/sbin/nologin`
 and group `nobody`, regardless of what shell the GUI's user editor claims to offer. There is no
-separate "shell access" privilege distinct from full admin — OPNsense's privilege model simply
-does not model that tier. On top of that, the generated `sshd_config`
+separate "shell access" privilege distinct from full admin: OPNsense's privilege model does not
+model that tier. On top of that, the generated `sshd_config`
 (`plugins.inc.d/openssh.inc:171`) hardcodes `AllowGroups wheel` unconditionally, so even a
 `nologin`-shelled account that somehow reached sshd would be refused at the group check.
 
 The practical consequence: **every credential capable of running one SSH command against an
 OPNsense box is a full-admin, effectively root-equivalent credential.** A dedicated, read-only,
-non-wheel SSH user — the shape of thing a scraper credential should be — does not exist in stock
+non-wheel SSH user (the shape of thing a scraper credential should be) does not exist in stock
 OPNsense. Building one would mean unmanaged `sshd_config.d` drop-ins and a boot-hook user
 creation outside `config.xml`, which is not upgrade-safe and not something this project will ship
 as a default for every install.
 
 Given that, embedding an SSH client in the exporter would trade a scoped API-key credential for a
 root-equivalent one, add a reconnect/session state machine, and add parsers with no contract-canary
-safety net (see [API Landmines](api-landmines.md) for what that safety net normally buys us) —
-all to unlock two metrics. Not a good trade. Closed as a documentation deliverable instead.
+safety net (see [API Landmines](api-landmines.md) for what that safety net normally buys us). All
+that to unlock two metrics. Not a good trade. Closed as a documentation deliverable instead.
 
 ## Use os-node_exporter for OS-level telemetry
 
 Most of what an SSH channel would have chased is already covered by installing the
 **os-node_exporter** plugin on the firewall itself and scraping it as a second Prometheus target
-(the exporter and node_exporter are complementary, not overlapping — see
+(the exporter and node_exporter are complementary, not overlapping; see
 [Integration & Dashboards](../integration-dashboards.md)). Its GUI collector toggles
 (Services → Node Exporter) map straight onto the metrics families the spike was chasing:
 
 | Toggle | Covers |
 | --- | --- |
-| `devstat` | Per-disk I/O: read/write bytes, ops, busy time — the same data `iostat -x` would have given an SSH-based collector, without a fixed-column parser to keep in sync with FreeBSD releases. |
+| `devstat` | Per-disk I/O: read/write bytes, ops, busy time (the same data `iostat -x` would give an SSH-based collector, without a fixed-column parser to keep in sync with FreeBSD releases). |
 | `interrupts` | Per-CPU interrupt counters. |
 | `zfs` | ZFS ARC size and hit/miss counters (`kstat.zfs.misc.arcstats.*`). |
 | `cpu`, `meminfo`, `loadavg`, `filesystem`, `netdev`, `time`, `ntp` | Standard OS-level coverage; not the reason for this spike but worth enabling alongside the above. |
@@ -68,7 +68,7 @@ below.
 The os-node_exporter plugin ships node_exporter's textfile collector always on, pointed at a fixed
 directory, `/var/tmp/node_exporter` (owned `nobody:nobody`; confirmed against the plugin's
 [startup template](https://github.com/opnsense/plugins/blob/master/sysutils/node_exporter/src/opnsense/service/templates/OPNsense/NodeExporter/node_exporter)
-and reports from users who hit it). There is no GUI setting for the directory and none is needed —
+and reports from users who hit it). There is no GUI setting for the directory, and none is needed:
 any `.prom` file dropped there on a `mtime` newer than node_exporter's scrape gets picked up on the
 next scrape automatically.
 
@@ -95,28 +95,28 @@ chmod 644 "${TMP}"
 mv -f "${TMP}" "${DIR}/zfs_carp.prom"
 ```
 
-Add it via **Services → Cron** (do not hand-edit `/etc/crontab` — OPNsense regenerates it from
+Add it via **Services → Cron** (do not hand-edit `/etc/crontab`: OPNsense regenerates it from
 `config.xml` on every boot and config write, silently discarding a manual entry) at whatever
 interval matches your scrape cadence; every 5 minutes is generally enough for pool health and
 CARP demotion, neither of which flaps on a healthy box.
 
 Two things make this safe to run unattended:
 
-- **Atomic write.** node_exporter's textfile collector rejects a file mid-write (a truncated
+- **Atomic write:** node_exporter's textfile collector rejects a file mid-write (a truncated
   `.prom` file is invalid exposition format), so the script writes to a `mktemp` sibling in the
-  *same* directory and `mv`s it into place — a rename within one filesystem is atomic, so
+  *same* directory and `mv`s it into place: a rename within one filesystem is atomic, so
   node_exporter only ever sees the file fully formed or not at all.
-- **Zero-pools handled correctly.** `zpool list -H -o name` against a box with no pools returns
-  **empty stdout with exit code 0** — the `wc -l` count is then `0`, which is correct, not an
+- **Zero-pools handled correctly:** `zpool list -H -o name` against a box with no pools returns
+  empty stdout with exit code 0, so the `wc -l` count is then `0`, which is correct, not an
   error. This is a real gotcha to know if you build your own variant against `zpool list -j`:
-  with zero pools it *also* returns empty stdout (not `{}` — nothing at all), while `zpool status
+  with zero pools it *also* returns empty stdout (not `{}`, nothing at all), while `zpool status
   -j` returns valid, parseable JSON even with zero pools (`{"pools":{}}`). The two `-j` forms are
   not consistent with each other on the empty case. The script above sidesteps the whole question
   by staying on the plain-text forms, which need no JSON parser on the box at all.
 
 ## Deliberately out of scope
 
-- **`dev.cpu.N.freq`** is a real-hardware-only signal — there is no cpufreq driver under
+- **`dev.cpu.N.freq`** is a real-hardware-only signal: there is no cpufreq driver under
   virtualization (confirmed absent on a KVM-hosted devel box), so it would read absent on a
   large fraction of installs and isn't worth a collector or a textfile metric either.
 - **NIC driver sysctl trees** (`dev.ix.N.*`, `dev.igb.N.*`, and similar) remain out of scope. They

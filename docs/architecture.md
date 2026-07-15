@@ -7,7 +7,7 @@ tags:
 
 # Architecture
 
-This page describes the internal architecture of the OPNsense Exporter, including its package structure, data flow, and extension points.
+This page covers the exporter's internal architecture: package structure, data flow, and extension points.
 
 ## Package structure
 
@@ -88,7 +88,7 @@ type CollectorInstance interface {
 
 ### `internal/options/` -- Configuration
 
-Configuration is handled via [kingpin](https://github.com/alecthomas/kingpin) CLI flags with corresponding environment variables:
+[kingpin](https://github.com/alecthomas/kingpin) CLI flags handle configuration, each with a corresponding environment variable:
 
 - **`ops.go`** -- OPNsense connection config (protocol, address, API key/secret, TLS)
 - **`exporter.go`** -- Server config (listen address, metrics path, instance label)
@@ -138,8 +138,8 @@ sequenceDiagram
 
 1. Prometheus sends `GET /metrics`.
 2. The `Collector.Collect()` method acquires a mutex and runs a health check against the OPNsense system status API.
-3. The health check populates `opnsense_up` (API reachability), `opnsense_system_status_code`, the per-subsystem `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the health-check payload reports — disk space, root lock, plugin overrides, and anything else beyond the two dedicated gauges). `opnsense_up` is 0 only when the API call itself fails; a reachable but degraded box stays `opnsense_up=1`.
-4. All enabled sub-collectors are launched concurrently as goroutines **regardless of the health-check outcome** — a failed health check sets `opnsense_up=0` but does not stop the sub-collectors.
+3. The health check populates `opnsense_up` (API reachability), `opnsense_system_status_code`, the per-subsystem `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the health-check payload reports, e.g. disk space, root lock, plugin overrides, and anything else beyond the two dedicated gauges). `opnsense_up` is 0 only when the API call itself fails; a reachable but degraded box stays `opnsense_up=1`.
+4. All enabled sub-collectors are launched concurrently as goroutines **regardless of the health-check outcome**. A failed health check sets `opnsense_up=0` but does not stop the sub-collectors.
 5. Each sub-collector calls its `Update()` method, which invokes one or more `Fetch*()` methods on the API client and emits metrics to the shared channel.
 6. The main collector waits for all goroutines to complete, then increments the scrape counter and emits endpoint error counters.
 
@@ -193,7 +193,7 @@ The exporter supports opt-in continuous profiling that **pushes** profiles to [G
 Profiles collected by default:
 
 - CPU profiling
-- Memory (heap) profiling — alloc/inuse, objects/space
+- Memory (heap) profiling: alloc/inuse, objects/space
 
 With `--pyroscope.enable-mutex-block` the exporter additionally collects:
 
@@ -201,4 +201,4 @@ With `--pyroscope.enable-mutex-block` the exporter additionally collects:
 - Mutex contention profiling
 - Block profiling
 
-There are **no** unauthenticated `/debug/pprof/*` HTTP endpoints; the previously always-on pprof/godeltaprof handlers have been removed in favour of authenticated push.
+There are **no** unauthenticated `/debug/pprof/*` HTTP endpoints; the exporter dropped the previously always-on pprof/godeltaprof handlers in favour of authenticated push.

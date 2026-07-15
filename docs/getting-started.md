@@ -77,7 +77,7 @@ Get the OPNsense Exporter up and running in under five minutes.
     ```
 
 !!! tip "Production credentials"
-    Avoid passing credentials as command-line flags -- they are visible in the process list. For production, prefer file-based secrets via `OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE` (see [Security: File-based secrets](security.md#file-based-secrets)).
+    Avoid passing credentials as command-line flags: they are visible in the process list. For production, prefer file-based secrets via `OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE` (see [Security: File-based secrets](security.md#file-based-secrets)).
 
 ## Step 3: Verify metrics
 
@@ -95,7 +95,7 @@ You should see output containing lines like:
 opnsense_up{opnsense_instance="my-firewall"} 1
 ```
 
-`opnsense_up` reflects whether the OPNsense API was reachable, not whether the box is healthy. If it is `0`, check the exporter logs for connection or authentication errors. A reachable box that OPNsense itself reports as degraded (e.g. a leftover crash report) keeps `opnsense_up=1` — inspect `opnsense_system_status_code` (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) and `opnsense_crash_reporter_status` / `opnsense_firewall_status` instead.
+`opnsense_up` reflects whether the OPNsense API was reachable, not whether the box is healthy. If it is `0`, check the exporter logs for connection or authentication errors. A reachable box that OPNsense itself reports as degraded (e.g. a leftover crash report) keeps `opnsense_up=1`. Check `opnsense_system_status_code` (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) and `opnsense_crash_reporter_status` / `opnsense_firewall_status` instead.
 
 ## Step 4: Configure Prometheus
 
@@ -116,8 +116,8 @@ scrape_configs:
 
 ## What's next?
 
-- **[Configuration](configuration.md)** -- Full reference for all CLI flags, environment variables, and collector switches
-- **[Deployment](deployment.md)** -- Production deployment guides for Docker, Kubernetes, and systemd
-- **[Security](security.md)** -- API key permissions, TLS configuration, and file-based secrets
-- **[Collectors](collectors/index.md)** -- Overview of all 61 collectors and what they monitor
-- **[Integration & Dashboards](integration-dashboards.md)** -- Grafana dashboard setup and PromQL examples
+- **[Configuration](configuration.md)**: full reference for all CLI flags, environment variables, and collector switches
+- **[Deployment](deployment.md)**: production deployment guides for Docker, Kubernetes, and systemd
+- **[Security](security.md)**: API key permissions, TLS configuration, and file-based secrets
+- **[Collectors](collectors/index.md)**: overview of all 61 collectors and what they monitor
+- **[Integration & Dashboards](integration-dashboards.md)**: Grafana dashboard setup and PromQL examples

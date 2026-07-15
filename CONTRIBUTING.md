@@ -31,13 +31,13 @@ curl http://localhost:8080/metrics
 
 ### Before PR
 
-- Make sure to sync the vendor if the dependencies have changed.
+- Sync the vendor if dependencies changed.
 
 ```bash
 make sync-vendor
 ```
 
-- Make sure to run the tests and linters.
+- Run the tests and linters.
 
 ```bash
 make test

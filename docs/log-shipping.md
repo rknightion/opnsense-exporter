@@ -81,15 +81,15 @@ real box emits. `list_rule_ids` resolves both.
 
 Lookups read a lock-free snapshot refreshed on its own goroutine; the receive path
 never makes an API call. **Enrichment failure never drops a record** — a cold or
-stale snapshot simply ships the line unenriched.
+stale snapshot ships the line unenriched.
 
-**Fidelity.** The parser uses filterlog's true nine-field TCP tail (`srcport`,
+**Fidelity:** the parser uses filterlog's true nine-field TCP tail (`srcport`,
 `dstport`, `datalen`, `tcpflags`, `seq`, `ack`, `window`, `urg`, `options`).
 OPNsense's own log reader declares eight, which mislabels the TCP window as the
 urgent pointer and drops the options entirely — so the receiver recovers data the
 API path silently loses.
 
-**Caveat.** The filter log records the **first packet of a flow only** — it is an
+**Caveat:** the filter log records the **first packet of a flow only** — it is an
 event stream, not flow accounting. Do not read event counts as byte/connection
 totals.
 
@@ -147,13 +147,13 @@ os-crowdsec plugin is absent. Polls at a 60s floor regardless of
 (one configd exec each), so polling faster buys nothing at homelab/SMB event
 volumes.
 
-- **Cursor.** Alert ids and decision ids are each a separate, server-side
+- **Cursor:** alert ids and decision ids are each a separate, server-side
   monotonic counter. The source tracks the highest id shipped per record kind
   and ships only rows whose id is greater on the next poll — a plain id-diff,
   no timestamp windowing. On a cold start every currently-active alert/decision
   is shipped once, so enabling the source surfaces current state instead of
   silently starting from a blank slate.
-- **Body.** Compact JSON of the alert or decision (`kind`, `id`, `scope_value`,
+- **Body:** compact JSON of the alert or decision (`kind`, `id`, `scope_value`,
   `scenario`, plus alert-only `decisions`/`created` or decision-only
   `alert_id`/`action`/`expiration`/`events_count`).
 - **Attributes** (structured metadata, never labels): `scenario`, `value`
@@ -162,7 +162,7 @@ volumes.
   database configured), plus `decisions` (alerts: a `type:count` summary, e.g.
   `ban:1`) or `decision_type` and `duration` (decisions: the CrowdSec action
   and the remaining-duration string, e.g. `693h46m29s`).
-- **Timestamps.** Alerts carry an RFC3339 `created` field, used as the
+- **Timestamps:** alerts carry an RFC3339 `created` field, used as the
   record's timestamp. Decisions carry no absolute timestamp (only a
   remaining-duration string), so the record is stamped at emit time.
 
@@ -289,10 +289,10 @@ Stated honestly, because this pipeline is pull-based over a lossy source:
   resumes from now. Set `--logs.state-file` to persist cursors (atomic JSON,
   rewritten only when a cursor changes) for best-effort resume across restarts.
 - **Never exactly-once.**
-- **One path per log type.** Do not both ship a log type through this pipeline and
+- **One path per log type:** do not both ship a log type through this pipeline and
   forward the same type via native syslog — that double-ships. Pick one path per
   log type.
-- **One logs-enabled instance per firewall.** Running multiple logs-enabled
+- **One logs-enabled instance per firewall:** running multiple logs-enabled
   replicas against the same firewall double-ships.
 
 ## Configuration
