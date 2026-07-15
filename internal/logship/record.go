@@ -39,7 +39,10 @@ const (
 // label set). The pipeline sets `source` itself from Source.Name(); the resource
 // identity keys are set on the OTLP resource, never per record.
 const (
-	attrSource            = "source"
+	// attrSource is namespaced (opnsense.source, not a bare "source") so the custom
+	// resource key can never collide with a semconv/Loki-reserved key. Promote it as
+	// `opnsense.source` in the tenant otlp_config. service.* stay semconv-standard.
+	attrSource            = "opnsense.source"
 	attrServiceName       = "service.name"
 	attrServiceInstanceID = "service.instance.id"
 )
@@ -57,7 +60,10 @@ const (
 // Only put a CLOSED, code-defined set of values behind this key. Anything derived
 // from the wire (a syslog program name, an IP) would become unbounded label
 // cardinality the moment a tenant promotes it.
-const attrSubsystem = "subsystem"
+//
+// Namespaced (opnsense.subsystem, not a bare "subsystem") for the same
+// collision-safety reason as attrSource; promote it as `opnsense.subsystem`.
+const attrSubsystem = "opnsense.subsystem"
 
 // reservedAttributeKeys is the set the pipeline defensively removes from every
 // Record.Attributes before shipping. Kept as a package var so tests assert the

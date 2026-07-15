@@ -109,7 +109,9 @@ func TestParseFilterlog_IPv4TCP_EveryTailField(t *testing.T) {
 	assertAttr(t, rec, "direction", "in")
 	assertAttr(t, rec, "interface", "vtnet0")
 	assertAttr(t, rec, "ip.version", "4")
+	assertAttr(t, rec, "network.type", "ipv4") // semconv, alongside ip.version
 	assertAttr(t, rec, "protocol", "tcp")
+	assertAttr(t, rec, "network.transport", "tcp") // semconv, tcp/udp only
 	assertAttr(t, rec, "src.ip", "10.0.0.6")
 	assertAttr(t, rec, "dst.ip", "10.0.0.114")
 	assertAttr(t, rec, "src.port", "57920")
@@ -161,6 +163,8 @@ func TestParseFilterlog_IPv6ICMP_ProtoOrderInversion(t *testing.T) {
 	// would read "58" here. This assertion is the guard on the inversion.
 	assertAttr(t, rec, "protocol", "ipv6-icmp")
 	assertAttr(t, rec, "ip.version", "6")
+	assertAttr(t, rec, "network.type", "ipv6") // semconv
+	assertNoAttr(t, rec, "network.transport")  // icmp is not an L4 transport
 	assertAttr(t, rec, "src.ip", "fe80::1")
 	assertAttr(t, rec, "dst.ip", "ff02::1")
 	assertAttr(t, rec, "icmp_extra", "datalength=72")

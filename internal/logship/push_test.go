@@ -96,11 +96,11 @@ func TestPushSourceReservedAttributesStripped(t *testing.T) {
 	p := newTestPipeline(t, 4)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go p.runPushSource(ctx, &fakePush{n: 1, attrs: map[string]string{"source": "forged", "keep": "yes"}})
+	go p.runPushSource(ctx, &fakePush{n: 1, attrs: map[string]string{"opnsense.source": "forged", "keep": "yes"}})
 
 	got := drainN(t, p, 1, 2*time.Second)[0].Record.Attributes
-	if _, ok := got["source"]; ok {
-		t.Error(`reserved key "source" must be stripped`)
+	if _, ok := got["opnsense.source"]; ok {
+		t.Error(`reserved key "opnsense.source" must be stripped`)
 	}
 	if got["keep"] != "yes" {
 		t.Error("non-reserved attributes must survive")

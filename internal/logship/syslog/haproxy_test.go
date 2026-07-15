@@ -244,7 +244,7 @@ func TestParseHAProxy_HTTPLog(t *testing.T) {
 	wantAttr(t, rec, "haproxy.timers.tc_ms", "1")
 	wantAttr(t, rec, "haproxy.timers.tr_ms", "9")
 	wantAttr(t, rec, "haproxy.timers.tt_ms", "22")
-	wantAttr(t, rec, "http.status_code", "503")
+	wantAttr(t, rec, "http.response.status_code", "503")
 	wantAttr(t, rec, "bytes_read", "1234")
 	wantAttr(t, rec, "haproxy.termination_state", "----")
 	wantAttr(t, rec, "haproxy.conn.actconn", "5")
@@ -254,8 +254,8 @@ func TestParseHAProxy_HTTPLog(t *testing.T) {
 	wantAttr(t, rec, "haproxy.conn.retries", "0")
 	wantAttr(t, rec, "haproxy.queue.server", "0")
 	wantAttr(t, rec, "haproxy.queue.backend", "0")
-	wantAttr(t, rec, "http.method", "GET")
-	wantAttr(t, rec, "http.target", "/api/health")
+	wantAttr(t, rec, "http.request.method", "GET")
+	wantAttr(t, rec, "url.path", "/api/health")
 
 	if rec.Severity != logship.SeverityError {
 		t.Errorf("severity = %v, want Error for a 5xx", rec.Severity)
@@ -286,7 +286,7 @@ func TestParseHAProxy_HTTPLogSeverity(t *testing.T) {
 			if !ok {
 				t.Fatal("parseHAProxy returned ok=false")
 			}
-			wantAttr(t, rec, "http.status_code", tc.status)
+			wantAttr(t, rec, "http.response.status_code", tc.status)
 			if rec.Severity != tc.want {
 				t.Errorf("severity = %v, want %v", rec.Severity, tc.want)
 			}
@@ -308,9 +308,9 @@ func TestParseHAProxy_HTTPLogNegativeTimersAndNoRequest(t *testing.T) {
 	wantAttr(t, rec, "haproxy.timers.tq_ms", "-1")
 	wantAttr(t, rec, "haproxy.timers.tt_ms", "2000")
 	wantAttr(t, rec, "haproxy.termination_state", "CR--")
-	wantAttr(t, rec, "http.status_code", "400")
-	wantNoAttr(t, rec, "http.method")
-	wantNoAttr(t, rec, "http.target")
+	wantAttr(t, rec, "http.response.status_code", "400")
+	wantNoAttr(t, rec, "http.request.method")
+	wantNoAttr(t, rec, "url.path")
 }
 
 // TestParseHAProxy_Unrecognised: anything the parser does not know degrades to a

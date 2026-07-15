@@ -117,6 +117,7 @@ func parseSSHD(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	rec, set := newRecord(env)
 	set("auth.result", result)
 	set("auth.user", user)
+	set("user.name", user) // semconv: dual-emit the standard identity key alongside auth.user
 	set("auth.method", method)
 	set("auth.key_type", keyType)
 	set("auth.key_fingerprint", keyFP)

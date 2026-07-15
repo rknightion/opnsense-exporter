@@ -41,6 +41,7 @@ func TestParseAudit_ConfigChange(t *testing.T) {
 	}
 	want := map[string]string{
 		"config_user":     "root@127.0.0.1",
+		"user.name":       "root@127.0.0.1", // semconv dual-emit
 		"config_revision": "/conf/backup/config-1784062885.085.xml",
 		"config_uri":      "/api/syslog/settings/set",
 		"event":           "config_change",
@@ -88,6 +89,7 @@ func TestParseConfigd_Authorisation(t *testing.T) {
 	want := map[string]string{
 		"audit.action": "interface.newipv6",
 		"audit.user":   "root",
+		"user.name":    "root", // semconv dual-emit
 		"audit.result": "allowed",
 		"event":        "authorization",
 		"program":      "configd.py",

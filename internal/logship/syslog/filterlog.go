@@ -101,7 +101,11 @@ func parseFilterlog(env Envelope, snap *enrich.Snapshot, miss func(table string)
 	set("direction", dir)
 	set("interface", iface)
 	set("ip.version", f[fIPVersion])
+	set("network.type", networkType(f[fIPVersion])) // semconv Stable: ipv4/ipv6 alongside ip.version
 	set("protocol", protoName)
+	// semconv Stable network.transport, but only for real transports — icmp/carp/etc.
+	// are not transports, so `protocol` stays the superset that carries them.
+	set("network.transport", networkTransport(protoName))
 	set("src.ip", src)
 	set("dst.ip", dst)
 
@@ -211,6 +215,31 @@ func ruleRef(rulenr, subrulenr string) string {
 		return "rule #" + rulenr
 	}
 	return "rule #" + rulenr + "." + subrulenr
+}
+
+// networkType maps a filterlog IP-version field ("4"/"6") to the semconv
+// `network.type` value. Empty for anything else, so set() drops it.
+func networkType(ipVersion string) string {
+	switch ipVersion {
+	case "4":
+		return "ipv4"
+	case "6":
+		return "ipv6"
+	default:
+		return ""
+	}
+}
+
+// networkTransport maps a protocol name to the semconv `network.transport` value,
+// but ONLY for L4 transports. icmp/carp/esp/etc. are not transports and return "",
+// so set() drops them (they remain available under our superset `protocol` key).
+func networkTransport(proto string) string {
+	switch proto {
+	case "tcp", "udp":
+		return proto
+	default:
+		return ""
+	}
 }
 
 func at(s []string, i int) string {

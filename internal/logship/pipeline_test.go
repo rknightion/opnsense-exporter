@@ -145,7 +145,7 @@ func testDeps() Deps { return Deps{Logger: slog.New(slog.NewTextHandler(os.Stder
 
 func TestPipeline_ShipsAndStampsSource(t *testing.T) {
 	src := &fakeSource{name: "firewall", batches: [][]Record{{
-		{Body: "line-1", Attributes: map[string]string{"src": "10.0.0.1", "source": "forged"}},
+		{Body: "line-1", Attributes: map[string]string{"src": "10.0.0.1", "opnsense.source": "forged"}},
 	}}}
 	withRegistry(t, func(Deps) (Source, error) { return src, nil })
 	sink := &fakeSink{}
@@ -158,8 +158,8 @@ func TestPipeline_ShipsAndStampsSource(t *testing.T) {
 	if got[0].Source != "firewall" {
 		t.Fatalf("source not stamped: %q", got[0].Source)
 	}
-	if _, ok := got[0].Record.Attributes["source"]; ok {
-		t.Fatal("reserved 'source' attribute was not stripped from the record")
+	if _, ok := got[0].Record.Attributes["opnsense.source"]; ok {
+		t.Fatal("reserved 'opnsense.source' attribute was not stripped from the record")
 	}
 	if got[0].Record.Attributes["src"] != "10.0.0.1" {
 		t.Fatalf("structured metadata lost: %v", got[0].Record.Attributes)

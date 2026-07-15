@@ -94,9 +94,9 @@ func TestOTLPSink_SourceAndSubsystemAreResourceAttributes(t *testing.T) {
 		Record: Record{
 			Body: "a block",
 			Attributes: map[string]string{
-				"subsystem": "firewall",
-				"program":   "filterlog",
-				"src_ip":    "10.0.0.6",
+				"opnsense.subsystem": "firewall",
+				"program":            "filterlog",
+				"src_ip":             "10.0.0.6",
 			},
 		},
 	}})
@@ -107,8 +107,8 @@ func TestOTLPSink_SourceAndSubsystemAreResourceAttributes(t *testing.T) {
 	}
 	res := resourceAttrs(got[0])
 	for k, want := range map[string]string{
-		"source":              "syslog",
-		"subsystem":           "firewall",
+		"opnsense.source":     "syslog",
+		"opnsense.subsystem":  "firewall",
 		"service.name":        "opnsense-exporter",
 		"service.instance.id": "opnsense",
 		"service.version":     "v1.2.3",
@@ -121,7 +121,7 @@ func TestOTLPSink_SourceAndSubsystemAreResourceAttributes(t *testing.T) {
 	// They must NOT also remain on the record: that would duplicate them into
 	// structured metadata alongside the label.
 	rec := recordAttrs(got[0])
-	for _, k := range []string{"source", "subsystem"} {
+	for _, k := range []string{"opnsense.source", "opnsense.subsystem"} {
 		if v, dup := rec[k]; dup {
 			t.Errorf("%q was duplicated onto the record as %q; it belongs only on the resource", k, v)
 		}
@@ -147,9 +147,9 @@ func TestOTLPSink_PartitionsResourcesBySourceAndSubsystem(t *testing.T) {
 	s := newTestSink(exp)
 
 	batch := []Entry{
-		{Source: "syslog", Record: Record{Body: "1", Attributes: map[string]string{"subsystem": "firewall"}}},
-		{Source: "syslog", Record: Record{Body: "2", Attributes: map[string]string{"subsystem": "firewall"}}},
-		{Source: "syslog", Record: Record{Body: "3", Attributes: map[string]string{"subsystem": "dns"}}},
+		{Source: "syslog", Record: Record{Body: "1", Attributes: map[string]string{"opnsense.subsystem": "firewall"}}},
+		{Source: "syslog", Record: Record{Body: "2", Attributes: map[string]string{"opnsense.subsystem": "firewall"}}},
+		{Source: "syslog", Record: Record{Body: "3", Attributes: map[string]string{"opnsense.subsystem": "dns"}}},
 		{Source: "unbound", Record: Record{Body: "4"}}, // a source with no subsystem
 	}
 	if err := s.Emit(context.Background(), batch); err != nil {
@@ -165,8 +165,8 @@ func TestOTLPSink_PartitionsResourcesBySourceAndSubsystem(t *testing.T) {
 	// The subsystem-less source must carry no empty subsystem attribute at all.
 	for _, r := range exp.exported() {
 		res := resourceAttrs(r)
-		if res["source"] == "unbound" {
-			if v, present := res["subsystem"]; present {
+		if res["opnsense.source"] == "unbound" {
+			if v, present := res["opnsense.subsystem"]; present {
 				t.Errorf("unbound carried subsystem=%q; an absent subsystem must be absent, not empty", v)
 			}
 		}
@@ -186,7 +186,7 @@ func TestOTLPSink_ResourceCountIsCapped(t *testing.T) {
 			Source: "syslog",
 			Record: Record{
 				Body:       "x",
-				Attributes: map[string]string{"subsystem": "sub-" + string(rune('a'+i%26)) + string(rune('a'+i/26))},
+				Attributes: map[string]string{"opnsense.subsystem": "sub-" + string(rune('a'+i%26)) + string(rune('a'+i/26))},
 			},
 		})
 	}
@@ -212,9 +212,9 @@ func TestOTLPSink_SharedExporterClosesExactlyOnce(t *testing.T) {
 	s := newTestSink(exp)
 
 	shipAndDrain(t, s, []Entry{
-		{Source: "syslog", Record: Record{Body: "1", Attributes: map[string]string{"subsystem": "firewall"}}},
-		{Source: "syslog", Record: Record{Body: "2", Attributes: map[string]string{"subsystem": "dns"}}},
-		{Source: "syslog", Record: Record{Body: "3", Attributes: map[string]string{"subsystem": "auth"}}},
+		{Source: "syslog", Record: Record{Body: "1", Attributes: map[string]string{"opnsense.subsystem": "firewall"}}},
+		{Source: "syslog", Record: Record{Body: "2", Attributes: map[string]string{"opnsense.subsystem": "dns"}}},
+		{Source: "syslog", Record: Record{Body: "3", Attributes: map[string]string{"opnsense.subsystem": "auth"}}},
 	})
 
 	if n := len(exp.exported()); n != 3 {

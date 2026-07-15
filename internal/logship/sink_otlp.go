@@ -43,9 +43,9 @@ const maxLogResources = 64
 // LABELS VS STRUCTURED METADATA (#263). Loki promotes only RESOURCE attributes to
 // index labels; scope and log attributes can only ever become structured metadata,
 // because `otlp_config` has no index_label action for them. So the two attributes
-// worth selecting a stream on — `source` and `subsystem` — are hoisted off the
-// record onto the resource, which means one resource, and one LoggerProvider, per
-// distinct (source, subsystem) pair. The otel logs SDK binds a Resource to a
+// worth selecting a stream on — `opnsense.source` and `opnsense.subsystem` — are
+// hoisted off the record onto the resource, which means one resource, and one
+// LoggerProvider, per distinct (source, subsystem) pair. The otel logs SDK binds a
 // LoggerProvider, not to a Record, so there is no cheaper way to vary it.
 //
 // This is safe by construction ONLY because both keys are closed code-defined sets
@@ -62,7 +62,7 @@ const maxLogResources = 64
 //	    resource_attributes:
 //	      attributes_config:
 //	        - action: index_label
-//	          attributes: [source, subsystem]
+//	          attributes: [opnsense.subsystem, opnsense.source]
 //
 // The providers share ONE exporter, so partitioning costs no extra connections.
 //
@@ -137,8 +137,9 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 		r.SetObservedTimestamp(now)
 		r.SetBody(otellog.StringValue(e.Record.Body))
 		r.SetSeverity(otlpSeverity(e.Record.Severity))
+		r.SetSeverityText(otlpSeverityText(e.Record.Severity))
 		for k, v := range e.Record.Attributes {
-			// `source` and `subsystem` live on the resource, not the record: emitting
+			// `opnsense.source` and `opnsense.subsystem` live on the resource, not the record: emitting
 			// them here as well would duplicate them into structured metadata beside
 			// the label. (`source` was stripped from Attributes upstream anyway; the
 			// pipeline carries it in Entry.Source.)
@@ -241,6 +242,29 @@ func otlpSeverity(sv Severity) otellog.Severity {
 		return otellog.SeverityInfo
 	default:
 		return otellog.SeverityInfo
+	}
+}
+
+// otlpSeverityText returns the canonical text for a severity, set on the log record
+// alongside the numeric SeverityNumber per the OTel log data model. The original
+// syslog keyword is already lost by this point (Severity is the mapped enum), so this
+// is the OTLP-canonical name, not the raw syslog word.
+func otlpSeverityText(sv Severity) string {
+	switch sv {
+	case SeverityTrace:
+		return "TRACE"
+	case SeverityDebug:
+		return "DEBUG"
+	case SeverityWarn:
+		return "WARN"
+	case SeverityError:
+		return "ERROR"
+	case SeverityFatal:
+		return "FATAL"
+	case SeverityInfo:
+		return "INFO"
+	default:
+		return "INFO"
 	}
 }
 

@@ -6,7 +6,7 @@ import (
 )
 
 func TestReservedAttributeKeys(t *testing.T) {
-	want := []string{"source", "service.name", "service.instance.id"}
+	want := []string{"opnsense.source", "service.name", "service.instance.id"}
 	if !reflect.DeepEqual(reservedAttributeKeys, want) {
 		t.Fatalf("reserved keys drifted: got %v want %v", reservedAttributeKeys, want)
 	}
@@ -14,7 +14,7 @@ func TestReservedAttributeKeys(t *testing.T) {
 
 func TestSanitizeAttributes_StripsReserved(t *testing.T) {
 	in := map[string]string{
-		"source":              "forged",
+		"opnsense.source":     "forged",
 		"service.name":        "forged",
 		"service.instance.id": "forged",
 		"src":                 "10.0.0.1",
@@ -30,7 +30,7 @@ func TestSanitizeAttributes_StripsReserved(t *testing.T) {
 		t.Fatalf("non-reserved attributes lost: %v", got)
 	}
 	// Caller's map must not be mutated.
-	if _, ok := in["source"]; !ok {
+	if _, ok := in["opnsense.source"]; !ok {
 		t.Fatal("sanitizeAttributes mutated the caller's map")
 	}
 }

@@ -99,6 +99,7 @@ func TestSSHDVerbatimLines(t *testing.T) {
 			want: map[string]string{
 				"auth.result":          "accepted",
 				"auth.user":            "root",
+				"user.name":            "root", // semconv dual-emit
 				"auth.method":          "publickey",
 				"auth.valid":           "true",
 				"auth.key_type":        "ED25519",

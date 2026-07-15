@@ -206,7 +206,7 @@ func parseHAProxyHTTPLog(env Envelope, msg string, snap *enrich.Snapshot) (logsh
 	set("haproxy.timers.tc_ms", m[9])
 	set("haproxy.timers.tr_ms", m[10])
 	set("haproxy.timers.tt_ms", m[11])
-	set("http.status_code", m[12])
+	set("http.response.status_code", m[12])
 	set("bytes_read", m[13])
 	// m[14]/m[15] are the captured request/response cookies ("-" when none) — not
 	// modelled: they are a per-site config knob and can carry session identifiers.
@@ -220,9 +220,10 @@ func parseHAProxyHTTPLog(env Envelope, msg string, snap *enrich.Snapshot) (logsh
 	set("haproxy.queue.backend", m[23])
 
 	if req := haproxyRequestRE.FindStringSubmatch(m[24]); req != nil {
-		set("http.method", req[1])
-		set("http.target", req[2])
-		set("http.version", req[3])
+		set("http.request.method", req[1])
+		set("url.path", req[2])
+		// network.protocol.version is the version number alone ("1.1"), not "HTTP/1.1".
+		set("network.protocol.version", strings.TrimPrefix(req[3], "HTTP/"))
 	}
 
 	enrichEndpoint(set, snap, "src", m[1], m[2], "tcp")

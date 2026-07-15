@@ -66,6 +66,7 @@ func parseAudit(env Envelope, _ *enrich.Snapshot, _ func(table string)) (logship
 		rec, set := newRecord(env)
 		set("event", "config_change")
 		set("config_user", m[1])
+		set("user.name", m[1]) // semconv: dual-emit the standard identity key
 		set("config_revision", m[2])
 		set("config_uri", m[3])
 		return rec, true
@@ -77,6 +78,7 @@ func parseAudit(env Envelope, _ *enrich.Snapshot, _ func(table string)) (logship
 		set("audit.result", m[1])
 		set("audit.action", m[2])
 		set("audit.user", m[3])
+		set("user.name", m[3]) // semconv: dual-emit the standard identity key
 		// A denial is the signal worth keeping: configd ships it at the same
 		// severity as an allow, so raise it here rather than lose it in the noise.
 		if m[1] == "denied" {
