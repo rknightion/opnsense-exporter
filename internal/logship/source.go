@@ -70,6 +70,10 @@ type Deps struct {
 	Miss func(table string)
 	// Registerer is where a source registers its own self-metrics.
 	Registerer prometheus.Registerer
+	// MetricSink receives the derived-metric observations for the six parsed
+	// programs (#258). It is nil when metric derivation is disabled (the
+	// log_events collector is off); the receiver substitutes a NopMetricSink.
+	MetricSink MetricSink
 }
 
 // SourceFactory builds a Source from shared dependencies, or returns (nil, nil)

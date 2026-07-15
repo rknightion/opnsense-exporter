@@ -50,6 +50,14 @@ type source struct {
 	filter *Filter
 	log    *slog.Logger
 
+	// sink receives derived-metric observations (#258). Never nil: a NopMetricSink is
+	// substituted when metric derivation is disabled (log_events collector off).
+	sink logship.MetricSink
+	// sample drops high-volume raw lines after their metrics are derived.
+	sample bool
+	// sampledAttr stamps sampled="true" on shipped lines while sample is on.
+	sampledAttr bool
+
 	// emit is set by Run before the listener's read goroutines exist. Goroutine
 	// creation is a happens-before edge, so a plain field is safe here: no reader
 	// can observe it before Run has written it.
@@ -63,16 +71,25 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		// cache that misses every lookup, so records still ship — just unenriched.
 		cache = enrich.NewCache()
 	}
+	sink := d.MetricSink
+	if sink == nil {
+		sink = logship.NopMetricSink{}
+	}
 	s := &source{
-		cache:  cache,
-		miss:   d.Miss,
-		m:      NewMetrics(d.Registerer),
-		filter: NewFilter(cfg.IncludePrograms, cfg.ExcludePrograms, cfg.MinSeverity, cfg.HasMinSeverity),
-		log:    d.Logger,
+		cache:       cache,
+		miss:        d.Miss,
+		m:           NewMetrics(d.Registerer),
+		filter:      NewFilter(cfg.IncludePrograms, cfg.ExcludePrograms, cfg.MinSeverity, cfg.HasMinSeverity),
+		log:         d.Logger,
+		sink:        sink,
+		sample:      cfg.Sample,
+		sampledAttr: cfg.SampledAttr,
 	}
 	s.l = NewListener(Config{
 		UDPAddr:      cfg.UDPAddr,
 		TCPAddr:      cfg.TCPAddr,
+		TLSAddr:      cfg.TLSAddr,
+		TLSConfig:    cfg.TLSConfig,
 		AllowedPeers: cfg.AllowedPeers,
 		MaxConns:     cfg.MaxConns,
 	}, s.handle, s.m, d.Logger)
@@ -115,7 +132,29 @@ func (s *source) handle(line []byte, _ netip.Addr) {
 		s.m.reject("filtered")
 		return
 	}
-	emit(BuildRecord(env, s.cache.Load(), s.miss))
+	rec := BuildRecord(env, s.cache.Load(), s.miss)
+
+	// Derive Prometheus counters from the parsed record (#258). counted reports
+	// whether we actually incremented a counter for this line — it gates sampling so a
+	// line we did not count is never dropped.
+	counted := observeDerived(s.sink, env.Program, rec.Attributes)
+
+	if s.sample {
+		if !sampleKeep(env.Program, rec, counted) {
+			// The line's metric is already counted; drop the raw line to save log volume.
+			s.m.reject("sampled")
+			return
+		}
+		// Mark surviving derived-program lines so consumers know the stream is sampled
+		// and must use the derived counters for totals, not a count of log lines.
+		if s.sampledAttr && counted {
+			if rec.Attributes == nil {
+				rec.Attributes = map[string]string{}
+			}
+			rec.Attributes["sampled"] = "true"
+		}
+	}
+	emit(rec)
 }
 
 var _ logship.PushSource = (*source)(nil)

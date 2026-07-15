@@ -29,6 +29,10 @@ import (
 
 var version = ""
 
+// collector.LogEvents is handed to the syslog receiver as its logship.MetricSink
+// (#258). Assert the seam here so a signature drift on either side fails the build.
+var _ logship.MetricSink = collector.LogEvents
+
 // otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
 // export endpoint cannot hang process exit.
 const otlpShutdownTimeout = 10 * time.Second
@@ -180,6 +184,10 @@ func main() {
 	if !collectorsSwitches.Services {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutServicesCollector())
 		logger.Info("services collector disabled")
+	}
+	if !collectorsSwitches.LogEvents {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutLogEventsCollector())
+		logger.Info("log_events collector disabled")
 	}
 	if !collectorsSwitches.Firewall {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallCollector())
@@ -603,9 +611,22 @@ func main() {
 			Logger:     logger,
 			Registerer: selfMetricsRegistry,
 		}
+		// Feed the log_events collector's running totals from the syslog receiver
+		// (#258), unless the collector is disabled — in which case the receiver sees a
+		// nil sink and skips derivation entirely.
+		if collectorsSwitches.LogEvents {
+			deps.MetricSink = collector.LogEvents
+		}
 		syslogCfg, syslogEnabled, serr := options.LogsSyslog()
 		if serr != nil {
 			logger.Error("invalid syslog receiver configuration", "err", serr)
+			os.Exit(1)
+		}
+		// Sampling drops raw lines only after their metrics are derived, so it is
+		// meaningless (pure data loss) with the log_events collector off.
+		if syslogEnabled && syslogCfg.Sample && !collectorsSwitches.LogEvents {
+			logger.Error("invalid syslog receiver configuration",
+				"err", "--logs.syslog.sample requires the log_events collector; remove --exporter.disable-log-events")
 			os.Exit(1)
 		}
 		var stopEnrich context.CancelFunc

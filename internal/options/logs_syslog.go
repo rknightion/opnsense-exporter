@@ -1,8 +1,11 @@
 package options
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/netip"
+	"os"
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -82,12 +85,62 @@ var (
 			"(including auto-generated system rules), friendly interface names, DHCP hostnames, "+
 			"MAC addresses, local/remote scope and well-known service names.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_ENRICH").Default("true").Bool()
+
+	// Sampling is OPT-IN. Metric derivation (the log_events collector) is on by
+	// default and additive; sampling is what actually DROPS raw lines, so it stays
+	// off until asked. It requires the log_events collector so every dropped line was
+	// counted first — main errors if --logs.syslog.sample is set with the collector off.
+	logsSyslogSample = kingpin.Flag(
+		"logs.syslog.sample",
+		"Sample (drop) high-volume raw log lines AFTER their metrics have been derived: "+
+			"keep firewall block/reject lines and drop passes, keep HAProxy state changes and "+
+			"errors and drop the per-connection noise. Low-volume programs (sshd, dhcp, audit, "+
+			"ids) are kept in full. Off by default. Requires the log_events collector "+
+			"(exporter.disable-log-events must not be set) so every dropped line is counted first.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLE").Default("false").Bool()
+
+	logsSyslogSampledAttr = kingpin.Flag(
+		"logs.syslog.sampled-attribute",
+		"When sampling is on, stamp a sampled=\"true\" attribute on every shipped line so "+
+			"consumers know the log stream is incomplete and must use the derived counters for "+
+			"totals. On by default; only takes effect when --logs.syslog.sample is set.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLED_ATTRIBUTE").Default("true").Bool()
+
+	// TLS is a third listener feeding the same handler. For most users the firewall
+	// link is LAN-local and TLS is unnecessary; it matters when shipping across an
+	// untrusted segment, and client-cert verification is the only real sender
+	// authentication (the peer allowlist filters by IP, it does not authenticate).
+	logsSyslogListenTLS = kingpin.Flag(
+		"logs.syslog.listen-tls",
+		"TLS listen address for the syslog receiver (RFC5424 over TLS, OPNsense tls4/tls6). "+
+			"Empty disables the TLS listener. Requires --logs.syslog.tls-cert-file and "+
+			"--logs.syslog.tls-key-file.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_TLS").Default("").String()
+
+	logsSyslogTLSCertFile = kingpin.Flag(
+		"logs.syslog.tls-cert-file",
+		"PEM server certificate for the TLS syslog listener.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CERT_FILE").Default("").String()
+
+	logsSyslogTLSKeyFile = kingpin.Flag(
+		"logs.syslog.tls-key-file",
+		"PEM private key for the TLS syslog listener.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_KEY_FILE").Default("").String()
+
+	logsSyslogTLSClientCAFile = kingpin.Flag(
+		"logs.syslog.tls-client-ca-file",
+		"PEM CA bundle to verify sender client certificates on the TLS syslog listener. When "+
+			"set, a sender MUST present a certificate signed by this CA — the only real sender "+
+			"authentication syslog offers. Empty accepts any TLS client (encryption only).",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CLIENT_CA_FILE").Default("").String()
 )
 
 // SyslogConfig is the resolved configuration for the syslog receiver.
 type SyslogConfig struct {
 	UDPAddr         string
 	TCPAddr         string
+	TLSAddr         string
+	TLSConfig       *tls.Config
 	AllowedPeers    []netip.Prefix
 	MaxConns        int
 	Enrich          bool
@@ -95,6 +148,10 @@ type SyslogConfig struct {
 	ExcludePrograms []string
 	MinSeverity     int
 	HasMinSeverity  bool
+	// Sample drops high-volume raw lines after their metrics are derived (#258).
+	Sample bool
+	// SampledAttr stamps sampled="true" on shipped lines while Sample is on.
+	SampledAttr bool
 }
 
 // severityNames maps RFC5424 severity keywords to their numeric level. LOWER IS
@@ -123,15 +180,29 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		return nil, false, nil
 	}
 	cfg := &SyslogConfig{
-		UDPAddr:  strings.TrimSpace(*logsSyslogListenUDP),
-		TCPAddr:  strings.TrimSpace(*logsSyslogListenTCP),
-		MaxConns: *logsSyslogMaxConns,
-		Enrich:   *logsSyslogEnrich,
+		UDPAddr:     strings.TrimSpace(*logsSyslogListenUDP),
+		TCPAddr:     strings.TrimSpace(*logsSyslogListenTCP),
+		TLSAddr:     strings.TrimSpace(*logsSyslogListenTLS),
+		MaxConns:    *logsSyslogMaxConns,
+		Enrich:      *logsSyslogEnrich,
+		Sample:      *logsSyslogSample,
+		SampledAttr: *logsSyslogSampledAttr,
 	}
-	if cfg.UDPAddr == "" && cfg.TCPAddr == "" {
+	tlsConfig, err := buildSyslogServerTLS(
+		cfg.TLSAddr,
+		strings.TrimSpace(*logsSyslogTLSCertFile),
+		strings.TrimSpace(*logsSyslogTLSKeyFile),
+		strings.TrimSpace(*logsSyslogTLSClientCAFile),
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	cfg.TLSConfig = tlsConfig
+	if cfg.UDPAddr == "" && cfg.TCPAddr == "" && cfg.TLSAddr == "" {
 		return nil, false, fmt.Errorf(
-			"logs.syslog: at least one of --logs.syslog.listen-udp / --logs.syslog.listen-tcp " +
-				"must be set when --logs.syslog.enabled is set (otherwise nothing can be received)")
+			"logs.syslog: at least one of --logs.syslog.listen-udp / --logs.syslog.listen-tcp / " +
+				"--logs.syslog.listen-tls must be set when --logs.syslog.enabled is set (otherwise " +
+				"nothing can be received)")
 	}
 	if cfg.MaxConns < 1 {
 		return nil, false, fmt.Errorf("logs.syslog.max-conns must be positive, got %d", cfg.MaxConns)
@@ -180,6 +251,51 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		cfg.HasMinSeverity = true
 	}
 	return cfg, true, nil
+}
+
+// buildSyslogServerTLS assembles the server-side *tls.Config for the TLS syslog
+// listener, or returns (nil, nil) when TLS is not configured. It mirrors the
+// client-side pattern in internal/telemetry but is a server config: the keypair is
+// the receiver's own certificate, and a client-CA turns on mandatory client-cert
+// verification (the only real sender authentication syslog offers).
+func buildSyslogServerTLS(listenAddr, certFile, keyFile, clientCAFile string) (*tls.Config, error) {
+	if listenAddr == "" {
+		// No TLS listener. A stray cert/key/CA without a listener is a misconfiguration
+		// the user should see, not a silent no-op.
+		if certFile != "" || keyFile != "" || clientCAFile != "" {
+			return nil, fmt.Errorf(
+				"logs.syslog: --logs.syslog.tls-cert-file/tls-key-file/tls-client-ca-file set but " +
+					"--logs.syslog.listen-tls is empty (no TLS listener to apply them to)")
+		}
+		return nil, nil
+	}
+	if certFile == "" || keyFile == "" {
+		return nil, fmt.Errorf(
+			"logs.syslog: --logs.syslog.listen-tls requires both --logs.syslog.tls-cert-file " +
+				"and --logs.syslog.tls-key-file")
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("logs.syslog: load TLS keypair: %w", err)
+	}
+	tc := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	}
+	if clientCAFile != "" {
+		ca, err := os.ReadFile(clientCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("logs.syslog: read tls-client-ca-file: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(ca) {
+			return nil, fmt.Errorf(
+				"logs.syslog: tls-client-ca-file %q contains no valid certificates", clientCAFile)
+		}
+		tc.ClientCAs = pool
+		tc.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	return tc, nil
 }
 
 // splitList parses a comma-separated list, dropping empties and whitespace.

@@ -84,6 +84,11 @@ const (
 	HostDiscoverySubsystem = "hostdiscovery"
 	RelaydSubsystem        = "relayd"
 	SiproxdSubsystem       = "siproxd"
+	// LogEventsSubsystem holds the counters derived from received syslog lines
+	// (#258). Unlike every other collector it does not poll an API on Update: the
+	// syslog receiver feeds its running totals out of band via collector.LogEvents,
+	// and Update simply emits the current totals as const metrics.
+	LogEventsSubsystem = "log_events"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -151,6 +156,7 @@ var SubsystemDisplayNames = map[string]string{
 	HostDiscoverySubsystem: "Host Discovery",
 	RelaydSubsystem:        "Relayd Load Balancer",
 	SiproxdSubsystem:       "Siproxd",
+	LogEventsSubsystem:     "Log-derived Events",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -613,6 +619,14 @@ func WithoutRelaydCollector() Option {
 // removes the siproxd (SIP registration count) collector from the list of collectors
 func WithoutSiproxdCollector() Option {
 	return withoutCollectorInstance(SiproxdSubsystem)
+}
+
+// WithoutLogEventsCollector Option
+// removes the log_events collector (metrics derived from received syslog lines, #258).
+// Disabling it also stops the syslog receiver deriving those metrics: main wires the
+// receiver's MetricSink to nil when this collector is off.
+func WithoutLogEventsCollector() Option {
+	return withoutCollectorInstance(LogEventsSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

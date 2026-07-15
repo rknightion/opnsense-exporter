@@ -1,6 +1,6 @@
 ---
 title: Metrics Reference
-description: Overview of all 758 Prometheus metrics exposed by the OPNsense Exporter
+description: Overview of all 764 Prometheus metrics exposed by the OPNsense Exporter
 tags:
   - Prometheus
   - Monitoring
@@ -8,7 +8,7 @@ tags:
 
 # Metrics Reference
 
-The OPNsense Exporter provides 758 Prometheus metrics across 60 collectors, covering every major subsystem of the OPNsense firewall platform.
+The OPNsense Exporter provides 764 Prometheus metrics across 61 collectors, covering every major subsystem of the OPNsense firewall platform.
 
 <div class="grid cards" markdown>
 
@@ -32,7 +32,7 @@ The OPNsense Exporter provides 758 Prometheus metrics across 60 collectors, cove
 
 ## Quick facts
 
-- **758 metrics** across 60 collectors
+- **764 metrics** across 61 collectors
 - **Naming convention:** `opnsense_<subsystem>_<metric_name>`
 - **Common label:** `opnsense_instance` on every metric
 - **Metric types:** Gauge (most metrics), Counter (`_total` suffix)

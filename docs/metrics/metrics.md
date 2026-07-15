@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 758
+- **Total metrics:** 764
 - **Gauges:** 526
-- **Counters:** 232
+- **Counters:** 238
 
 ## General
 
@@ -584,6 +584,17 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_auth_users_with_otp | Gauge | --- | Number of local users with a TOTP seed configured (aggregate count only — the seed itself is never read into exporter memory beyond a transient presence check). | --exporter.disable-auth |
 | opnsense_auth_api_keys | Gauge | --- | Total number of local-user API keys configured (aggregate count only — key material is never decoded). | --exporter.disable-auth |
 | opnsense_auth_groups | Gauge | --- | Total number of local authentication groups configured. | --exporter.disable-auth |
+
+## Log-derived Events
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_log_events_firewall_total | Counter | action, interface, rule_id, rule_name, scope | Firewall (filterlog) events derived from received syslog, by action, interface, rule and scope. Counts every line including passes; the raw pass lines may be sampled away (--logs.syslog.sample) while this counter still counts them. | --exporter.disable-log-events |
+| opnsense_log_events_haproxy_total | Counter | event, backend, server, state, status_class | HAProxy events derived from received syslog, by event, backend, server, state and HTTP status class. | --exporter.disable-log-events |
+| opnsense_log_events_sshd_total | Counter | result, method, scope | sshd authentication events derived from received syslog, by result, method and source scope. | --exporter.disable-log-events |
+| opnsense_log_events_dhcp_total | Counter | action, interface, server | DHCP lease events derived from received syslog, by action, interface and server. | --exporter.disable-log-events |
+| opnsense_log_events_audit_total | Counter | event, result | Audit/config events derived from received syslog, by event and result. | --exporter.disable-log-events |
+| opnsense_log_events_ids_total | Counter | event_type, action, category, severity | Suricata IDS/IPS events derived from received syslog, by event type, action, category and severity. Signature text and SID are never labels. | --exporter.disable-log-events |
 
 ## Mbuf
 

@@ -3,6 +3,7 @@ package syslog
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,8 +27,13 @@ const connIdleTimeout = 5 * time.Minute
 // inject records).
 type Config struct {
 	UDPAddr, TCPAddr string
-	AllowedPeers     []netip.Prefix
-	MaxConns         int
+	// TLSAddr + TLSConfig together enable a third, TLS-wrapped TCP transport that
+	// feeds the SAME handler as plain TCP. The TLS listener is enabled only when
+	// BOTH are set (a non-empty address and a non-nil config).
+	TLSAddr      string
+	TLSConfig    *tls.Config
+	AllowedPeers []netip.Prefix
+	MaxConns     int
 }
 
 // Listener is a hardened UDP + TCP syslog receiver. It hands each framed line to
@@ -39,8 +45,9 @@ type Listener struct {
 	m      *Metrics
 	log    *slog.Logger
 
-	udp *net.UDPConn
-	tcp *net.TCPListener
+	udp   *net.UDPConn
+	tcp   *net.TCPListener
+	tlsLn net.Listener
 
 	sem     chan struct{}
 	conns   sync.WaitGroup
@@ -73,8 +80,8 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *Metri
 // rather than a silently dead receiver. The resolved addresses (for ":0") are
 // available from UDPAddr/TCPAddr afterwards.
 func (l *Listener) Start() error {
-	if l.cfg.UDPAddr == "" && l.cfg.TCPAddr == "" {
-		return errors.New("syslog: no listen address configured (both UDP and TCP are empty)")
+	if l.cfg.UDPAddr == "" && l.cfg.TCPAddr == "" && !l.tlsEnabled() {
+		return errors.New("syslog: no listen address configured (UDP, TCP and TLS are all empty)")
 	}
 	if l.cfg.UDPAddr != "" {
 		addr, err := net.ResolveUDPAddr("udp", l.cfg.UDPAddr)
@@ -102,7 +109,29 @@ func (l *Listener) Start() error {
 		}
 		l.tcp = ln
 	}
+	if l.tlsEnabled() {
+		addr, err := net.ResolveTCPAddr("tcp", l.cfg.TLSAddr)
+		if err != nil {
+			// Roll back the already-bound sockets, mirroring the TCP block above.
+			_ = l.closeSockets()
+			return fmt.Errorf("syslog: resolve TLS %q: %w", l.cfg.TLSAddr, err)
+		}
+		raw, err := net.ListenTCP("tcp", addr)
+		if err != nil {
+			_ = l.closeSockets()
+			return fmt.Errorf("syslog: listen TLS %q: %w", l.cfg.TLSAddr, err)
+		}
+		// tls.NewListener yields *tls.Conn from Accept; the handshake is lazy and
+		// completes on the first Read inside serveConn.
+		l.tlsLn = tls.NewListener(raw, l.cfg.TLSConfig)
+	}
 	return nil
+}
+
+// tlsEnabled reports whether a TLS listener is configured: it needs BOTH a listen
+// address and a tls.Config.
+func (l *Listener) tlsEnabled() bool {
+	return l.cfg.TLSAddr != "" && l.cfg.TLSConfig != nil
 }
 
 // UDPAddr returns the resolved UDP address, or "" when UDP is disabled or unbound.
@@ -119,6 +148,15 @@ func (l *Listener) TCPAddr() string {
 		return ""
 	}
 	return l.tcp.Addr().String()
+}
+
+// TLSAddr returns the resolved TLS listen address, or "" when TLS is disabled or
+// unbound.
+func (l *Listener) TLSAddr() string {
+	if l.tlsLn == nil {
+		return ""
+	}
+	return l.tlsLn.Addr().String()
 }
 
 // Run serves both transports until ctx is cancelled, then closes the sockets and
@@ -147,6 +185,10 @@ func (l *Listener) Run(ctx context.Context) {
 	if l.tcp != nil {
 		wg.Add(1)
 		go func() { defer wg.Done(); l.serveTCP() }()
+	}
+	if l.tlsLn != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); l.serveTLS() }()
 	}
 	wg.Wait()
 
@@ -179,6 +221,11 @@ func (l *Listener) closeSockets() error {
 	}
 	if l.tcp != nil {
 		if err := l.tcp.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			errs = append(errs, err)
+		}
+	}
+	if l.tlsLn != nil {
+		if err := l.tlsLn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			errs = append(errs, err)
 		}
 	}
@@ -276,10 +323,61 @@ func (l *Listener) serveTCP() {
 	}
 }
 
+// serveTLS accepts TLS-wrapped connections. It mirrors serveTCP exactly — same peer
+// allowlist at accept, same MaxConns semaphore, same per-connection handoff to
+// serveConn — differing only in that Accept yields a *tls.Conn (as net.Conn).
+func (l *Listener) serveTLS() {
+	for {
+		conn, err := l.tlsLn.Accept()
+		if err != nil {
+			if l.closed() || errors.Is(err, net.ErrClosed) {
+				return
+			}
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				continue
+			}
+			l.log.Warn("syslog: TLS accept failed", "err", err)
+			continue
+		}
+
+		peer := peerAddr(conn.RemoteAddr())
+		if !l.allowed(peer) {
+			l.m.reject("peer")
+			_ = conn.Close()
+			continue
+		}
+
+		select {
+		case l.sem <- struct{}{}:
+		default:
+			// At the connection cap: refuse rather than fork an unbounded goroutine.
+			l.log.Warn("syslog: TLS connection limit reached, refusing peer",
+				"peer", peer.String(), "max_conns", l.cfg.MaxConns)
+			_ = conn.Close()
+			continue
+		}
+
+		l.conns.Add(1)
+		go func() {
+			defer l.conns.Done()
+			defer func() { <-l.sem }()
+			defer func() { _ = conn.Close() }()
+			l.serveConn(conn, peer)
+		}()
+	}
+}
+
 // serveConn reads framed messages from one connection. The read deadline is
 // refreshed PER FRAME: an idle peer must not pin a goroutine forever, but a busy
 // one is never cut off mid-stream.
-func (l *Listener) serveConn(conn *net.TCPConn, peer netip.Addr) {
+//
+// It takes net.Conn (not *net.TCPConn) so the SAME framing/assembly path serves
+// both plain TCP and TLS: a *tls.Conn from serveTLS satisfies net.Conn, and its
+// SetReadDeadline drives the same idle-deadline machinery. On a TLS connection the
+// handshake is lazy — a client-cert failure surfaces as a read error inside the
+// scan loop below, which the loop already tolerates (the connection simply ends).
+func (l *Listener) serveConn(conn net.Conn, peer netip.Addr) {
 	// Unblock the read when the listener closes, so a connection goroutine can never
 	// outlive Close().
 	stop := make(chan struct{})

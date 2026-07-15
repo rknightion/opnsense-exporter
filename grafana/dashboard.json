@@ -2463,6 +2463,230 @@
       {
         "kind": "QueryVariable",
         "spec": {
+          "name": "has_log_events",
+          "label": "has_log_events",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values({__name__=~\"opnsense_log_events_.+\"}, __name__)",
+              "refId": "has_log_events"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_log_events_firewall",
+          "label": "has_log_events_firewall",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_log_events_firewall_total, __name__)",
+              "refId": "has_log_events_firewall"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_log_events_haproxy",
+          "label": "has_log_events_haproxy",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_log_events_haproxy_total, __name__)",
+              "refId": "has_log_events_haproxy"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_log_events_sshd",
+          "label": "has_log_events_sshd",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_log_events_sshd_total, __name__)",
+              "refId": "has_log_events_sshd"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_log_events_dhcp",
+          "label": "has_log_events_dhcp",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_log_events_dhcp_total, __name__)",
+              "refId": "has_log_events_dhcp"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_log_events_audit",
+          "label": "has_log_events_audit",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_log_events_audit_total, __name__)",
+              "refId": "has_log_events_audit"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_log_events_ids",
+          "label": "has_log_events_ids",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_log_events_ids_total, __name__)",
+              "refId": "has_log_events_ids"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
           "name": "has_logs",
           "label": "has_logs",
           "hide": "hideVariable",
@@ -66815,6 +67039,718 @@
         "kind": "Panel",
         "spec": {
           "id": 614,
+          "title": "Firewall Events by Action & Scope (rate)",
+          "description": "opnsense_log_events_firewall_total: filterlog events per second by action and source scope. Every line is counted including passes, so this is accurate even when --logs.syslog.sample drops the raw pass lines. action=block from scope=remote is inbound denies from outside.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (action, scope) (rate(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{action}} / {{scope}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-615": {
+        "kind": "Panel",
+        "spec": {
+          "id": 615,
+          "title": "Top Firewall Rules by Block Rate",
+          "description": "opnsense_log_events_firewall_total (action != pass): the busiest blocking rules by name and interface. rule_name is the rule's description used as its name; rule_id is the stable OPNsense rule id. Free-text is never a metric label beyond these bounded values.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk(20, sum by (rule_name, rule_id, interface) (rate(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\",action!=\"pass\"}[$__rate_interval])))",
+                        "refId": "A",
+                        "legendFormat": "{{rule_name}} ({{interface}})",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-616": {
+        "kind": "Panel",
+        "spec": {
+          "id": 616,
+          "title": "HAProxy Events by Event, State & Status (rate)",
+          "description": "opnsense_log_events_haproxy_total: HAProxy events per second. event=server_state with state=down is a backend going unhealthy; status_class=5xx is server errors. The per-connection 'connect' noise is dropped by sampling but still counted here.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (event, state, status_class) (rate(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{event}} / {{state}} / {{status_class}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-617": {
+        "kind": "Panel",
+        "spec": {
+          "id": 617,
+          "title": "HAProxy Events by Backend/Server (rate)",
+          "description": "opnsense_log_events_haproxy_total by backend and server \u2014 where the HAProxy activity is.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk(20, sum by (backend, server) (rate(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "refId": "A",
+                        "legendFormat": "{{backend}} / {{server}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-618": {
+        "kind": "Panel",
+        "spec": {
+          "id": 618,
+          "title": "sshd Auth Events by Result (rate)",
+          "description": "opnsense_log_events_sshd_total: firewall sshd authentication outcomes per second. result=failed / invalid-user from scope=remote is external login attempts against the firewall \u2014 the primary security signal on this tab.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (result, method, scope) (rate(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{result}} / {{method}} / {{scope}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-619": {
+        "kind": "Panel",
+        "spec": {
+          "id": 619,
+          "title": "DHCP Lease Events by Action (rate)",
+          "description": "opnsense_log_events_dhcp_total: DHCP lease events per second by action (ack/nak/offer/\u2026) and interface, across the Kea / dnsmasq / ISC backends.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (action, interface) (rate(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{action}} / {{interface}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-620": {
+        "kind": "Panel",
+        "spec": {
+          "id": 620,
+          "title": "Config / Audit Events by Type & Result (rate)",
+          "description": "opnsense_log_events_audit_total: audit events per second \u2014 event=config_change tracks configuration writes, event=authorization tracks GUI/API auth decisions.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (event, result) (rate(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{event}} / {{result}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-621": {
+        "kind": "Panel",
+        "spec": {
+          "id": 621,
+          "title": "IDS Events by Action & Severity (rate)",
+          "description": "opnsense_log_events_ids_total: Suricata EVE events per second by type, action and severity. Signature text and SID are deliberately not labels; use the raw log line (shipped in full \u2014 IDS is never sampled) for per-alert detail.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (event_type, action, severity) (rate(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{event_type}} / {{action}} / sev {{severity}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-622": {
+        "kind": "Panel",
+        "spec": {
+          "id": 622,
           "title": "Records Shipped (rate)",
           "description": "opnsense_exporter_logs_shipped_total: records successfully handed to the sink per second, by source. This is the primary throughput signal.",
           "links": [],
@@ -66900,10 +67836,10 @@
           }
         }
       },
-      "panel-615": {
+      "panel-623": {
         "kind": "Panel",
         "spec": {
-          "id": 615,
+          "id": 623,
           "title": "Records Dropped (rate)",
           "description": "opnsense_exporter_logs_dropped_total: records dropped before delivery, by source and reason (reason=overflow means the backpressure queue was full and the oldest record was evicted). Sustained drops mean the sink cannot keep up.",
           "links": [],
@@ -66989,10 +67925,10 @@
           }
         }
       },
-      "panel-616": {
+      "panel-624": {
         "kind": "Panel",
         "spec": {
-          "id": 616,
+          "id": 624,
           "title": "Queue Depth",
           "description": "opnsense_exporter_logs_queue_length vs opnsense_exporter_logs_queue_capacity: depth of the poller->emitter backpressure queue. Approaching capacity precedes overflow drops.",
           "links": [],
@@ -67104,10 +68040,10 @@
           }
         }
       },
-      "panel-617": {
+      "panel-625": {
         "kind": "Panel",
         "spec": {
-          "id": 617,
+          "id": 625,
           "title": "Sink Errors (rate)",
           "description": "opnsense_exporter_logs_ship_errors_total: failed sink Emit calls per second (each failed batch is dropped). A dead OTLP endpoint shows up here.",
           "links": [],
@@ -67193,10 +68129,10 @@
           }
         }
       },
-      "panel-618": {
+      "panel-626": {
         "kind": "Panel",
         "spec": {
-          "id": 618,
+          "id": 626,
           "title": "Source Poll Errors (rate)",
           "description": "opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
           "links": [],
@@ -67282,10 +68218,10 @@
           }
         }
       },
-      "panel-619": {
+      "panel-627": {
         "kind": "Panel",
         "spec": {
-          "id": 619,
+          "id": 627,
           "title": "Cursor Lag (time since last event)",
           "description": "Seconds since the most recent shipped event per source, derived from opnsense_exporter_logs_last_event_timestamp_seconds. Steady growth on an active box indicates the source stopped producing (or the poll is failing).",
           "links": [],
@@ -67371,10 +68307,10 @@
           }
         }
       },
-      "panel-620": {
+      "panel-628": {
         "kind": "Panel",
         "spec": {
-          "id": 620,
+          "id": 628,
           "title": "Possible Sampling Gaps (rate)",
           "description": "opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a source whose only view of its data is a bounded window (e.g. the unbound source's latest-1000-row DNS query log, #233) \u2014 incremented when a poll's page shows no continuity with the previous cursor, meaning an unknown amount of data was skipped between polls. Non-zero on a quiet box is expected occasionally; sustained non-zero means the source cannot keep up with event volume at its poll interval.",
           "links": [],
@@ -67460,10 +68396,10 @@
           }
         }
       },
-      "panel-621": {
+      "panel-629": {
         "kind": "Panel",
         "spec": {
-          "id": 621,
+          "id": 629,
           "title": "Syslog Parse Errors (rate)",
           "description": "opnsense_exporter_logs_parse_errors_total: received lines that failed to parse, by stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a malformed pf log row). These records are NOT dropped -- they ship with their raw body -- so this counts fidelity lost, not data lost.",
           "links": [],
@@ -67549,10 +68485,10 @@
           }
         }
       },
-      "panel-622": {
+      "panel-630": {
         "kind": "Panel",
         "spec": {
-          "id": 622,
+          "id": 630,
           "title": "Syslog Input Rejected (rate)",
           "description": "opnsense_exporter_logs_rejected_total: syslog input refused before parsing. reason=peer means a sender outside --logs.syslog.allowed-peers (check this first when the receiver appears to receive nothing); reason=oversized means a frame beyond the 64KB message cap.",
           "links": [],
@@ -67638,10 +68574,10 @@
           }
         }
       },
-      "panel-623": {
+      "panel-631": {
         "kind": "Panel",
         "spec": {
-          "id": 623,
+          "id": 631,
           "title": "Enrichment Misses (rate)",
           "description": "opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by table. A sustained rate on table=rules means the rule snapshot is behind the box's ruleset, so log lines are shipping without a rule description. A miss triggers a rate-limited refresh, so a brief spike after a ruleset change is normal.",
           "links": [],
@@ -67727,10 +68663,10 @@
           }
         }
       },
-      "panel-624": {
+      "panel-632": {
         "kind": "Panel",
         "spec": {
-          "id": 624,
+          "id": 632,
           "title": "Enrichment Refresh Errors (rate)",
           "description": "opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes against the OPNsense API, by table. The previous snapshot keeps serving, so records still ship -- enriched with increasingly stale data. Pair with the staleness panel.",
           "links": [],
@@ -67816,10 +68752,10 @@
           }
         }
       },
-      "panel-625": {
+      "panel-633": {
         "kind": "Panel",
         "spec": {
-          "id": 625,
+          "id": 633,
           "title": "Enrichment Staleness",
           "description": "Seconds since each enrichment table last refreshed successfully, derived from opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every 60s, interfaces every 5m, leases every 60s -- a value climbing far past those means the API is failing and enrichment is silently going stale.",
           "links": [],
@@ -67905,10 +68841,10 @@
           }
         }
       },
-      "panel-626": {
+      "panel-634": {
         "kind": "Panel",
         "spec": {
-          "id": 626,
+          "id": 634,
           "title": "Scrape Success (opnsense_up)",
           "description": "",
           "links": [],
@@ -68006,10 +68942,10 @@
           }
         }
       },
-      "panel-627": {
+      "panel-635": {
         "kind": "Panel",
         "spec": {
-          "id": 627,
+          "id": 635,
           "title": "Scrape & Skip Rate",
           "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
@@ -68121,10 +69057,10 @@
           }
         }
       },
-      "panel-628": {
+      "panel-636": {
         "kind": "Panel",
         "spec": {
-          "id": 628,
+          "id": 636,
           "title": "Endpoint Errors (rate)",
           "description": "",
           "links": [],
@@ -68210,10 +69146,10 @@
           }
         }
       },
-      "panel-629": {
+      "panel-637": {
         "kind": "Panel",
         "spec": {
-          "id": 629,
+          "id": 637,
           "title": "Endpoint Errors (total)",
           "description": "",
           "links": [],
@@ -68314,10 +69250,10 @@
           }
         }
       },
-      "panel-630": {
+      "panel-638": {
         "kind": "Panel",
         "spec": {
-          "id": 630,
+          "id": 638,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -68421,10 +69357,10 @@
           }
         }
       },
-      "panel-631": {
+      "panel-639": {
         "kind": "Panel",
         "spec": {
-          "id": 631,
+          "id": 639,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -68529,10 +69465,10 @@
           }
         }
       },
-      "panel-632": {
+      "panel-640": {
         "kind": "Panel",
         "spec": {
-          "id": 632,
+          "id": 640,
           "title": "Collector Scrape Duration",
           "description": "",
           "links": [],
@@ -68618,10 +69554,10 @@
           }
         }
       },
-      "panel-633": {
+      "panel-641": {
         "kind": "Panel",
         "spec": {
-          "id": 633,
+          "id": 641,
           "title": "Collector Scrape Success",
           "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
           "links": [],
@@ -68726,10 +69662,10 @@
           }
         }
       },
-      "panel-634": {
+      "panel-642": {
         "kind": "Panel",
         "spec": {
-          "id": 634,
+          "id": 642,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -68815,10 +69751,10 @@
           }
         }
       },
-      "panel-635": {
+      "panel-643": {
         "kind": "Panel",
         "spec": {
-          "id": 635,
+          "id": 643,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -68930,10 +69866,10 @@
           }
         }
       },
-      "panel-636": {
+      "panel-644": {
         "kind": "Panel",
         "spec": {
-          "id": 636,
+          "id": 644,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -69019,10 +69955,10 @@
           }
         }
       },
-      "panel-637": {
+      "panel-645": {
         "kind": "Panel",
         "spec": {
-          "id": 637,
+          "id": 645,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -69108,10 +70044,10 @@
           }
         }
       },
-      "panel-638": {
+      "panel-646": {
         "kind": "Panel",
         "spec": {
-          "id": 638,
+          "id": 646,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -69197,10 +70133,10 @@
           }
         }
       },
-      "panel-639": {
+      "panel-647": {
         "kind": "Panel",
         "spec": {
-          "id": 639,
+          "id": 647,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -69282,10 +70218,10 @@
           }
         }
       },
-      "panel-640": {
+      "panel-648": {
         "kind": "Panel",
         "spec": {
-          "id": 640,
+          "id": 648,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -69371,10 +70307,10 @@
           }
         }
       },
-      "panel-641": {
+      "panel-649": {
         "kind": "Panel",
         "spec": {
-          "id": 641,
+          "id": 649,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -82285,7 +83221,7 @@
           {
             "kind": "TabsLayoutTab",
             "spec": {
-              "title": "Log Shipping",
+              "title": "Log-derived Events",
               "layout": {
                 "kind": "RowsLayout",
                 "spec": {
@@ -82293,7 +83229,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "Throughput",
+                        "title": "Firewall",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -82337,7 +83273,7 @@
                               {
                                 "kind": "ConditionalRenderingVariable",
                                 "spec": {
-                                  "variable": "has_logs",
+                                  "variable": "has_log_events_firewall",
                                   "operator": "matches",
                                   "value": ".+"
                                 }
@@ -82350,7 +83286,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "Queue & Errors",
+                        "title": "HAProxy",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -82381,6 +83317,326 @@
                                     "name": "panel-617"
                                   }
                                 }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_log_events_haproxy",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "SSH Authentication",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-618"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_log_events_sshd",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "DHCP",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-619"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_log_events_dhcp",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Config / Audit",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-620"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_log_events_audit",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "IDS / IPS",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-621"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_log_events_ids",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "conditionalRendering": {
+                "kind": "ConditionalRenderingGroup",
+                "spec": {
+                  "visibility": "show",
+                  "condition": "and",
+                  "items": [
+                    {
+                      "kind": "ConditionalRenderingVariable",
+                      "spec": {
+                        "variable": "has_log_events",
+                        "operator": "matches",
+                        "value": ".+"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "kind": "TabsLayoutTab",
+            "spec": {
+              "title": "Log Shipping",
+              "layout": {
+                "kind": "RowsLayout",
+                "spec": {
+                  "rows": [
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Throughput",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-622"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-623"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_logs",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Queue & Errors",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-624"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-625"
+                                  }
+                                }
                               },
                               {
                                 "kind": "GridLayoutItem",
@@ -82391,7 +83647,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-618"
+                                    "name": "panel-626"
                                   }
                                 }
                               }
@@ -82435,7 +83691,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-619"
+                                    "name": "panel-627"
                                   }
                                 }
                               },
@@ -82448,7 +83704,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-620"
+                                    "name": "panel-628"
                                   }
                                 }
                               }
@@ -82492,7 +83748,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-621"
+                                    "name": "panel-629"
                                   }
                                 }
                               },
@@ -82505,7 +83761,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-622"
+                                    "name": "panel-630"
                                   }
                                 }
                               }
@@ -82549,7 +83805,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-623"
+                                    "name": "panel-631"
                                   }
                                 }
                               },
@@ -82562,7 +83818,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-624"
+                                    "name": "panel-632"
                                   }
                                 }
                               },
@@ -82575,7 +83831,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-625"
+                                    "name": "panel-633"
                                   }
                                 }
                               }
@@ -82632,7 +83888,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-626"
+                                    "name": "panel-634"
                                   }
                                 }
                               },
@@ -82645,7 +83901,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-627"
+                                    "name": "panel-635"
                                   }
                                 }
                               },
@@ -82658,7 +83914,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-628"
+                                    "name": "panel-636"
                                   }
                                 }
                               },
@@ -82671,7 +83927,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-629"
+                                    "name": "panel-637"
                                   }
                                 }
                               }
@@ -82698,7 +83954,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-632"
+                                    "name": "panel-640"
                                   }
                                 }
                               },
@@ -82711,7 +83967,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-633"
+                                    "name": "panel-641"
                                   }
                                 }
                               }
@@ -82738,7 +83994,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-637"
+                                    "name": "panel-645"
                                   }
                                 }
                               },
@@ -82751,7 +84007,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-638"
+                                    "name": "panel-646"
                                   }
                                 }
                               }
@@ -82778,7 +84034,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-639"
+                                    "name": "panel-647"
                                   }
                                 }
                               },
@@ -82791,7 +84047,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-640"
+                                    "name": "panel-648"
                                   }
                                 }
                               },
@@ -82804,7 +84060,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-641"
+                                    "name": "panel-649"
                                   }
                                 }
                               }
@@ -82831,7 +84087,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-630"
+                                    "name": "panel-638"
                                   }
                                 }
                               },
@@ -82844,7 +84100,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-631"
+                                    "name": "panel-639"
                                   }
                                 }
                               }
@@ -82871,7 +84127,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-634"
+                                    "name": "panel-642"
                                   }
                                 }
                               },
@@ -82884,7 +84140,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-635"
+                                    "name": "panel-643"
                                   }
                                 }
                               },
@@ -82897,7 +84153,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-636"
+                                    "name": "panel-644"
                                   }
                                 }
                               }

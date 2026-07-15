@@ -338,6 +338,13 @@ var (
 		"exporter.disable-siproxd",
 		"Disable the scraping of the siproxd active SIP registration count (silent when the os-siproxd plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_SIPROXD").Default("false").Bool()
+	// log_events is default-on but only produces series while the syslog receiver
+	// (--logs.syslog.enabled) is running and feeding it; disabling it here both drops
+	// the collector and stops the receiver deriving the counters (#258).
+	logEventsCollectorDisabled = kingpin.Flag(
+		"exporter.disable-log-events",
+		"Disable the log_events collector (Prometheus counters derived from received syslog lines: firewall/haproxy/sshd/dhcp/audit/ids event totals). Silent until the syslog receiver is enabled and feeding it.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -420,6 +427,7 @@ type CollectorsDisableSwitch struct {
 	Auth                   bool
 	HostDiscovery          bool
 	Relayd                 bool
+	LogEvents              bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -503,6 +511,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		HostDiscovery:          !*hostdiscoveryCollectorDisabled,
 		Relayd:                 !*relaydCollectorDisabled,
 		Siproxd:                !*siproxdCollectorDisabled,
+		LogEvents:              !*logEventsCollectorDisabled,
 	}
 }
 
@@ -600,4 +609,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},
 	{Flag: "exporter.disable-relayd", Subsystem: "relayd"},
 	{Flag: "exporter.disable-siproxd", Subsystem: "siproxd"},
+	{Flag: "exporter.disable-log-events", Subsystem: "log_events"},
 }
