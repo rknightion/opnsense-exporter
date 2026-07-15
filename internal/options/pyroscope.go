@@ -35,7 +35,8 @@ var (
 	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME").Default("opnsense-exporter").String()
 	pyroscopeEnableMutexBlock = kingpin.Flag(
 		"pyroscope.enable-mutex-block",
-		"Enable goroutine/mutex/block profiling (adds minor runtime overhead).",
+		"Enable mutex/block contention profiling (adds minor runtime overhead). "+
+			"Goroutine profiling is always on and needs no runtime knob.",
 	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK").Default("false").Bool()
 )
 

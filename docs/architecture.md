@@ -194,10 +194,10 @@ Profiles collected by default:
 
 - CPU profiling
 - Memory (heap) profiling: alloc/inuse, objects/space
+- Goroutine profiling
 
 With `--pyroscope.enable-mutex-block` the exporter additionally collects:
 
-- Goroutine profiling
 - Mutex contention profiling
 - Block profiling
 

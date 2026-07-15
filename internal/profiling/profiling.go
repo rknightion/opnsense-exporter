@@ -13,7 +13,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
-// Sampling settings applied when goroutine/mutex/block profiling is enabled.
+// Sampling settings applied when mutex/block profiling is enabled.
 // Fixed, low-overhead defaults; not user-configurable. Note the two have
 // different units (see runtime.SetMutexProfileFraction / SetBlockProfileRate).
 const (
@@ -27,7 +27,9 @@ const (
 )
 
 // profileTypes returns the set of profiles to collect. The default set is
-// zero-overhead; mutex/block adds goroutine/mutex/block profiles.
+// zero-overhead — including goroutines, which is just a stack snapshot and needs
+// no runtime knob; mutex/block adds the two contention profiles, which do (they
+// require the process-global SetMutexProfileFraction/SetBlockProfileRate rates).
 func profileTypes(enableMutexBlock bool) []pyroscope.ProfileType {
 	types := []pyroscope.ProfileType{
 		pyroscope.ProfileCPU,
@@ -35,10 +37,10 @@ func profileTypes(enableMutexBlock bool) []pyroscope.ProfileType {
 		pyroscope.ProfileAllocSpace,
 		pyroscope.ProfileInuseObjects,
 		pyroscope.ProfileInuseSpace,
+		pyroscope.ProfileGoroutines,
 	}
 	if enableMutexBlock {
 		types = append(types,
-			pyroscope.ProfileGoroutines,
 			pyroscope.ProfileMutexCount,
 			pyroscope.ProfileMutexDuration,
 			pyroscope.ProfileBlockCount,
@@ -101,8 +103,8 @@ func Start(cfg *options.PyroscopeConfig, instance, version string, logger *slog.
 // Stop flushes the in-progress profiling window and then stops the profiler on
 // shutdown. It calls the SDK's real flush primitive Flush(true) BEFORE Stop() because
 // Profiler.Stop() alone only uploads the CPU profile — it never resets/uploads the
-// current delta window for the non-CPU profile types (heap/alloc/inuse and, when
-// enabled, goroutine/mutex/block), silently dropping up to a full upload window of
+// current delta window for the non-CPU profile types (heap/alloc/inuse/goroutine and,
+// when enabled, mutex/block), silently dropping up to a full upload window of
 // data on every restart. Flush(true) is the only path that resets + uploads + waits
 // for those. It is safe only while CPU profiling stays in the profile set — the SDK
 // deadlocks in Flush if CPU profiling is disabled — which profileTypes guarantees

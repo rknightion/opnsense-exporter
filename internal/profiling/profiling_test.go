@@ -59,18 +59,32 @@ func discardLogger() *slog.Logger {
 
 func TestProfileTypes_DefaultSet(t *testing.T) {
 	got := profileTypes(false)
-	if len(got) != 5 {
-		t.Fatalf("expected 5 default profile types, got %d: %v", len(got), got)
+	if len(got) != 6 {
+		t.Fatalf("expected 6 default profile types, got %d: %v", len(got), got)
 	}
+	// Goroutines is in the default set — it is a zero-overhead stack snapshot and
+	// must not be gated behind the mutex/block flag (#268).
 	for _, want := range []pyroscope.ProfileType{
 		pyroscope.ProfileCPU,
 		pyroscope.ProfileAllocObjects,
 		pyroscope.ProfileAllocSpace,
 		pyroscope.ProfileInuseObjects,
 		pyroscope.ProfileInuseSpace,
+		pyroscope.ProfileGoroutines,
 	} {
 		if !slices.Contains(got, want) {
 			t.Errorf("default set missing %q", want)
+		}
+	}
+	// Mutex/block must NOT be present in the default set.
+	for _, notWant := range []pyroscope.ProfileType{
+		pyroscope.ProfileMutexCount,
+		pyroscope.ProfileMutexDuration,
+		pyroscope.ProfileBlockCount,
+		pyroscope.ProfileBlockDuration,
+	} {
+		if slices.Contains(got, notWant) {
+			t.Errorf("default set unexpectedly contains gated profile %q", notWant)
 		}
 	}
 }

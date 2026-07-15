@@ -127,7 +127,7 @@ is set. There are no unauthenticated `/debug/pprof/*` endpoints.
 | `--pyroscope.application-name` | `OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME` | `opnsense-exporter` | Pyroscope application name profiles are reported under. |
 | `--pyroscope.auth-password` | `OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD` | -- | HTTP basic auth password for Pyroscope (Grafana Cloud Access Policy token). This flag/ENV or PYROSCOPE_AUTH_PASSWORD_FILE may be set. |
 | `--pyroscope.auth-user` | `OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER` | -- | HTTP basic auth user for Pyroscope (Grafana Cloud stack/instance ID). This flag/ENV or PYROSCOPE_AUTH_USER_FILE may be set. |
-| `--pyroscope.enable-mutex-block` | `OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK` | `false` | Enable goroutine/mutex/block profiling (adds minor runtime overhead). |
+| `--pyroscope.enable-mutex-block` | `OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK` | `false` | Enable mutex/block contention profiling (adds minor runtime overhead). Goroutine profiling is always on and needs no runtime knob. |
 | `--pyroscope.server-address` | `OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS` | -- | Grafana Cloud Pyroscope endpoint URL. When empty, continuous profiling is disabled. |
 | `--pyroscope.tenant-id` | `OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID` | -- | Pyroscope tenant ID (only needed for multi-tenancy; unused for Grafana Cloud). |
 <!-- docgen:end:flags-pyroscope -->
@@ -480,7 +480,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--pyroscope.application-name` | `OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME` | `opnsense-exporter` | Pyroscope application name profiles are reported under. |
 | `--pyroscope.auth-password` | `OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD` | -- | HTTP basic auth password for Pyroscope (Grafana Cloud Access Policy token). This flag/ENV or PYROSCOPE_AUTH_PASSWORD_FILE may be set. |
 | `--pyroscope.auth-user` | `OPNSENSE_EXPORTER_PYROSCOPE_AUTH_USER` | -- | HTTP basic auth user for Pyroscope (Grafana Cloud stack/instance ID). This flag/ENV or PYROSCOPE_AUTH_USER_FILE may be set. |
-| `--pyroscope.enable-mutex-block` | `OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK` | `false` | Enable goroutine/mutex/block profiling (adds minor runtime overhead). |
+| `--pyroscope.enable-mutex-block` | `OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK` | `false` | Enable mutex/block contention profiling (adds minor runtime overhead). Goroutine profiling is always on and needs no runtime knob. |
 | `--pyroscope.server-address` | `OPNSENSE_EXPORTER_PYROSCOPE_SERVER_ADDRESS` | -- | Grafana Cloud Pyroscope endpoint URL. When empty, continuous profiling is disabled. |
 | `--pyroscope.tenant-id` | `OPNSENSE_EXPORTER_PYROSCOPE_TENANT_ID` | -- | Pyroscope tenant ID (only needed for multi-tenancy; unused for Grafana Cloud). |
 | `--web.config.file` | -- | -- | Path to configuration file that can enable TLS or authentication. See: https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md |
