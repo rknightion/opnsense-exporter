@@ -190,15 +190,17 @@ All metrics use the `opnsense` namespace prefix. The subsystem constants define 
 
 The exporter supports opt-in continuous profiling that **pushes** profiles to [Grafana Cloud Pyroscope](https://grafana.com/products/cloud/profiles-for-continuous-profiling/) via the [pyroscope-go](https://github.com/grafana/pyroscope-go) SDK. It is disabled by default and activates only when `--pyroscope.server-address` is set; see [Configuration → Continuous profiling (Pyroscope)](configuration.md#continuous-profiling-pyroscope) for the flags and authentication.
 
-Profiles collected by default:
+All profile types are collected by default when profiling is enabled:
 
 - CPU profiling
 - Memory (heap) profiling: alloc/inuse, objects/space
 - Goroutine profiling
-
-With `--pyroscope.enable-mutex-block` the exporter additionally collects:
-
 - Mutex contention profiling
 - Block profiling
+- Goroutine-leak profiling
+
+Set `--pyroscope.disable-mutex-block` to drop the two contention profiles (mutex and block) and their process-global sampling rates — the one set with non-trivial per-event overhead. CPU, memory, goroutine and goroutine-leak profiling are unaffected.
+
+Goroutine-leak profiling relies on the Go `goroutineleakprofile` runtime experiment, which the release binaries and container image are built with (`GOEXPERIMENT=goroutineleakprofile`). A binary built without it silently omits that one profile type; everything else is unchanged. It periodically runs a short stop-the-world analysis (at each upload) to surface goroutines that are blocked forever — cheap for an exporter's modest goroutine count.
 
 There are **no** unauthenticated `/debug/pprof/*` HTTP endpoints; the exporter dropped the previously always-on pprof/godeltaprof handlers in favour of authenticated push.

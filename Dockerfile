@@ -12,8 +12,12 @@ ARG VERSION
 WORKDIR /go/src/github.com/rknightion/opnsense-exporter
 COPY . .
 
+# GOEXPERIMENT=goroutineleakprofile registers the goroutineleak pprof profile, which
+# the exporter pushes to Pyroscope by default (profiling code guards on availability).
+# Keep in sync with the Makefile + .goreleaser.yml.
 RUN --mount=type=cache,target=/root/.cache/go-build \
   CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+  GOEXPERIMENT=goroutineleakprofile \
   go build \
   -mod=vendor \
   -tags osusergo,netgo \

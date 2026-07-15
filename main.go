@@ -513,7 +513,8 @@ func main() {
 				"pyroscope continuous profiling enabled",
 				"server", pyroCfg.ServerAddress,
 				"application", pyroCfg.ApplicationName,
-				"mutex_block", pyroCfg.EnableMutexBlock,
+				"mutex_block", !pyroCfg.DisableMutexBlock,
+				"goroutine_leak", profiling.GoroutineLeakAvailable(),
 			)
 		}
 	}

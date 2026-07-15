@@ -5,6 +5,10 @@ before:
 builds:
   - env:
       - CGO_ENABLED=0
+      # Registers the goroutineleak pprof profile, pushed to Pyroscope by default
+      # (the profiling code guards on availability). Keep in sync with the
+      # Makefile and Dockerfile. Verified to cross-compile across the full matrix.
+      - GOEXPERIMENT=goroutineleakprofile
     goos:
       - linux
       - darwin

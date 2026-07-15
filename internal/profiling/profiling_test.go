@@ -57,26 +57,64 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// leakType returns the goroutine-leak profile types present in a default build —
+// one when the binary was built with GOEXPERIMENT=goroutineleakprofile, none
+// otherwise. The type tests key their expected counts off this so they pass in
+// both CI (plain build) and release builds (with the experiment).
+func leakType() []pyroscope.ProfileType {
+	if GoroutineLeakAvailable() {
+		return []pyroscope.ProfileType{pyroscope.ProfileGoroutineLeak}
+	}
+	return nil
+}
+
 func TestProfileTypes_DefaultSet(t *testing.T) {
 	got := profileTypes(false)
-	if len(got) != 6 {
-		t.Fatalf("expected 6 default profile types, got %d: %v", len(got), got)
-	}
-	// Goroutines is in the default set — it is a zero-overhead stack snapshot and
-	// must not be gated behind the mutex/block flag (#268).
-	for _, want := range []pyroscope.ProfileType{
+	// All standard types are on by default: cpu + alloc/inuse + goroutines +
+	// mutex/block (10), plus goroutine-leak when the experiment is built in (#268).
+	want := []pyroscope.ProfileType{
 		pyroscope.ProfileCPU,
 		pyroscope.ProfileAllocObjects,
 		pyroscope.ProfileAllocSpace,
 		pyroscope.ProfileInuseObjects,
 		pyroscope.ProfileInuseSpace,
 		pyroscope.ProfileGoroutines,
-	} {
-		if !slices.Contains(got, want) {
-			t.Errorf("default set missing %q", want)
+		pyroscope.ProfileMutexCount,
+		pyroscope.ProfileMutexDuration,
+		pyroscope.ProfileBlockCount,
+		pyroscope.ProfileBlockDuration,
+	}
+	want = append(want, leakType()...)
+	if len(got) != len(want) {
+		t.Fatalf("expected %d default profile types, got %d: %v", len(want), len(got), got)
+	}
+	for _, w := range want {
+		if !slices.Contains(got, w) {
+			t.Errorf("default set missing %q", w)
 		}
 	}
-	// Mutex/block must NOT be present in the default set.
+}
+
+func TestProfileTypes_DisableMutexBlockDropsContentionOnly(t *testing.T) {
+	got := profileTypes(true)
+	// Disabling drops the four contention profiles; everything else stays on.
+	want := []pyroscope.ProfileType{
+		pyroscope.ProfileCPU,
+		pyroscope.ProfileAllocObjects,
+		pyroscope.ProfileAllocSpace,
+		pyroscope.ProfileInuseObjects,
+		pyroscope.ProfileInuseSpace,
+		pyroscope.ProfileGoroutines,
+	}
+	want = append(want, leakType()...)
+	if len(got) != len(want) {
+		t.Fatalf("expected %d profile types with mutex/block disabled, got %d: %v", len(want), len(got), got)
+	}
+	for _, w := range want {
+		if !slices.Contains(got, w) {
+			t.Errorf("set missing %q", w)
+		}
+	}
 	for _, notWant := range []pyroscope.ProfileType{
 		pyroscope.ProfileMutexCount,
 		pyroscope.ProfileMutexDuration,
@@ -84,31 +122,7 @@ func TestProfileTypes_DefaultSet(t *testing.T) {
 		pyroscope.ProfileBlockDuration,
 	} {
 		if slices.Contains(got, notWant) {
-			t.Errorf("default set unexpectedly contains gated profile %q", notWant)
-		}
-	}
-}
-
-func TestProfileTypes_MutexBlockSet(t *testing.T) {
-	got := profileTypes(true)
-	if len(got) != 10 {
-		t.Fatalf("expected 10 profile types with mutex/block, got %d: %v", len(got), got)
-	}
-	// The mutex/block set must extend, not replace, the default set.
-	for _, want := range []pyroscope.ProfileType{
-		pyroscope.ProfileCPU,
-		pyroscope.ProfileAllocObjects,
-		pyroscope.ProfileAllocSpace,
-		pyroscope.ProfileInuseObjects,
-		pyroscope.ProfileInuseSpace,
-		pyroscope.ProfileGoroutines,
-		pyroscope.ProfileMutexCount,
-		pyroscope.ProfileMutexDuration,
-		pyroscope.ProfileBlockCount,
-		pyroscope.ProfileBlockDuration,
-	} {
-		if !slices.Contains(got, want) {
-			t.Errorf("mutex/block set missing %q", want)
+			t.Errorf("disabled set unexpectedly contains contention profile %q", notWant)
 		}
 	}
 }

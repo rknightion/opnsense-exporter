@@ -33,21 +33,23 @@ var (
 		"pyroscope.application-name",
 		"Pyroscope application name profiles are reported under.",
 	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_APPLICATION_NAME").Default("opnsense-exporter").String()
-	pyroscopeEnableMutexBlock = kingpin.Flag(
-		"pyroscope.enable-mutex-block",
-		"Enable mutex/block contention profiling (adds minor runtime overhead). "+
-			"Goroutine profiling is always on and needs no runtime knob.",
-	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_ENABLE_MUTEX_BLOCK").Default("false").Bool()
+	pyroscopeDisableMutexBlock = kingpin.Flag(
+		"pyroscope.disable-mutex-block",
+		"Disable mutex/block contention profiling. On by default; disabling drops "+
+			"the two contention profiles and their process-global sampling rates. "+
+			"CPU, memory, goroutine (and goroutine-leak, when built with the "+
+			"experiment) profiling are unaffected.",
+	).Envar("OPNSENSE_EXPORTER_PYROSCOPE_DISABLE_MUTEX_BLOCK").Default("false").Bool()
 )
 
 // PyroscopeConfig holds the configuration for continuous profiling.
 type PyroscopeConfig struct {
-	ServerAddress    string
-	AuthUser         string
-	AuthPassword     string
-	TenantID         string
-	ApplicationName  string
-	EnableMutexBlock bool
+	ServerAddress     string
+	AuthUser          string
+	AuthPassword      string
+	TenantID          string
+	ApplicationName   string
+	DisableMutexBlock bool
 }
 
 // Validate checks that a profiling configuration is complete: every field
@@ -127,12 +129,12 @@ func Pyroscope() (*PyroscopeConfig, bool, error) {
 	}
 
 	cfg := &PyroscopeConfig{
-		ServerAddress:    addr,
-		AuthUser:         strings.TrimSpace(user),
-		AuthPassword:     strings.TrimSpace(password),
-		TenantID:         strings.TrimSpace(*pyroscopeTenantID),
-		ApplicationName:  strings.TrimSpace(*pyroscopeApplicationName),
-		EnableMutexBlock: *pyroscopeEnableMutexBlock,
+		ServerAddress:     addr,
+		AuthUser:          strings.TrimSpace(user),
+		AuthPassword:      strings.TrimSpace(password),
+		TenantID:          strings.TrimSpace(*pyroscopeTenantID),
+		ApplicationName:   strings.TrimSpace(*pyroscopeApplicationName),
+		DisableMutexBlock: *pyroscopeDisableMutexBlock,
 	}
 
 	if err := cfg.Validate(); err != nil {

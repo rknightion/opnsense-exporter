@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"runtime/pprof"
 	"time"
 
 	"github.com/grafana/pyroscope-go"
@@ -26,11 +27,23 @@ const (
 	blockProfileRate = 100_000
 )
 
-// profileTypes returns the set of profiles to collect. The default set is
-// zero-overhead — including goroutines, which is just a stack snapshot and needs
-// no runtime knob; mutex/block adds the two contention profiles, which do (they
-// require the process-global SetMutexProfileFraction/SetBlockProfileRate rates).
-func profileTypes(enableMutexBlock bool) []pyroscope.ProfileType {
+// GoroutineLeakAvailable reports whether the runtime exposes the goroutineleak
+// profile. It is registered only when the binary is built with
+// GOEXPERIMENT=goroutineleakprofile (Go 1.26+); a binary built without it simply
+// omits the type instead of pushing an empty/erroring profile. Our release builds
+// set the experiment, so shipped binaries include it; a plain `go build` does not.
+func GoroutineLeakAvailable() bool {
+	return pprof.Lookup("goroutineleak") != nil
+}
+
+// profileTypes returns the set of profiles to collect. All standard types are on
+// by default: cpu, the alloc/inuse memory set, and goroutines (a zero-overhead
+// stack snapshot) plus the mutex/block contention profiles — which need the
+// process-global SetMutexProfileFraction/SetBlockProfileRate rates and carry the
+// only non-trivial per-event cost, so they are the one set an operator can turn
+// off via disableMutexBlock. goroutineleak is appended when the runtime exposes it
+// (built with the experiment).
+func profileTypes(disableMutexBlock bool) []pyroscope.ProfileType {
 	types := []pyroscope.ProfileType{
 		pyroscope.ProfileCPU,
 		pyroscope.ProfileAllocObjects,
@@ -39,13 +52,16 @@ func profileTypes(enableMutexBlock bool) []pyroscope.ProfileType {
 		pyroscope.ProfileInuseSpace,
 		pyroscope.ProfileGoroutines,
 	}
-	if enableMutexBlock {
+	if !disableMutexBlock {
 		types = append(types,
 			pyroscope.ProfileMutexCount,
 			pyroscope.ProfileMutexDuration,
 			pyroscope.ProfileBlockCount,
 			pyroscope.ProfileBlockDuration,
 		)
+	}
+	if GoroutineLeakAvailable() {
+		types = append(types, pyroscope.ProfileGoroutineLeak)
 	}
 	return types
 }
@@ -79,7 +95,7 @@ func Start(cfg *options.PyroscopeConfig, instance, version string, logger *slog.
 		BasicAuthPassword: cfg.AuthPassword,
 		TenantID:          cfg.TenantID,
 		Logger:            loggerAdapter{logger: logger},
-		ProfileTypes:      profileTypes(cfg.EnableMutexBlock),
+		ProfileTypes:      profileTypes(cfg.DisableMutexBlock),
 		Tags: map[string]string{
 			"instance": instance,
 			"version":  version,
@@ -91,8 +107,9 @@ func Start(cfg *options.PyroscopeConfig, instance, version string, logger *slog.
 
 	// Enable the process-global mutex/block sampling only after the profiler is
 	// running, so a failed start does not leave these runtime knobs permanently
-	// on with nothing consuming the samples.
-	if cfg.EnableMutexBlock {
+	// on with nothing consuming the samples. On by default; skipped only when the
+	// operator disabled the contention profiles.
+	if !cfg.DisableMutexBlock {
 		runtime.SetMutexProfileFraction(mutexProfileFraction)
 		runtime.SetBlockProfileRate(blockProfileRate)
 	}
