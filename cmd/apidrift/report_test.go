@@ -18,7 +18,8 @@ func TestAggregateSeverity(t *testing.T) {
 		{"mismatch is drift", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{Mismatches: []opnsense.Mismatch{{Path: "x"}}}}}, true, false},
 		{"missing is warning", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{Missing: []string{"x"}}}}, false, true},
 		{"unknown key is warning", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{UnknownTopKeys: []string{"x"}}}}, false, true},
-		{"404 is warning", []probeResult{{Endpoint: "a", Absent: true}}, false, true},
+		{"core 404 is warning", []probeResult{{Endpoint: "a", Absent: true}}, false, true},
+		{"plugin-gated 404 is not a warning", []probeResult{{Endpoint: "siproxdRegistrations", Absent: true}}, false, false},
 		{"probe error is warning", []probeResult{{Endpoint: "a", ProbeErr: "boom"}}, false, true},
 		{"skipped param is warning", []probeResult{{Endpoint: "a", SkippedParam: true}}, false, true},
 	}

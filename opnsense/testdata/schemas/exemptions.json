@@ -29,6 +29,13 @@
     ],
     "note": "GUI widget metadata on service-status responses; never consumed"
   },
+  "dechwPowerStatus": {
+    "missingOK": [
+      "pwr1",
+      "pwr2"
+    ],
+    "note": "Deciso hardware PSU rails (pwr1/pwr2) exist only on real DEC appliances with power sensors; api/dechw/info/power_status returns {\"status\":\"failed\"} on anything else. Verified live 2026-07-15 on the KVM-hosted 26.7-devel VM. Box/hardware state, not a version prune (#243)"
+  },
   "dnsmasqServiceStatus": {
     "knownExtraTopKeys": [
       "widget"
@@ -134,9 +141,11 @@
       "rows[].lagghash",
       "rows[].laggstatistics.*",
       "rows[].laggport.*",
-      "rows[].members.*"
+      "rows[].members.*",
+      "rows[].sfp",
+      "rows[].sfp.*"
     ],
-    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport) and bridge (members) fields are hardware/config-dependent \u2014 only served by a row that is itself a lagg(4)/bridge(4) interface. Verified empirically 2026-07-13: absent on both the live prod box (no lagg, no bridge configured) and the 26.7-devel VM (virtio-only, no lagg/bridge module loaded). rows[].sfp.* already covers every sfp key uniformly (including the DOM-only temperature/voltage/lane_*_rx_power/lane_*_tx_bias keys) via the map wildcard, so no separate exemption is needed there \u2014 a copper RJ45 SFP's identity-only keys (verified live: UBNT UF-RJ45-1G) already satisfy the wildcard (#214)"
+    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport), bridge (members) and SFP (sfp) fields are hardware/config-dependent \u2014 only served by a row that is itself a lagg(4)/bridge(4)/physical-SFP interface. Verified empirically 2026-07-13 (lagg/bridge) and 2026-07-15 (sfp) against the live box: the 26.7-devel VM is virtio-only, so no row carries an sfp block and rows[].sfp is absent wholesale. A box WITH an SFP row (e.g. the prod box's UBNT UF-RJ45-1G) serves the sfp block and validates the sfp.* subtree normally; the exemption only suppresses the box-has-no-SFP case. Box state, not a version prune (#214, #243)"
   },
   "ipsecSad": {
     "missingOK": [
@@ -186,6 +195,12 @@
       "[].type"
     ],
     "note": "removed upstream in 26.1.11; kept for \u2264 26.1.10. Prune when 26.1 leaves the support window"
+  },
+  "netbirdServiceStatus": {
+    "knownExtraTopKeys": [
+      "widget"
+    ],
+    "note": "GUI widget metadata on service-status responses; never consumed"
   },
   "netbirdStatus": {
     "knownExtraTopKeys": [
@@ -258,6 +273,14 @@
       "statistics.tcp.syncache.sent-cookies"
     ],
     "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for \u2264 26.1.10 \u2014 prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}, which are now modelled as a presence-gated counter (#237); the legacy aggregate stays decoded-only (never fed a metric). syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7, now modelled as a presence-gated counter (#237); decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window"
+  },
+  "quaggaOspfNeighbors": {
+    "missingOK": [
+      "rows[].address",
+      "rows[].priority",
+      "rows[].state"
+    ],
+    "note": "legacy pre-rename FRR ospf-neighbor field names. New FRR (verified live 2026-07-15 on 26.7-devel: a real Full/Backup adjacency) emits nbrState/nbrPriority/ifaceAddress instead; the collector already coalesces new-wins-else-legacy in frr.go (state, address; priority is decoded-only, no metric). Legacy names kept for <= 26.1's older FRR — prune when 26.1 leaves the support window (#243)"
   },
   "quaggaServiceStatus": {
     "knownExtraTopKeys": [
@@ -345,6 +368,15 @@
       "widget"
     ],
     "note": "GUI widget metadata on service-status responses; never consumed"
+  },
+  "vnstatGetJsonData": {
+    "missingOK": [
+      "interfaces"
+    ],
+    "knownExtraTopKeys": [
+      "status"
+    ],
+    "note": "api/vnstat/service/get_json_data returns {\"status\":\"failed\"} — no interfaces array — when vnstat has no monitored-interface data. Verified live 2026-07-15 on the 26.7-devel VM, whose vnstat DB is empty. Box state: clears (and the exemption should be pruned) once the testbed's vnstat monitors an interface and produces data (#243)"
   },
   "wireguardServiceStatus": {
     "knownExtraTopKeys": [
