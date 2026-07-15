@@ -340,7 +340,7 @@ func TestParseHAProxy_Unrecognised(t *testing.T) {
 // and an unparseable one still ships with its body intact.
 func TestParseHAProxy_RegisteredForProgram(t *testing.T) {
 	rec := BuildRecord(haproxyEnvelope(`backend bk-heavy has no server available!`, 3), haproxySnapshot(), func(string) {})
-	wantAttr(t, rec, "subsystem", "proxy")
+	wantAttr(t, rec, "opnsense.subsystem", "proxy")
 	wantAttr(t, rec, "haproxy.backend", "bk-heavy")
 	wantAttr(t, rec, "program", "haproxy")
 
@@ -348,6 +348,6 @@ func TestParseHAProxy_RegisteredForProgram(t *testing.T) {
 	if generic.Body != "Proxy ft-heavy started." {
 		t.Errorf("generic body = %q, want the raw message", generic.Body)
 	}
-	wantAttr(t, generic, "subsystem", "proxy")
+	wantAttr(t, generic, "opnsense.subsystem", "proxy")
 	wantNoAttr(t, generic, "haproxy.backend")
 }

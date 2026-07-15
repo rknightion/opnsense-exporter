@@ -219,7 +219,7 @@ func TestBuildRecord_AuditPrograms(t *testing.T) {
 	if got := rec.Attributes["config_user"]; got != "root@127.0.0.1" {
 		t.Errorf("config_user = %q, want %q", got, "root@127.0.0.1")
 	}
-	if got := rec.Attributes["subsystem"]; got != "audit" {
+	if got := rec.Attributes["opnsense.subsystem"]; got != "audit" {
 		t.Errorf("subsystem = %q, want %q", got, "audit")
 	}
 }

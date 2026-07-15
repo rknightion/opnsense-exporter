@@ -439,9 +439,9 @@ func TestParseDHCP_Registered(t *testing.T) {
 	env := dhcpEnvelope("dhcpd", "DHCPACK on 172.16.30.100 to bc:24:11:eb:db:3d (exporter-traffgen) via vlan02")
 	rec := BuildRecord(env, dhcpSnapshot(), nil)
 	wantDHCPAttrs(t, rec, map[string]string{
-		"subsystem":   "dhcp",
-		"dhcp.action": "ack",
-		"program":     "dhcpd",
+		"opnsense.subsystem": "dhcp",
+		"dhcp.action":        "ack",
+		"program":            "dhcpd",
 	})
 
 	// An unparsed line from a DHCP program still ships, verbatim, as a generic record.
@@ -450,5 +450,5 @@ func TestParseDHCP_Registered(t *testing.T) {
 		t.Errorf("Body = %q, want the raw message", generic.Body)
 	}
 	wantNoDHCPAttrs(t, generic, "dhcp.action")
-	wantDHCPAttrs(t, generic, map[string]string{"subsystem": "dhcp"})
+	wantDHCPAttrs(t, generic, map[string]string{"opnsense.subsystem": "dhcp"})
 }

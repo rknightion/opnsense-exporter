@@ -49,7 +49,7 @@ func addCommon(rec *logship.Record, env Envelope, snap *enrich.Snapshot, enrichB
 			rec.Attributes[k] = v
 		}
 	}
-	set("subsystem", subsystemFor(env.Program))
+	set(logship.AttrSubsystem, subsystemFor(env.Program))
 	if enrichBody {
 		enrichMessage(env.Message, snap, set)
 	}

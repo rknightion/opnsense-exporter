@@ -63,7 +63,12 @@ const (
 //
 // Namespaced (opnsense.subsystem, not a bare "subsystem") for the same
 // collision-safety reason as attrSource; promote it as `opnsense.subsystem`.
-const attrSubsystem = "opnsense.subsystem"
+//
+// EXPORTED because Sources live in sibling packages (e.g. internal/logship/syslog)
+// and must set it under exactly this key — the OTLP sink only hoists THIS key onto
+// the resource, so a source using a bare "subsystem" literal would silently leave it
+// on the record, unpromotable. Set it via logship.AttrSubsystem, never a literal.
+const AttrSubsystem = "opnsense.subsystem"
 
 // reservedAttributeKeys is the set the pipeline defensively removes from every
 // Record.Attributes before shipping. Kept as a package var so tests assert the

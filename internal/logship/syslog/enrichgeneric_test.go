@@ -33,11 +33,11 @@ func TestEnrichMessage_ResolvesAddressInAnyProgram(t *testing.T) {
 	rec := BuildRecord(env, enrichSnap(), nil)
 	a := rec.Attributes
 	for k, want := range map[string]string{
-		"peer.ip":       "10.0.0.6",
-		"peer.hostname": "robs-laptop",
-		"peer.mac":      "7c:10:c9:5e:84:86",
-		"peer.scope":    "local",
-		"subsystem":     "ups",
+		"peer.ip":            "10.0.0.6",
+		"peer.hostname":      "robs-laptop",
+		"peer.mac":           "7c:10:c9:5e:84:86",
+		"peer.scope":         "local",
+		"opnsense.subsystem": "ups",
 	} {
 		if a[k] != want {
 			t.Errorf("attr %q = %q, want %q", k, a[k], want)
@@ -65,8 +65,8 @@ func TestEnrichMessage_MultipleAddresses(t *testing.T) {
 	if a["peer.2.ip"] != "10.0.0.6" || a["peer.2.hostname"] != "robs-laptop" {
 		t.Errorf("second address: ip=%q host=%q", a["peer.2.ip"], a["peer.2.hostname"])
 	}
-	if a["subsystem"] != "ipsec" {
-		t.Errorf("subsystem = %q, want ipsec", a["subsystem"])
+	if a["opnsense.subsystem"] != "ipsec" {
+		t.Errorf("subsystem = %q, want ipsec", a["opnsense.subsystem"])
 	}
 }
 
@@ -127,8 +127,8 @@ func TestEnrichMessage_NilSnapshotStillShips(t *testing.T) {
 	if rec.Body != env.Message {
 		t.Errorf("body = %q, want the message verbatim", rec.Body)
 	}
-	if rec.Attributes["subsystem"] != "ups" {
-		t.Errorf("subsystem = %q, want ups", rec.Attributes["subsystem"])
+	if rec.Attributes["opnsense.subsystem"] != "ups" {
+		t.Errorf("subsystem = %q, want ups", rec.Attributes["opnsense.subsystem"])
 	}
 }
 

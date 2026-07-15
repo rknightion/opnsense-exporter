@@ -25,8 +25,8 @@ func TestEnrichTunnels_IPsec(t *testing.T) {
 	if got := rec.Attributes["ipsec.connection"]; got != "test ipsec conn" {
 		t.Errorf("ipsec.connection = %q, want %q", got, "test ipsec conn")
 	}
-	if rec.Attributes["subsystem"] != "ipsec" {
-		t.Errorf("subsystem = %q", rec.Attributes["subsystem"])
+	if rec.Attributes["opnsense.subsystem"] != "ipsec" {
+		t.Errorf("subsystem = %q", rec.Attributes["opnsense.subsystem"])
 	}
 }
 
@@ -39,8 +39,8 @@ func TestEnrichTunnels_OpenVPNInstance(t *testing.T) {
 	if got := rec.Attributes["openvpn.instance"]; got != "test server" {
 		t.Errorf("openvpn.instance = %q, want %q", got, "test server")
 	}
-	if rec.Attributes["subsystem"] != "vpn" {
-		t.Errorf("subsystem = %q, want vpn", rec.Attributes["subsystem"])
+	if rec.Attributes["opnsense.subsystem"] != "vpn" {
+		t.Errorf("subsystem = %q, want vpn", rec.Attributes["opnsense.subsystem"])
 	}
 }
 

@@ -49,7 +49,7 @@ const maxLogResources = 64
 // LoggerProvider, not to a Record, so there is no cheaper way to vary it.
 //
 // This is safe by construction ONLY because both keys are closed code-defined sets
-// (see attrSubsystem). Everything genuinely high-cardinality — IPs, ports, rule
+// (see AttrSubsystem). Everything genuinely high-cardinality — IPs, ports, rule
 // ids, hostnames, MACs, SIDs — stays on the record and therefore can never be
 // promoted, which is the point.
 //
@@ -122,7 +122,7 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 	for _, e := range batch {
 		lg, err := s.loggerFor(ctx, resourceKey{
 			source:    e.Source,
-			subsystem: e.Record.Attributes[attrSubsystem],
+			subsystem: e.Record.Attributes[AttrSubsystem],
 		})
 		if err != nil {
 			return err
@@ -143,7 +143,7 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 			// them here as well would duplicate them into structured metadata beside
 			// the label. (`source` was stripped from Attributes upstream anyway; the
 			// pipeline carries it in Entry.Source.)
-			if k == attrSubsystem || k == attrSource {
+			if k == AttrSubsystem || k == attrSource {
 				continue
 			}
 			r.AddAttributes(otellog.String(k, v))
@@ -178,7 +178,7 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logg
 		attrs = append(attrs, attribute.String(attrSource, key.source))
 	}
 	if key.subsystem != "" {
-		attrs = append(attrs, attribute.String(attrSubsystem, key.subsystem))
+		attrs = append(attrs, attribute.String(AttrSubsystem, key.subsystem))
 	}
 	res, err := resource.New(ctx, resource.WithAttributes(attrs...))
 	if err != nil {

@@ -17,15 +17,15 @@ func TestParseSuricata_EVEAlert(t *testing.T) {
 	// Attribute names MIRROR the ids poll lane (internal/logship/ids.go) so a
 	// dashboard does not care which path an alert arrived by.
 	for k, want := range map[string]string{
-		"event_type":   "alert",
-		"alert_sid":    "2100498",
-		"signature":    "GPL ATTACK_RESPONSE id check returned root",
-		"alert_action": "allowed",
-		"src_ip":       "52.85.47.113",
-		"dest_ip":      "172.16.9.50",
-		"proto":        "TCP",
-		"in_iface":     "vtnet2",
-		"subsystem":    "ids",
+		"event_type":         "alert",
+		"alert_sid":          "2100498",
+		"signature":          "GPL ATTACK_RESPONSE id check returned root",
+		"alert_action":       "allowed",
+		"src_ip":             "52.85.47.113",
+		"dest_ip":            "172.16.9.50",
+		"proto":              "TCP",
+		"in_iface":           "vtnet2",
+		"opnsense.subsystem": "ids",
 	} {
 		if a[k] != want {
 			t.Errorf("attr %q = %q, want %q", k, a[k], want)

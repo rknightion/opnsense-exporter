@@ -324,7 +324,7 @@ func TestSSHDBuildRecordFallback(t *testing.T) {
 	if rec.Body != msg {
 		t.Errorf("Body = %q, want %q", rec.Body, msg)
 	}
-	assertAttrs(t, rec, map[string]string{"subsystem": "auth", "program": "sshd-session"})
+	assertAttrs(t, rec, map[string]string{"opnsense.subsystem": "auth", "program": "sshd-session"})
 	assertNoAttrs(t, rec, "auth.result")
 }
 
@@ -334,7 +334,7 @@ func TestSSHDBuildRecordStructured(t *testing.T) {
 	const msg = "Accepted publickey for root from 10.0.0.6 port 34776 ssh2: ED25519 SHA256:bbpr/trEw6O5Z8tHHbOS9lGc2KQozzQIIYKQZkl/5EE"
 	rec := BuildRecord(sshdEnv(msg), sshdSnapshot(), func(string) {})
 	assertAttrs(t, rec, map[string]string{
-		"subsystem":            "auth",
+		"opnsense.subsystem":   "auth",
 		"auth.result":          "accepted",
 		"auth.key_fingerprint": "SHA256:bbpr/trEw6O5Z8tHHbOS9lGc2KQozzQIIYKQZkl/5EE",
 		"src.ip":               "10.0.0.6",
