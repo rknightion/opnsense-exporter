@@ -51,12 +51,18 @@ ports:
 | `--logs.syslog.enabled` | `false` | Enables the receiver. Also needs `--logs.enabled`. |
 | `--logs.syslog.listen-udp` | `:5514` | Empty disables the UDP listener. |
 | `--logs.syslog.listen-tcp` | `:5514` | Empty disables the TCP listener. |
+| `--logs.syslog.listen-tls` | *(none)* | TLS listen address (OPNsense `tls4`/`tls6`). Empty disables it. Needs the cert/key flags below. See [TLS transport](#tls-transport-optional). |
+| `--logs.syslog.tls-cert-file` | *(none)* | PEM server certificate for the TLS listener. |
+| `--logs.syslog.tls-key-file` | *(none)* | PEM private key for the TLS listener. |
+| `--logs.syslog.tls-client-ca-file` | *(none)* | PEM CA bundle to verify sender client certificates. When set, a sender must present a cert signed by this CA — the only real sender authentication syslog has. |
 | `--logs.syslog.allowed-peers` | *(any)* | CIDR allowlist of permitted senders. |
 | `--logs.syslog.max-conns` | `64` | Cap on concurrent TCP connections. |
 | `--logs.syslog.enrich` | `true` | Enrich records from the OPNsense API. |
 | `--logs.syslog.exclude-programs` | *(none)* | Programs to drop, e.g. `radvd,cron`. |
 | `--logs.syslog.include-programs` | *(none)* | If set, ship ONLY these. Mutually exclusive with exclude. |
 | `--logs.syslog.min-severity` | *(none)* | Drop below this severity, e.g. `notice` drops info and debug. |
+| `--logs.syslog.sample` | `false` | Drop high-volume raw lines after deriving their metrics. See [Derived metrics and sampling](#derived-metrics-and-sampling). |
+| `--logs.syslog.sampled-attribute` | `true` | While sampling, stamp `sampled="true"` on shipped lines. Only takes effect with `--logs.syslog.sample`. |
 
 ## Set up the firewall
 
@@ -112,6 +118,66 @@ You can also filter on the firewall itself (the target's Applications/Levels/Fac
 selectors). Use that for coarse cuts you never want to see; use the exporter for tuning
 you might change your mind about, since it needs no firewall config edit.
 
+## Derived metrics and sampling
+
+The receiver counts what it parses. Every firewall, HAProxy, sshd, DHCP, audit and IDS
+line it recognises increments a Prometheus counter at `/metrics`, so you get rates and
+totals without querying Loki at all:
+
+| Metric | Labels |
+| --- | --- |
+| `opnsense_log_events_firewall_total` | `action`, `interface`, `rule_id`, `rule_name`, `scope` |
+| `opnsense_log_events_haproxy_total` | `event`, `backend`, `server`, `state`, `status_class` |
+| `opnsense_log_events_sshd_total` | `result`, `method`, `scope` |
+| `opnsense_log_events_dhcp_total` | `action`, `interface`, `server` |
+| `opnsense_log_events_audit_total` | `event`, `result` |
+| `opnsense_log_events_ids_total` | `event_type`, `action`, `category`, `severity` |
+
+The labels are all low-cardinality by construction — no IP, port, SID, hostname or
+signature text ever becomes a label. This is on by default; turn it off with
+`--exporter.disable-log-events`.
+
+Because the counters already carry the totals, you can **stop shipping the raw lines
+they count** and keep only the ones worth reading. That is `--logs.syslog.sample` (off
+by default):
+
+```bash
+--logs.syslog.sample     # keep firewall block/reject and HAProxy errors, drop the rest
+```
+
+With sampling on, the receiver keeps firewall `block`/`reject` lines and drops the
+passes, keeps HAProxy state changes and errors and drops per-connection noise, and
+keeps every low-volume program (sshd, DHCP, audit, IDS) in full. A line is only ever
+dropped **after** its metric has been counted, so the counters stay complete even
+though the log stream is not. Sampling requires the `log_events` collector to be on
+(the exporter refuses to start otherwise), because counting first is the whole point.
+
+Every shipped line then carries a `sampled="true"` attribute so a consumer knows the
+stream is incomplete and must use the counters for totals. Turn that stamp off with
+`--logs.syslog.sampled-attribute=false` if you would rather not have it.
+
+## TLS transport (optional)
+
+The receiver can take syslog over TLS in addition to (or instead of) plain UDP/TCP —
+OPNsense's `tls4`/`tls6` transports. It matters when the firewall ships across an
+untrusted segment; on a LAN-local link it is unnecessary.
+
+```bash
+opnsense-exporter \
+  --logs.enabled \
+  --logs.syslog.enabled \
+  --logs.syslog.listen-tls=:6514 \
+  --logs.syslog.tls-cert-file=/etc/exporter/syslog.pem \
+  --logs.syslog.tls-key-file=/etc/exporter/syslog.key \
+  --logs.syslog.tls-client-ca-file=/etc/exporter/senders-ca.pem   # optional, see below
+```
+
+`--logs.syslog.tls-client-ca-file` is worth setting: with it, a sender **must** present
+a client certificate signed by that CA, which is the only real sender authentication
+syslog offers — the peer allowlist filters by IP, it does not prove who is on the other
+end. Left empty, the listener encrypts but accepts any TLS client. On the firewall, set
+the target's Transport to `TLS(4)` and point it at the TLS port.
+
 ## What you get
 
 **Structured parsers** run for these programs; everything else ships as a generic
@@ -121,13 +187,13 @@ record with its message body verbatim and its envelope as metadata.
 | --- | --- |
 | `filterlog` | Firewall packet decisions — see below |
 | `audit`, `configd.py` | `config_user`, `config_revision`, `config_uri` (who changed the config), plus configd authorisation and RPC events |
-| `sshd`, `sshd-session` | `auth.result` (accepted/failed/invalid-user), `auth.user`, `auth.method`, key fingerprint, source address. A failed login is raised to **warning** — sshd logs a rejected login at the same severity as a successful one, and you should not have to know that to find it. |
+| `sshd`, `sshd-session` | `auth.result` (accepted/failed/invalid-user), `auth.user` (also as the semconv `user.name`), `auth.method`, key fingerprint, source address. A failed login is raised to **warning** — sshd logs a rejected login at the same severity as a successful one, and you should not have to know that to find it. |
 | `dhcpd`, `dnsmasq`, `kea-dhcp4`, `kea-dhcp6` | `dhcp.action`, `dhcp.ip`, `dhcp.mac`, `dhcp.hostname`, `dhcp.lease_seconds` — **normalised across all three backends**, so you can query DHCP activity without caring which one your box runs |
-| `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode |
+| `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode. HTTP fields use OTel semconv names: `http.request.method`, `http.response.status_code`, `url.path`, `network.protocol.version`. |
 
 **Every record**, structured or generic, also gets:
 
-- a `subsystem` attribute (`firewall`, `auth`, `dhcp`, `ipsec`, `vpn`, `proxy`, `routing`, `ups`, …) so you can select a whole class of events without enumerating program names;
+- an `opnsense.subsystem` attribute (`opnsense_subsystem` in Loki) with a value like `firewall`, `auth`, `dhcp`, `ipsec`, `vpn`, `proxy`, `routing` or `ups`, so you can select a whole class of events without enumerating program names;
 - any **IP address** mentioned anywhere in the message resolved to a hostname, MAC and scope (`self`/`local`/`remote`);
 - any **interface device** resolved to its friendly name (`vtnet0` → `LAN`);
 - for IPsec and OpenVPN, the **tunnel UUID resolved to its name** — `charon` logs `<5e891b0c-…|8> sending DPD request`, which is unreadable; the exporter turns it into `ipsec.connection: "site-to-site"` because it already has the API.
@@ -144,6 +210,8 @@ Firewall (`filterlog`) lines are parsed into structured fields and enriched:
 | `src.mac` / `dst.mac` | the ARP and NDP tables |
 | `src.scope` / `dst.scope` | `self`, `local` or `remote` |
 | `src.service` / `dst.service` | a compiled-in well-known-port table |
+| `network.type` | the IP-version field (`ipv4`/`ipv6`) — OTel semconv |
+| `network.transport` | the protocol, for TCP/UDP only (`tcp`/`udp`) — OTel semconv |
 
 So the line above arrives looking like this:
 
@@ -180,7 +248,7 @@ with `|` after it:
 
 ```logql
 {service_name="opnsense-exporter", service_instance_id="opnsense"}
-  | subsystem="firewall" | action="block" | src_scope="remote"
+  | opnsense_subsystem="firewall" | action="block" | src_scope="remote"
 ```
 
 A real record from a live box, as it lands:
@@ -193,21 +261,22 @@ A real record from a live box, as it lands:
   "rule_id": "7ed3ec06-ecf8-4ca8-9a2a-bb346967850f",
   "src_ip": "3.123.217.248", "src_scope": "remote",
   "dst_ip": "81.187.237.31", "dst_scope": "self",
-  "protocol": "icmp", "ip_version": "4",
-  "source": "syslog", "subsystem": "firewall"
+  "protocol": "icmp", "ip_version": "4", "network_type": "ipv4",
+  "opnsense_source": "syslog", "opnsense_subsystem": "firewall"
 }
 ```
 
 Useful starting points:
 
 ```logql
-{service_name="opnsense-exporter"} | subsystem="audit"                    # who changed the config
-{service_name="opnsense-exporter"} | subsystem="auth" | auth_result="failed"
-{service_name="opnsense-exporter"} | subsystem="firewall" | action="block" | dst_scope="self"
+{service_name="opnsense-exporter"} | opnsense_subsystem="audit"                    # who changed the config
+{service_name="opnsense-exporter"} | opnsense_subsystem="auth" | auth_result="failed"
+{service_name="opnsense-exporter"} | opnsense_subsystem="firewall" | action="block" | dst_scope="self"
 {service_name="opnsense-exporter"} | program="filterlog" | src_hostname="WINSRV"
 ```
 
-`source` and `subsystem` are the two attributes worth *indexing* if you query them
+`opnsense.source` and `opnsense.subsystem` (namespaced so they can never collide
+with a Loki-reserved key) are the two attributes worth *indexing* if you query them
 often. Both ride on the OTLP resource for exactly that reason, and both can be
 promoted to real Loki labels with a one-off tenant config change — see the
 [Loki label model](log-shipping.md#loki-label-model). Nothing else should be

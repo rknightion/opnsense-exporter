@@ -128,10 +128,10 @@ Loki 3.x instance.
 ### Community pipelines for `filterlog`
 
 `filterlog` is a headerless CSV line keyed by rule **hash**, not a label — see
-[Known gaps](#known-gaps-of-the-native-path) below. If you want labelled rule
-names and interface names out of the raw CSV without waiting on the exporter's
-firewall log source (#229), two community pipelines already do this parsing
-in Alloy/Promtail stages:
+[Known gaps](#known-gaps-of-the-native-path) below. The exporter's
+[syslog receiver](syslog-receiver.md) resolves the rule hash to a rule name and the
+interface to its OS name for you; if you want that labelling on the **native** path
+instead, two community pipelines do the same parsing in Alloy/Promtail stages:
 
 - [rudimartinsen.com's OPNsense filterlog pipeline](https://www.rudimartinsen.com/)
 - [roguesecurity.dev's filterlog + GeoIP pipeline](https://roguesecurity.dev/)

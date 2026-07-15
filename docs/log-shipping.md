@@ -13,8 +13,8 @@ and logs are gated by separate flags and neither turns the other on.
 
 High-cardinality event data (IP addresses, ports, Suricata SIDs, domains) is
 shipped as log **body** and Loki **structured metadata** — never as a metric and
-never as a Loki label. The only labels are the resource identity, plus `source` and
-`subsystem` if you choose to promote them (see [Loki label model](#loki-label-model)).
+never as a Loki label. The only labels are the resource identity, plus `opnsense.source`
+and `opnsense.subsystem` if you choose to promote them (see [Loki label model](#loki-label-model)).
 
 !!! note "Sources are added incrementally"
     Enabling `--logs.enabled` starts the pipeline, but nothing is shipped until at
@@ -52,9 +52,13 @@ the exporter enriches them from the API. It supersedes the old `firewall` and
 firewall will happily push. See **[Syslog receiver](syslog-receiver.md)** for the
 full setup, including the target you must configure on the firewall.
 
-In short: it listens for RFC5424 or RFC3164 syslog over UDP and/or TCP (port 5514
-by default), parses `filterlog` records into structured fields, ships every other
-program as a generic record, and enriches everything it can from the OPNsense API.
+In short: it listens for RFC5424 or RFC3164 syslog over UDP, TCP and/or TLS (port
+5514 by default), parses `filterlog` records into structured fields, ships every
+other program as a generic record, and enriches everything it can from the OPNsense
+API. It also **derives low-cardinality Prometheus counters** (`opnsense_log_events_*`)
+from what it parses, and can optionally **sample** high-volume raw lines away once
+their metric is counted — see [Derived metrics and sampling](syslog-receiver.md#derived-metrics-and-sampling)
+and [TLS transport](syslog-receiver.md#tls-transport-optional).
 
 **Enrichment** is the reason this lives in the exporter rather than a generic
 syslog collector. The exporter already holds an authenticated API client, so it
@@ -117,7 +121,8 @@ collector's alert count is a floor against).
   accepted, bounded loss: the source ships one synthetic gap record
   (`event=gap_detected` structured metadata, `warn` severity, a JSON body
   naming the gap bounds) instead of silently dropping it, so the loss is
-  visible and queryable in Loki (e.g. `{source="ids"} | json | event="gap_detected"`).
+  visible and queryable in Loki (e.g.
+  `{service_name="opnsense-exporter"} | opnsense_source="ids" | json | event="gap_detected"`).
 - **First poll**: with no prior cursor (fresh start, or `--logs.state-file` not
   set/empty/corrupt), the whole initial window ships as a startup catch-up
   rather than being silently skipped or treated as a gap.
@@ -192,8 +197,8 @@ enable this source.
 Loki structured metadata for this source: `client`, `domain`, `qtype`,
 `action`, `query_source`, `rcode`, `blocklist`, `dnssec_status`. (Unbound's own
 `source` field — where the answer came from — is deliberately mapped to the
-`query_source` attribute rather than `source`, which is reserved for this
-pipeline's own `source` stamp; see [Loki label model](#loki-label-model).) The
+`query_source` attribute rather than a bare `source`, to keep it clear of this
+pipeline's own `opnsense.source` stamp; see [Loki label model](#loki-label-model).) The
 log body is a compact JSON encoding of the full row, including fields not
 promoted to structured metadata (`family`, `resolve_time_ms`, `ttl`, `policy`).
 
@@ -211,12 +216,15 @@ them, whatever the tenant config says. Cardinality discipline therefore falls ou
 | `service.name` | `--otlp.service-name` | **yes** |
 | `service.instance.id` | the resolved instance label | **yes** |
 | `service.version` | the exporter version | no |
-| `source` | `syslog`, `unbound`, `ids`, `crowdsec` | no — opt in below |
-| `subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (~22) | no — opt in below |
+| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec` | no — opt in below |
+| `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (~22) | no — opt in below |
 
 `service.name` and `service.instance.id` are indexed because they are on Loki's
 [default promotion list][otlp-defaults]. No host or SDK resource detectors are
-attached, so nothing else can leak into that set.
+attached, so nothing else can leak into that set. The two custom keys are namespaced
+(`opnsense.source`, `opnsense.subsystem`) so they can never collide with a
+semconv/Loki-reserved key; Loki mangles the dot, so in LogQL they read
+`opnsense_source` and `opnsense_subsystem`.
 
 **On the record** (structured metadata — never promotable): everything else.
 `program`, `action`, `rule_id`, `rule_description`, IPs, ports, MACs, hostnames,
@@ -224,17 +232,16 @@ SIDs, `tcp_*`, `dhcp_*`, `auth_*`. Note `program` in particular: it comes off th
 syslog wire and *any* process on the firewall can pick its own tag with `logger(1)`,
 so it is deliberately kept where it cannot become a label.
 
-### Promoting `source` and `subsystem` (optional)
+### Promoting `opnsense.source` and `opnsense.subsystem` (optional)
 
 Out of the box both land in structured metadata, so you filter with `|`:
 
 ```logql
-{service_name="opnsense-exporter"} | subsystem="firewall" | action="block"
+{service_name="opnsense-exporter"} | opnsense_subsystem="firewall" | action="block"
 ```
 
 That scans every chunk for the instance. To turn it into a stream selection instead,
-promote the two on the Loki side — self-hosted, or on Grafana Cloud via a support
-request:
+promote the two on the Loki side. Self-hosted, put this in the Loki config:
 
 ```yaml
 limits_config:
@@ -243,24 +250,31 @@ limits_config:
       # leave ignore_defaults false, or service.name stops being a label too
       attributes_config:
         - action: index_label
-          attributes: [source, subsystem]
+          attributes: [opnsense.subsystem, opnsense.source]
 ```
+
+On **Grafana Cloud** there is no config file, but the same `otlp_config` is settable
+per-tenant through the [OTLP config self-serve API][gc-selfserve] — `PUT` the
+`resource_attributes` block above to
+`/loki/api/v1/config/limits/otlp_config` with your Loki write token. No support ticket.
+The change is queued and can take a couple of business days to apply.
 
 Then the same query becomes:
 
 ```logql
-{service_name="opnsense-exporter", subsystem="firewall"} | action="block"
+{service_name="opnsense-exporter", opnsense_subsystem="firewall"} | action="block"
 ```
 
 Cost: at most `sources × subsystems` ≈ **26 streams** per instance, because both are
 closed sets defined in the exporter's own code. A promoted attribute moves out of
-structured metadata and into the label, so `| subsystem=…` stops matching once
-`{subsystem=…}` starts — switch your queries when you switch the config.
+structured metadata and into the label, so `| opnsense_subsystem=…` stops matching once
+`{opnsense_subsystem=…}` starts — switch your queries when you switch the config.
 
 Do **not** promote anything else. `src_ip` as a label is one stream per address: the
 classic Loki cardinality footgun, and the reason the exporter keeps it out of reach.
 
 [otlp-defaults]: https://grafana.com/docs/loki/latest/send-data/otel/
+[gc-selfserve]: https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve-api/#otlp-label-mappings
 
 ## Delivery semantics
 
