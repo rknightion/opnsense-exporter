@@ -93,6 +93,22 @@ API path silently loses.
 event stream, not flow accounting. Do not read event counts as byte/connection
 totals.
 
+### Zenarmor (`--logs.zenarmor.enabled`)
+
+The exporter can also pose as an Elasticsearch node and receive Zenarmor's reporting
+data directly — a second **push** source, and the first genuinely high-volume one. See
+**[Zenarmor receiver](zenarmor-receiver.md)** for the full setup, including the GUI
+fields on the Zenarmor side and a warning about a similarly-named but destructive
+install-time Elasticsearch option you must not confuse this with.
+
+In short: it accepts Elasticsearch `_bulk` writes on port 9200 by default, ships all six
+of Zenarmor's reporting families (`conn`, `dns`, `tls`, `http`, `alert`, `sip` — mapped
+to `opnsense.subsystem` values `flow`, `dns`, `tls`, `web`, `ids`, `voip`) as enriched
+OTLP logs, and derives a Prometheus counter (`opnsense_log_events_zenarmor_total`) from
+every document. Volume is substantial — measured at ~39 docs/sec on a live box, ~4–6
+GB/day of raw JSON — so prefer cutting families in Zenarmor's own `indexes` setting over
+`--logs.zenarmor.families`: data cut at the source never crosses the wire.
+
 ### IDS (Suricata EVE alerts)
 
 `--logs.ids.enabled` (off by default; requires `--logs.enabled`) ships full
@@ -216,8 +232,9 @@ them, whatever the tenant config says. Cardinality discipline therefore falls ou
 | `service.name` | `--otlp.service-name` | **yes** |
 | `service.instance.id` | the resolved instance label | **yes** |
 | `service.version` | the exporter version | no |
-| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec` | no — opt in below |
+| `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor` | no — opt in below |
 | `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (~22) | no — opt in below |
+| `opnsense.action` | `pass`, `block` | no — opt in below |
 
 `service.name` and `service.instance.id` are indexed because they are on Loki's
 [default promotion list][otlp-defaults]. No host or SDK resource detectors are

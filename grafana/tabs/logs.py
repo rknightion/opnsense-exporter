@@ -85,22 +85,38 @@ def build(b: Builder):
     # and enrichment quietly going stale.
 
     parse_errors = b.ts(
-        "Syslog Parse Errors (rate)",
-        [(f'sum by (stage) (rate({sel("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))', "{{stage}}")],
+        "Parse Errors (rate)",
+        [(f'sum by (source, stage) (rate({sel("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
+          "{{source}} / {{stage}}")],
         unit="short",
-        desc="opnsense_exporter_logs_parse_errors_total: received lines that failed to parse, "
-             "by stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a malformed pf "
-             "log row). These records are NOT dropped -- they ship with their raw body -- so this "
-             "counts fidelity lost, not data lost.",
+        desc="opnsense_exporter_logs_parse_errors_total: received records that failed to parse, "
+             "by source and stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a "
+             "malformed pf log row; document = a Zenarmor document that would not decode). These "
+             "records are NOT dropped -- they ship with their raw body -- so this counts fidelity "
+             "lost, not data lost.",
     )
     rejected = b.ts(
-        "Syslog Input Rejected (rate)",
-        [(f'sum by (reason) (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))', "{{reason}}")],
+        "Input Rejected (rate)",
+        [(f'sum by (source, reason) (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
+          "{{source}} / {{reason}}")],
         unit="short",
-        desc="opnsense_exporter_logs_rejected_total: syslog input refused before parsing. "
-             "reason=peer means a sender outside --logs.syslog.allowed-peers (check this first "
-             "when the receiver appears to receive nothing); reason=oversized means a frame "
-             "beyond the 64KB message cap.",
+        desc="opnsense_exporter_logs_rejected_total: receiver input refused before parsing. "
+             "reason=peer means a sender outside the allowlist (check this first when a receiver "
+             "appears to receive nothing); oversized means a frame beyond the message cap; "
+             "unhandled_endpoint means Zenarmor called an Elasticsearch route the receiver does "
+             "not implement -- a sustained rate there means its client changed and the receiver "
+             "needs teaching.",
+    )
+    resource_capped = b.ts(
+        "Resource Label Cap Hit (rate)",
+        [(f'rate({sel("opnsense_exporter_logs_resource_capped_total")}[{RATE}])', "capped")],
+        unit="short",
+        desc="opnsense_exporter_logs_resource_capped_total: records shipped with their "
+             "opnsense.* index labels DROPPED because the distinct (source, subsystem, action) "
+             "count exceeded the sink's resource cap. The records still arrive, so throughput "
+             "looks fine -- but every label-scoped query silently under-reports, and which "
+             "records lose their labels depends on arrival order. Any non-zero value means the "
+             "closed label sets grew beyond budget and needs investigating.",
     )
     enrich_misses = b.ts(
         "Enrichment Misses (rate)",
@@ -130,10 +146,46 @@ def build(b: Builder):
              "the API is failing and enrichment is silently going stale.",
     )
 
+    # --- Zenarmor receiver (--logs.zenarmor.enabled, #276) --------------------
+    # Zenarmor streams ~2.5-3.3M records/day, so the derived counters below are how
+    # you ask rate questions without querying the raw stream -- and they outlive
+    # Loki's retention, which the log lines do not.
+
+    zen_events = b.ts(
+        "Zenarmor Events (rate)",
+        [(f'sum by (family, action) (rate({sel("opnsense_log_events_zenarmor_total")}[{RATE}]))',
+          "{{family}} / {{action}}")],
+        unit="short",
+        desc="opnsense_log_events_zenarmor_total: Zenarmor records per second by family "
+             "(flow/dns/tls/web/ids/voip) and disposition. action=block is what the firewall "
+             "stopped. An action with no value is a record that stated no verdict -- it is not "
+             "counted as a pass, deliberately.",
+    )
+    zen_blocked = b.ts(
+        "Zenarmor Blocks by Category (rate)",
+        [(f'sum by (category) (rate({sel("opnsense_log_events_zenarmor_total")}{{action="block"}}[{RATE}]))',
+          "{{category}}")],
+        unit="short",
+        desc="Blocked Zenarmor records per second by category -- application category for "
+             "flows, domain category for DNS/TLS, alert category for threats. Application "
+             "names, IPs and hostnames are never labels; query the log stream for those.",
+    )
+    zen_bulk = b.ts(
+        "Zenarmor Bulk Ingest (rate)",
+        [(f'rate({sel("opnsense_exporter_logs_zenarmor_bulk_requests_total")}[{RATE}])', "requests/s"),
+         (f'rate({sel("opnsense_exporter_logs_zenarmor_bulk_bytes_total")}[{RATE}])', "bytes/s")],
+        unit="short",
+        desc="Elasticsearch _bulk requests and bytes Zenarmor pushes per second. Bytes is the "
+             "one to watch: a live box measured ~70 KB/s sustained, which is ~4-6 GB/day of raw "
+             "JSON into Loki. Cut families at the Zenarmor end (its own indexes setting) rather "
+             "than here -- data cut at source never crosses the wire.",
+    )
+
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),
         b.row("Queue & Errors", [queue_len, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [cursor_lag, possible_gaps], present="has_logs"),
-        b.row("Syslog Receiver", [parse_errors, rejected], present="has_logs"),
+        b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
+        b.row("Zenarmor", [zen_events, zen_blocked, zen_bulk], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
     ])

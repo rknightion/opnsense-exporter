@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 764
+- **Total metrics:** 765
 - **Gauges:** 526
-- **Counters:** 238
+- **Counters:** 239
 
 ## General
 
@@ -595,6 +595,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_log_events_dhcp_total | Counter | action, interface, server | DHCP lease events derived from received syslog, by action, interface and server. | --exporter.disable-log-events |
 | opnsense_log_events_audit_total | Counter | event, result | Audit/config events derived from received syslog, by event and result. | --exporter.disable-log-events |
 | opnsense_log_events_ids_total | Counter | event_type, action, category, severity | Suricata IDS/IPS events derived from received syslog, by event type, action, category and severity. Signature text and SID are never labels. | --exporter.disable-log-events |
+| opnsense_log_events_zenarmor_total | Counter | family, action, category, interface, rcode, severity, status_class | Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do not apply to a family are empty. Zenarmor ships ~2.5-3.3M records/day, so these counters are the way to ask rate questions without querying the raw log stream — and they outlive Loki's retention. Application name, IPs, ports, hostnames, MACs, JA3, session/community/connection ids, URIs and DNS queries are never labels; they stay as structured metadata on the record. | --exporter.disable-log-events |
 
 ## Mbuf
 

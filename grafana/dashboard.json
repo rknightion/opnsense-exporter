@@ -68400,8 +68400,8 @@
         "kind": "Panel",
         "spec": {
           "id": 629,
-          "title": "Syslog Parse Errors (rate)",
-          "description": "opnsense_exporter_logs_parse_errors_total: received lines that failed to parse, by stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a malformed pf log row). These records are NOT dropped -- they ship with their raw body -- so this counts fidelity lost, not data lost.",
+          "title": "Parse Errors (rate)",
+          "description": "opnsense_exporter_logs_parse_errors_total: received records that failed to parse, by source and stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a malformed pf log row; document = a Zenarmor document that would not decode). These records are NOT dropped -- they ship with their raw body -- so this counts fidelity lost, not data lost.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -68424,9 +68424,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (stage) (rate(opnsense_exporter_logs_parse_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "sum by (source, stage) (rate(opnsense_exporter_logs_parse_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
-                        "legendFormat": "{{stage}}",
+                        "legendFormat": "{{source}} / {{stage}}",
                         "instant": false,
                         "range": true
                       }
@@ -68489,8 +68489,8 @@
         "kind": "Panel",
         "spec": {
           "id": 630,
-          "title": "Syslog Input Rejected (rate)",
-          "description": "opnsense_exporter_logs_rejected_total: syslog input refused before parsing. reason=peer means a sender outside --logs.syslog.allowed-peers (check this first when the receiver appears to receive nothing); reason=oversized means a frame beyond the 64KB message cap.",
+          "title": "Input Rejected (rate)",
+          "description": "opnsense_exporter_logs_rejected_total: receiver input refused before parsing. reason=peer means a sender outside the allowlist (check this first when a receiver appears to receive nothing); oversized means a frame beyond the message cap; unhandled_endpoint means Zenarmor called an Elasticsearch route the receiver does not implement -- a sustained rate there means its client changed and the receiver needs teaching.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -68513,9 +68513,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (reason) (rate(opnsense_exporter_logs_rejected_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "sum by (source, reason) (rate(opnsense_exporter_logs_rejected_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
-                        "legendFormat": "{{reason}}",
+                        "legendFormat": "{{source}} / {{reason}}",
                         "instant": false,
                         "range": true
                       }
@@ -68578,6 +68578,95 @@
         "kind": "Panel",
         "spec": {
           "id": 631,
+          "title": "Resource Label Cap Hit (rate)",
+          "description": "opnsense_exporter_logs_resource_capped_total: records shipped with their opnsense.* index labels DROPPED because the distinct (source, subsystem, action) count exceeded the sink's resource cap. The records still arrive, so throughput looks fine -- but every label-scoped query silently under-reports, and which records lose their labels depends on arrival order. Any non-zero value means the closed label sets grew beyond budget and needs investigating.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_exporter_logs_resource_capped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "A",
+                        "legendFormat": "capped",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-632": {
+        "kind": "Panel",
+        "spec": {
+          "id": 632,
           "title": "Enrichment Misses (rate)",
           "description": "opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by table. A sustained rate on table=rules means the rule snapshot is behind the box's ruleset, so log lines are shipping without a rule description. A miss triggers a rate-limited refresh, so a brief spike after a ruleset change is normal.",
           "links": [],
@@ -68663,10 +68752,10 @@
           }
         }
       },
-      "panel-632": {
+      "panel-633": {
         "kind": "Panel",
         "spec": {
-          "id": 632,
+          "id": 633,
           "title": "Enrichment Refresh Errors (rate)",
           "description": "opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes against the OPNsense API, by table. The previous snapshot keeps serving, so records still ship -- enriched with increasingly stale data. Pair with the staleness panel.",
           "links": [],
@@ -68752,10 +68841,10 @@
           }
         }
       },
-      "panel-633": {
+      "panel-634": {
         "kind": "Panel",
         "spec": {
-          "id": 633,
+          "id": 634,
           "title": "Enrichment Staleness",
           "description": "Seconds since each enrichment table last refreshed successfully, derived from opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every 60s, interfaces every 5m, leases every 60s -- a value climbing far past those means the API is failing and enrichment is silently going stale.",
           "links": [],
@@ -68841,10 +68930,303 @@
           }
         }
       },
-      "panel-634": {
+      "panel-635": {
         "kind": "Panel",
         "spec": {
-          "id": 634,
+          "id": 635,
+          "title": "Zenarmor Events (rate)",
+          "description": "opnsense_log_events_zenarmor_total: Zenarmor records per second by family (flow/dns/tls/web/ids/voip) and disposition. action=block is what the firewall stopped. An action with no value is a record that stated no verdict -- it is not counted as a pass, deliberately.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (family, action) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{family}} / {{action}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-636": {
+        "kind": "Panel",
+        "spec": {
+          "id": 636,
+          "title": "Zenarmor Blocks by Category (rate)",
+          "description": "Blocked Zenarmor records per second by category -- application category for flows, domain category for DNS/TLS, alert category for threats. Application names, IPs and hostnames are never labels; query the log stream for those.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (category) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}{action=\"block\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{category}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-637": {
+        "kind": "Panel",
+        "spec": {
+          "id": 637,
+          "title": "Zenarmor Bulk Ingest (rate)",
+          "description": "Elasticsearch _bulk requests and bytes Zenarmor pushes per second. Bytes is the one to watch: a live box measured ~70 KB/s sustained, which is ~4-6 GB/day of raw JSON into Loki. Cut families at the Zenarmor end (its own indexes setting) rather than here -- data cut at source never crosses the wire.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_exporter_logs_zenarmor_bulk_requests_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "A",
+                        "legendFormat": "requests/s",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "B",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "rate(opnsense_exporter_logs_zenarmor_bulk_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])",
+                        "refId": "B",
+                        "legendFormat": "bytes/s",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-638": {
+        "kind": "Panel",
+        "spec": {
+          "id": 638,
           "title": "Scrape Success (opnsense_up)",
           "description": "",
           "links": [],
@@ -68942,10 +69324,10 @@
           }
         }
       },
-      "panel-635": {
+      "panel-639": {
         "kind": "Panel",
         "spec": {
-          "id": 635,
+          "id": 639,
           "title": "Scrape & Skip Rate",
           "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
           "links": [],
@@ -69057,10 +69439,10 @@
           }
         }
       },
-      "panel-636": {
+      "panel-640": {
         "kind": "Panel",
         "spec": {
-          "id": 636,
+          "id": 640,
           "title": "Endpoint Errors (rate)",
           "description": "",
           "links": [],
@@ -69146,10 +69528,10 @@
           }
         }
       },
-      "panel-637": {
+      "panel-641": {
         "kind": "Panel",
         "spec": {
-          "id": 637,
+          "id": 641,
           "title": "Endpoint Errors (total)",
           "description": "",
           "links": [],
@@ -69250,10 +69632,10 @@
           }
         }
       },
-      "panel-638": {
+      "panel-642": {
         "kind": "Panel",
         "spec": {
-          "id": 638,
+          "id": 642,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -69357,10 +69739,10 @@
           }
         }
       },
-      "panel-639": {
+      "panel-643": {
         "kind": "Panel",
         "spec": {
-          "id": 639,
+          "id": 643,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -69465,10 +69847,10 @@
           }
         }
       },
-      "panel-640": {
+      "panel-644": {
         "kind": "Panel",
         "spec": {
-          "id": 640,
+          "id": 644,
           "title": "Collector Scrape Duration",
           "description": "",
           "links": [],
@@ -69554,10 +69936,10 @@
           }
         }
       },
-      "panel-641": {
+      "panel-645": {
         "kind": "Panel",
         "spec": {
-          "id": 641,
+          "id": 645,
           "title": "Collector Scrape Success",
           "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
           "links": [],
@@ -69662,10 +70044,10 @@
           }
         }
       },
-      "panel-642": {
+      "panel-646": {
         "kind": "Panel",
         "spec": {
-          "id": 642,
+          "id": 646,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -69751,10 +70133,10 @@
           }
         }
       },
-      "panel-643": {
+      "panel-647": {
         "kind": "Panel",
         "spec": {
-          "id": 643,
+          "id": 647,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -69866,10 +70248,10 @@
           }
         }
       },
-      "panel-644": {
+      "panel-648": {
         "kind": "Panel",
         "spec": {
-          "id": 644,
+          "id": 648,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -69955,10 +70337,10 @@
           }
         }
       },
-      "panel-645": {
+      "panel-649": {
         "kind": "Panel",
         "spec": {
-          "id": 645,
+          "id": 649,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -70044,10 +70426,10 @@
           }
         }
       },
-      "panel-646": {
+      "panel-650": {
         "kind": "Panel",
         "spec": {
-          "id": 646,
+          "id": 650,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -70133,10 +70515,10 @@
           }
         }
       },
-      "panel-647": {
+      "panel-651": {
         "kind": "Panel",
         "spec": {
-          "id": 647,
+          "id": 651,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -70218,10 +70600,10 @@
           }
         }
       },
-      "panel-648": {
+      "panel-652": {
         "kind": "Panel",
         "spec": {
-          "id": 648,
+          "id": 652,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -70307,10 +70689,10 @@
           }
         }
       },
-      "panel-649": {
+      "panel-653": {
         "kind": "Panel",
         "spec": {
-          "id": 649,
+          "id": 653,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -83733,7 +84115,7 @@
                     {
                       "kind": "RowsLayoutRow",
                       "spec": {
-                        "title": "Syslog Receiver",
+                        "title": "Receivers",
                         "collapse": false,
                         "layout": {
                           "kind": "GridLayout",
@@ -83762,6 +84144,89 @@
                                   "element": {
                                     "kind": "ElementReference",
                                     "name": "panel-630"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 8,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-631"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "conditionalRendering": {
+                          "kind": "ConditionalRenderingGroup",
+                          "spec": {
+                            "visibility": "show",
+                            "condition": "and",
+                            "items": [
+                              {
+                                "kind": "ConditionalRenderingVariable",
+                                "spec": {
+                                  "variable": "has_logs",
+                                  "operator": "matches",
+                                  "value": ".+"
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "kind": "RowsLayoutRow",
+                      "spec": {
+                        "title": "Zenarmor",
+                        "collapse": false,
+                        "layout": {
+                          "kind": "GridLayout",
+                          "spec": {
+                            "items": [
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-635"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 12,
+                                  "y": 0,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-636"
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "GridLayoutItem",
+                                "spec": {
+                                  "x": 0,
+                                  "y": 8,
+                                  "width": 12,
+                                  "height": 8,
+                                  "element": {
+                                    "kind": "ElementReference",
+                                    "name": "panel-637"
                                   }
                                 }
                               }
@@ -83805,7 +84270,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-631"
+                                    "name": "panel-632"
                                   }
                                 }
                               },
@@ -83818,7 +84283,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-632"
+                                    "name": "panel-633"
                                   }
                                 }
                               },
@@ -83831,7 +84296,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-633"
+                                    "name": "panel-634"
                                   }
                                 }
                               }
@@ -83888,7 +84353,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-634"
+                                    "name": "panel-638"
                                   }
                                 }
                               },
@@ -83901,7 +84366,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-635"
+                                    "name": "panel-639"
                                   }
                                 }
                               },
@@ -83914,7 +84379,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-636"
+                                    "name": "panel-640"
                                   }
                                 }
                               },
@@ -83927,7 +84392,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-637"
+                                    "name": "panel-641"
                                   }
                                 }
                               }
@@ -83954,7 +84419,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-640"
+                                    "name": "panel-644"
                                   }
                                 }
                               },
@@ -83967,7 +84432,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-641"
+                                    "name": "panel-645"
                                   }
                                 }
                               }
@@ -83994,7 +84459,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-645"
+                                    "name": "panel-649"
                                   }
                                 }
                               },
@@ -84007,7 +84472,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-646"
+                                    "name": "panel-650"
                                   }
                                 }
                               }
@@ -84034,7 +84499,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-647"
+                                    "name": "panel-651"
                                   }
                                 }
                               },
@@ -84047,7 +84512,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-648"
+                                    "name": "panel-652"
                                   }
                                 }
                               },
@@ -84060,7 +84525,7 @@
                                   "height": 7,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-649"
+                                    "name": "panel-653"
                                   }
                                 }
                               }
@@ -84087,7 +84552,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-638"
+                                    "name": "panel-642"
                                   }
                                 }
                               },
@@ -84100,7 +84565,7 @@
                                   "height": 8,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-639"
+                                    "name": "panel-643"
                                   }
                                 }
                               }
@@ -84127,7 +84592,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-642"
+                                    "name": "panel-646"
                                   }
                                 }
                               },
@@ -84140,7 +84605,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-643"
+                                    "name": "panel-647"
                                   }
                                 }
                               },
@@ -84153,7 +84618,7 @@
                                   "height": 6,
                                   "element": {
                                     "kind": "ElementReference",
-                                    "name": "panel-644"
+                                    "name": "panel-648"
                                   }
                                 }
                               }
