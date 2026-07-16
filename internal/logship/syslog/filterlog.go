@@ -98,6 +98,11 @@ func parseFilterlog(env Envelope, snap *enrich.Snapshot, miss func(table string)
 	}
 
 	set("action", action)
+	// The normalised, promotable twin of `action`. set() skips empty values, so an
+	// unrecognised verb (a NAT/rdr line — `action` is a raw wire passthrough) leaves
+	// the label unset rather than being guessed into a security verdict. The raw
+	// `action` above stays put: sample.go and derive.go both read it.
+	set(logship.AttrAction, logship.MapFilterlogAction(action))
 	set("direction", dir)
 	set("interface", iface)
 	set("ip.version", f[fIPVersion])

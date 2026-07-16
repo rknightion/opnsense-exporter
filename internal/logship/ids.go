@@ -182,19 +182,29 @@ func (s *idsSource) gapRecord(from, to time.Time) Record {
 // a label, always structured metadata. Body is the compact JSON of the full
 // raw eve record (set by opnsense.FetchIDSAlertRecords), not a reconstruction.
 func idsRecordFromAlert(r opnsense.IDSAlertRecord) Record {
+	attrs := map[string]string{
+		"alert_sid":    strconv.Itoa(r.AlertSID),
+		"alert_action": r.AlertAction,
+		"src_ip":       r.SrcIP,
+		"dest_ip":      r.DestIP,
+		"in_iface":     r.InIface,
+		"proto":        r.Proto,
+		"signature":    r.Signature,
+	}
+	// Normalised disposition, same EVE vocabulary as the syslog suricata parser, so
+	// the same mapper. This lane is easy to forget — it is mutually exclusive with
+	// the syslog receiver (options/logs_syslog.go refuses both), so it looks like
+	// dead ground. It is not: --logs.ids.enabled + --logs.zenarmor.enabled is a
+	// legal pair, and without this the IDS lane's blocks would be missing from
+	// {opnsense_action="block"} while zenarmor's were present.
+	if a := MapSuricataAction(r.AlertAction); a != "" {
+		attrs[AttrAction] = a
+	}
 	return Record{
-		Timestamp: r.Timestamp,
-		Body:      r.Body,
-		Severity:  idsSeverity(r.AlertAction),
-		Attributes: map[string]string{
-			"alert_sid":    strconv.Itoa(r.AlertSID),
-			"alert_action": r.AlertAction,
-			"src_ip":       r.SrcIP,
-			"dest_ip":      r.DestIP,
-			"in_iface":     r.InIface,
-			"proto":        r.Proto,
-			"signature":    r.Signature,
-		},
+		Timestamp:  r.Timestamp,
+		Body:       r.Body,
+		Severity:   idsSeverity(r.AlertAction),
+		Attributes: attrs,
 	}
 }
 

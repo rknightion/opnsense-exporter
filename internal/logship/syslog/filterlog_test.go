@@ -2,6 +2,7 @@ package syslog
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -312,5 +313,45 @@ func TestParseFilterlog_ShortTailStillShips(t *testing.T) {
 	assertNoAttr(t, rec, "tcp.window")
 	if got := attr(t, rec, "protocol"); got != "tcp" {
 		t.Errorf("protocol = %q, want tcp", got)
+	}
+}
+
+// The normalised opnsense.action must be set alongside — never instead of — the
+// raw wire verb, which sample.go:25 and derive.go both read.
+func TestParseFilterlog_SetsAttrAction(t *testing.T) {
+	blocked, ok := parseFilterlog(testEnvelope(realIPv6ICMPLine), nil, nil)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	assertAttr(t, blocked, logship.AttrAction, logship.ActionBlock)
+	if got := attr(t, blocked, "action"); got != "block" {
+		t.Errorf(`raw "action" = %q, want "block"; sample.go:25 and derive.go:71 depend on it surviving`, got)
+	}
+
+	passed, ok := parseFilterlog(testEnvelope(realIPv4TCPLine), nil, nil)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	assertAttr(t, passed, logship.AttrAction, logship.ActionPass)
+	if got := attr(t, passed, "action"); got != "pass" {
+		t.Errorf(`raw "action" = %q, want "pass"`, got)
+	}
+}
+
+// filterlog's action is a raw wire passthrough, so an unrecognised verb (NAT/rdr)
+// must leave opnsense.action ABSENT rather than be guessed into "block".
+func TestParseFilterlog_UnknownActionLeavesAttrActionUnset(t *testing.T) {
+	// Same shape as realIPv4UDPLine but with pf's rdr verb in the action field.
+	rdrLine := strings.Replace(realIPv4UDPLine, ",match,pass,out,", ",match,rdr,out,", 1)
+	rec, ok := parseFilterlog(testEnvelope(rdrLine), nil, nil)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if v, present := rec.Attributes[logship.AttrAction]; present {
+		t.Errorf("opnsense.action = %q for an unrecognised verb; it must be absent, not guessed", v)
+	}
+	// The raw verb still ships.
+	if got := attr(t, rec, "action"); got != "rdr" {
+		t.Errorf(`raw "action" = %q, want "rdr"`, got)
 	}
 }

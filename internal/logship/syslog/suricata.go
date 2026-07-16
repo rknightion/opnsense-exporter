@@ -66,6 +66,7 @@ func parseSuricata(env Envelope, snap *enrich.Snapshot, _ func(table string)) (l
 	if e.Alert != nil {
 		set("signature", e.Alert.Signature)
 		set("alert_action", e.Alert.Action)
+		set(logship.AttrAction, logship.MapSuricataAction(e.Alert.Action))
 		set("alert_category", e.Alert.Category)
 		if e.Alert.SignatureID != 0 {
 			set("alert_sid", strconv.Itoa(e.Alert.SignatureID))

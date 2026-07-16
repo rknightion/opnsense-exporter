@@ -251,20 +251,28 @@ func unboundRecord(row opnsense.UnboundSearchQueryRow) Record {
 		body = []byte(`{"error":"unbound log line encode failure"}`)
 	}
 
+	attrs := map[string]string{
+		"client":        row.Client.String(),
+		"domain":        row.Domain.String(),
+		"qtype":         row.Type.String(),
+		"action":        row.Action.String(),
+		"query_source":  row.Source.String(),
+		"rcode":         row.RCode.String(),
+		"blocklist":     row.Blocklist.String(),
+		"dnssec_status": row.DNSSECStatus.String(),
+	}
+	// Normalised, promotable disposition. The resolver's own Capitalised verb
+	// (Pass/Block/Drop) stays in `action` above — Drop vs Block is a real
+	// distinction here, and it survives as structured metadata.
+	if a := MapUnboundAction(row.Action.String()); a != "" {
+		attrs[AttrAction] = a
+	}
+
 	return Record{
-		Timestamp: time.Unix(int64(row.Time.Int()), 0).UTC(),
-		Body:      string(body),
-		Attributes: map[string]string{
-			"client":        row.Client.String(),
-			"domain":        row.Domain.String(),
-			"qtype":         row.Type.String(),
-			"action":        row.Action.String(),
-			"query_source":  row.Source.String(),
-			"rcode":         row.RCode.String(),
-			"blocklist":     row.Blocklist.String(),
-			"dnssec_status": row.DNSSECStatus.String(),
-		},
-		Severity: unboundSeverity(row.Action.String()),
+		Timestamp:  time.Unix(int64(row.Time.Int()), 0).UTC(),
+		Body:       string(body),
+		Attributes: attrs,
+		Severity:   unboundSeverity(row.Action.String()),
 	}
 }
 

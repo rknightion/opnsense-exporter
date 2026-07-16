@@ -343,3 +343,36 @@ func TestRowFingerprint_FallsBackToContentWhenUUIDNull(t *testing.T) {
 		t.Fatal("expected a different domain to change the fingerprint")
 	}
 }
+
+// The resolver's Capitalised verb maps onto the normalised opnsense.action while
+// the raw one survives — Drop vs Block is a real distinction and stays queryable.
+func TestUnboundRecord_SetsAttrAction(t *testing.T) {
+	for _, tc := range []struct{ action, want string }{
+		{"Pass", ActionPass},
+		{"Block", ActionBlock},
+		{"Drop", ActionBlock},
+	} {
+		var row opnsense.UnboundSearchQueryRow
+		body := `{"time":1,"client":"10.0.0.6","domain":"x.test.","type":"A","action":"` + tc.action + `","source":"Cache","rcode":"NOERROR"}`
+		if err := json.Unmarshal([]byte(body), &row); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		rec := unboundRecord(row)
+		if got := rec.Attributes[AttrAction]; got != tc.want {
+			t.Errorf("action %q -> opnsense.action %q, want %q", tc.action, got, tc.want)
+		}
+		if got := rec.Attributes["action"]; got != tc.action {
+			t.Errorf("raw action = %q, want %q (the Drop/Block distinction must survive)", got, tc.action)
+		}
+	}
+}
+
+func TestUnboundRecord_UnknownActionLeavesAttrActionUnset(t *testing.T) {
+	var row opnsense.UnboundSearchQueryRow
+	if err := json.Unmarshal([]byte(`{"time":1,"action":"Reshuffled"}`), &row); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if v, present := unboundRecord(row).Attributes[AttrAction]; present {
+		t.Errorf("opnsense.action = %q for an unknown verb; must be absent", v)
+	}
+}

@@ -241,6 +241,14 @@ func buildCrowdSecDecisionRecord(d opnsense.CrowdSecDecision) Record {
 		"value":         d.ScopeValue,
 		"decision_type": d.Action,
 	}
+	// A CrowdSec DECISION is an enforcement — ban, captcha, throttle — so whatever
+	// its type, the disposition is "we stopped it". The specific verb stays in
+	// decision_type above. Only the decision builder sets this: an ALERT
+	// (buildCrowdSecAlertRecord) is an observation with no disposition of its own,
+	// so it deliberately carries no opnsense.action.
+	if d.Action != "" {
+		attrs[AttrAction] = ActionBlock
+	}
 	if d.Country != "" {
 		attrs["country"] = d.Country
 	}

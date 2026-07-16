@@ -329,3 +329,26 @@ func TestIDSSource_LoadState_CorruptDataResetsToFreshStart(t *testing.T) {
 		t.Fatal("corrupt state must not set a cursor")
 	}
 }
+
+// The ids poll lane is mutually exclusive with the syslog receiver, but NOT with
+// the zenarmor receiver — so its blocks must carry opnsense.action too, or
+// {opnsense_action="block"} would silently omit them.
+func TestIDSRecordFromAlert_SetsAttrAction(t *testing.T) {
+	blocked := idsRecordFromAlert(opnsense.IDSAlertRecord{AlertAction: "blocked", Body: "{}"})
+	if got := blocked.Attributes[AttrAction]; got != ActionBlock {
+		t.Errorf("opnsense.action = %q, want %q", got, ActionBlock)
+	}
+	if got := blocked.Attributes["alert_action"]; got != "blocked" {
+		t.Errorf("raw alert_action = %q, want blocked", got)
+	}
+
+	allowed := idsRecordFromAlert(opnsense.IDSAlertRecord{AlertAction: "allowed", Body: "{}"})
+	if got := allowed.Attributes[AttrAction]; got != ActionPass {
+		t.Errorf("opnsense.action = %q, want %q", got, ActionPass)
+	}
+
+	unknown := idsRecordFromAlert(opnsense.IDSAlertRecord{AlertAction: "", Body: "{}"})
+	if v, present := unknown.Attributes[AttrAction]; present {
+		t.Errorf("opnsense.action = %q for an empty action; must be absent", v)
+	}
+}

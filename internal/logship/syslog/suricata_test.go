@@ -68,3 +68,23 @@ func TestParseSuricata_MalformedJSONShipsRaw(t *testing.T) {
 		t.Error("the raw body must survive")
 	}
 }
+
+func TestParseSuricata_SetsAttrAction(t *testing.T) {
+	env := Envelope{Program: "suricata", Message: `{"event_type":"alert","alert":{"action":"blocked","signature":"x","category":"c","signature_id":1}}`}
+	rec, ok := parseSuricata(env, nil, nil)
+	if !ok {
+		t.Fatal("parse failed")
+	}
+	if got := rec.Attributes[logship.AttrAction]; got != logship.ActionBlock {
+		t.Errorf("opnsense.action = %q, want %q", got, logship.ActionBlock)
+	}
+	if got := rec.Attributes["alert_action"]; got != "blocked" {
+		t.Errorf("raw alert_action = %q, want blocked", got)
+	}
+
+	envAllowed := Envelope{Program: "suricata", Message: `{"event_type":"alert","alert":{"action":"allowed","signature":"x"}}`}
+	recAllowed, _ := parseSuricata(envAllowed, nil, nil)
+	if got := recAllowed.Attributes[logship.AttrAction]; got != logship.ActionPass {
+		t.Errorf("opnsense.action = %q, want %q", got, logship.ActionPass)
+	}
+}

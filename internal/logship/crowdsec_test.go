@@ -238,3 +238,25 @@ var (
 	_ StatefulSource = (*crowdsecSource)(nil)
 	_ IntervalSource = (*crowdsecSource)(nil)
 )
+
+// A CrowdSec decision is an enforcement whatever its type, so it maps to block;
+// the specific verb stays in decision_type.
+func TestBuildCrowdSecDecisionRecord_SetsAttrAction(t *testing.T) {
+	rec := buildCrowdSecDecisionRecord(opnsense.CrowdSecDecision{ID: 1, Scenario: "s", Action: "ban"})
+	if got := rec.Attributes[AttrAction]; got != ActionBlock {
+		t.Errorf("opnsense.action = %q, want %q", got, ActionBlock)
+	}
+	if got := rec.Attributes["decision_type"]; got != "ban" {
+		t.Errorf("decision_type = %q, want ban", got)
+	}
+
+	// captcha is still an enforcement.
+	if got := buildCrowdSecDecisionRecord(opnsense.CrowdSecDecision{Action: "captcha"}).Attributes[AttrAction]; got != ActionBlock {
+		t.Errorf("captcha -> opnsense.action %q, want %q", got, ActionBlock)
+	}
+
+	// No decision type at all -> no disposition to claim.
+	if v, present := buildCrowdSecDecisionRecord(opnsense.CrowdSecDecision{}).Attributes[AttrAction]; present {
+		t.Errorf("opnsense.action = %q with no decision type; must be absent", v)
+	}
+}
