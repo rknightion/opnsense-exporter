@@ -46,7 +46,7 @@ type source struct {
 	l      *Listener
 	cache  *enrich.Cache
 	miss   func(table string)
-	m      *Metrics
+	m      *logship.ReceiverMetrics
 	filter *Filter
 	log    *slog.Logger
 
@@ -78,7 +78,7 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 	s := &source{
 		cache:       cache,
 		miss:        d.Miss,
-		m:           NewMetrics(d.Registerer),
+		m:           logship.NewReceiverMetrics(d.Registerer, sourceName),
 		filter:      NewFilter(cfg.IncludePrograms, cfg.ExcludePrograms, cfg.MinSeverity, cfg.HasMinSeverity),
 		log:         d.Logger,
 		sink:        sink,
@@ -120,7 +120,7 @@ func (s *source) handle(line []byte, _ netip.Addr) {
 		// NEVER drop: an unparseable line still ships, with its raw bytes as the body.
 		// A receiver that silently discards what it cannot understand is worse than
 		// useless — it looks healthy while losing data.
-		s.m.parseError("envelope")
+		s.m.ParseError("envelope")
 		emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
 		return
 	}
@@ -129,7 +129,7 @@ func (s *source) handle(line []byte, _ netip.Addr) {
 	// BEFORE the (more expensive) body parse and enrichment -- no point enriching a
 	// record we are about to drop.
 	if s.filter.Enabled() && !s.filter.Allow(env.Program, env.Severity) {
-		s.m.reject("filtered")
+		s.m.Reject("filtered")
 		return
 	}
 	rec := BuildRecord(env, s.cache.Load(), s.miss)
@@ -142,7 +142,7 @@ func (s *source) handle(line []byte, _ netip.Addr) {
 	if s.sample {
 		if !sampleKeep(env.Program, rec, counted) {
 			// The line's metric is already counted; drop the raw line to save log volume.
-			s.m.reject("sampled")
+			s.m.Reject("sampled")
 			return
 		}
 		// Mark surviving derived-program lines so consumers know the stream is sampled

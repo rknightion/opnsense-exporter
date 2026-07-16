@@ -11,6 +11,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
 // defaultMaxConns caps concurrent TCP connections. Syslog is an unauthenticated
@@ -42,7 +44,7 @@ type Config struct {
 type Listener struct {
 	cfg    Config
 	handle func(line []byte, peer netip.Addr)
-	m      *Metrics
+	m      *logship.ReceiverMetrics
 	log    *slog.Logger
 
 	udp   *net.UDPConn
@@ -59,7 +61,7 @@ type Listener struct {
 
 // NewListener builds a listener. The handler is fixed at construction; there is no
 // SetHandler. m may be nil.
-func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *Metrics, log *slog.Logger) *Listener {
+func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logship.ReceiverMetrics, log *slog.Logger) *Listener {
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = defaultMaxConns
 	}
@@ -269,7 +271,7 @@ func (l *Listener) serveUDP() {
 		}
 		peer := addr.Addr().Unmap()
 		if !l.allowed(peer) {
-			l.m.reject("peer")
+			l.m.Reject("peer")
 			continue
 		}
 		if n == 0 {
@@ -298,7 +300,7 @@ func (l *Listener) serveTCP() {
 
 		peer := peerAddr(conn.RemoteAddr())
 		if !l.allowed(peer) {
-			l.m.reject("peer")
+			l.m.Reject("peer")
 			_ = conn.Close()
 			continue
 		}
@@ -343,7 +345,7 @@ func (l *Listener) serveTLS() {
 
 		peer := peerAddr(conn.RemoteAddr())
 		if !l.allowed(peer) {
-			l.m.reject("peer")
+			l.m.Reject("peer")
 			_ = conn.Close()
 			continue
 		}
@@ -390,7 +392,7 @@ func (l *Listener) serveConn(conn net.Conn, peer netip.Addr) {
 		}
 	}()
 
-	fs := newFrameSplitter(func() { l.m.reject("oversized") })
+	fs := newFrameSplitter(func() { l.m.Reject("oversized") })
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 4096), maxMessageBytes)
 	sc.Split(fs.splitFunc())
@@ -400,7 +402,7 @@ func (l *Listener) serveConn(conn net.Conn, peer netip.Addr) {
 	// as oversized, exactly like an over-cap frame: same condition, same reason.
 	asm := newAssembler(
 		func(msg []byte) { l.handle(msg, peer) },
-		func() { l.m.reject("oversized") },
+		func() { l.m.Reject("oversized") },
 	)
 	defer asm.close() // the last message has no successor to complete it
 

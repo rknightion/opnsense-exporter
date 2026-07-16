@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
 // counterValue reads a single counter sample out of reg. (prometheus/testutil is
@@ -75,7 +77,7 @@ func (c *collector) await(t *testing.T, d time.Duration) string {
 
 // startListener binds on loopback ephemeral ports and runs the listener until the
 // test finishes.
-func startListener(t *testing.T, cfg Config, h func([]byte, netip.Addr), m *Metrics) *Listener {
+func startListener(t *testing.T, cfg Config, h func([]byte, netip.Addr), m *logship.ReceiverMetrics) *Listener {
 	t.Helper()
 	if cfg.UDPAddr == "" && cfg.TCPAddr == "" {
 		cfg.UDPAddr = "127.0.0.1:0"
@@ -147,7 +149,7 @@ func TestListenerTCPDelivers(t *testing.T) {
 
 func TestListenerOversizedTCPFrameCountedAndConnectionSurvives(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := NewMetrics(reg)
+	m := logship.NewReceiverMetrics(reg, "syslog")
 	c := newCollector()
 	l := startListener(t, Config{TCPAddr: "127.0.0.1:0"}, c.handle, m)
 
@@ -171,7 +173,7 @@ func TestListenerOversizedTCPFrameCountedAndConnectionSurvives(t *testing.T) {
 
 func TestListenerPeerAllowlistUDP(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := NewMetrics(reg)
+	m := logship.NewReceiverMetrics(reg, "syslog")
 	c := newCollector()
 	// 192.0.2.0/24 is TEST-NET-1: loopback is definitely outside it.
 	l := startListener(t, Config{
@@ -207,7 +209,7 @@ func TestListenerPeerAllowlistUDP(t *testing.T) {
 
 func TestListenerPeerAllowlistTCP(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := NewMetrics(reg)
+	m := logship.NewReceiverMetrics(reg, "syslog")
 	c := newCollector()
 	l := startListener(t, Config{
 		TCPAddr:      "127.0.0.1:0",
@@ -289,7 +291,7 @@ func TestListenerRunReturnsOnContextCancel(t *testing.T) {
 	}
 }
 
-// The listener must tolerate a nil *Metrics (tests, and any caller that opts out).
+// The listener must tolerate a nil *logship.ReceiverMetrics (tests, and any caller that opts out).
 func TestListenerNilMetrics(t *testing.T) {
 	c := newCollector()
 	l := startListener(t, Config{
@@ -340,9 +342,9 @@ func TestListenerMaxConns(t *testing.T) {
 }
 
 func TestMetricsNilSafe(t *testing.T) {
-	var m *Metrics
-	m.parseError("envelope") // must not panic
-	m.reject("peer")
+	var m *logship.ReceiverMetrics
+	m.ParseError("envelope") // must not panic
+	m.Reject("peer")
 }
 
 // End-to-end #262: a multi-line message written to a real newline-framed TCP

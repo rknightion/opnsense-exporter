@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
 // selfSignedCert mints an ephemeral in-test CA/leaf (one and the same — it is its
@@ -106,7 +108,7 @@ func TestListenerTLSDelivers(t *testing.T) {
 
 func TestListenerTLSPeerAllowlist(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := NewMetrics(reg)
+	m := logship.NewReceiverMetrics(reg, "syslog")
 	c := newCollector()
 	cert, _, srvCert := selfSignedCert(t, "syslog-server")
 	// 192.0.2.0/24 is TEST-NET-1: loopback is definitely outside it.
