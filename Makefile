@@ -5,7 +5,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # renovate: datasource=go depName=github.com/google/go-licenses
 GO_LICENSES_VERSION ?= v2.0.1
 # renovate: datasource=go depName=github.com/anchore/syft
-SYFT_VERSION        ?= v1.46.0
+SYFT_VERSION        ?= v1.47.0
 
 TOOLS_DIR := $(CURDIR)/.tools
 export PATH := $(TOOLS_DIR):$(PATH)
