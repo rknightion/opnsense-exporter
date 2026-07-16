@@ -6,6 +6,19 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
+// attrHTTPResponseStatusCode is the attribute key haproxy.go's httplog parser
+// writes the response status under, and the one observeDerived reads to bucket it
+// into a status_class label.
+//
+// It is a shared const, not two string literals, because it WAS two string
+// literals: the parser wrote "http.response.status_code" while the deriver read
+// "http.status_code", so the lookup always missed and the status_class label was
+// empty for every HAProxy line from the day it shipped. It failed in the safe
+// direction — an empty label is a case the metric legitimately supports — so the
+// counter looked plausible rather than broken. One const means the two sides
+// cannot drift again.
+const attrHTTPResponseStatusCode = "http.response.status_code"
+
 // family is the derived metric family a syslog program belongs to (#258).
 // familyUnknown is the zero value: a program not in programFamily below.
 type family int
@@ -82,7 +95,7 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		if event == "" {
 			return false
 		}
-		sink.ObserveHAProxy(event, attrs["haproxy.backend"], attrs["haproxy.server"], attrs["haproxy.state"], statusClass(attrs["http.status_code"]))
+		sink.ObserveHAProxy(event, attrs["haproxy.backend"], attrs["haproxy.server"], attrs["haproxy.state"], statusClass(attrs[attrHTTPResponseStatusCode]))
 		return true
 
 	case familySSHD:

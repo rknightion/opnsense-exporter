@@ -206,7 +206,7 @@ func parseHAProxyHTTPLog(env Envelope, msg string, snap *enrich.Snapshot) (logsh
 	set("haproxy.timers.tc_ms", m[9])
 	set("haproxy.timers.tr_ms", m[10])
 	set("haproxy.timers.tt_ms", m[11])
-	set("http.response.status_code", m[12])
+	set(attrHTTPResponseStatusCode, m[12])
 	set("bytes_read", m[13])
 	// m[14]/m[15] are the captured request/response cookies ("-" when none) — not
 	// modelled: they are a per-site config knob and can carry session identifiers.

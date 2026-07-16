@@ -168,10 +168,10 @@ func TestObserveDerived_HAProxy(t *testing.T) {
 		{
 			name: "http log with status class",
 			attrs: map[string]string{
-				"haproxy.event":    "http_request",
-				"haproxy.backend":  "bk-heavy",
-				"haproxy.server":   "heavy-1",
-				"http.status_code": "404",
+				"haproxy.event":            "http_request",
+				"haproxy.backend":          "bk-heavy",
+				"haproxy.server":           "heavy-1",
+				attrHTTPResponseStatusCode: "404",
 			},
 			wantCounted: true,
 			wantArgs:    []string{"http_request", "bk-heavy", "heavy-1", "", "4xx"},
@@ -398,6 +398,34 @@ func TestObserveDerived_IDS(t *testing.T) {
 			}
 			assertArgs(t, sink.calls[0].args, tt.wantArgs)
 		})
+	}
+}
+
+// TestObserveDerived_HAProxy_EndToEnd is the regression test for #277: derive.go
+// must read the same attribute key haproxy.go's httplog parser actually writes.
+// It drives a real HAProxy httplog line through parseHAProxy (reusing the fixture
+// and helpers from haproxy_test.go) rather than hand-building the attribute map,
+// so the parser and the deriver are checked against each other, not each checked
+// against itself — which is exactly what let the two keys drift apart before.
+func TestObserveDerived_HAProxy_EndToEnd(t *testing.T) {
+	const line = `172.16.9.99:34000 [14/Jul/2026:12:00:00.123] ft-heavy bk-heavy/heavy-1 12/0/1/9/22 503 1234 - - ---- 5/3/2/1/0 0/0 "GET /api/health HTTP/1.1"`
+
+	rec, ok, _ := parseHAProxyLine(t, line, 6)
+	if !ok {
+		t.Fatal("parseHAProxy returned ok=false for an httplog line")
+	}
+
+	sink := &fakeSink{}
+	counted := observeDerived(sink, "haproxy", rec.Attributes)
+	if !counted {
+		t.Fatal("observeDerived did not count a well-formed httplog record")
+	}
+	if len(sink.calls) != 1 || sink.calls[0].method != "haproxy" {
+		t.Fatalf("calls = %+v, want one haproxy call", sink.calls)
+	}
+	const wantStatusClass = "5xx" // line carries status 503
+	if got := sink.calls[0].args[4]; got != wantStatusClass {
+		t.Errorf("status_class = %q, want %q", got, wantStatusClass)
 	}
 }
 
