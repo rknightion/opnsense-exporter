@@ -37,6 +37,7 @@ opnsense-exporter \
 | `--logs.zenarmor.allowed-peers` | *(any)* | CIDR allowlist of permitted senders. The ingress is otherwise unauthenticated. |
 | `--logs.zenarmor.families` | *(all)* | Comma-separated subset to ship: `conn,dns,tls,http,alert,sip` (Zenarmor's own index tokens; the exporter's own family names `flow,dns,tls,web,ids,voip` are also accepted). Prefer cutting families in Zenarmor's own `indexes` setting instead — see [Volume](#volume) below. |
 | `--logs.zenarmor.enrich` | `true` | Enrich records from the OPNsense API. |
+| `--logs.zenarmor.drop-self-traffic` | `true` | Drop records describing the receiver's own ingest connection — see [Self-traffic](#self-traffic) below. |
 | `--logs.zenarmor.auth-user` / `--logs.zenarmor.auth-password` | *(none)* | Require HTTP basic auth on the ingress. Zenarmor's streaming config has matching username/password fields. |
 | `--logs.zenarmor.tls-cert-file` / `--logs.zenarmor.tls-key-file` | *(none)* | Serve HTTPS instead of plain HTTP. Zenarmor's URI field accepts `https://`. |
 
@@ -102,6 +103,47 @@ If you need to cut this down, **do it in Zenarmor's own `indexes` setting, not w
 `--logs.zenarmor.families`.** Data cut at the Zenarmor end never crosses the wire; data
 cut with `--logs.zenarmor.families` still costs the bandwidth and CPU to receive and
 parse before being discarded.
+
+## Self-traffic
+
+Zenarmor inspects traffic on the link the receiver listens on, so it reports **the
+connection that is delivering its own records to us** — and without intervention the
+exporter ships a record describing the connection that carried the record.
+
+It converges rather than runs away: one `_bulk` request carries many records, so it
+settles at roughly one extra record per request instead of multiplying. But it is not
+small. Measured on a live box within an hour of enabling the receiver:
+
+| Family | To the receiver's port | Share of that family |
+| --- | --- | --- |
+| `web` | 6,194 | **76%** |
+| `flow` | 5,808 | 11% |
+| **combined** | **~12,000/hour** | **~15% of all records** |
+
+That is roughly 600–900 MB/day describing nothing but our own ingest, and it makes the
+`web` family useless: its top hosts and URIs are all `POST /zenarmor_<uuid>_<family>_write/_bulk`.
+
+**`--logs.zenarmor.drop-self-traffic` is on by default**, because such a record is an
+artefact of measuring rather than traffic — and
+`opnsense_exporter_logs_zenarmor_bulk_requests_total` already describes that same
+connection properly. Dropped records are counted as
+`opnsense_exporter_logs_rejected_total{source="zenarmor", reason="self_traffic"}`, so
+the drop is visible rather than silent, and they are **not** counted into
+`opnsense_log_events_zenarmor_total` — our own bookkeeping does not belong in the
+figures you read as your network.
+
+A record is recognised as ours when it was **sent by the peer currently streaming to
+us** and is **addressed to the port the receiver bound**. The destination address is
+deliberately never compared: a containerised exporter binds `0.0.0.0:9200` inside its
+own network namespace and cannot know the host address the firewall actually dialled
+(the record says `10.0.0.5`; the container is `172.17.0.2`), so an address-based filter
+would silently never fire in the deployment nearly everyone runs.
+
+The one case this gets wrong, stated rather than hidden: if the **firewall itself**
+opens a connection to a real Elasticsearch on the same port number the receiver listens
+on, that record is dropped too. It requires the Zenarmor host specifically as the source
+— a LAN client talking to an Elasticsearch is unaffected — and
+`--logs.zenarmor.drop-self-traffic=false` turns the behaviour off entirely.
 
 ## Label model
 

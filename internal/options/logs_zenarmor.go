@@ -56,6 +56,21 @@ var (
 			"of which conn is ~61%.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_FAMILIES").Default("").String()
 
+	// Default ON. Zenarmor inspects the link the receiver listens on, so it reports
+	// the _bulk connection delivering its own records — measured at ~15% of all
+	// volume on a live box, and 76% of the web family (#278). That is an artefact of
+	// measuring rather than traffic, and logs_zenarmor_bulk_requests_total already
+	// describes the same connection properly, so the default is to drop it.
+	logsZenarmorDropSelfTraffic = kingpin.Flag(
+		"logs.zenarmor.drop-self-traffic",
+		"Drop records describing the exporter's own Elasticsearch ingest connection — Zenarmor "+
+			"inspects the link the receiver listens on, so it reports the very connection "+
+			"delivering its records (roughly 15% of all volume, and most of the http family). "+
+			"Matched on the streaming peer's address plus the receiver's listen port, never the "+
+			"destination address, which a containerised exporter cannot know. Set false to keep "+
+			"them; drops are counted as logs_rejected_total{reason=\"self_traffic\"}.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_DROP_SELF_TRAFFIC").Default("true").Bool()
+
 	logsZenarmorEnrich = kingpin.Flag(
 		"logs.zenarmor.enrich",
 		"Enrich received Zenarmor records from the OPNsense API: friendly interface names, "+
@@ -90,13 +105,14 @@ var (
 // zenarmor.Config field for field; the two are deliberately separate types so the
 // receiver package does not import options for its own config.
 type ZenarmorConfig struct {
-	Addr         string
-	AllowedPeers []netip.Prefix
-	Families     []string // empty = all
-	Enrich       bool
-	AuthUser     string
-	AuthPassword string
-	TLSConfig    *tls.Config
+	Addr            string
+	AllowedPeers    []netip.Prefix
+	Families        []string // empty = all
+	Enrich          bool
+	AuthUser        string
+	AuthPassword    string
+	TLSConfig       *tls.Config
+	DropSelfTraffic bool
 }
 
 // LogsZenarmorEnabled reports whether the receiver is switched on, without
@@ -118,10 +134,11 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 		return nil, false, nil
 	}
 	cfg := &ZenarmorConfig{
-		Addr:         strings.TrimSpace(*logsZenarmorListenHTTP),
-		Enrich:       *logsZenarmorEnrich,
-		AuthUser:     strings.TrimSpace(*logsZenarmorAuthUser),
-		AuthPassword: *logsZenarmorAuthPassword,
+		Addr:            strings.TrimSpace(*logsZenarmorListenHTTP),
+		Enrich:          *logsZenarmorEnrich,
+		AuthUser:        strings.TrimSpace(*logsZenarmorAuthUser),
+		AuthPassword:    *logsZenarmorAuthPassword,
+		DropSelfTraffic: *logsZenarmorDropSelfTraffic,
 	}
 	if cfg.Addr == "" {
 		return nil, false, fmt.Errorf(

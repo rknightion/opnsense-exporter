@@ -85,7 +85,7 @@ func gzipString(t *testing.T, s string) string {
 
 func newTestServer(t *testing.T, m *metrics) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte) {}, m))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, m))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -287,7 +287,7 @@ func TestUnhandledEndpointIsCountedNotFatal(t *testing.T) {
 func TestBulkRoutesDocsToCallback(t *testing.T) {
 	var gotIdx []string
 	var gotDocs []string
-	srv := httptest.NewServer(newServer(Config{}, func(i string, d []byte) {
+	srv := httptest.NewServer(newServer(Config{}, func(i string, d []byte, _ netip.Addr) {
 		gotIdx = append(gotIdx, i)
 		gotDocs = append(gotDocs, string(d))
 	}, nil))
@@ -348,7 +348,7 @@ func TestBulkRoutesDocsToCallback(t *testing.T) {
 // _index is the only source of truth.
 func TestBulkBareEndpointUsesActionIndex(t *testing.T) {
 	var gotIdx []string
-	srv := httptest.NewServer(newServer(Config{}, func(i string, _ []byte) {
+	srv := httptest.NewServer(newServer(Config{}, func(i string, _ []byte, _ netip.Addr) {
 		gotIdx = append(gotIdx, i)
 	}, nil))
 	defer srv.Close()
@@ -370,7 +370,7 @@ func TestBulkBareEndpointUsesActionIndex(t *testing.T) {
 // line and silently lose a document.
 func TestBulkDeleteActionHasNoSourceLine(t *testing.T) {
 	var gotDocs []string
-	srv := httptest.NewServer(newServer(Config{}, func(_ string, d []byte) {
+	srv := httptest.NewServer(newServer(Config{}, func(_ string, d []byte, _ netip.Addr) {
 		gotDocs = append(gotDocs, string(d))
 	}, nil))
 	defer srv.Close()
@@ -402,7 +402,7 @@ func TestBulkDeleteActionHasNoSourceLine(t *testing.T) {
 
 func TestBulkCountsRequestsAndBytes(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte) {}, newMetrics(reg)))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, newMetrics(reg)))
 	defer srv.Close()
 
 	body := `{"index":{"_index":"zenarmor_0000000000_abc_conn_write"}}
@@ -511,7 +511,7 @@ func TestBasicAuth(t *testing.T) {
 
 func TestGzippedBulkBodyIsDecompressed(t *testing.T) {
 	var gotDocs []string
-	srv := httptest.NewServer(newServer(Config{}, func(_ string, d []byte) {
+	srv := httptest.NewServer(newServer(Config{}, func(_ string, d []byte, _ netip.Addr) {
 		gotDocs = append(gotDocs, string(d))
 	}, nil))
 	defer srv.Close()
@@ -538,7 +538,7 @@ func TestGzippedBulkBodyIsDecompressed(t *testing.T) {
 func TestBrokenGzipIsRejectedNotParsed(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	called := 0
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte) { called++ }, newMetrics(reg)))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg)))
 	defer srv.Close()
 
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/_bulk", strings.NewReader("this is not gzip")) //nolint:noctx // test client

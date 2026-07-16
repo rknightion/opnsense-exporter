@@ -60,7 +60,8 @@ type Config struct {
 	Addr string
 	// AllowedPeers, when non-empty, is an allowlist: any other peer is refused and
 	// counted.
-	AllowedPeers []netip.Prefix
+	AllowedPeers    []netip.Prefix
+	DropSelfTraffic bool
 	// Families restricts which reporting families are shipped. Empty means all.
 	Families []string
 	// Enrich turns the per-record snapshot lookups on.
@@ -76,7 +77,7 @@ type Config struct {
 // in a _bulk write, on the request goroutine.
 type server struct {
 	cfg    Config
-	onBulk func(index string, doc []byte)
+	onBulk func(index string, doc []byte, peer netip.Addr)
 	m      *metrics
 
 	mu      sync.RWMutex
@@ -84,10 +85,24 @@ type server struct {
 }
 
 // newServer builds the ES handler. onBulk receives every document Zenarmor writes,
-// paired with the index it was addressed to; it MUST NOT retain doc, which points
-// into the request body. m may be nil.
-func newServer(cfg Config, onBulk func(index string, doc []byte), m *metrics) http.Handler {
+// paired with the index it was addressed to and the address that sent it; it MUST
+// NOT retain doc, which points into the request body. m may be nil.
+//
+// peer is the sender's real address, which is what lets the receiver recognise a
+// record describing its own ingest connection (see self.go). It is the zero Addr if
+// RemoteAddr cannot be parsed — never a guess.
+func newServer(cfg Config, onBulk func(index string, doc []byte, peer netip.Addr), m *metrics) http.Handler {
 	return &server{cfg: cfg, onBulk: onBulk, m: m, indices: make(map[string]bool)}
+}
+
+// remotePeer resolves the request's sender address, unmapped so a v4-mapped v6 peer
+// compares equal to the plain v4 address Zenarmor writes into its records.
+func remotePeer(r *http.Request) netip.Addr {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return netip.Addr{}
+	}
+	return ap.Addr().Unmap()
 }
 
 // esHeaders stamps the product header on every single response. Without it the
@@ -317,7 +332,7 @@ func (s *server) handleBulk(w http.ResponseWriter, r *http.Request, path string)
 			var doc []byte
 			doc, rest = nextLine(rest)
 			if len(doc) > 0 && s.onBulk != nil {
-				s.onBulk(idx, doc)
+				s.onBulk(idx, doc, remotePeer(r))
 			}
 		}
 		if id == "" {

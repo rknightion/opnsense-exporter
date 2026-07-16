@@ -100,12 +100,14 @@ def build(b: Builder):
         [(f'sum by (source, reason) (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
-        desc="opnsense_exporter_logs_rejected_total: receiver input refused before parsing. "
+        desc="opnsense_exporter_logs_rejected_total: receiver input refused rather than shipped. "
              "reason=peer means a sender outside the allowlist (check this first when a receiver "
              "appears to receive nothing); oversized means a frame beyond the message cap; "
              "unhandled_endpoint means Zenarmor called an Elasticsearch route the receiver does "
              "not implement -- a sustained rate there means its client changed and the receiver "
-             "needs teaching.",
+             "needs teaching. self_traffic is Zenarmor reporting the connection that delivers its "
+             "own records to us (#278): a steady rate is normal and healthy, roughly one per bulk "
+             "request, and is the feature working.",
     )
     resource_capped = b.ts(
         "Resource Label Cap Hit (rate)",

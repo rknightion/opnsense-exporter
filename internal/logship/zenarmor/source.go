@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -44,13 +45,14 @@ func loadConfig() (Config, bool, error) {
 		return Config{}, false, err
 	}
 	return Config{
-		Addr:         oc.Addr,
-		AllowedPeers: oc.AllowedPeers,
-		Families:     oc.Families,
-		Enrich:       oc.Enrich,
-		AuthUser:     oc.AuthUser,
-		AuthPassword: oc.AuthPassword,
-		TLSConfig:    oc.TLSConfig,
+		Addr:            oc.Addr,
+		AllowedPeers:    oc.AllowedPeers,
+		Families:        oc.Families,
+		Enrich:          oc.Enrich,
+		AuthUser:        oc.AuthUser,
+		AuthPassword:    oc.AuthPassword,
+		TLSConfig:       oc.TLSConfig,
+		DropSelfTraffic: oc.DropSelfTraffic,
 	}, true, nil
 }
 
@@ -70,6 +72,11 @@ type zenarmorSource struct {
 	sink     logship.MetricSink
 	m        *metrics
 	families map[string]bool // nil = all
+
+	// listenPort is read from the BOUND listener, not from cfg.Addr: a configured
+	// ":0" resolves to a real port only once bound, and that is the port records
+	// about our own ingest are addressed to. 0 disables the self-traffic filter.
+	listenPort int
 
 	// emit is set by Run before the server that reads it exists. Goroutine creation is
 	// a happens-before edge, so a plain field is safe: no request can observe it
@@ -104,6 +111,7 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 		return nil, fmt.Errorf("zenarmor: listen %s: %w", cfg.Addr, err)
 	}
 	s.ln = ln
+	s.listenPort = listenPortOf(ln.Addr().String())
 	s.srv = &http.Server{
 		Handler:           newServer(cfg, s.handleDoc, s.m),
 		TLSConfig:         cfg.TLSConfig,
@@ -149,8 +157,10 @@ func (s *zenarmorSource) Run(ctx context.Context, emit func(logship.Record)) err
 	return s.srv.Shutdown(sctx)
 }
 
-// handleDoc is invoked per document in a bulk write, on the request goroutine.
-func (s *zenarmorSource) handleDoc(index string, doc []byte) {
+// handleDoc is invoked per document in a bulk write, on the request goroutine. peer
+// is the address that sent the bulk, used to recognise records describing our own
+// ingest connection.
+func (s *zenarmorSource) handleDoc(index string, doc []byte, peer netip.Addr) {
 	emit := s.emit
 	if emit == nil {
 		return // not running yet; drop rather than panic
@@ -174,6 +184,16 @@ func (s *zenarmorSource) handleDoc(index string, doc []byte) {
 		// Counted, never dropped: the record ships below with its raw body.
 		s.m.parseError("document")
 	}
+
+	// Before observeDerived, deliberately: a record about our own ingest connection
+	// is an artefact of measuring, not traffic, so counting it would put our own
+	// bookkeeping into the figures the operator reads as their network. The reject
+	// counter still fires, so the drop is visible rather than silent (#278).
+	if s.cfg.DropSelfTraffic && isSelfTraffic(rec.Attributes, peer, s.listenPort) {
+		s.m.reject("self_traffic")
+		return
+	}
+
 	observeDerived(s.sink, family, rec.Attributes)
 	emit(rec)
 }

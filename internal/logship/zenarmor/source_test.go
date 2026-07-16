@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -125,7 +126,7 @@ func TestSourceRejectsUnknownFamily(t *testing.T) {
 
 	emitted := 0
 	s.emit = func(logship.Record) { emitted++ }
-	s.handleDoc("some_other_system_index", []byte(`{"a":1}`))
+	s.handleDoc("some_other_system_index", []byte(`{"a":1}`), netip.Addr{})
 
 	if emitted != 0 {
 		t.Errorf("emitted %d records for an unknown index, want 0", emitted)
@@ -146,7 +147,7 @@ func TestSourceCountsParseErrorButStillEmits(t *testing.T) {
 
 	var got []logship.Record
 	s.emit = func(r logship.Record) { got = append(got, r) }
-	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(`not json`))
+	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(`not json`), netip.Addr{})
 
 	if len(got) != 1 {
 		t.Fatalf("emitted %d records, want 1 — a parse error must never drop the record", len(got))
@@ -168,7 +169,7 @@ func TestSourceHandleDocBeforeRunDoesNotPanic(t *testing.T) {
 		t.Fatalf("newSource: %v", err)
 	}
 	t.Cleanup(func() { _ = s.ln.Close() })
-	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(connDoc))
+	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(connDoc), netip.Addr{})
 }
 
 func TestSourceFamilyFilter(t *testing.T) {
@@ -181,8 +182,8 @@ func TestSourceFamilyFilter(t *testing.T) {
 
 	var got []string
 	s.emit = func(r logship.Record) { got = append(got, r.Attributes[logship.AttrSubsystem]) }
-	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(connDoc))
-	s.handleDoc("zenarmor_0000000000_abc_dns_write", []byte(dnsDoc))
+	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(connDoc), netip.Addr{})
+	s.handleDoc("zenarmor_0000000000_abc_dns_write", []byte(dnsDoc), netip.Addr{})
 
 	if len(got) != 1 || got[0] != "dns" {
 		t.Errorf("shipped %v, want only [dns]", got)
@@ -234,7 +235,7 @@ func TestSourceEnrichDisabled(t *testing.T) {
 
 	var got logship.Record
 	s.emit = func(r logship.Record) { got = r }
-	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(connDoc))
+	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(connDoc), netip.Addr{})
 
 	if v, ok := got.Attributes["src.scope"]; ok {
 		t.Errorf("src.scope = %q was set with enrichment disabled", v)
