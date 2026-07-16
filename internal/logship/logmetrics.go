@@ -35,15 +35,48 @@ type MetricSink interface {
 	// ObserveIDS counts one Suricata EVE line. sid and signature text are NEVER
 	// passed — only the bounded category/action/severity/event_type.
 	ObserveIDS(eventType, action, category, severity string)
+	// ObserveZenarmor counts one Zenarmor record, from any of its families.
+	ObserveZenarmor(o ZenarmorObservation)
+}
+
+// ZenarmorObservation carries one Zenarmor record's bounded dimensions. Fields
+// that do not apply to a family stay empty.
+//
+// A struct rather than positional arguments, unlike its siblings above: this
+// carries seven dimensions, and a seven-string call site is precisely where a
+// dimension goes missing unnoticed.
+//
+// Zenarmor is the highest-cardinality data this exporter touches — every field
+// here is a deliberate, bounded choice. app_name, any IP or port, hostname, MAC,
+// ja3, session_id, community_id, conn_uuid, signature, uri, query and server_name
+// are NOT represented and must never be added; they stay as structured metadata on
+// the shipped record, where they are still filterable and cannot become labels.
+type ZenarmorObservation struct {
+	// Family is the record's subsystem: flow | dns | tls | web | ids | voip.
+	Family string
+	// Action is the normalised AttrAction: pass | block | "" (unknown).
+	Action string
+	// Category is the family's bounded classification: app_category (flow),
+	// domain_category (dns, tls) or alert_category (ids).
+	Category string
+	// Interface is the friendly interface name.
+	Interface string
+	// RCode is the DNS response code. dns only.
+	RCode string
+	// Severity is the alert severity. ids only.
+	Severity string
+	// StatusClass buckets the HTTP status: 2xx | 3xx | 4xx | 5xx. web only.
+	StatusClass string
 }
 
 // NopMetricSink is the MetricSink used when metric derivation is disabled (the
 // log_events collector is turned off). Every method is a no-op.
 type NopMetricSink struct{}
 
-func (NopMetricSink) ObserveFirewall(_, _, _, _, _ string) {}
-func (NopMetricSink) ObserveHAProxy(_, _, _, _, _ string)  {}
-func (NopMetricSink) ObserveSSHD(_, _, _ string)           {}
-func (NopMetricSink) ObserveDHCP(_, _, _ string)           {}
-func (NopMetricSink) ObserveAudit(_, _ string)             {}
-func (NopMetricSink) ObserveIDS(_, _, _, _ string)         {}
+func (NopMetricSink) ObserveFirewall(_, _, _, _, _ string)  {}
+func (NopMetricSink) ObserveHAProxy(_, _, _, _, _ string)   {}
+func (NopMetricSink) ObserveSSHD(_, _, _ string)            {}
+func (NopMetricSink) ObserveDHCP(_, _, _ string)            {}
+func (NopMetricSink) ObserveAudit(_, _ string)              {}
+func (NopMetricSink) ObserveIDS(_, _, _, _ string)          {}
+func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) {}

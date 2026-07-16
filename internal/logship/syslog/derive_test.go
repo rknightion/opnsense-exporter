@@ -41,6 +41,10 @@ func (f *fakeSink) ObserveIDS(eventType, action, category, severity string) {
 	f.calls = append(f.calls, fakeCall{"ids", []string{eventType, action, category, severity}})
 }
 
+func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) {
+	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
+}
+
 var _ logship.MetricSink = (*fakeSink)(nil)
 
 func TestDeriveFamily(t *testing.T) {

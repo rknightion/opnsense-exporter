@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -29,6 +30,10 @@ type (
 	dhcpKey  struct{ action, iface, server string }
 	auditKey struct{ event, result string }
 	idsKey   struct{ eventType, action, category, severity string }
+	// zenKey is Zenarmor's bounded tuple. Zenarmor is the highest-cardinality data
+	// this exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
+	// conn_uuid are deliberately absent and must stay absent.
+	zenKey struct{ family, action, category, iface, rcode, severity, statusClass string }
 )
 
 // LogEventStore holds the monotonic per-family counters. Observe* run on the
@@ -44,6 +49,7 @@ type LogEventStore struct {
 	dhcp  map[dhcpKey]float64
 	audit map[auditKey]float64
 	ids   map[idsKey]float64
+	zen   map[zenKey]float64
 }
 
 func newLogEventStore() *LogEventStore {
@@ -54,6 +60,7 @@ func newLogEventStore() *LogEventStore {
 		dhcp:  map[dhcpKey]float64{},
 		audit: map[auditKey]float64{},
 		ids:   map[idsKey]float64{},
+		zen:   map[zenKey]float64{},
 	}
 }
 
@@ -99,6 +106,13 @@ func (s *LogEventStore) ObserveIDS(eventType, action, category, severity string)
 	s.mu.Unlock()
 }
 
+// ObserveZenarmor implements logship.MetricSink.
+func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) {
+	s.mu.Lock()
+	s.zen[zenKey{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}]++
+	s.mu.Unlock()
+}
+
 type logEventsCollector struct {
 	store     *LogEventStore
 	log       *slog.Logger
@@ -111,6 +125,7 @@ type logEventsCollector struct {
 	dhcp     *prometheus.Desc
 	audit    *prometheus.Desc
 	ids      *prometheus.Desc
+	zenarmor *prometheus.Desc
 }
 
 func init() {
@@ -154,6 +169,15 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"Signature text and SID are never labels.",
 		[]string{"event_type", "action", "category", "severity"},
 	)
+	c.zenarmor = buildPrometheusDesc(c.subsystem, "zenarmor_total",
+		"Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), "+
+			"action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do "+
+			"not apply to a family are empty. Zenarmor ships ~2.5-3.3M records/day, so these counters are "+
+			"the way to ask rate questions without querying the raw log stream — and they outlive Loki's "+
+			"retention. Application name, IPs, ports, hostnames, MACs, JA3, session/community/connection "+
+			"ids, URIs and DNS queries are never labels; they stay as structured metadata on the record.",
+		[]string{"family", "action", "category", "interface", "rcode", "severity", "status_class"},
+	)
 }
 
 func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -163,6 +187,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp
 	ch <- c.audit
 	ch <- c.ids
+	ch <- c.zenarmor
 }
 
 // Update emits the current running totals as const counter metrics. It ignores the
@@ -194,6 +219,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 		k idsKey
 		v float64
 	}
+	type zenPair struct {
+		k zenKey
+		v float64
+	}
 
 	c.store.mu.Lock()
 	fw := make([]fwPair, 0, len(c.store.fw))
@@ -220,6 +249,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for k, v := range c.store.ids {
 		ids = append(ids, idsPair{k, v})
 	}
+	zen := make([]zenPair, 0, len(c.store.zen))
+	for k, v := range c.store.zen {
+		zen = append(zen, zenPair{k, v})
+	}
 	c.store.mu.Unlock()
 
 	for _, p := range fw {
@@ -245,6 +278,11 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range ids {
 		ch <- prometheus.MustNewConstMetric(c.ids, prometheus.CounterValue, p.v,
 			p.k.eventType, p.k.action, p.k.category, p.k.severity, c.instance)
+	}
+	for _, p := range zen {
+		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,
+			p.k.family, p.k.action, p.k.category, p.k.iface, p.k.rcode, p.k.severity,
+			p.k.statusClass, c.instance)
 	}
 	return nil
 }
