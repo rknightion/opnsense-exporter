@@ -54,6 +54,18 @@ services:
       OPNSENSE_EXPORTER_OPS_API_SECRET: "${OPS_API_SECRET}"
     ports:
       - "8080:8080"
+      # The receivers listen on their own ports and are off by default. Publish
+      # one only when you enable its receiver — an unpublished port is the
+      # commonest reason a receiver appears to receive nothing.
+      #
+      # Zenarmor's Elasticsearch stream (--logs.zenarmor.enabled). 9200 is the
+      # Elasticsearch convention; nothing requires it, it just has to match the
+      # URI you give Zenarmor. See ../zenarmor-receiver.md.
+      # - "9200:9200"
+      #
+      # Syslog (--logs.syslog.enabled). Publish BOTH protocols. See ../syslog-receiver.md.
+      # - "5514:5514/udp"
+      # - "5514:5514/tcp"
 ```
 
 ## Docker Compose with file-based secrets
