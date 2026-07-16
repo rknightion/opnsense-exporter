@@ -11,6 +11,7 @@ import (
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
 // sourceName is the stable source identifier; it becomes the `source` attribute
@@ -23,8 +24,6 @@ const shutdownGrace = 5 * time.Second
 
 func init() {
 	logship.RegisterPushSource(func(d logship.Deps) (logship.PushSource, error) {
-		// TODO(task 8): options.LogsZenarmor() — replace loadConfig with it. It returns
-		// the same (config, enabled, error) shape, so this body does not change.
 		cfg, enabled, err := loadConfig()
 		if err != nil {
 			return nil, err
@@ -36,10 +35,24 @@ func init() {
 	})
 }
 
-// loadConfig is the seam Task 8 replaces with options.LogsZenarmor(). Until the flag
-// family exists the receiver reports itself disabled, so the registered factory is
-// inert and binds nothing.
-func loadConfig() (Config, bool, error) { return Config{}, false, nil }
+// loadConfig resolves the flag family into the package's own Config. The two structs
+// are deliberately separate types — options owns the flags, this package owns what a
+// receiver needs — so the copy is field-for-field and stays here, at the seam.
+func loadConfig() (Config, bool, error) {
+	oc, enabled, err := options.LogsZenarmor()
+	if err != nil || !enabled {
+		return Config{}, false, err
+	}
+	return Config{
+		Addr:         oc.Addr,
+		AllowedPeers: oc.AllowedPeers,
+		Families:     oc.Families,
+		Enrich:       oc.Enrich,
+		AuthUser:     oc.AuthUser,
+		AuthPassword: oc.AuthPassword,
+		TLSConfig:    oc.TLSConfig,
+	}, true, nil
+}
 
 // zenarmorSource implements logship.PushSource: an HTTP server posing as
 // Elasticsearch, turning each document Zenarmor writes into a Record.

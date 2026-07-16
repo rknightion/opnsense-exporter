@@ -19,7 +19,8 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
-	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog" // registers the syslog push source
+	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog"   // registers the syslog push source
+	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor" // registers the zenarmor push source
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
 	"github.com/rknightion/opnsense-exporter/internal/server"
@@ -630,8 +631,13 @@ func main() {
 				"err", "--logs.syslog.sample requires the log_events collector; remove --exporter.disable-log-events")
 			os.Exit(1)
 		}
+		// Enrichment is shared by every receiver that wants it, so the gate must ask
+		// about all of them. It used to ask only about syslog — which meant a
+		// zenarmor-only box got a nil Cache, fell back to a cold one, and missed EVERY
+		// lookup forever with no error, no log and no metric, while
+		// --logs.zenarmor.enrich defaulted to true and said otherwise.
 		var stopEnrich context.CancelFunc
-		if syslogEnabled && syslogCfg.Enrich {
+		if (syslogEnabled && syslogCfg.Enrich) || options.LogsZenarmorEnrichWanted() {
 			cache := enrich.NewCache()
 			refresher := enrich.NewRefresher(
 				&opnsenseClient, cache, enrich.NewMetrics(selfMetricsRegistry), logger)
@@ -640,7 +646,7 @@ func main() {
 			go refresher.Run(ectx)
 			deps.Cache = cache
 			deps.Miss = refresher.NoteMiss
-			logger.Info("syslog log enrichment enabled",
+			logger.Info("log enrichment enabled",
 				"lookups", "rule descriptions, interface names, hostnames, MACs, scope, services")
 		}
 
