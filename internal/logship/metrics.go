@@ -16,14 +16,15 @@ const (
 // bridge). Every metric here is mirrored by a panel on the Logs dashboard tab —
 // the grafana coverage gate enforces that.
 type metrics struct {
-	shipped       *prometheus.CounterVec // logs_shipped_total{source}
-	dropped       *prometheus.CounterVec // logs_dropped_total{source,reason}
-	shipErrors    prometheus.Counter     // logs_ship_errors_total
-	pollErrors    *prometheus.CounterVec // logs_poll_errors_total{source}
-	lastEventTime *prometheus.GaugeVec   // logs_last_event_timestamp_seconds{source}
-	queueLength   prometheus.GaugeFunc   // logs_queue_length
-	queueCapacity prometheus.Gauge       // logs_queue_capacity
-	possibleGap   *prometheus.CounterVec // logs_possible_gap_total{source}
+	shipped        *prometheus.CounterVec // logs_shipped_total{source}
+	dropped        *prometheus.CounterVec // logs_dropped_total{source,reason}
+	shipErrors     prometheus.Counter     // logs_ship_errors_total
+	pollErrors     *prometheus.CounterVec // logs_poll_errors_total{source}
+	lastEventTime  *prometheus.GaugeVec   // logs_last_event_timestamp_seconds{source}
+	queueLength    prometheus.GaugeFunc   // logs_queue_length
+	queueCapacity  prometheus.Gauge       // logs_queue_capacity
+	possibleGap    *prometheus.CounterVec // logs_possible_gap_total{source}
+	resourceCapped prometheus.Counter     // logs_resource_capped_total
 }
 
 // newMetrics constructs and registers the pipeline self-metrics on reg. queueLen
@@ -71,6 +72,20 @@ func newMetrics(reg prometheus.Registerer, capacity int, queueLen func() float64
 				"with the previous cursor, meaning an unknown amount of data was skipped " +
 				"between polls.",
 		}, []string{"source"}),
+		// resourceCapped counts records shipped with DEGRADED resource labels because
+		// the distinct (source, subsystem, action) count hit maxLogResources. The
+		// record is not lost — but its opnsense.* index labels are, so every
+		// label-scoped query under-reports, and which records lose them depends on
+		// arrival order. Before AttrAction existed the cap was genuinely unreachable
+		// and this could go uncounted; action multiplies the key count, so it must
+		// not be silent any more.
+		resourceCapped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: ns, Name: "logs_resource_capped_total",
+			Help: "Total log records emitted with degraded resource labels because the distinct " +
+				"(source, subsystem, action) count exceeded the sink's resource cap. The records " +
+				"still ship, but they carry no opnsense.* index labels, so label-scoped queries " +
+				"under-report. A non-zero value means the closed label sets grew beyond budget.",
+		}),
 	}
 	m.queueLength = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: ns, Name: "logs_queue_length",
@@ -81,8 +96,10 @@ func newMetrics(reg prometheus.Registerer, capacity int, queueLen func() float64
 	reg.MustRegister(
 		m.shipped, m.dropped, m.shipErrors, m.pollErrors,
 		m.lastEventTime, m.queueLength, m.queueCapacity, m.possibleGap,
+		m.resourceCapped,
 	)
 	setActivePossibleGapVec(m.possibleGap)
+	setActiveResourceCapped(m.resourceCapped)
 	return m
 }
 
@@ -116,5 +133,32 @@ func recordPossibleGap(name string) {
 	activePossibleGapMu.Unlock()
 	if v != nil {
 		v.WithLabelValues(name).Inc()
+	}
+}
+
+// activeResourceCapped mirrors activePossibleGapVec for the OTLP sink's
+// cardinality-cap counter: the sink is constructed by buildSink before (and
+// independently of) the pipeline's own metrics, so it cannot hold the unexported
+// metrics struct.
+var (
+	activeResourceCappedMu sync.Mutex
+	activeResourceCapped   prometheus.Counter
+)
+
+func setActiveResourceCapped(c prometheus.Counter) {
+	activeResourceCappedMu.Lock()
+	defer activeResourceCappedMu.Unlock()
+	activeResourceCapped = c
+}
+
+// recordResourceCapped increments logs_resource_capped_total. Like
+// recordPossibleGap it is a no-op before any pipeline has called newMetrics, so a
+// sink unit test that never starts a pipeline is safe.
+func recordResourceCapped() {
+	activeResourceCappedMu.Lock()
+	c := activeResourceCapped
+	activeResourceCappedMu.Unlock()
+	if c != nil {
+		c.Inc()
 	}
 }

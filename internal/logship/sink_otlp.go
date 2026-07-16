@@ -71,14 +71,19 @@ const maxLogResources = 64
 type otlpSink struct {
 	exporter sdklog.Exporter
 	base     []attribute.KeyValue
+	log      *slog.Logger
 
 	mu        sync.Mutex
 	providers map[resourceKey]*resourceLogger
 	order     []resourceKey // creation order, so Shutdown is deterministic
+	// cappedOnce keeps the cardinality-cap warning to one line per process. The
+	// counter carries the ongoing rate; the log line is there so the first
+	// occurrence is discoverable without already knowing to look for the metric.
+	cappedOnce sync.Once
 }
 
-// resourceKey identifies one OTLP resource. Both fields are closed sets.
-type resourceKey struct{ source, subsystem string }
+// resourceKey identifies one OTLP resource. All three fields are closed sets.
+type resourceKey struct{ source, subsystem, action string }
 
 type resourceLogger struct {
 	provider *sdklog.LoggerProvider
@@ -98,7 +103,7 @@ func (sharedExporter) Shutdown(context.Context) error { return nil }
 // when no endpoint is resolvable (neither --otlp.endpoint / Grafana Cloud nor an
 // OTEL_EXPORTER_OTLP*_ENDPOINT env var), so logs.enabled with an unconfigured
 // transport is a clear startup error rather than silent no-delivery.
-func newOTLPSink(cfg *options.OTLPConfig, version, instance string, _ *slog.Logger) (Sink, error) {
+func newOTLPSink(cfg *options.OTLPConfig, version, instance string, log *slog.Logger) (Sink, error) {
 	if !endpointResolvable(cfg.Endpoint) {
 		return nil, fmt.Errorf("logs sink=otlp requires an OTLP endpoint: set --otlp.endpoint " +
 			"(or --otlp.grafana-cloud-endpoint, or the OTEL_EXPORTER_OTLP_ENDPOINT / " +
@@ -112,6 +117,7 @@ func newOTLPSink(cfg *options.OTLPConfig, version, instance string, _ *slog.Logg
 
 	return &otlpSink{
 		exporter:  exporter,
+		log:       log,
 		base:      baseLogAttributes(cfg.ServiceName, version, instance),
 		providers: make(map[resourceKey]*resourceLogger),
 	}, nil
@@ -123,6 +129,7 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 		lg, err := s.loggerFor(ctx, resourceKey{
 			source:    e.Source,
 			subsystem: e.Record.Attributes[AttrSubsystem],
+			action:    e.Record.Attributes[AttrAction],
 		})
 		if err != nil {
 			return err
@@ -139,11 +146,11 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 		r.SetSeverity(otlpSeverity(e.Record.Severity))
 		r.SetSeverityText(otlpSeverityText(e.Record.Severity))
 		for k, v := range e.Record.Attributes {
-			// `opnsense.source` and `opnsense.subsystem` live on the resource, not the record: emitting
-			// them here as well would duplicate them into structured metadata beside
-			// the label. (`source` was stripped from Attributes upstream anyway; the
-			// pipeline carries it in Entry.Source.)
-			if k == AttrSubsystem || k == attrSource {
+			// `opnsense.source`, `opnsense.subsystem` and `opnsense.action` live on the
+			// resource, not the record: emitting them here as well would duplicate them
+			// into structured metadata beside the label. (`source` was stripped from
+			// Attributes upstream anyway; the pipeline carries it in Entry.Source.)
+			if k == AttrSubsystem || k == attrSource || k == AttrAction {
 				continue
 			}
 			r.AddAttributes(otellog.String(k, v))
@@ -161,24 +168,44 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logg
 	if rl, ok := s.providers[key]; ok {
 		return rl.logger, nil
 	}
-	// Unreachable with the current closed key sets. Degrade rather than leak: ship
-	// under the base resource instead of building an unbounded provider set. The
-	// +1 reserves the last slot FOR that base resource, so the cap holds exactly
-	// even when the base is itself the provider we are about to create.
+	// Degrade rather than leak: ship under the base resource instead of building an
+	// unbounded provider set. The +1 reserves the last slot FOR that base resource,
+	// so the cap holds exactly even when the base is itself the provider we are
+	// about to create.
+	//
+	// This is NOT data loss — the record still ships (TestOTLPSink_ResourceCountIsCapped
+	// proves it) — but it IS silent label loss: the degraded record has no
+	// opnsense.* index labels, so label-scoped queries under-report, and which
+	// records lose them depends on arrival order. That is intolerable for
+	// forensic/SIEM data, where an under-reporting {opnsense_action="block"} looks
+	// exactly like a quiet network. So count it and say so once, loudly.
 	if len(s.providers)+1 >= maxLogResources {
+		recordResourceCapped()
+		s.cappedOnce.Do(func() {
+			if s.log == nil {
+				return
+			}
+			s.log.Warn("log resource cardinality cap reached; further records ship without opnsense.* index labels, "+
+				"so label-scoped queries will under-report",
+				"cap", maxLogResources, "dropped_key", key)
+		})
 		key = resourceKey{}
 		if rl, ok := s.providers[key]; ok {
 			return rl.logger, nil
 		}
 	}
 
-	attrs := make([]attribute.KeyValue, 0, len(s.base)+2)
+	attrs := make([]attribute.KeyValue, 0, len(s.base)+3)
 	attrs = append(attrs, s.base...)
 	if key.source != "" {
 		attrs = append(attrs, attribute.String(attrSource, key.source))
 	}
 	if key.subsystem != "" {
 		attrs = append(attrs, attribute.String(AttrSubsystem, key.subsystem))
+	}
+	// Only when set: an unknown disposition must not become opnsense.action="".
+	if key.action != "" {
+		attrs = append(attrs, attribute.String(AttrAction, key.action))
 	}
 	res, err := resource.New(ctx, resource.WithAttributes(attrs...))
 	if err != nil {

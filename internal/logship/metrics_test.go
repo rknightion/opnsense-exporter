@@ -45,3 +45,26 @@ func TestRecordPossibleGap_NoOpBeforeAnyPipelineMetrics(t *testing.T) {
 
 	recordPossibleGap("unbound") // must not panic
 }
+
+// The sink degrades to the base resource once maxLogResources is hit, dropping the
+// record's opnsense.* index labels. That is not data loss, but it IS silent label
+// loss — label-scoped queries under-report and nothing says so. Before AttrAction
+// the cap was genuinely unreachable; action multiplies the key count, so the
+// degrade path must be counted.
+func TestRecordResourceCapped_IncrementsCounter(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := newMetrics(reg, 10, func() float64 { return 0 })
+
+	recordResourceCapped()
+	recordResourceCapped()
+
+	if got := counterValue(t, m.resourceCapped); got != 2 {
+		t.Errorf("logs_resource_capped_total = %v, want 2", got)
+	}
+}
+
+// Safe to call before any pipeline exists (a sink unit test never starts one).
+func TestRecordResourceCapped_NoPipelineIsNoOp(t *testing.T) {
+	setActiveResourceCapped(nil)
+	recordResourceCapped() // must not panic
+}

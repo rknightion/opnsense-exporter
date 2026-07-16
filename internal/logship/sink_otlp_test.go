@@ -245,3 +245,76 @@ func TestBaseLogAttributesAreIdentityOnly(t *testing.T) {
 		}
 	}
 }
+
+// AttrAction must be hoisted onto the RESOURCE (so Loki can index it) and must not
+// also be duplicated into the record's structured metadata.
+func TestOTLPSink_HoistsActionOntoResource(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	shipAndDrain(t, s, []Entry{{Source: "zenarmor", Record: Record{
+		Body: "1",
+		Attributes: map[string]string{
+			AttrSubsystem: "flow",
+			AttrAction:    ActionBlock,
+			"src.ip":      "10.0.0.1",
+		},
+	}}})
+
+	recs := exp.exported()
+	if len(recs) != 1 {
+		t.Fatalf("exported %d records, want 1", len(recs))
+	}
+	if got := resourceAttrs(recs[0])[AttrAction]; got != ActionBlock {
+		t.Errorf("resource %s = %q, want %q", AttrAction, got, ActionBlock)
+	}
+	if _, present := recordAttrs(recs[0])[AttrAction]; present {
+		t.Errorf("%s leaked into structured metadata; it lives only on the resource", AttrAction)
+	}
+	// Everything else still belongs on the record.
+	if got := recordAttrs(recs[0])["src.ip"]; got != "10.0.0.1" {
+		t.Errorf("src.ip = %q, want 10.0.0.1", got)
+	}
+}
+
+// An unknown disposition must leave the attribute ABSENT, not present-and-empty.
+// MapFilterlogAction returns "" for a verb it does not recognise (a NAT/rdr line),
+// and opnsense_action="" would be a lie: it reads as a real value in LogQL.
+func TestOTLPSink_UnsetActionIsAbsentNotEmpty(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	shipAndDrain(t, s, []Entry{{Source: "syslog", Record: Record{
+		Body:       "1",
+		Attributes: map[string]string{AttrSubsystem: "firewall"},
+	}}})
+
+	recs := exp.exported()
+	if len(recs) != 1 {
+		t.Fatalf("exported %d records, want 1", len(recs))
+	}
+	if v, present := resourceAttrs(recs[0])[AttrAction]; present {
+		t.Errorf("carried %s=%q; an unset action must be absent, not empty", AttrAction, v)
+	}
+}
+
+// Action partitions the resource alongside source and subsystem.
+func TestOTLPSink_PartitionsResourcesByAction(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	batch := []Entry{
+		{Source: "zenarmor", Record: Record{Body: "1", Attributes: map[string]string{AttrSubsystem: "flow", AttrAction: ActionPass}}},
+		{Source: "zenarmor", Record: Record{Body: "2", Attributes: map[string]string{AttrSubsystem: "flow", AttrAction: ActionPass}}},
+		{Source: "zenarmor", Record: Record{Body: "3", Attributes: map[string]string{AttrSubsystem: "flow", AttrAction: ActionBlock}}},
+	}
+	if err := s.Emit(context.Background(), batch); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	if n := len(s.providers); n != 2 {
+		t.Fatalf("built %d providers, want 2 (flow/pass, flow/block)", n)
+	}
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+}
