@@ -14,8 +14,8 @@ import (
 // main.go block, so it was not a theoretical collision.
 func TestReceiverMetricsTwoSourcesShareOneRegistry(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	a := NewReceiverMetrics(reg, "syslog")
-	b := NewReceiverMetrics(reg, "zenarmor") // must NOT panic
+	a := NewReceiverMetrics(reg, "syslog", ReceiverVocab{})
+	b := NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{}) // must NOT panic
 
 	a.ParseError("envelope")
 	b.ParseError("bulk")
@@ -33,8 +33,8 @@ func TestReceiverMetricsTwoSourcesShareOneRegistry(t *testing.T) {
 // unregistered one whose values never reach /metrics.
 func TestReceiverMetricsSecondHandleSharesTheCollector(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	a := NewReceiverMetrics(reg, "syslog")
-	b := NewReceiverMetrics(reg, "zenarmor")
+	a := NewReceiverMetrics(reg, "syslog", ReceiverVocab{})
+	b := NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{})
 
 	if a.parseErrors != b.parseErrors {
 		t.Error("handles hold different parseErrors collectors; the second registration did not reuse the first")
@@ -52,7 +52,7 @@ func TestReceiverMetricsSecondHandleSharesTheCollector(t *testing.T) {
 
 func TestReceiverMetricsRejectIsSourceLabelled(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := NewReceiverMetrics(reg, "zenarmor")
+	m := NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{})
 	m.Reject("peer")
 	m.Reject("peer")
 	m.Reject("oversized")
@@ -66,7 +66,7 @@ func TestReceiverMetricsRejectIsSourceLabelled(t *testing.T) {
 }
 
 func TestReceiverMetricsNilRegisterer(t *testing.T) {
-	m := NewReceiverMetrics(nil, "syslog")
+	m := NewReceiverMetrics(nil, "syslog", ReceiverVocab{})
 	m.ParseError("envelope") // must not panic
 	m.Reject("peer")
 }
@@ -77,4 +77,41 @@ func TestReceiverMetricsNilHandle(t *testing.T) {
 	var m *ReceiverMetrics
 	m.ParseError("envelope") // must not panic
 	m.Reject("peer")
+}
+
+// #280: a receiver's whole reason/stage vocabulary must be present at 0 before any
+// input arrives. Observed live: logs_rejected_total vanished at a container restart
+// and stayed absent until something failed, which looks exactly like broken
+// instrumentation.
+func TestReceiverMetricsPreInitialisesVocabularyToZero(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{
+		Reasons: []string{"peer", "auth"},
+		Stages:  []string{"bulk"},
+	})
+
+	s := gatherSeries(t, reg)
+
+	mustBeZero(t, s, `opnsense_exporter_logs_rejected_total{reason="peer",source="zenarmor"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_rejected_total{reason="auth",source="zenarmor"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_parse_errors_total{source="zenarmor",stage="bulk"}`)
+
+	// A reason this receiver cannot produce must not be invented for it.
+	mustBeAbsent(t, s, `opnsense_exporter_logs_rejected_total{reason="oversized",source="zenarmor"}`)
+}
+
+// Two receivers share one CounterVec (see the type doc). The second must
+// pre-initialise ITS vocabulary on the collector the first already registered —
+// not on the private one it built and threw away.
+func TestReceiverMetricsSecondHandlePreInitialisesOnSharedCollector(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	NewReceiverMetrics(reg, "syslog", ReceiverVocab{Reasons: []string{"peer"}, Stages: []string{"envelope"}})
+	NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{Reasons: []string{"auth"}, Stages: []string{"bulk"}})
+
+	s := gatherSeries(t, reg)
+
+	mustBeZero(t, s, `opnsense_exporter_logs_rejected_total{reason="peer",source="syslog"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_rejected_total{reason="auth",source="zenarmor"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_parse_errors_total{source="syslog",stage="envelope"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_parse_errors_total{source="zenarmor",stage="bulk"}`)
 }

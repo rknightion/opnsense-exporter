@@ -19,7 +19,26 @@ type Metrics struct {
 	LastRefresh *prometheus.GaugeVec
 }
 
-// NewMetrics constructs and registers the enrichment self-metrics on reg.
+// Tables is the closed set of enrichment tables the Refresher owns — every value
+// the table label can take on logs_enrich_refresh_errors_total and
+// logs_enrich_last_refresh_timestamp_seconds. Enforced against Run's tick() call
+// sites by TestTablesMatchTickCallSites.
+var Tables = []string{"rules", "interfaces", "leases", "tunnels"}
+
+// MissTables is the subset of Tables that can report a LOOKUP miss, and it is
+// deliberately much smaller than Tables (#280).
+//
+// Only filterlog's rule-description lookup signals a miss, because only there does
+// a miss mean the snapshot is stale. Every other lookup — hostname, MAC, scope,
+// interface name — misses routinely and legitimately (an address we have never
+// seen is the normal case for internet traffic), so those never call Miss at all.
+// Pre-initialising the other tables here would publish zeroes that nothing can ever
+// increment.
+var MissTables = []string{"rules"}
+
+// NewMetrics constructs and registers the enrichment self-metrics on reg, then
+// pre-initialises the counters' known label values to zero (#280) so a healthy
+// exporter reports a flat 0 rather than an absent series.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
 	const ns = "opnsense_exporter"
 	m := &Metrics{
@@ -39,5 +58,15 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	if reg != nil {
 		reg.MustRegister(m.Misses, m.RefreshErrors, m.LastRefresh)
 	}
+	for _, t := range MissTables {
+		m.Misses.WithLabelValues(t)
+	}
+	for _, t := range Tables {
+		m.RefreshErrors.WithLabelValues(t)
+	}
+	// LastRefresh is deliberately NOT pre-initialised: it is a unix timestamp, and a
+	// zero would read as 1970 — a query computing time() - LastRefresh would report a
+	// 56-year-old cache rather than "not refreshed yet". Run stamps every table on its
+	// first tick anyway, so the gap is one startup, not indefinite.
 	return m
 }

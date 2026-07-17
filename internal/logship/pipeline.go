@@ -106,7 +106,8 @@ func Start(
 	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
 		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
 	})
-	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) })
+	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) },
+		collectSourceNames(sources, pushSources))
 
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {
@@ -150,6 +151,27 @@ func Start(
 		"poll_interval", cfg.PollInterval.String(), "buffer_size", cfg.BufferSize)
 
 	return p.stop, nil
+}
+
+// collectSourceNames derives the label combinations to pre-initialise (#280) from
+// the sources actually built. Push sources are excluded from poll: they never call
+// Poll, so a poll-error zero for them would be a permanent lie.
+func collectSourceNames(sources []Source, pushSources []PushSource) sourceNames {
+	names := sourceNames{}
+	for _, s := range sources {
+		names.all = append(names.all, s.Name())
+		names.poll = append(names.poll, s.Name())
+		if _, ok := s.(GapReportingSource); ok {
+			names.gap = append(names.gap, s.Name())
+		}
+	}
+	for _, s := range pushSources {
+		names.all = append(names.all, s.Name())
+		if _, ok := s.(GapReportingSource); ok {
+			names.gap = append(names.gap, s.Name())
+		}
+	}
+	return names
 }
 
 // effectiveInterval is max(global poll interval, source floor).

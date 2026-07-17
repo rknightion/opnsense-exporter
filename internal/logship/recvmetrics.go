@@ -31,9 +31,31 @@ type ReceiverMetrics struct {
 	source      string
 }
 
+// ReceiverVocab is a receiver's CLOSED, code-defined label vocabulary: every reason
+// it can Reject with and every stage it can report a ParseError at.
+//
+// It exists so the counters can be pre-initialised to zero at construction (#280).
+// A prometheus CounterVec emits NO series until its first increment, so before this
+// a healthy receiver published nothing for its own error metrics and every restart
+// reset them to invisible — rate() then returns no-data rather than 0, which is
+// indistinguishable from a broken query or a dead exporter.
+//
+// Both sets MUST be closed and code-defined. Never put a value here that comes off
+// the wire: pre-initialising an attacker-influenced or runtime-discovered value
+// would turn a bounded set of zeroes into unbounded cardinality. The vocabularies
+// are enforced against their call sites by TestReceiverVocabulariesMatchCallSites,
+// so a new reason cannot be added without also being pre-initialised here.
+type ReceiverVocab struct {
+	// Reasons are the logs_rejected_total{reason=...} values this receiver produces.
+	Reasons []string
+	// Stages are the logs_parse_errors_total{stage=...} values this receiver produces.
+	Stages []string
+}
+
 // NewReceiverMetrics returns a handle bound to source, registering the shared vecs
-// on reg if they are not there already. reg may be nil, giving a no-op handle.
-func NewReceiverMetrics(reg prometheus.Registerer, source string) *ReceiverMetrics {
+// on reg if they are not there already, and pre-initialising vocab's label
+// combinations to zero. reg may be nil, giving a no-op handle.
+func NewReceiverMetrics(reg prometheus.Registerer, source string, vocab ReceiverVocab) *ReceiverMetrics {
 	const ns = "opnsense_exporter"
 	m := &ReceiverMetrics{
 		source: source,
@@ -49,8 +71,18 @@ func NewReceiverMetrics(reg prometheus.Registerer, source string) *ReceiverMetri
 	if reg == nil {
 		return m
 	}
+	// Pre-initialise only AFTER resolving the shared collectors: when a second
+	// receiver registers, registerOrExisting hands back the FIRST receiver's vec and
+	// discards the one built above. Seeding before this swap would write the zeroes
+	// into a collector that never reaches /metrics.
 	m.parseErrors = registerOrExisting(reg, m.parseErrors)
 	m.rejected = registerOrExisting(reg, m.rejected)
+	for _, reason := range vocab.Reasons {
+		m.rejected.WithLabelValues(source, reason)
+	}
+	for _, stage := range vocab.Stages {
+		m.parseErrors.WithLabelValues(source, stage)
+	}
 	return m
 }
 

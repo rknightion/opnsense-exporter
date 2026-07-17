@@ -19,6 +19,27 @@ import (
 // value on every record the receiver ships and keys its self-metrics.
 const sourceName = "zenarmor"
 
+// RejectReasons and ParseStages are this receiver's CLOSED label vocabulary, used
+// to pre-initialise logs_rejected_total / logs_parse_errors_total to zero at
+// startup (#280) so a healthy receiver reports a flat 0 instead of nothing.
+//
+// Both are enforced against their call sites by TestReceiverVocabulariesMatchCallSites
+// in the parent package: adding a reject("x") without listing "x" here fails the
+// build, and so does listing a value nothing rejects with. Never add a value that
+// comes off the wire — these must stay code-defined and closed. In particular the
+// Zenarmor family and category values are NOT vocabulary: they arrive in the
+// payload, so pre-initialising them would trade a dozen zeroes for unbounded
+// cardinality.
+var (
+	// RejectReasons: peer/auth/unhandled_endpoint/body are the HTTP receiver's
+	// (server.go); unknown_family/filtered/self_traffic are the record's (source.go).
+	// There is no "oversized" here — that is a syslog framing concern only.
+	RejectReasons = []string{"peer", "auth", "unhandled_endpoint", "body", "unknown_family", "filtered", "self_traffic"}
+	// ParseStages: bulk is the _bulk envelope (server.go), document one record inside
+	// it (source.go).
+	ParseStages = []string{"bulk", "document"}
+)
+
 // shutdownGrace bounds how long Run waits for in-flight bulk writes to finish once
 // ctx is cancelled.
 const shutdownGrace = 5 * time.Second

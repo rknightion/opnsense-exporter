@@ -46,6 +46,24 @@ type IntervalSource interface {
 	MinInterval() time.Duration
 }
 
+// GapReportingSource is implemented by a source whose only view of its underlying
+// data is a BOUNDED WINDOW rather than a true cursor, so it can silently skip data
+// between polls and detect that it did (see recordPossibleGap in metrics.go). The
+// unbound per-query DNS source is the only implementer today: OPNsense exposes only
+// the newest 1000 rows resolver-wide, so a busy resolver can push older rows out of
+// the window before we ever fetch them.
+//
+// It exists so the pipeline can pre-initialise logs_possible_gap_total{source} to
+// zero for exactly these sources (#280). Implementing it is a claim that the source
+// actively watches for gaps; a cursor-based source must NOT implement it, because a
+// permanent zero there would advertise a check that never runs.
+type GapReportingSource interface {
+	Source
+	// ReportsGaps marks the source as gap-detecting. It is a marker: the pipeline
+	// only asks whether the source implements it.
+	ReportsGaps()
+}
+
 // Deps are the shared dependencies handed to every SourceFactory and
 // PushSourceFactory.
 //

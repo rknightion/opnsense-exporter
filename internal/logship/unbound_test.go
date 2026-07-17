@@ -195,7 +195,7 @@ func TestUnboundSource_ReservedSourceKeyIsNeverForged(t *testing.T) {
 
 func TestUnboundSource_WindowOverflowRecordsPossibleGap(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := newMetrics(reg, 10, func() float64 { return 0 })
+	m := newMetrics(reg, 10, func() float64 { return 0 }, sourceNames{})
 
 	page1 := []map[string]any{unboundRow(100, "10.0.0.1", "a.example.", "A", "Pass", "Cache")}
 	_, client := newUnboundTestServer(t, page1)
@@ -227,7 +227,7 @@ func TestUnboundSource_WindowOverflowRecordsPossibleGap(t *testing.T) {
 
 func TestUnboundSource_NoContinuityGapNotDoubleCountedOnNormalPoll(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := newMetrics(reg, 10, func() float64 { return 0 })
+	m := newMetrics(reg, 10, func() float64 { return 0 }, sourceNames{})
 
 	page1 := []map[string]any{unboundRow(100, "c", "a.example.", "A", "Pass", "Cache")}
 	_, client := newUnboundTestServer(t, page1)

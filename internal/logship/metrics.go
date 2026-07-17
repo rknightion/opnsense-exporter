@@ -27,9 +27,29 @@ type metrics struct {
 	resourceCapped prometheus.Counter     // logs_resource_capped_total
 }
 
-// newMetrics constructs and registers the pipeline self-metrics on reg. queueLen
-// is sampled lazily by the queue_length GaugeFunc.
-func newMetrics(reg prometheus.Registerer, capacity int, queueLen func() float64) *metrics {
+// sourceNames declares which sources the pipeline is running, so newMetrics can
+// pre-initialise each labelled counter to zero (#280) for exactly the label
+// combinations that source can actually produce.
+//
+// The three lists are deliberately not one list. A push receiver never calls Poll,
+// and only a bounded-window source can gap, so seeding those counters for every
+// source would publish zeroes that can never rise — which is not an honest zero, it
+// claims we are watching something we are not.
+type sourceNames struct {
+	// all is every enabled source, poll and push: each can ship and can have a
+	// record evicted when the shared queue overflows.
+	all []string
+	// poll is the poll sources only: only they can fail a Poll.
+	poll []string
+	// gap is the sources implementing GapReportingSource: only they can detect that
+	// their bounded window skipped data.
+	gap []string
+}
+
+// newMetrics constructs and registers the pipeline self-metrics on reg, then
+// pre-initialises the labelled counters named by names to zero. queueLen is sampled
+// lazily by the queue_length GaugeFunc.
+func newMetrics(reg prometheus.Registerer, capacity int, queueLen func() float64, names sourceNames) *metrics {
 	const ns = "opnsense_exporter"
 	m := &metrics{
 		shipped: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -98,9 +118,29 @@ func newMetrics(reg prometheus.Registerer, capacity int, queueLen func() float64
 		m.lastEventTime, m.queueLength, m.queueCapacity, m.possibleGap,
 		m.resourceCapped,
 	)
+	m.preInit(names)
 	setActivePossibleGapVec(m.possibleGap)
 	setActiveResourceCapped(m.resourceCapped)
 	return m
+}
+
+// preInit publishes the known label combinations at zero (#280), so a healthy
+// pipeline reports a flat 0 rather than nothing at all.
+//
+// Only the CounterVecs are seeded. lastEventTime is deliberately left alone: it is
+// a GaugeVec of an event's unix timestamp, and a zero there would read as 1970 —
+// claiming an event arrived at the epoch is worse than reporting no event yet.
+func (m *metrics) preInit(names sourceNames) {
+	for _, s := range names.all {
+		m.shipped.WithLabelValues(s)
+		m.dropped.WithLabelValues(s, dropReasonOverflow)
+	}
+	for _, s := range names.poll {
+		m.pollErrors.WithLabelValues(s)
+	}
+	for _, s := range names.gap {
+		m.possibleGap.WithLabelValues(s)
+	}
 }
 
 // activePossibleGap holds a reference to the running pipeline's possibleGap

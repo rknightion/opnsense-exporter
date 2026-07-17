@@ -115,7 +115,7 @@ func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, 
 	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
 		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
 	})
-	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) })
+	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) }, sourceNames{})
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {
 			p.stateful = append(p.stateful, st)

@@ -149,7 +149,7 @@ func TestListenerTCPDelivers(t *testing.T) {
 
 func TestListenerOversizedTCPFrameCountedAndConnectionSurvives(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := logship.NewReceiverMetrics(reg, "syslog")
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
 	c := newCollector()
 	l := startListener(t, Config{TCPAddr: "127.0.0.1:0"}, c.handle, m)
 
@@ -173,7 +173,7 @@ func TestListenerOversizedTCPFrameCountedAndConnectionSurvives(t *testing.T) {
 
 func TestListenerPeerAllowlistUDP(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := logship.NewReceiverMetrics(reg, "syslog")
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
 	c := newCollector()
 	// 192.0.2.0/24 is TEST-NET-1: loopback is definitely outside it.
 	l := startListener(t, Config{
@@ -209,7 +209,7 @@ func TestListenerPeerAllowlistUDP(t *testing.T) {
 
 func TestListenerPeerAllowlistTCP(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := logship.NewReceiverMetrics(reg, "syslog")
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
 	c := newCollector()
 	l := startListener(t, Config{
 		TCPAddr:      "127.0.0.1:0",

@@ -20,7 +20,10 @@ type metrics struct {
 func newMetrics(reg prometheus.Registerer) *metrics {
 	const ns = "opnsense_exporter"
 	m := &metrics{
-		recv: logship.NewReceiverMetrics(reg, sourceName),
+		recv: logship.NewReceiverMetrics(reg, sourceName, logship.ReceiverVocab{
+			Reasons: RejectReasons,
+			Stages:  ParseStages,
+		}),
 		bulkReqs: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_zenarmor_bulk_requests_total",
 			Help: "Total Elasticsearch _bulk requests accepted from Zenarmor.",

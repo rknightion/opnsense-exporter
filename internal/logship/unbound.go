@@ -65,6 +65,13 @@ func (s *unboundSource) Name() string { return unboundSourceName }
 // python+pandas+DuckDB on the box (~1s CPU).
 func (s *unboundSource) MinInterval() time.Duration { return options.LogsUnboundMinInterval() }
 
+// ReportsGaps marks unbound as a bounded-window source, so the pipeline
+// pre-initialises logs_possible_gap_total{source="unbound"} to zero (#280). It is
+// the only implementer: api/unbound/overview/search_queries exposes just the newest
+// 1000 rows resolver-wide, so a busy resolver can push older rows out of the window
+// between polls. Poll detects that and calls recordPossibleGap below.
+func (s *unboundSource) ReportsGaps() {}
+
 // Poll fetches the newest query rows and returns the ones not yet shipped,
 // oldest first. The very first poll (cold start, no persisted state) seeds the
 // cursor without emitting anything — mirroring the pipeline's own restart

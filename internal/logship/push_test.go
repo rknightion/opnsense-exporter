@@ -21,7 +21,7 @@ func newTestPipeline(t *testing.T, capacity int) *pipeline {
 		limiter: newLogLimiter(time.Second),
 	}
 	p.queue = newBoundedQueue(capacity, func(Entry) {})
-	p.metrics = newMetrics(prometheus.NewRegistry(), capacity, func() float64 { return float64(p.queue.length()) })
+	p.metrics = newMetrics(prometheus.NewRegistry(), capacity, func() float64 { return float64(p.queue.length()) }, sourceNames{})
 	return p
 }
 

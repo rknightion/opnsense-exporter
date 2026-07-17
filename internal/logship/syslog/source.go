@@ -15,6 +15,24 @@ import (
 // value on every record the receiver ships.
 const sourceName = "syslog"
 
+// RejectReasons and ParseStages are this receiver's CLOSED label vocabulary, used
+// to pre-initialise logs_rejected_total / logs_parse_errors_total to zero at
+// startup (#280) so a healthy receiver reports a flat 0 instead of nothing.
+//
+// Both are enforced against their call sites by TestReceiverVocabulariesMatchCallSites
+// in the parent package: adding a Reject("x") without listing "x" here fails the
+// build, and so does listing a value nothing rejects with. Never add a value that
+// comes off the wire — these must stay code-defined and closed.
+var (
+	// RejectReasons: peer/oversized are the listener's (listener.go), filtered is the
+	// program/severity filter and sampled is --logs.syslog.sample (source.go).
+	RejectReasons = []string{"peer", "oversized", "filtered", "sampled"}
+	// ParseStages: an unparseable line still ships with its raw bytes, so the only
+	// stage that can fail is the envelope. Body parsers never report a parse error —
+	// a program with no registered parser is normal, not an error.
+	ParseStages = []string{"envelope"}
+)
+
 func init() {
 	logship.RegisterPushSource(func(d logship.Deps) (logship.PushSource, error) {
 		cfg, enabled, err := options.LogsSyslog()
@@ -76,9 +94,12 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		sink = logship.NopMetricSink{}
 	}
 	s := &source{
-		cache:       cache,
-		miss:        d.Miss,
-		m:           logship.NewReceiverMetrics(d.Registerer, sourceName),
+		cache: cache,
+		miss:  d.Miss,
+		m: logship.NewReceiverMetrics(d.Registerer, sourceName, logship.ReceiverVocab{
+			Reasons: RejectReasons,
+			Stages:  ParseStages,
+		}),
 		filter:      NewFilter(cfg.IncludePrograms, cfg.ExcludePrograms, cfg.MinSeverity, cfg.HasMinSeverity),
 		log:         d.Logger,
 		sink:        sink,

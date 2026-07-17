@@ -108,7 +108,7 @@ func TestListenerTLSDelivers(t *testing.T) {
 
 func TestListenerTLSPeerAllowlist(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := logship.NewReceiverMetrics(reg, "syslog")
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
 	c := newCollector()
 	cert, _, srvCert := selfSignedCert(t, "syslog-server")
 	// 192.0.2.0/24 is TEST-NET-1: loopback is definitely outside it.
