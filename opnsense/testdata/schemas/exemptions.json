@@ -125,9 +125,10 @@
       "System.*",
       "metadata.CrashReporter.*",
       "metadata.Firewall.*",
-      "metadata.System.status"
+      "metadata.System.status",
+      "subsystems"
     ],
-    "note": "legacy pre-26.1.11 health shape (top-level per-subsystem objects + metadata.<Subsystem>); 26.1.11+ serves only metadata.system plus metadata.subsystems, which the tolerant reader prefers. Prune when 26.1.10 and older leave the support window"
+    "note": "Two unrelated things. (1) The CrashReporter/Firewall/System entries are the legacy pre-25.1 health shape, killed by upstream refactor 1fc5a6335 (2024-12-12); prune once nothing older than 25.1 is in the support window. (2) 'subsystems' is BOX STATE, not a version prune: SystemController::statusAction() only assigns $response['subsystems'] inside `if ($statuses)`, so a box with no subsystem reporting anything omits the key entirely. Verified 2026-07-17 against upstream source (blob ea83f28a is IDENTICAL on master, stable/26.1 and stable/25.7, unchanged since 2025-01-21) and against a live healthy box. It reappears the moment any subsystem reports, which is why #235 flagged it and #243 did not. Do NOT read this note as evidence that metadata.subsystems is populated on any release — it is not; see #284"
   },
   "interfaces": {
     "knownExtraTopKeys": [
@@ -236,13 +237,16 @@
     "note": "api/ntpd/service/gps and api/ntpd/service/status both wrap the same `ntpd status` configd script output; ntpq_servers duplicates the peer rows already modelled via ntpStatus's \"rows\" key (statusAction re-wraps the same array through searchRecordsetBase). Intentionally not modelled a second time here (#224)"
   },
   "nginxVts": {
+    "missingOK": [
+      "cacheZones"
+    ],
     "knownExtraTopKeys": [
       "hostName",
       "moduleVersion",
       "nginxVersion",
       "nowMsec"
     ],
-    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list"
+    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list. cacheZones is BOX STATE: nginx-module-vts writes the key, calls display_set_cache(), then rewinds the buffer wholesale if nothing was written (display_json.c `s = buf; ...; if (s == buf) { buf = o; }`), so the key vanishes when the vts shared memory holds no cache node — and that shm resets on every nginx reload. The testbed HAS a cache configured (settings/get shows cache_path /var/nginx/cache/heavy) but has served nothing through it. Verified live 2026-07-17 on the 26.7-devel VM; the upstream #define for \"cacheZones\" is still present on vozlt/nginx-module-vts master. Prune once the testbed serves traffic through a proxy_cache location (#271)"
   },
   "nutServiceStatus": {
     "knownExtraTopKeys": [
