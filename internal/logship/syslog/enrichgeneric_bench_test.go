@@ -76,35 +76,8 @@ func BenchmarkEnrichMessage_NilSnapshot(b *testing.B) {
 	}
 }
 
-// The machine-independent half of the budget, and the only part worth gating.
-//
-// The no-match path — the one multiplied by every line the box sends — allocates
-// NOTHING today. That is not luck: `seen` and `devSeen` never escape enrichMessage, so
-// escape analysis stacks them, and both regexes return nil rather than a slice when
-// they find no match. Pinning it at zero is therefore a REGRESSION TRIPWIRE, not a
-// target: it fires the moment a change makes the common path allocate per line (a
-// wider regex, a match slice that escapes, a lookup that boxes into an interface),
-// which is exactly how a nanosecond budget gets eaten silently.
-//
-// AllocsPerRun, not ns/op: allocation counts are deterministic across machines, so
-// this lives in CI without flaking. If a Go release changes escape analysis and this
-// starts failing honestly, raise the constant deliberately and say why — do not delete
-// the test.
-func TestEnrichMessageAllocations(t *testing.T) {
-	snap := enrichSnap()
-	set := func(k, v string) { sinkK, sinkV = k, v }
-
-	if got := testing.AllocsPerRun(100, func() {
-		enrichMessage("Poll UPS [ups@localhost] failed - Protocol error", snap, set)
-	}); got != 0 {
-		t.Errorf("no-match enrichment allocates %.0f times per line, want 0 — this path runs "+
-			"on the receiver goroutine for every line the box sends (~5M/day on camden)", got)
-	}
-
-	// A nil snapshot must not allocate either: it returns before the regexes.
-	if got := testing.AllocsPerRun(100, func() {
-		enrichMessage("Accepted publickey for root from 10.0.0.6", nil, set)
-	}); got != 0 {
-		t.Errorf("nil-snapshot enrichment allocates %.0f times, want 0 (it must return before the regexes)", got)
-	}
-}
+// TestEnrichMessageAllocations lives in enrichgeneric_allocs_test.go, gated `//go:build
+// !race`. The zero-alloc assertion cannot survive `-race`: race instrumentation adds its
+// own allocations, so AllocsPerRun would never read 0 under it (#295). The build
+// constraint scopes the exception to that one test — the rest of this file, and every
+// other test in the package, builds and runs under both `go test` and `go test -race`.

@@ -41,6 +41,28 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
+  # Dedicated race-detector gate. Runs the FULL suite under -race across every package,
+  # with no command-line -skip exception (#295): the one assertion that cannot survive
+  # race instrumentation — TestEnrichMessageAllocations — is excluded via a `//go:build
+  # !race` constraint in the code itself, so this job needs no per-test carve-out and any
+  # new test is race-covered by default. Split from `tests` so a data-race failure is a
+  # distinct, unambiguous signal (not tangled with lint) — and, via `ci-success` below,
+  # a blocking one. setup-go@v7 caches the build/module cache keyed on go.sum by default.
+  race:
+    name: Race detector
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+
+      - name: Run tests with the race detector
+        run: go test -race -timeout 15m ./...
+
   docs:
     name: Generated docs up-to-date
     runs-on: ubuntu-24.04
@@ -152,7 +174,7 @@ jobs:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [tests, docs, grafana, docker-build-verify]
+    needs: [tests, race, docs, grafana, docker-build-verify]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}

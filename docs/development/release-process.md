@@ -104,6 +104,7 @@ Runs on every push and PR:
 
 - Go build
 - Go test (`go test ./...`)
+- Race detector (`go test -race ./...`, dedicated `race` job) — a data-race failure is **blocking**: the `race` job feeds `ci-success`, so a race must be fixed before a release PR can merge
 - Linting (`golangci-lint`)
 
 ### Release workflow (`release-please.yml`)
