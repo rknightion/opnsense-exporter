@@ -88,8 +88,11 @@ endpoint. Two rules, and they are not the same rule:
 
 ## Canary Drift Triage
 
-Every finding from the daily live-box schema canary (`cmd/apidrift`) gets exactly one of four verdicts:
+Every finding from the daily live-box schema canary (`cmd/apidrift`) gets exactly one of five verdicts.
 
+**Ask "did upstream actually change?" FIRST.** Four of the five presuppose it did; **box-state** is the one that does not, and it is the most common answer in practice (7/7 of #271's findings, 7/7 of #243's). Reach for it before the others, or you will force-fit `drop` onto a live tunnel that merely fell over.
+
+- **box-state** — the box has nothing to report, so the key is absent. NOT drift, and **never a code change**. A missing path proves nothing on its own: an endpoint with no IPsec SAs, no nginx cache node, no reporting subsystem or an empty vnstat DB legitimately omits the key. Confirm against upstream *source* that the key is conditional, then either exempt it with a `missingOK` entry whose prune trigger names the **box state** (not a release), or fix the testbed so the data exists — prefer fixing the testbed when the field backs an exported metric, because an exemption there blinds the canary to real drift on a consumed field.
 - **absorb** — the payload changed representation only (a number arrived as a string, an object as an array of one). Flex types / `KindNumeric` usually already handle it; retype the field and move on.
 - **chase** — the data moved or was renamed. Write a **tolerant reader**: keep the legacy field, add the new one alongside it, and resolve new-wins-else-legacy in an accessor method. Template: `opnsense/health_check.go`.
 - **drop** — upstream removed the data. Keep the legacy field for the length of the support window; the metric reads absent/zero on newer releases. Document it in `docs/compatibility.md`.
@@ -97,7 +100,9 @@ Every finding from the daily live-box schema canary (`cmd/apidrift`) gets exactl
 
 Rules:
 
+- **Verify against upstream source before assigning any verdict.** Read the controller/script that builds the payload and check whether the key is conditional. Two runs disagreeing (#235 flagged `healthCheck subsystems`, #243 did not) is a box-state tell, not intermittent drift. Guessing here is how a phantom generation gets modelled: `metadata.subsystems` was modelled as "the 26.1.11 shape" and upstream never populated it on any release, which cost two fabricated fixtures and a permanently dead branch (#284).
 - **Support window is current + previous stable OPNsense.** Never version-sniff — resolve by payload *shape*. Never remove a legacy field while a release that sends it is still in the window.
+- **A fixture must never encode a shape upstream cannot produce.** Derive fixtures from a real capture or from the source's own branches. If one is deliberately synthetic (pinning parser tolerance rather than a captured payload), say so in the case comment.
 - **`opnsense/testdata/schemas/exemptions.json` is the compat ledger.** Every kept-legacy path gets a `missingOK` entry (the prefix form `section.*` is supported) with a note naming the generation it belongs to and the trigger that will let us prune it. Unmodelled new top-level keys go in `knownExtraTopKeys`.
 - After changing structs, run `make schemas`. Goldens are structure-only — they must never contain response values.
 
