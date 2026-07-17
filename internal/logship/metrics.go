@@ -13,8 +13,11 @@ const (
 
 // metrics holds the pipeline self-metrics. They register into the exporter's
 // self-metrics registry (so they appear at /metrics and via the OTLP metrics
-// bridge). Every metric here is mirrored by a panel on the Logs dashboard tab —
-// the grafana coverage gate enforces that.
+// bridge). Every metric here is mirrored by a panel on the Logs dashboard tab, but
+// BY HAND: the grafana coverage gate builds its catalogue from docs/metrics/metrics.md,
+// which docgen fills from the collector registry only — no opnsense_exporter_logs*
+// metric appears there, so nothing fails when one lands without a panel. Adding a
+// metric here means adding its panel yourself.
 type metrics struct {
 	shipped        *prometheus.CounterVec // logs_shipped_total{source}
 	dropped        *prometheus.CounterVec // logs_dropped_total{source,reason}

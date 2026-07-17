@@ -163,11 +163,16 @@ keep working against either backend. Export is **disabled by default** and activ
 only when `--otlp.enabled` (env `OPNSENSE_EXPORTER_OTLP_ENABLED`) is set. The pull
 endpoint is unaffected whether or not OTLP is enabled.
 
-Any field left empty falls through to the corresponding **standard OpenTelemetry
-environment variable** (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`,
-`OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_SERVICE_NAME`,
-`OTEL_RESOURCE_ATTRIBUTES`, …) read natively by the OTEL SDK. Explicit `--otlp.*`
+`--otlp.endpoint`, `--otlp.headers` and `--otlp.service-name` fall through to the
+corresponding **standard OpenTelemetry environment variable** when left empty
+(`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`),
+and `OTEL_RESOURCE_ATTRIBUTES` is read natively by the OTEL SDK. Explicit `--otlp.*`
 flags take precedence over those env vars.
+
+`OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_METRIC_EXPORT_INTERVAL` are **not** consulted.
+`--otlp.protocol` and `--otlp.export-interval` always carry a value (an empty protocol
+is rejected at startup rather than defaulted), so the exporter passes both explicitly
+and those two env vars never apply — set the flags instead.
 
 <!-- docgen:begin:flags-otlp -->
 | Flag | Env Var | Default | Description |
