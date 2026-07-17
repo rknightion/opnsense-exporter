@@ -5,7 +5,11 @@
   "include-v-in-tag": true,
   "packages": {
     ".": {
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "generic", "path": "deploy/k8s/deployment.yaml" },
+        { "type": "generic", "path": "docs/deployment/kubernetes.md" }
+      ]
     }
   },
   "changelog-sections": [

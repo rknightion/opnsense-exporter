@@ -18,10 +18,13 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: opnsense-exporter
-          # Pin to an immutable release tag (substitute the version you deploy), not
-          # :latest — :latest is retagged every release, so a pod reschedule could
-          # silently pull a breaking version with no deploy event to correlate.
-          image: ghcr.io/rknightion/opnsense-exporter:v1.0.1
+          # Pin to an immutable release tag, not :latest — :latest is retagged every
+          # release, so a pod reschedule could silently pull a breaking version with no
+          # deploy event to correlate. The tag tracks version.txt and is rewritten on
+          # each release by release-please via the x-release-please-version marker below;
+          # keep that marker on the image line or the tag stops updating. Published tags
+          # carry no leading "v" (the git tag is v2.2.1, the image tag is 2.2.1).
+          image: ghcr.io/rknightion/opnsense-exporter:2.2.1 # x-release-please-version
           imagePullPolicy: IfNotPresent
           # In pod, mount OPNSense API credentials as files
           volumeMounts:

@@ -59,8 +59,10 @@ spec:
       containers:
         - name: opnsense-exporter
           # Pin to an immutable release tag (not :latest) so a reschedule can't silently
-          # pull a breaking version.
-          image: ghcr.io/rknightion/opnsense-exporter:v1.0.1
+          # pull a breaking version. The tag tracks version.txt and is auto-updated on
+          # each release (release-please rewrites the x-release-please-version marker line).
+          # Published image tags carry no leading "v" (git tag v2.2.1 -> image tag 2.2.1).
+          image: ghcr.io/rknightion/opnsense-exporter:2.2.1 # x-release-please-version
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: api-key-vol
