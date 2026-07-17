@@ -28,11 +28,14 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
 const (
@@ -76,12 +79,28 @@ type Config struct {
 	TLSConfig *tls.Config
 }
 
+// unhandledLogInterval throttles the unhandled-endpoint log per method+path. It is
+// long because the log and the counter carry different halves of the signal: the
+// counter carries the rate, so the log only has to carry the identity — once per
+// route is enough to act on, and a route Zenarmor probes on a timer must not fill the
+// log with a fact the operator already has.
+const unhandledLogInterval = 15 * time.Minute
+
+// unhandledLogMaxKeys bounds the limiter's key set. Unlike the pipeline's, these keys
+// come off the wire, so the cap is what stops a broken or hostile peer walking
+// distinct paths from growing the map without bound. Generous next to Zenarmor's real
+// surface (a handful of routes) and small enough to stay negligible.
+const unhandledLogMaxKeys = 64
+
 // server implements the Elasticsearch surface. onBulk is called once per document
 // in a _bulk write, on the request goroutine.
 type server struct {
 	cfg    Config
 	onBulk func(index string, doc []byte, peer netip.Addr)
 	m      *metrics
+	log    *slog.Logger
+	// unhandledLog throttles the per-route log below, keyed by method+path.
+	unhandledLog *logship.LogLimiter
 
 	mu      sync.RWMutex
 	indices map[string]bool
@@ -89,13 +108,21 @@ type server struct {
 
 // newServer builds the ES handler. onBulk receives every document Zenarmor writes,
 // paired with the index it was addressed to and the address that sent it; it MUST
-// NOT retain doc, which points into the request body. m may be nil.
+// NOT retain doc, which points into the request body. m may be nil, and log may be
+// nil (it then falls back to the default logger).
 //
 // peer is the sender's real address, which is what lets the receiver recognise a
 // record describing its own ingest connection (see self.go). It is the zero Addr if
 // RemoteAddr cannot be parsed — never a guess.
-func newServer(cfg Config, onBulk func(index string, doc []byte, peer netip.Addr), m *metrics) http.Handler {
-	return &server{cfg: cfg, onBulk: onBulk, m: m, indices: make(map[string]bool)}
+func newServer(cfg Config, onBulk func(index string, doc []byte, peer netip.Addr), m *metrics, log *slog.Logger) http.Handler {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &server{
+		cfg: cfg, onBulk: onBulk, m: m, log: log,
+		unhandledLog: logship.NewLogLimiter(unhandledLogInterval, unhandledLogMaxKeys),
+		indices:      make(map[string]bool),
+	}
 }
 
 // remotePeer resolves the request's sender address, unmapped so a v4-mapped v6 peer
@@ -215,10 +242,25 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request, path string
 
 // unhandled answers anything outside the observed endpoint set permissively, so a
 // change in Zenarmor's client surface degrades into a counted signal rather than a
-// silent outage. The counter is the point: logs_rejected_total{reason=
-// "unhandled_endpoint"} is what tells an operator to come and look.
-func (s *server) unhandled(w http.ResponseWriter, _ *http.Request, _ string) {
+// silent outage. logs_rejected_total{reason="unhandled_endpoint"} tells an operator to
+// come and look; the log line is what they look AT. Without it the counter names
+// nothing and the only way left to identify the route is a packet capture on a
+// multi-GB/day stream — the expensive path the counter exists to avoid (#285).
+//
+// The path is deliberately logged and NOT made a metric label: it embeds index names
+// (zenarmor_<uuid>_<family>_write), so it is wire-sourced and unbounded, which #280
+// forbids as a label. A log line is the surface that can carry such a value.
+//
+// The counter increments on every call, throttled or not: suppression must cost the
+// operator log noise, never the rate.
+func (s *server) unhandled(w http.ResponseWriter, r *http.Request, path string) {
 	s.m.reject("unhandled_endpoint")
+	// Keyed on method+path so a newly-appearing route is reported promptly rather than
+	// inheriting the throttle of one already being suppressed.
+	if s.unhandledLog.Allow(r.Method + " " + path) {
+		s.log.Warn("zenarmor called an endpoint this receiver does not implement (answered 200 {}; repeats throttled)",
+			"method", r.Method, "path", path, "source", sourceName)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{})
 }
 

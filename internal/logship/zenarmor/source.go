@@ -147,7 +147,7 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 	s.ln = ln
 	s.listenPort = listenPortOf(ln.Addr().String())
 	s.srv = &http.Server{
-		Handler:           newServer(cfg, s.handleDoc, s.m),
+		Handler:           newServer(cfg, s.handleDoc, s.m, d.Logger),
 		TLSConfig:         cfg.TLSConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 	}

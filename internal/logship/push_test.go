@@ -18,7 +18,7 @@ func newTestPipeline(t *testing.T, capacity int) *pipeline {
 	p := &pipeline{
 		cfg:     &options.LogsConfig{BufferSize: capacity, BatchMax: capacity},
 		log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		limiter: newLogLimiter(time.Second),
+		limiter: NewLogLimiter(time.Second, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(capacity, func(Entry) {})
 	p.metrics = newMetrics(prometheus.NewRegistry(), capacity, func() float64 { return float64(p.queue.length()) }, sourceNames{})

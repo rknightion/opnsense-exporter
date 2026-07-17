@@ -25,6 +25,11 @@ const stateFlushInterval = 30 * time.Second
 // endpoint cannot flood the logs.
 const errorLogInterval = 30 * time.Second
 
+// errorLogMaxKeys bounds the pipeline limiter's key set. Its keys are code-defined
+// and few ("poll:"+source name, "ship"), so this is only a backstop and is never
+// reached in practice.
+const errorLogMaxKeys = 64
+
 // pipeline is the running log-shipping loop.
 type pipeline struct {
 	sink    Sink
@@ -47,7 +52,7 @@ type pipeline struct {
 	stateMu       sync.Mutex
 	lastPersisted []byte
 
-	limiter *logLimiter
+	limiter *LogLimiter
 }
 
 // Start builds every registered source, the configured sink and the pipeline,
@@ -101,7 +106,7 @@ func Start(
 		stateFile:   cfg.StateFile,
 		ctx:         pctx,
 		cancel:      cancel,
-		limiter:     newLogLimiter(errorLogInterval),
+		limiter:     NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
 		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
@@ -208,7 +213,7 @@ func (p *pipeline) pollOnce(s Source, name string) {
 	records, err := s.Poll(p.ctx)
 	if err != nil {
 		p.metrics.pollErrors.WithLabelValues(name).Inc()
-		if p.limiter.allow("poll:" + name) {
+		if p.limiter.Allow("poll:" + name) {
 			p.log.Warn("log source poll error", "source", name, "err", err)
 		}
 		return
@@ -239,7 +244,7 @@ func (p *pipeline) runEmitter() {
 		}
 		if err := p.sink.Emit(context.Background(), batch); err != nil {
 			p.metrics.shipErrors.Inc()
-			if p.limiter.allow("ship") {
+			if p.limiter.Allow("ship") {
 				p.log.Warn("log sink emit error (batch dropped)", "count", len(batch), "err", err)
 			}
 			continue
@@ -368,26 +373,4 @@ func atomicWrite(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmpName, path)
-}
-
-// logLimiter rate-limits repeated log lines keyed by a string.
-type logLimiter struct {
-	mu       sync.Mutex
-	last     map[string]time.Time
-	interval time.Duration
-}
-
-func newLogLimiter(interval time.Duration) *logLimiter {
-	return &logLimiter{last: map[string]time.Time{}, interval: interval}
-}
-
-func (l *logLimiter) allow(key string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	now := time.Now()
-	if t, ok := l.last[key]; ok && now.Sub(t) < l.interval {
-		return false
-	}
-	l.last[key] = now
-	return true
 }

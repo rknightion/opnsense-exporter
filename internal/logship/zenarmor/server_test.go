@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -83,9 +86,15 @@ func gzipString(t *testing.T, s string) string {
 	return buf.String()
 }
 
+// discardLogger keeps the unhandled-endpoint WARN (#285) out of the test output for
+// the tests that are not asserting on it.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func newTestServer(t *testing.T, m *metrics) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, m))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, m, discardLogger()))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -123,7 +132,7 @@ func TestEveryResponseCarriesProductHeader(t *testing.T) {
 // The product header must survive the refusal paths too: a client that cannot even
 // identify the server reports a confusing product error instead of the 401 it got.
 func TestProductHeaderOnRefusedRequests(t *testing.T) {
-	srv := httptest.NewServer(newServer(Config{AuthUser: "u", AuthPassword: "p"}, nil, nil))
+	srv := httptest.NewServer(newServer(Config{AuthUser: "u", AuthPassword: "p"}, nil, nil, discardLogger()))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/") //nolint:noctx // test client
@@ -284,13 +293,132 @@ func TestUnhandledEndpointIsCountedNotFatal(t *testing.T) {
 	}
 }
 
+// syncBuffer is a concurrency-safe log sink: the handler writes from the request
+// goroutine while the test reads from its own.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func newLoggingTestServer(t *testing.T, m *metrics) (*httptest.Server, *syncBuffer) {
+	t.Helper()
+	buf := &syncBuffer{}
+	log := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, m, log))
+	t.Cleanup(srv.Close)
+	return srv, buf
+}
+
+// The counter proves Zenarmor's client surface changed but names nothing, so the only
+// remaining way to find out WHICH route is a packet capture on a multi-GB/day stream —
+// the expensive path the counter exists to avoid (#285). The log is the surface that
+// can carry the path: it is wire-sourced and unbounded, which #280 forbids as a label.
+func TestUnhandledEndpointLogsMethodAndPath(t *testing.T) {
+	srv, buf := newLoggingTestServer(t, nil)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPut, srv.URL+"/_ilm/policy/zenarmor", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	out := buf.String()
+	if !strings.Contains(out, "/_ilm/policy/zenarmor") {
+		t.Errorf("log does not name the path, so the operator still cannot act on it; got %q", out)
+	}
+	if !strings.Contains(out, http.MethodPut) {
+		t.Errorf("log does not name the method; got %q", out)
+	}
+}
+
+// The log names the route; the counter carries the rate. So repeats are suppressed —
+// a route probed on a timer must not flood the log — while every occurrence is still
+// counted, suppressed or not.
+func TestUnhandledEndpointLogSuppressesRepeatsButCountsEvery(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	srv, buf := newLoggingTestServer(t, newMetrics(reg, nil))
+
+	for range 5 {
+		resp, err := http.Get(srv.URL + "/_ilm/policy/zenarmor") //nolint:noctx // test client
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	if n := strings.Count(buf.String(), "/_ilm/policy/zenarmor"); n != 1 {
+		t.Errorf("log lines naming the route = %d, want 1 (repeats must be suppressed)", n)
+	}
+	if got := rejectCount(t, reg, "unhandled_endpoint"); got != 5 {
+		t.Errorf("unhandled_endpoint count = %v, want 5 (every occurrence counts, suppressed or not)", got)
+	}
+}
+
+// A newly-appearing route is the whole signal, so it must be reported promptly rather
+// than inherit the suppression of a route already being throttled. Hence the limiter
+// keys on method+path, not on a single constant.
+func TestUnhandledEndpointLogsEachDistinctRoute(t *testing.T) {
+	srv, buf := newLoggingTestServer(t, nil)
+
+	for _, path := range []string{"/_ilm/policy/zenarmor", "/_index_template/zenarmor"} {
+		resp, err := http.Get(srv.URL + path) //nolint:noctx // test client
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "/_ilm/policy/zenarmor") || !strings.Contains(out, "/_index_template/zenarmor") {
+		t.Errorf("a distinct route was suppressed by another route's throttle; got %q", out)
+	}
+}
+
+// The method is part of the key too: Zenarmor probing a route with GET and then
+// writing it with PUT is two different facts about its client surface.
+func TestUnhandledEndpointLogsEachDistinctMethod(t *testing.T) {
+	srv, buf := newLoggingTestServer(t, nil)
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+"/_ilm/policy/zenarmor", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	if n := strings.Count(buf.String(), "/_ilm/policy/zenarmor"); n != 2 {
+		t.Errorf("log lines = %d, want 2 (GET and PUT are distinct keys); got %q", n, buf.String())
+	}
+}
+
 func TestBulkRoutesDocsToCallback(t *testing.T) {
 	var gotIdx []string
 	var gotDocs []string
 	srv := httptest.NewServer(newServer(Config{}, func(i string, d []byte, _ netip.Addr) {
 		gotIdx = append(gotIdx, i)
 		gotDocs = append(gotDocs, string(d))
-	}, nil))
+	}, nil, discardLogger()))
 	defer srv.Close()
 
 	// Action line then source line, as Zenarmor writes them.
@@ -350,7 +478,7 @@ func TestBulkBareEndpointUsesActionIndex(t *testing.T) {
 	var gotIdx []string
 	srv := httptest.NewServer(newServer(Config{}, func(i string, _ []byte, _ netip.Addr) {
 		gotIdx = append(gotIdx, i)
-	}, nil))
+	}, nil, discardLogger()))
 	defer srv.Close()
 
 	body := `{"index":{"_index":"zenarmor_0000000000_abc_tls_write"}}
@@ -372,7 +500,7 @@ func TestBulkDeleteActionHasNoSourceLine(t *testing.T) {
 	var gotDocs []string
 	srv := httptest.NewServer(newServer(Config{}, func(_ string, d []byte, _ netip.Addr) {
 		gotDocs = append(gotDocs, string(d))
-	}, nil))
+	}, nil, discardLogger()))
 	defer srv.Close()
 
 	body := `{"delete":{"_index":"zenarmor_0000000000_abc_conn_write","_id":"9"}}
@@ -402,7 +530,7 @@ func TestBulkDeleteActionHasNoSourceLine(t *testing.T) {
 
 func TestBulkCountsRequestsAndBytes(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, newMetrics(reg, nil)))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, newMetrics(reg, nil), discardLogger()))
 	defer srv.Close()
 
 	body := `{"index":{"_index":"zenarmor_0000000000_abc_conn_write"}}
@@ -444,7 +572,7 @@ func TestBulkEmptyBodyEncodesEmptyItemsArray(t *testing.T) {
 func TestPeerAllowlistRefusesAndCounts(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	// httptest dials from loopback, so an allowlist of a foreign prefix refuses it.
-	srv := httptest.NewServer(newServer(Config{AllowedPeers: mustPrefixes(t, "192.0.2.0/24")}, nil, newMetrics(reg, nil)))
+	srv := httptest.NewServer(newServer(Config{AllowedPeers: mustPrefixes(t, "192.0.2.0/24")}, nil, newMetrics(reg, nil), discardLogger()))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/") //nolint:noctx // test client
@@ -463,7 +591,7 @@ func TestPeerAllowlistRefusesAndCounts(t *testing.T) {
 func TestPeerAllowlistAdmitsLoopback(t *testing.T) {
 	srv := httptest.NewServer(newServer(Config{
 		AllowedPeers: mustPrefixes(t, "127.0.0.0/8", "::1/128"),
-	}, nil, nil))
+	}, nil, nil, discardLogger()))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/") //nolint:noctx // test client
@@ -478,7 +606,7 @@ func TestPeerAllowlistAdmitsLoopback(t *testing.T) {
 
 func TestBasicAuth(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	srv := httptest.NewServer(newServer(Config{AuthUser: "zen", AuthPassword: "s3cret"}, nil, newMetrics(reg, nil)))
+	srv := httptest.NewServer(newServer(Config{AuthUser: "zen", AuthPassword: "s3cret"}, nil, newMetrics(reg, nil), discardLogger()))
 	defer srv.Close()
 
 	cases := []struct {
@@ -513,7 +641,7 @@ func TestGzippedBulkBodyIsDecompressed(t *testing.T) {
 	var gotDocs []string
 	srv := httptest.NewServer(newServer(Config{}, func(_ string, d []byte, _ netip.Addr) {
 		gotDocs = append(gotDocs, string(d))
-	}, nil))
+	}, nil, discardLogger()))
 	defer srv.Close()
 
 	body := `{"index":{"_index":"zenarmor_0000000000_abc_conn_write"}}
@@ -538,7 +666,7 @@ func TestGzippedBulkBodyIsDecompressed(t *testing.T) {
 func TestBrokenGzipIsRejectedNotParsed(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	called := 0
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg, nil)))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg, nil), discardLogger()))
 	defer srv.Close()
 
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/_bulk", strings.NewReader("this is not gzip")) //nolint:noctx // test client

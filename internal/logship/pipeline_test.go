@@ -110,7 +110,7 @@ func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, 
 	p := &pipeline{
 		sink: sink, cfg: cfg, log: deps.Logger,
 		sources: sources, stateFile: cfg.StateFile,
-		ctx: pctx, cancel: cancel, limiter: newLogLimiter(errorLogInterval),
+		ctx: pctx, cancel: cancel, limiter: NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
 		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
