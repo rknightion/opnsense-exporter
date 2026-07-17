@@ -41,6 +41,66 @@ func TestRunReturnsOnContextCancel(t *testing.T) {
 	}
 }
 
+// ReadHeaderTimeout stops a slow-header client, but stops applying once headers land.
+// The body read and idle keep-alives must be bounded too (#289), or a peer that sends
+// valid headers can trickle the body forever and pin a goroutine. Assert the server is
+// wired with all three bounds so this defence cannot silently regress.
+func TestServerConfiguresBodyAndIdleTimeouts(t *testing.T) {
+	s, err := newSource(logship.Deps{}, Config{Addr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("newSource: %v", err)
+	}
+	t.Cleanup(func() { _ = s.ln.Close() })
+
+	if s.srv.ReadHeaderTimeout != readHeaderTimeout {
+		t.Errorf("ReadHeaderTimeout = %v, want %v", s.srv.ReadHeaderTimeout, readHeaderTimeout)
+	}
+	if s.srv.ReadTimeout != readTimeout {
+		t.Errorf("ReadTimeout = %v, want %v (bounds the whole body read, not just headers)", s.srv.ReadTimeout, readTimeout)
+	}
+	if s.srv.IdleTimeout != idleTimeout {
+		t.Errorf("IdleTimeout = %v, want %v (bounds kept-alive connections)", s.srv.IdleTimeout, idleTimeout)
+	}
+}
+
+// End-to-end proof the body-read bound actually fires: a client that completes its
+// headers, promises a body, then never sends it must be disconnected — not left to pin
+// a goroutine indefinitely. Uses a deliberately short ReadTimeout (production uses the
+// far larger readTimeout) so the mechanism is proven in a fraction of a second. Only
+// ReadTimeout is set, so a pass proves ReadTimeout — not ReadHeaderTimeout — closes it.
+func TestSlowBodyClientIsDisconnected(t *testing.T) {
+	ln := mustListen(t)
+	srv := &http.Server{ //nolint:gosec // ReadTimeout below is the bound under test; ReadHeaderTimeout intentionally omitted
+		Handler:     newServer(Config{}, func(string, []byte, netip.Addr) {}, nil, discardLogger()),
+		ReadTimeout: 300 * time.Millisecond,
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	// Full headers promising a body we never send.
+	if _, err := conn.Write([]byte("POST /_bulk HTTP/1.1\r\nHost: x\r\nContent-Length: 1000000\r\n\r\n")); err != nil {
+		t.Fatalf("write headers: %v", err)
+	}
+
+	// Give the client a bound generously larger than the server's ReadTimeout. If the
+	// server bounds the stalled body it closes the connection (a read returns bytes,
+	// EOF, or a reset) well within it; if it does NOT, this read blocks until the client
+	// deadline and reports a timeout — which is the regression.
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Read(make([]byte, 1)); err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			t.Fatal("server did not bound a stalled request body — the connection was still open after 5s")
+		}
+		// EOF / connection reset: the server closed it. That is the pass.
+	}
+}
+
 // Bind eagerly in the factory: a port already in use is a configuration error the
 // operator must see at startup, not a receiver that is silently dead forever.
 func TestFactoryBindsEagerly(t *testing.T) {

@@ -661,6 +661,147 @@ func TestGzippedBulkBodyIsDecompressed(t *testing.T) {
 	}
 }
 
+// gzipBytes gzips n bytes of a single repeated value. A highly-compressible payload:
+// n bytes of one byte deflate to a handful of KB, so it is small on the wire yet
+// expands to n on decode — the zip-bomb shape #288 must bound.
+func gzipBytes(t *testing.T, n int) string {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	chunk := make([]byte, 1<<20) // 1 MiB of zeros; content is irrelevant, we reject before any parse
+	for written := 0; written < n; {
+		w := len(chunk)
+		if r := n - written; r < w {
+			w = r
+		}
+		if _, err := zw.Write(chunk[:w]); err != nil {
+			t.Fatal(err)
+		}
+		written += w
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+// zeroReader is an endless source of zero bytes, capped with io.LimitReader so a test
+// can stream an oversized body past the ceiling without allocating it up front.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
+}
+
+// A small, highly-compressible request that decompresses PAST the ceiling must be
+// rejected on the DECOMPRESSED size — the wire limit alone would let it through and
+// io.ReadAll would allocate gigabytes before returning (#288). The compressed body is
+// a few KB, well under the wire limit, so this proves the second ceiling is what bites.
+func TestGzipBombRejectedByDecompressedLimit(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	called := 0
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg, nil), discardLogger()))
+	defer srv.Close()
+
+	bomb := gzipBytes(t, maxBodyBytes+1<<20) // decompresses to 1 MiB past the ceiling
+	if len(bomb) >= maxBodyBytes {
+		t.Fatalf("compressed bomb is %d bytes, not under the wire limit — the test would prove the wrong limit", len(bomb))
+	}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/_bulk", strings.NewReader(bomb)) //nolint:noctx // test client
+	req.Header.Set("Content-Encoding", "gzip")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for an over-ceiling decompressed body", resp.StatusCode)
+	}
+	if called != 0 {
+		t.Errorf("callback ran %d times on an over-ceiling body, want 0", called)
+	}
+	if got := rejectCount(t, reg, "body"); got != 1 {
+		t.Errorf("body reject count = %v, want 1", got)
+	}
+}
+
+// The mirror of the bomb test: a gzip body whose decompressed size sits UNDER the
+// ceiling is accepted and parsed, so the new limit does not clip a legitimate large
+// write.
+func TestGzipUnderCeilingAcceptedAndParsed(t *testing.T) {
+	var gotDocs int
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { gotDocs++ }, nil, discardLogger()))
+	defer srv.Close()
+
+	// A real-shaped bulk padded well under the ceiling. The padding rides in a field the
+	// bulk parser ignores, so the action/source pair still routes one document.
+	body := `{"index":{"_index":"zenarmor_0000000000_abc_conn_write"}}` + "\n" +
+		`{"app_name":"SSDP","pad":"` + strings.Repeat("x", 4<<20) + `"}` + "\n"
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/_bulk", strings.NewReader(gzipString(t, body))) //nolint:noctx // test client
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Content-Type", "application/x-ndjson")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200 for an under-ceiling body", resp.StatusCode)
+	}
+	if gotDocs != 1 {
+		t.Errorf("callback got %d docs, want 1", gotDocs)
+	}
+}
+
+// An uncompressed body over the ceiling must stay rejected — the compressed-wire
+// MaxBytesReader is the defence here, and the added decompressed ceiling must not
+// weaken it. Driven through readBody directly so the oversized stream never crosses a
+// socket (deterministic, no network flake from the server closing a half-sent body).
+func TestReadBodyRejectsOversizedUncompressed(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/_bulk", io.LimitReader(zeroReader{}, maxBodyBytes+1024))
+	if _, err := readBody(rec, req); err == nil {
+		t.Fatal("an oversized uncompressed body was accepted, want an error")
+	}
+}
+
+// A valid gzip HEADER followed by a truncated stream must remain an error and never be
+// parsed as raw NDJSON — the decompressed-limit change must not turn a transport fault
+// into manufactured records. (TestBrokenGzipIsRejectedNotParsed covers a bad header;
+// this covers a good header with a cut-off body, which gzip.NewReader accepts.)
+func TestTruncatedGzipIsRejectedNotParsed(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	called := 0
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg, nil), discardLogger()))
+	defer srv.Close()
+
+	full := gzipString(t, `{"index":{"_index":"zenarmor_0000000000_abc_conn_write"}}`+"\n"+`{"app_name":"SSDP"}`+"\n")
+	truncated := full[:len(full)-8] // drop the trailer + tail: header parses, the stream does not complete
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/_bulk", strings.NewReader(truncated)) //nolint:noctx // test client
+	req.Header.Set("Content-Encoding", "gzip")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for a truncated gzip stream", resp.StatusCode)
+	}
+	if called != 0 {
+		t.Errorf("callback ran %d times on a truncated gzip stream, want 0", called)
+	}
+	if got := rejectCount(t, reg, "body"); got != 1 {
+		t.Errorf("body reject count = %v, want 1", got)
+	}
+}
+
 // A body that claims gzip but is not must be refused, never parsed as plain NDJSON:
 // doing so would manufacture garbage records out of a transport fault.
 func TestBrokenGzipIsRejectedNotParsed(t *testing.T) {

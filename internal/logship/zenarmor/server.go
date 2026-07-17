@@ -27,6 +27,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -51,9 +52,17 @@ const (
 
 	// maxBodyBytes caps a single request body. Live bulk writes ran a few hundred KB;
 	// this is generous enough to never clip one while still bounding what a broken or
-	// hostile peer can make us buffer.
+	// hostile peer can make us buffer. It is applied TWICE, to two different sizes: to
+	// the compressed wire bytes (http.MaxBytesReader) AND to the decompressed stream —
+	// see readBody. The two are not the same number for a gzip body, and only the wire
+	// limit says nothing about how far a zip bomb expands.
 	maxBodyBytes = 64 << 20
 )
+
+// errBodyTooLarge is returned by readBody when the DECOMPRESSED stream would exceed
+// maxBodyBytes. It joins the same 400 + reject("body") path as any other unreadable
+// body — a distinct label would only split a signal the operator already reads as one.
+var errBodyTooLarge = errors.New("zenarmor: decompressed body exceeds limit")
 
 // Config is the receiver's runtime configuration. options.ZenarmorConfig is
 // converted into it, so that this package never imports options for its own config
@@ -320,6 +329,13 @@ func (s *server) authOK(r *http.Request) bool {
 
 // readBody reads a capped request body, transparently decompressing gzip.
 //
+// Two ceilings, deliberately, and they are not the same rule. http.MaxBytesReader caps
+// the COMPRESSED wire bytes; that bounds what the socket delivers but says nothing about
+// what gzip expands it into — a few KB of repeated bytes inflate to gigabytes (#288). So
+// the decoded stream is read through an io.LimitReader of maxBodyBytes+1: the extra byte
+// is the overflow tell, and capping the read is what keeps a zip bomb from ever being
+// fully buffered before we reject it.
+//
 // A gzip reader that fails is an error, never a fall back to the raw bytes: the raw
 // bytes of a gzip stream are not NDJSON, and parsing them would manufacture garbage
 // records out of a transport fault.
@@ -334,7 +350,14 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 		defer func() { _ = zr.Close() }()
 		rdr = zr
 	}
-	return io.ReadAll(rdr)
+	b, err := io.ReadAll(io.LimitReader(rdr, maxBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxBodyBytes {
+		return nil, errBodyTooLarge
+	}
+	return b, nil
 }
 
 // handleBulk parses the NDJSON action/document pairs and returns the response

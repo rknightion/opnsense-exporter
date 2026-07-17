@@ -47,6 +47,20 @@ var (
 // ctx is cancelled.
 const shutdownGrace = 5 * time.Second
 
+// HTTP server timeouts (#289). ReadHeaderTimeout alone stops a slow-HEADER client but
+// stops applying the moment the headers land, so a peer can then trickle the body
+// forever and pin a goroutine (slowloris). ReadTimeout bounds the WHOLE request —
+// headers, body, and the gzip decode handleBulk drives off it — and IdleTimeout bounds
+// a kept-alive connection between requests.
+const (
+	readHeaderTimeout = 10 * time.Second
+	// readTimeout is generous next to a real write (live bulk writes ran a few hundred
+	// KB, sub-second) yet large enough to admit the 64 MiB maxBodyBytes ceiling on a slow
+	// (~0.5 MB/s) deployment before it trips. A hostile peer's body still dies here.
+	readTimeout = 120 * time.Second
+	idleTimeout = 120 * time.Second
+)
+
 func init() {
 	logship.RegisterPushSource(func(d logship.Deps) (logship.PushSource, error) {
 		cfg, enabled, err := loadConfig()
@@ -149,7 +163,9 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 	s.srv = &http.Server{
 		Handler:           newServer(cfg, s.handleDoc, s.m, d.Logger),
 		TLSConfig:         cfg.TLSConfig,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 	return s, nil
 }
