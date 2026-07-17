@@ -57,20 +57,47 @@ Create a group (e.g., `monitoring`) with only the following GUI permissions and 
 
 The exporter connects to OPNsense via HTTPS by default when `--opnsense.protocol=https` is set. For OPNsense instances using a certificate signed by a public CA, no additional configuration is needed.
 
-### Self-signed certificates
+### Self-signed or private-CA certificates
 
-If your OPNsense uses a self-signed certificate, you have two options:
+If your OPNsense uses a self-signed certificate or one issued by a private CA,
+trust the CA where the exporter can see it. The recommended approach depends on
+how the exporter runs.
 
-**Option 1: Add the CA to the system trust store (recommended)**
+**Host / bare binary (recommended for non-container installs)**
 
-Add the OPNsense CA certificate to the trust store on the host running the exporter. For Docker, mount the CA certificate into the container:
+On a normal Linux host the exporter uses the OS trust store. Add the OPNsense CA
+to it and refresh the bundle:
 
-```yaml
-volumes:
-  - ./opnsense-ca.crt:/usr/local/share/ca-certificates/opnsense-ca.crt:ro
+```bash
+sudo cp opnsense-ca.crt /usr/local/share/ca-certificates/opnsense-ca.crt
+sudo update-ca-certificates
 ```
 
-**Option 2: Disable TLS verification (not recommended)**
+This works only where `update-ca-certificates` (or your distro's equivalent)
+merges that directory into the system bundle. It does **not** apply to the
+official container image.
+
+**Container (official distroless image)**
+
+The official runtime image is distroless: it has no `update-ca-certificates` and
+does not merge `/usr/local/share/ca-certificates` into Go's trust roots, so
+mounting a certificate there leaves it untrusted. Instead mount the CA bundle at
+any path and point Go's TLS stack at it with `SSL_CERT_FILE`:
+
+```yaml
+services:
+  opnsense-exporter:
+    image: ghcr.io/rknightion/opnsense-exporter:latest
+    environment:
+      SSL_CERT_FILE: /certs/opnsense-ca.pem
+    volumes:
+      - ./opnsense-ca.pem:/certs/opnsense-ca.pem:ro
+```
+
+See [Custom CA certificates](deployment/docker.md#custom-ca-certificates) in the
+Docker deployment guide for the full example.
+
+**Disable TLS verification (not recommended)**
 
 ```bash
 --opnsense.insecure
