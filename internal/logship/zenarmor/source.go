@@ -32,9 +32,12 @@ const sourceName = "zenarmor"
 // cardinality.
 var (
 	// RejectReasons: peer/auth/unhandled_endpoint/body are the HTTP receiver's
-	// (server.go); unknown_family/filtered/self_traffic are the record's (source.go).
-	// There is no "oversized" here — that is a syslog framing concern only.
-	RejectReasons = []string{"peer", "auth", "unhandled_endpoint", "body", "unknown_family", "filtered", "self_traffic"}
+	// (server.go); unknown_family/filtered/self_traffic/excluded are the record's
+	// (source.go). There is no "oversized" here — that is a syslog framing concern only.
+	RejectReasons = []string{
+		"peer", "auth", "unhandled_endpoint", "body",
+		"unknown_family", "filtered", "self_traffic", "excluded",
+	}
 	// ParseStages: bulk is the _bulk envelope (server.go), document one record inside
 	// it (source.go).
 	ParseStages = []string{"bulk", "document"}
@@ -65,7 +68,17 @@ func loadConfig() (Config, bool, error) {
 	if err != nil || !enabled {
 		return Config{}, false, err
 	}
+	// Parsed HERE rather than in options: the field name is validated against
+	// KnownAttributeKeys, which lives beside the parser that produces those keys, and
+	// options cannot import this package (this package imports options). A bad rule
+	// fails the factory, which aborts logship.Start and exits — a startup error, never
+	// a silent no-op.
+	excludes, err := parseExcludeRules(oc.Excludes)
+	if err != nil {
+		return Config{}, false, err
+	}
 	return Config{
+		Excludes:        excludes,
 		Addr:            oc.Addr,
 		AllowedPeers:    oc.AllowedPeers,
 		Families:        oc.Families,
@@ -120,7 +133,7 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 		cfg:      cfg,
 		cache:    cache,
 		sink:     sink,
-		m:        newMetrics(d.Registerer),
+		m:        newMetrics(d.Registerer, cfg.Excludes),
 		families: familyAllowSet(cfg.Families),
 	}
 
@@ -215,7 +228,18 @@ func (s *zenarmorSource) handleDoc(index string, doc []byte, peer netip.Addr) {
 		return
 	}
 
+	// Derive BEFORE excluding, deliberately, and unlike the self-traffic drop above.
+	// Self-traffic is an artefact of measuring, so counting it would put our own
+	// bookkeeping into the operator's figures. An excluded record is real traffic the
+	// operator merely does not want stored, so its shape must still reach the derived
+	// counters — those outlive both the exclusion and Loki's retention, and they are
+	// all that remains of it.
 	observeDerived(s.sink, family, rec.Attributes)
+
+	if rule, ok := excludedBy(s.cfg.Excludes, rec.Attributes); ok {
+		s.m.exclude(rule)
+		return
+	}
 	emit(rec)
 }
 

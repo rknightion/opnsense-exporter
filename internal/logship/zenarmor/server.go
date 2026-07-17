@@ -64,6 +64,9 @@ type Config struct {
 	DropSelfTraffic bool
 	// Families restricts which reporting families are shipped. Empty means all.
 	Families []string
+	// Excludes drops records whose named field matches the rule's regex. Empty (the
+	// default) drops nothing. Parsed and validated at startup by parseExcludeRules.
+	Excludes []ExcludeRule
 	// Enrich turns the per-record snapshot lookups on.
 	Enrich bool
 	// AuthUser and AuthPassword, when set, require HTTP basic auth.

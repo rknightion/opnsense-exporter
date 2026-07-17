@@ -183,11 +183,25 @@ def build(b: Builder):
              "than here -- data cut at source never crosses the wire.",
     )
 
+    zen_excluded = b.ts(
+        "Zenarmor Records Excluded (rate)",
+        [(f'sum by (rule) (rate({sel("opnsense_exporter_logs_zenarmor_excluded_total")}[{RATE}]))',
+          "{{rule}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_zenarmor_excluded_total: records dropped per second by a "
+             "--logs.zenarmor.exclude rule, by rule (#279). This panel IS the blind spot: every "
+             "record counted here was real traffic that is now absent from the log stream, and "
+             "unlike syslog sampling the derived counters cannot make up for it -- they carry no "
+             "server_name, query or device_name. A rule climbing unexpectedly is eating more than "
+             "it was written for. Flat zero is the default: exclusion is opt-in.",
+    )
+
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),
         b.row("Queue & Errors", [queue_len, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [cursor_lag, possible_gaps], present="has_logs"),
         b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
         b.row("Zenarmor", [zen_events, zen_blocked, zen_bulk], present="has_logs"),
+        b.row("Zenarmor Exclusion", [zen_excluded], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
     ])

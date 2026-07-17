@@ -104,6 +104,73 @@ If you need to cut this down, **do it in Zenarmor's own `indexes` setting, not w
 cut with `--logs.zenarmor.families` still costs the bandwidth and CPU to receive and
 parse before being discarded.
 
+## Excluding known-boring traffic
+
+`--logs.zenarmor.exclude` drops records whose field matches a regex. It is
+**repeatable** and **off by default** — no implicit blind spots.
+
+```
+--logs.zenarmor.exclude='server_name=~.*\.grafana\.net'
+--logs.zenarmor.exclude='query=~.*\.grafana\.net'
+```
+
+Each rule is `FIELD=~REGEX`. Only the regex operator `=~` exists; use `^value$` for an
+exact match. The regex tests **that field's value only** — a `server_name` rule never
+matches the value of `host`. Rules are OR-ed: any one match drops the record. Via the
+environment, put **one rule per line** (`OPNSENSE_EXPORTER_LOGS_ZENARMOR_EXCLUDE`), not
+comma-separated, so a regex containing a comma survives.
+
+The field name is **validated at startup** against the receiver's attribute vocabulary.
+A typo is a startup error, never a silent no-op — the same reasoning as
+`--logs.zenarmor.families`: a filter that quietly does nothing looks exactly like a
+quiet network. The error names the near-miss it was probably meant to be.
+
+### This is lossy, and not the way sampling is
+
+**Read this before turning it on.** `--logs.syslog.sample` is safe to reach for because
+a line it drops is one whose value already survives in a counter:
+`opnsense_log_events_firewall_total` carries `action`, `interface` and `rule`, and a
+line that was never counted is never dropped.
+
+**Exclusion has no such backstop.** `opnsense_log_events_zenarmor_total` carries only
+family / action / category / interface / rcode / severity / status_class — deliberately,
+for cardinality. It has **no `server_name`, no `query`, no `device_name`**. The derived
+counters *are* observed before the drop, so the *shape* of excluded traffic survives
+both the exclusion and Loki's retention. But the record itself, and every
+high-cardinality field on it, is gone for good — and unlike a query-time filter, that
+decision cannot be revisited after the fact.
+
+So the honest summary: exclusion trades forensic detail for bytes, permanently. Prefer
+filtering at query time, or cutting families at the Zenarmor end, unless volume
+genuinely forces this.
+
+### Drops are counted, per rule
+
+```
+opnsense_exporter_logs_rejected_total{source="zenarmor", reason="excluded"}
+opnsense_exporter_logs_zenarmor_excluded_total{rule="server_name=~.*\\.grafana\\.net"}
+```
+
+The first puts an exclusion alongside every other configured drop. The second names the
+**rule** that did it, so the blind spot is visible on the Log Shipping dashboard rather
+than inferred from the exporter's command line — the aggregate alone cannot tell a rule
+that drops nothing from one quietly eating the stream. Both are published at **zero**
+from startup, so a rule that has never matched reads `0` rather than vanishing.
+
+### On the Grafana Cloud case specifically
+
+The motivating example is real: on one live box `camden`, the observability host, is
+**57k of 78k records (~73%)** — it spends its life talking to
+`otlp-gateway-prod-*.grafana.net` and `profiles-prod-*.grafana.net`, which dominate
+every top-N panel.
+
+**There is deliberately no default rule for it, and filtering Grafana-side is the better
+first move.** `camden` is the most privileged host on that network, and "high-volume
+encrypted egress to a cloud endpoint" is precisely the shape exfiltration takes.
+Dropping it at ingest to save bytes means the one host worth watching most closely
+becomes the one you log least. The knob exists because the operator who wants it should
+have it per deployment — not because this is a recommended default.
+
 ## Self-traffic
 
 Zenarmor inspects traffic on the link the receiver listens on, so it reports **the

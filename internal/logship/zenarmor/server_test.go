@@ -269,7 +269,7 @@ func TestAliasesEndpointAcknowledges(t *testing.T) {
 // Zenarmor's client surface is a visible signal rather than a silent outage.
 func TestUnhandledEndpointIsCountedNotFatal(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	srv := newTestServer(t, newMetrics(reg))
+	srv := newTestServer(t, newMetrics(reg, nil))
 
 	resp, err := http.Get(srv.URL + "/_some/future/endpoint") //nolint:noctx // test client
 	if err != nil {
@@ -402,7 +402,7 @@ func TestBulkDeleteActionHasNoSourceLine(t *testing.T) {
 
 func TestBulkCountsRequestsAndBytes(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, newMetrics(reg)))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) {}, newMetrics(reg, nil)))
 	defer srv.Close()
 
 	body := `{"index":{"_index":"zenarmor_0000000000_abc_conn_write"}}
@@ -444,7 +444,7 @@ func TestBulkEmptyBodyEncodesEmptyItemsArray(t *testing.T) {
 func TestPeerAllowlistRefusesAndCounts(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	// httptest dials from loopback, so an allowlist of a foreign prefix refuses it.
-	srv := httptest.NewServer(newServer(Config{AllowedPeers: mustPrefixes(t, "192.0.2.0/24")}, nil, newMetrics(reg)))
+	srv := httptest.NewServer(newServer(Config{AllowedPeers: mustPrefixes(t, "192.0.2.0/24")}, nil, newMetrics(reg, nil)))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/") //nolint:noctx // test client
@@ -478,7 +478,7 @@ func TestPeerAllowlistAdmitsLoopback(t *testing.T) {
 
 func TestBasicAuth(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	srv := httptest.NewServer(newServer(Config{AuthUser: "zen", AuthPassword: "s3cret"}, nil, newMetrics(reg)))
+	srv := httptest.NewServer(newServer(Config{AuthUser: "zen", AuthPassword: "s3cret"}, nil, newMetrics(reg, nil)))
 	defer srv.Close()
 
 	cases := []struct {
@@ -538,7 +538,7 @@ func TestGzippedBulkBodyIsDecompressed(t *testing.T) {
 func TestBrokenGzipIsRejectedNotParsed(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	called := 0
-	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg)))
+	srv := httptest.NewServer(newServer(Config{}, func(string, []byte, netip.Addr) { called++ }, newMetrics(reg, nil)))
 	defer srv.Close()
 
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/_bulk", strings.NewReader("this is not gzip")) //nolint:noctx // test client

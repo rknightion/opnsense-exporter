@@ -71,6 +71,24 @@ var (
 			"them; drops are counted as logs_rejected_total{reason=\"self_traffic\"}.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_DROP_SELF_TRAFFIC").Default("true").Bool()
 
+	// Repeatable, and default off: no implicit blind spots. Unlike --logs.syslog.sample
+	// this is LOSSY in a way no counter makes up for — see the ExcludeRules doc in the
+	// zenarmor package, and docs/zenarmor-receiver.md. Kingpin splits a cumulative
+	// flag's env value on NEWLINE, not comma, so a regex containing a comma (a{1,3})
+	// survives the env form intact.
+	logsZenarmorExclude = kingpin.Flag(
+		"logs.zenarmor.exclude",
+		"Drop Zenarmor records whose FIELD matches REGEX, as FIELD=~REGEX (e.g. "+
+			"'server_name=~.*\\.grafana\\.net'). Repeatable; default off. The field name is "+
+			"validated at startup against the receiver's attribute vocabulary — a typo is a "+
+			"startup error, never a silent no-op. Derived counters are observed BEFORE the drop, "+
+			"so opnsense_log_events_zenarmor_total stays complete; drops are counted as "+
+			"logs_rejected_total{reason=\"excluded\"} and logs_zenarmor_excluded_total{rule}. "+
+			"EXCLUSION IS LOSSY: the derived counters carry no server_name, query or device_name, "+
+			"so an excluded record's forensic detail is gone for good. Prefer a query-time filter "+
+			"unless volume genuinely forces this. Set via env as one rule per LINE.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_EXCLUDE").Strings()
+
 	logsZenarmorEnrich = kingpin.Flag(
 		"logs.zenarmor.enrich",
 		"Enrich received Zenarmor records from the OPNsense API: friendly interface names, "+
@@ -105,9 +123,15 @@ var (
 // zenarmor.Config field for field; the two are deliberately separate types so the
 // receiver package does not import options for its own config.
 type ZenarmorConfig struct {
-	Addr            string
-	AllowedPeers    []netip.Prefix
-	Families        []string // empty = all
+	Addr         string
+	AllowedPeers []netip.Prefix
+	Families     []string // empty = all
+	// Excludes are the raw --logs.zenarmor.exclude rules, exactly as written. They are
+	// parsed, validated and compiled by the zenarmor package rather than here: the
+	// field name is checked against that package's attribute vocabulary, which lives
+	// next to the parser that produces it, and options cannot import zenarmor (zenarmor
+	// imports options).
+	Excludes        []string
 	Enrich          bool
 	AuthUser        string
 	AuthPassword    string
@@ -139,6 +163,7 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 		AuthUser:        strings.TrimSpace(*logsZenarmorAuthUser),
 		AuthPassword:    *logsZenarmorAuthPassword,
 		DropSelfTraffic: *logsZenarmorDropSelfTraffic,
+		Excludes:        *logsZenarmorExclude,
 	}
 	if cfg.Addr == "" {
 		return nil, false, fmt.Errorf(
