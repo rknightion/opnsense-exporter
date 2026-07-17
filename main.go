@@ -678,12 +678,19 @@ func main() {
 	}
 
 	// Validate the metrics path before registering it: net/http.ServeMux panics on an
-	// empty/invalid pattern, so a templated-blank --web.telemetry-path would crash the
-	// process with a raw stack trace. Fail through the normal logged config-error path.
-	if err := options.ValidateMetricsPath(*options.MetricsPath); err != nil {
+	// empty/invalid pattern, and also on a duplicate pattern — so a templated-blank or a
+	// reserved (/-/healthy, /-/ready) --web.telemetry-path would crash the process with a
+	// raw stack trace. Fail through the normal logged config-error path instead.
+	if err := options.ValidateMetricsPath(*options.MetricsPath, server.HealthyPath, server.ReadyPath); err != nil {
 		logger.Error("invalid metrics path", "err", err)
 		os.Exit(1)
 	}
+
+	// Register on a private mux rather than http.DefaultServeMux: all exporter-owned
+	// routes are then explicit and self-contained, so a future fixed route can't collide
+	// with the global mux via some other package's init, and the collision surface stays
+	// exactly the reserved set validated above.
+	mux := http.NewServeMux()
 
 	metricsHandler := server.NewMetricsHandler(
 		collectorInstance,
@@ -691,10 +698,10 @@ func main() {
 		*options.ScrapeTimeoutOffset,
 		logger,
 	)
-	http.Handle(*options.MetricsPath, metricsHandler)
+	mux.Handle(*options.MetricsPath, metricsHandler)
 
-	http.Handle("/-/healthy", server.Healthy())
-	http.Handle("/-/ready", server.NewReady(func(ctx context.Context) error {
+	mux.Handle(server.HealthyPath, server.Healthy())
+	mux.Handle(server.ReadyPath, server.NewReady(func(ctx context.Context) error {
 		if _, err := opnsenseClient.WithContext(ctx).HealthCheck(); err != nil {
 			return err
 		}
@@ -712,11 +719,11 @@ func main() {
 					Text:    "Metrics",
 				},
 				{
-					Address: "/-/healthy",
+					Address: server.HealthyPath,
 					Text:    "Healthy",
 				},
 				{
-					Address: "/-/ready",
+					Address: server.ReadyPath,
 					Text:    "Ready",
 				},
 			},
@@ -726,7 +733,7 @@ func main() {
 			logger.Error("failed to construct landing page", "err", err)
 			os.Exit(1)
 		}
-		http.Handle("/", landingPage)
+		mux.Handle("/", landingPage)
 	}
 
 	term := make(chan os.Signal, 1)
@@ -737,6 +744,7 @@ func main() {
 	// connection exhaustion; IdleTimeout reaps abandoned keep-alive connections.
 	// WriteTimeout stays unset so large scrape responses are never cut short.
 	srv := &http.Server{
+		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}

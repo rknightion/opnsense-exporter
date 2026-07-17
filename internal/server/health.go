@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+// HealthyPath and ReadyPath are the fixed liveness/readiness routes the exporter
+// registers. They are exported so metrics-path validation can reject them as reserved:
+// reusing one for --web.telemetry-path registers two handlers under the same pattern,
+// which panics net/http.ServeMux at startup.
+const (
+	HealthyPath = "/-/healthy"
+	ReadyPath   = "/-/ready"
+)
+
 // readyProbeTimeout bounds a single upstream readiness probe independently of the API
 // client's own retry budget (--opnsense.max-retries × --opnsense.timeout, 3 × 15s = 45s
 // by default), so a hung OPNsense API cannot pin a probe request for the full client

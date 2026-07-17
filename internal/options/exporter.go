@@ -56,12 +56,25 @@ var (
 // non-"/"-prefixed value would make net/http.ServeMux.register panic with a raw stack
 // trace (e.g. when a Helm/env template renders the flag blank); reject it here so the
 // caller can exit via the normal logged config-error path instead of crash-looping.
-func ValidateMetricsPath(path string) error {
+//
+// reserved lists the fixed routes the exporter registers itself (the health and
+// readiness handlers). Registering the metrics handler under one of those patterns
+// and then registering the fixed handler under the same pattern is a duplicate
+// pattern, which net/http.ServeMux treats as a programmer error and panics on — so a
+// syntactically valid --web.telemetry-path=/-/healthy would crash-loop. Reject the
+// collision here instead. The caller passes the paths so this stays the single source
+// of truth without an import edge into the server package.
+func ValidateMetricsPath(path string, reserved ...string) error {
 	if path == "" {
 		return fmt.Errorf("--web.telemetry-path (OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH) must not be empty")
 	}
 	if !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("--web.telemetry-path must start with '/', got %q", path)
+	}
+	for _, r := range reserved {
+		if path == r {
+			return fmt.Errorf("--web.telemetry-path (OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH) %q collides with the reserved %q route; choose a different path", path, r)
+		}
 	}
 	return nil
 }
