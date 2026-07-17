@@ -194,15 +194,19 @@ func TestHealthCheckSubsystem_ResolvedStatusCode(t *testing.T) {
 	}
 }
 
+// The "metadata 26.1.11 map only" and "top-level wins on key collision" cases that
+// used to live here are gone with the field they exercised: metadata.subsystems is
+// never populated, so there was no second map to prefer and no collision to resolve
+// (#284).
 func TestAllSubsystems(t *testing.T) {
-	t.Run("nil when both maps empty", func(t *testing.T) {
+	t.Run("nil when no subsystem is reported", func(t *testing.T) {
 		h := &HealthCheckResponse{}
 		if got := h.AllSubsystems(); got != nil {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
 
-	t.Run("top-level 26.1 map only", func(t *testing.T) {
+	t.Run("returns the reported subsystems", func(t *testing.T) {
 		h := &HealthCheckResponse{
 			Subsystems: subsystemMap{
 				"diskspace": {Status: "ERROR", StatusCode: -1},
@@ -218,32 +222,16 @@ func TestAllSubsystems(t *testing.T) {
 		}
 	})
 
-	t.Run("metadata 26.1.11 map only", func(t *testing.T) {
-		h := &HealthCheckResponse{}
-		h.Metadata.Subsystems = subsystemMap{
-			"unboundblocklist": {Status: "NOTICE", StatusCode: 1},
-		}
-		got := h.AllSubsystems()
-		if len(got) != 1 {
-			t.Fatalf("expected 1 subsystem, got %d", len(got))
-		}
-		if got["unboundblocklist"].StatusCode != 1 {
-			t.Errorf("unboundblocklist StatusCode = %d, want 1", got["unboundblocklist"].StatusCode)
-		}
-	})
-
-	t.Run("top-level wins on key collision", func(t *testing.T) {
+	// The returned map must not alias the response's own, or a caller mutating it would
+	// corrupt the parsed response.
+	t.Run("returns a copy", func(t *testing.T) {
 		h := &HealthCheckResponse{
-			Subsystems: subsystemMap{
-				"firewall": {Status: "ERROR", StatusCode: -1},
-			},
-		}
-		h.Metadata.Subsystems = subsystemMap{
-			"firewall": {Status: "OK", StatusCode: 2},
+			Subsystems: subsystemMap{"diskspace": {Status: "ERROR", StatusCode: -1}},
 		}
 		got := h.AllSubsystems()
-		if got["firewall"].StatusCode != -1 {
-			t.Errorf("expected top-level entry to win, got StatusCode=%d", got["firewall"].StatusCode)
+		delete(got, "diskspace")
+		if _, ok := h.Subsystems["diskspace"]; !ok {
+			t.Error("mutating the returned map changed the response's own map")
 		}
 	})
 }
@@ -256,10 +244,6 @@ func TestHealthCheck_MultiSubsystemFixtures(t *testing.T) {
 		{
 			"v26_1_multi_subsystem.json",
 			map[string]int{"diskspace": -1, "rootlock": -1, "monitoverride": 0},
-		},
-		{
-			"v26_1_11_multi_subsystem.json",
-			map[string]int{"diskspace": -1, "unboundblocklist": 1},
 		},
 	}
 

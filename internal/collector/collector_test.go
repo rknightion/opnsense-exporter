@@ -911,8 +911,9 @@ func TestCollectHealthMetrics_Reachable(t *testing.T) {
 		wantCrash    float64
 		wantFirewall float64
 	}{
-		{"v26_1_ok.json", 1, 2, 1, 1},
-		{"v26_1_ok_empty_map.json", 1, 2, 1, 1},
+		{"v26_1_quiet.json", 1, 2, 1, 1},
+		{"v26_1_acl_filtered.json", 1, 2, 1, 1},
+		{"v26_1_empty_map.json", 1, 2, 1, 1},
 		{"v26_1_crash_error.json", 1, -1, 0, 1},
 		{"v26_1_firewall_error.json", 1, -1, 1, 0},
 		{"v25_1_ok.json", 1, 2, 1, 1},
@@ -984,17 +985,14 @@ func TestCollectHealthMetrics_Subsystems(t *testing.T) {
 		fixture string
 		want    map[string]float64
 	}{
-		{"v26_1_ok.json", map[string]float64{}},
-		{"v26_1_ok_empty_map.json", map[string]float64{}},
+		{"v26_1_quiet.json", map[string]float64{}},
+		{"v26_1_acl_filtered.json", map[string]float64{}},
+		{"v26_1_empty_map.json", map[string]float64{}},
 		{"v26_1_crash_error.json", map[string]float64{"crashreporter": -1}},
 		{"v26_1_multi_subsystem.json", map[string]float64{
 			"diskspace":     -1,
 			"rootlock":      -1,
 			"monitoverride": 0,
-		}},
-		{"v26_1_11_multi_subsystem.json", map[string]float64{
-			"diskspace":        -1,
-			"unboundblocklist": 1,
 		}},
 	}
 
@@ -1038,7 +1036,7 @@ func TestCollectHealthMetrics_SubsystemsResetAcrossScrapes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	healthy, err := os.ReadFile(filepath.Join("..", "..", "opnsense", "testdata", "health", "v26_1_ok_empty_map.json"))
+	healthy, err := os.ReadFile(filepath.Join("..", "..", "opnsense", "testdata", "health", "v26_1_empty_map.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}

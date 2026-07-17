@@ -22,9 +22,15 @@ func loadHealthFixture(t *testing.T, name string) HealthCheckResponse {
 	return resp
 }
 
-// TestHealthCheckResponse_Shapes pins the cross-version parsing of the OPNsense
-// system status across the pre-25.1 (legacy top-level), 25.1 (metadata) and 26.1
-// (top-level "subsystems" map + string-enum system status) response shapes.
+// TestHealthCheckResponse_Shapes pins the parsing of the OPNsense system status
+// across every shape the endpoint can actually serve.
+//
+// The 26.1 cases are BOX STATES of one unchanged endpoint, not versions (#284). What
+// this file used to call "26.1" and "26.1.11" were a reporting box and a quiet one:
+// statusAction() stamps both the string status and the top-level subsystems map inside
+// the same `if ($statuses)` block, so they co-occur, and neither appears without it.
+// There is no metadata.subsystems shape — upstream never populates that key, and the
+// two fixtures that claimed otherwise were fabricated.
 func TestHealthCheckResponse_Shapes(t *testing.T) {
 	cases := []struct {
 		fixture        string
@@ -32,23 +38,24 @@ func TestHealthCheckResponse_Shapes(t *testing.T) {
 		wantCrashOK    bool
 		wantFirewallOK bool
 	}{
-		// OPNsense >= 26.1: overall status is the string enum metadata.system.status,
-		// and per-subsystem detail lives in the TOP-LEVEL "subsystems" map. A healthy
-		// box returns an empty subsystems array ([]) — PHP renders an empty assoc array
-		// as a JSON array, so the parser must tolerate both [] and {}.
-		{"v26_1_ok.json", 2, true, true},
-		{"v26_1_ok_empty_map.json", 2, true, true},
+		// Quiet box (configd reported nothing): metadata.system.status is the raw enum
+		// VALUE (int 2), and the top-level "subsystems" key is absent entirely. Real
+		// capture from a live 26.1.11.
+		{"v26_1_quiet.json", 2, true, true},
+		// Reporting box: status is the enum NAME (string) and the top-level map carries
+		// the detail.
 		{"v26_1_crash_error.json", -1, false, true},
 		{"v26_1_firewall_error.json", -1, true, false},
-		// OPNsense 26.1.11 (current stable): the top level carries ONLY "metadata" —
-		// no top-level System/CrashReporter/Firewall and no top-level "subsystems" map.
-		// metadata.system.status is a NUMBER (SystemStatusCode, 2 == OK) rather than the
-		// string enum earlier 26.1 builds sent, and the per-subsystem detail moved to
-		// metadata.subsystems (an empty ARRAY on a healthy box, an OBJECT when something
-		// is wrong).
-		{"v26_1_11_ok.json", 2, true, true},
-		{"v26_1_11_metadata_subsystems_error.json", -1, false, false},
-		// OPNsense 25.1: numeric metadata.System.status; healthy subsystems omitted.
+		// Reported, then the ACL filter unset every entry: the status was already stamped
+		// "OK" (statusCodes empty -> the `?? 2` default -> the NAME), and $statuses is now
+		// an empty PHP array, which json_encode renders as []. So "OK" alongside an empty
+		// map is reachable, not a contradiction.
+		{"v26_1_acl_filtered.json", 2, true, true},
+		// Same, defensive: {} rather than []. PHP cannot emit this (an empty array never
+		// encodes as an object), so this fixture is deliberately synthetic — it pins the
+		// parser's tolerance, not a captured payload.
+		{"v26_1_empty_map.json", 2, true, true},
+		// OPNsense 25.1: numeric metadata.System.status, no subsystems map at all.
 		{"v25_1_ok.json", 2, true, true},
 		{"v25_1_crash_error.json", -1, false, true},
 		// OPNsense < 25.1: legacy top-level string statuses.
