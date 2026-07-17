@@ -102,6 +102,8 @@ func TestPipelineCountersPreInitialisedToZero(t *testing.T) {
 	mustBeZero(t, s, `opnsense_exporter_logs_shipped_total{source="unbound"}`)
 	mustBeZero(t, s, `opnsense_exporter_logs_dropped_total{reason="overflow",source="syslog"}`)
 	mustBeZero(t, s, `opnsense_exporter_logs_dropped_total{reason="overflow",source="unbound"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_dropped_total{reason="ship_failed",source="syslog"}`)
+	mustBeZero(t, s, `opnsense_exporter_logs_dropped_total{reason="ship_failed",source="unbound"}`)
 
 	// The unlabelled counters already behaved; guard against a regression.
 	mustBeZero(t, s, `opnsense_exporter_logs_ship_errors_total`)

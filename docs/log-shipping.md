@@ -299,12 +299,23 @@ Stated honestly, because this pipeline is pull-based over a lossy source:
 
 - **Within a run: at-least-once.** Each source tracks its own cursor and a dedup
   ring, so rotation overlap does not duplicate and normal operation does not lose.
-  Under sustained backpressure the bounded queue drops the **oldest** record and
-  counts it (`opnsense_exporter_logs_dropped_total{reason="overflow"}`) — degraded
-  but visible, never silent.
+  The sink exports each batch **synchronously** and reports the real outcome: a record
+  is counted `opnsense_exporter_logs_shipped_total` only once the OTLP endpoint has
+  acknowledged it, never merely on enqueue. A failed export is **retried in memory**
+  (the records stay queued, never re-fetched) until the endpoint recovers, so a
+  transient outage is ridden out for as long as the bounded queue behind it holds.
+  Loss during a run happens only two ways, both counted: the queue overflows and drops
+  the **oldest** record (`opnsense_exporter_logs_dropped_total{reason="overflow"}`), or
+  shutdown abandons a batch that still cannot be delivered
+  (`opnsense_exporter_logs_dropped_total{reason="ship_failed"}`). Each failed export
+  attempt is visible as `opnsense_exporter_logs_ship_errors_total` while the retry is in
+  flight — degraded but never silent.
 - **Across restarts: at-most-once by default.** Cursors are in memory, so a restart
-  resumes from now. Set `--logs.state-file` to persist cursors (atomic JSON,
-  rewritten only when a cursor changes) for best-effort resume across restarts.
+  resumes from now. The in-memory retry does **not** survive a process restart: records
+  polled but not yet delivered when the process exits mid-outage are lost (counted
+  `ship_failed` if a graceful shutdown abandons them, unrecoverable on a hard kill).
+  Set `--logs.state-file` to persist cursors (atomic JSON, rewritten only when a cursor
+  changes) for best-effort resume across restarts.
 - **Never exactly-once.**
 - **One path per log type:** do not both ship a log type through this pipeline and
   forward the same type via native syslog — that double-ships. Pick one path per
@@ -325,10 +336,14 @@ alongside each source above as it lands.
 The pipeline exposes its own health metrics (visible at `/metrics` and on the
 **Log Shipping** dashboard tab):
 
-- `opnsense_exporter_logs_shipped_total{source}` — records handed to the sink.
+- `opnsense_exporter_logs_shipped_total{source}` — records the sink confirmed exported
+  (an acknowledged OTLP delivery, not merely enqueued).
 - `opnsense_exporter_logs_dropped_total{source,reason}` — records dropped before
-  delivery (`reason=overflow` = queue full).
-- `opnsense_exporter_logs_ship_errors_total` — failed sink emits (batch dropped).
+  delivery (`reason=overflow` = queue full; `reason=ship_failed` = export failed and the
+  bounded in-memory retries were exhausted, e.g. at shutdown).
+- `opnsense_exporter_logs_ship_errors_total` — failed export attempts. The batch is
+  retried in memory; it is lost (and separately counted `ship_failed`) only once the
+  retries are exhausted.
 - `opnsense_exporter_logs_poll_errors_total{source}` — source poll failures.
 - `opnsense_exporter_logs_last_event_timestamp_seconds{source}` — timestamp of the
   most recent shipped event (cursor lag).

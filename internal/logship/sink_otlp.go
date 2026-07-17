@@ -36,9 +36,11 @@ import (
 const maxLogResources = 64
 
 // otlpSink ships records over OTLP logs. It reuses the exporter's --otlp.*
-// transport family. The SDK LoggerProvider's BatchProcessor owns the network
-// batching and retry; the pipeline's own bounded queue is the primary,
-// COUNTED backpressure valve in front of it (the SDK batch queue drops silently).
+// transport family. Each provider's syncBatchProcessor (#290) exports synchronously and
+// returns the real export error, so the pipeline's own bounded queue is the single
+// COUNTED backpressure valve and delivery is observable — there is no second, silent SDK
+// batch queue in front of the wire. The exporter itself still applies OTLP's transient
+// retry/backoff; a returned error means it gave up, and the pipeline retries the batch.
 //
 // LABELS VS STRUCTURED METADATA (#263). Loki promotes only RESOURCE attributes to
 // index labels; scope and log attributes can only ever become structured metadata,
@@ -99,6 +101,61 @@ type sharedExporter struct{ sdklog.Exporter }
 
 func (sharedExporter) Shutdown(context.Context) error { return nil }
 
+// syncBatchProcessor exports synchronously and observably, replacing the SDK's
+// asynchronous BatchProcessor (#290). The BatchProcessor owns a background queue that
+// drops records silently when full and, because otellog.Logger.Emit has no error
+// return, swallows export failures entirely — so records the pipeline had already
+// counted as "shipped" could vanish with no signal, while cursors advanced past them.
+//
+// This processor instead ACCUMULATES the records emitted during one sink.Emit call and,
+// on ForceFlush, hands them to the exporter in a single synchronous Export whose real
+// error propagates back to the sink. That makes the sink's own bounded queue the only
+// place a record can be dropped, collapses the previous double-buffering (one uncounted
+// SDK queue per resource key) into one accounted path, and lets the pipeline retry a
+// failed batch instead of losing it. One emitter goroutine drives it; the mutex only
+// satisfies the Processor concurrency contract.
+type syncBatchProcessor struct {
+	exporter sdklog.Exporter
+	mu       sync.Mutex
+	buf      []sdklog.Record
+}
+
+func newSyncBatchProcessor(exp sdklog.Exporter) *syncBatchProcessor {
+	return &syncBatchProcessor{exporter: exp}
+}
+
+// OnEmit clones the record — the provider may reuse the pointer after we return — and
+// buffers it for the next flush.
+func (p *syncBatchProcessor) OnEmit(_ context.Context, r *sdklog.Record) error {
+	p.mu.Lock()
+	p.buf = append(p.buf, r.Clone())
+	p.mu.Unlock()
+	return nil
+}
+
+// Enabled always processes: the sink alone decides what to emit.
+func (p *syncBatchProcessor) Enabled(context.Context, sdklog.EnabledParameters) bool { return true }
+
+// export drains the buffer and ships it in one synchronous call, returning the real
+// export error. A nil error means the exporter acknowledged the batch.
+func (p *syncBatchProcessor) export(ctx context.Context) error {
+	p.mu.Lock()
+	batch := p.buf
+	p.buf = nil
+	p.mu.Unlock()
+	if len(batch) == 0 {
+		return nil
+	}
+	return p.exporter.Export(ctx, batch)
+}
+
+func (p *syncBatchProcessor) ForceFlush(ctx context.Context) error { return p.export(ctx) }
+
+// Shutdown flushes any residual buffer (there should be none — the sink ForceFlushes
+// after every batch) but does NOT close the exporter: it is shared across providers and
+// closed exactly once by otlpSink.Shutdown.
+func (p *syncBatchProcessor) Shutdown(ctx context.Context) error { return p.export(ctx) }
+
 // newOTLPSink builds the OTLP logs sink. It fails fast with an actionable error
 // when no endpoint is resolvable (neither --otlp.endpoint / Grafana Cloud nor an
 // OTEL_EXPORTER_OTLP*_ENDPOINT env var), so logs.enabled with an unconfigured
@@ -123,10 +180,16 @@ func newOTLPSink(cfg *options.OTLPConfig, version, instance string, log *slog.Lo
 	}, nil
 }
 
+// Emit ships a batch synchronously: it emits every record into its resource's logger
+// (which buffers it in that provider's syncBatchProcessor), then ForceFlushes each
+// touched provider, which exports its buffered records in one call. A returned error
+// means the export was NOT acknowledged, so the pipeline can retry the batch rather
+// than counting it shipped — the delivery signal the old fire-and-forget path lacked.
 func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 	now := time.Now()
+	touched := make(map[*resourceLogger]struct{})
 	for _, e := range batch {
-		lg, err := s.loggerFor(ctx, resourceKey{
+		rl, err := s.loggerFor(ctx, resourceKey{
 			source:    e.Source,
 			subsystem: e.Record.Attributes[AttrSubsystem],
 			action:    e.Record.Attributes[AttrAction],
@@ -155,18 +218,30 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) error {
 			}
 			r.AddAttributes(otellog.String(k, v))
 		}
-		lg.Emit(ctx, r)
+		rl.logger.Emit(ctx, r)
+		touched[rl] = struct{}{}
 	}
-	return nil
+
+	// Flush every resource stream touched by this batch and surface the first export
+	// failure. errors.Join keeps the others visible in logs without hiding that at
+	// least one stream failed — the pipeline treats any non-nil result as "retry".
+	var errs []error
+	for rl := range touched {
+		if err := rl.provider.ForceFlush(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
-// loggerFor returns the logger bound to key's resource, building it on first use.
-func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logger, error) {
+// loggerFor returns the resource-logger bound to key's resource, building it on first
+// use. The caller needs both the logger (to emit) and its provider (to ForceFlush).
+func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (*resourceLogger, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if rl, ok := s.providers[key]; ok {
-		return rl.logger, nil
+		return rl, nil
 	}
 	// Degrade rather than leak: ship under the base resource instead of building an
 	// unbounded provider set. The +1 reserves the last slot FOR that base resource,
@@ -191,7 +266,7 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logg
 		})
 		key = resourceKey{}
 		if rl, ok := s.providers[key]; ok {
-			return rl.logger, nil
+			return rl, nil
 		}
 	}
 
@@ -214,9 +289,10 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logg
 
 	provider := sdklog.NewLoggerProvider(
 		sdklog.WithResource(res),
-		// Every provider batches through the SAME exporter, so partitioning the
-		// resource costs extra batch queues but no extra connections.
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(sharedExporter{s.exporter})),
+		// Every provider exports through the SAME exporter, so partitioning the resource
+		// costs no extra connections — and the synchronous processor adds no background
+		// queue, so it costs no uncounted buffer either (#290).
+		sdklog.WithProcessor(newSyncBatchProcessor(sharedExporter{s.exporter})),
 	)
 	rl := &resourceLogger{
 		provider: provider,
@@ -224,7 +300,7 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (otellog.Logg
 	}
 	s.providers[key] = rl
 	s.order = append(s.order, key)
-	return rl.logger, nil
+	return rl, nil
 }
 
 // Shutdown drains every provider, THEN closes the shared exporter. The order is

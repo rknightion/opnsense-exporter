@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -231,10 +232,21 @@ func (p *pipeline) pollOnce(s Source, name string) {
 	}
 }
 
-// runEmitter drains the queue into batches and ships them. It uses a background
-// context so entries queued at shutdown are still flushed after the pipeline
-// context is cancelled; the OTLP sink's Emit is non-blocking (network I/O
-// happens in the sink's own batch processor, flushed by Shutdown).
+// shipRetryBase and shipRetryMax bound the exponential backoff between failed export
+// attempts. The emitter retries a failed batch in memory (records stay queued, never
+// re-fetched) rather than dropping it, so a transient endpoint outage is ridden out for
+// as long as the bounded queue behind it holds — the at-least-once-within-a-run contract
+// (#290). Loss during a run therefore happens only two ways, both counted: the queue
+// overflows (logs_dropped_total{reason="overflow"}) or shutdown abandons an
+// undeliverable batch (logs_dropped_total{reason="ship_failed"}). It does NOT survive a
+// process restart mid-outage — that is the in-memory tier's documented boundary.
+const (
+	shipRetryBase = 200 * time.Millisecond
+	shipRetryMax  = 5 * time.Second
+)
+
+// runEmitter drains the queue into batches and ships each with bounded in-memory retry.
+// It exits when the queue is closed and fully drained.
 func (p *pipeline) runEmitter() {
 	defer p.emitterWG.Done()
 	for {
@@ -242,17 +254,57 @@ func (p *pipeline) runEmitter() {
 		if !ok {
 			return
 		}
-		if err := p.sink.Emit(context.Background(), batch); err != nil {
-			p.metrics.shipErrors.Inc()
-			if p.limiter.Allow("ship") {
-				p.log.Warn("log sink emit error (batch dropped)", "count", len(batch), "err", err)
+		p.shipBatch(batch)
+	}
+}
+
+// shipBatch exports one batch, retrying on failure until it is acknowledged or the
+// pipeline is shutting down. Each failed attempt counts logs_ship_errors_total; a
+// confirmed export counts logs_shipped_total per record. It uses a background context
+// for the export itself so records queued at shutdown still get a delivery attempt, but
+// the retry backoff is interruptible by pipeline cancellation so stop() stays bounded:
+// once shutdown begins, a still-failing batch is abandoned and counted
+// logs_dropped_total{reason="ship_failed"} rather than blocking the drain — the records
+// could not be delivered, and that loss is made visible rather than silently skipped.
+func (p *pipeline) shipBatch(batch []Entry) {
+	for attempt := 1; ; attempt++ {
+		err := p.sink.Emit(context.Background(), batch)
+		if err == nil {
+			for _, e := range batch {
+				p.metrics.shipped.WithLabelValues(e.Source).Inc()
 			}
-			continue
+			return
 		}
-		for _, e := range batch {
-			p.metrics.shipped.WithLabelValues(e.Source).Inc()
+		p.metrics.shipErrors.Inc()
+		if p.limiter.Allow("ship") {
+			p.log.Warn("log sink export failed; retrying", "attempt", attempt, "count", len(batch), "err", err)
+		}
+		select {
+		case <-p.ctx.Done():
+			for _, e := range batch {
+				p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailed).Inc()
+			}
+			p.log.Error("log batch abandoned during shutdown; records lost", "count", len(batch))
+			return
+		case <-time.After(shipBackoff(attempt)):
 		}
 	}
+}
+
+// shipBackoff is full-magnitude exponential backoff capped at shipRetryMax, guarded
+// against the shift overflowing for a long-running outage.
+func shipBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	if attempt > 8 { // 200ms << 7 already exceeds the 5s cap
+		return shipRetryMax
+	}
+	d := shipRetryBase << (attempt - 1)
+	if d > shipRetryMax {
+		return shipRetryMax
+	}
+	return d
 }
 
 // runStateFlusher periodically persists cursors while running. The final flush
@@ -271,15 +323,32 @@ func (p *pipeline) runStateFlusher() {
 	}
 }
 
-// stop drains the pipeline in order: stop pollers, flush the queue through the
-// emitter, persist final cursors, then flush the sink (bounded by ctx).
+// stop drains the pipeline in order: stop pollers, flush the queue through the emitter,
+// persist final cursors, then flush the sink. The emitter drain is bounded by ctx: if it
+// does not finish within the shutdown deadline, stop returns an error rather than
+// reporting a clean flush while cursors imply the buffered records were delivered (#290).
+// The emitter goroutine still exits shortly after, when its in-flight export returns and
+// it observes the cancelled context.
 func (p *pipeline) stop(ctx context.Context) error {
 	p.cancel()
 	p.pollerWG.Wait()
 	p.queue.close()
-	p.emitterWG.Wait()
+
+	drained := make(chan struct{})
+	go func() {
+		p.emitterWG.Wait()
+		close(drained)
+	}()
+	var drainErr error
+	select {
+	case <-drained:
+	case <-ctx.Done():
+		drainErr = fmt.Errorf("log pipeline drain did not finish before shutdown deadline: %w", ctx.Err())
+		p.log.Error("log pipeline shutdown timed out before the queue fully drained; buffered records may be lost")
+	}
+
 	p.persistState()
-	return p.sink.Shutdown(ctx)
+	return errors.Join(drainErr, p.sink.Shutdown(ctx))
 }
 
 // loadState reads the state file (if any) and restores each stateful source's

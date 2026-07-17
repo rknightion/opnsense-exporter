@@ -8,7 +8,8 @@ import (
 
 // Drop reasons for logs_dropped_total.
 const (
-	dropReasonOverflow = "overflow" // queue full, oldest evicted
+	dropReasonOverflow   = "overflow"    // queue full, oldest evicted
+	dropReasonShipFailed = "ship_failed" // export failed and bounded in-memory retries were exhausted
 )
 
 // metrics holds the pipeline self-metrics. They register into the exporter's
@@ -57,15 +58,20 @@ func newMetrics(reg prometheus.Registerer, capacity int, queueLen func() float64
 	m := &metrics{
 		shipped: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_shipped_total",
-			Help: "Total log records successfully handed to the sink, by source.",
+			Help: "Total log records the sink confirmed exported to the OTLP endpoint (a synchronous, " +
+				"acknowledged delivery — not merely enqueued), by source.",
 		}, []string{"source"}),
 		dropped: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_dropped_total",
-			Help: "Total log records dropped before delivery, by source and reason.",
+			Help: "Total log records dropped before delivery, by source and reason " +
+				"(overflow = the backpressure queue evicted the oldest record; " +
+				"ship_failed = export failed and the bounded in-memory retries were exhausted).",
 		}, []string{"source", "reason"}),
 		shipErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_ship_errors_total",
-			Help: "Total sink Emit errors (a failed batch is dropped and counted).",
+			Help: "Total sink export attempts that failed. The batch is retried in memory; a batch is " +
+				"only lost — and separately counted as logs_dropped_total{reason=\"ship_failed\"} — once " +
+				"the retries are exhausted.",
 		}),
 		pollErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_poll_errors_total",
@@ -137,6 +143,7 @@ func (m *metrics) preInit(names sourceNames) {
 	for _, s := range names.all {
 		m.shipped.WithLabelValues(s)
 		m.dropped.WithLabelValues(s, dropReasonOverflow)
+		m.dropped.WithLabelValues(s, dropReasonShipFailed)
 	}
 	for _, s := range names.poll {
 		m.pollErrors.WithLabelValues(s)
