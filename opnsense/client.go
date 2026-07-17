@@ -304,6 +304,18 @@ type Client struct {
 	// has a TTL, so the collector layer can record cache self-metrics. nil means no
 	// instrumentation.
 	cacheObserver CacheObserver
+	// sem bounds the number of upstream API requests in flight across the whole
+	// exporter. A default scrape fans ~61 collectors out as goroutines and several of
+	// them nest further sub-fetches (runConcurrentFetches), so without a cap a single
+	// scrape can burst dozens of simultaneous PHP/configd calls at a low-power firewall.
+	// It is a channel so the shallow WithContext clone shares ONE budget with its parent
+	// and siblings (a value field would hand every scrape its own). nil means unbounded,
+	// preserving the previous behaviour for directly-constructed clients (e.g. tests).
+	//
+	// A slot is held only for a single request's round-trip (Do + body read) and always
+	// released before any retry backoff, so no goroutine ever holds a slot while blocking
+	// to acquire another — nested fan-out therefore cannot deadlock against the cap.
+	sem chan struct{}
 }
 
 // RequestObserver is notified after every API request that passes through the client's
@@ -362,6 +374,12 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 	if maxRetries <= 0 {
 		maxRetries = MaxRetries
 	}
+	// A configured cap builds the shared budget; <=0 leaves it unbounded (the option
+	// layer already rejects <1, so this only guards a directly-built config).
+	var sem chan struct{}
+	if cfg.MaxConcurrentRequests > 0 {
+		sem = make(chan struct{}, cfg.MaxConcurrentRequests)
+	}
 
 	sslPool, err := x509.SystemCertPool()
 	if err != nil {
@@ -395,6 +413,7 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 		},
 		sslInsecure: cfg.Insecure,
 		maxRetries:  maxRetries,
+		sem:         sem,
 		httpClient: &http.Client{
 			Timeout: timeout,
 			Transport: &http.Transport{
@@ -437,6 +456,24 @@ func (c *Client) WithContext(ctx context.Context) *Client {
 	clone := *c
 	clone.reqCtx = ctx
 	return &clone
+}
+
+// acquireSlot blocks until an upstream-concurrency slot is free or ctx is cancelled,
+// returning a release func that hands the slot back. When no limit is configured
+// (sem == nil) it is a no-op, so an unbounded client keeps its previous behaviour.
+// Waiting on ctx (not just the channel) is what lets a cancelled/expired scrape stop
+// queueing behind a saturated budget instead of stalling to the deadline.
+func (c *Client) acquireSlot(ctx context.Context) (func(), error) {
+	if c.sem == nil {
+		return func() {}, nil
+	}
+	select {
+	case c.sem <- struct{}{}:
+		var once sync.Once
+		return func() { once.Do(func() { <-c.sem }) }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // do sends a request to the OPNsense API.
@@ -576,8 +613,21 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 			req.Header.Add("Content-Type", contentType)
 		}
 
+		// Acquire an upstream-concurrency slot for the actual round-trip (Do + body read),
+		// releasing it before any backoff sleep so a retry waiting to fire frees capacity
+		// for other collectors. A cancelled/expired scrape stops queueing here.
+		release, aerr := c.acquireSlot(ctx)
+		if aerr != nil {
+			return &APICallError{
+				Endpoint:   string(path),
+				Message:    fmt.Sprintf("request aborted: %s", aerr),
+				StatusCode: 0,
+			}
+		}
+
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			release()
 			if ctx.Err() != nil {
 				return &APICallError{
 					Endpoint:   string(path),
@@ -601,6 +651,7 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 		if retryableStatus(method, resp.StatusCode) && attempt < c.maxRetries {
 			lastErr = fmt.Sprintf("HTTP %d", resp.StatusCode)
 			resp.Body.Close()
+			release()
 			c.log.Warn("retryable server error; will retry",
 				"component", "opnsense-client",
 				"attempt", attempt,
@@ -609,7 +660,9 @@ func (c *Client) doWithContentType(method string, path EndpointPath, body io.Rea
 		}
 
 		statusCode = resp.StatusCode
-		return c.readResponse(method, path, resp, responseStruct)
+		result := c.readResponse(method, path, resp, responseStruct)
+		release()
+		return result
 	}
 	return &APICallError{
 		Endpoint:   string(path),

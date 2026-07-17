@@ -8,10 +8,11 @@ import (
 
 func TestOPNSenseConfig(t *testing.T) {
 	conf := OPNSenseConfig{
-		Protocol:  "ftp",
-		Host:      "test",
-		APIKey:    "test",
-		APISecret: "test",
+		Protocol:              "ftp",
+		Host:                  "test",
+		APIKey:                "test",
+		APISecret:             "test",
+		MaxConcurrentRequests: 16,
 	}
 
 	if err := conf.Validate(); err == nil {
@@ -101,15 +102,30 @@ func TestValidate_InvalidProtocol(t *testing.T) {
 
 func TestValidate_ValidConfigurations(t *testing.T) {
 	validConfigs := []OPNSenseConfig{
-		{Protocol: "http", Host: "192.168.1.1", APIKey: "key", APISecret: "secret"},
-		{Protocol: "https", Host: "firewall.local", APIKey: "key", APISecret: "secret"},
-		{Protocol: "http", Host: "10.0.0.1:8080", APIKey: "long-api-key-value", APISecret: "long-api-secret-value"},
+		{Protocol: "http", Host: "192.168.1.1", APIKey: "key", APISecret: "secret", MaxConcurrentRequests: 16},
+		{Protocol: "https", Host: "firewall.local", APIKey: "key", APISecret: "secret", MaxConcurrentRequests: 1},
+		{Protocol: "http", Host: "10.0.0.1:8080", APIKey: "long-api-key-value", APISecret: "long-api-secret-value", MaxConcurrentRequests: 64},
 	}
 
 	for i, conf := range validConfigs {
 		err := conf.Validate()
 		if err != nil {
 			t.Errorf("config %d: expected no error, got %v", i, err)
+		}
+	}
+}
+
+func TestValidate_InvalidMaxConcurrentRequests(t *testing.T) {
+	for _, n := range []int{0, -1} {
+		conf := OPNSenseConfig{
+			Protocol:              "https",
+			Host:                  "firewall.example.com",
+			APIKey:                "test-key",
+			APISecret:             "test-secret",
+			MaxConcurrentRequests: n,
+		}
+		if err := conf.Validate(); err == nil {
+			t.Errorf("expected error for max-concurrent-requests=%d, got nil", n)
 		}
 	}
 }

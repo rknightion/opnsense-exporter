@@ -39,6 +39,10 @@ var (
 		"opnsense.max-retries",
 		"Number of attempts for a failed OPNsense API request (transport errors / retryable 5xx). Worst-case block time is --opnsense.timeout x this value.",
 	).Envar("OPNSENSE_EXPORTER_OPS_MAX_RETRIES").Default("3").Int()
+	opnsenseMaxConcurrentRequests = kingpin.Flag(
+		"opnsense.max-concurrent-requests",
+		"Maximum number of OPNsense API requests in flight at once across a whole scrape, including the nested sub-requests some collectors fan out. Bounds the burst of simultaneous PHP/configd calls the exporter puts on the firewall: lower it (e.g. 4-8) to protect a low-power appliance at the cost of longer scrapes; raise it to shorten scrapes on capable hardware. Must be >= 1.",
+	).Envar("OPNSENSE_EXPORTER_OPS_MAX_CONCURRENT_REQUESTS").Default("16").Int()
 )
 
 // ReadFirstLine opens a file and reads its first line.
@@ -104,6 +108,9 @@ type OPNSenseConfig struct {
 	// MaxRetries is the attempt count for a failed request; <=0 means the client
 	// default (3).
 	MaxRetries int
+	// MaxConcurrentRequests caps upstream API requests in flight across a scrape
+	// (including nested collector fan-out). Must be >= 1; validated in Validate.
+	MaxConcurrentRequests int
 }
 
 // Validate checks if the configuration is valid.
@@ -120,6 +127,9 @@ func (c *OPNSenseConfig) Validate() error {
 	}
 	if c.APISecret == "" {
 		return fmt.Errorf("api-secret must be set")
+	}
+	if c.MaxConcurrentRequests < 1 {
+		return fmt.Errorf("opnsense.max-concurrent-requests must be >= 1, got %d", c.MaxConcurrentRequests)
 	}
 	return nil
 }
@@ -141,6 +151,8 @@ func OPNSense() (*OPNSenseConfig, error) {
 		Insecure:   *opnsenseInsecure,
 		Timeout:    *opnsenseTimeout,
 		MaxRetries: *opnsenseMaxRetries,
+
+		MaxConcurrentRequests: *opnsenseMaxConcurrentRequests,
 	}
 
 	if err := conf.Validate(); err != nil {
