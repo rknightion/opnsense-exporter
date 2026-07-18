@@ -22,6 +22,44 @@ streams to is therefore the only way to get per-flow connection records, per-que
 TLS/SNI, HTTP metadata and threat alerts off a Home-tier box at all. Without it, the only
 Zenarmor data reaching Loki is its own diagnostic service log, which carries none of that.
 
+## Transport
+
+`--logs.zenarmor.transport` selects how the data reaches the exporter. It takes two
+values:
+
+- `elasticsearch` (default) — the built-in receiver described above, posing as an
+  Elasticsearch node on `--logs.zenarmor.listen-http`. This is everything documented
+  so far in this page.
+- `syslog` — rides the [syslog receiver](syslog-receiver.md) instead of running its
+  own listener. The exporter recognises Zenarmor's syslog line shape automatically
+  (`daemon=zenarmor, index=<family>, data=<json>`) and feeds it through the same
+  processing the Elasticsearch path uses.
+
+`transport=syslog` needs two things to be true, and checks both at startup:
+Zenarmor's syslog export is licence-gated to the business tier and above (unlike its
+Elasticsearch streaming, which is available on Home), and the exporter's own
+`--logs.syslog.enabled` must be set. Setting `transport=syslog` without the syslog
+receiver enabled is a startup error, not a silent no-op.
+
+`--logs.zenarmor.families`, `--logs.zenarmor.exclude`, `--logs.zenarmor.enrich` and
+`--logs.zenarmor.drop-self-traffic` all apply to either transport — record processing
+is shared, so nothing below in this page needs restating per transport. The
+self-traffic filter matches the same shape of connection over syslog as it does over
+`_bulk`: the box talking to the exporter's own listener, in this case the syslog
+port rather than the Elasticsearch one.
+
+Only one transport ingests at a time — `transport` picks exactly one receiver to
+register, so there is no dual-ship path to reason about and no risk of the same
+record arriving twice. The syslog copy carries `opnsense.source=zenarmor` in Loki
+identically to the Elasticsearch copy, so dashboards, alerts and the derived
+counters below are transport-agnostic; nothing downstream needs to know which one
+is configured.
+
+On the Zenarmor side, point its syslog target at the exporter's syslog listener —
+whichever of `--logs.syslog.listen-udp`, `--logs.syslog.listen-tcp` or
+`--logs.syslog.listen-tls` you have enabled — instead of the Elasticsearch streaming
+target described below.
+
 ## Set up the exporter
 
 ```bash
