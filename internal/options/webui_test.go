@@ -90,3 +90,34 @@ func TestBuildEffectiveConfig_CollectorsPopulated(t *testing.T) {
 		t.Fatal("Collectors section missing")
 	}
 }
+
+func TestPrettifyFieldName(t *testing.T) {
+	cases := map[string]string{
+		"ARP":               "ARP",
+		"Cron":              "Cron",
+		"Wireguard":         "Wireguard",
+		"IPsec":             "IPsec",
+		"IPsecLeaseDetails": "IPsec Lease Details",
+		"FirewallNATCounts": "Firewall NAT Counts",
+		"OpenVPNDetails":    "Open VPN Details",
+		"TrafficShaper":     "Traffic Shaper",
+		"UnboundQStats":     "Unbound QStats",
+	}
+	for in, want := range cases {
+		if got := prettifyFieldName(in); got != want {
+			t.Errorf("prettifyFieldName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCollectorConfigItems_HaveDisplay(t *testing.T) {
+	items := collectorConfigItems()
+	if len(items) == 0 {
+		t.Fatal("no collector items")
+	}
+	for _, it := range items {
+		if it.Key == "" || it.Display == "" {
+			t.Fatalf("collector item missing Key/Display: %+v", it)
+		}
+	}
+}

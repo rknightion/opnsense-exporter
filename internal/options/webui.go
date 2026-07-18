@@ -2,6 +2,7 @@ package options
 
 import (
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -44,7 +45,12 @@ type ConfigSection struct {
 // real secret value — so a template bug can't leak one.
 type ConfigItem struct {
 	Key, Value string
-	Secret     bool
+	// Display is an optional human-friendly label for Key. It is set for
+	// collector switches (a de-camelCased form of the Go field name) so the
+	// config page can show both the raw field name and a readable version;
+	// empty for rows whose Key is already readable.
+	Display string
+	Secret  bool
 }
 
 // redacted is the placeholder rendered for a secret field that IS set.
@@ -211,7 +217,29 @@ func collectorConfigItems() []ConfigItem {
 	t := v.Type()
 	items := make([]ConfigItem, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
-		items = append(items, plainItem(t.Field(i).Name, boolStr(v.Field(i).Bool())))
+		name := t.Field(i).Name
+		it := plainItem(name, boolStr(v.Field(i).Bool()))
+		it.Display = prettifyFieldName(name)
+		items = append(items, it)
 	}
 	return items
+}
+
+var (
+	// lowerUpper splits a lower/digit → upper boundary: "trafficShaper" → "traffic Shaper".
+	lowerUpper = regexp.MustCompile(`([a-z0-9])([A-Z])`)
+	// acronymWord splits a run of 2+ capitals followed by a capitalised word:
+	// "NATCounts" → "NAT Counts", while a single leading capital ("QStats") is
+	// left intact so short abbreviations aren't chopped.
+	acronymWord = regexp.MustCompile(`([A-Z]{2,})([A-Z][a-z])`)
+)
+
+// prettifyFieldName turns a Go struct field name into a readable label by
+// inserting spaces at camelCase boundaries. It deliberately keeps acronym runs
+// together (ARP, IPsec, NAT) rather than consulting collector.SubsystemDisplayNames,
+// which internal/options cannot import (import cycle via opnsense/client.go).
+func prettifyFieldName(name string) string {
+	s := lowerUpper.ReplaceAllString(name, "$1 $2")
+	s = acronymWord.ReplaceAllString(s, "$1 $2")
+	return s
 }

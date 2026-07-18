@@ -10,11 +10,11 @@
 <section class="card">
   <h2>{{.Title}}</h2>
   <table class="grid compact" data-table="config">
-    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <thead><tr><th>Setting</th><th>Value</th></tr></thead>
     <tbody>
     {{range .Items}}
       <tr{{if .Secret}} style="color: var(--muted)"{{end}}>
-        <td>{{.Key}}</td>
+        <td>{{if .Display}}{{.Display}} <code style="color: var(--muted); font-size: 0.85em">{{.Key}}</code>{{else}}{{.Key}}{{end}}</td>
         <td>{{.Value}}</td>
       </tr>
     {{else}}
