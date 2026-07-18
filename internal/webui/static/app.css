@@ -112,6 +112,34 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vecto
 .outcomes .cell.ok { background: var(--ok); }
 .outcomes .cell.bad { background: var(--bad); }
 
+.muted { color: var(--muted); }
+
+/* Filter/search row above a table. */
+.filter-bar { margin-bottom: 12px; }
+.filter {
+  width: 100%; max-width: 320px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 10px; font-size: 13px;
+}
+.filter::placeholder { color: var(--muted); }
+.filter:focus { outline: none; border-color: var(--accent); }
+
+/* Sortable column headers (JS marks the sortable columns with data-sort). */
+table.grid th.sortable, table.grid th[data-sort] {
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+table.grid th.sortable:hover, table.grid th[data-sort]:hover { color: var(--text); }
+table.grid th.sortable::after { content: " \2195"; opacity: 0.4; font-size: 10px; }
+table.grid th.sortable[data-dir="asc"]::after { content: " \2191"; opacity: 0.9; }
+table.grid th.sortable[data-dir="desc"]::after { content: " \2193"; opacity: 0.9; }
+
+/* Run Now button transient states. */
+.btn-running { color: var(--muted); }
+.btn-ok { border-color: var(--ok); color: var(--ok); }
+.btn-busy { border-color: var(--warn); color: var(--warn); }
+.btn-failed { border-color: var(--bad); color: var(--bad); }
+
 @media (max-width: 720px) {
   .tiles { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
