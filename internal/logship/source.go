@@ -64,6 +64,14 @@ type GapReportingSource interface {
 	ReportsGaps()
 }
 
+// ExtraSourceNames, when implemented by a Source or PushSource, reports the extra
+// `source` values it may stamp on records via a Record.Source override, beyond its own
+// Name(). The pipeline pre-initialises per-source counter metrics (#280) for these, so a
+// source that only ever arrives by override still reads a flat zero rather than nothing.
+type ExtraSourceNames interface {
+	ExtraSourceNames() []string
+}
+
 // Deps are the shared dependencies handed to every SourceFactory and
 // PushSourceFactory.
 //

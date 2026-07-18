@@ -141,6 +141,9 @@ func hasPrefix(s, prefix string) bool {
 type ProgramProcessor interface {
 	Handles(program string) bool
 	Process(env Envelope, peer netip.Addr, ports []int, emit func(logship.Record)) (handled bool)
+	// EmittedSource is the `source` value this processor stamps on the records it emits
+	// (via Record.Source), so the pipeline can pre-initialise that source's metrics.
+	EmittedSource() string
 }
 
 // programProcessor is the single stateful, config-built processor registered by a

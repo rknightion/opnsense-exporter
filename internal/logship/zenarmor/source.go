@@ -192,6 +192,7 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 		snap = p.cache.Load()
 	}
 	rec, parsed := parseDoc(family, doc, snap)
+	rec.Source = sourceName
 	if !parsed {
 		// Counted, never dropped: the record ships below with its raw body.
 		p.m.parseError("document")

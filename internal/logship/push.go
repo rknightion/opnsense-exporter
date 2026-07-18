@@ -1,6 +1,10 @@
 package logship
 
-import "context"
+import (
+	"context"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // PushSource is a long-lived source that emits records as they ARRIVE rather
 // than being polled. It is the push-shaped counterpart of Source: a syslog
@@ -59,14 +63,33 @@ func buildPushSources(deps Deps) ([]PushSource, error) {
 // It blocks until the source's Run returns (i.e. until ctx is cancelled).
 func (p *pipeline) runPushSource(ctx context.Context, s PushSource) {
 	name := s.Name()
-	// Hoist the gauge out of the CounterVec ONCE: WithLabelValues takes a mutex,
-	// and emit runs on the receiver goroutine thousands of times a second.
-	lastEvent := p.metrics.lastEventTime.WithLabelValues(name)
+	// Hoist the default gauge ONCE; WithLabelValues takes a mutex and emit runs on the
+	// receiver goroutine thousands of times a second. Pre-hoist any override sources this
+	// source declares so the override path stays mutex-free too.
+	lastEventDefault := p.metrics.lastEventTime.WithLabelValues(name)
+	extraLastEvent := map[string]prometheus.Gauge{}
+	if es, ok := s.(ExtraSourceNames); ok {
+		for _, n := range es.ExtraSourceNames() {
+			if n != "" && n != name {
+				extraLastEvent[n] = p.metrics.lastEventTime.WithLabelValues(n)
+			}
+		}
+	}
 	emit := func(r Record) {
 		r.Attributes = sanitizeAttributes(r.Attributes)
-		p.queue.push(Entry{Source: name, Record: r})
+		src := name
+		le := lastEventDefault
+		if r.Source != "" && r.Source != name {
+			src = r.Source
+			if g, ok := extraLastEvent[src]; ok {
+				le = g
+			} else {
+				le = p.metrics.lastEventTime.WithLabelValues(src)
+			}
+		}
+		p.queue.push(Entry{Source: src, Record: r})
 		if !r.Timestamp.IsZero() {
-			lastEvent.Set(float64(r.Timestamp.Unix()))
+			le.Set(float64(r.Timestamp.Unix()))
 		}
 	}
 	if err := s.Run(ctx, emit); err != nil && ctx.Err() == nil {

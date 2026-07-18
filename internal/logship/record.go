@@ -91,6 +91,11 @@ type Record struct {
 	Attributes map[string]string
 	// Severity is optional; the zero value is SeverityInfo.
 	Severity Severity
+	// Source, when non-empty, overrides the emitting source's Name() as this record's
+	// `source`. It lets one receiver emit records attributed to a different logical
+	// source — Zenarmor data delivered through the shared syslog receiver still ships as
+	// source="zenarmor". Empty means "use the emitter's Name()".
+	Source string
 }
 
 // Entry is a Record paired with its resolved source name, as handed to a Sink.

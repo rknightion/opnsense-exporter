@@ -8,8 +8,21 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
+
+// gaugeValue reads the current value of a prometheus.Gauge, mirroring
+// counterValue in metrics_test.go (a Gauge writes into dto.Metric.Gauge, not
+// .Counter, so the two helpers cannot share an implementation).
+func gaugeValue(t *testing.T, g prometheus.Gauge) float64 {
+	t.Helper()
+	var d dto.Metric
+	if err := g.Write(&d); err != nil {
+		t.Fatalf("write metric: %v", err)
+	}
+	return d.GetGauge().GetValue()
+}
 
 // newTestPipeline builds a minimal pipeline (queue + metrics + limiter) with no
 // sink or goroutines, for exercising the push-source path in isolation.
@@ -72,6 +85,63 @@ func (f *fakePush) Run(ctx context.Context, emit func(Record)) error {
 	}
 	<-ctx.Done()
 	return nil
+}
+
+// fakePushOverride is a PushSource that also implements ExtraSourceNames, mirroring
+// the syslog receiver delegating Zenarmor records to a different logical source
+// (Task S). It emits one record with a Source override and one plain record.
+type fakePushOverride struct{}
+
+func (f *fakePushOverride) Name() string { return "fake" }
+
+func (f *fakePushOverride) ExtraSourceNames() []string { return []string{"zenarmor"} }
+
+func (f *fakePushOverride) Run(ctx context.Context, emit func(Record)) error {
+	emit(Record{Body: "override", Source: "zenarmor", Timestamp: time.Unix(1700000001, 0)})
+	emit(Record{Body: "plain", Timestamp: time.Unix(1700000002, 0)})
+	<-ctx.Done()
+	return nil
+}
+
+// A record with Record.Source set ships under that source, not the emitter's own
+// Name(); a record with no Source set is byte-identical to today (src stays
+// Name(), lastEvent stays the default hoisted gauge).
+func TestPushSourceRecordSourceOverride(t *testing.T) {
+	p := newTestPipeline(t, 16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.runPushSource(ctx, &fakePushOverride{})
+
+	batch := drainN(t, p, 2, 2*time.Second)
+	bySource := map[string]Entry{}
+	for _, e := range batch {
+		bySource[e.Record.Body] = e
+	}
+
+	override, ok := bySource["override"]
+	if !ok {
+		t.Fatal("override record never reached the sink")
+	}
+	if override.Source != "zenarmor" {
+		t.Errorf("override record Entry.Source = %q, want zenarmor", override.Source)
+	}
+
+	plain, ok := bySource["plain"]
+	if !ok {
+		t.Fatal("plain record never reached the sink")
+	}
+	if plain.Source != "fake" {
+		t.Errorf("plain record Entry.Source = %q, want the emitter's own Name() (fake)", plain.Source)
+	}
+
+	// The override source's own last-event gauge is set from the pre-hoisted
+	// extraLastEvent map, and the default gauge is untouched by the override record.
+	if got := gaugeValue(t, p.metrics.lastEventTime.WithLabelValues("zenarmor")); got != 1700000001 {
+		t.Errorf("lastEventTime{source=zenarmor} = %v, want 1700000001", got)
+	}
+	if got := gaugeValue(t, p.metrics.lastEventTime.WithLabelValues("fake")); got != 1700000002 {
+		t.Errorf("lastEventTime{source=fake} = %v, want 1700000002 (from the plain record)", got)
+	}
 }
 
 func TestPushSourceEmitsIntoQueue(t *testing.T) {

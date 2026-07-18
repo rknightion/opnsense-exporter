@@ -177,6 +177,16 @@ func collectSourceNames(sources []Source, pushSources []PushSource) sourceNames 
 			names.gap = append(names.gap, s.Name())
 		}
 	}
+	for _, s := range sources {
+		if es, ok := s.(ExtraSourceNames); ok {
+			names.all = append(names.all, es.ExtraSourceNames()...)
+		}
+	}
+	for _, s := range pushSources {
+		if es, ok := s.(ExtraSourceNames); ok {
+			names.all = append(names.all, es.ExtraSourceNames()...)
+		}
+	}
 	return names
 }
 

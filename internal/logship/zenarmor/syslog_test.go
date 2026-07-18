@@ -66,4 +66,16 @@ func TestSyslogProcessor_ProcessRealAlert(t *testing.T) {
 	if got.Attributes["alertinfo.sid"] != "appcategories.abc" {
 		t.Errorf("sid = %q", got.Attributes["alertinfo.sid"])
 	}
+	// Task S: a Zenarmor record delivered through the shared syslog receiver must
+	// carry the override so the pipeline ships it as source="zenarmor", not "syslog".
+	if got.Source != "zenarmor" {
+		t.Errorf("Source = %q, want zenarmor", got.Source)
+	}
+}
+
+func TestSyslogProcessor_EmittedSource(t *testing.T) {
+	sp := &syslogProcessor{}
+	if got := sp.EmittedSource(); got != "zenarmor" {
+		t.Errorf("EmittedSource() = %q, want zenarmor", got)
+	}
 }

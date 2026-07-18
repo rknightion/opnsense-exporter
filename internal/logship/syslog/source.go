@@ -155,6 +155,19 @@ func (s *source) Start() error { return s.l.Start() }
 
 func (s *source) Name() string { return sourceName }
 
+// ExtraSourceNames reports the source a registered ProgramProcessor stamps on its
+// records, so the pipeline pre-initialises that source's counter metrics (#280). It reads
+// the package registration directly (set during the build phase, before collectSourceNames
+// runs), not s.proc (which is only assigned at Run()).
+func (s *source) ExtraSourceNames() []string {
+	if p := registeredProgramProcessor(); p != nil {
+		if es := p.EmittedSource(); es != "" {
+			return []string{es}
+		}
+	}
+	return nil
+}
+
 // Run blocks until ctx is cancelled. The listener closes its own sockets on
 // cancellation, which is what lets the pipeline's shutdown drain complete.
 func (s *source) Run(ctx context.Context, emit func(logship.Record)) error {

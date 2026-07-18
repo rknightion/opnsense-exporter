@@ -45,6 +45,12 @@ type syslogProcessor struct{ proc *docProcessor }
 // Handles reports whether program is the Zenarmor daemon name.
 func (s *syslogProcessor) Handles(program string) bool { return program == sourceName }
 
+// EmittedSource reports the `source` value this processor stamps on its records
+// (docProcessor.process sets Record.Source = sourceName), so the pipeline
+// pre-initialises "zenarmor"'s counter metrics even though it arrives via the
+// shared syslog receiver rather than its own PushSource.
+func (s *syslogProcessor) EmittedSource() string { return sourceName }
+
 // Process delegates a Zenarmor syslog line to the shared docProcessor. It returns
 // false (ship generic) when the body is not the Zenarmor shape or names a family we
 // do not model — never a silent drop.

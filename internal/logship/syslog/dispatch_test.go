@@ -138,6 +138,25 @@ func (f fakeProc) Handles(p string) bool { return f.handles(p) }
 func (f fakeProc) Process(e Envelope, a netip.Addr, ports []int, emit func(logship.Record)) bool {
 	return f.process(e, a, ports, emit)
 }
+func (f fakeProc) EmittedSource() string { return "zenarmor" }
+
+func TestSourceExtraSourceNames(t *testing.T) {
+	t.Cleanup(func() { programProcessor = nil })
+
+	s := &source{}
+	if got := s.ExtraSourceNames(); got != nil {
+		t.Fatalf("with no processor registered, ExtraSourceNames() = %v, want nil", got)
+	}
+
+	RegisterProgramProcessor(fakeProc{
+		handles: func(string) bool { return true },
+		process: func(Envelope, netip.Addr, []int, func(logship.Record)) bool { return true },
+	})
+	want := []string{"zenarmor"}
+	if got := s.ExtraSourceNames(); len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("with a processor registered, ExtraSourceNames() = %v, want %v", got, want)
+	}
+}
 
 func TestSyslogSeverity(t *testing.T) {
 	cases := map[int]logship.Severity{
