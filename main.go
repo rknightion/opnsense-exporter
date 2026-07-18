@@ -636,6 +636,9 @@ func main() {
 		// zenarmor-only box got a nil Cache, fell back to a cold one, and missed EVERY
 		// lookup forever with no error, no log and no metric, while
 		// --logs.zenarmor.enrich defaulted to true and said otherwise.
+		// LogsZenarmorEnrichWanted() is transport-independent (elasticsearch or
+		// syslog), so zenarmor-over-syslog enrichment is already covered here too —
+		// no extra branch needed.
 		var stopEnrich context.CancelFunc
 		if (syslogEnabled && syslogCfg.Enrich) || options.LogsZenarmorEnrichWanted() {
 			cache := enrich.NewCache()

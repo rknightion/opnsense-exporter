@@ -177,6 +177,13 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 	if !*logsZenarmorEnabled {
 		return nil, false, nil
 	}
+
+	if LogsZenarmorTransport() == "syslog" && !LogsSyslogEnabled() {
+		return nil, false, fmt.Errorf(
+			"logs.zenarmor.transport=syslog needs the syslog receiver: set --logs.syslog.enabled " +
+				"(the shared syslog listener is what receives Zenarmor's syslog stream)")
+	}
+
 	cfg := &ZenarmorConfig{
 		Addr:            strings.TrimSpace(*logsZenarmorListenHTTP),
 		Enrich:          *logsZenarmorEnrich,
