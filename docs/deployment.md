@@ -60,3 +60,22 @@ See the [Security guide](security.md) for detailed guidance on:
 - Configuring TLS
 - Using file-based secrets
 - Required OPNsense user permissions
+
+## Web UI (operator console)
+
+When the metrics path is not `/`, the exporter serves a built-in operator console at `/` (in place of the minimal landing page). It is a set of server-rendered pages for inspecting the exporter's own health at a glance:
+
+- **Status** (`/`) — overall health, per-collector run stats (success rate, last-scrape duration, a duration sparkline and pass/fail strip, staleness, last error), a **Run Now** button per collector, the response-cache freshness table, and API-request stats. Live-updates in place.
+- **Cardinality** (`/cardinality`) — total series and metric families, the highest-cardinality metrics and labels, threshold alerts/recommendations, per-metric label-value drill-downs, series growth-rate, and a JSON export.
+- **Config** (`/config`) — the effective runtime configuration, with every secret redacted.
+- **Devices** (`/devices`) — connected devices merged from the ARP table and DHCP leases (IP, MAC, hostname, interface, manufacturer).
+
+The console reads only cached/last-scrape data, so opening it never triggers an extra scrape of the firewall.
+
+It is on by default and served without authentication, so expose the exporter's port only on a trusted network. Controls:
+
+- `--web.ui-enabled` — set to false to serve the minimal landing page instead of the console.
+- `--web.ui-disable-config` / `--web.ui-disable-devices` — hide the config or devices page (the devices page exposes device MACs/hostnames).
+- `--web.ui-refresh-interval` — how often the live pages poll for updates.
+
+See the [Configuration reference](configuration.md) for the full flag/env details.
