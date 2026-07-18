@@ -276,6 +276,41 @@ func TestClient_CacheIsPerEndpoint(t *testing.T) {
 	}
 }
 
+func TestCacheSnapshot(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(firmwareStatusBody))
+	})
+	defer server.Close()
+
+	client.SetEndpointCacheTTL("firmware", 30*time.Second)
+	withFakeClock(t, client)
+
+	if _, err := client.FetchFirmwareStatus(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	snap := client.CacheSnapshot()
+	if len(snap) != 1 {
+		t.Fatalf("expected 1 cache entry, got %d: %+v", len(snap), snap)
+	}
+	got := snap[0]
+	if got.StatusCode != http.StatusOK {
+		t.Errorf("expected StatusCode 200, got %d", got.StatusCode)
+	}
+	if got.TTL != 30*time.Second {
+		t.Errorf("expected TTL 30s, got %v", got.TTL)
+	}
+	if got.Remaining <= 0 || got.Remaining > 30*time.Second {
+		t.Errorf("expected 0 < Remaining <= 30s, got %v", got.Remaining)
+	}
+	if got.Endpoint == "" {
+		t.Errorf("expected a resolved endpoint name, got empty string")
+	}
+	if got.Path != string(client.endpoints["firmware"]) {
+		t.Errorf("expected path %q, got %q", client.endpoints["firmware"], got.Path)
+	}
+}
+
 func TestClient_CacheIsConcurrencySafe(t *testing.T) {
 	var requests atomic.Int64
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {

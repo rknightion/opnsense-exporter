@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -266,4 +267,75 @@ func PluginGatedEndpoints() []EndpointName {
 		// FetchVnstat doc comment in vnstat.go.
 		"vnstatInterfaceList",
 	}
+}
+
+// CacheEntryView is a read-only snapshot of one held response-cache entry,
+// exposed for the web UI's cache/freshness card. It carries no reference to
+// the underlying cache, so holding one never blocks or mutates the cache.
+type CacheEntryView struct {
+	// Endpoint is the endpoint name resolved via a reverse lookup of the
+	// client's configured endpoints; "" if the path no longer maps to a
+	// known endpoint name.
+	Endpoint string
+	Path     string
+	// StatusCode is the cached response's status: 200 for a positive
+	// (success-body) entry, 404 for a negative ("plugin absent") entry.
+	StatusCode int
+	// TTL is the configured TTL for this entry's status class: the
+	// positive TTL (SetEndpointCacheTTL) for a 200, or the absent TTL
+	// (SetEndpointAbsentTTL) for a 404.
+	TTL time.Duration
+	// Remaining is how much longer the entry is valid for (expiresAt - now);
+	// it may be negative if the entry has just expired but not yet been
+	// evicted by the next get/put.
+	Remaining time.Duration
+	// PluginGated reports whether this endpoint is in PluginGatedEndpoints().
+	PluginGated bool
+}
+
+// CacheSnapshot returns a read-only, point-in-time view of every entry
+// currently held in the client's response cache, sorted by Path. It never
+// mutates the cache and never triggers a request. A client with no cache
+// (caching never configured) returns nil.
+func (c *Client) CacheSnapshot() []CacheEntryView {
+	if c.cache == nil {
+		return nil
+	}
+
+	rev := make(map[EndpointPath]EndpointName, len(c.endpoints))
+	for name, path := range c.endpoints {
+		rev[path] = name
+	}
+
+	gated := make(map[EndpointName]bool)
+	for _, name := range PluginGatedEndpoints() {
+		gated[name] = true
+	}
+
+	rc := c.cache
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	now := rc.now()
+	out := make([]CacheEntryView, 0, len(rc.entries))
+	for path, entry := range rc.entries {
+		var ttl time.Duration
+		if entry.statusCode == http.StatusNotFound {
+			ttl = rc.absentTTLs[path]
+		} else {
+			ttl = rc.ttls[path]
+		}
+		name := rev[path]
+		out = append(out, CacheEntryView{
+			Endpoint:    string(name),
+			Path:        string(path),
+			StatusCode:  entry.statusCode,
+			TTL:         ttl,
+			Remaining:   entry.expiresAt.Sub(now),
+			PluginGated: gated[name],
+		})
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
