@@ -15,11 +15,13 @@ func excludeTestSource(t *testing.T, reg prometheus.Registerer, sink logship.Met
 	t.Helper()
 	var emitted []logship.Record
 	s := &zenarmorSource{
-		cfg:   Config{Excludes: rules, Enrich: false},
-		sink:  sink,
-		m:     newMetrics(reg, rules),
-		emit:  func(r logship.Record) { emitted = append(emitted, r) },
-		cache: nil,
+		proc: docProcessor{
+			cfg:   Config{Excludes: rules, Enrich: false},
+			sink:  sink,
+			m:     newMetrics(reg, rules),
+			cache: nil,
+		},
+		emit: func(r logship.Record) { emitted = append(emitted, r) },
 	}
 	return s, &emitted
 }

@@ -122,10 +122,10 @@ func TestNewSourceToleratesZeroDeps(t *testing.T) {
 		t.Fatalf("newSource: %v", err)
 	}
 	t.Cleanup(func() { _ = s.ln.Close() })
-	if s.cache == nil {
+	if s.proc.cache == nil {
 		t.Error("cache must fall back to a cold cache, not stay nil")
 	}
-	if s.sink == nil {
+	if s.proc.sink == nil {
 		t.Error("sink must fall back to a NopMetricSink, not stay nil")
 	}
 	if s.Name() != sourceName {

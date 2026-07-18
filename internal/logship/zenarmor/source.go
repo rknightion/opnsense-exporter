@@ -115,15 +115,17 @@ type zenarmorSource struct {
 	srv *http.Server
 	ln  net.Listener
 
-	cfg      Config
-	cache    *enrich.Cache
-	sink     logship.MetricSink
-	m        *metrics
-	families map[string]bool // nil = all
+	proc docProcessor
 
 	// listenPort is read from the BOUND listener, not from cfg.Addr: a configured
 	// ":0" resolves to a real port only once bound, and that is the port records
 	// about our own ingest are addressed to. 0 disables the self-traffic filter.
+	//
+	// It is a field on zenarmorSource, not on docProcessor: this is the ES source's
+	// own bound HTTP port, fixed once at bind time, whereas docProcessor.process
+	// takes listenPort as a call parameter so a future concurrent caller (the syslog
+	// receiver, driving process from many read goroutines with its own listener
+	// port) never mutates shared state.
 	listenPort int
 
 	// emit is set by Run before the server that reads it exists. Goroutine creation is
@@ -132,7 +134,22 @@ type zenarmorSource struct {
 	emit func(logship.Record)
 }
 
-func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
+// docProcessor runs the shared per-record pipeline: enrichment, self-traffic
+// filtering, derived-metric observation, and exclusion. Both the ES source and
+// (from a later change) the syslog receiver drive records through the same
+// docProcessor, so the pipeline behaves identically regardless of transport.
+type docProcessor struct {
+	cfg      Config
+	cache    *enrich.Cache
+	sink     logship.MetricSink
+	m        *metrics
+	families map[string]bool // nil = all
+}
+
+// newDocProcessor builds the shared processor: metrics are registered and the
+// family allow-set is resolved exactly once here, then reused across every call
+// to process — never per-record and never per-caller.
+func newDocProcessor(d logship.Deps, cfg Config) *docProcessor {
 	cache := d.Cache
 	if cache == nil {
 		// Enrichment off, or not wired: a cold cache misses every lookup, so records
@@ -143,12 +160,65 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 	if sink == nil {
 		sink = logship.NopMetricSink{}
 	}
-	s := &zenarmorSource{
+	return &docProcessor{
 		cfg:      cfg,
 		cache:    cache,
 		sink:     sink,
 		m:        newMetrics(d.Registerer, cfg.Excludes),
 		families: familyAllowSet(cfg.Families),
+	}
+}
+
+// process runs the full per-record pipeline and emits at most one record. family
+// is the resolved family name (the unknown_family reject lives on the caller's
+// resolution side, not here, since resolution differs per transport). peer +
+// listenPort drive self-traffic detection (listenPort 0 disables it). emit MUST
+// be non-nil. listenPort is a PARAMETER, never a struct field: the syslog
+// receiver calls process concurrently from many read goroutines, so per-call
+// state must not be mutated on the shared processor.
+func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, listenPort int, emit func(logship.Record)) {
+	if p.families != nil && !p.families[family] {
+		p.m.reject("filtered")
+		return
+	}
+
+	var snap *enrich.Snapshot
+	if p.cfg.Enrich {
+		snap = p.cache.Load()
+	}
+	rec, parsed := parseDoc(family, doc, snap)
+	if !parsed {
+		// Counted, never dropped: the record ships below with its raw body.
+		p.m.parseError("document")
+	}
+
+	// Before observeDerived, deliberately: a record about our own ingest connection
+	// is an artefact of measuring, not traffic, so counting it would put our own
+	// bookkeeping into the figures the operator reads as their network. The reject
+	// counter still fires, so the drop is visible rather than silent (#278).
+	if p.cfg.DropSelfTraffic && isSelfTraffic(rec.Attributes, peer, listenPort) {
+		p.m.reject("self_traffic")
+		return
+	}
+
+	// Derive BEFORE excluding, deliberately, and unlike the self-traffic drop above.
+	// Self-traffic is an artefact of measuring, so counting it would put our own
+	// bookkeeping into the operator's figures. An excluded record is real traffic the
+	// operator merely does not want stored, so its shape must still reach the derived
+	// counters — those outlive both the exclusion and Loki's retention, and they are
+	// all that remains of it.
+	observeDerived(p.sink, family, rec.Attributes)
+
+	if rule, ok := excludedBy(p.cfg.Excludes, rec.Attributes); ok {
+		p.m.exclude(rule)
+		return
+	}
+	emit(rec)
+}
+
+func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
+	s := &zenarmorSource{
+		proc: *newDocProcessor(d, cfg),
 	}
 
 	// Bind EAGERLY, here in the factory rather than in Run: a port already in use is a
@@ -161,7 +231,7 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 	s.ln = ln
 	s.listenPort = listenPortOf(ln.Addr().String())
 	s.srv = &http.Server{
-		Handler:           newServer(cfg, s.handleDoc, s.m, d.Logger),
+		Handler:           newServer(cfg, s.handleDoc, s.proc.m, d.Logger),
 		TLSConfig:         cfg.TLSConfig,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -215,48 +285,12 @@ func (s *zenarmorSource) handleDoc(index string, doc []byte, peer netip.Addr) {
 	if emit == nil {
 		return // not running yet; drop rather than panic
 	}
-	family := familyFor(index)
+	family := familyFor(index) // ES index-name form (zenarmor_..._conn_write)
 	if family == "" {
-		s.m.reject("unknown_family")
+		s.proc.m.reject("unknown_family")
 		return
 	}
-	if s.families != nil && !s.families[family] {
-		s.m.reject("filtered")
-		return
-	}
-
-	var snap *enrich.Snapshot
-	if s.cfg.Enrich {
-		snap = s.cache.Load()
-	}
-	rec, parsed := parseDoc(family, doc, snap)
-	if !parsed {
-		// Counted, never dropped: the record ships below with its raw body.
-		s.m.parseError("document")
-	}
-
-	// Before observeDerived, deliberately: a record about our own ingest connection
-	// is an artefact of measuring, not traffic, so counting it would put our own
-	// bookkeeping into the figures the operator reads as their network. The reject
-	// counter still fires, so the drop is visible rather than silent (#278).
-	if s.cfg.DropSelfTraffic && isSelfTraffic(rec.Attributes, peer, s.listenPort) {
-		s.m.reject("self_traffic")
-		return
-	}
-
-	// Derive BEFORE excluding, deliberately, and unlike the self-traffic drop above.
-	// Self-traffic is an artefact of measuring, so counting it would put our own
-	// bookkeeping into the operator's figures. An excluded record is real traffic the
-	// operator merely does not want stored, so its shape must still reach the derived
-	// counters — those outlive both the exclusion and Loki's retention, and they are
-	// all that remains of it.
-	observeDerived(s.sink, family, rec.Attributes)
-
-	if rule, ok := excludedBy(s.cfg.Excludes, rec.Attributes); ok {
-		s.m.exclude(rule)
-		return
-	}
-	emit(rec)
+	s.proc.process(family, doc, peer, s.listenPort, emit)
 }
 
 // familyAllowSet resolves the configured family list into the set to ship; nil means
