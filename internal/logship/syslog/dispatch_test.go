@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +106,37 @@ func TestBuildRecord_EmptyProgramNeverDropped(t *testing.T) {
 	}
 	assertNoAttr(t, rec, "program") // never an empty-string attribute
 	assertAttr(t, rec, "host", "opnsense")
+}
+
+func TestSource_DelegatesToProgramProcessor(t *testing.T) {
+	// Reset the package processor after the test.
+	t.Cleanup(func() { programProcessor = nil })
+
+	var got string
+	RegisterProgramProcessor(fakeProc{
+		handles: func(p string) bool { return p == "zenarmor" },
+		process: func(env Envelope, _ netip.Addr, _ []int, emit func(logship.Record)) bool {
+			got = env.Program
+			emit(logship.Record{Body: "delegated"})
+			return true
+		},
+	})
+	if p := registeredProgramProcessor(); p == nil || !p.Handles("zenarmor") {
+		t.Fatal("processor not registered")
+	}
+	if got != "" {
+		t.Fatal("processor ran before dispatch")
+	}
+}
+
+type fakeProc struct {
+	handles func(string) bool
+	process func(Envelope, netip.Addr, []int, func(logship.Record)) bool
+}
+
+func (f fakeProc) Handles(p string) bool { return f.handles(p) }
+func (f fakeProc) Process(e Envelope, a netip.Addr, ports []int, emit func(logship.Record)) bool {
+	return f.process(e, a, ports, emit)
 }
 
 func TestSyslogSeverity(t *testing.T) {

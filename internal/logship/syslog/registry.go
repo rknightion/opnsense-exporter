@@ -1,6 +1,8 @@
 package syslog
 
 import (
+	"net/netip"
+
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 )
@@ -131,3 +133,29 @@ func subsystemFor(program string) string {
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
+
+// ProgramProcessor gets first refusal on a line whose program it Handles(). When it
+// returns handled=true it has fully processed the line (built, counted and emitted
+// on its own), so the generic dispatch is skipped. peer is the sender address (for
+// self-traffic recognition); ports are the receiver's bound listen ports.
+type ProgramProcessor interface {
+	Handles(program string) bool
+	Process(env Envelope, peer netip.Addr, ports []int, emit func(logship.Record)) (handled bool)
+}
+
+// programProcessor is the single stateful, config-built processor registered by a
+// consumer (e.g. the zenarmor package). At most one may be registered; a second
+// registration is a wiring bug that must surface at startup.
+var programProcessor ProgramProcessor
+
+// RegisterProgramProcessor installs the single stateful, config-built processor.
+// Called from a source factory (not an init), so it may carry runtime config.
+func RegisterProgramProcessor(p ProgramProcessor) {
+	if programProcessor != nil {
+		panic("syslog: duplicate ProgramProcessor registration")
+	}
+	programProcessor = p
+}
+
+// registeredProgramProcessor returns the registered processor, if any.
+func registeredProgramProcessor() ProgramProcessor { return programProcessor }

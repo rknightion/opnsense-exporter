@@ -3,7 +3,9 @@ package syslog
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/netip"
+	"strconv"
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
@@ -76,10 +78,36 @@ type source struct {
 	// sampledAttr stamps sampled="true" on shipped lines while sample is on.
 	sampledAttr bool
 
+	// ports holds the receiver's bound listen ports (UDP/TCP/TLS), parsed from the
+	// configured addresses in newSource. Passed to proc.Process for self-traffic
+	// recognition.
+	ports []int
+	// proc is the optional registered ProgramProcessor, read once in Run (all source
+	// factories have run by then, so any processor registered during the build phase
+	// is guaranteed visible here). Nil when nothing is registered.
+	proc ProgramProcessor
+
 	// emit is set by Run before the listener's read goroutines exist. Goroutine
 	// creation is a happens-before edge, so a plain field is safe here: no reader
 	// can observe it before Run has written it.
 	emit func(logship.Record)
+}
+
+// portOf parses the port off a "host:port" listen address. Returns 0, false when
+// addr is empty or does not parse — never panics.
+func portOf(addr string) (int, bool) {
+	if addr == "" {
+		return 0, false
+	}
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return 0, false
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0, false
+	}
+	return port, true
 }
 
 func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
@@ -106,6 +134,11 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		sample:      cfg.Sample,
 		sampledAttr: cfg.SampledAttr,
 	}
+	for _, addr := range []string{cfg.UDPAddr, cfg.TCPAddr, cfg.TLSAddr} {
+		if port, ok := portOf(addr); ok {
+			s.ports = append(s.ports, port)
+		}
+	}
 	s.l = NewListener(Config{
 		UDPAddr:      cfg.UDPAddr,
 		TCPAddr:      cfg.TCPAddr,
@@ -126,12 +159,13 @@ func (s *source) Name() string { return sourceName }
 // cancellation, which is what lets the pipeline's shutdown drain complete.
 func (s *source) Run(ctx context.Context, emit func(logship.Record)) error {
 	s.emit = emit
+	s.proc = registeredProgramProcessor()
 	s.l.Run(ctx)
 	return nil
 }
 
 // handle is invoked per received line, on the listener's read goroutine.
-func (s *source) handle(line []byte, _ netip.Addr) {
+func (s *source) handle(line []byte, peer netip.Addr) {
 	emit := s.emit
 	if emit == nil {
 		return // not running yet; drop rather than panic
@@ -144,6 +178,12 @@ func (s *source) handle(line []byte, _ netip.Addr) {
 		s.m.ParseError("envelope")
 		emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
 		return
+	}
+	if s.proc != nil && s.proc.Handles(env.Program) {
+		if s.proc.Process(env, peer, s.ports, emit) {
+			return // fully handled by the processor (built, counted, emitted)
+		}
+		// processor declined this line — fall through to generic dispatch below.
 	}
 	// Filtering is opt-in and defaults to passing everything. It is applied AFTER the
 	// envelope parse because that is where the program and severity come from, and
