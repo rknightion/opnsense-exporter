@@ -218,6 +218,11 @@ type Collector struct {
 	// path (Collect), derived from the OTLP export interval. Zero means Collect falls
 	// back to the maxScrapeDuration default inside collect().
 	otlpGatherTimeout time.Duration
+
+	// statusTracker, when non-nil, passively records per-collector run history for
+	// the operator console. It is updated from execute() on every scrape and from
+	// RunCollector; it never influences collection. Injected via WithStatusTracker.
+	statusTracker *StatusTracker
 }
 
 // defaultMaxScrapeDuration is the fallback bound applied to a no-deadline collection
@@ -231,6 +236,15 @@ type Option func(*Collector) error
 func WithMaxScrapeDuration(d time.Duration) Option {
 	return func(o *Collector) error {
 		o.maxScrapeDuration = d
+		return nil
+	}
+}
+
+// WithStatusTracker injects a StatusTracker so execute() and RunCollector record
+// per-collector run history for the operator console.
+func WithStatusTracker(t *StatusTracker) Option {
+	return func(o *Collector) error {
+		o.statusTracker = t
 		return nil
 	}
 }
@@ -1196,6 +1210,7 @@ func boolToGauge(ok bool) float64 {
 func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client *opnsense.Client, ch chan<- prometheus.Metric) {
 	begin := time.Now()
 	success := 1.0
+	var lastErr string
 	defer func() {
 		if r := recover(); r != nil {
 			c.log.Error(
@@ -1210,6 +1225,7 @@ func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client 
 			// collide with a Client.Endpoints() / APICallError.Endpoint value (#120).
 			c.endpointErrors.WithLabelValues("panic:"+coll.Name(), c.instanceLabel).Inc()
 			success = 0
+			lastErr = fmt.Sprintf("panic: %v", r)
 		}
 		ch <- prometheus.MustNewConstMetric(
 			c.scrapeDuration, prometheus.GaugeValue,
@@ -1219,6 +1235,9 @@ func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client 
 			c.scrapeSuccess, prometheus.GaugeValue,
 			success, coll.Name(), c.instanceLabel,
 		)
+		if c.statusTracker != nil {
+			c.statusTracker.Record(coll.Name(), begin, time.Since(begin).Seconds()*1000, success == 1, lastErr)
+		}
 	}()
 
 	if err := coll.Update(ctx, client, ch); err != nil {
@@ -1230,7 +1249,71 @@ func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client 
 		)
 		c.endpointErrors.WithLabelValues(err.Endpoint, c.instanceLabel).Inc()
 		success = 0
+		lastErr = err.Error()
 	}
+}
+
+// ErrUnknownCollector is returned by RunCollector when no enabled sub-collector
+// matches the requested name.
+var ErrUnknownCollector = errors.New("unknown or disabled collector")
+
+// RunCollector runs a single named sub-collector once, on demand, from the
+// operator console's "Run Now" action. It uses a request-scoped WithContext
+// clone of the client (which shares the response cache) and drains the metrics
+// it emits into a discard sink — the values are not exported, only the run's
+// duration/outcome are recorded into the StatusTracker (if injected). It never
+// gathers the registry and never runs any other collector.
+func (c *Collector) RunCollector(ctx context.Context, name string) (time.Duration, error) {
+	var target CollectorInstance
+	for _, coll := range c.collectors {
+		if coll.Name() == name {
+			target = coll
+			break
+		}
+	}
+	if target == nil {
+		return 0, ErrUnknownCollector
+	}
+
+	client := c.Client.WithContext(ctx)
+	begin := time.Now()
+	sink := make(chan prometheus.Metric, 4096)
+	done := make(chan struct{})
+	go func() {
+		for range sink { //nolint:revive // draining the sink; values are discarded
+		}
+		close(done)
+	}()
+
+	success := 1.0
+	var runErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				success = 0
+				runErr = fmt.Errorf("panic: %v", r)
+			}
+		}()
+		// Assign runErr only inside the nil-check: a nil *APICallError stored into an
+		// error interface is a non-nil interface, so a bare `runErr = target.Update(...)`
+		// would make a successful run look failed.
+		if apiErr := target.Update(ctx, client, sink); apiErr != nil {
+			success = 0
+			runErr = apiErr
+		}
+	}()
+	close(sink)
+	<-done
+
+	dur := time.Since(begin)
+	if c.statusTracker != nil {
+		es := ""
+		if runErr != nil {
+			es = runErr.Error()
+		}
+		c.statusTracker.Record(name, begin, dur.Seconds()*1000, success == 1, es)
+	}
+	return dur, runErr
 }
 
 // Collect implements the prometheus.Collector interface. Registry-driven
