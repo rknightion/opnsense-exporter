@@ -12,6 +12,7 @@ import (
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense-exporter/internal/logship/syslog"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
@@ -64,13 +65,17 @@ const (
 func init() {
 	logship.RegisterPushSource(func(d logship.Deps) (logship.PushSource, error) {
 		cfg, enabled, err := loadConfig()
-		if err != nil {
+		if err != nil || !enabled {
 			return nil, err
 		}
-		if !enabled {
+		if options.LogsZenarmorTransport() == "syslog" {
+			// Driven by the syslog receiver, not an independent listener: register the
+			// shared processor and return no push source at all.
+			proc := newDocProcessor(d, cfg) // listenPort is supplied per-call by the syslog receiver
+			syslog.RegisterProgramProcessor(&syslogProcessor{proc: proc})
 			return nil, nil
 		}
-		return newSource(d, cfg)
+		return newSource(d, cfg) // transport=elasticsearch (default): today's HTTP receiver
 	})
 }
 
