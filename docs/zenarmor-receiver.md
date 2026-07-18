@@ -244,7 +244,9 @@ the drop is visible rather than silent, and they are **not** counted into
 figures you read as your network.
 
 A record is recognised as ours when it was **sent by the peer currently streaming to
-us** and is **addressed to the port the receiver bound**. The destination address is
+us** and is **addressed to a port the receiver bound** (over syslog the receiver may
+bind several — UDP, TCP and TLS — and Zenarmor may stream to any of them, so the record
+matches on any bound port). The destination address is
 deliberately never compared: a containerised exporter binds `0.0.0.0:9200` inside its
 own network namespace and cannot know the host address the firewall actually dialled
 (the record says `10.0.0.5`; the container is `172.17.0.2`), so an address-based filter

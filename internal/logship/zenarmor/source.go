@@ -122,16 +122,19 @@ type zenarmorSource struct {
 
 	proc docProcessor
 
-	// listenPort is read from the BOUND listener, not from cfg.Addr: a configured
+	// listenPorts is read from the BOUND listener, not from cfg.Addr: a configured
 	// ":0" resolves to a real port only once bound, and that is the port records
-	// about our own ingest are addressed to. 0 disables the self-traffic filter.
+	// about our own ingest are addressed to. An all-zero/empty set disables the
+	// self-traffic filter. The ES receiver binds exactly one HTTP port, so this holds
+	// a single element; it is a []int (not an int) only so process's self-traffic
+	// signature is shared with the syslog receiver, which can bind several (#299).
 	//
 	// It is a field on zenarmorSource, not on docProcessor: this is the ES source's
-	// own bound HTTP port, fixed once at bind time, whereas docProcessor.process
-	// takes listenPort as a call parameter so a future concurrent caller (the syslog
-	// receiver, driving process from many read goroutines with its own listener
-	// port) never mutates shared state.
-	listenPort int
+	// own bound HTTP port, fixed once at bind time and passed by reference to every
+	// process call, whereas docProcessor.process takes listenPorts as a call
+	// parameter so a concurrent caller (the syslog receiver, driving process from
+	// many read goroutines with its own listener ports) never mutates shared state.
+	listenPorts []int
 
 	// emit is set by Run before the server that reads it exists. Goroutine creation is
 	// a happens-before edge, so a plain field is safe: no request can observe it
@@ -177,11 +180,13 @@ func newDocProcessor(d logship.Deps, cfg Config) *docProcessor {
 // process runs the full per-record pipeline and emits at most one record. family
 // is the resolved family name (the unknown_family reject lives on the caller's
 // resolution side, not here, since resolution differs per transport). peer +
-// listenPort drive self-traffic detection (listenPort 0 disables it). emit MUST
-// be non-nil. listenPort is a PARAMETER, never a struct field: the syslog
-// receiver calls process concurrently from many read goroutines, so per-call
-// state must not be mutated on the shared processor.
-func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, listenPort int, emit func(logship.Record)) {
+// listenPorts drive self-traffic detection (an empty/all-zero set disables it; a
+// record matches on any bound port — #299). emit MUST be non-nil. listenPorts is a
+// PARAMETER, never a struct field: the syslog receiver calls process concurrently
+// from many read goroutines, so per-call state must not be mutated on the shared
+// processor. Callers pass a slice they built once (never per-record), so this adds
+// no allocation on the hot path.
+func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, listenPorts []int, emit func(logship.Record)) {
 	if p.families != nil && !p.families[family] {
 		p.m.reject("filtered")
 		return
@@ -202,7 +207,7 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	// is an artefact of measuring, not traffic, so counting it would put our own
 	// bookkeeping into the figures the operator reads as their network. The reject
 	// counter still fires, so the drop is visible rather than silent (#278).
-	if p.cfg.DropSelfTraffic && isSelfTraffic(rec.Attributes, peer, listenPort) {
+	if p.cfg.DropSelfTraffic && isSelfTraffic(rec.Attributes, peer, listenPorts) {
 		p.m.reject("self_traffic")
 		return
 	}
@@ -235,7 +240,7 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 		return nil, fmt.Errorf("zenarmor: listen %s: %w", cfg.Addr, err)
 	}
 	s.ln = ln
-	s.listenPort = listenPortOf(ln.Addr().String())
+	s.listenPorts = []int{listenPortOf(ln.Addr().String())}
 	s.srv = &http.Server{
 		Handler:           newServer(cfg, s.handleDoc, s.proc.m, d.Logger),
 		TLSConfig:         cfg.TLSConfig,
@@ -296,7 +301,7 @@ func (s *zenarmorSource) handleDoc(index string, doc []byte, peer netip.Addr) {
 		s.proc.m.reject("unknown_family")
 		return
 	}
-	s.proc.process(family, doc, peer, s.listenPort, emit)
+	s.proc.process(family, doc, peer, s.listenPorts, emit)
 }
 
 // familyAllowSet resolves the configured family list into the set to ship; nil means

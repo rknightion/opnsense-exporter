@@ -73,6 +73,42 @@ func TestSyslogProcessor_ProcessRealAlert(t *testing.T) {
 	}
 }
 
+// TestSyslogProcessor_SelfTrafficMatchesAnyBoundPort covers #299: with more than one
+// syslog listener bound (say UDP and TCP), Zenarmor may stream its reporting data to a
+// NON-first port. Self-traffic detection must match the record's dst port against ANY
+// bound port, not just ports[0] — otherwise the box->exporter self-record silently
+// ships instead of being dropped.
+func TestSyslogProcessor_SelfTrafficMatchesAnyBoundPort(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	sink := &captureSink{}
+	proc := &docProcessor{
+		cfg:   Config{DropSelfTraffic: true},
+		cache: enrich.NewCache(),
+		sink:  sink,
+		m:     newMetrics(reg, nil),
+	}
+	sp := &syslogProcessor{proc: proc}
+
+	peer := netip.MustParseAddr("10.0.0.254") // the firewall, streaming to us
+	// Two listeners bound (UDP 5514, TCP 6514); Zenarmor streams to the SECOND one.
+	ports := []int{5514, 6514}
+	env := syslog.Envelope{
+		Program: "zenarmor",
+		Message: "daemon=zenarmor, index=conn, data=" + selfDoc("10.0.0.254", "10.0.0.5", 6514),
+	}
+	n := 0
+	handled := sp.Process(env, peer, ports, func(logship.Record) { n++ })
+	if !handled {
+		t.Fatal("handled=false, want true")
+	}
+	if n != 0 {
+		t.Errorf("emitted %d records, want 0 — self-traffic to a non-first bound port must still be dropped", n)
+	}
+	if got := rejectCount(t, reg, "self_traffic"); got != 1 {
+		t.Errorf("self_traffic reject = %v, want 1", got)
+	}
+}
+
 func TestSyslogProcessor_EmittedSource(t *testing.T) {
 	sp := &syslogProcessor{}
 	if got := sp.EmittedSource(); got != "zenarmor" {

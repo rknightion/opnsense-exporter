@@ -125,8 +125,43 @@ func TestIsSelfTraffic(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isSelfTraffic(tc.attrs, tc.peer, tc.port); got != tc.want {
+			if got := isSelfTraffic(tc.attrs, tc.peer, []int{tc.port}); got != tc.want {
 				t.Errorf("isSelfTraffic() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIsSelfTrafficMultiPort covers #299 at the unit level: with several ports bound, a
+// record matches on ANY of them, and a zero in the set is ignored rather than treated as
+// a wildcard.
+func TestIsSelfTrafficMultiPort(t *testing.T) {
+	peer := netip.MustParseAddr("10.0.0.254")
+	withPort := func(p string) map[string]string {
+		return map[string]string{
+			"ip_src_saddr": "10.0.0.254",
+			"ip_dst_saddr": "10.0.0.5",
+			"ip_dst_port":  p,
+		}
+	}
+
+	tests := []struct {
+		name  string
+		attrs map[string]string
+		ports []int
+		want  bool
+	}{
+		{"matches first of several", withPort("5514"), []int{5514, 6514}, true},
+		{"matches second of several", withPort("6514"), []int{5514, 6514}, true},
+		{"matches none of several", withPort("9999"), []int{5514, 6514}, false},
+		{"empty set disables", withPort("6514"), nil, false},
+		{"zero in set is not a wildcard", withPort("6514"), []int{0}, false},
+		{"real port beside a zero still matches", withPort("6514"), []int{0, 6514}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isSelfTraffic(tc.attrs, peer, tc.ports); got != tc.want {
+				t.Errorf("isSelfTraffic(ports=%v) = %v, want %v", tc.ports, got, tc.want)
 			}
 		})
 	}
@@ -154,7 +189,7 @@ func TestSourceDropsSelfTraffic(t *testing.T) {
 	// dst is 10.0.0.5 — the HOST's address, which this process does not have and
 	// cannot enumerate. If the filter ever starts comparing destination addresses,
 	// this test fails, which is exactly what it is for.
-	doc := selfDoc("10.0.0.254", "10.0.0.5", s.listenPort)
+	doc := selfDoc("10.0.0.254", "10.0.0.5", s.listenPorts[0])
 	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(doc), peer)
 
 	if len(shipped) != 0 {
@@ -186,7 +221,7 @@ func TestSourceKeepsSelfTrafficWhenDisabled(t *testing.T) {
 	s.emit = func(r logship.Record) { shipped = append(shipped, r) }
 
 	peer := netip.MustParseAddr("10.0.0.254")
-	doc := selfDoc("10.0.0.254", "10.0.0.5", s.listenPort)
+	doc := selfDoc("10.0.0.254", "10.0.0.5", s.listenPorts[0])
 	s.handleDoc("zenarmor_0000000000_abc_conn_write", []byte(doc), peer)
 
 	if len(shipped) != 1 {

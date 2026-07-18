@@ -46,17 +46,32 @@ func listenPortOf(addr string) int {
 }
 
 // isSelfTraffic reports whether a record describes the very connection that delivered
-// it: sent by the peer currently streaming to us, addressed to the port we listen on.
+// it: sent by the peer currently streaming to us, addressed to a port we listen on.
+//
+// listenPorts is every port this transport bound (the ES receiver has exactly one; the
+// syslog receiver can bind UDP, TCP and TLS at once, and Zenarmor may stream to any of
+// them — #299). A record matches on ANY of them. Ports of 0 (an unknown/unbound port)
+// never match, so an empty or all-zero set disables the filter rather than guessing.
 //
 // peer is the remote address of the request carrying this document, not a configured
 // value — so it works whether or not --logs.zenarmor.allowed-peers is set.
-func isSelfTraffic(attrs map[string]string, peer netip.Addr, listenPort int) bool {
-	if listenPort == 0 || !peer.IsValid() {
+func isSelfTraffic(attrs map[string]string, peer netip.Addr, listenPorts []int) bool {
+	if !peer.IsValid() {
 		return false
 	}
 
 	dstPort, err := strconv.Atoi(attrs["ip_dst_port"])
-	if err != nil || dstPort != listenPort {
+	if err != nil {
+		return false
+	}
+	matched := false
+	for _, p := range listenPorts {
+		if p > 0 && dstPort == p {
+			matched = true
+			break
+		}
+	}
+	if !matched {
 		return false
 	}
 

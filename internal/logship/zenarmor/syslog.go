@@ -65,14 +65,11 @@ func (s *syslogProcessor) Process(env syslog.Envelope, peer netip.Addr, ports []
 		return true // recognised as Zenarmor, but a family we don't model — counted, dropped
 	}
 	// Self-traffic over syslog is the box->exporter:syslogport flow Zenarmor reports,
-	// the exact analogue of the ES _bulk link. The box streams to one syslog endpoint,
-	// so the first bound port is it; 0 (no ports) disables the filter. listenPort is
-	// passed as an argument — never stored — because Process runs concurrently on many
-	// listener goroutines.
-	port := 0
-	if len(ports) > 0 {
-		port = ports[0]
-	}
-	s.proc.process(family, []byte(data), peer, port, emit)
+	// the exact analogue of the ES _bulk link. The box may stream to any bound syslog
+	// endpoint (UDP, TCP or TLS), so the record's dst is matched against ALL of them,
+	// not just ports[0] (#299); an empty set disables the filter. ports is passed as an
+	// argument — never stored — because Process runs concurrently on many listener
+	// goroutines.
+	s.proc.process(family, []byte(data), peer, ports, emit)
 	return true
 }
