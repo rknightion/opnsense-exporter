@@ -100,6 +100,10 @@ For secure credential management in containers and orchestrated environments, cr
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
 | `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
 | `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
+| `--web.ui-disable-config` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_CONFIG` | `false` | Hide the /config page. |
+| `--web.ui-disable-devices` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_DEVICES` | `false` | Hide the /devices page (exposes MAC/hostname). |
+| `--web.ui-enabled` | `OPNSENSE_EXPORTER_WEB_UI_ENABLED` | `true` | Serve the operator console at / (else the minimal landing page). |
+| `--web.ui-refresh-interval` | `OPNSENSE_EXPORTER_WEB_UI_REFRESH_INTERVAL` | `5s` | Live-poll interval for the console's dynamic pages. |
 <!-- docgen:end:flags-exporter -->
 
 ## Health endpoints & scrape filtering
@@ -558,4 +562,8 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
 | `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
 | `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
+| `--web.ui-disable-config` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_CONFIG` | `false` | Hide the /config page. |
+| `--web.ui-disable-devices` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_DEVICES` | `false` | Hide the /devices page (exposes MAC/hostname). |
+| `--web.ui-enabled` | `OPNSENSE_EXPORTER_WEB_UI_ENABLED` | `true` | Serve the operator console at / (else the minimal landing page). |
+| `--web.ui-refresh-interval` | `OPNSENSE_EXPORTER_WEB_UI_REFRESH_INTERVAL` | `5s` | Live-poll interval for the console's dynamic pages. |
 <!-- docgen:end:flags-full-reference -->
