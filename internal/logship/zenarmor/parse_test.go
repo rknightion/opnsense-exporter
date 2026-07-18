@@ -201,8 +201,38 @@ func TestBuildRecordAlert(t *testing.T) {
 	assertAttr(t, rec, attrAlertCategory, "Attempted Administrator Privilege Gain")
 	assertAttr(t, rec, attrAlertSeverity, "1")
 	assertAttr(t, rec, "alertinfo.signature", "ET EXPLOIT Possible CVE-2021-44228")
+	assertAttr(t, rec, "alertinfo.action", "reject")
 	if rec.Severity != logship.SeverityWarn {
 		t.Errorf("Severity = %v, want Warn for an ids record", rec.Severity)
+	}
+}
+
+func TestParseDoc_AlertInfoRealShape(t *testing.T) {
+	// Verbatim alertinfo from a live 26.x capture: category/signature are arrays,
+	// severity is a number, sid is a string. The pre-fix struct fails all four.
+	doc := []byte(`{
+		"start_time":1784368506000,"transport_proto":"UDP","interface":"ixl0",
+		"ip_src_saddr":"10.0.0.120","ip_dst_saddr":"239.255.255.250","is_blocked":1,
+		"alertinfo":{"match":{"dst_hostname":"239.255.255.250"},"action":"reject",
+			"category":["Application Category"],"signature":["Network Management"],
+			"severity":0,"sid":"appcategories.689585a5-37ba-41f9-86e4-160e8a0de793",
+			"gid":0,"rev":0}
+	}`)
+	rec, parsed := parseDoc("ids", doc, nil)
+	if !parsed {
+		t.Fatalf("alert document failed to decode; want parsed=true")
+	}
+	want := map[string]string{
+		"alertinfo.category":  "Application Category",
+		"alertinfo.signature": "Network Management",
+		"alertinfo.severity":  "0",
+		"alertinfo.sid":       "appcategories.689585a5-37ba-41f9-86e4-160e8a0de793",
+		"alertinfo.action":    "reject",
+	}
+	for k, v := range want {
+		if got := rec.Attributes[k]; got != v {
+			t.Errorf("attr %q = %q, want %q", k, got, v)
+		}
 	}
 }
 

@@ -60,6 +60,7 @@ type ExcludeRule struct {
 // operator's call to make explicitly, not something to hide by pretending the field
 // does not exist.
 var KnownAttributeKeys = []string{
+	"alertinfo.action",
 	"alertinfo.category",
 	"alertinfo.severity",
 	"alertinfo.sid",

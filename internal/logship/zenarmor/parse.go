@@ -1,6 +1,7 @@
 package zenarmor
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"time"
@@ -207,10 +208,11 @@ func parseDoc(family string, doc []byte, snap *enrich.Snapshot) (logship.Record,
 		set(attrAlertCategory, d.AlertCategory)
 		set(attrAlertSeverity, d.AlertSeverity)
 		if d.AlertInfo != nil {
-			set("alertinfo.signature", d.AlertInfo.Signature)
-			set("alertinfo.category", d.AlertInfo.Category)
-			setInt("alertinfo.sid", int64(d.AlertInfo.SID))
-			set("alertinfo.severity", d.AlertInfo.Severity)
+			set("alertinfo.signature", string(d.AlertInfo.Signature))
+			set("alertinfo.category", string(d.AlertInfo.Category))
+			set("alertinfo.sid", string(d.AlertInfo.SID))
+			set("alertinfo.severity", string(d.AlertInfo.Severity))
+			set("alertinfo.action", d.AlertInfo.Action)
 		}
 
 	case "voip":
@@ -392,9 +394,62 @@ type zenDevice struct {
 	OSVer    string `json:"osver"`
 }
 
+// flexStrings decodes a JSON value that is EITHER a string or an array of strings.
+// Zenarmor's alertinfo.category and alertinfo.signature arrive as arrays on 26.x
+// but have appeared as bare scalars on older payloads; pinning either Go type
+// fails the whole document decode. An array is joined with ", ".
+type flexStrings string
+
+func (f *flexStrings) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" {
+		*f = ""
+		return nil
+	}
+	if b[0] == '[' {
+		var xs []string
+		if err := json.Unmarshal(b, &xs); err != nil {
+			return err
+		}
+		*f = flexStrings(strings.Join(xs, ", "))
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	*f = flexStrings(s)
+	return nil
+}
+
+// flexScalar decodes a JSON scalar that may arrive as EITHER a string or a number,
+// stored as its string form. Zenarmor sends alertinfo.severity as a number and
+// alertinfo.sid as a string, but both have been typed the other way across
+// releases, so neither may be pinned.
+type flexScalar string
+
+func (f *flexScalar) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || string(b) == "null" {
+		*f = ""
+		return nil
+	}
+	if b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexScalar(s)
+		return nil
+	}
+	*f = flexScalar(string(b)) // number kept as its literal text
+	return nil
+}
+
 type zenAlertInfo struct {
-	Signature string `json:"signature"`
-	Category  string `json:"category"`
-	SID       int    `json:"sid"`
-	Severity  string `json:"severity"`
+	Signature flexStrings `json:"signature"`
+	Category  flexStrings `json:"category"`
+	SID       flexScalar  `json:"sid"`
+	Severity  flexScalar  `json:"severity"`
+	Action    string      `json:"action"`
 }
