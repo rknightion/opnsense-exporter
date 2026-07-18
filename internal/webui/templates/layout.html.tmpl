@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · opnsense-exporter</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%232f81f7'/><path d='M4 11 L7 5 L9 9 L12 5' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="/static/app.css">
+<script>window.__refreshSeconds = {{.RefreshSeconds}};</script>
+</head>
+<body data-page="{{.PageID}}">
+<header class="topbar">
+  <div class="wrap">
+    <span class="brand">opnsense-exporter</span>
+    <nav class="nav">
+      {{range .Nav}}<a href="{{.Href}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  {{template "body" .}}
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

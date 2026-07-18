@@ -1,0 +1,100 @@
+{{define "body"}}
+{{with .Data}}
+<section class="page-head">
+  <div>
+    <h1>{{.Service.Name}}</h1>
+    <p class="sub">{{.Service.Version}} · Go {{.Service.GoVersion}}{{if .Service.Host}} · {{.Service.Host}}{{end}}{{if .Service.Instance}} · {{.Service.Instance}}{{end}}{{if .Service.Uptime}} · up {{.Service.Uptime}}{{end}}</p>
+  </div>
+  <div class="head-right">
+    <span class="badge badge-{{healthClass .Health}}" data-health>{{.Health}}</span>
+    <span class="scrape-age" data-scrape-age>as of {{.ScrapeAge}}</span>
+  </div>
+</section>
+
+{{if .Reasons}}
+<div class="callout warn" data-reasons>
+  <strong>Attention</strong>
+  <ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul>
+</div>
+{{end}}
+
+<section class="tiles">
+  <div class="tile"><span class="tile-num" data-tile="collectors">{{.Stats.ActiveCollectors}}</span><span class="tile-label">Active collectors</span></div>
+  <div class="tile"><span class="tile-num" data-tile="families">{{.Stats.MetricFamilies}}</span><span class="tile-label">Metric families</span></div>
+  <div class="tile"><span class="tile-num" data-tile="series">{{.Stats.Series}}</span><span class="tile-label">Series</span></div>
+</section>
+
+<section class="card">
+  <h2>Collectors</h2>
+  <table class="grid" data-table="collectors">
+    <thead><tr>
+      <th>Collector</th><th>State</th><th>Success</th><th>Runs</th><th>Fails</th><th>Consec</th>
+      <th>Last (ms)</th><th>Trend</th><th>Recent</th><th>Age</th><th></th>
+    </tr></thead>
+    <tbody>
+    {{range .Collectors}}
+      <tr data-name="{{.Name}}">
+        <td>{{.Display}}</td>
+        <td><span class="dot dot-{{stateClass .State}}"></span><span data-cell="state">{{.State}}</span></td>
+        <td data-cell="success" data-value="{{.SuccessRate}}">{{pct .SuccessRate}}</td>
+        <td data-cell="runs">{{.Runs}}</td>
+        <td data-cell="failures">{{.Failures}}</td>
+        <td data-cell="consecutive">{{.Consecutive}}</td>
+        <td data-cell="duration">{{printf "%.1f" .LastDurationMs}}</td>
+        <td data-cell="sparkline">{{.Sparkline}}</td>
+        <td data-cell="outcomes">{{.Outcomes}}</td>
+        <td data-cell="staleness">{{.Staleness}}</td>
+        <td><button type="button" class="btn" data-collector="{{.Name}}">Run now</button></td>
+      </tr>
+      {{if .LastError}}<tr class="err-row"><td colspan="11" data-cell="error">{{.LastError}}</td></tr>{{end}}
+    {{else}}
+      <tr><td colspan="11" class="empty">No collector has run yet — waiting for the first scrape.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+
+<div class="two-col">
+  <section class="card">
+    <h2>API</h2>
+    <dl class="kv">
+      <dt>Auth</dt><dd><span class="badge badge-{{if .API.AuthOK}}ok{{else}}bad{{end}}">{{if .API.AuthOK}}ok{{else}}failing{{end}}</span></dd>
+      <dt>Requests</dt><dd>{{printf "%.0f" .API.Requests}}</dd>
+      <dt>Avg duration</dt><dd>{{printf "%.1f" .API.AvgMs}} ms</dd>
+    </dl>
+    {{if .API.TopErrors}}
+    <h3>Top endpoint errors</h3>
+    <table class="grid compact">
+      <thead><tr><th>Endpoint</th><th>Errors</th></tr></thead>
+      <tbody>{{range .API.TopErrors}}<tr><td>{{.Endpoint}}</td><td>{{printf "%.0f" .Count}}</td></tr>{{end}}</tbody>
+    </table>
+    {{end}}
+  </section>
+
+  <section class="card">
+    <h2>Response cache</h2>
+    {{if .Cache}}
+    <table class="grid compact">
+      <thead><tr><th>Endpoint</th><th>Code</th><th>TTL</th><th>Remaining</th></tr></thead>
+      <tbody>
+      {{range .Cache}}
+        <tr><td>{{if .Endpoint}}{{.Endpoint}}{{else}}{{.Path}}{{end}}{{if .PluginGated}} <span class="tag">plugin</span>{{end}}</td>
+          <td>{{.StatusCode}}</td><td>{{.TTL}}</td><td>{{.Remaining}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}<p class="empty">No cached responses held.</p>{{end}}
+  </section>
+</div>
+
+{{if .Skipped}}
+<section class="card">
+  <h2>Skipped / disabled</h2>
+  <table class="grid compact">
+    <thead><tr><th>Collector</th><th>Reason</th></tr></thead>
+    <tbody>{{range .Skipped}}<tr data-name="{{.Name}}"><td>{{.Display}}</td><td>{{.Reason}}</td></tr>{{end}}</tbody>
+  </table>
+</section>
+{{end}}
+{{end}}
+{{end}}
