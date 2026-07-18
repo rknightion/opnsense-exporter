@@ -11,6 +11,8 @@ from builder import Builder, sel, RATE, RUNSTOP
 def build(b: Builder):
     b.sentinel("has_syslog",
                "label_values(opnsense_syslog_service_running, __name__)")
+    b.loki_sentinel("has_syslog_logs",
+                     'label_values({opnsense_source="syslog"}, opnsense_source)')
 
     svc = b.stat("Syslog Service", sel("opnsense_syslog_service_running"),
                  unit="short", w=4, h=4, mappings=RUNSTOP,
@@ -50,8 +52,16 @@ def build(b: Builder):
                      "{{source_id}} {{stat}}")],
                    unit="bytes", w=8, h=8)
 
+    raw_logs = b.logs("Raw syslog stream", '{opnsense_source="syslog"}')
+    lines_by_subsystem = b.loki_ts(
+        "Syslog lines/s by subsystem",
+        [('sum by (opnsense_subsystem) (rate({opnsense_source="syslog"} [$__auto]))',
+          "{{opnsense_subsystem}}")])
+
     b.tab("Syslog", [
         b.row("Syslog-ng Overview", [svc, eps, queued], present="has_syslog"),
         b.row("Syslog-ng Throughput", [processed, dropped, written, memory, msgsize],
               present="has_syslog"),
+        b.row("Shipped Syslog Logs", [raw_logs, lines_by_subsystem],
+              present="has_syslog_logs"),
     ])

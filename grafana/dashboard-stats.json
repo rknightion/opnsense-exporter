@@ -1,7 +1,7 @@
 {
   "metrics": 765,
-  "panels": 654,
-  "tabs": 38,
+  "panels": 666,
+  "tabs": 39,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -39,6 +39,7 @@
     "Tor",
     "Siproxd",
     "Log-derived Events",
+    "Zenarmor",
     "Log Shipping",
     "Diagnostics"
   ]

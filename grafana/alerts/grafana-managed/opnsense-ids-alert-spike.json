@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-ids-alert-spike",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseIDSAlertSpike",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "5m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "info"
+    },
+    "annotations": {
+      "summary": "OPNsense IDS blocked-alert spike ({{ $labels.opnsense_instance }})",
+      "description": "More than 50 blocked IDS alerts held in the recent-alerts window for 5m. The threshold and --exporter.ids-alert-lookback window are deployment-specific \u2014 tune both per site. action is only ever allowed/blocked (no drop/reject).",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (opnsense_instance) (opnsense_ids_recent_alerts{action=\"blocked\"})",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  50,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

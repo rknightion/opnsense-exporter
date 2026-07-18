@@ -47,6 +47,17 @@ def add_core_variables(b: Builder):
         "options": [], "multi": False, "includeAll": False, "allowCustomValue": True,
         "hide": "dontHide", "refresh": "onDashboardLoad",
         "regex": "(?!grafanacloud-usage|grafanacloud-ml-metrics).+", "skipUrlSync": False}})
+    # Loki datasource for the mixed-datasource log panels (Zenarmor/syslog raw streams,
+    # top-talker tables). Defaults to grafanacloud-logs; log panels/rows auto-hide via
+    # Loki presence sentinels when this resolves to a datasource with no matching streams.
+    # The regex excludes the account's non-log loki datasources so the picker defaults sanely.
+    b.variables.append({"kind": "DatasourceVariable", "spec": {
+        "name": "loki_datasource", "label": "Loki data source", "pluginId": "loki",
+        "current": {"text": "grafanacloud-logs", "value": "grafanacloud-logs"},
+        "options": [], "multi": False, "includeAll": False, "allowCustomValue": True,
+        "hide": "dontHide", "refresh": "onDashboardLoad",
+        "regex": "(?!grafanacloud-usage-insights|grafanacloud-alert-state-history).+",
+        "skipUrlSync": False}})
     b.variables.append({"kind": "QueryVariable", "spec": {
         "name": "opnsense_instance", "label": "OPNsense instance",
         "current": {"text": "All", "value": "$__all"}, "options": [],
@@ -288,7 +299,8 @@ def register_subsystem_tabs(b: Builder):
         "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
         "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
-        "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events", "logs",
+        "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events",
+        "zenarmor", "logs",
     ]
     import importlib
     for mod in order:

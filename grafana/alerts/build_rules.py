@@ -154,6 +154,83 @@ RULES = [
          op="gt", params=[5, 0], for_min=0, severity="info",
          summary="OPNsense Unbound DNSSEC bogus answers ({{ $labels.opnsense_instance }})",
          description="More than 5 DNSSEC-bogus answers in 15m — possible misconfiguration or tampering."),
+    # The syslog/Zenarmor push-based log receiver (#248-#261) had no alert coverage yet — these four
+    # close that gap for the log-shipping pipeline itself (sink health, backpressure, label loss,
+    # source liveness).
+    dict(name="opnsense-logship-sink-errors", title="OPNsenseLogShipSinkErrors",
+         A="sum by (instance) (rate(opnsense_exporter_logs_ship_errors_total[5m]))",
+         op="gt", params=[0, 0], for_min=10, severity="warning",
+         summary="OPNsense log-shipping sink errors ({{ $labels.instance }})",
+         description="The log-shipping sink (OTLP/Loki) has been failing Emit calls for 10m — shipped "
+                     "records are being lost. Grouped by instance, not opnsense_instance: the "
+                     "opnsense_exporter_logs_* family carries no opnsense_instance label."),
+    dict(name="opnsense-logship-queue-near-capacity", title="OPNsenseLogShipQueueNearCapacity",
+         A="opnsense_exporter_logs_queue_length / (opnsense_exporter_logs_queue_capacity > 0)",
+         op="gt", params=[0.9, 0], for_min=5, severity="warning",
+         summary="OPNsense log-shipping queue near capacity",
+         description="The log-shipping backpressure queue has been over 90% full for 5m — overflow "
+                     "drops are imminent."),
+    dict(name="opnsense-logship-resource-capped", title="OPNsenseLogShipResourceCapped",
+         A="sum by (instance) (increase(opnsense_exporter_logs_resource_capped_total[15m]))",
+         op="gt", params=[0, 0], for_min=0, severity="warning",
+         summary="OPNsense log-shipping records had labels dropped ({{ $labels.instance }})",
+         description="Records were shipped with their opnsense.* resource labels dropped in the last "
+                     "15m, so label-scoped queries against them silently under-report."),
+    # Scoped to syslog|zenarmor: both are continuously-active push sources, so 15m of silence is a
+    # genuine stall. A source that is legitimately quiet or not configured would false-fire if
+    # included, so it is deliberately excluded rather than covered here.
+    dict(name="opnsense-logship-cursor-stalled", title="OPNsenseLogShipCursorStalled",
+         A='time() - max by (source) (opnsense_exporter_logs_last_event_timestamp_seconds{source=~"syslog|zenarmor"})',
+         op="gt", params=[900, 0], for_min=0, severity="warning",
+         summary="OPNsense log-shipping source {{ $labels.source }} stalled",
+         description="Push source {{ $labels.source }} has shipped no events for 15m despite being "
+                     "continuously active. Scoped to syslog|zenarmor only, so a quiet or unconfigured "
+                     "source cannot false-fire."),
+    dict(name="opnsense-ipsec-tunnel-down", title="OPNsenseIPsecTunnelDown",
+         A="opnsense_ipsec_phase1_status", op="lt", params=[1, 0], for_min=10, severity="warning",
+         summary="OPNsense IPsec tunnel {{ $labels.name }} down",
+         description="IPsec phase1 tunnel {{ $labels.name }} ({{ $labels.description }}) has reported "
+                     "status 0 (down; connected=1) for 10m. Catches a tunnel dropping while the daemon "
+                     "itself keeps running, which opnsense-service-down misses."),
+    # Verified semantics: 1=up, 0=down, 2=unknown, 3=stale. lt 1 fires on 0 only — 2/3 are
+    # deliberately NOT alerted, since unknown/stale is not the same claim as confirmed down.
+    dict(name="opnsense-wireguard-peer-down", title="OPNsenseWireGuardPeerDown",
+         A="opnsense_wireguard_peer_status", op="lt", params=[1, 0], for_min=10, severity="warning",
+         summary="OPNsense WireGuard peer {{ $labels.peer_name }} down",
+         description="WireGuard peer {{ $labels.peer_name }} on {{ $labels.device_name }} has reported "
+                     "status 0 (down) for 10m. Status values are 1=up, 0=down, 2=unknown, 3=stale — "
+                     "this alert deliberately fires on 0 only, not on unknown/stale."),
+    # remote_services_total>0 is load-bearing: reachable=0 also means "HA sync isn't configured at
+    # all", so the guard restricts firing to boxes where HA sync is actually set up.
+    dict(name="opnsense-hasync-unreachable", title="OPNsenseHASyncUnreachable",
+         A="opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) "
+           "(opnsense_hasync_remote_services_total > 0)",
+         op="lt", params=[1, 0], for_min=10, severity="warning",
+         summary="OPNsense HA sync peer unreachable ({{ $labels.opnsense_instance }})",
+         description="opnsense_hasync_remote_reachable has been 0 for 10m on a box where HA sync is "
+                     "configured (remote_services_total > 0). The guard excludes boxes with HA sync "
+                     "unconfigured, where reachable=0 is the normal, expected reading."),
+    # carp_vip_status: 1=MASTER, 0=BACKUP (both normal — inside the [0,1] range), 2=INIT, -1=unknown
+    # (faults — outside the range). The `unless` clause suppresses alerts during deliberate maintenance
+    # mode.
+    dict(name="opnsense-carp-vip-fault", title="OPNsenseCARPVIPFault",
+         A="opnsense_carp_vip_status unless on(opnsense_instance) (opnsense_carp_maintenance_mode == 1)",
+         op="outside_range", params=[0, 1], for_min=5, severity="warning",
+         summary="OPNsense CARP VIP {{ $labels.vip }} fault on {{ $labels.interface }}",
+         description="CARP VIP {{ $labels.vip }} on {{ $labels.interface }} has been outside the normal "
+                     "MASTER(1)/BACKUP(0) range for 5m — status 2 (INIT) or -1 (unknown). BACKUP is a "
+                     "normal, healthy state and does not fire; this only fires on INIT/unknown. "
+                     "Suppressed while opnsense_carp_maintenance_mode is 1."),
+    # Threshold and lookback are deployment-specific: tune --exporter.ids-alert-lookback and the 50
+    # threshold per site, same tone as opnsense-unbound-dnssec-bogus above. Verified: action is only
+    # ever allowed/blocked — no drop/reject values exist.
+    dict(name="opnsense-ids-alert-spike", title="OPNsenseIDSAlertSpike",
+         A='sum by (opnsense_instance) (opnsense_ids_recent_alerts{action="blocked"})',
+         op="gt", params=[50, 0], for_min=5, severity="info",
+         summary="OPNsense IDS blocked-alert spike ({{ $labels.opnsense_instance }})",
+         description="More than 50 blocked IDS alerts held in the recent-alerts window for 5m. The "
+                     "threshold and --exporter.ids-alert-lookback window are deployment-specific — tune "
+                     "both per site. action is only ever allowed/blocked (no drop/reject)."),
 ]
 
 # Recording rules: metric name (level:metric:operation) + value query.
@@ -177,6 +254,18 @@ RECORDING = [
          expr="opnsense_gateways_loss_percentage / 100"),
     dict(metric="instance:opnsense_system_mem:utilization",
          expr="opnsense_system_memory_used_bytes / (opnsense_system_memory_total_bytes > 0)"),
+    dict(metric="instance:opnsense_zenarmor_block:ratio5m",
+         expr='sum by (opnsense_instance) (rate(opnsense_log_events_zenarmor_total{action="block"}[5m])) / '
+              '(sum by (opnsense_instance) (rate(opnsense_log_events_zenarmor_total[5m])) > 0)'),
+    dict(metric="instance:opnsense_haproxy_5xx:ratio5m",
+         expr='sum by (opnsense_instance, backend) (rate(opnsense_log_events_haproxy_total{status_class="5xx"}[5m])) / '
+              '(sum by (opnsense_instance, backend) (rate(opnsense_log_events_haproxy_total[5m])) > 0)'),
+    dict(metric="instance:opnsense_ipsec_tunnels_down:count",
+         expr="count by (opnsense_instance) (opnsense_ipsec_phase1_status == 0)"),
+    dict(metric="instance:opnsense_wireguard_peers_down:count",
+         expr="count by (opnsense_instance) (opnsense_wireguard_peer_status == 0)"),
+    dict(metric="instance:opnsense_ids_alerts:active",
+         expr='sum by (opnsense_instance) (opnsense_ids_recent_alerts{action="blocked"})'),
 ]
 
 def grafana_for(for_min: int) -> str:

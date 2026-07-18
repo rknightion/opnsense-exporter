@@ -1,0 +1,46 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "RecordingRule",
+  "metadata": {
+    "name": "oxrec-ids-alerts-active",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "instance:opnsense_ids_alerts:active",
+    "metric": "instance:opnsense_ids_alerts:active",
+    "targetDatasourceUID": "grafanacloud-prom",
+    "paused": false,
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {},
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "10m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (opnsense_instance) (opnsense_ids_recent_alerts{action=\"blocked\"})",
+          "instant": false,
+          "range": true,
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        },
+        "source": true
+      }
+    }
+  }
+}

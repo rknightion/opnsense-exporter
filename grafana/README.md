@@ -5,16 +5,18 @@ OPNsense Exporter:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 38 tabs that auto-show/hide based on which metrics your exporter emits. |
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 38 tabs that auto-show/hide based on which metrics your exporter emits. |
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 38 tabs that auto-show/hide based on which metrics your exporter emits. |
+| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 39 tabs that auto-show/hide based on which metrics your exporter emits. |
+| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 39 tabs that auto-show/hide based on which metrics your exporter emits. |
+| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 39 tabs that auto-show/hide based on which metrics your exporter emits. |
 | `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
 | `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
 
-The dashboard is **metrics-only**. It does not include log/Loki panels — those belong in a
-separate firewall-logs dashboard.
+The dashboard is **mixed-datasource**: Prometheus metrics plus opt-in **Loki** log panels
+(raw Zenarmor/syslog streams, top-talker tables) that auto-hide when no matching log stream
+exists. It works fully on a Prometheus datasource alone; the Loki panels light up when a Loki
+datasource carrying the exporter's shipped logs is selected.
 
 ## Requirements
 
@@ -27,10 +29,10 @@ separate firewall-logs dashboard.
 
 ## The dashboard
 
-One dashboard, 38 tabs (generated list, do not hand-edit):
+One dashboard, 39 tabs (generated list, do not hand-edit):
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Interfaces, Firewall & PF, Aliases, Gateways & WAN, DNS — Unbound, DHCP, VPN, Tailscale, NetBird, Routing & Neighbors, Protocol Stats, NTP, Certificates, ClamAV, Services, Cron & DynDNS, Syslog, Q-Feeds, NetFlow, CARP / HA, HAProxy, Relayd, Nginx, FRR Routing, Monit, CrowdSec, IDS/IPS, UPS, Captive Portal, Traffic Shaper, HA Sync, Chrony, Tor, Siproxd, Log-derived Events, Log Shipping, Diagnostics
+Overview, System & Resources, Interfaces, Firewall & PF, Aliases, Gateways & WAN, DNS — Unbound, DHCP, VPN, Tailscale, NetBird, Routing & Neighbors, Protocol Stats, NTP, Certificates, ClamAV, Services, Cron & DynDNS, Syslog, Q-Feeds, NetFlow, CARP / HA, HAProxy, Relayd, Nginx, FRR Routing, Monit, CrowdSec, IDS/IPS, UPS, Captive Portal, Traffic Shaper, HA Sync, Chrony, Tor, Siproxd, Log-derived Events, Zenarmor, Log Shipping, Diagnostics
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the
@@ -51,6 +53,9 @@ ISC DHCPv4 (when leaseless), CARP VIPs, SMART, ACME, DynDNS, the Go-runtime row,
 ### Variables
 
 - **Data source** — pick your Prometheus datasource.
+- **Loki data source** — pick the Loki datasource carrying the exporter's shipped logs
+  (default `grafanacloud-logs`). The Loki panels/rows (Zenarmor, syslog streams) hide when it
+  has no matching stream, so a metrics-only deployment is unaffected.
 - **OPNsense instance** — multi-select over `opnsense_instance` (supports multiple exporters).
 - **Interface** — multi-select, scopes the Interfaces tab.
 
@@ -80,7 +85,7 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 
 ## Alerts & recording rules
 
-`alerts/` contains **20 alert rules** and **8 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **29 alert rules** and **13 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format — it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook

@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-carp-vip-fault",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseCARPVIPFault",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "5m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense CARP VIP {{ $labels.vip }} fault on {{ $labels.interface }}",
+      "description": "CARP VIP {{ $labels.vip }} on {{ $labels.interface }} has been outside the normal MASTER(1)/BACKUP(0) range for 5m \u2014 status 2 (INIT) or -1 (unknown). BACKUP is a normal, healthy state and does not fire; this only fires on INIT/unknown. Suppressed while opnsense_carp_maintenance_mode is 1.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "opnsense_carp_vip_status unless on(opnsense_instance) (opnsense_carp_maintenance_mode == 1)",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "outside_range",
+                "params": [
+                  0,
+                  1
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

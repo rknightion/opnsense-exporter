@@ -9,9 +9,14 @@ pipeline is enabled (it emits logs_queue_capacity unconditionally when running).
 There are deliberately no per-source label panels beyond the low-cardinality
 `source` dimension (one value per registered source, e.g. firewall/ids/audit) —
 the high-cardinality event data itself never becomes a metric.
+
+None of the opnsense_exporter_logs_* metrics carry an opnsense_instance label, so
+every selector here uses b.sel_pipeline (no instance matcher) rather than sel —
+sel's injected opnsense_instance=~"$opnsense_instance" would never match and the
+panel would render empty even with "All" selected.
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, RATE
 
 
 def build(b: Builder):
@@ -19,14 +24,14 @@ def build(b: Builder):
 
     shipped = b.ts(
         "Records Shipped (rate)",
-        [(f'sum by (source) (rate({sel("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum by (source) (rate({b.sel_pipeline("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_shipped_total: records successfully handed to the "
              "sink per second, by source. This is the primary throughput signal.",
     )
     dropped = b.ts(
         "Records Dropped (rate)",
-        [(f'sum by (source, reason) (rate({sel("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
+        [(f'sum by (source, reason) (rate({b.sel_pipeline("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_dropped_total: records dropped before delivery, by "
@@ -36,8 +41,8 @@ def build(b: Builder):
 
     queue_len = b.ts(
         "Queue Depth",
-        [(f'{sel("opnsense_exporter_logs_queue_length")}', "depth"),
-         (f'{sel("opnsense_exporter_logs_queue_capacity")}', "capacity")],
+        [(f'{b.sel_pipeline("opnsense_exporter_logs_queue_length")}', "depth"),
+         (f'{b.sel_pipeline("opnsense_exporter_logs_queue_capacity")}', "capacity")],
         unit="short",
         desc="opnsense_exporter_logs_queue_length vs opnsense_exporter_logs_queue_capacity: "
              "depth of the poller->emitter backpressure queue. Approaching capacity precedes "
@@ -46,21 +51,21 @@ def build(b: Builder):
 
     ship_errors = b.ts(
         "Sink Errors (rate)",
-        [(f'rate({sel("opnsense_exporter_logs_ship_errors_total")}[{RATE}])', "ship errors")],
+        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_ship_errors_total")}[{RATE}])', "ship errors")],
         unit="short",
         desc="opnsense_exporter_logs_ship_errors_total: failed sink Emit calls per second "
              "(each failed batch is dropped). A dead OTLP endpoint shows up here.",
     )
     poll_errors = b.ts(
         "Source Poll Errors (rate)",
-        [(f'sum by (source) (rate({sel("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum by (source) (rate({b.sel_pipeline("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by "
              "source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
     )
     cursor_lag = b.ts(
         "Cursor Lag (time since last event)",
-        [(f'time() - {sel("opnsense_exporter_logs_last_event_timestamp_seconds")}', "{{source}}")],
+        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_last_event_timestamp_seconds")}', "{{source}}")],
         unit="s",
         desc="Seconds since the most recent shipped event per source, derived from "
              "opnsense_exporter_logs_last_event_timestamp_seconds. Steady growth on an active "
@@ -68,7 +73,7 @@ def build(b: Builder):
     )
     possible_gaps = b.ts(
         "Possible Sampling Gaps (rate)",
-        [(f'sum by (source) (rate({sel("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum by (source) (rate({b.sel_pipeline("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a "
              "source whose only view of its data is a bounded window (e.g. the unbound source's "
@@ -86,7 +91,7 @@ def build(b: Builder):
 
     parse_errors = b.ts(
         "Parse Errors (rate)",
-        [(f'sum by (source, stage) (rate({sel("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
+        [(f'sum by (source, stage) (rate({b.sel_pipeline("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
           "{{source}} / {{stage}}")],
         unit="short",
         desc="opnsense_exporter_logs_parse_errors_total: received records that failed to parse, "
@@ -97,7 +102,7 @@ def build(b: Builder):
     )
     rejected = b.ts(
         "Input Rejected (rate)",
-        [(f'sum by (source, reason) (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
+        [(f'sum by (source, reason) (rate({b.sel_pipeline("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_rejected_total: receiver input refused rather than shipped. "
@@ -111,7 +116,7 @@ def build(b: Builder):
     )
     resource_capped = b.ts(
         "Resource Label Cap Hit (rate)",
-        [(f'rate({sel("opnsense_exporter_logs_resource_capped_total")}[{RATE}])', "capped")],
+        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_resource_capped_total")}[{RATE}])', "capped")],
         unit="short",
         desc="opnsense_exporter_logs_resource_capped_total: records shipped with their "
              "opnsense.* index labels DROPPED because the distinct (source, subsystem, action) "
@@ -122,7 +127,7 @@ def build(b: Builder):
     )
     enrich_misses = b.ts(
         "Enrichment Misses (rate)",
-        [(f'sum by (table) (rate({sel("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
+        [(f'sum by (table) (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
         unit="short",
         desc="opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by "
              "table. A sustained rate on table=rules means the rule snapshot is behind the box's "
@@ -131,7 +136,7 @@ def build(b: Builder):
     )
     enrich_errors = b.ts(
         "Enrichment Refresh Errors (rate)",
-        [(f'sum by (table) (rate({sel("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
+        [(f'sum by (table) (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
           "{{table}}")],
         unit="short",
         desc="opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes "
@@ -140,7 +145,7 @@ def build(b: Builder):
     )
     enrich_stale = b.ts(
         "Enrichment Staleness",
-        [(f'time() - {sel("opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds")}', "{{table}}")],
+        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds")}', "{{table}}")],
         unit="s",
         desc="Seconds since each enrichment table last refreshed successfully, derived from "
              "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every "
@@ -148,60 +153,10 @@ def build(b: Builder):
              "the API is failing and enrichment is silently going stale.",
     )
 
-    # --- Zenarmor receiver (--logs.zenarmor.enabled, #276) --------------------
-    # Zenarmor streams ~2.5-3.3M records/day, so the derived counters below are how
-    # you ask rate questions without querying the raw stream -- and they outlive
-    # Loki's retention, which the log lines do not.
-
-    zen_events = b.ts(
-        "Zenarmor Events (rate)",
-        [(f'sum by (family, action) (rate({sel("opnsense_log_events_zenarmor_total")}[{RATE}]))',
-          "{{family}} / {{action}}")],
-        unit="short",
-        desc="opnsense_log_events_zenarmor_total: Zenarmor records per second by family "
-             "(flow/dns/tls/web/ids/voip) and disposition. action=block is what the firewall "
-             "stopped. An action with no value is a record that stated no verdict -- it is not "
-             "counted as a pass, deliberately.",
-    )
-    zen_blocked = b.ts(
-        "Zenarmor Blocks by Category (rate)",
-        [(f'sum by (category) (rate({sel("opnsense_log_events_zenarmor_total")}{{action="block"}}[{RATE}]))',
-          "{{category}}")],
-        unit="short",
-        desc="Blocked Zenarmor records per second by category -- application category for "
-             "flows, domain category for DNS/TLS, alert category for threats. Application "
-             "names, IPs and hostnames are never labels; query the log stream for those.",
-    )
-    zen_bulk = b.ts(
-        "Zenarmor Bulk Ingest (rate)",
-        [(f'rate({sel("opnsense_exporter_logs_zenarmor_bulk_requests_total")}[{RATE}])', "requests/s"),
-         (f'rate({sel("opnsense_exporter_logs_zenarmor_bulk_bytes_total")}[{RATE}])', "bytes/s")],
-        unit="short",
-        desc="Elasticsearch _bulk requests and bytes Zenarmor pushes per second. Bytes is the "
-             "one to watch: a live box measured ~70 KB/s sustained, which is ~4-6 GB/day of raw "
-             "JSON into Loki. Cut families at the Zenarmor end (its own indexes setting) rather "
-             "than here -- data cut at source never crosses the wire.",
-    )
-
-    zen_excluded = b.ts(
-        "Zenarmor Records Excluded (rate)",
-        [(f'sum by (rule) (rate({sel("opnsense_exporter_logs_zenarmor_excluded_total")}[{RATE}]))',
-          "{{rule}}")],
-        unit="short",
-        desc="opnsense_exporter_logs_zenarmor_excluded_total: records dropped per second by a "
-             "--logs.zenarmor.exclude rule, by rule (#279). This panel IS the blind spot: every "
-             "record counted here was real traffic that is now absent from the log stream, and "
-             "unlike syslog sampling the derived counters cannot make up for it -- they carry no "
-             "server_name, query or device_name. A rule climbing unexpectedly is eating more than "
-             "it was written for. Flat zero is the default: exclusion is opt-in.",
-    )
-
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),
         b.row("Queue & Errors", [queue_len, ship_errors, poll_errors], present="has_logs"),
         b.row("Cursor", [cursor_lag, possible_gaps], present="has_logs"),
         b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
-        b.row("Zenarmor", [zen_events, zen_blocked, zen_bulk], present="has_logs"),
-        b.row("Zenarmor Exclusion", [zen_excluded], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
     ])

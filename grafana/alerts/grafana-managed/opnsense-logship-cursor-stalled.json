@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-logship-cursor-stalled",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseLogShipCursorStalled",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense log-shipping source {{ $labels.source }} stalled",
+      "description": "Push source {{ $labels.source }} has shipped no events for 15m despite being continuously active. Scoped to syslog|zenarmor only, so a quiet or unconfigured source cannot false-fire.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "time() - max by (source) (opnsense_exporter_logs_last_event_timestamp_seconds{source=~\"syslog|zenarmor\"})",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  900,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

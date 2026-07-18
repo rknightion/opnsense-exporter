@@ -23,6 +23,7 @@ import re
 INSTANCE_SEL = 'opnsense_instance=~"$opnsense_instance"'
 RATE = "$__rate_interval"
 DS = {"name": "${datasource}"}
+LOKI_DS = {"name": "${loki_datasource}"}
 VIZ_VERSION = "v11.5.0"
 
 
@@ -65,6 +66,9 @@ class Builder:
         self._id = 0
         self.size: dict = {}      # element name -> (w, h)
         self._exprs: list = []    # every PromQL string emitted (for coverage)
+        self._loki_exprs: list = []  # every LogQL string emitted (kept SEPARATE from
+                                      # _exprs — LogQL must never reach the Prometheus
+                                      # metric-coverage gate)
         self._ts_violations: list = []  # dateTimeAsIso fields fed unscaled epoch seconds (#78)
         self._table_key_violations: list = []  # dead metric-name/Value renames+units on multi-expr tables (#97)
         self._table_exclude_conflicts: list = []  # a rename/unit key that is also excluded (#112)
@@ -93,6 +97,32 @@ class Builder:
                 "query": {
                     "kind": "DataQuery", "version": "v0", "group": "prometheus",
                     "datasource": DS, "spec": spec,
+                },
+            },
+        }
+
+    def _loki_query(self, expr: str, ref: str = "A", instant: bool = False,
+                     legend: str | None = None) -> dict:
+        """Like `_query` but for LogQL against the Loki datasource. Appends to
+        `_loki_exprs`, NOT `_exprs` — LogQL must never reach the Prometheus
+        metric-coverage gate."""
+        self._loki_exprs.append(expr)
+        spec: dict = {"expr": expr, "refId": ref}
+        if legend is not None:
+            spec["legendFormat"] = legend
+        if instant:
+            spec.update({"queryType": "instant", "instant": True, "range": False})
+        else:
+            spec.update({"queryType": "range", "instant": False, "range": True})
+        return {
+            "kind": "PanelQuery",
+            "spec": {
+                "refId": ref,
+                "hidden": False,
+                "datasource": {"type": "loki", "uid": "${loki_datasource}"},
+                "query": {
+                    "kind": "DataQuery", "version": "v0", "group": "loki",
+                    "datasource": LOKI_DS, "spec": spec,
                 },
             },
         }
@@ -331,6 +361,90 @@ class Builder:
         self.size[n] = (w, h)
         return n
 
+    # ---- Loki viz helpers (return element name) --------------------------
+    def logs(self, title, expr, desc="", w=24, h=10) -> str:
+        """Raw log lines panel. One LogQL range query."""
+        q = [self._loki_query(expr)]
+        spec = {"fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}}, "overrides": []},
+                "options": {"dedupStrategy": "none", "showTime": True, "sortOrder": "Descending",
+                            "wrapLogMessage": False, "prettifyLogMessage": False,
+                            "enableLogDetails": True, "showControls": False,
+                            "showLabels": False, "enableInfiniteScrolling": True}}
+        n = self._panel(title, "logs", spec, q, desc=desc)
+        self.size[n] = (w, h)
+        return n
+
+    def loki_ts(self, title, series, unit="short", desc="", w=12, h=8, stack=False,
+                legend_calcs=("mean", "max", "lastNotNull")) -> str:
+        """LogQL timeseries. series = list of (logql, legend). Reuses the `ts()` viz
+        spec exactly, built with `_loki_query` (range) instead of `_query`."""
+        queries = [self._loki_query(e, ref=chr(65 + i), legend=lg)
+                   for i, (e, lg) in enumerate(series)]
+        defaults = {
+            "unit": unit,
+            "min": 0,
+            "custom": {
+                "axisCenteredZero": False, "fillOpacity": 18,
+                "gradientMode": "opacity", "lineInterpolation": "smooth",
+                "lineWidth": 2, "showPoints": "never",
+                "scaleDistribution": {"type": "linear"},
+                "stacking": {"mode": "normal" if stack else "none"},
+            },
+        }
+        spec = {"fieldConfig": {"defaults": defaults, "overrides": []},
+                "options": {
+                    "legend": {"calcs": list(legend_calcs), "displayMode": "table",
+                               "placement": "bottom"},
+                    "tooltip": {"mode": "multi", "sort": "desc"}}}
+        n = self._panel(title, "timeseries", spec, queries, desc=desc)
+        self.size[n] = (w, h)
+        return n
+
+    def loki_stat(self, title, expr, unit="short", desc="", w=4, h=4,
+                  thresholds=None, color_mode="value") -> str:
+        """LogQL single stat. Reuses the `stat()` viz spec, but CRITICALLY sets
+        fieldConfig.defaults.noValue = "0" — Loki returns no series (not a zero
+        series) when nothing matched, so an un-annotated stat shows "No data"
+        when the true answer is 0."""
+        defaults = {"unit": unit, "color": {"mode": "thresholds"}, "noValue": "0"}
+        if thresholds:
+            defaults["thresholds"] = self._thresholds(thresholds)
+        else:
+            defaults["thresholds"] = self._thresholds([{"color": "blue", "value": None}])
+        spec = {"fieldConfig": {"defaults": defaults, "overrides": []},
+                "options": {"colorMode": color_mode, "graphMode": "area",
+                            "justifyMode": "auto", "orientation": "auto",
+                            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+                            "textMode": "auto", "wideLayout": True}}
+        q = [self._loki_query(expr)]
+        n = self._panel(title, "stat", spec, q, desc=desc)
+        self.size[n] = (w, h)
+        return n
+
+    def loki_table(self, title, exprs, desc="", w=24, h=10, sort_by="Total",
+                   sort_desc=True) -> str:
+        """exprs = list of LogQL strings, queried as RANGE queries and reduced
+        (sum, seriesToRows) into table rows — the standard "topk over range"
+        shape for high-cardinality log fields. `queryOptions.interval="5m"` is a
+        cardinality guard on wide time ranges."""
+        queries = [self._loki_query(e, ref=chr(65 + i), instant=False)
+                   for i, e in enumerate(exprs)]
+        transformations = [{"kind": "Transformation", "group": "reduce", "spec": {"options": {
+            "reducers": ["sum"], "mode": "seriesToRows"}}}]
+        opts = {"showHeader": True, "cellHeight": "sm",
+                "footer": {"show": False, "reducer": ["sum"], "countRows": False, "fields": ""},
+                "sortBy": [{"displayName": sort_by, "desc": sort_desc}]}
+        spec = {"fieldConfig": {"defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {"align": "auto", "cellOptions": {"type": "auto"},
+                               "inspect": False, "filterable": True}},
+                    "overrides": []},
+                "options": opts}
+        n = self._panel(title, "table", spec, queries, desc=desc,
+                        transformations=transformations, interval="5m")
+        self.size[n] = (w, h)
+        return n
+
     def text(self, title, content, w=24, h=4) -> str:
         name, pid = self._next()
         self.elements[name] = {"kind": "Panel", "spec": {
@@ -356,6 +470,30 @@ class Builder:
             "includeAll": False, "allowCustomValue": False,
             "refresh": "onDashboardLoad", "regex": "", "skipUrlSync": True,
             "sort": "disabled"}})
+
+    def loki_sentinel(self, name: str, query: str):
+        """Hidden Loki presence variable: mirrors `sentinel()` but against the Loki
+        datasource, and the query spec shape matches a Grafana-authored Loki
+        QueryVariable (a bare `__legacyStringValue` string, e.g. `label_values(...)`),
+        not the prometheus `{"query": ..., "refId": ...}` shape."""
+        if name in self._sentinels:
+            return
+        self._sentinels.add(name)
+        self.variables.append({"kind": "QueryVariable", "spec": {
+            "name": name, "label": name, "hide": "hideVariable",
+            "query": {"kind": "DataQuery", "version": "v0", "group": "loki",
+                      "datasource": LOKI_DS, "spec": {"__legacyStringValue": query}},
+            "current": {"text": "", "value": ""}, "options": [], "multi": False,
+            "includeAll": False, "allowCustomValue": False,
+            "refresh": "onDashboardLoad", "regex": "", "skipUrlSync": True,
+            "sort": "disabled"}})
+
+    @staticmethod
+    def sel_pipeline(metric: str, more: str = "") -> str:
+        """Return metric{<more>} with NO opnsense_instance matcher — for label-less
+        log-derived metrics (the opnsense_exporter_logs_* / log_events family) that
+        carry no such label; `sel()` would render those panels permanently empty."""
+        return f"{metric}{{{more}}}" if more else metric
 
     # ---- layout ----------------------------------------------------------
     def _place(self, names: list) -> dict:

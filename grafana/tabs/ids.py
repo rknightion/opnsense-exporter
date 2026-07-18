@@ -9,6 +9,13 @@ opnsense_ids_recent_alerts is a GAUGE (windowed, saturating backend) — show RA
 never rate(). opnsense_ids_installed_rules_total is a current count → RAW.
 opnsense_ids_ruleset_last_updated_timestamp_seconds is a unix timestamp → shown
 as age: time() - <ts>.
+
+No Loki row here: verified live (`gcx logs labels --label opnsense_subsystem`) that the
+shipped syslog stream's `opnsense_subsystem` values are audit/auth/cron/dhcp/dns/firewall/
+flow/gateways/ipsec/kernel/logging/ntp/packages/proxy/tls/web — there is no "ids"/"suricata"
+lane. Lines mentioning suricata are configd RPC audit entries (rule sync/lookup calls), not
+eve/alert lines, so there's no real stream to gate a row on. Revisit if a Suricata eve.json
+lane is ever added to logship.
 """
 
 from builder import Builder, sel, ENABLED, YESNO

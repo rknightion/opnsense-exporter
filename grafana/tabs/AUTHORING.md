@@ -81,6 +81,45 @@ Grid is 24 cols; widths in a row should sum to ≤24 (helper auto-wraps). Common
 12 (half), 8 (third), 6 (quarter), 4 (sixth), 3 (eighth). Pick heights 4 (stat) / 6 (gauge) /
 7–9 (ts/table).
 
+## Loki panels (mixed datasource)
+
+The dashboard is mixed Prometheus + Loki. Loki panels reference `${loki_datasource}`
+(default `grafanacloud-logs`) and are gated on a Loki presence sentinel so they auto-hide
+when no log stream exists. Helpers (all return an element name; LogQL is kept OUT of the
+Prometheus coverage gate via a separate `_loki_exprs` list):
+
+- `b.logs(title, expr, desc="", w=24, h=10)` — raw log-line viz. `expr` is a LogQL stream
+  selector, e.g. `'{opnsense_source="zenarmor"}'`.
+- `b.loki_ts(title, series, unit="short", w=12, h=8)` — timeseries from LogQL metric queries.
+  `series=[(logql, legend)]`, e.g. `'sum by (opnsense_subsystem) (rate({opnsense_source="syslog"} [$__auto]))'`.
+- `b.loki_stat(title, expr, ...)` — single stat; sets `noValue:"0"` (Loki returns no series,
+  not a zero series, so an un-annotated stat reads "No data" when the answer is 0).
+- `b.loki_table(title, exprs, sort_by="Total", ...)` — top-N tables. THE cardinality-safe
+  path: range query + reduce(sum, seriesToRows) + 5m interval. Column display name is `Total`.
+- `b.loki_sentinel(name, query)` — hidden Loki presence variable; gate a row/tab with
+  `present=name`, exactly like `b.sentinel`.
+- `b.sel_pipeline(metric, more="")` — selector WITHOUT `opnsense_instance` for the
+  `opnsense_exporter_logs_*` (internal/logship) family, which carries no such label; `sel()`
+  would render those panels empty on both OTLP and scrape.
+
+**LogQL label rule (load-bearing):** ONLY these labels are indexed and may appear inside `{}` —
+`opnsense_source`, `opnsense_subsystem`, `opnsense_action`, `service_name`, `service_instance_id`.
+Everything else (`device_name`, `server_name`, `ja3`, `dst_nbytes`, `dst_geoip_*`, `app_name`,
+`host`, `program`, …) is **structured metadata** — use only after `|` (`| key="value"`,
+`| key!=""`, `| unwrap key`). Select exporter-shipped logs on `{opnsense_source="zenarmor"}` /
+`{opnsense_source="syslog"}`, never on `service_name` (ambiguous on Grafana Cloud).
+
+**Cardinality guard (hard):** never `topk(N, sum by (<structured-metadata-key>) (...))` as an
+instant query — it materializes one series per distinct value before `topk` and blows Loki's
+~500-series cap. Always use `b.loki_table` (range + reduce + 5m interval).
+
+**Four v2 Loki render traps** (validate clean, render wrong — a `gcx dashboards snapshot`
+render-check is MANDATORY, `gcx resources validate` does not catch them): (1) transforms use
+`{kind:"Transformation", group:"reduce", spec:{options}}`, not the v1 `{id, options}` shape;
+(2) table `sortBy.displayName` is the DISPLAY name (`Total` for a reduced sum), never the
+reducer id; (3) `reduce` needs `mode:"seriesToRows"`; (4) a stat over a Loki query needs
+`noValue:"0"`. `b.loki_table`/`b.loki_stat` bake all four in — use the helpers, don't hand-roll.
+
 ## Value-mapping constants (import from builder)
 
 `UPDOWN` {0:Down/red,1:Up/green} · `RUNSTOP` {0:Stopped,1:Running} · `OKERR` {0:Error,1:OK} ·
@@ -129,6 +168,9 @@ Register with `b.sentinel(name, query)` then gate the tab/row with `present=name
 | has_alias | `label_values(opnsense_alias_tables_total, __name__)` |
 | has_alias_details | `label_values(opnsense_alias_table_packets_total, __name__)` |
 | has_captiveportal_vouchers | `label_values(opnsense_captiveportal_vouchers, __name__)` |
+| has_zenarmor_metrics | `label_values(opnsense_log_events_zenarmor_total, __name__)` |
+| has_zenarmor_logs (Loki) | `b.loki_sentinel(...)` → `label_values({opnsense_source="zenarmor"}, opnsense_source)` |
+| has_syslog_logs (Loki) | `b.loki_sentinel(...)` → `label_values({opnsense_source="syslog"}, opnsense_source)` |
 
 ## Self-test before finishing
 
