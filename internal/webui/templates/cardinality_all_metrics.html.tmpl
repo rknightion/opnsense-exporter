@@ -1,0 +1,38 @@
+{{define "body"}}
+{{with .Data}}
+<section class="page-head">
+  <div>
+    <h1>All metrics</h1>
+    <p class="sub"><a href="/cardinality">← Cardinality</a> · {{.Report.TotalFamilies}} families · {{.Report.TotalSeries}} series</p>
+  </div>
+  <div class="head-right">
+    <span class="scrape-age" data-scrape-age>as of {{.ScrapeAge}}</span>
+  </div>
+</section>
+
+{{if .Empty}}
+<div class="callout warn"><strong>Waiting for the first scrape.</strong> Metrics appear once a scrape has been captured.</div>
+{{else}}
+<section class="card">
+  <div class="filter-bar">
+    <input type="search" class="filter" placeholder="Filter metrics…" data-filter-target="all-metrics" aria-label="Filter metrics">
+  </div>
+  <table class="grid compact" data-table="all-metrics">
+    <thead><tr><th>Metric</th><th>Series</th><th>Labels</th><th>Level</th></tr></thead>
+    <tbody>
+    {{range .Report.TopMetrics}}
+      <tr data-name="{{.Name}}">
+        <td><a href="/cardinality/label-values/{{.Name}}">{{.Name}}</a></td>
+        <td data-value="{{.Series}}" data-sort="{{.Series}}">{{.Series}}</td>
+        <td data-value="{{.Labels}}">{{.Labels}}</td>
+        <td><span class="badge badge-{{if eq .Level "crit"}}bad{{else if eq .Level "warn"}}warn{{else}}ok{{end}}">{{.Level}}</span></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="4" class="empty">No metrics captured.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+{{end}}
+{{end}}

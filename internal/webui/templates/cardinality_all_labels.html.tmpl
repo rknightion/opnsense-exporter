@@ -1,0 +1,37 @@
+{{define "body"}}
+{{with .Data}}
+<section class="page-head">
+  <div>
+    <h1>All labels</h1>
+    <p class="sub"><a href="/cardinality">← Cardinality</a> · {{len .Report.TopLabels}} labels</p>
+  </div>
+  <div class="head-right">
+    <span class="scrape-age" data-scrape-age>as of {{.ScrapeAge}}</span>
+  </div>
+</section>
+
+{{if .Empty}}
+<div class="callout warn"><strong>Waiting for the first scrape.</strong> Labels appear once a scrape has been captured.</div>
+{{else}}
+<section class="card">
+  <div class="filter-bar">
+    <input type="search" class="filter" placeholder="Filter labels…" data-filter-target="all-labels" aria-label="Filter labels">
+  </div>
+  <table class="grid compact" data-table="all-labels">
+    <thead><tr><th>Label</th><th>Distinct values</th><th>Families</th></tr></thead>
+    <tbody>
+    {{range .Report.TopLabels}}
+      <tr data-name="{{.Name}}">
+        <td>{{.Name}}</td>
+        <td data-value="{{.DistinctValues}}" data-sort="{{.DistinctValues}}">{{.DistinctValues}}</td>
+        <td data-value="{{.Families}}">{{.Families}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="3" class="empty">No labels captured.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+{{end}}
+{{end}}
