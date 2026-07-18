@@ -117,6 +117,15 @@ var (
 		"logs.zenarmor.tls-key-file",
 		"PEM private key for --logs.zenarmor.tls-cert-file.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_TLS_KEY_FILE").Default("").String()
+
+	logsZenarmorTransport = kingpin.Flag(
+		"logs.zenarmor.transport",
+		"How Zenarmor delivers its reporting data: 'elasticsearch' (default) runs the "+
+			"built-in Elasticsearch receiver on --logs.zenarmor.listen-http; 'syslog' ingests "+
+			"it through the shared syslog receiver (requires --logs.syslog.enabled and a "+
+			"business-tier Zenarmor licence). families/exclude/enrich/drop-self-traffic apply "+
+			"to either transport.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_TRANSPORT").Default("elasticsearch").Enum("elasticsearch", "syslog")
 )
 
 // ZenarmorConfig is the resolved Zenarmor receiver configuration. It mirrors
@@ -149,6 +158,17 @@ func LogsZenarmorEnabled() bool { return *logsZenarmorEnabled }
 // need the enrichment refresher?" without ordering constraints on config building.
 func LogsZenarmorEnrichWanted() bool { return *logsZenarmorEnabled && *logsZenarmorEnrich }
 
+// LogsZenarmorTransport reports the configured transport, lowercased. An unset
+// value (the zero value before kingpin applies the flag default) reads as the
+// default "elasticsearch", so the accessor is correct whether or not Parse ran.
+func LogsZenarmorTransport() string {
+	v := strings.ToLower(strings.TrimSpace(*logsZenarmorTransport))
+	if v == "" {
+		return "elasticsearch"
+	}
+	return v
+}
+
 // LogsZenarmor resolves the receiver configuration, reporting (nil, false, nil)
 // when it is disabled. Validation refuses ambiguity rather than guessing: a
 // misconfigured receiver that silently ships nothing is indistinguishable from a
@@ -165,10 +185,25 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 		DropSelfTraffic: *logsZenarmorDropSelfTraffic,
 		Excludes:        *logsZenarmorExclude,
 	}
-	if cfg.Addr == "" {
+
+	transport := LogsZenarmorTransport()
+	switch transport {
+	case "elasticsearch", "syslog":
+		// Known transports. --logs.zenarmor.transport is a kingpin .Enum(), so a
+		// flag-parsed value can never reach here as anything else; this default
+		// case only matters to a test (or any other direct-var caller) that sets
+		// the package var without going through flag parsing.
+	default:
 		return nil, false, fmt.Errorf(
-			"logs.zenarmor: --logs.zenarmor.listen-http must be set when --logs.zenarmor.enabled is " +
-				"set (otherwise nothing can be received)")
+			"logs.zenarmor.transport: unknown transport %q (valid: elasticsearch, syslog)", transport)
+	}
+
+	if transport == "elasticsearch" {
+		if cfg.Addr == "" {
+			return nil, false, fmt.Errorf(
+				"logs.zenarmor: --logs.zenarmor.listen-http must be set when --logs.zenarmor.enabled is " +
+					"set (otherwise nothing can be received)")
+		}
 	}
 
 	families := splitList(*logsZenarmorFamilies)
@@ -194,23 +229,25 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 				"basic auth would be off and the receiver open")
 	}
 
-	certFile := strings.TrimSpace(*logsZenarmorTLSCertFile)
-	keyFile := strings.TrimSpace(*logsZenarmorTLSKeyFile)
-	switch {
-	case certFile == "" && keyFile == "":
-		// Plain HTTP: fine on a LAN-local link, which is the common case.
-	case certFile == "" || keyFile == "":
-		return nil, false, fmt.Errorf(
-			"logs.zenarmor: --logs.zenarmor.tls-cert-file and --logs.zenarmor.tls-key-file must be " +
-				"set together")
-	default:
-		pair, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return nil, false, fmt.Errorf("logs.zenarmor: load TLS keypair: %w", err)
-		}
-		cfg.TLSConfig = &tls.Config{
-			Certificates: []tls.Certificate{pair},
-			MinVersion:   tls.VersionTLS12,
+	if transport == "elasticsearch" {
+		certFile := strings.TrimSpace(*logsZenarmorTLSCertFile)
+		keyFile := strings.TrimSpace(*logsZenarmorTLSKeyFile)
+		switch {
+		case certFile == "" && keyFile == "":
+			// Plain HTTP: fine on a LAN-local link, which is the common case.
+		case certFile == "" || keyFile == "":
+			return nil, false, fmt.Errorf(
+				"logs.zenarmor: --logs.zenarmor.tls-cert-file and --logs.zenarmor.tls-key-file must be " +
+					"set together")
+		default:
+			pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				return nil, false, fmt.Errorf("logs.zenarmor: load TLS keypair: %w", err)
+			}
+			cfg.TLSConfig = &tls.Config{
+				Certificates: []tls.Certificate{pair},
+				MinVersion:   tls.VersionTLS12,
+			}
 		}
 	}
 

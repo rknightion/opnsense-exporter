@@ -98,6 +98,37 @@ func TestLogsZenarmor_TLSHalfConfiguredIsAnError(t *testing.T) {
 	})
 }
 
+func TestLogsZenarmorTransport_Default(t *testing.T) {
+	if got := LogsZenarmorTransport(); got != "elasticsearch" {
+		t.Fatalf("default transport = %q, want elasticsearch", got)
+	}
+}
+
+func TestLogsZenarmor_SyslogTransportSkipsListenValidation(t *testing.T) {
+	// With transport=syslog, an empty listen-http must NOT be an error (no HTTP listener).
+	*logsZenarmorEnabled = true
+	*logsZenarmorTransport = "syslog"
+	*logsZenarmorListenHTTP = ""
+	t.Cleanup(func() {
+		*logsZenarmorEnabled = false
+		*logsZenarmorTransport = "elasticsearch"
+		*logsZenarmorListenHTTP = ":9200"
+	})
+	_, ok, err := LogsZenarmor()
+	if err != nil || !ok {
+		t.Fatalf("syslog transport with empty listen-http: ok=%v err=%v, want ok/nil", ok, err)
+	}
+}
+
+func TestLogsZenarmor_RejectsUnknownTransport(t *testing.T) {
+	*logsZenarmorEnabled = true
+	*logsZenarmorTransport = "kafka"
+	t.Cleanup(func() { *logsZenarmorEnabled = false; *logsZenarmorTransport = "elasticsearch" })
+	if _, _, err := LogsZenarmor(); err == nil {
+		t.Fatal("unknown transport: want error")
+	}
+}
+
 // THE regression test for the enrichment gate.
 //
 // main.go's enrichment block used to be gated on `syslogEnabled && syslogCfg.Enrich`
