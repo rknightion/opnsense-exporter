@@ -34,6 +34,20 @@
 </div>
 {{end}}
 
+{{if .Report.Growth}}
+<section class="card">
+  <h2>Series growth (per minute)</h2>
+  <table class="grid compact">
+    <thead><tr><th>Metric</th><th>Series</th><th>Δ / min</th></tr></thead>
+    <tbody>
+      {{range .Report.Growth}}
+      <tr><td>{{.Name}}</td><td>{{.Series}}</td><td>{{printf "%+.2f" .PerMin}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+
 <div class="two-col">
   <section class="card">
     <h2>Top metrics by series</h2>

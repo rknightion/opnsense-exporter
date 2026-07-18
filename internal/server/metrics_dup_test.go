@@ -43,7 +43,7 @@ func TestMetricsHandler_DuplicateSeriesDegradesGracefully(t *testing.T) {
 	selfGauge.Set(1)
 	self.MustRegister(selfGauge)
 
-	h := NewMetricsHandler(dupViews{}, self, 500*time.Millisecond, logger)
+	h := NewMetricsHandler(dupViews{}, self, 500*time.Millisecond, logger, nil)
 	rec := serve(h, "/metrics", nil)
 
 	if rec.Code != http.StatusOK {

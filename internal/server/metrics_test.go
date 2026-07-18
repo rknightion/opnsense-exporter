@@ -10,7 +10,29 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 )
+
+func TestMetricsHandler_RecorderCapturesUnfilteredOnly(t *testing.T) {
+	f := &fakeViews{names: []string{"x"}}
+	self := prometheus.NewRegistry()
+	rec := metricsnap.New()
+	h := NewMetricsHandler(f, self, 500*time.Millisecond, promslog.NewNopLogger(), rec)
+
+	// A filtered scrape must NOT populate the recorder (a partial view must never
+	// clobber the last full-scrape snapshot the web UI reads).
+	serve(h, "/metrics?collect%5B%5D=x", nil)
+	if _, at := rec.Snapshot(); !at.IsZero() {
+		t.Fatalf("filtered scrape must not populate the recorder")
+	}
+
+	// An unfiltered scrape captures the collector family set.
+	serve(h, "/metrics", nil)
+	mfs, at := rec.Snapshot()
+	if at.IsZero() || len(mfs) == 0 {
+		t.Fatalf("unfiltered scrape should populate the recorder; got %d families at %v", len(mfs), at)
+	}
+}
 
 type fakeViews struct {
 	names      []string
@@ -36,7 +58,7 @@ func newTestMetricsSetup(names ...string) (*fakeViews, http.Handler) {
 	selfGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "fake_self_metric", Help: "fake"})
 	selfGauge.Set(1)
 	self.MustRegister(selfGauge)
-	return f, NewMetricsHandler(f, self, 500*time.Millisecond, promslog.NewNopLogger())
+	return f, NewMetricsHandler(f, self, 500*time.Millisecond, promslog.NewNopLogger(), nil)
 }
 
 func serve(h http.Handler, target string, headers map[string]string) *httptest.ResponseRecorder {

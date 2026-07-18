@@ -12,6 +12,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 )
 
 // maxScrapeTimeoutSeconds bounds an accepted scrape-timeout header. Any real
@@ -35,6 +36,11 @@ type metricsHandler struct {
 	self          prometheus.Gatherer
 	timeoutOffset time.Duration
 	log           *slog.Logger
+	// recorder, when non-nil, passively captures the collector family set of each
+	// UNFILTERED scrape so the web UI can read a last-scrape snapshot without ever
+	// gathering (and thus re-scraping the firewall) itself. Filtered scrapes
+	// (collect[]/exclude[]) are not recorded, so a partial view can't clobber it.
+	recorder *metricsnap.Recorder
 }
 
 // NewMetricsHandler returns the /metrics handler. Per request it parses
@@ -43,8 +49,8 @@ type metricsHandler struct {
 // (descriptors are never re-registered globally — the view subsets the shared
 // collector's fan-out), and serves it merged with the static self gatherer
 // (process_*/go_* metrics).
-func NewMetricsHandler(views ScrapeViews, self prometheus.Gatherer, timeoutOffset time.Duration, log *slog.Logger) http.Handler {
-	return &metricsHandler{views: views, self: self, timeoutOffset: timeoutOffset, log: log}
+func NewMetricsHandler(views ScrapeViews, self prometheus.Gatherer, timeoutOffset time.Duration, log *slog.Logger, recorder *metricsnap.Recorder) http.Handler {
+	return &metricsHandler{views: views, self: self, timeoutOffset: timeoutOffset, log: log, recorder: recorder}
 }
 
 func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +77,15 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// On an unfiltered scrape, tee the collector view through the recorder so the
+	// web UI's last-scrape snapshot stays fresh — without the UI ever gathering.
+	collectorGatherer := prometheus.Gatherer(reg)
+	if h.recorder != nil && include == nil {
+		collectorGatherer = h.recorder.Tee(reg)
+	}
+
 	promhttp.HandlerFor(
-		prometheus.Gatherers{h.self, reg},
+		prometheus.Gatherers{h.self, collectorGatherer},
 		// ContinueOnError (not the zero-value HTTPErrorOnError) so a single
 		// collector emitting a duplicate label tuple degrades to a logged
 		// warning plus a partial scrape, instead of a blanket HTTP 500 that

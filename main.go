@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -21,10 +22,12 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog"   // registers the syslog push source
 	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor" // registers the zenarmor push source
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
 	"github.com/rknightion/opnsense-exporter/internal/server"
 	"github.com/rknightion/opnsense-exporter/internal/telemetry"
+	"github.com/rknightion/opnsense-exporter/internal/webui"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -78,6 +81,17 @@ func resolveInstanceLabel(explicit, addr string, useHostname bool, lookup func()
 	}
 	logger.Info("instance label not set; using OPNsense hostname", "instance", hostname)
 	return hostname, nil
+}
+
+// collectorNames returns the name of every registered collector (enabled or
+// not), so the web UI can show which collectors are disabled/skipped.
+func collectorNames() []string {
+	all := collector.AllCollectors()
+	names := make([]string, 0, len(all))
+	for _, c := range all {
+		names = append(names, c.Name())
+	}
+	return names
 }
 
 func main() {
@@ -145,9 +159,15 @@ func main() {
 		selfMetricsRegistry.MustRegister(promcollectors.NewGoCollector())
 	}
 
+	startTime := time.Now()
+	// statusTracker retains per-collector run history (recorded from every scrape)
+	// for the web UI status page; it is also updated by on-demand Run Now triggers.
+	statusTracker := collector.NewStatusTracker()
+
 	collectorsSwitches := options.CollectorsSwitches()
 	collectorOptionFuncs := []collector.Option{
 		collector.WithBuildInfo(version),
+		collector.WithStatusTracker(statusTracker),
 	}
 
 	if !collectorsSwitches.Unbound {
@@ -552,6 +572,12 @@ func main() {
 	collectorRegistry := prometheus.NewRegistry()
 	collectorRegistry.MustRegister(collectorInstance)
 
+	// metricsRecorder passively captures the collector family set of each real
+	// scrape (the unfiltered /metrics path and the OTLP bridge) so the web UI can
+	// read a last-scrape snapshot without ever gathering — and thus re-scraping
+	// the firewall — itself.
+	metricsRecorder := metricsnap.New()
+
 	// OTLP metrics export is opt-in (--otlp.enabled). It pushes the exact metrics
 	// exposed at /metrics to an OTLP endpoint via a Prometheus bridge producer over
 	// the same registry, so names, labels and values stay in parity. A transient
@@ -561,7 +587,7 @@ func main() {
 	// the export interval could bound the OTLP-bridge gather.)
 	var stopOTLP func()
 	if otlpEnabled {
-		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, collectorRegistry}, otlpCfg, version, instanceLabel, logger)
+		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.Tee(collectorRegistry)}, otlpCfg, version, instanceLabel, logger)
 		if terr != nil {
 			logger.Error("failed to start otlp metrics export", "err", terr)
 		} else {
@@ -700,6 +726,7 @@ func main() {
 		selfMetricsRegistry,
 		*options.ScrapeTimeoutOffset,
 		logger,
+		metricsRecorder,
 	)
 	mux.Handle(*options.MetricsPath, metricsHandler)
 
@@ -711,32 +738,50 @@ func main() {
 		return nil
 	}, readyCacheTTL, logger))
 
+	// The console (like the stock landing page) can only own "/" when the metrics
+	// path is not itself "/", else mux.Handle("/", …) double-registers and panics.
 	if *options.MetricsPath != "/" && *options.MetricsPath != "" {
-		landingConfig := web.LandingConfig{
-			Name:        "OPNsense Exporter",
-			Description: "Prometheus OPNsense Firewall Exporter",
-			Version:     version,
-			Links: []web.LandingLinks{
-				{
-					Address: *options.MetricsPath,
-					Text:    "Metrics",
+		if *options.WebUIEnabled {
+			webSrv := webui.NewServer(webui.Deps{
+				Version:         version,
+				GoVersion:       runtime.Version(),
+				Host:            opnsConfig.Host,
+				InstanceLabel:   instanceLabel,
+				StartTime:       startTime,
+				Tracker:         statusTracker,
+				Metrics:         metricsRecorder.Snapshot,
+				Cache:           opnsenseClient.CacheSnapshot,
+				EffectiveConfig: options.EffectiveConfig,
+				RunCollector:    collectorInstance.RunCollector,
+				Devices: func(ctx context.Context) (webui.DeviceReport, error) {
+					return webui.FetchDevices(ctx, &opnsenseClient)
 				},
-				{
-					Address: server.HealthyPath,
-					Text:    "Healthy",
+				AllCollectorNames: collectorNames(),
+				RefreshSeconds:    int((*options.WebUIRefreshInterval).Seconds()),
+				DisableConfig:     *options.WebUIDisableConfig,
+				DisableDevices:    *options.WebUIDisableDevices,
+			})
+			webSrv.StartBackground()
+			defer webSrv.Close()
+			mux.Handle("/", webSrv.Handler())
+		} else {
+			landingConfig := web.LandingConfig{
+				Name:        "OPNsense Exporter",
+				Description: "Prometheus OPNsense Firewall Exporter",
+				Version:     version,
+				Links: []web.LandingLinks{
+					{Address: *options.MetricsPath, Text: "Metrics"},
+					{Address: server.HealthyPath, Text: "Healthy"},
+					{Address: server.ReadyPath, Text: "Ready"},
 				},
-				{
-					Address: server.ReadyPath,
-					Text:    "Ready",
-				},
-			},
+			}
+			landingPage, err := web.NewLandingPage(landingConfig)
+			if err != nil {
+				logger.Error("failed to construct landing page", "err", err)
+				os.Exit(1)
+			}
+			mux.Handle("/", landingPage)
 		}
-		landingPage, err := web.NewLandingPage(landingConfig)
-		if err != nil {
-			logger.Error("failed to construct landing page", "err", err)
-			os.Exit(1)
-		}
-		mux.Handle("/", landingPage)
 	}
 
 	term := make(chan os.Signal, 1)

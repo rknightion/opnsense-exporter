@@ -32,7 +32,16 @@ type CardinalityReport struct {
 	TopLabels       []LabelCard  // every label, sorted by distinct values desc
 	Alerts          []string     // crit-level metrics, human readable
 	Recommendations []string     // warn-level metrics, human readable
+	Growth          []GrowthRow  // per-minute series growth over the sampling window
 	Generated       time.Time
+}
+
+// GrowthRow is one metric family's series growth rate, derived from the
+// background growth sampler's ring (oldest→newest over the window).
+type GrowthRow struct {
+	Name   string
+	Series int     // current series count
+	PerMin float64 // series added/removed per minute over the window (signed)
 }
 
 // MetricCard is one metric family's cardinality summary.
@@ -241,6 +250,9 @@ func (s *Server) cardinalitySnapshot() (CardinalityReport, bool, string) {
 	}
 	rep := buildCardinality(families, warnCardinality, critCardinality)
 	rep.Generated = time.Now()
+	if s.growth != nil {
+		rep.Growth = s.growth.rows()
+	}
 	empty := at.IsZero()
 	age := "never"
 	if !empty {
