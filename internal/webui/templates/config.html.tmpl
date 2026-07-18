@@ -1,0 +1,29 @@
+{{define "body"}}
+<section class="page-head">
+  <div>
+    <h1>Config</h1>
+    <p class="sub">Effective configuration — secret fields show presence only, never the value.</p>
+  </div>
+</section>
+
+{{range .Data}}
+<section class="card">
+  <h2>{{.Title}}</h2>
+  <table class="grid compact" data-table="config">
+    <thead><tr><th>Key</th><th>Value</th></tr></thead>
+    <tbody>
+    {{range .Items}}
+      <tr{{if .Secret}} style="color: var(--muted)"{{end}}>
+        <td>{{.Key}}</td>
+        <td>{{.Value}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="2" class="empty">No items.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{else}}
+<div class="callout warn">No configuration sections available.</div>
+{{end}}
+{{end}}
