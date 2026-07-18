@@ -48,6 +48,12 @@ self-traffic filter matches the same shape of connection over syslog as it does 
 `_bulk`: the box talking to the exporter's own listener, in this case the syslog
 port rather than the Elasticsearch one.
 
+The syslog receiver's own `--logs.syslog.include-programs`, `--logs.syslog.exclude-programs`
+and `--logs.syslog.min-severity` filters never see a Zenarmor line — the registered
+Zenarmor processor gets first refusal on anything tagged `zenarmor`, ahead of those
+generic program filters, so it's `--logs.zenarmor.families` and `--logs.zenarmor.exclude`
+above that decide what ships, not the syslog-side flags.
+
 Only one transport ingests at a time — `transport` picks exactly one receiver to
 register, so there is no dual-ship path to reason about and no risk of the same
 record arriving twice. The syslog copy carries `opnsense.source=zenarmor` in Loki

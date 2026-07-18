@@ -79,3 +79,39 @@ func TestSyslogProcessor_EmittedSource(t *testing.T) {
 		t.Errorf("EmittedSource() = %q, want zenarmor", got)
 	}
 }
+
+// TestFactory_SyslogTransport_RegistersRealProcessor covers the init() factory's
+// transport=="syslog" branch in source.go: build a docProcessor via newDocProcessor
+// (exactly as the factory does), wrap it in a syslogProcessor, and register it with
+// the REAL syslog registry — not a fake ProgramProcessor — then confirm the registry's
+// dup guard is what stands between this branch and a double registration.
+//
+// Driving the actual anonymous closure passed to logship.RegisterPushSource is not
+// possible from here: registeredPushFactories (internal/logship/push.go) is
+// unexported, the closure itself is never bound to a name, and the transport switch
+// it reads (options.LogsZenarmorTransport) is backed by an unexported kingpin flag
+// var that this package cannot flip (options imports nothing from zenarmor, so there
+// is no seam to drive it through). This test instead exercises the two calls the
+// branch actually makes — newDocProcessor + syslog.RegisterProgramProcessor — against
+// the production registry, which is the observable effect the branch exists to
+// produce. The branch's `return nil, nil` (no PushSource) is a literal return
+// statement beside those two calls and is verified by inspection, not by this test.
+func TestFactory_SyslogTransport_RegistersRealProcessor(t *testing.T) {
+	proc := newDocProcessor(logship.Deps{Registerer: prometheus.NewRegistry()}, Config{Enrich: false})
+	sp := &syslogProcessor{proc: proc}
+
+	syslog.RegisterProgramProcessor(sp)
+	if !sp.Handles("zenarmor") {
+		t.Fatal("registered processor does not handle its own program name")
+	}
+
+	// The dup guard is what would catch this branch running twice (e.g. two
+	// RegisterPushSource factories both resolving transport=syslog): confirm a
+	// second registration panics rather than silently replacing the first.
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("second RegisterProgramProcessor call did not panic (dup guard broken)")
+		}
+	}()
+	syslog.RegisterProgramProcessor(&syslogProcessor{proc: proc})
+}
