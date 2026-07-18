@@ -33,8 +33,9 @@
           },
           "editorMode": "code",
           "expr": "rate(opnsense_unbound_dns_queries_total[5m])",
-          "instant": false,
-          "range": true,
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

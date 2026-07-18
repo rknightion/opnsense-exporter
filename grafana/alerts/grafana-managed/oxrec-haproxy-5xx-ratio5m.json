@@ -33,8 +33,9 @@
           },
           "editorMode": "code",
           "expr": "sum by (opnsense_instance, backend) (rate(opnsense_log_events_haproxy_total{status_class=\"5xx\"}[5m])) / (sum by (opnsense_instance, backend) (rate(opnsense_log_events_haproxy_total[5m])) > 0)",
-          "instant": false,
-          "range": true,
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

@@ -33,8 +33,9 @@
           },
           "editorMode": "code",
           "expr": "sum by (opnsense_instance, interface) (rate(opnsense_interfaces_received_bytes_total[5m])) * 8",
-          "instant": false,
-          "range": true,
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

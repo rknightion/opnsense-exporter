@@ -5,9 +5,7 @@ OPNsense Exporter:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 39 tabs that auto-show/hide based on which metrics your exporter emits. |
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 39 tabs that auto-show/hide based on which metrics your exporter emits. |
-| `dashboard.json` | The dashboard — a single **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 39 tabs that auto-show/hide based on which metrics your exporter emits. |
+| `dashboard.json` | A **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 7 top-level domains and 40 tabs that render conditionally. |
 | `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
@@ -29,10 +27,10 @@ datasource carrying the exporter's shipped logs is selected.
 
 ## The dashboard
 
-One dashboard, 39 tabs (generated list, do not hand-edit):
+One dashboard, 7 top-level domains and 40 tabs grouped by feature (generated list, do not hand-edit):
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Interfaces, Firewall & PF, Aliases, Gateways & WAN, DNS — Unbound, DHCP, VPN, Tailscale, NetBird, Routing & Neighbors, Protocol Stats, NTP, Certificates, ClamAV, Services, Cron & DynDNS, Syslog, Q-Feeds, NetFlow, CARP / HA, HAProxy, Relayd, Nginx, FRR Routing, Monit, CrowdSec, IDS/IPS, UPS, Captive Portal, Traffic Shaper, HA Sync, Chrony, Tor, Siproxd, Log-derived Events, Zenarmor, Log Shipping, Diagnostics
+Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS — Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the
@@ -40,15 +38,15 @@ build if any catalogue metric is left unreferenced).
 
 ### Dynamic show/hide
 
-Tabs and rows for optional collectors / OPNsense plugins **hide automatically when their
+Feature tabs and rows for optional collectors / OPNsense plugins **hide automatically when their
 metrics are absent**, so the same dashboard adapts to any deployment. This is driven by hidden
 sentinel template variables (`label_values(metric, __name__)` → empty when the metric is absent)
 plus `conditionalRendering` on the tab/row. A few sections are gated on *data* rather than mere
 presence (e.g. a DHCP backend's row only appears when it actually has leases), so a box that
 runs Kea but not legacy ISC DHCPv4 only shows the Kea section.
 
-Examples of what hides when unused: NetFlow tab, OpenVPN / WireGuard-peer / IPsec-tunnel rows,
-ISC DHCPv4 (when leaseless), CARP VIPs, SMART, ACME, DynDNS, the Go-runtime row, etc.
+Examples of what hides when unused: NetFlow, VPN, UPS, HAProxy, CrowdSec, Zenarmor and recording-rule
+tabs; OpenVPN / WireGuard-peer / IPsec-tunnel rows; CARP VIPs, SMART, ACME, DynDNS, and Go-runtime rows.
 
 ### Variables
 
@@ -58,12 +56,13 @@ ISC DHCPv4 (when leaseless), CARP VIPs, SMART, ACME, DynDNS, the Go-runtime row,
   has no matching stream, so a metrics-only deployment is unaffected.
 - **OPNsense instance** — multi-select over `opnsense_instance` (supports multiple exporters).
 - **Interface** — multi-select, scopes the Interfaces tab.
+- **Device (pf/netflow)** — multi-select over kernel interface names used by PF and NetFlow.
 
 ### Deploy the dashboard
 
 **Grafana UI:** Dashboards → New → Import, and upload `dashboard.json` (Grafana 13+).
 
-**gcx (Grafana Cloud / API):**
+**gcx (standalone / unmanaged dashboard only):**
 ```bash
 gcx dashboards create -f dashboard.json          # first time
 gcx dashboards update opnsense-exporter -f dashboard.json   # subsequent updates
@@ -71,8 +70,23 @@ gcx dashboards update opnsense-exporter -f dashboard.json   # subsequent updates
 gcx resources push -p dashboard.json --omit-manager-fields
 ```
 
-**GitOps (GitSync):** drop the manifest into your synced repo under the target folder; the
-`metadata.name` (`opnsense-exporter`) is the dashboard UID/slug.
+Do not run those update/push commands against a GitSync-managed production UID. Test a generated
+scratch UID first, then publish the canonical manifest only through the synced repository:
+
+```bash
+DASH_NAME=opnsense-exporter-review python3 build_dashboard.py
+gcx dashboards create -f dashboard.json
+gcx dashboards snapshot opnsense-exporter-review --since 6h --width 1920
+
+# Restore the canonical UID, then copy/commit this file in the GitSync repository.
+python3 build_dashboard.py
+cp dashboard.json /path/to/gitsync-repo/networking/opnsense-exporter.json
+```
+
+**GitOps (GitSync):** commit and push the manifest at the target repository path; GitSync performs
+the production update and retains manager ownership. The canonical `metadata.name`
+(`opnsense-exporter`) is the dashboard UID/slug. Delete the scratch UID after the synced production
+dashboard has rendered successfully.
 
 ### Regenerate
 

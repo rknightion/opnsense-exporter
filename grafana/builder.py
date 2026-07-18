@@ -25,6 +25,9 @@ RATE = "$__rate_interval"
 DS = {"name": "${datasource}"}
 LOKI_DS = {"name": "${loki_datasource}"}
 VIZ_VERSION = "v11.5.0"
+TRANSPORT_LABELS = (
+    "job", "service_instance_id", "service_name", "service_version",
+)
 
 
 def sel(metric: str, more: str = "") -> str:
@@ -39,6 +42,17 @@ def epoch_ms(expr: str) -> str:
     this an epoch-seconds gauge renders as a ~1970 date (#78). The `* 1000`
     suffix is also what the dateTimeAsIso build guard checks for."""
     return f"({expr}) * 1000"
+
+
+def stable(expr: str) -> str:
+    """Collapse scrape/OTel identities into one logical OPNsense series.
+
+    Grafana Cloud resource labels change when the exporter is redeployed. They
+    are useful for transport diagnostics but must not split dashboard series for
+    the same ``opnsense_instance``. The scrape ``instance`` remains part of the
+    exporter identity; all domain labels are preserved by ``without``.
+    """
+    return f"max without ({', '.join(TRANSPORT_LABELS)}) ({expr})"
 
 
 # Shared value-mapping dictionaries: state value -> (display text, colour).
@@ -79,9 +93,10 @@ class Builder:
         return f"panel-{self._id}", self._id
 
     def _query(self, expr: str, ref: str = "A", instant: bool = False,
-               legend: str | None = None) -> dict:
+               legend: str | None = None, dedupe: bool = True) -> dict:
         self._exprs.append(expr)
-        spec: dict = {"expr": expr, "refId": ref}
+        panel_expr = stable(expr) if dedupe else expr
+        spec: dict = {"expr": panel_expr, "refId": ref}
         if legend is not None:
             spec["legendFormat"] = legend
         if instant:
@@ -163,9 +178,10 @@ class Builder:
     # ---- viz helpers (return element name) -------------------------------
     def ts(self, title, series, unit="short", desc="", w=12, h=8,
            stack=False, decimals=None, overrides=None, fill=18,
-           min0=True, legend_calcs=("mean", "max", "lastNotNull")) -> str:
+           min0=True, legend_calcs=("mean", "max", "lastNotNull"),
+           dedupe=True) -> str:
         """Timeseries. series = list of (expr, legend)."""
-        queries = [self._query(e, ref=chr(65 + i), legend=lg)
+        queries = [self._query(e, ref=chr(65 + i), legend=lg, dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         defaults = {
             "unit": unit,
@@ -193,7 +209,13 @@ class Builder:
     def stat(self, title, expr, unit="short", desc="", w=4, h=4, decimals=None,
              mappings=None, thresholds=None, color="thresholds",
              color_mode="value", graph="area", text_mode="auto",
-             instant=False, legend=None, reducer="lastNotNull") -> str:
+             instant=None, legend=None, reducer="lastNotNull", dedupe=True) -> str:
+        """Single-value panel with an optional sparkline.
+
+        Query mode follows the visual by default: area graphs receive range data,
+        while ``graph="none"`` cards receive one instant value. Callers may still
+        override ``instant`` explicitly for exceptional panels.
+        """
         defaults = {"unit": unit, "color": {"mode": color}}
         if decimals is not None:
             defaults["decimals"] = decimals
@@ -210,13 +232,14 @@ class Builder:
                             "textMode": text_mode, "wideLayout": True}}
         if unit == "dateTimeAsIso" and "* 1000" not in expr:
             self._ts_violations.append(f"stat {title!r}")
-        q = [self._query(expr, instant=instant, legend=legend)]
+        query_instant = graph == "none" if instant is None else instant
+        q = [self._query(expr, instant=query_instant, legend=legend, dedupe=dedupe)]
         n = self._panel(title, "stat", spec, q, desc=desc)
         self.size[n] = (w, h)
         return n
 
     def gauge(self, title, expr, unit="short", desc="", w=4, h=6, mn=0, mx=None,
-              thresholds=None, decimals=None, instant=False) -> str:
+              thresholds=None, decimals=None, instant=True, dedupe=True) -> str:
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "min": mn,
                     "thresholds": self._thresholds(
@@ -231,14 +254,16 @@ class Builder:
                 "options": {"orientation": "auto", "showThresholdLabels": False,
                             "showThresholdMarkers": True,
                             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
-        n = self._panel(title, "gauge", spec, [self._query(expr, instant=instant)], desc=desc)
+        n = self._panel(title, "gauge", spec,
+                        [self._query(expr, instant=instant, dedupe=dedupe)], desc=desc)
         self.size[n] = (w, h)
         return n
 
     def bargauge(self, title, series, unit="short", desc="", w=8, h=8,
                  mode="gradient", orient="horizontal", thresholds=None,
-                 instant=True, mx=None) -> str:
-        queries = [self._query(e, ref=chr(65 + i), instant=instant, legend=lg)
+                 instant=True, mx=None, dedupe=True) -> str:
+        queries = [self._query(e, ref=chr(65 + i), instant=instant, legend=lg,
+                               dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "thresholds": self._thresholds(
@@ -256,10 +281,10 @@ class Builder:
 
     def table(self, title, exprs, desc="", w=24, h=10, excludes=None,
               renames=None, unit_overrides=None, sort_by=None, sort_desc=True,
-              footer=False) -> str:
+              footer=False, dedupe=True) -> str:
         """exprs = list of PromQL strings (instant). excludes/renames operate on field names.
         unit_overrides = {field_name: unit}. sort_by = field name."""
-        queries = [self._query(e, ref=chr(65 + i), instant=True)
+        queries = [self._query(e, ref=chr(65 + i), instant=True, dedupe=dedupe)
                    for i, e in enumerate(exprs)]
         excl = {"Time": True, "__name__": True}
         for x in (excludes or []):
@@ -313,9 +338,9 @@ class Builder:
         return n
 
     def statetimeline(self, title, series, mappings, unit="short", desc="",
-                      w=24, h=8, thresholds=None) -> str:
+                      w=24, h=8, thresholds=None, dedupe=True) -> str:
         """series = list of (expr, legend). mappings = {"0":("Down","red"),...}."""
-        queries = [self._query(e, ref=chr(65 + i), legend=lg)
+        queries = [self._query(e, ref=chr(65 + i), legend=lg, dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "mappings": self._value_mappings(mappings),
@@ -332,8 +357,8 @@ class Builder:
         return n
 
     def statushistory(self, title, series, mappings, desc="", w=24, h=6,
-                      thresholds=None) -> str:
-        queries = [self._query(e, ref=chr(65 + i), legend=lg)
+                      thresholds=None, dedupe=True) -> str:
+        queries = [self._query(e, ref=chr(65 + i), legend=lg, dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         defaults = {"color": {"mode": "thresholds"},
                     "mappings": self._value_mappings(mappings),
@@ -348,8 +373,9 @@ class Builder:
         return n
 
     def piechart(self, title, series, unit="short", desc="", w=8, h=8,
-                 pie="donut") -> str:
-        queries = [self._query(e, ref=chr(65 + i), instant=True, legend=lg)
+                 pie="donut", dedupe=True) -> str:
+        queries = [self._query(e, ref=chr(65 + i), instant=True, legend=lg,
+                               dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         spec = {"fieldConfig": {"defaults": {"unit": unit}, "overrides": []},
                 "options": {"legend": {"displayMode": "table", "placement": "right",
@@ -514,16 +540,22 @@ class Builder:
     @staticmethod
     def _cond(present=None, absent=None):
         items = []
-        if present:
+        present_vars = ([present] if isinstance(present, str) else list(present or []))
+        absent_vars = ([absent] if isinstance(absent, str) else list(absent or []))
+        if len(present_vars) > 1 and absent_vars:
+            raise ValueError("OR presence conditions cannot be combined with absence conditions")
+        for variable in present_vars:
             items.append({"kind": "ConditionalRenderingVariable",
-                          "spec": {"variable": present, "operator": "matches", "value": ".+"}})
-        if absent:
+                          "spec": {"variable": variable, "operator": "matches", "value": ".+"}})
+        for variable in absent_vars:
             items.append({"kind": "ConditionalRenderingVariable",
-                          "spec": {"variable": absent, "operator": "notMatches", "value": ".+"}})
+                          "spec": {"variable": variable, "operator": "notMatches", "value": ".+"}})
         if not items:
             return None
         return {"kind": "ConditionalRenderingGroup",
-                "spec": {"visibility": "show", "condition": "and", "items": items}}
+                "spec": {"visibility": "show",
+                         "condition": "or" if len(present_vars) > 1 else "and",
+                         "items": items}}
 
     def row(self, title, names, present=None, absent=None, collapse=False) -> dict:
         spec = {"title": title, "collapse": collapse, "layout": self._place(names)}
@@ -539,6 +571,19 @@ class Builder:
             rows = [self.row("", rows)]
             rows[0]["spec"]["hideHeader"] = True
         spec = {"title": title, "layout": {"kind": "RowsLayout", "spec": {"rows": rows}}}
+        c = self._cond(present, absent)
+        if c:
+            spec["conditionalRendering"] = c
+        self.tabs.append({"kind": "TabsLayoutTab", "spec": spec})
+
+    def tab_group(self, title, tabs, present=None, absent=None):
+        """Append a top-level tab whose content is a nested tab layout.
+
+        ``tabs`` are complete ``TabsLayoutTab`` dictionaries previously built
+        through :meth:`tab`; their own conditional rendering is retained.
+        """
+        spec = {"title": title,
+                "layout": {"kind": "TabsLayout", "spec": {"tabs": tabs}}}
         c = self._cond(present, absent)
         if c:
             spec["conditionalRendering"] = c

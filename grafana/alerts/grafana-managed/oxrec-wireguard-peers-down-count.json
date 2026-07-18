@@ -32,9 +32,10 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "count by (opnsense_instance) (opnsense_wireguard_peer_status == 0)",
-          "instant": false,
-          "range": true,
+          "expr": "sum by (opnsense_instance) (opnsense_wireguard_peer_status == bool 0)",
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

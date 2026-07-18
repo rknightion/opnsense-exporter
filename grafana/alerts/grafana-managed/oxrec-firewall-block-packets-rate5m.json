@@ -33,8 +33,9 @@
           },
           "editorMode": "code",
           "expr": "sum by (opnsense_instance, interface) (rate(opnsense_firewall_in_ipv4_block_packets[5m]) + rate(opnsense_firewall_out_ipv4_block_packets[5m]) + rate(opnsense_firewall_in_ipv6_block_packets[5m]) + rate(opnsense_firewall_out_ipv6_block_packets[5m]))",
-          "instant": false,
-          "range": true,
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

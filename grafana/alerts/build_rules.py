@@ -261,9 +261,9 @@ RECORDING = [
          expr='sum by (opnsense_instance, backend) (rate(opnsense_log_events_haproxy_total{status_class="5xx"}[5m])) / '
               '(sum by (opnsense_instance, backend) (rate(opnsense_log_events_haproxy_total[5m])) > 0)'),
     dict(metric="instance:opnsense_ipsec_tunnels_down:count",
-         expr="count by (opnsense_instance) (opnsense_ipsec_phase1_status == 0)"),
+         expr="sum by (opnsense_instance) (opnsense_ipsec_phase1_status == bool 0)"),
     dict(metric="instance:opnsense_wireguard_peers_down:count",
-         expr="count by (opnsense_instance) (opnsense_wireguard_peer_status == 0)"),
+         expr="sum by (opnsense_instance) (opnsense_wireguard_peer_status == bool 0)"),
     dict(metric="instance:opnsense_ids_alerts:active",
          expr='sum by (opnsense_instance) (opnsense_ids_recent_alerts{action="blocked"})'),
 ]
@@ -348,7 +348,8 @@ def emit_grafana_managed(ds: str, folder: str, stack: bool):
                                            "relativeTimeRange": {"from": "10m0s", "to": "0s"},
                                            "model": {"datasource": {"type": "prometheus", "uid": ds},
                                                      "editorMode": "code", "expr": r["expr"],
-                                                     "instant": False, "range": True,
+                                                     "format": "table", "instant": True,
+                                                     "range": False,
                                                      "intervalMs": 1000, "maxDataPoints": 43200,
                                                      "refId": "A"},
                                            "source": True}}},

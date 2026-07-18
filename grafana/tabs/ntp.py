@@ -82,7 +82,7 @@ def build(b: Builder):
             {"color": "green", "value": 99},
         ],
         color_mode="value",
-        instant=True,
+        instant=False,
         desc=(
             "Derived reachability percentage: 100 × max(reach) / 255. "
             "100 % means every recent poll was answered."
@@ -134,7 +134,7 @@ def build(b: Builder):
             {"color": "red", "value": 300},
         ],
         color_mode="value",
-        instant=True,
+        instant=False,
         desc="Seconds since the most-recent NTP peer last responded (worst peer shown).",
     )
 
@@ -146,7 +146,7 @@ def build(b: Builder):
         w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],
         color_mode="value",
-        instant=True,
+        instant=False,
         desc="Maximum poll interval in seconds across all peers.",
     )
 
@@ -167,7 +167,7 @@ def build(b: Builder):
         w=6, h=4,
         mappings={"0": ("No Fix", "red"), "1": ("Fix", "green")},
         color_mode="value",
-        instant=True,
+        instant=False,
         desc=(
             "Whether the last NMEA sentence from a GPS refclock reported a valid fix. "
             "EXPERIMENTAL: derived from OPNsense source, not validated against real GPS "
@@ -181,7 +181,7 @@ def build(b: Builder):
         w=6, h=4,
         thresholds=[{"color": "blue", "value": None}],
         color_mode="value",
-        instant=True,
+        instant=False,
         desc=(
             "Number of satellites used in the last GPS fix ($GPGGA sentences only). "
             "EXPERIMENTAL: derived from OPNsense source, not validated against real GPS "

@@ -33,8 +33,9 @@
           },
           "editorMode": "code",
           "expr": "sum by (opnsense_instance) (opnsense_ids_recent_alerts{action=\"blocked\"})",
-          "instant": false,
-          "range": true,
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

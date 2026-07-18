@@ -14,9 +14,10 @@ def build(b: Builder):
 calls `b.tab(...)` exactly once (or more, but normally once per module). Do NOT build the
 manifest, write files, or define variables other than sentinels.
 
-The orchestrator (`build_dashboard.py`) imports each module in a fixed order and calls
-`build(b)`. The canonical worked examples are `build_overview()` and `build_diagnostics()`
-in `build_dashboard.py` — mirror their style. The full API is in `builder.py` (read it).
+The orchestrator (`build_dashboard.py`) imports each module in a fixed order, calls `build(b)`,
+then moves every leaf into one top-level domain through `TAB_GROUPS`. Add a new leaf title to that
+map or the build fails as unassigned. The canonical worked examples are `build_overview()` and
+`build_diagnostics()` in `build_dashboard.py` — mirror their style. The full API is in `builder.py`.
 
 ## Hard rules
 
@@ -27,7 +28,9 @@ in `build_dashboard.py` — mirror their style. The full API is in `builder.py` 
 2. **Datasource** is always `${datasource}` — handled by the helpers, never hard-code a UID.
 3. **conditionalRendering is TAB/ROW level only** (never per-panel). Gate a tab with
    `b.tab(..., present="sentinel")`; gate a row with `b.row(..., present="sentinel")`.
-   Register the sentinel first with `b.sentinel("name", "<grafana variable query>")`.
+   Register the sentinel first with `b.sentinel("name", "<grafana variable query>")`. A list such
+   as `present=["has_nut", "has_apcupsd"]` is an OR condition. Add optional leaves to
+   `OPTIONAL_TAB_PRESENCE` so Grafana hides the tab itself when every implementation is absent.
 4. **Counters → rate.** Metrics whose name ends `_total` AND that are true cumulative
    counters must be charted as `rate(sel("..._total")[{RATE}])` (use the `RATE` constant).
    EXCEPTIONS — these are named `_total` but are *instantaneous* (current value); show RAW,
@@ -65,8 +68,9 @@ in `build_dashboard.py` — mirror their style. The full API is in `builder.py` 
 
 - `b.ts(title, series, unit="short", w=12, h=8, stack=False, desc="", overrides=None, decimals=None)`
   — timeseries. `series = [(expr, "legend {{label}}"), ...]`.
-- `b.stat(title, expr, unit="short", w=4, h=4, mappings=None, thresholds=None, color_mode="value", graph="area", decimals=None, instant=False, desc="")`
-  — single stat. `mappings=UPDOWN` etc. `thresholds=[{"color":"green","value":None},{"color":"red","value":90}]`.
+- `b.stat(title, expr, unit="short", w=4, h=4, mappings=None, thresholds=None, color_mode="value", graph="area", decimals=None, instant=True, desc="")`
+  — current-value stat by default. Set `instant=False` only when a range reduction or sparkline is
+  deliberate. `mappings=UPDOWN` etc. `thresholds=[{"color":"green","value":None},{"color":"red","value":90}]`.
 - `b.gauge(title, expr, unit="percent", w=4, h=6, mn=0, mx=100, thresholds=None)` — radial gauge.
 - `b.bargauge(title, series, unit="short", w=8, h=8, orient="horizontal", mx=None)` — per-series bars (instant).
 - `b.table(title, exprs, w=24, h=10, excludes=[...], renames={...}, unit_overrides={field:unit}, sort_by="Field", sort_desc=True)`
@@ -80,6 +84,11 @@ in `build_dashboard.py` — mirror their style. The full API is in `builder.py` 
 Grid is 24 cols; widths in a row should sum to ≤24 (helper auto-wraps). Common widths: 24 (full),
 12 (half), 8 (third), 6 (quarter), 4 (sixth), 3 (eighth). Pick heights 4 (stat) / 6 (gauge) /
 7–9 (ts/table).
+
+Prometheus panel queries are wrapped in `max without (instance, job, service_instance_id,
+service_name, service_version)` by the builder. This removes scrape/OTel deployment identities while
+preserving `opnsense_instance` and feature labels, so redeployments do not create duplicate logical
+series in range panels.
 
 ## Loki panels (mixed datasource)
 

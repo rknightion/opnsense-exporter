@@ -33,8 +33,9 @@
           },
           "editorMode": "code",
           "expr": "opnsense_gateways_loss_percentage / 100",
-          "instant": false,
-          "range": true,
+          "format": "table",
+          "instant": true,
+          "range": false,
           "intervalMs": 1000,
           "maxDataPoints": 43200,
           "refId": "A"

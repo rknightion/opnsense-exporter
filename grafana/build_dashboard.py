@@ -39,6 +39,73 @@ COVERAGE_EXEMPT = {"opnsense_exporter_api_request_duration_seconds"}
 # return data regardless of which documented setup the user followed (#113).
 JOB = 'job=~"opnsense.*"'
 
+SYSTEM_STATUS = {
+    "-1": ("Error", "red"),
+    "0": ("Warning", "orange"),
+    "1": ("Notice", "yellow"),
+    "2": ("OK", "green"),
+}
+CRASH_STATUS = {"0": ("Reports present", "red"), "1": ("Clear", "green")}
+
+# Leaf modules keep their local `b.tab(...)` contract. Once every leaf exists,
+# the orchestrator moves each one into exactly one compact top-level domain.
+TAB_GROUPS = [
+    ("System", (
+        "System & Resources", "Services, Cron & DynDNS", "Certificates", "UPS",
+        "Monit", "HA Sync", "CARP / HA",
+    )),
+    ("Network", (
+        "Interfaces", "Gateways & WAN", "DNS — Unbound", "DHCP",
+        "Routing & Neighbors", "Protocol Stats", "NTP", "Chrony",
+        "Traffic Shaper", "NetFlow", "FRR Routing", "Captive Portal",
+    )),
+    ("Security", (
+        "Firewall & PF", "Aliases", "IDS/IPS", "CrowdSec", "ClamAV",
+        "Q-Feeds", "Zenarmor",
+    )),
+    ("VPN & remote access", ("VPN", "Tailscale", "NetBird", "Tor")),
+    ("Services", ("Syslog", "HAProxy", "Relayd", "Nginx", "Siproxd")),
+    ("Observability", (
+        "Log-derived Events", "Log Shipping", "Recording rules", "Diagnostics",
+    )),
+]
+
+# A tab containing only conditional rows is still rendered by Grafana unless the
+# tab itself is conditional. Reuse each module's presence variables here; lists
+# form an OR group for features with multiple implementations or datasources.
+OPTIONAL_TAB_PRESENCE = {
+    "Aliases": "has_alias",
+    "DNS — Unbound": "has_unbound",
+    "DHCP": ["has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"],
+    "VPN": ["has_wireguard", "has_openvpn", "has_ipsec"],
+    "Tailscale": "has_tailscale",
+    "NetBird": "has_netbird",
+    "NTP": "has_ntp",
+    "ClamAV": "has_clamav",
+    "Syslog": ["has_syslog", "has_syslog_logs"],
+    "Q-Feeds": "has_qfeeds",
+    "NetFlow": "has_netflow",
+    "CARP / HA": "has_carp",
+    "HAProxy": "has_haproxy",
+    "Relayd": "has_relayd",
+    "Nginx": "has_nginx",
+    "FRR Routing": "has_frr",
+    "Monit": "has_monit",
+    "CrowdSec": "has_crowdsec",
+    "IDS/IPS": "has_ids",
+    "UPS": ["has_nut", "has_apcupsd"],
+    "Captive Portal": "has_captiveportal",
+    "Traffic Shaper": "has_trafficshaper",
+    "HA Sync": "has_hasync",
+    "Chrony": "has_chrony",
+    "Tor": "has_tor",
+    "Siproxd": "has_siproxd",
+    "Log-derived Events": "has_log_events",
+    "Zenarmor": ["has_zenarmor_metrics", "has_zenarmor_logs"],
+    "Log Shipping": "has_logs",
+    "Recording rules": "has_recording_rules",
+}
+
 
 def add_core_variables(b: Builder):
     b.variables.append({"kind": "DatasourceVariable", "spec": {
@@ -97,46 +164,66 @@ def add_core_variables(b: Builder):
 
 
 def build_overview(b: Builder):
-    up = b.stat("Exporter / Box Up", sel("opnsense_up"), mappings=UPDOWN,
+    up = b.stat("Exporter scrape", sel("opnsense_up"), mappings=UPDOWN,
                 color_mode="background",
                 thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
-                desc="opnsense_up: last scrape success (1=yes).", w=3, h=4)
-    fw = b.stat("Firewall Health", sel("opnsense_firewall_status"), mappings=OKERR,
+                desc="Latest OPNsense API scrape: 1 is up, 0 is unreachable or failed.",
+                legend="{{opnsense_instance}}", w=3, h=4)
+    fw = b.stat("Firewall health", sel("opnsense_firewall_status"), mappings=OKERR,
                 color_mode="background",
-                thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}], w=3, h=4)
-    crash = b.stat("Crash Reporter", sel("opnsense_crash_reporter_status"), mappings=OKERR,
+                thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+                desc="Aggregate OPNsense subsystem health: 1 is healthy, 0 has errors.",
+                legend="{{opnsense_instance}}", w=3, h=4)
+    crash = b.stat("Crash reports", sel("opnsense_crash_reporter_status"), mappings=CRASH_STATUS,
                    color_mode="background",
                    thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
-                   desc="0 = crash reports present.", w=3, h=4)
-    reboot = b.stat("Needs Reboot", sel("opnsense_firmware_needs_reboot"), mappings=YESNO,
+                   desc="Reports present means OPNsense has an unacknowledged crash report.",
+                   legend="{{opnsense_instance}}", w=3, h=4)
+    reboot = b.stat("Reboot required", sel("opnsense_firmware_needs_reboot"), mappings=YESNO,
                     color_mode="background",
-                    thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}], w=3, h=4)
-    syscode = b.stat("System Status Code", sel("opnsense_system_status_code"),
-                     desc="2 = OK for OPNsense >= 25.1.", w=3, h=4)
-    pkgs = b.stat("Pkg Upgrades", sel("opnsense_firmware_upgrade_packages_count"),
+                    thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
+                    desc="Whether installed firmware changes require a reboot.",
+                    legend="{{opnsense_instance}}", w=3, h=4)
+    syscode = b.stat("System health", sel("opnsense_system_status_code"), mappings=SYSTEM_STATUS,
+                     color_mode="background",
+                     thresholds=[{"color": "red", "value": None}, {"color": "orange", "value": 0},
+                                 {"color": "yellow", "value": 1}, {"color": "green", "value": 2}],
+                     desc="OPNsense health code: -1 error, 0 warning, 1 notice, 2 OK.",
+                     legend="{{opnsense_instance}}", w=3, h=4)
+    pkgs = b.stat("Package upgrades", sel("opnsense_firmware_upgrade_packages_count"),
                   thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 1}],
-                  color_mode="background", w=3, h=4)
+                  color_mode="background", desc="Packages available from the configured firmware channel.",
+                  legend="{{opnsense_instance}}", w=3, h=4)
     uptime = b.stat("Uptime", sel("opnsense_system_uptime_seconds"), unit="s", w=3, h=4,
-                    graph="none", color="thresholds")
-    svc = b.stat("Services Stopped", sel("opnsense_services_stopped_total"),
+                    graph="none", color="thresholds", legend="{{opnsense_instance}}",
+                    desc="Time since the firewall last booted.")
+    svc = b.stat("Stopped services", sel("opnsense_services_stopped_total"),
                  thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
-                 color_mode="background", w=3, h=4)
+                 color_mode="background", desc="Configured services currently not running.",
+                 legend="{{opnsense_instance}}", w=3, h=4)
 
-    mem = b.gauge("Memory Used %", f'100 * {sel("opnsense_system_memory_used_bytes")} / '
-                  f'{sel("opnsense_system_memory_total_bytes")}', unit="percent", mx=100, w=4, h=6)
-    pf = b.gauge("PF States %", f'100 * {sel("opnsense_firewall_pf_states_current")} / '
-                 f'clamp_min({sel("opnsense_firewall_pf_states_limit")}, 1)',
-                 unit="percent", mx=100, w=4, h=6)
+    pressure_thresholds = [{"color": "green", "value": None},
+                           {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]
+    mem = b.stat("Memory used", f'100 * {sel("opnsense_system_memory_used_bytes")} / '
+                 f'{sel("opnsense_system_memory_total_bytes")}', unit="percent", w=4, h=5,
+                 graph="none", color_mode="background", thresholds=pressure_thresholds,
+                 desc="Physical memory currently in use.")
+    pf = b.stat("PF states", f'100 * {sel("opnsense_firewall_pf_states_current")} / '
+                f'clamp_min({sel("opnsense_firewall_pf_states_limit")}, 1)',
+                unit="percent", w=4, h=5, graph="none", color_mode="background",
+                thresholds=pressure_thresholds, desc="Current PF state-table utilisation.")
     load = b.stat("Load (1m)", sel("opnsense_system_load_average", 'interval="1"'),
-                  decimals=2, w=4, h=6, graph="area")
-    disk = b.gauge("Worst Disk %", f'100 * max({sel("opnsense_system_disk_usage_ratio")})',
-                   unit="percent", mx=100, w=4, h=6)
+                  decimals=2, w=4, h=5, graph="none", desc="One-minute system load average.")
+    disk = b.stat("Highest disk use", f'100 * max({sel("opnsense_system_disk_usage_ratio")})',
+                  unit="percent", w=4, h=5, graph="none", color_mode="background",
+                  thresholds=pressure_thresholds, desc="Highest current utilisation across mounted filesystems.")
     temp = b.stat("Max Temp", f'max({sel("opnsense_temperature_celsius")})', unit="celsius",
-                  w=4, h=6, thresholds=[{"color": "green", "value": None},
+                  w=4, h=5, graph="none", thresholds=[{"color": "green", "value": None},
                                         {"color": "yellow", "value": 70}, {"color": "red", "value": 85}],
-                  color="thresholds", color_mode="value")
+                  color="thresholds", color_mode="background", desc="Highest reported hardware temperature.")
     cpu = b.stat("CPU Busy %", f'100 - {sel("opnsense_activity_cpu_idle_percent")}',
-                 unit="percent", w=4, h=6, graph="area")
+                 unit="percent", w=4, h=5, graph="none", color_mode="background",
+                 thresholds=pressure_thresholds, desc="Current non-idle CPU percentage.")
 
     gw_status = b.statetimeline("Gateway Status", [(sel("opnsense_gateways_status"),
                                 "{{name}} ({{address}})")], GW_STATUS, w=12, h=7)
@@ -151,7 +238,7 @@ def build_overview(b: Builder):
 
     b.tab("Overview", [
         b.row("Health", [up, fw, crash, reboot, syscode, pkgs, uptime, svc]),
-        b.row("Resource Pressure", [mem, pf, load, disk, temp, cpu]),
+        b.row("Resource pressure", [mem, pf, load, disk, temp, cpu]),
         b.row("Connectivity & History", [gw_status, wan_rtt, health_hist]),
     ])
 
@@ -279,15 +366,75 @@ def coverage(b: Builder) -> list:
     return missing
 
 
+def leaf_tab_titles(b: Builder) -> list[str]:
+    """Return feature-tab titles beneath the top-level domains."""
+    titles = []
+    for tab in b.tabs:
+        layout = tab["spec"]["layout"]
+        if layout["kind"] == "TabsLayout":
+            titles.extend(child["spec"]["title"] for child in layout["spec"]["tabs"])
+        else:
+            titles.append(tab["spec"]["title"])
+    return titles
+
+
 # ---- registry ------------------------------------------------------------
 def build_all() -> Builder:
     b = Builder()
     add_core_variables(b)
-    # Order matters: this is the tab order in the UI.
+    # Leaf order is local to each domain after organize_tabs().
     build_overview(b)
     register_subsystem_tabs(b)   # provided by tabs/ modules
     build_diagnostics(b)
+    organize_tabs(b)
     return b
+
+
+def organize_tabs(b: Builder):
+    """Move every leaf tab into the layered top-level information architecture.
+
+    Title matching is deliberate: it makes a renamed, duplicate, or unassigned
+    leaf a build failure instead of silently dropping feature coverage.
+    """
+    leaves = {}
+    for tab in b.tabs:
+        title = tab["spec"]["title"]
+        if title in leaves:
+            raise ValueError(f"duplicate dashboard leaf tab: {title}")
+        leaves[title] = tab
+
+    expected = {"Overview"}
+    for _, titles in TAB_GROUPS:
+        expected.update(titles)
+    actual = set(leaves)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        unassigned = sorted(actual - expected)
+        raise ValueError(f"dashboard leaf assignment mismatch: missing={missing}, unassigned={unassigned}")
+
+    for title, present in OPTIONAL_TAB_PRESENCE.items():
+        leaves[title]["spec"]["conditionalRendering"] = b._cond(present=present)
+
+    overview = leaves.pop("Overview")
+    b.tabs = [overview]
+    for group_title, leaf_titles in TAB_GROUPS:
+        # A parent containing only optional features must disappear with its
+        # children. Otherwise Grafana leaves an empty top-level domain visible.
+        # Domains with at least one core leaf stay unconditional.
+        parent_presence = []
+        if all(title in OPTIONAL_TAB_PRESENCE for title in leaf_titles):
+            for title in leaf_titles:
+                presence = OPTIONAL_TAB_PRESENCE[title]
+                parent_presence.extend(
+                    [presence] if isinstance(presence, str) else presence
+                )
+        b.tab_group(
+            group_title,
+            [leaves.pop(title) for title in leaf_titles],
+            present=parent_presence or None,
+        )
+    if leaves:
+        raise ValueError(f"unassigned dashboard leaf tabs: {sorted(leaves)}")
 
 
 def register_subsystem_tabs(b: Builder):
@@ -300,7 +447,7 @@ def register_subsystem_tabs(b: Builder):
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
         "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
         "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events",
-        "zenarmor", "logs",
+        "zenarmor", "logs", "recording_rules",
     ]
     import importlib
     for mod in order:
@@ -318,8 +465,10 @@ def main():
     missing = coverage(b)
     total = len(load_catalogue())
     covered = total - len(missing)
+    leaf_names = leaf_tab_titles(b)
     print(f"coverage: {covered}/{total} catalogue metrics referenced "
-          f"({len(b.elements)} panels, {len(b.tabs)} tabs)", file=sys.stderr)
+          f"({len(b.elements)} panels, {len(b.tabs)} domains, {len(leaf_names)} feature tabs)",
+          file=sys.stderr)
     if missing:
         print(f"MISSING ({len(missing)}):", file=sys.stderr)
         for n in missing:
@@ -377,10 +526,11 @@ def main():
             json.dump(manifest, f, indent=2)
             f.write("\n")
         print(f"wrote {OUT}", file=sys.stderr)
-        tab_names = [t["spec"]["title"] for t in b.tabs]
+        top_level_tab_names = [t["spec"]["title"] for t in b.tabs]
         with open(STATS_PATH, "w") as f:
-            json.dump({"metrics": total, "panels": len(b.elements), "tabs": len(b.tabs),
-                       "tab_names": tab_names}, f, indent=2)
+            json.dump({"metrics": total, "panels": len(b.elements), "tabs": len(leaf_names),
+                       "tab_names": leaf_names, "top_level_tabs": len(b.tabs),
+                       "top_level_tab_names": top_level_tab_names}, f, indent=2)
             f.write("\n")
         print(f"wrote {STATS_PATH}", file=sys.stderr)
 
