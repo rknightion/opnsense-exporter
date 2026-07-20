@@ -26,6 +26,7 @@ type Status struct {
 	Skipped    []SkippedRow
 	Cache      []CacheRow
 	API        APIStats
+	Runtime    RuntimeStats
 	ScrapeAge  string // "Ns ago" style; "never" if no capture yet
 	Generated  time.Time
 }

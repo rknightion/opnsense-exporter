@@ -73,8 +73,9 @@ type DeviceRow struct {
 
 // Server owns the resolved Deps and serves the console's HTTP handlers.
 type Server struct {
-	deps   Deps
-	growth *growthSampler
+	deps    Deps
+	growth  *growthSampler
+	runtime *runtimeSampler
 }
 
 // growthSampleInterval is how often the cardinality growth ring samples the
@@ -87,14 +88,26 @@ const (
 // NewServer returns a console Server over the given dependencies. Background
 // growth sampling is not started until StartBackground is called (so tests that
 // build a Server don't spawn a goroutine).
-func NewServer(d Deps) *Server { return &Server{deps: d, growth: newGrowthSampler(growthRingSize)} }
+func NewServer(d Deps) *Server {
+	return &Server{
+		deps:    d,
+		growth:  newGrowthSampler(growthRingSize),
+		runtime: newRuntimeSampler(growthRingSize),
+	}
+}
 
-// StartBackground begins the cardinality growth sampler. Call once after
-// NewServer; pair with Close on shutdown.
-func (s *Server) StartBackground() { s.growth.start(s.deps.Metrics, growthSampleInterval) }
+// StartBackground begins the cardinality growth sampler and the runtime-stats
+// sampler. Call once after NewServer; pair with Close on shutdown.
+func (s *Server) StartBackground() {
+	s.growth.start(s.deps.Metrics, growthSampleInterval)
+	s.runtime.start(growthSampleInterval)
+}
 
 // Close stops background sampling.
-func (s *Server) Close() { s.growth.close() }
+func (s *Server) Close() {
+	s.growth.close()
+	s.runtime.close()
+}
 
 // routeRegistrars is the set of per-area route registration functions. Each
 // page-area file appends its registrar from an init(), so Handler() wires them
@@ -181,6 +194,7 @@ func (s *Server) snapshot() Status {
 		cache = s.deps.Cache()
 	}
 	st := buildStatus(stats, families, cache, s.serviceInfo(), s.deps.AllCollectorNames)
+	st.Runtime = s.runtime.stats()
 	st.Generated = time.Now()
 	if at.IsZero() {
 		st.ScrapeAge = "never"
