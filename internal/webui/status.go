@@ -24,11 +24,12 @@ type Status struct {
 	Stats      ExporterStats
 	Collectors []CollectorRow
 	Skipped    []SkippedRow
-	Cache      []CacheRow
-	API        APIStats
-	Runtime    RuntimeStats
-	ScrapeAge  string // "Ns ago" style; "never" if no capture yet
-	Generated  time.Time
+	Cache       []CacheRow
+	API         APIStats
+	Runtime     RuntimeStats
+	Cardinality CardinalityReport
+	ScrapeAge   string // "Ns ago" style; "never" if no capture yet
+	Generated   time.Time
 }
 
 // ServiceInfo is the identity/uptime header shown at the top of the console.

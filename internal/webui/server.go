@@ -195,6 +195,15 @@ func (s *Server) snapshot() Status {
 	}
 	st := buildStatus(stats, families, cache, s.serviceInfo(), s.deps.AllCollectorNames)
 	st.Runtime = s.runtime.stats()
+	// Fold the cardinality report from the SAME already-fetched families (single
+	// snapshot fetch) so the Cardinality tab refreshes with the poll. This is a
+	// pure, passive computation — no live API call. Config is deliberately NOT
+	// folded in here: EffectiveConfig re-reads secret files from disk, so it is
+	// rendered server-side once per page load (see handleStatus), not per poll.
+	card := buildCardinality(families, warnCardinality, critCardinality)
+	card.Generated = time.Now()
+	card.Growth = s.growth.rows()
+	st.Cardinality = card
 	st.Generated = time.Now()
 	if at.IsZero() {
 		st.ScrapeAge = "never"

@@ -57,6 +57,20 @@ func TestCollectorRow_StaleAndNeverRun(t *testing.T) {
 	}
 }
 
+func TestSnapshotCarriesCardinality(t *testing.T) {
+	srv := NewServer(cardinalityDeps(populatedMetrics()))
+	st := srv.snapshot()
+	if st.Cardinality.TotalSeries != 702 {
+		t.Errorf("Cardinality.TotalSeries=%d want 702 (2+700)", st.Cardinality.TotalSeries)
+	}
+	if len(st.Cardinality.TopMetrics) == 0 {
+		t.Errorf("Cardinality.TopMetrics empty; snapshot did not fold in cardinality")
+	}
+	if st.Cardinality.Generated.IsZero() {
+		t.Errorf("Cardinality.Generated not set")
+	}
+}
+
 func TestSuccessRate(t *testing.T) {
 	if got := successRate(0, 0); got != -1 {
 		t.Fatalf("never-run want -1, got %v", got)
