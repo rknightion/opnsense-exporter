@@ -65,6 +65,7 @@ var subsystems = map[string]string{
 	"sudo":            "auth",
 	"unbound":         "dns",
 	"dnsmasq":         "dns",
+	"dnsmasq-dhcp":    "dhcp",
 	"kea-dhcp4":       "dhcp",
 	"kea-dhcp6":       "dhcp",
 	"kea-ctrl-agent":  "dhcp",

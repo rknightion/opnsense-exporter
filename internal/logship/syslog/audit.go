@@ -45,6 +45,18 @@ var (
 	// configdRPC matches configd.py's RPC dispatch lines: a task UUID in brackets
 	// followed by the command text.
 	configdRPC = regexp.MustCompile(`^\s*\[([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\]\s+(\S.*)$`)
+
+	// configdActionNotFound matches configd.py rejecting a requested action that does
+	// not exist ("action wireguard.status not found for user root") — a UI or plugin
+	// polling an action a not-installed plugin does not register. A benign but common
+	// line, worth structuring as the not-found sibling of configdAuthorization.
+	configdActionNotFound = regexp.MustCompile(`^\s*action (\S+) not found for user (\S+)\s*$`)
+
+	// configdMessageResult matches a completed configd command:
+	// "message <uuid> [<command>] returned <result>". The result is often a large JSON
+	// blob (qfeeds stats); it is NOT stored as an attribute — the raw body keeps it —
+	// only a short clean status word (OK) is.
+	configdMessageResult = regexp.MustCompile(`^\s*message ([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}) \[([^\]]*)\] returned\s*(.*)$`)
 )
 
 func init() {
@@ -96,6 +108,34 @@ func parseAudit(env Envelope, _ *enrich.Snapshot, _ func(table string)) (logship
 		set("event", "configd_rpc")
 		set("configd.task_id", m[1])
 		set("configd.command", cmd)
+		return rec, true
+	}
+
+	if m := configdActionNotFound.FindStringSubmatch(msg); m != nil {
+		rec, set := newRecord(env)
+		set("event", "authorization")
+		set("audit.result", "not_found")
+		set("audit.action", m[1])
+		set("audit.user", m[2])
+		set("user.name", m[2]) // semconv: dual-emit the standard identity key
+		return rec, true
+	}
+
+	if m := configdMessageResult.FindStringSubmatch(msg); m != nil {
+		cmd := strings.TrimSpace(m[2])
+		if cmd == "" {
+			return logship.Record{}, false
+		}
+		rec, set := newRecord(env)
+		set("event", "configd_result")
+		set("configd.task_id", m[1])
+		set("configd.command", cmd)
+		// Store only a short, clean status word. A JSON/array blob (qfeeds stats) stays
+		// in the raw body rather than becoming a high-cardinality attribute.
+		if r := strings.TrimSpace(m[3]); r != "" && len(r) <= 32 &&
+			!strings.HasPrefix(r, "{") && !strings.HasPrefix(r, "[") {
+			set("configd.result", r)
+		}
 		return rec, true
 	}
 

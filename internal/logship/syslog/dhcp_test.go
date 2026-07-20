@@ -350,11 +350,8 @@ func TestParseDHCP_NotALeaseEvent(t *testing.T) {
 		msg     string
 	}{
 		{
-			name:    "kea COMMAND_RECEIVED is control plane",
-			program: "kea-dhcp6",
-			msg:     "INFO  [kea-dhcp6.commands.0x4f1907869010] COMMAND_RECEIVED Received command 'lease6-get-page'",
-		},
-		{
+			// COMMAND_RECEIVED is now structured (dhcp.kea_command) — see
+			// TestKeaDHCP6CommandReceived; this case checks a Kea id we still do NOT model.
 			name:    "kea message id we do not model",
 			program: "kea-dhcp4",
 			msg:     "DHCP4_STARTED Kea DHCPv4 server version 2.6.1 started",

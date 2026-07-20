@@ -29,7 +29,10 @@ import (
 // COMMAND_RECEIVED control-plane chatter, dnsmasq's DNS query log, dhcpd's
 // housekeeping. Those return ok=false and ship as generic records, verbatim.
 func init() {
-	RegisterParser(parseDHCP, "dhcpd", "dnsmasq", "kea-dhcp4", "kea-dhcp6", "dhcrelay")
+	// dnsmasq-dhcp is dnsmasq's DHCP-server program name (distinct from the DNS-side
+	// "dnsmasq"); its DHCPREQUEST/DHCPACK lines are the same wire shape dnsmasqLineRE
+	// already handles, so registering the name is the whole change.
+	RegisterParser(parseDHCP, "dhcpd", "dnsmasq", "dnsmasq-dhcp", "kea-dhcp4", "kea-dhcp6", "dhcrelay")
 }
 
 // iscActions is the allowlist of DHCP message types we normalise from the
@@ -61,6 +64,12 @@ var (
 	// interface is welded onto the action word in parentheses.
 	dnsmasqLineRE = regexp.MustCompile(`^(DHCP[A-Z]+)\(([^)]*)\)\s*(.*)$`)
 
+	// dnsmasqConflictRE matches dnsmasq refusing to register a DHCP client's requested
+	// name because a static host entry already claims it: "not giving name
+	// <name> to the DHCP lease of <ip> because the name exists in …". A real recurring
+	// naming misconfiguration, worth surfacing as a name_conflict event.
+	dnsmasqConflictRE = regexp.MustCompile(`^not giving name (\S+) to the DHCP lease of (\S+)`)
+
 	macRE = regexp.MustCompile(`^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$`)
 
 	// keaLevelRE / keaLoggerRE strip the optional leading level word and
@@ -69,6 +78,20 @@ var (
 	keaLoggerRE = regexp.MustCompile(`^\[[^\]]*\]\s+`)
 
 	keaMsgIDRE = regexp.MustCompile(`^DHCP[46]_LEASE_([A-Z]+)$`)
+	// keaPacketRE matches the DHCPv{4,6} packet-lifecycle message ids. Unlike a LEASE
+	// event they carry no assigned address (that comes later) — the signal is the
+	// client identity (DUID), the transaction id, and, on a received packet, the DHCP
+	// message type. The captured group is the event kind, lowercased into dhcp.kea_event.
+	keaPacketRE = regexp.MustCompile(`^DHCP[46]_(PACKET_RECEIVED|PACKET_SEND|QUERY_LABEL)$`)
+	// keaDUIDRE / keaTIDRE read the DHCPv6 client id and transaction id.
+	keaDUIDRE = regexp.MustCompile(`duid=\[([0-9a-fA-F:]+)]`)
+	keaTIDRE  = regexp.MustCompile(`tid=(0x[0-9a-fA-F]+)`)
+	// keaMsgTypeRE reads the DHCP message type a PACKET_RECEIVED line ends with
+	// ("…tid=0x…: RENEW"). SOLICIT/REQUEST/RENEW/RELEASE/CONFIRM/REBIND/DECLINE/…
+	keaMsgTypeRE = regexp.MustCompile(`:\s*([A-Z][A-Z0-9-]*)\s*$`)
+	// keaCommandRE reads the control-plane command out of a COMMAND_RECEIVED line
+	// ("Received command 'lease6-get-page'").
+	keaCommandRE = regexp.MustCompile(`command '([^']+)'`)
 	// keaHWRE takes the MAC only from an explicit "[hwtype=1 <mac>]" block. A
 	// DHCPv6 DUID is also colon-separated hex and a looser scan would happily
 	// slice its first six octets and call them a MAC.
@@ -80,7 +103,9 @@ var (
 	keaSecsRE = regexp.MustCompile(`\bfor (\d+) (?:s|secs?|seconds?)\b`)
 )
 
-// dhcpFields is the backend-independent shape all three parsers produce.
+// dhcpFields is the backend-independent shape all three parsers produce. The final
+// group (duid…keaEvent) is Kea-only: a DHCPv6 packet or control-plane event carries
+// no leased address, so those lines set these instead of ip/mac/action.
 type dhcpFields struct {
 	action       string
 	ip           string
@@ -89,6 +114,12 @@ type dhcpFields struct {
 	iface        string
 	serverIP     string
 	leaseSeconds string
+
+	duid        string // DHCPv6 client id (DUID)
+	tid         string // Kea transaction id (0x…)
+	messageType string // DHCP message type on a PACKET_RECEIVED line (RENEW, REQUEST, …)
+	keaCommand  string // control-plane command on a COMMAND_RECEIVED line
+	keaEvent    string // packet_received | command_received
 }
 
 // parseDHCP dispatches on the shape of the line, not on the program name: a box
@@ -110,6 +141,8 @@ func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 		ok bool
 	)
 	switch {
+	case dnsmasqConflictRE.MatchString(msg):
+		f, ok = parseDnsmasqConflict(msg)
 	case dnsmasqLineRE.MatchString(msg):
 		f, ok = parseDnsmasqDHCP(msg)
 	case isISCDHCPLine(msg):
@@ -129,6 +162,12 @@ func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	set("dhcp.server_ip", f.serverIP)
 	set("dhcp.lease_seconds", f.leaseSeconds)
 	set("interface", f.iface)
+	// Kea packet/control-plane fields (empty for a lease event, so set drops them).
+	set("dhcp.duid", f.duid)
+	set("dhcp.tid", f.tid)
+	set("dhcp.message_type", f.messageType)
+	set("dhcp.kea_command", f.keaCommand)
+	set("dhcp.kea_event", f.keaEvent)
 
 	if name, ok := ifaceName(snap, f.iface); ok {
 		set("interface.name", name)
@@ -286,9 +325,10 @@ func parseDnsmasqDHCP(msg string) (dhcpFields, bool) {
 // level word and a "[logger.0xPTR]" prefix; both are stripped before the message
 // id is read.
 //
-// Only the DHCP{4,6}_LEASE_* ids are lease events. COMMAND_RECEIVED and the rest
-// of Kea's control-plane chatter return ok=false and ship generic — an admin's
-// "lease6-get-page" API call is not a device joining the network.
+// Three shapes are structured: DHCP{4,6}_LEASE_* lease events (address/mac/lease),
+// DHCP{4,6}_PACKET_RECEIVED handshake packets (DUID + message type, no address yet),
+// and COMMAND_RECEIVED control-plane calls (the command name). Any other Kea id —
+// PACKET_SEND, QUERY_LABEL, and the rest — returns ok=false and ships generic.
 func parseKeaDHCP(msg string) (dhcpFields, bool) {
 	var f dhcpFields
 
@@ -296,28 +336,79 @@ func parseKeaDHCP(msg string) (dhcpFields, bool) {
 	s = keaLoggerRE.ReplaceAllString(s, "")
 
 	id, rest, _ := strings.Cut(s, " ")
-	m := keaMsgIDRE.FindStringSubmatch(id)
+
+	if m := keaMsgIDRE.FindStringSubmatch(id); m != nil {
+		action, ok := keaActions[m[1]]
+		if !ok {
+			return f, false
+		}
+		f.action = action
+
+		if hw := keaHWRE.FindStringSubmatch(rest); hw != nil {
+			f.mac = hw[1]
+		}
+		if lease := keaLeaseRE.FindStringSubmatch(rest); lease != nil && isIPAddr(lease[1]) {
+			f.ip = lease[1]
+		}
+		if secs := keaSecsRE.FindStringSubmatch(rest); secs != nil {
+			f.leaseSeconds = secs[1]
+		}
+
+		if f.ip == "" && f.mac == "" {
+			return dhcpFields{}, false
+		}
+		return f, true
+	}
+
+	// A DHCPv6 packet-lifecycle event: the client handshake
+	// (SOLICIT/REQUEST/RENEW/RELEASE/…), identified by DUID rather than an address the
+	// box has not assigned yet. Received packets carry the message type; sends and
+	// query-labels carry only DUID/tid.
+	if pm := keaPacketRE.FindStringSubmatch(id); pm != nil {
+		f.keaEvent = strings.ToLower(pm[1]) // packet_received | packet_send | query_label
+		if d := keaDUIDRE.FindStringSubmatch(rest); d != nil {
+			f.duid = d[1]
+		}
+		if t := keaTIDRE.FindStringSubmatch(rest); t != nil {
+			f.tid = t[1]
+		}
+		if mt := keaMsgTypeRE.FindStringSubmatch(rest); mt != nil {
+			f.messageType = mt[1]
+		}
+		// Only a genuine packet event, not an empty shell: it must name at least the
+		// client or the message type, else ship it generic.
+		if f.duid == "" && f.messageType == "" {
+			return dhcpFields{}, false
+		}
+		return f, true
+	}
+
+	// Control-plane command. On this box the bulk of these are the exporter's own
+	// lease polling (lease6-get-page, config-get) reflected back; structuring them
+	// labels that volume as control-plane so it is filterable, rather than leaving it
+	// an opaque unparsed line.
+	if id == "COMMAND_RECEIVED" {
+		if c := keaCommandRE.FindStringSubmatch(rest); c != nil {
+			f.keaEvent = "command_received"
+			f.keaCommand = c[1]
+			return f, true
+		}
+	}
+
+	return f, false
+}
+
+// parseDnsmasqConflict structures dnsmasq's "not giving name … to the DHCP lease of
+// …" warning: the client asked for a name a static host entry already owns. The
+// rejected name and the lease address are what an operator needs to find and fix it.
+func parseDnsmasqConflict(msg string) (dhcpFields, bool) {
+	m := dnsmasqConflictRE.FindStringSubmatch(msg)
 	if m == nil {
-		return f, false
-	}
-	action, ok := keaActions[m[1]]
-	if !ok {
-		return f, false
-	}
-	f.action = action
-
-	if hw := keaHWRE.FindStringSubmatch(rest); hw != nil {
-		f.mac = hw[1]
-	}
-	if lease := keaLeaseRE.FindStringSubmatch(rest); lease != nil && isIPAddr(lease[1]) {
-		f.ip = lease[1]
-	}
-	if secs := keaSecsRE.FindStringSubmatch(rest); secs != nil {
-		f.leaseSeconds = secs[1]
-	}
-
-	if f.ip == "" && f.mac == "" {
 		return dhcpFields{}, false
+	}
+	f := dhcpFields{action: "name_conflict", hostname: m[1]}
+	if isIPAddr(m[2]) {
+		f.ip = m[2]
 	}
 	return f, true
 }
