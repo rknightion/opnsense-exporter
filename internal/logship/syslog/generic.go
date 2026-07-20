@@ -23,17 +23,27 @@ import (
 //     message (see enrichgeneric.go). Structured parsers that already resolved
 //     their own positional addresses (filterlog's src/dst) skip this.
 func BuildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) logship.Record {
+	rec, _ := buildRecord(env, snap, miss)
+	return rec
+}
+
+// buildRecord is BuildRecord plus a `parsed` flag: false when the line fell to a
+// generic record because its program has no registered parser OR its parser could
+// not make sense of the line. The debug-capture path uses it to recognise a line
+// the receiver does not model (#330); a false here is exactly a "we saw something we
+// cannot parse" signal.
+func buildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) (logship.Record, bool) {
 	if p, ok := parserFor(env.Program); ok {
 		if rec, ok := p(env, snap, miss); ok {
 			addCommon(&rec, env, snap, false)
-			return rec
+			return rec, true
 		}
 		// A line the parser could not make sense of degrades to generic, carrying the
 		// raw body -- never a drop.
 	}
 	rec := genericRecord(env)
 	addCommon(&rec, env, snap, true)
-	return rec
+	return rec, false
 }
 
 // addCommon adds the attributes every record gets regardless of how it was parsed.

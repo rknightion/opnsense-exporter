@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
@@ -77,6 +78,9 @@ type source struct {
 	sample bool
 	// sampledAttr stamps sampled="true" on shipped lines while sample is on.
 	sampledAttr bool
+	// cap is the debug-capture sink, or nil when this receiver did not opt in. A nil
+	// *capture.Capturer is a no-op, so it is called unconditionally.
+	cap *capture.Capturer
 
 	// ports holds the receiver's bound listen ports (UDP/TCP/TLS), parsed from the
 	// configured addresses in newSource. Passed to proc.Process for self-traffic
@@ -134,6 +138,10 @@ func newSource(cfg *options.SyslogConfig, d logship.Deps) *source {
 		sample:      cfg.Sample,
 		sampledAttr: cfg.SampledAttr,
 	}
+	// The shared sink arrives via Deps; it is used only when this receiver opted in.
+	if cfg.DebugCapture {
+		s.cap = d.DebugCapture
+	}
 	for _, addr := range []string{cfg.UDPAddr, cfg.TCPAddr, cfg.TLSAddr} {
 		if port, ok := portOf(addr); ok {
 			s.ports = append(s.ports, port)
@@ -189,6 +197,12 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 		// A receiver that silently discards what it cannot understand is worse than
 		// useless — it looks healthy while losing data.
 		s.m.ParseError("envelope")
+		if s.cap != nil {
+			s.cap.Capture(sourceName, capture.KindUnparsed, map[string]any{
+				"parse_error": "envelope",
+				"raw":         string(line),
+			})
+		}
 		emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
 		return
 	}
@@ -206,7 +220,19 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 		s.m.Reject("filtered")
 		return
 	}
-	rec := BuildRecord(env, s.cache.Load(), s.miss)
+	rec, parsed := buildRecord(env, s.cache.Load(), s.miss)
+	if !parsed && s.cap != nil {
+		// A line whose program has no parser, or whose parser could not match it: exactly
+		// the "signal we do not model" the debug capture exists to surface. Captured
+		// BEFORE any sample drop so nothing an operator might want to model is lost.
+		s.cap.Capture(sourceName, capture.KindUnparsed, map[string]any{
+			"program":   env.Program,
+			"subsystem": subsystemFor(env.Program),
+			"severity":  env.Severity,
+			"message":   env.Message,
+			"raw":       string(line),
+		})
+	}
 
 	// Derive Prometheus counters from the parsed record (#258). counted reports
 	// whether we actually incremented a counter for this line — it gates sampling so a

@@ -106,6 +106,13 @@ var (
 			"totals. On by default; only takes effect when --logs.syslog.sample is set.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_SAMPLED_ATTRIBUTE").Default("true").Bool()
 
+	logsSyslogDebugCapture = kingpin.Flag(
+		"logs.syslog.debug-capture",
+		"Dump syslog lines this receiver cannot parse (unknown program, no matching parser, or an "+
+			"unparseable envelope) to --logs.debug-capture.dir for inspection. Requires "+
+			"--logs.debug-capture.dir. Additive — these lines still ship as generic records.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_DEBUG_CAPTURE").Default("false").Bool()
+
 	// TLS is a third listener feeding the same handler. For most users the firewall
 	// link is LAN-local and TLS is unnecessary; it matters when shipping across an
 	// untrusted segment, and client-cert verification is the only real sender
@@ -152,6 +159,9 @@ type SyslogConfig struct {
 	Sample bool
 	// SampledAttr stamps sampled="true" on shipped lines while Sample is on.
 	SampledAttr bool
+	// DebugCapture opts this receiver into the shared debug-capture sink
+	// (--logs.debug-capture.dir). Validated against that dir being set.
+	DebugCapture bool
 }
 
 // severityNames maps RFC5424 severity keywords to their numeric level. LOWER IS
@@ -180,13 +190,20 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		return nil, false, nil
 	}
 	cfg := &SyslogConfig{
-		UDPAddr:     strings.TrimSpace(*logsSyslogListenUDP),
-		TCPAddr:     strings.TrimSpace(*logsSyslogListenTCP),
-		TLSAddr:     strings.TrimSpace(*logsSyslogListenTLS),
-		MaxConns:    *logsSyslogMaxConns,
-		Enrich:      *logsSyslogEnrich,
-		Sample:      *logsSyslogSample,
-		SampledAttr: *logsSyslogSampledAttr,
+		UDPAddr:      strings.TrimSpace(*logsSyslogListenUDP),
+		TCPAddr:      strings.TrimSpace(*logsSyslogListenTCP),
+		TLSAddr:      strings.TrimSpace(*logsSyslogListenTLS),
+		MaxConns:     *logsSyslogMaxConns,
+		Enrich:       *logsSyslogEnrich,
+		Sample:       *logsSyslogSample,
+		SampledAttr:  *logsSyslogSampledAttr,
+		DebugCapture: *logsSyslogDebugCapture,
+	}
+
+	if cfg.DebugCapture && !LogsDebugCaptureEnabled() {
+		return nil, false, fmt.Errorf(
+			"logs.syslog: --logs.syslog.debug-capture needs a capture directory: set " +
+				"--logs.debug-capture.dir (otherwise capture is on but writes nowhere)")
 	}
 	tlsConfig, err := buildSyslogServerTLS(
 		cfg.TLSAddr,

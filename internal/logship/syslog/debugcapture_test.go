@@ -1,0 +1,115 @@
+package syslog
+
+import (
+	"bufio"
+	"encoding/json"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
+	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+)
+
+func readSyslogCaptures(t *testing.T, dir string) []map[string]any {
+	t.Helper()
+	rdir := filepath.Join(dir, capture.ReceiverSyslog)
+	entries, err := os.ReadDir(rdir)
+	if err != nil {
+		return nil
+	}
+	var out []map[string]any
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".ndjson") {
+			continue
+		}
+		f, err := os.Open(filepath.Join(rdir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc := bufio.NewScanner(f)
+		sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
+		for sc.Scan() {
+			if strings.TrimSpace(sc.Text()) == "" {
+				continue
+			}
+			var m map[string]any
+			if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
+				t.Fatalf("bad ndjson: %v", err)
+			}
+			out = append(out, m)
+		}
+		f.Close()
+	}
+	return out
+}
+
+func newCaptureSource(t *testing.T, cap *capture.Capturer) *source {
+	t.Helper()
+	return &source{
+		cache:  enrich.NewCache(),
+		m:      logship.NewReceiverMetrics(prometheus.NewRegistry(), sourceName, logship.ReceiverVocab{Reasons: RejectReasons, Stages: ParseStages}),
+		filter: NewFilter(nil, nil, 0, false),
+		sink:   logship.NopMetricSink{},
+		cap:    cap,
+	}
+}
+
+// TestUnparsedLineCaptured: a line whose program has no registered parser is
+// captured as unparsed (with program + raw line) AND still ships.
+func TestUnparsedLineCaptured(t *testing.T) {
+	dir := t.TempDir()
+	cap, err := capture.New(capture.Config{Dir: dir, MaxBytes: 8 << 20}, prometheus.NewRegistry(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := newCaptureSource(t, cap)
+	shipped := 0
+	s.emit = func(logship.Record) { shipped++ }
+
+	line := []byte(`<134>1 2026-07-14T19:50:01+01:00 opnsense mystery-plugin 42 - - something happened`)
+	s.handle(line, netip.MustParseAddr("10.0.0.1"))
+
+	if err := cap.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs := readSyslogCaptures(t, dir)
+	if len(recs) != 1 || recs[0]["kind"] != capture.KindUnparsed {
+		t.Fatalf("unparsed line not captured: %+v", recs)
+	}
+	if recs[0]["program"] != "mystery-plugin" {
+		t.Fatalf("program not captured: %+v", recs[0])
+	}
+	if raw, _ := recs[0]["raw"].(string); !strings.Contains(raw, "something happened") {
+		t.Fatalf("raw line not captured: %+v", recs[0])
+	}
+	if shipped != 1 {
+		t.Fatalf("unparsed line must still ship; shipped = %d", shipped)
+	}
+}
+
+// TestKnownProgramNotCaptured: a line a parser handles (unbound) is NOT captured —
+// only unmodelled signals are.
+func TestKnownProgramNotCaptured(t *testing.T) {
+	dir := t.TempDir()
+	cap, err := capture.New(capture.Config{Dir: dir, MaxBytes: 8 << 20}, prometheus.NewRegistry(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newCaptureSource(t, cap)
+	s.emit = func(logship.Record) {}
+
+	// sshd IS a registered syslog parser, and this message matches its shape.
+	line := []byte(`<38>1 2026-07-14T19:50:01+01:00 opnsense sshd 42 - - Accepted password for root from 10.0.0.6 port 34776 ssh2`)
+	s.handle(line, netip.MustParseAddr("10.0.0.1"))
+
+	_ = cap.Close()
+	if recs := readSyslogCaptures(t, dir); len(recs) != 0 {
+		t.Fatalf("a parsed line must not be captured: %+v", recs)
+	}
+}

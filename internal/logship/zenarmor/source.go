@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	"github.com/rknightion/opnsense-exporter/internal/logship/syslog"
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -106,6 +107,7 @@ func loadConfig() (Config, bool, error) {
 		AuthPassword:    oc.AuthPassword,
 		TLSConfig:       oc.TLSConfig,
 		DropSelfTraffic: oc.DropSelfTraffic,
+		DebugCapture:    oc.DebugCapture,
 	}, true, nil
 }
 
@@ -152,6 +154,8 @@ type docProcessor struct {
 	sink     logship.MetricSink
 	m        *metrics
 	families map[string]bool // nil = all
+	// cap is the debug-capture sink, or nil when this receiver did not opt in.
+	cap *capture.Capturer
 }
 
 // newDocProcessor builds the shared processor: metrics are registered and the
@@ -168,12 +172,18 @@ func newDocProcessor(d logship.Deps, cfg Config) *docProcessor {
 	if sink == nil {
 		sink = logship.NopMetricSink{}
 	}
+	// The shared sink arrives via Deps; it is used only when this receiver opted in.
+	var cp *capture.Capturer
+	if cfg.DebugCapture {
+		cp = d.DebugCapture
+	}
 	return &docProcessor{
 		cfg:      cfg,
 		cache:    cache,
 		sink:     sink,
 		m:        newMetrics(d.Registerer, cfg.Excludes),
 		families: familyAllowSet(cfg.Families),
+		cap:      cp,
 	}
 }
 
@@ -201,6 +211,13 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	if !parsed {
 		// Counted, never dropped: the record ships below with its raw body.
 		p.m.parseError("document")
+		if p.cap != nil {
+			p.cap.Capture(sourceName, capture.KindParseError, map[string]any{
+				"family": family,
+				"peer":   peerString(peer),
+				"doc":    doc, // copied by Capture; safe to pass the request-owned slice
+			})
+		}
 	}
 
 	// Before observeDerived, deliberately: a record about our own ingest connection
@@ -241,8 +258,10 @@ func newSource(d logship.Deps, cfg Config) (*zenarmorSource, error) {
 	}
 	s.ln = ln
 	s.listenPorts = []int{listenPortOf(ln.Addr().String())}
+	srv := newServer(cfg, s.handleDoc, s.proc.m, d.Logger)
+	srv.cap = s.proc.cap // same sink the processor uses; nil unless this receiver opted in
 	s.srv = &http.Server{
-		Handler:           newServer(cfg, s.handleDoc, s.proc.m, d.Logger),
+		Handler:           srv,
 		TLSConfig:         cfg.TLSConfig,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -299,9 +318,25 @@ func (s *zenarmorSource) handleDoc(index string, doc []byte, peer netip.Addr) {
 	family := familyFor(index) // ES index-name form (zenarmor_..._conn_write)
 	if family == "" {
 		s.proc.m.reject("unknown_family")
+		if s.proc.cap != nil {
+			s.proc.cap.Capture(sourceName, capture.KindUnknownFamily, map[string]any{
+				"index": index,
+				"peer":  peerString(peer),
+				"doc":   doc, // copied by Capture; safe to pass the request-owned slice
+			})
+		}
 		return
 	}
 	s.proc.process(family, doc, peer, s.listenPorts, emit)
+}
+
+// peerString renders a sender address for a capture record, empty for the zero Addr
+// (RemoteAddr could not be parsed — never a guess).
+func peerString(peer netip.Addr) string {
+	if !peer.IsValid() {
+		return ""
+	}
+	return peer.String()
 }
 
 // familyAllowSet resolves the configured family list into the set to ship; nil means

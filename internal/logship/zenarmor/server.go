@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 )
 
 const (
@@ -86,6 +87,9 @@ type Config struct {
 	AuthPassword string
 	// TLSConfig, when non-nil, serves HTTPS instead of HTTP.
 	TLSConfig *tls.Config
+	// DebugCapture opts this receiver into the shared debug-capture sink (#330). The
+	// sink itself arrives via Deps; this bool is what gates whether it is used.
+	DebugCapture bool
 }
 
 // unhandledLogInterval throttles the unhandled-endpoint log per method+path. It is
@@ -108,6 +112,9 @@ type server struct {
 	onBulk func(index string, doc []byte, peer netip.Addr)
 	m      *metrics
 	log    *slog.Logger
+	// cap is the debug-capture sink, or nil when this receiver did not opt in. A nil
+	// *capture.Capturer is a no-op, so it is called unconditionally.
+	cap *capture.Capturer
 	// unhandledLog throttles the per-route log below, keyed by method+path.
 	unhandledLog *logship.LogLimiter
 
@@ -123,7 +130,10 @@ type server struct {
 // peer is the sender's real address, which is what lets the receiver recognise a
 // record describing its own ingest connection (see self.go). It is the zero Addr if
 // RemoteAddr cannot be parsed — never a guess.
-func newServer(cfg Config, onBulk func(index string, doc []byte, peer netip.Addr), m *metrics, log *slog.Logger) http.Handler {
+// newServer returns *server (not http.Handler) so a caller can set optional fields
+// like cap after construction; *server implements http.Handler, so existing callers
+// that use it as a handler are unaffected.
+func newServer(cfg Config, onBulk func(index string, doc []byte, peer netip.Addr), m *metrics, log *slog.Logger) *server {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -264,13 +274,64 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request, path string
 // operator log noise, never the rate.
 func (s *server) unhandled(w http.ResponseWriter, r *http.Request, path string) {
 	s.m.reject("unhandled_endpoint")
-	// Keyed on method+path so a newly-appearing route is reported promptly rather than
-	// inheriting the throttle of one already being suppressed.
-	if s.unhandledLog.Allow(r.Method + " " + path) {
+	// When debug-capture is on, the capture file carries this signal in full (method,
+	// path, headers, body) — so the WARN is redundant noise and is suppressed. The
+	// counter still fires either way, so the rate is never lost.
+	if s.cap != nil {
+		s.captureUnhandled(r, path)
+	} else if s.unhandledLog.Allow(r.Method + " " + path) {
+		// Keyed on method+path so a newly-appearing route is reported promptly rather than
+		// inheriting the throttle of one already being suppressed.
 		s.log.Warn("zenarmor called an endpoint this receiver does not implement (answered 200 {}; repeats throttled)",
 			"method", r.Method, "path", path, "source", sourceName)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{})
+}
+
+// captureBodyLimit bounds the body captured for an unhandled request. Generous for
+// the control-plane calls seen in practice (GETs with no body) yet small enough that
+// a hostile peer cannot make a debug dump expensive.
+const captureBodyLimit = 64 << 10
+
+// captureUnhandled dumps an unhandled request to the debug-capture sink: method,
+// path, query, headers, and a bounded, gzip-decoded body. It reads the body here,
+// which is safe precisely because unhandled is terminal — nothing else consumes it.
+func (s *server) captureUnhandled(r *http.Request, path string) {
+	fields := map[string]any{
+		"method":  r.Method,
+		"path":    path,
+		"headers": map[string][]string(r.Header),
+	}
+	if r.URL.RawQuery != "" {
+		fields["query"] = r.URL.RawQuery
+	}
+	if body := readCapturedBody(r); body != "" {
+		fields["body"] = body
+	}
+	s.cap.Capture(sourceName, capture.KindUnhandledEndpoint, fields)
+}
+
+// readCapturedBody reads up to captureBodyLimit bytes of the request body,
+// transparently decompressing gzip, and returns it as a string. It never errors:
+// this is a best-effort debug read, and a body it cannot read is simply omitted.
+func readCapturedBody(r *http.Request) string {
+	if r.Body == nil {
+		return ""
+	}
+	rdr := io.LimitReader(r.Body, captureBodyLimit)
+	if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
+		zr, err := gzip.NewReader(rdr)
+		if err != nil {
+			return ""
+		}
+		defer func() { _ = zr.Close() }()
+		rdr = io.LimitReader(zr, captureBodyLimit)
+	}
+	b, err := io.ReadAll(rdr)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func isBulkPath(path string) bool {

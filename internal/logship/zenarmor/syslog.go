@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/syslog"
 )
 
@@ -62,6 +63,13 @@ func (s *syslogProcessor) Process(env syslog.Envelope, peer netip.Addr, ports []
 	family := indexFamilies[fam]
 	if family == "" {
 		s.proc.m.reject("unknown_family")
+		if s.proc.cap != nil {
+			s.proc.cap.Capture(sourceName, capture.KindUnknownFamily, map[string]any{
+				"family_token": fam,
+				"peer":         peerString(peer),
+				"doc":          []byte(data), // copied by Capture
+			})
+		}
 		return true // recognised as Zenarmor, but a family we don't model — counted, dropped
 	}
 	// Self-traffic over syslog is the box->exporter:syslogport flow Zenarmor reports,

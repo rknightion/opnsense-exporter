@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -100,6 +101,11 @@ type Deps struct {
 	// programs (#258). It is nil when metric derivation is disabled (the
 	// log_events collector is off); the receiver substitutes a NopMetricSink.
 	MetricSink MetricSink
+	// DebugCapture is the shared debug-capture sink (#330), or nil when
+	// --logs.debug-capture.dir is unset. A receiver uses it only when its own
+	// --logs.<recv>.debug-capture is on; a nil *capture.Capturer is a safe no-op, so
+	// receivers may hold and call it unconditionally.
+	DebugCapture *capture.Capturer
 }
 
 // SourceFactory builds a Source from shared dependencies, or returns (nil, nil)

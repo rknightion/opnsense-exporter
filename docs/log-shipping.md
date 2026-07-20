@@ -323,6 +323,71 @@ Stated honestly, because this pipeline is pull-based over a lossy source:
 - **One logs-enabled instance per firewall:** running multiple logs-enabled
   replicas against the same firewall double-ships.
 
+## Debug capture
+
+When a receiver reports a signal the exporter does not model — a Zenarmor
+Elasticsearch endpoint it does not implement, a document whose family or shape it
+does not recognise, a syslog line from a program with no parser — that signal is
+counted but its payload is not kept. Debug capture is an opt-in escape hatch that
+dumps those unmodelled payloads to disk as NDJSON, so you can see the real data and
+decide to model it or drop it without a packet capture on a multi-GB/day stream.
+
+It captures **only** signals the exporter does not already handle — never the
+parsed, shipped stream:
+
+| Receiver | Captured `kind` | What it is |
+| --- | --- | --- |
+| `zenarmor` | `unhandled_endpoint` | an ES route the receiver does not implement (method, path, headers, bounded body) |
+| `zenarmor` | `unknown_family` | a bulk document addressed to an index whose family is not recognised |
+| `zenarmor` | `parse_error` | a document that would not parse (still shipped with its raw body) |
+| `syslog` | `unparsed` | a line whose program has no parser, whose parser did not match, or whose envelope would not parse (still shipped as a generic record) |
+
+Enable it with a shared directory plus a per-receiver toggle:
+
+| Flag | Env | Default |
+| --- | --- | --- |
+| `--logs.debug-capture.dir` | `OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_DIR` | *(empty — off)* |
+| `--logs.debug-capture.max-bytes` | `OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_MAX_BYTES` | `256MiB` |
+| `--logs.zenarmor.debug-capture` | `OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE` | `false` |
+| `--logs.syslog.debug-capture` | `OPNSENSE_EXPORTER_LOGS_SYSLOG_DEBUG_CAPTURE` | `false` |
+
+A per-receiver toggle with no `--logs.debug-capture.dir` set is a startup error — it
+would read as "on" but write nowhere. When Zenarmor capture is on, the receiver's
+"unhandled endpoint" warning is suppressed (the capture file carries the same
+signal); the `logs_rejected_total{reason="unhandled_endpoint"}` counter still fires,
+so the rate is never lost.
+
+Files land as `<dir>/<receiver>/capture-NNN.ndjson`, rotating at 32 MiB. The
+`--logs.debug-capture.max-bytes` cap governs the **whole** directory, counting bytes
+left by previous runs: when it is reached capture **stops and keeps the oldest
+samples** (the first time an unknown appears is the sample worth having) — it never
+deletes to make room, so a debug capture can never fill the disk. Capture writes are
+best-effort and never block ingest: if the disk cannot keep up, entries are dropped
+and counted rather than stalling a receiver.
+
+**The capture files carry real network data** — client addresses, DNS queries, TLS
+SNI, HTTP hosts — so they are written `0600` and should be treated as sensitive.
+Point the directory at a writable bind mount and remove the captures once you are
+done with them. For the containerised exporter (runs as UID/GID `65532` nonroot):
+
+```yaml
+# docker-compose.yml
+services:
+  opnsense-exporter:
+    volumes:
+      - ./capture:/capture
+    environment:
+      OPNSENSE_EXPORTER_LOGS_DEBUG_CAPTURE_DIR: /capture
+      OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE: "true"
+```
+
+```bash
+mkdir -p ./capture && sudo chown 65532:65532 ./capture   # match the nonroot container user
+```
+
+Watch capture activity with `logs_debug_captured_total{receiver,kind}` and
+`logs_debug_capture_dropped_total{receiver,reason}` (see [Self-metrics](#self-metrics)).
+
 ## Configuration
 
 The pipeline flags are listed in the [Configuration reference](configuration.md);
@@ -364,6 +429,13 @@ The pipeline exposes its own health metrics (visible at `/metrics` and on the
 - `opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds{table}` — when each
   lookup table last refreshed successfully. Alert on
   `time() - ...` to catch a silently-stale cache.
+- `opnsense_exporter_logs_debug_captured_total{receiver,kind}` — unmodelled signals
+  written to the debug-capture dir (see [Debug capture](#debug-capture)). Zero unless
+  capture is enabled.
+- `opnsense_exporter_logs_debug_capture_dropped_total{receiver,reason}` — capture
+  entries dropped rather than written: `reason=buffer_full` (disk could not keep up),
+  `reason=cap_reached` (`--logs.debug-capture.max-bytes` hit; capture paused),
+  `reason=write_error`.
 
 ## See also
 

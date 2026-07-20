@@ -118,6 +118,14 @@ var (
 		"PEM private key for --logs.zenarmor.tls-cert-file.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_TLS_KEY_FILE").Default("").String()
 
+	logsZenarmorDebugCapture = kingpin.Flag(
+		"logs.zenarmor.debug-capture",
+		"Dump Zenarmor signals this receiver does not model (unhandled Elasticsearch endpoints, "+
+			"unknown families, documents that would not parse) to --logs.debug-capture.dir for "+
+			"inspection. Requires --logs.debug-capture.dir. While on, the unhandled-endpoint warning "+
+			"is suppressed — the capture file carries the same signal.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE").Default("false").Bool()
+
 	logsZenarmorTransport = kingpin.Flag(
 		"logs.zenarmor.transport",
 		"How Zenarmor delivers its reporting data: 'elasticsearch' (default) runs the "+
@@ -146,6 +154,9 @@ type ZenarmorConfig struct {
 	AuthPassword    string
 	TLSConfig       *tls.Config
 	DropSelfTraffic bool
+	// DebugCapture opts this receiver into the shared debug-capture sink
+	// (--logs.debug-capture.dir). Validated against that dir being set.
+	DebugCapture bool
 }
 
 // LogsZenarmorEnabled reports whether the receiver is switched on, without
@@ -191,6 +202,13 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 		AuthPassword:    *logsZenarmorAuthPassword,
 		DropSelfTraffic: *logsZenarmorDropSelfTraffic,
 		Excludes:        *logsZenarmorExclude,
+		DebugCapture:    *logsZenarmorDebugCapture,
+	}
+
+	if cfg.DebugCapture && !LogsDebugCaptureEnabled() {
+		return nil, false, fmt.Errorf(
+			"logs.zenarmor: --logs.zenarmor.debug-capture needs a capture directory: set " +
+				"--logs.debug-capture.dir (otherwise capture is on but writes nowhere)")
 	}
 
 	transport := LogsZenarmorTransport()

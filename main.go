@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog"   // registers the syslog push source
 	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor" // registers the zenarmor push source
@@ -645,6 +646,26 @@ func main() {
 		if collectorsSwitches.LogEvents {
 			deps.MetricSink = collector.LogEvents
 		}
+		// Debug-capture sink (#330): shared across receivers, constructed once when
+		// --logs.debug-capture.dir is set. A per-receiver --logs.<recv>.debug-capture is
+		// what actually routes signals into it; a receiver that did not opt in never
+		// touches it. A construction failure (unwritable dir) is fatal — the operator
+		// asked for capture and must know it is not happening.
+		var debugCapturer *capture.Capturer
+		if options.LogsDebugCaptureEnabled() {
+			dc, cerr := capture.New(capture.Config{
+				Dir:      options.LogsDebugCaptureDir(),
+				MaxBytes: options.LogsDebugCaptureMaxBytes(),
+			}, selfMetricsRegistry, logger)
+			if cerr != nil {
+				logger.Error("invalid debug-capture configuration", "err", cerr)
+				os.Exit(1)
+			}
+			debugCapturer = dc
+			deps.DebugCapture = dc
+			logger.Info("debug capture enabled",
+				"dir", options.LogsDebugCaptureDir(), "max_bytes", options.LogsDebugCaptureMaxBytes())
+		}
 		syslogCfg, syslogEnabled, serr := options.LogsSyslog()
 		if serr != nil {
 			logger.Error("invalid syslog receiver configuration", "err", serr)
@@ -702,6 +723,12 @@ func main() {
 			// first would strand them.
 			if stopEnrich != nil {
 				stopEnrich()
+			}
+			// Flush and stop the debug-capture writer last: it is fed from the receiver
+			// goroutines the pipeline drain has just quiesced, so closing it now cannot
+			// drop an in-flight capture.
+			if debugCapturer != nil {
+				_ = debugCapturer.Close()
 			}
 		}
 	}
