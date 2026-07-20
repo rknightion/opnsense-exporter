@@ -41,7 +41,7 @@ var (
 
 	MaxScrapeDuration = kingpin.Flag(
 		"exporter.max-scrape-duration",
-		"Upper bound on a single collection when the caller supplies no deadline of its own (a header-less /metrics scrape or the OTLP-bridge periodic gather). Prevents a stalled/blackholed firewall from holding the shared collector lock unbounded and blacking out every concurrent deadline-bound scrape.",
+		"Upper bound on a single collector poll (#336). Since serving /metrics now replays an in-memory snapshot rather than calling the API, this bounds each background poll so a stalled/blackholed endpoint frees its poll-concurrency slot instead of holding it open. Serving itself is never blocked by it.",
 	).Envar("OPNSENSE_EXPORTER_MAX_SCRAPE_DURATION").Default("50s").Duration()
 
 	CollectorPollInterval = kingpin.Flag(
