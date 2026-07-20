@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -220,9 +221,30 @@ type Collector struct {
 	otlpGatherTimeout time.Duration
 
 	// statusTracker, when non-nil, passively records per-collector run history for
-	// the operator console. It is updated from execute() on every scrape and from
+	// the operator console. It is updated from pollOnce on every poll and from
 	// RunCollector; it never influences collection. Injected via WithStatusTracker.
 	statusTracker *StatusTracker
+
+	// --- internal poll scheduler (#336) ---
+	// store holds the latest poll result per collector; the serving path (collect)
+	// replays it instead of running collectors live on each scrape.
+	store *snapshotStore
+	// pollGlobal is the default poll interval for collectors that declare no tier;
+	// zero means IntervalMedium. Set via WithPollInterval.
+	pollGlobal time.Duration
+	// pollCancel / pollWG / pollSem are the scheduler lifecycle + concurrency cap,
+	// initialised by StartPolling.
+	pollCancel context.CancelFunc
+	pollWG     sync.WaitGroup
+	pollSem    chan struct{}
+	// unreachable is set by the health poller on a transport-level failure so
+	// collector pollers skip (retaining last-good) until the box recovers (#127).
+	unreachable atomic.Bool
+	// healthOK records whether the last health poll reached and parsed the box.
+	// emitHealth gates the non-isUp health gauges on it so that during an outage
+	// (or before the first poll) they stay ABSENT rather than emitting a misleading
+	// 0 — 0 is the WARNING status code, not "unknown". Guarded by mutex.
+	healthOK bool
 }
 
 // defaultMaxScrapeDuration is the fallback bound applied to a no-deadline collection
@@ -240,11 +262,21 @@ func WithMaxScrapeDuration(d time.Duration) Option {
 	}
 }
 
-// WithStatusTracker injects a StatusTracker so execute() and RunCollector record
+// WithStatusTracker injects a StatusTracker so pollOnce and RunCollector record
 // per-collector run history for the operator console.
 func WithStatusTracker(t *StatusTracker) Option {
 	return func(o *Collector) error {
 		o.statusTracker = t
+		return nil
+	}
+}
+
+// WithPollInterval sets the global default poll interval used by the internal poll
+// scheduler for collectors that declare no tier of their own (#336). Zero leaves the
+// built-in IntervalMedium default. The value is clamped to [IntervalFloor, IntervalCeil].
+func WithPollInterval(d time.Duration) Option {
+	return func(o *Collector) error {
+		o.pollGlobal = d
 		return nil
 	}
 }
@@ -924,6 +956,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		log:           log,
 		instanceLabel: instanceName,
 		collectors:    append([]CollectorInstance(nil), collectorInstances...),
+		store:         newSnapshotStore(),
 	}
 
 	for _, option := range options {
@@ -1148,109 +1181,12 @@ func (c *Collector) collectExporterInfo(ch chan<- prometheus.Metric) {
 	}
 }
 
-// collectHealthMetrics emits opnsense_up plus the per-subsystem health gauges.
-//
-// opnsense_up reflects API REACHABILITY only: 1 whenever the system-status endpoint
-// is reached and parsed, 0 only when the call itself fails (network error, auth
-// failure, HTTP error). A reachable box that self-reports a degraded subsystem (e.g.
-// a leftover crash report) stays up=1 — that state is surfaced via the lower-severity
-// opnsense_system_status_code and the per-subsystem opnsense_{firewall,crash_reporter}_status
-// gauges, NOT by flipping opnsense_up. This keeps the critical "exporter/box down"
-// page distinct from a benign degraded-subsystem notice. On the unreachable path the
-// per-subsystem and status-code gauges are left absent rather than emitting a
-// misleading 0 (0 is the WARNING status code, not "unknown").
-//
-// opnsense_system_subsystem_status_code (#218) generalizes this to EVERY subsystem the
-// health-check payload reports — not just firewall/crashreporter — including ones the
-// exporter has no dedicated gauge for (disk space, root lock, and the various plugin
-// "override" statuses). It is purely additive: the existing firewall/crashreporter
-// gauges stay for backwards compatibility. Zero extra API cost, since the payload is
-// already fetched.
-func (c *Collector) collectHealthMetrics(client *opnsense.Client, ch chan<- prometheus.Metric) error {
-	systemStatus, err := client.HealthCheck()
-	if err != nil {
-		c.isUp.Set(0)
-		c.isUp.Collect(ch)
-		return err
-	}
-
-	// Reachable and parsed: the box is "up" regardless of its rolled-up health.
-	c.isUp.Set(1)
-	c.systemStatusCode.Set(float64(systemStatus.GetMetadataSystemStatus()))
-
-	c.crashReporterStatus.Set(boolToGauge(systemStatus.CrashReporterIsHealthy()))
-	c.firewallHealthStatus.Set(boolToGauge(firewallIsHealthy(systemStatus)))
-
-	// Reset before repopulating: subsystems appear/disappear scrape to scrape (OPNsense
-	// omits healthy ones), so a stale label set from a previous unhealthy state must not
-	// linger once the subsystem recovers.
-	c.subsystemStatusCode.Reset()
-	for name, entry := range systemStatus.AllSubsystems() {
-		c.subsystemStatusCode.WithLabelValues(name).Set(float64(entry.ResolvedStatusCode()))
-	}
-
-	c.isUp.Collect(ch)
-	c.firewallHealthStatus.Collect(ch)
-	c.crashReporterStatus.Collect(ch)
-	c.systemStatusCode.Collect(ch)
-	c.subsystemStatusCode.Collect(ch)
-	return nil
-}
-
 // boolToGauge maps a health predicate to the 1 (ok) / 0 (problem) gauge convention.
 func boolToGauge(ok bool) float64 {
 	if ok {
 		return 1
 	}
 	return 0
-}
-
-// execute runs one sub-collector Update, records duration/success around it,
-// and shields the scrape from panics (node_exporter's per-collector pattern).
-func (c *Collector) execute(ctx context.Context, coll CollectorInstance, client *opnsense.Client, ch chan<- prometheus.Metric) {
-	begin := time.Now()
-	success := 1.0
-	var lastErr string
-	defer func() {
-		if r := recover(); r != nil {
-			c.log.Error(
-				"panic in collector goroutine; skipping",
-				"component", "collector",
-				"collector_name", coll.Name(),
-				"panic", fmt.Sprintf("%v", r),
-			)
-			// Label with a "panic:" sentinel, not a bare subsystem slug: the label's
-			// normal domain is api/* endpoint paths, and a slug masquerading as one
-			// misleads the endpoint-errors alert/dashboards. The sentinel can never
-			// collide with a Client.Endpoints() / APICallError.Endpoint value (#120).
-			c.endpointErrors.WithLabelValues("panic:"+coll.Name(), c.instanceLabel).Inc()
-			success = 0
-			lastErr = fmt.Sprintf("panic: %v", r)
-		}
-		ch <- prometheus.MustNewConstMetric(
-			c.scrapeDuration, prometheus.GaugeValue,
-			time.Since(begin).Seconds(), coll.Name(), c.instanceLabel,
-		)
-		ch <- prometheus.MustNewConstMetric(
-			c.scrapeSuccess, prometheus.GaugeValue,
-			success, coll.Name(), c.instanceLabel,
-		)
-		if c.statusTracker != nil {
-			c.statusTracker.Record(coll.Name(), begin, time.Since(begin).Seconds()*1000, success == 1, lastErr)
-		}
-	}()
-
-	if err := coll.Update(ctx, client, ch); err != nil {
-		c.log.Error(
-			"failed to update",
-			"component", "collector",
-			"collector_name", coll.Name(),
-			"err", err,
-		)
-		c.endpointErrors.WithLabelValues(err.Endpoint, c.instanceLabel).Inc()
-		success = 0
-		lastErr = err.Error()
-	}
 }
 
 // ErrUnknownCollector is returned by RunCollector when no enabled sub-collector
@@ -1347,102 +1283,47 @@ func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 	c.collectExporterInfo(ch)
 }
 
-// collect runs one scrape. include==nil selects every enabled collector; a
-// non-nil map (even an empty one) restricts the fan-out to the named
-// sub-collectors. The always-on metrics (up, health, build_info,
-// collector_enabled, scrape counters) are emitted regardless of filtering.
-func (c *Collector) collect(ctx context.Context, ch chan<- prometheus.Metric, include map[string]bool) {
-	// Apply a default deadline when the caller supplied none (a header-less /metrics
-	// scrape or a registry/OTLP gather with no derived timeout). Without this, a
-	// blackholed firewall makes each API call run its full ~45s retry budget and holds
-	// the shared mutex below for minutes, timing out every concurrent deadline-bound
-	// scrape. Bounding it here keeps the lock-hold — and thus the blast radius — finite
-	// (#128). A caller-supplied deadline (Prometheus scrape header, OTLP interval) wins.
-	if _, ok := ctx.Deadline(); !ok {
-		d := c.maxScrapeDuration
-		if d <= 0 {
-			d = defaultMaxScrapeDuration
+// collect serves one scrape by replaying the latest poll snapshot (#336). It makes
+// NO API call: the poll scheduler (StartPolling) keeps the snapshot fresh on each
+// collector's own interval, so serving is a pure memory read — no shared-mutex API
+// hold, no scrape deadline. include==nil replays every enabled collector; a non-nil
+// map (even an empty one) restricts the replay to the named sub-collectors. The
+// health gauges and always-on exporter metrics are emitted regardless of filtering.
+//
+// The ctx parameter is retained for the scrapeView/OTLP call sites but is unused now
+// that serving performs no cancellable work.
+func (c *Collector) collect(_ context.Context, ch chan<- prometheus.Metric, include map[string]bool) {
+	c.emitHealth(ch)
+
+	for _, coll := range c.collectors {
+		name := coll.Name()
+		if include != nil && !include[name] {
+			continue
 		}
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, d)
-		defer cancel()
-	}
-
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	// A scrape queued behind a slow one can acquire the lock after its own
-	// deadline expired. Fanning out every sub-collector against a dead context
-	// would error every endpoint (endpoint_errors_total spike, success=0 across
-	// the board — indistinguishable from a firewall outage), so emit only the
-	// always-on exporter metrics and bail.
-	if ctx.Err() != nil {
-		c.log.Warn("scrape deadline expired before collection started; skipping sub-collectors", "err", ctx.Err())
-		// Count this as a SKIP, not a completed scrape: incrementing scrapes_total here
-		// would make a deadline-expired bail indistinguishable from a real scrape and
-		// silently over-count relative to what Prometheus observed. scrapes_total is
-		// still Collected (unincremented) so it stays present at its completed count.
-		c.scrapeSkips.WithLabelValues(c.instanceLabel).Inc()
-		c.collectAlwaysOn(ch)
-		return
-	}
-
-	client := c.Client.WithContext(ctx)
-
-	if err := c.collectHealthMetrics(client, ch); err != nil {
-		// A transport-level health-check failure (StatusCode==0: DNS, connection
-		// refused, timeout, context abort) means the box is unreachable. Running the
-		// full ~49-collector fan-out would just repeat the same failing dials — a burst
-		// of doomed requests and (now Warn-level) log lines every scrape interval — with
-		// no new signal beyond opnsense_up=0, which collectHealthMetrics already emitted.
-		// Short-circuit: count the scrape, emit the always-on meta metrics, and skip the
-		// sub-collectors. A non-transport failure (a reachable box returning an HTTP
-		// error) still falls through so the sub-collectors run (#127).
-		var apiErr *opnsense.APICallError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 0 {
-			c.log.Warn(
-				"firewall unreachable (transport-level health-check failure); skipping sub-collectors this scrape",
-				"err", err,
+		e := c.store.entry(name)
+		for _, m := range e.metrics {
+			ch <- m
+		}
+		// Per-collector scrape meta reflects the last poll and is present once a
+		// collector has polled at least once (node_exporter's per-collector pattern).
+		if e.polled {
+			success := 0.0
+			if e.lastOK {
+				success = 1.0
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.scrapeDuration, prometheus.GaugeValue,
+				e.durationMs/1000.0, name, c.instanceLabel,
 			)
-			c.scrapes.WithLabelValues(c.instanceLabel).Inc()
-			c.collectAlwaysOn(ch)
-			return
+			ch <- prometheus.MustNewConstMetric(
+				c.scrapeSuccess, prometheus.GaugeValue,
+				success, name, c.instanceLabel,
+			)
 		}
-		c.log.Error(
-			"failed to fetch system health status; continuing with sub-collectors",
-			"err", err,
-		)
 	}
-
-	selected := c.selectedCollectors(include)
-
-	var wg sync.WaitGroup
-	wg.Add(len(selected))
-
-	for _, collector := range selected {
-		go func(coll CollectorInstance) {
-			defer wg.Done()
-			c.execute(ctx, coll, client, ch)
-		}(collector)
-	}
-	wg.Wait()
 
 	c.scrapes.WithLabelValues(c.instanceLabel).Inc()
 	c.collectAlwaysOn(ch)
-}
-
-// selectedCollectors returns the sub-collectors to run for this scrape.
-func (c *Collector) selectedCollectors(include map[string]bool) []CollectorInstance {
-	if include == nil {
-		return c.collectors
-	}
-	selected := make([]CollectorInstance, 0, len(include))
-	for _, coll := range c.collectors {
-		if include[coll.Name()] {
-			selected = append(selected, coll)
-		}
-	}
-	return selected
 }
 
 // EnabledCollectorNames returns the sorted subsystem names of the

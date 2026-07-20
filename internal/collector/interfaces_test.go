@@ -244,8 +244,9 @@ func TestInterfacesCollector_OverviewFailureSurfaced(t *testing.T) {
 	ic.Register(namespace, "test", promslog.NewNopLogger())
 
 	c := newScrapeTestCollector(t, client, ic)
+	c.pollOnce(context.Background(), ic) // partial success: base traffic ok, overview 500
 	ch := make(chan prometheus.Metric, 128)
-	c.execute(context.Background(), ic, client, ch)
+	c.collect(context.Background(), ch, nil)
 	close(ch)
 
 	var trafficSeen bool

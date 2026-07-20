@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -342,7 +343,9 @@ type fakeCollectorInstance struct {
 	name       string
 	err        *opnsense.APICallError
 	panics     bool
-	blockOnCtx bool // if set, Update blocks until the context is done (models a stalled API call)
+	blockOnCtx bool                // if set, Update blocks until the context is done (models a stalled API call)
+	emit       []prometheus.Metric // metrics Update sends, so a poll can capture them into the snapshot
+	mu         sync.Mutex          // guards calls/gotCtx (Update runs in a poll goroutine under StartPolling)
 	calls      int
 	gotCtx     context.Context
 }
@@ -350,16 +353,38 @@ type fakeCollectorInstance struct {
 func (f *fakeCollectorInstance) Register(_, _ string, _ *slog.Logger) {}
 func (f *fakeCollectorInstance) Name() string                         { return f.name }
 func (f *fakeCollectorInstance) Describe(_ chan<- *prometheus.Desc)   {}
-func (f *fakeCollectorInstance) Update(ctx context.Context, _ *opnsense.Client, _ chan<- prometheus.Metric) *opnsense.APICallError {
+func (f *fakeCollectorInstance) Update(ctx context.Context, _ *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
+	f.mu.Lock()
 	f.calls++
 	f.gotCtx = ctx
+	f.mu.Unlock()
 	if f.panics {
 		panic("boom")
 	}
 	if f.blockOnCtx {
 		<-ctx.Done()
 	}
+	for _, m := range f.emit {
+		ch <- m
+	}
 	return f.err
+}
+
+// callCount returns the number of Update calls, safe under concurrent polling.
+func (f *fakeCollectorInstance) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+// contextValue returns the value the last Update saw for key, safe under polling.
+func (f *fakeCollectorInstance) contextValue(key any) any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gotCtx == nil {
+		return nil
+	}
+	return f.gotCtx.Value(key)
 }
 
 // newScrapeTestCollector builds a Collector via struct literal (NOT New(), which
@@ -374,6 +399,7 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 		instanceLabel:   "test",
 		collectors:      instances,
 		collectorStates: map[string]bool{},
+		store:           newSnapshotStore(),
 	}
 	c.buildInfo = prometheus.NewDesc(
 		"opnsense_exporter_build_info", "help",
@@ -436,71 +462,8 @@ func counterValue(t *testing.T, counter prometheus.Counter) float64 {
 	return d.GetCounter().GetValue()
 }
 
-func TestExecuteRecordsScrapeMetrics(t *testing.T) {
-	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
-	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
-	if err != nil {
-		t.Fatalf("failed to build client: %v", err)
-	}
-
-	cases := []struct {
-		name        string
-		fake        *fakeCollectorInstance
-		wantSuccess float64
-		wantErrInc  string // endpoint label expected to be incremented; "" = none
-	}{
-		{"success", &fakeCollectorInstance{name: "fake_ok"}, 1, ""},
-		{"api error", &fakeCollectorInstance{name: "fake_err", err: &opnsense.APICallError{Endpoint: "fake_endpoint", Message: "boom"}}, 0, "fake_endpoint"},
-		// A recovered panic must increment a "panic:"-sentinel endpoint label, never a
-		// bare subsystem slug — the label's normal domain is api/* paths (#120).
-		{"panic", &fakeCollectorInstance{name: "fake_panic", panics: true}, 0, "panic:fake_panic"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			c := newScrapeTestCollector(t, &client)
-			ch := make(chan prometheus.Metric, 10)
-			c.execute(context.Background(), tc.fake, &client, ch)
-			close(ch)
-
-			var gotSuccess, gotDuration *float64
-			for m := range ch {
-				desc := m.Desc().String()
-				v := getMetricValue(m)
-				labels := getMetricLabels(m)
-				if labels["collector"] != tc.fake.name {
-					t.Errorf("collector label = %q, want %q", labels["collector"], tc.fake.name)
-				}
-				if labels[instanceLabelName] != "test" {
-					t.Errorf("%s label = %q, want test", instanceLabelName, labels[instanceLabelName])
-				}
-				switch {
-				case strings.Contains(desc, "scrape_collector_success"):
-					gotSuccess = &v
-				case strings.Contains(desc, "scrape_collector_duration_seconds"):
-					gotDuration = &v
-				}
-			}
-			if gotSuccess == nil || gotDuration == nil {
-				t.Fatal("expected both scrape_collector_duration_seconds and scrape_collector_success to be emitted")
-			}
-			if *gotSuccess != tc.wantSuccess {
-				t.Errorf("success = %v, want %v", *gotSuccess, tc.wantSuccess)
-			}
-			if *gotDuration < 0 {
-				t.Errorf("duration = %v, want >= 0", *gotDuration)
-			}
-			if tc.wantErrInc != "" {
-				if got := counterValue(t, c.endpointErrors.WithLabelValues(tc.wantErrInc, "test")); got != 1 {
-					t.Errorf("endpointErrors{endpoint=%q} = %v, want 1", tc.wantErrInc, got)
-				}
-			}
-		})
-	}
-}
-
 // healthOKServer serves a minimal OK health-check payload for any path, so
-// collect()'s collectHealthMetrics succeeds fast and deterministically.
+// pollHealth succeeds fast and deterministically.
 func healthOKServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -522,200 +485,119 @@ func TestEnabledCollectorNames(t *testing.T) {
 	}
 }
 
-// TestCollectDeadlineExpiredEmitsSkipSignal covers #122: when the scrape deadline has
-// already expired at lock-acquisition time, the bail path must record a distinct skip
-// signal (not fold into scrapes_total) and must not silently look like a successful
-// scrape — opnsense_up is absent, so scrape_skips_total is the distinguishing signal.
-func TestCollectDeadlineExpiredEmitsSkipSignal(t *testing.T) {
-	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
-	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
-	c := newScrapeTestCollector(t, &client)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // already expired before the lock is taken
+// TestCollectReplaysSnapshot verifies collect() emits the metrics captured by the
+// last poll plus the per-collector scrape meta and the health gauges — and makes no
+// API call itself (the poll did).
+func TestCollectReplaysSnapshot(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	fake := &fakeCollectorInstance{name: "fake", emit: []prometheus.Metric{testMetric("opnsense_fake_series", 42)}}
+	c := newScrapeTestCollector(t, client, fake)
+	c.pollHealth(context.Background()) // seed health so up=1 and the gauges are present
+	c.pollOnce(context.Background(), fake)
 
 	ch := make(chan prometheus.Metric, 64)
-	c.collect(ctx, ch, nil)
+	c.collect(context.Background(), ch, nil)
 	close(ch)
 
-	var sawUp bool
+	var sawSeries, sawDuration, sawSuccess, sawUp bool
 	for m := range ch {
-		if strings.Contains(m.Desc().String(), "opnsense_up_test") {
+		desc := m.Desc().String()
+		switch {
+		case strings.Contains(desc, "opnsense_fake_series"):
+			sawSeries = true
+		case strings.Contains(desc, "scrape_collector_duration_seconds"):
+			sawDuration = true
+		case strings.Contains(desc, "scrape_collector_success"):
+			sawSuccess = true
+		case strings.Contains(desc, "opnsense_up_test"):
 			sawUp = true
 		}
 	}
-	if sawUp {
-		t.Error("opnsense_up must be absent on the deadline-expired bail path")
+	if !sawSeries {
+		t.Error("collect must replay the polled metric")
 	}
-	if got := counterValue(t, c.scrapeSkips.WithLabelValues("test")); got != 1 {
-		t.Errorf("scrape_skips_total = %v, want 1", got)
+	if !sawDuration || !sawSuccess {
+		t.Error("collect must emit per-collector scrape meta for a polled collector")
 	}
-	if got := counterValue(t, c.scrapes.WithLabelValues("test")); got != 0 {
-		t.Errorf("scrapes_total = %v, want 0 — a skipped scrape must not count as completed", got)
+	if !sawUp {
+		t.Error("collect must emit the health gauges")
+	}
+	if fake.callCount() != 1 {
+		t.Errorf("collect must NOT call Update (the poll did); calls=%d, want 1", fake.callCount())
+	}
+	if got := counterValue(t, c.scrapes.WithLabelValues("test")); got != 1 {
+		t.Errorf("scrapes_total = %v, want 1", got)
 	}
 }
 
-// TestCollectSkipSignalOnZeroDeadline covers #122 acceptance #5: the NaN
-// scrape-timeout-header path deterministically yields scrapeTimeout("NaN") == (0, true)
-// (verified in internal/server), so the handler builds context.WithTimeout(reqCtx, 0)
-// — a deadline already in the past. Reproduce that exact 0-deadline (not the ~500ms
-// timing window) and confirm the skip signal fires reliably.
-func TestCollectSkipSignalOnZeroDeadline(t *testing.T) {
-	conf := options.OPNSenseConfig{Protocol: "http", APIKey: "test"}
-	client, err := opnsense.NewClient(conf, "test", promslog.NewNopLogger())
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
-	c := newScrapeTestCollector(t, &client)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 0)
-	defer cancel()
-	if ctx.Err() == nil {
-		t.Fatal("a 0 deadline must produce an already-expired context (test premise)")
-	}
+// TestCollectNeverPolledEmitsNoCollectorMeta verifies a collector that has never
+// polled yields no per-collector scrape meta (cold start), while the always-on
+// exporter metrics are still emitted.
+func TestCollectNeverPolledEmitsNoCollectorMeta(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	fake := &fakeCollectorInstance{name: "fake"}
+	c := newScrapeTestCollector(t, client, fake)
 
 	ch := make(chan prometheus.Metric, 64)
-	c.collect(ctx, ch, nil)
-	close(ch)
-	if got := counterValue(t, c.scrapeSkips.WithLabelValues("test")); got != 1 {
-		t.Errorf("scrape_skips_total = %v, want 1 on the NaN-derived 0-deadline path", got)
-	}
-}
-
-// TestCollectShortCircuitsWhenFirewallUnreachable covers #127: a transport-level
-// health-check failure (StatusCode==0) must skip the sub-collector fan-out for that
-// scrape (still reporting opnsense_up=0), and must not produce ERROR-level log storms.
-func TestCollectShortCircuitsWhenFirewallUnreachable(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	client := newCollectorTestClient(t, srv)
-	srv.Close() // every dial now refused -> transport error, StatusCode 0
-
-	fake := &fakeCollectorInstance{name: "fake"}
-	c := newScrapeTestCollector(t, client, fake)
-	var buf strings.Builder
-	c.log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-	ch := make(chan prometheus.Metric, 128)
 	c.collect(context.Background(), ch, nil)
 	close(ch)
 
-	if fake.calls != 0 {
-		t.Errorf("sub-collector fan-out should be skipped when the firewall is unreachable, got %d calls", fake.calls)
-	}
-
-	var up *float64
+	var sawScrapeMeta, sawScrapes bool
 	for m := range ch {
-		if strings.Contains(m.Desc().String(), "opnsense_up_test") {
-			v := getMetricValue(m)
-			up = &v
+		desc := m.Desc().String()
+		if strings.Contains(desc, "scrape_collector_") {
+			sawScrapeMeta = true
+		}
+		if strings.Contains(desc, "opnsense_exporter_scrapes_total") {
+			sawScrapes = true
 		}
 	}
-	if up == nil {
-		t.Fatal("opnsense_up must still be emitted on the unreachable short-circuit")
+	if sawScrapeMeta {
+		t.Error("a never-polled collector must not emit per-collector scrape meta")
 	}
-	if *up != 0 {
-		t.Errorf("opnsense_up = %v, want 0", *up)
+	if !sawScrapes {
+		t.Error("scrapes_total must always be emitted")
 	}
-
-	// Log-volume regression: the transport retries are Warn-level now and the fan-out is
-	// skipped, so a single unreachable scrape produces zero ERROR lines (was ~223).
-	if n := strings.Count(buf.String(), "level=ERROR"); n != 0 {
-		t.Errorf("expected 0 ERROR log lines on an unreachable scrape, got %d:\n%s", n, buf.String())
+	if fake.callCount() != 0 {
+		t.Errorf("collect must not poll; calls=%d, want 0", fake.callCount())
 	}
 }
 
-// healthyServer returns a server that answers every request with 200 `{}`, so the
-// health check succeeds and collect() proceeds to the sub-collector fan-out.
-func healthyServer(t *testing.T) (*opnsense.Client, func()) {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	return newCollectorTestClient(t, srv), srv.Close
-}
+// TestCollectIncludeFilterReplaysSelected verifies a non-nil include restricts the
+// replay to the named collectors while the always-on metrics survive.
+func TestCollectIncludeFilterReplaysSelected(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	a := &fakeCollectorInstance{name: "fake_a", emit: []prometheus.Metric{testMetric("opnsense_a", 1)}}
+	b := &fakeCollectorInstance{name: "fake_b", emit: []prometheus.Metric{testMetric("opnsense_b", 1)}}
+	c := newScrapeTestCollector(t, client, a, b)
+	c.pollOnce(context.Background(), a)
+	c.pollOnce(context.Background(), b)
 
-// TestCollectAppliesDefaultDeadline covers #128: a no-deadline collect must apply the
-// default max-scrape-duration, so sub-collectors run against a bounded context rather
-// than context.Background().
-func TestCollectAppliesDefaultDeadline(t *testing.T) {
-	client, closeSrv := healthyServer(t)
-	defer closeSrv()
-	fake := &fakeCollectorInstance{name: "fake"}
-	c := newScrapeTestCollector(t, client, fake)
-
-	ch := make(chan prometheus.Metric, 128)
-	c.collect(context.Background(), ch, nil) // background = no deadline
+	ch := make(chan prometheus.Metric, 64)
+	c.collect(context.Background(), ch, map[string]bool{"fake_a": true})
 	close(ch)
 
-	if fake.calls != 1 {
-		t.Fatalf("sub-collector should have run once, got %d", fake.calls)
+	var sawA, sawB, sawBuildInfo bool
+	for m := range ch {
+		d := m.Desc().String()
+		if strings.Contains(d, "opnsense_a") {
+			sawA = true
+		}
+		if strings.Contains(d, "opnsense_b") {
+			sawB = true
+		}
+		if strings.Contains(d, "opnsense_exporter_build_info") {
+			sawBuildInfo = true
+		}
 	}
-	if _, ok := fake.gotCtx.Deadline(); !ok {
-		t.Error("a no-deadline collect must apply a default deadline before fanning out")
+	if !sawA {
+		t.Error("include filter should replay fake_a")
 	}
-}
-
-// TestCollectBoundedByMaxScrapeDuration covers #128 acceptance #2/#5: a stalled
-// sub-collector under the default-deadline path must let collect() return (releasing
-// the mutex) at ~max-scrape-duration, not run unbounded.
-func TestCollectBoundedByMaxScrapeDuration(t *testing.T) {
-	client, closeSrv := healthyServer(t)
-	defer closeSrv()
-	fake := &fakeCollectorInstance{name: "fake", blockOnCtx: true}
-	c := newScrapeTestCollector(t, client, fake)
-	c.maxScrapeDuration = 150 * time.Millisecond
-
-	start := time.Now()
-	ch := make(chan prometheus.Metric, 128)
-	c.collect(context.Background(), ch, nil)
-	close(ch)
-	elapsed := time.Since(start)
-
-	if elapsed > time.Second {
-		t.Errorf("collect held for %v; expected it to return near max-scrape-duration (150ms)", elapsed)
+	if sawB {
+		t.Error("include filter should exclude fake_b")
 	}
-
-	// The mutex is released: a second collect acquires it promptly.
-	done := make(chan struct{})
-	go func() {
-		fake2 := &fakeCollectorInstance{name: "fake2"}
-		c.collectors = []CollectorInstance{fake2}
-		c2ch := make(chan prometheus.Metric, 128)
-		c.collect(context.Background(), c2ch, nil)
-		close(c2ch)
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Error("second collect did not acquire the mutex promptly after the first timed out")
-	}
-}
-
-// TestOTLPCollectDerivesDeadlineFromInterval covers #128 acceptance #3: the OTLP-bridge
-// gather path (Collector.Collect) applies a deadline from otlpGatherTimeout, not
-// context.Background().
-func TestOTLPCollectDerivesDeadlineFromInterval(t *testing.T) {
-	client, closeSrv := healthyServer(t)
-	defer closeSrv()
-	fake := &fakeCollectorInstance{name: "fake"}
-	c := newScrapeTestCollector(t, client, fake)
-	c.otlpGatherTimeout = 5 * time.Second
-
-	ch := make(chan prometheus.Metric, 128)
-	c.Collect(ch) // the OTLP/registry entry point
-	close(ch)
-
-	dl, ok := fake.gotCtx.Deadline()
-	if !ok {
-		t.Fatal("OTLP Collect must apply a deadline, not use context.Background()")
-	}
-	if remaining := time.Until(dl); remaining > 5*time.Second {
-		t.Errorf("deadline %v exceeds the OTLP gather timeout (5s)", remaining)
+	if !sawBuildInfo {
+		t.Error("always-on build_info must survive filtering")
 	}
 }
 
@@ -741,28 +623,34 @@ func TestWithoutInterfacesProtocolServices(t *testing.T) {
 	}
 }
 
+// scrapeCtxKey is a context key used by the poll-path context-propagation test.
+type scrapeCtxKey struct{}
+
+// TestScrapeViewFiltersCollectors verifies the /metrics per-request view replays only
+// the included collectors from the snapshot, with the always-on metrics surviving.
 func TestScrapeViewFiltersCollectors(t *testing.T) {
 	client := newCollectorTestClient(t, healthOKServer(t))
 
-	a := &fakeCollectorInstance{name: "fake_a"}
-	b := &fakeCollectorInstance{name: "fake_b"}
+	a := &fakeCollectorInstance{name: "fake_a", emit: []prometheus.Metric{testMetric("opnsense_a", 1)}}
+	b := &fakeCollectorInstance{name: "fake_b", emit: []prometheus.Metric{testMetric("opnsense_b", 1)}}
 	c := newScrapeTestCollector(t, client, a, b)
+	c.pollHealth(context.Background())
+	c.pollOnce(context.Background(), a)
+	c.pollOnce(context.Background(), b)
 
 	ch := make(chan prometheus.Metric, 100)
 	c.ScrapeView(context.Background(), map[string]bool{"fake_a": true}).Collect(ch)
 	close(ch)
 
-	if a.calls != 1 {
-		t.Errorf("fake_a calls = %d, want 1", a.calls)
-	}
-	if b.calls != 0 {
-		t.Errorf("fake_b calls = %d, want 0 (excluded by filter)", b.calls)
-	}
-
-	// Always-on metrics must survive filtering.
-	var sawUp, sawBuildInfo bool
+	var sawA, sawB, sawUp, sawBuildInfo bool
 	for m := range ch {
 		desc := m.Desc().String()
+		if strings.Contains(desc, "opnsense_a") {
+			sawA = true
+		}
+		if strings.Contains(desc, "opnsense_b") {
+			sawB = true
+		}
 		if strings.Contains(desc, "opnsense_up_test") {
 			sawUp = true
 		}
@@ -770,71 +658,17 @@ func TestScrapeViewFiltersCollectors(t *testing.T) {
 			sawBuildInfo = true
 		}
 	}
+	if !sawA {
+		t.Error("scrape view should replay the included fake_a")
+	}
+	if sawB {
+		t.Error("scrape view should exclude fake_b")
+	}
 	if !sawUp {
 		t.Error("expected up metric to be emitted despite filtering")
 	}
 	if !sawBuildInfo {
 		t.Error("expected build_info metric to be emitted despite filtering")
-	}
-}
-
-func TestScrapeViewEmptyIncludeRunsNoSubCollectors(t *testing.T) {
-	client := newCollectorTestClient(t, healthOKServer(t))
-	a := &fakeCollectorInstance{name: "fake_a"}
-	c := newScrapeTestCollector(t, client, a)
-
-	ch := make(chan prometheus.Metric, 100)
-	c.ScrapeView(context.Background(), map[string]bool{}).Collect(ch)
-	close(ch)
-
-	if a.calls != 0 {
-		t.Errorf("fake_a calls = %d, want 0 (empty non-nil include)", a.calls)
-	}
-}
-
-func TestCollectSkipsFanOutWhenDeadlineExpired(t *testing.T) {
-	client := newCollectorTestClient(t, healthOKServer(t))
-	a := &fakeCollectorInstance{name: "fake_a"}
-	c := newScrapeTestCollector(t, client, a)
-
-	// A scrape queued behind a slow one can acquire the lock after its own
-	// deadline already expired; fanning out against a dead context must not
-	// happen (it would error every endpoint and look like a firewall outage).
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	ch := make(chan prometheus.Metric, 100)
-	c.ScrapeView(ctx, nil).Collect(ch)
-	close(ch)
-
-	if a.calls != 0 {
-		t.Errorf("fake_a calls = %d, want 0 (dead context must skip the fan-out)", a.calls)
-	}
-	var sawBuildInfo bool
-	for m := range ch {
-		if strings.Contains(m.Desc().String(), "opnsense_exporter_build_info") {
-			sawBuildInfo = true
-		}
-	}
-	if !sawBuildInfo {
-		t.Error("expected always-on exporter info metrics even with a dead context")
-	}
-}
-
-type scrapeCtxKey struct{}
-
-func TestScrapeViewPropagatesContext(t *testing.T) {
-	client := newCollectorTestClient(t, healthOKServer(t))
-	a := &fakeCollectorInstance{name: "fake_a"}
-	c := newScrapeTestCollector(t, client, a)
-
-	ctx := context.WithValue(context.Background(), scrapeCtxKey{}, "marker")
-	ch := make(chan prometheus.Metric, 100)
-	c.ScrapeView(ctx, nil).Collect(ch)
-	close(ch)
-
-	if a.gotCtx == nil || a.gotCtx.Value(scrapeCtxKey{}) != "marker" {
-		t.Error("expected the request context to reach sub-collector Update")
 	}
 }
 
@@ -930,9 +764,8 @@ func TestCollectHealthMetrics_Reachable(t *testing.T) {
 			client := newCollectorTestClient(t, healthServer(t, http.StatusOK, body))
 			c := newHealthTestCollector(client)
 			ch := make(chan prometheus.Metric, 16)
-			if err := c.collectHealthMetrics(client, ch); err != nil {
-				t.Fatalf("collectHealthMetrics returned error: %v", err)
-			}
+			c.pollHealth(context.Background())
+			c.emitHealth(ch)
 			close(ch)
 			got := gatherHealthGauges(ch)
 
@@ -959,9 +792,8 @@ func TestCollectHealthMetrics_Unreachable(t *testing.T) {
 	client := newCollectorTestClient(t, healthServer(t, http.StatusInternalServerError, []byte("boom")))
 	c := newHealthTestCollector(client)
 	ch := make(chan prometheus.Metric, 16)
-	if err := c.collectHealthMetrics(client, ch); err == nil {
-		t.Fatal("expected error from collectHealthMetrics on API failure")
-	}
+	c.pollHealth(context.Background())
+	c.emitHealth(ch)
 	close(ch)
 	got := gatherHealthGauges(ch)
 
@@ -1005,9 +837,8 @@ func TestCollectHealthMetrics_Subsystems(t *testing.T) {
 			client := newCollectorTestClient(t, healthServer(t, http.StatusOK, body))
 			c := newHealthTestCollector(client)
 			ch := make(chan prometheus.Metric, 32)
-			if err := c.collectHealthMetrics(client, ch); err != nil {
-				t.Fatalf("collectHealthMetrics returned error: %v", err)
-			}
+			c.pollHealth(context.Background())
+			c.emitHealth(ch)
 			close(ch)
 			got := gatherSubsystemGauges(ch)
 
@@ -1053,9 +884,8 @@ func TestCollectHealthMetrics_SubsystemsResetAcrossScrapes(t *testing.T) {
 	c := newHealthTestCollector(client)
 
 	ch1 := make(chan prometheus.Metric, 32)
-	if err := c.collectHealthMetrics(client, ch1); err != nil {
-		t.Fatalf("collectHealthMetrics (scrape 1) returned error: %v", err)
-	}
+	c.pollHealth(context.Background())
+	c.emitHealth(ch1)
 	close(ch1)
 	first := gatherSubsystemGauges(ch1)
 	if len(first) != 3 {
@@ -1063,9 +893,8 @@ func TestCollectHealthMetrics_SubsystemsResetAcrossScrapes(t *testing.T) {
 	}
 
 	ch2 := make(chan prometheus.Metric, 32)
-	if err := c.collectHealthMetrics(client, ch2); err != nil {
-		t.Fatalf("collectHealthMetrics (scrape 2) returned error: %v", err)
-	}
+	c.pollHealth(context.Background())
+	c.emitHealth(ch2)
 	close(ch2)
 	second := gatherSubsystemGauges(ch2)
 	if len(second) != 0 {

@@ -573,6 +573,12 @@ func main() {
 	collectorRegistry := prometheus.NewRegistry()
 	collectorRegistry.MustRegister(collectorInstance)
 
+	// Start the internal poll scheduler (#336): each collector now polls the OPNsense
+	// API on its own interval into an in-memory snapshot, decoupled from the Prometheus
+	// scrape. /metrics (ScrapeView) and the OTLP bridge both replay that snapshot with
+	// no live API call. StopPolling is invoked from gracefulShutdown.
+	collectorInstance.StartPolling(context.Background())
+
 	// metricsRecorder passively captures the collector family set of each real
 	// scrape (the unfiltered /metrics path and the OTLP bridge) so the web UI can
 	// read a last-scrape snapshot without ever gathering — and thus re-scraping
@@ -835,7 +841,7 @@ func main() {
 	for {
 		select {
 		case sig := <-term:
-			gracefulShutdown(srv, sig, stopLogs, stopOTLP, stopProfiling, logger)
+			gracefulShutdown(srv, sig, collectorInstance.StopPolling, stopLogs, stopOTLP, stopProfiling, logger)
 			return
 		case <-srvClose:
 			os.Exit(1)
@@ -847,16 +853,20 @@ func main() {
 // telemetry and returning, so a scrape landing mid-response during a rollout/redeploy
 // finishes instead of being severed (which Prometheus records as up=0). The log line
 // reports the actual signal received rather than a hardcoded "SIGTERM" (#161).
-func gracefulShutdown(srv *http.Server, sig os.Signal, stopLogs, stopOTLP, stopProfiling func(), logger *slog.Logger) {
+func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopLogs, stopOTLP, stopProfiling func(), logger *slog.Logger) {
 	logger.Info("received signal, shutting down gracefully", "signal", sig.String())
 	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("graceful HTTP shutdown failed; in-flight scrapes may have been cut", "err", err)
 	}
-	// Order: drain HTTP -> stop log pollers + flush the sink -> flush OTLP metrics ->
-	// flush profiling. Logs drain before OTLP metrics so a final scrape's data and the
-	// last log batch both leave before the process exits.
+	// Order: drain HTTP -> stop the poll scheduler (no new firewall API calls) -> stop
+	// log pollers + flush the sink -> flush OTLP metrics -> flush profiling. Logs drain
+	// before OTLP metrics so a final scrape's data and the last log batch both leave
+	// before the process exits.
+	if stopPolling != nil {
+		stopPolling()
+	}
 	if stopLogs != nil {
 		stopLogs()
 	}
