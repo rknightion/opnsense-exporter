@@ -27,6 +27,48 @@ const (
 	IntervalCeil = 15 * time.Minute
 )
 
+// collectorTiers assigns each collector a poll tier by data volatility (#336).
+// Only deviations from the medium (global-default) tier are listed; every collector
+// absent from this table polls at the global default (--collector.poll-interval, 60s).
+// A per-collector --collector.poll-interval-override always wins over this table.
+//
+// Rationale by tier:
+//   - fast: per-second-ish live counters/states where freshness is alerting-critical
+//     (gateway RTT/loss, interface + protocol + pf counters, live activity, netflow,
+//     CARP failover state).
+//   - slow: data that drifts over minutes, or is comparatively expensive to fetch
+//     (rule hit-counters, alias table contents, NTP peers, dyndns/qfeeds status, shaper
+//     pipes, siproxd registrations, tor circuits).
+//   - cold: near-static inventory/health (firmware, certificates, ACME, SMART, cron,
+//     snapshots, vnstat's aggregated history).
+var collectorTiers = map[string]time.Duration{
+	// fast (15s)
+	GatewaysSubsystem:   IntervalFast,
+	InterfacesSubsystem: IntervalFast,
+	ProtocolSubsystem:   IntervalFast,
+	PFStatsSubsystem:    IntervalFast,
+	ActivitySubsystem:   IntervalFast,
+	NetflowSubsystem:    IntervalFast,
+	CARPSubsystem:       IntervalFast,
+	// slow (5m)
+	FirewallRulesSubsystem: IntervalSlow,
+	AliasSubsystem:         IntervalSlow,
+	NTPSubsystem:           IntervalSlow,
+	DynDNSSubsystem:        IntervalSlow,
+	QFeedsSubsystem:        IntervalSlow,
+	TrafficShaperSubsystem: IntervalSlow,
+	SiproxdSubsystem:       IntervalSlow,
+	TorSubsystem:           IntervalSlow,
+	// cold (15m)
+	FirmwareSubsystem:     IntervalCold,
+	CertificatesSubsystem: IntervalCold,
+	ACMESubsystem:         IntervalCold,
+	SMARTSubsystem:        IntervalCold,
+	CronTableSubsystem:    IntervalCold,
+	SnapshotsSubsystem:    IntervalCold,
+	VnstatSubsystem:       IntervalCold,
+}
+
 // IntervalCollector is an optional interface a CollectorInstance may implement to
 // declare its default poll interval (its data-volatility tier). A collector that
 // does not implement it polls at the scheduler's global default. The declared value
@@ -50,14 +92,18 @@ func clampInterval(d time.Duration) time.Duration {
 	return d
 }
 
-// resolvePollInterval returns the effective poll interval for a collector: its
-// declared tier (clamped) if it implements IntervalCollector, otherwise the supplied
-// global default (clamped).
+// resolvePollInterval returns the code-assigned poll interval for a collector: its
+// self-declared tier (IntervalCollector) if any, else the central collectorTiers
+// table, else the supplied global default. The result is always clamped. Per-collector
+// operator overrides are applied above this by (*Collector).resolveInterval.
 func resolvePollInterval(coll CollectorInstance, global time.Duration) time.Duration {
 	if ic, ok := coll.(IntervalCollector); ok {
 		if d := ic.PollInterval(); d > 0 {
 			return clampInterval(d)
 		}
+	}
+	if d, ok := collectorTiers[coll.Name()]; ok {
+		return clampInterval(d)
 	}
 	return clampInterval(global)
 }

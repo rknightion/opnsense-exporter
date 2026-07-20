@@ -128,3 +128,33 @@ func TestResolvePollIntervalClamp(t *testing.T) {
 		t.Errorf("no declaration should use the clamped global default, got %v", got)
 	}
 }
+
+func TestResolveIntervalTierTableAndOverrides(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	gw := &fakeCollectorInstance{name: GatewaysSubsystem}  // fast in the tier table
+	fw := &fakeCollectorInstance{name: FirmwareSubsystem}  // cold in the tier table
+	plain := &fakeCollectorInstance{name: "no_tier_plain"} // falls through to global
+	c := newScrapeTestCollector(t, client, gw, fw, plain)
+
+	if got := c.resolveInterval(gw); got != IntervalFast {
+		t.Errorf("gateways should resolve to the fast tier, got %v", got)
+	}
+	if got := c.resolveInterval(fw); got != IntervalCold {
+		t.Errorf("firmware should resolve to the cold tier, got %v", got)
+	}
+	if got := c.resolveInterval(plain); got != IntervalMedium {
+		t.Errorf("an untiered collector should resolve to the global default, got %v", got)
+	}
+
+	// An operator override wins over the code tier, clamped.
+	c.pollOverrides = map[string]time.Duration{
+		GatewaysSubsystem: 10 * time.Second,
+		FirmwareSubsystem: time.Hour, // above ceil -> clamp to 15m
+	}
+	if got := c.resolveInterval(gw); got != 10*time.Second {
+		t.Errorf("override should win over the fast tier, got %v", got)
+	}
+	if got := c.resolveInterval(fw); got != IntervalCeil {
+		t.Errorf("override above ceil should clamp to ceil, got %v", got)
+	}
+}

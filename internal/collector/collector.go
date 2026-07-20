@@ -232,6 +232,9 @@ type Collector struct {
 	// pollGlobal is the default poll interval for collectors that declare no tier;
 	// zero means IntervalMedium. Set via WithPollInterval.
 	pollGlobal time.Duration
+	// pollOverrides maps a collector name to an operator-supplied interval that wins
+	// over both its code tier and the global default. Set via WithPollIntervalOverrides.
+	pollOverrides map[string]time.Duration
 	// pollCancel / pollWG / pollSem are the scheduler lifecycle + concurrency cap,
 	// initialised by StartPolling.
 	pollCancel context.CancelFunc
@@ -277,6 +280,16 @@ func WithStatusTracker(t *StatusTracker) Option {
 func WithPollInterval(d time.Duration) Option {
 	return func(o *Collector) error {
 		o.pollGlobal = d
+		return nil
+	}
+}
+
+// WithPollIntervalOverrides sets per-collector poll-interval overrides (by collector
+// name) that win over the code tier and the global default. Each is clamped to
+// [IntervalFloor, IntervalCeil].
+func WithPollIntervalOverrides(m map[string]time.Duration) Option {
+	return func(o *Collector) error {
+		o.pollOverrides = m
 		return nil
 	}
 }

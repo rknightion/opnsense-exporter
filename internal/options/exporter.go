@@ -44,6 +44,16 @@ var (
 		"Upper bound on a single collection when the caller supplies no deadline of its own (a header-less /metrics scrape or the OTLP-bridge periodic gather). Prevents a stalled/blackholed firewall from holding the shared collector lock unbounded and blacking out every concurrent deadline-bound scrape.",
 	).Envar("OPNSENSE_EXPORTER_MAX_SCRAPE_DURATION").Default("50s").Duration()
 
+	CollectorPollInterval = kingpin.Flag(
+		"collector.poll-interval",
+		"Default interval at which each collector polls the OPNsense API into the in-memory snapshot that /metrics and the OTLP bridge replay (#336). A collector may declare its own faster/slower tier; every interval is clamped to [5s, 15m].",
+	).Envar("OPNSENSE_EXPORTER_COLLECTOR_POLL_INTERVAL").Default("60s").Duration()
+
+	CollectorPollIntervalOverrides = kingpin.Flag(
+		"collector.poll-interval-override",
+		"Override a specific collector's poll interval as <collector>=<duration> (repeatable; clamped to [5s, 15m]). Wins over the collector's built-in tier. Example: --collector.poll-interval-override=gateways=10s --collector.poll-interval-override=smart=1h.",
+	).Envar("OPNSENSE_EXPORTER_COLLECTOR_POLL_INTERVAL_OVERRIDE").StringMap()
+
 	IDSAlertLookback = kingpin.Flag(
 		"exporter.ids-alert-lookback",
 		"Lookback window over which opnsense_ids_recent_alerts counts Suricata eve alerts (a gauge). Only used when --exporter.enable-ids-alerts is set. Counts are a floor when more than 500 alerts fall inside the window.",

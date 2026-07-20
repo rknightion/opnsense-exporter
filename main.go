@@ -553,6 +553,17 @@ func main() {
 	// lock unbounded and black out every concurrent deadline-bound scrape (#128). The
 	// OTLP gather uses the smaller of the export interval and max-scrape-duration.
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithMaxScrapeDuration(*options.MaxScrapeDuration))
+	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollInterval(*options.CollectorPollInterval))
+	pollOverrides := make(map[string]time.Duration)
+	for name, v := range *options.CollectorPollIntervalOverrides {
+		d, perr := time.ParseDuration(v)
+		if perr != nil {
+			logger.Error("invalid --collector.poll-interval-override", "collector", name, "value", v, "err", perr)
+			os.Exit(1)
+		}
+		pollOverrides[name] = d
+	}
+	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollIntervalOverrides(pollOverrides))
 	if otlpEnabled {
 		gatherTimeout := *options.MaxScrapeDuration
 		if otlpCfg.ExportInterval > 0 && otlpCfg.ExportInterval < gatherTimeout {

@@ -42,6 +42,16 @@ func (c *Collector) pollGlobalInterval() time.Duration {
 	return IntervalMedium
 }
 
+// resolveInterval returns the effective poll interval for a collector: an operator
+// override (--collector.poll-interval-override) wins, else its code tier / the global
+// default via resolvePollInterval. Always clamped.
+func (c *Collector) resolveInterval(coll CollectorInstance) time.Duration {
+	if d, ok := c.pollOverrides[coll.Name()]; ok {
+		return clampInterval(d)
+	}
+	return resolvePollInterval(coll, c.pollGlobalInterval())
+}
+
 // StartPolling launches the internal poll scheduler (#336): one goroutine per
 // enabled collector plus a health goroutine, each polling the OPNsense API on its
 // own interval into the snapshot store that the serving path replays. It returns
@@ -55,7 +65,7 @@ func (c *Collector) StartPolling(ctx context.Context) {
 	go c.runHealthPoller(ctx, c.pollGlobalInterval())
 
 	for _, coll := range c.collectors {
-		interval := resolvePollInterval(coll, c.pollGlobalInterval())
+		interval := c.resolveInterval(coll)
 		c.pollWG.Add(1)
 		go c.runCollectorPoller(ctx, coll, interval)
 	}
