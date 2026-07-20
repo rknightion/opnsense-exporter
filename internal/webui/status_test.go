@@ -2,11 +2,60 @@ package webui
 
 import (
 	"testing"
+	"time"
 
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 )
+
+func TestCollectorRow_NextRunAndFreshness(t *testing.T) {
+	now := time.Now()
+	s := collector.CollectorStat{
+		Name: "gateways", Display: "Gateways", Runs: 10, Failures: 1, LastOK: true,
+		Interval: 60 * time.Second, LastFinished: now.Add(-15 * time.Second),
+	}
+	r := collectorRow(s)
+	if r.IntervalSec != 60 {
+		t.Errorf("IntervalSec=%d want 60", r.IntervalSec)
+	}
+	if !r.HasRun || !r.LastSuccess {
+		t.Errorf("HasRun/LastSuccess wrong: HasRun=%v LastSuccess=%v", r.HasRun, r.LastSuccess)
+	}
+	// next run ≈ 45s away (60 - 15); allow slack for test timing
+	if r.NextRunInSec < 43 || r.NextRunInSec > 46 {
+		t.Errorf("NextRunInSec=%d want ~45", r.NextRunInSec)
+	}
+	if r.FreshnessState != "fresh" {
+		t.Errorf("FreshnessState=%q want fresh", r.FreshnessState)
+	}
+	if r.Freshness == "" {
+		t.Errorf("Freshness empty; want a rendered age")
+	}
+}
+
+func TestCollectorRow_StaleAndNeverRun(t *testing.T) {
+	now := time.Now()
+	// stale: age > 2× interval
+	stale := collectorRow(collector.CollectorStat{
+		Name: "pf", Display: "PF", Runs: 3, LastOK: true,
+		Interval: 15 * time.Second, LastFinished: now.Add(-40 * time.Second),
+	})
+	if stale.FreshnessState != "stale" {
+		t.Errorf("FreshnessState=%q want stale", stale.FreshnessState)
+	}
+	if stale.NextRunIn != "due" {
+		t.Errorf("NextRunIn=%q want due (overdue collector)", stale.NextRunIn)
+	}
+	// never run
+	never := collectorRow(collector.CollectorStat{Name: "x", Display: "X", Interval: 60 * time.Second})
+	if never.HasRun {
+		t.Errorf("HasRun true for never-run collector")
+	}
+	if never.FreshnessState != "none" {
+		t.Errorf("FreshnessState=%q want none", never.FreshnessState)
+	}
+}
 
 func TestSuccessRate(t *testing.T) {
 	if got := successRate(0, 0); got != -1 {

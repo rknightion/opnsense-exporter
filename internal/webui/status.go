@@ -38,6 +38,11 @@ type ExporterStats struct{ ActiveCollectors, MetricFamilies, Series int }
 
 // CollectorRow is one row of the per-collector table. SuccessRate is -1 when
 // the collector has never run. Sparkline/Outcomes are pre-rendered SVG/HTML.
+//
+// Interval/Next-run/Freshness are derived from the poll scheduler (#336): each
+// collector polls on its own interval, so NextRun = LastFinished + Interval and
+// Freshness = now - LastFinished. FreshnessState is "fresh", "stale" (age beyond
+// 2× interval — more than a poll-cycle overdue), or "none" (never run).
 type CollectorRow struct {
 	Name, Display, State        string // state: ok|failing|starting
 	SuccessRate                 float64
@@ -45,6 +50,13 @@ type CollectorRow struct {
 	LastDurationMs              float64
 	Staleness, LastError        string
 	Sparkline, Outcomes         template.HTML
+	IntervalSec                 int
+	NextRunIn                   string // "45s" | "due" | "" (never run)
+	NextRunInSec                int
+	Freshness                   string // "15s ago" | "" (never run)
+	FreshnessState              string // fresh|stale|none
+	HasRun                      bool
+	LastSuccess                 bool
 }
 
 // SkippedRow is a configured collector that has no run history yet (disabled or
@@ -183,6 +195,29 @@ func collectorRow(s collector.CollectorStat) CollectorRow {
 	case !s.LastOK:
 		state = "failing"
 	}
+
+	hasRun := s.Runs > 0
+	intervalSec := int(s.Interval / time.Second)
+	nextRunIn, nextRunInSec := "", 0
+	freshness, freshnessState := "", "none"
+	if hasRun && !s.LastFinished.IsZero() {
+		age := time.Since(s.LastFinished)
+		freshness = shortDur(age) + " ago"
+		freshnessState = "fresh"
+		if s.Interval > 0 && age > 2*s.Interval {
+			freshnessState = "stale"
+		}
+		if s.Interval > 0 {
+			until := time.Until(s.LastFinished.Add(s.Interval))
+			nextRunInSec = int(until / time.Second)
+			if until <= 0 {
+				nextRunIn = "due"
+			} else {
+				nextRunIn = shortDur(until)
+			}
+		}
+	}
+
 	return CollectorRow{
 		Name:           s.Name,
 		Display:        s.Display,
@@ -196,6 +231,13 @@ func collectorRow(s collector.CollectorStat) CollectorRow {
 		LastError:      s.LastError,
 		Sparkline:      sparkline(s.DurationMs),
 		Outcomes:       outcomeStrip(s.Outcomes),
+		IntervalSec:    intervalSec,
+		NextRunIn:      nextRunIn,
+		NextRunInSec:   nextRunInSec,
+		Freshness:      freshness,
+		FreshnessState: freshnessState,
+		HasRun:         hasRun,
+		LastSuccess:    s.LastOK,
 	}
 }
 
