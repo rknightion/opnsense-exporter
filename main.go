@@ -796,7 +796,6 @@ func main() {
 				Metrics:         metricsRecorder.Snapshot,
 				Cache:           opnsenseClient.CacheSnapshot,
 				EffectiveConfig: options.EffectiveConfig,
-				RunCollector:    collectorInstance.RunCollector,
 				Devices: func(ctx context.Context) (webui.DeviceReport, error) {
 					return webui.FetchDevices(ctx, &opnsenseClient)
 				},

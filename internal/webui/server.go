@@ -49,7 +49,6 @@ type Deps struct {
 	Metrics                                 func() ([]*dto.MetricFamily, time.Time) // metricsnap.Recorder.Snapshot
 	Cache                                   func() []opnsense.CacheEntryView
 	EffectiveConfig                         func() []options.ConfigSection
-	RunCollector                            func(ctx context.Context, name string) (time.Duration, error)
 	Devices                                 func(ctx context.Context) (DeviceReport, error)
 	AllCollectorNames                       []string
 	RefreshSeconds                          int

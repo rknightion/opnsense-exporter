@@ -227,8 +227,8 @@ type Collector struct {
 	otlpGatherTimeout time.Duration
 
 	// statusTracker, when non-nil, passively records per-collector run history for
-	// the operator console. It is updated from pollOnce on every poll and from
-	// RunCollector; it never influences collection. Injected via WithStatusTracker.
+	// the operator console. It is updated from pollOnce on every poll; it never
+	// influences collection. Injected via WithStatusTracker.
 	statusTracker *StatusTracker
 
 	// --- internal poll scheduler (#336) ---
@@ -271,8 +271,8 @@ func WithMaxScrapeDuration(d time.Duration) Option {
 	}
 }
 
-// WithStatusTracker injects a StatusTracker so pollOnce and RunCollector record
-// per-collector run history for the operator console.
+// WithStatusTracker injects a StatusTracker so pollOnce records per-collector
+// run history for the operator console.
 func WithStatusTracker(t *StatusTracker) Option {
 	return func(o *Collector) error {
 		o.statusTracker = t
@@ -1230,69 +1230,6 @@ func boolToGauge(ok bool) float64 {
 		return 1
 	}
 	return 0
-}
-
-// ErrUnknownCollector is returned by RunCollector when no enabled sub-collector
-// matches the requested name.
-var ErrUnknownCollector = errors.New("unknown or disabled collector")
-
-// RunCollector runs a single named sub-collector once, on demand, from the
-// operator console's "Run Now" action. It uses a request-scoped WithContext
-// clone of the client (which shares the response cache) and drains the metrics
-// it emits into a discard sink — the values are not exported, only the run's
-// duration/outcome are recorded into the StatusTracker (if injected). It never
-// gathers the registry and never runs any other collector.
-func (c *Collector) RunCollector(ctx context.Context, name string) (time.Duration, error) {
-	var target CollectorInstance
-	for _, coll := range c.collectors {
-		if coll.Name() == name {
-			target = coll
-			break
-		}
-	}
-	if target == nil {
-		return 0, ErrUnknownCollector
-	}
-
-	client := c.Client.WithContext(ctx)
-	begin := time.Now()
-	sink := make(chan prometheus.Metric, 4096)
-	done := make(chan struct{})
-	go func() {
-		for range sink { //nolint:revive // draining the sink; values are discarded
-		}
-		close(done)
-	}()
-
-	success := 1.0
-	var runErr error
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				success = 0
-				runErr = fmt.Errorf("panic: %v", r)
-			}
-		}()
-		// Assign runErr only inside the nil-check: a nil *APICallError stored into an
-		// error interface is a non-nil interface, so a bare `runErr = target.Update(...)`
-		// would make a successful run look failed.
-		if apiErr := target.Update(ctx, client, sink); apiErr != nil {
-			success = 0
-			runErr = apiErr
-		}
-	}()
-	close(sink)
-	<-done
-
-	dur := time.Since(begin)
-	if c.statusTracker != nil {
-		es := ""
-		if runErr != nil {
-			es = runErr.Error()
-		}
-		c.statusTracker.Record(name, begin, dur.Seconds()*1000, success == 1, es)
-	}
-	return dur, runErr
 }
 
 // Collect implements the prometheus.Collector interface. Registry-driven

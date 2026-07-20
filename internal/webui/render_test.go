@@ -2,7 +2,6 @@ package webui
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -71,7 +70,6 @@ func testDeps() Deps {
 		Metrics:           func() ([]*dto.MetricFamily, time.Time) { return nil, time.Time{} },
 		Cache:             func() []opnsense.CacheEntryView { return nil },
 		EffectiveConfig:   func() []options.ConfigSection { return nil },
-		RunCollector:      func(context.Context, string) (time.Duration, error) { return 0, nil },
 		AllCollectorNames: []string{"gateways"},
 		RefreshSeconds:    5,
 	}
