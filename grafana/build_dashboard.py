@@ -278,6 +278,26 @@ def build_diagnostics(b: Builder):
                                 OKERR, w=12, h=8,
                                 desc="1 = sub-collector scraped cleanly, 0 = error or panic.")
 
+    # Poll scheduler observability (#336): each collector polls the OPNsense API on its
+    # own tier (fast/medium/slow/cold), decoupled from the Prometheus scrape. These
+    # panels expose the configured interval, freshness (age since last poll), and the
+    # estimated countdown to the next poll — the same data the operator console shows.
+    poll_interval = b.table("Collector Poll Interval",
+                            [sel("opnsense_exporter_collector_poll_interval_seconds")],
+                            renames={"Value": "Interval (s)", "collector": "Collector"},
+                            excludes=["opnsense_instance", "__name__", "job", "instance"], w=8, h=8,
+                            desc="Configured poll interval per collector (#336): fast 15s / medium 60s / "
+                                 "slow 5m / cold 15m, overridable via --collector.poll-interval-override.")
+    poll_age = b.ts("Collector Poll Age (freshness)",
+                    [(f'time() - {sel("opnsense_exporter_collector_last_poll_timestamp_seconds")}', "{{collector}}")],
+                    unit="s", w=8, h=8,
+                    desc="Seconds since each collector last completed a poll. A value climbing past the "
+                         "collector's interval means its polls are failing or stalled.")
+    next_poll = b.ts("Collector Next Poll (in)",
+                     [(f'{sel("opnsense_exporter_collector_next_poll_timestamp_seconds")} - time()', "{{collector}}")],
+                     unit="s", w=8, h=8,
+                     desc="Estimated seconds until each collector's next scheduled poll (last poll + interval).")
+
     go_goro = b.ts("Exporter Goroutines", [(f"go_goroutines{{{JOB}}}", "goroutines")],
                    w=8, h=6)
     go_mem = b.ts("Exporter Memory", [(f"process_resident_memory_bytes{{{JOB}}}", "RSS"),
@@ -334,6 +354,7 @@ def build_diagnostics(b: Builder):
     b.tab("Diagnostics", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
+        b.row("Per-Collector Poll Schedule", [poll_interval, poll_age, next_poll]),
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
         b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
         b.row("Exporter Build & Collectors", [build, cov]),

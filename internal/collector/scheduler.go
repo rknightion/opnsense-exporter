@@ -66,6 +66,9 @@ func (c *Collector) StartPolling(ctx context.Context) {
 
 	for _, coll := range c.collectors {
 		interval := c.resolveInterval(coll)
+		if c.statusTracker != nil {
+			c.statusTracker.SetInterval(coll.Name(), interval)
+		}
 		c.pollWG.Add(1)
 		go c.runCollectorPoller(ctx, coll, interval)
 	}

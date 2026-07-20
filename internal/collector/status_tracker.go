@@ -21,8 +21,9 @@ type CollectorStat struct {
 	LastDurationMs            float64
 	LastOK                    bool
 	LastError                 string
-	DurationMs                []float64 // ring, oldest→newest, ≤ StatusRingSize
-	Outcomes                  []bool    // ring, oldest→newest, ≤ StatusRingSize
+	Interval                  time.Duration // configured poll interval; 0 if unknown
+	DurationMs                []float64     // ring, oldest→newest, ≤ StatusRingSize
+	Outcomes                  []bool        // ring, oldest→newest, ≤ StatusRingSize
 }
 
 // statEntry is the mutable per-collector accumulator held under the tracker mutex.
@@ -35,6 +36,7 @@ type statEntry struct {
 	lastDurationMs   float64
 	lastOK           bool
 	lastError        string
+	interval         time.Duration
 	durationMs       []float64
 	outcomes         []bool
 }
@@ -79,6 +81,20 @@ func (t *StatusTracker) Record(name string, start time.Time, durationMs float64,
 	e.outcomes = appendRingBool(e.outcomes, ok)
 }
 
+// SetInterval records a collector's configured poll interval so Snapshot can expose
+// it (the console derives the next-run countdown from LastFinished + Interval). It is
+// called once per collector at StartPolling, before any run is recorded.
+func (t *StatusTracker) SetInterval(name string, d time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	e := t.stats[name]
+	if e == nil {
+		e = &statEntry{name: name}
+		t.stats[name] = e
+	}
+	e.interval = d
+}
+
 // Snapshot returns a deep copy of every tracked collector's stats, sorted by
 // Display name. The returned slices are independent of the tracker's internal
 // rings, so the caller may hold and mutate them freely.
@@ -102,6 +118,7 @@ func (t *StatusTracker) Snapshot() []CollectorStat {
 			LastDurationMs:   e.lastDurationMs,
 			LastOK:           e.lastOK,
 			LastError:        e.lastError,
+			Interval:         e.interval,
 			DurationMs:       append([]float64(nil), e.durationMs...),
 			Outcomes:         append([]bool(nil), e.outcomes...),
 		})

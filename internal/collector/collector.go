@@ -210,6 +210,12 @@ type Collector struct {
 	// metrics around every sub-collector Update.
 	scrapeDuration *prometheus.Desc
 	scrapeSuccess  *prometheus.Desc
+	// pollInterval / lastPollTs / nextPollTs surface the poll scheduler's per-collector
+	// timing (#336): the configured interval and the last/next poll timestamps, so
+	// dashboards and the operator console can show freshness and a next-run countdown.
+	pollInterval *prometheus.Desc
+	lastPollTs   *prometheus.Desc
+	nextPollTs   *prometheus.Desc
 
 	// maxScrapeDuration bounds a collection whose caller supplied no deadline (a
 	// header-less /metrics scrape or a registry gather), so a stalled firewall can't
@@ -1008,6 +1014,27 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		nil,
 	)
 
+	c.pollInterval = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "collector_poll_interval_seconds"),
+		"Configured poll interval of a collector in seconds (the internal poll scheduler runs each collector on its own interval; #336)",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.lastPollTs = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "collector_last_poll_timestamp_seconds"),
+		"Unix timestamp of a collector's last completed poll; absent until the collector has polled at least once (#336)",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.nextPollTs = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "collector_next_poll_timestamp_seconds"),
+		"Unix timestamp of a collector's next scheduled poll, estimated as last poll + interval; absent until the first poll (#336)",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
 	for _, collector := range c.collectors {
 		collector.Register(namespace, instanceName, c.log)
 	}
@@ -1168,6 +1195,9 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.collectorEnabled
 	ch <- c.scrapeDuration
 	ch <- c.scrapeSuccess
+	ch <- c.pollInterval
+	ch <- c.lastPollTs
+	ch <- c.nextPollTs
 
 	for _, collector := range c.collectors {
 		collector.Describe(ch)
@@ -1317,8 +1347,15 @@ func (c *Collector) collect(_ context.Context, ch chan<- prometheus.Metric, incl
 		for _, m := range e.metrics {
 			ch <- m
 		}
-		// Per-collector scrape meta reflects the last poll and is present once a
-		// collector has polled at least once (node_exporter's per-collector pattern).
+		// The configured interval is known even before the first poll, so it is
+		// always emitted (feeds the console's Interval column + next-run math).
+		interval := c.resolveInterval(coll)
+		ch <- prometheus.MustNewConstMetric(
+			c.pollInterval, prometheus.GaugeValue,
+			interval.Seconds(), name, c.instanceLabel,
+		)
+		// Per-collector scrape meta + poll timestamps reflect the last poll and are
+		// present once a collector has polled at least once (node_exporter's pattern).
 		if e.polled {
 			success := 0.0
 			if e.lastOK {
@@ -1331,6 +1368,14 @@ func (c *Collector) collect(_ context.Context, ch chan<- prometheus.Metric, incl
 			ch <- prometheus.MustNewConstMetric(
 				c.scrapeSuccess, prometheus.GaugeValue,
 				success, name, c.instanceLabel,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.lastPollTs, prometheus.GaugeValue,
+				float64(e.lastPoll.Unix()), name, c.instanceLabel,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.nextPollTs, prometheus.GaugeValue,
+				float64(e.lastPoll.Add(interval).Unix()), name, c.instanceLabel,
 			)
 		}
 	}

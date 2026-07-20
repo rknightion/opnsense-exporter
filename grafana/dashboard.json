@@ -72884,6 +72884,290 @@
         "kind": "Panel",
         "spec": {
           "id": 672,
+          "title": "Collector Poll Interval",
+          "description": "Configured poll interval per collector (#336): fast 15s / medium 60s / slow 5m / cold 15m, overridable via --collector.poll-interval-override.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_collector_poll_interval_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {
+                        "Time": true,
+                        "__name__": true,
+                        "opnsense_instance": true,
+                        "job": true,
+                        "instance": true
+                      },
+                      "renameByName": {
+                        "Value": "Interval (s)",
+                        "collector": "Collector"
+                      },
+                      "indexByName": {}
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-673": {
+        "kind": "Panel",
+        "spec": {
+          "id": 673,
+          "title": "Collector Poll Age (freshness)",
+          "description": "Seconds since each collector last completed a poll. A value climbing past the collector's interval means its polls are failing or stalled.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (time() - opnsense_exporter_collector_last_poll_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-674": {
+        "kind": "Panel",
+        "spec": {
+          "id": 674,
+          "title": "Collector Next Poll (in)",
+          "description": "Estimated seconds until each collector's next scheduled poll (last poll + interval).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_collector_next_poll_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} - time())",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-675": {
+        "kind": "Panel",
+        "spec": {
+          "id": 675,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -72969,10 +73253,10 @@
           }
         }
       },
-      "panel-673": {
+      "panel-676": {
         "kind": "Panel",
         "spec": {
-          "id": 673,
+          "id": 676,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -73084,10 +73368,10 @@
           }
         }
       },
-      "panel-674": {
+      "panel-677": {
         "kind": "Panel",
         "spec": {
-          "id": 674,
+          "id": 677,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -73173,10 +73457,10 @@
           }
         }
       },
-      "panel-675": {
+      "panel-678": {
         "kind": "Panel",
         "spec": {
-          "id": 675,
+          "id": 678,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -73262,10 +73546,10 @@
           }
         }
       },
-      "panel-676": {
+      "panel-679": {
         "kind": "Panel",
         "spec": {
-          "id": 676,
+          "id": 679,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -73351,10 +73635,10 @@
           }
         }
       },
-      "panel-677": {
+      "panel-680": {
         "kind": "Panel",
         "spec": {
-          "id": 677,
+          "id": 680,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -73436,10 +73720,10 @@
           }
         }
       },
-      "panel-678": {
+      "panel-681": {
         "kind": "Panel",
         "spec": {
-          "id": 678,
+          "id": 681,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -73525,10 +73809,10 @@
           }
         }
       },
-      "panel-679": {
+      "panel-682": {
         "kind": "Panel",
         "spec": {
-          "id": 679,
+          "id": 682,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -88658,6 +88942,59 @@
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
+                                  "title": "Per-Collector Poll Schedule",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 8,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-672"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 8,
+                                            "y": 0,
+                                            "width": 8,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-673"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 16,
+                                            "y": 0,
+                                            "width": 8,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-674"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
                                   "title": "API Requests (per endpoint)",
                                   "collapse": false,
                                   "layout": {
@@ -88673,7 +89010,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-675"
+                                              "name": "panel-678"
                                             }
                                           }
                                         },
@@ -88686,7 +89023,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-676"
+                                              "name": "panel-679"
                                             }
                                           }
                                         }
@@ -88713,7 +89050,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-677"
+                                              "name": "panel-680"
                                             }
                                           }
                                         },
@@ -88726,7 +89063,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-678"
+                                              "name": "panel-681"
                                             }
                                           }
                                         },
@@ -88739,7 +89076,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-679"
+                                              "name": "panel-682"
                                             }
                                           }
                                         }
@@ -88806,7 +89143,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-672"
+                                              "name": "panel-675"
                                             }
                                           }
                                         },
@@ -88819,7 +89156,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-673"
+                                              "name": "panel-676"
                                             }
                                           }
                                         },
@@ -88832,7 +89169,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-674"
+                                              "name": "panel-677"
                                             }
                                           }
                                         }

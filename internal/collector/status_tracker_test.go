@@ -25,6 +25,16 @@ func TestStatusTracker_RecordAndSnapshot(t *testing.T) {
 	}
 }
 
+func TestStatusTracker_SetIntervalSurvivesRecord(t *testing.T) {
+	tr := NewStatusTracker()
+	tr.SetInterval("gw", 15*time.Second)
+	tr.Record("gw", time.Now(), 5, true, "")
+	snap := tr.Snapshot()
+	if len(snap) != 1 || snap[0].Interval != 15*time.Second {
+		t.Fatalf("interval should be retained across a Record, got %+v", snap)
+	}
+}
+
 func TestStatusTracker_ConsecutiveResetsOnSuccess(t *testing.T) {
 	tr := NewStatusTracker()
 	tr.Record("x", time.Now(), 1, false, "e")

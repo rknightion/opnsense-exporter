@@ -417,6 +417,18 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 		"opnsense_exporter_scrape_collector_success", "help",
 		[]string{"collector", instanceLabelName}, nil,
 	)
+	c.pollInterval = prometheus.NewDesc(
+		"opnsense_exporter_collector_poll_interval_seconds", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.lastPollTs = prometheus.NewDesc(
+		"opnsense_exporter_collector_last_poll_timestamp_seconds", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.nextPollTs = prometheus.NewDesc(
+		"opnsense_exporter_collector_next_poll_timestamp_seconds", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
 	c.isUp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_up_test", Help: "h"})
 	c.firewallHealthStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_firewall_status_test", Help: "h"})
 	c.crashReporterStatus = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_crash_reporter_status_test", Help: "h"})
@@ -499,12 +511,18 @@ func TestCollectReplaysSnapshot(t *testing.T) {
 	c.collect(context.Background(), ch, nil)
 	close(ch)
 
-	var sawSeries, sawDuration, sawSuccess, sawUp bool
+	var sawSeries, sawDuration, sawSuccess, sawUp, sawInterval, sawLast, sawNext bool
 	for m := range ch {
 		desc := m.Desc().String()
 		switch {
 		case strings.Contains(desc, "opnsense_fake_series"):
 			sawSeries = true
+		case strings.Contains(desc, "collector_poll_interval_seconds"):
+			sawInterval = true
+		case strings.Contains(desc, "collector_last_poll_timestamp_seconds"):
+			sawLast = true
+		case strings.Contains(desc, "collector_next_poll_timestamp_seconds"):
+			sawNext = true
 		case strings.Contains(desc, "scrape_collector_duration_seconds"):
 			sawDuration = true
 		case strings.Contains(desc, "scrape_collector_success"):
@@ -518,6 +536,9 @@ func TestCollectReplaysSnapshot(t *testing.T) {
 	}
 	if !sawDuration || !sawSuccess {
 		t.Error("collect must emit per-collector scrape meta for a polled collector")
+	}
+	if !sawInterval || !sawLast || !sawNext {
+		t.Errorf("collect must emit poll observability metrics (interval=%v last=%v next=%v)", sawInterval, sawLast, sawNext)
 	}
 	if !sawUp {
 		t.Error("collect must emit the health gauges")
