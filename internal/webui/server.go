@@ -129,35 +129,25 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// nav builds the data-driven navigation, marking active and omitting the
-// pages disabled by kill switch.
-func (s *Server) nav(active string) []navItem {
-	items := []navItem{
-		{Label: "Status", Href: "/", Key: "status"},
-		{Label: "Cardinality", Href: "/cardinality", Key: "cardinality"},
+// pageView assembles the root value for the single-page console: the
+// poll-refreshed status snapshot, the static server-rendered effective config
+// (omitted when the config tab is disabled — and never re-fetched by the poll,
+// since EffectiveConfig reads secret files from disk), and the refresh interval.
+func (s *Server) pageView() view {
+	v := view{
+		Title:          "Status",
+		RefreshMs:      s.deps.RefreshSeconds * 1000,
+		Data:           s.snapshot(),
+		DisableConfig:  s.deps.DisableConfig,
+		DisableDevices: s.deps.DisableDevices,
 	}
-	if !s.deps.DisableConfig {
-		items = append(items, navItem{Label: "Config", Href: "/config", Key: "config"})
+	if v.RefreshMs <= 0 {
+		v.RefreshMs = 5000
 	}
-	if !s.deps.DisableDevices {
-		items = append(items, navItem{Label: "Devices", Href: "/devices", Key: "devices"})
+	if !s.deps.DisableConfig && s.deps.EffectiveConfig != nil {
+		v.Config = s.deps.EffectiveConfig()
 	}
-	for i := range items {
-		items[i].Active = items[i].Key == active
-	}
-	return items
-}
-
-// newView wraps page-specific data with the shared shell (nav/refresh/title)
-// for renderPage. Every page lane uses this to get consistent chrome.
-func (s *Server) newView(pageID, title string, data any) view {
-	return view{
-		Title:          title,
-		PageID:         pageID,
-		Nav:            s.nav(pageID),
-		RefreshSeconds: s.deps.RefreshSeconds,
-		Data:           data,
-	}
+	return v
 }
 
 // serviceInfo assembles the identity/uptime header from Deps.

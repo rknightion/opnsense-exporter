@@ -14,28 +14,12 @@ import (
 // for the pattern every page area follows.
 func init() { registerRoutes((*Server).registerDevices) }
 
-// registerDevices mounts the connected-devices page and its JSON twin.
+// registerDevices mounts the connected-devices JSON endpoint. Devices are a tab
+// on the single console page that loads THIS endpoint lazily on tab-open — never
+// on the auto-refresh poll — because the fetch is a live firewall read (ARP/DHCP
+// only, never the metric collectors, so it does not trigger a scrape).
 func (s *Server) registerDevices(mux *http.ServeMux) {
-	mux.HandleFunc("GET /devices", s.handleDevices)
 	mux.HandleFunc("GET /api/devices.json", s.handleDevicesJSON)
-}
-
-// handleDevices renders the connected-devices view, or 404s when the page is
-// disabled via the --web.ui-disable-devices kill switch. Devices are fetched
-// on demand (the only console page that reaches the firewall API), but the
-// fetch hits ARP/DHCP endpoints only — never the metric collectors — so it does
-// not trigger a scrape.
-func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
-	if s.deps.DisableDevices {
-		http.NotFound(w, r)
-		return
-	}
-	rep := s.devicesReport(r.Context())
-	v := s.newView("devices", "Devices", rep)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := renderPage(w, "devices.html.tmpl", v); err != nil {
-		http.Error(w, "render error", http.StatusInternalServerError)
-	}
 }
 
 func (s *Server) handleDevicesJSON(w http.ResponseWriter, r *http.Request) {

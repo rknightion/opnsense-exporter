@@ -36,27 +36,44 @@ func TestSparkline_SVGForSeries(t *testing.T) {
 func TestRenderPage_Status(t *testing.T) {
 	var buf bytes.Buffer
 	v := view{
-		Title:          "Status",
-		PageID:         "status",
-		Nav:            []navItem{{Label: "Status", Href: "/", Key: "status", Active: true}},
-		RefreshSeconds: 5,
+		Title:     "Status",
+		RefreshMs: 5000,
 		Data: Status{
-			Service: ServiceInfo{Name: "opnsense-exporter", Version: "v1.2.3"},
+			Service: ServiceInfo{Name: "opnsense-exporter", Version: "v1.2.3", GoVersion: "go1.26"},
 			Health:  "healthy",
+			Stats:   ExporterStats{ActiveCollectors: 3, MetricFamilies: 10, Series: 42},
+			Collectors: []CollectorRow{{
+				Name: "gateways", Display: "Gateways", State: "ok",
+				IntervalSec: 60, NextRunIn: "45s", Freshness: "15s ago", FreshnessState: "fresh",
+				HasRun: true, LastSuccess: true,
+			}},
 		},
 	}
-	if err := renderPage(&buf, "status.html.tmpl", v); err != nil {
+	if err := renderPage(&buf, v); err != nil {
 		t.Fatalf("renderPage: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "opnsense-exporter") {
-		t.Fatalf("output missing service name: %q", out[:min(len(out), 400)])
+	for _, want := range []string{
+		"opnsense-exporter", "v1.2.3",
+		`data-tab="overview"`, `data-tab="collectors"`, `data-tab="api"`, `data-tab="cardinality"`,
+		"opnsense-theme", "Next run",
+		`id="themeToggle"`, `id="pauseBtn"`, `id="staleBanner"`, `id="tabs"`, `id="collBody"`,
+		`id="chGoroutines"`, "function showTab", "function toggleTheme", "Gateways",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered page missing %q", want)
+		}
 	}
-	if !strings.Contains(out, "v1.2.3") {
-		t.Fatalf("output missing version")
+	// html/template's JS-context escaper space-pads the numeric value, so match
+	// it near the assignment rather than an exact "= 5000" spacing.
+	if i := strings.Index(out, "__refreshMs"); i < 0 || !strings.Contains(out[i:i+40], "5000") {
+		t.Errorf("refresh interval 5000 not rendered into page")
 	}
-	if !strings.Contains(out, "/static/app.css") {
-		t.Fatalf("layout missing css link")
+	if strings.Contains(out, "/static/app.css") || strings.Contains(out, "/static/app.js") {
+		t.Errorf("stale external-asset link present in inline single-page console")
+	}
+	if strings.Contains(out, "data-collector=") || strings.Contains(out, "Run now") {
+		t.Errorf("Run-Now affordance still present after removal")
 	}
 }
 
@@ -112,22 +129,5 @@ func TestHandler_Healthz(t *testing.T) {
 	}
 }
 
-func TestHandler_StaticContentType(t *testing.T) {
-	srv := NewServer(testDeps())
-	for path, ct := range map[string]string{
-		"/static/app.css": "text/css",
-		"/static/app.js":  "text/javascript",
-	} {
-		rec := httptest.NewRecorder()
-		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s want 200, got %d", path, rec.Code)
-		}
-		if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, ct) {
-			t.Fatalf("%s content-type want %s, got %q", path, ct, got)
-		}
-	}
-}
-
 // compile-time proof the render helper writes to any io.Writer.
-var _ = func(w io.Writer) { _ = renderPage(w, "status.html.tmpl", view{}) }
+var _ = func(w io.Writer) { _ = renderPage(w, view{}) }

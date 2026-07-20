@@ -59,27 +59,6 @@ type LabelCard struct {
 	Families       int // number of families that use this label
 }
 
-// MetricLabelValues is the per-metric drill-down model for the
-// /cardinality/label-values/{metric} page.
-type MetricLabelValues struct {
-	Metric string
-	Series int
-	Labels []LabelValueGroup
-	Found  bool
-}
-
-// LabelValueGroup is one label's observed values on a single metric.
-type LabelValueGroup struct {
-	Name   string
-	Values []LabelValueCount // sorted by count desc, then value asc
-}
-
-// LabelValueCount is one label value and how many series carry it.
-type LabelValueCount struct {
-	Value string
-	Count int
-}
-
 // cardLevel classifies a metric's series count against the thresholds.
 func cardLevel(series, warn, crit int) string {
 	switch {
@@ -166,179 +145,38 @@ func buildCardinality(families []*dto.MetricFamily, warn, crit int) CardinalityR
 	return rep
 }
 
-// buildMetricLabelValues computes the per-label value breakdown for a single
-// metric family. Found is false when the metric is not present in the snapshot.
-func buildMetricLabelValues(families []*dto.MetricFamily, metric string) MetricLabelValues {
-	out := MetricLabelValues{Metric: metric}
-	var target *dto.MetricFamily
-	for _, mf := range families {
-		if mf.GetName() == metric {
-			target = mf
-			break
-		}
-	}
-	if target == nil {
-		return out
-	}
-	out.Found = true
-	out.Series = len(target.GetMetric())
-
-	counts := map[string]map[string]int{}
-	order := []string{}
-	for _, m := range target.GetMetric() {
-		for _, lp := range m.GetLabel() {
-			ln := lp.GetName()
-			if _, ok := counts[ln]; !ok {
-				counts[ln] = map[string]int{}
-				order = append(order, ln)
-			}
-			counts[ln][lp.GetValue()]++
-		}
-	}
-	sort.Strings(order)
-	for _, ln := range order {
-		grp := LabelValueGroup{Name: ln}
-		for v, c := range counts[ln] {
-			grp.Values = append(grp.Values, LabelValueCount{Value: v, Count: c})
-		}
-		sort.Slice(grp.Values, func(i, j int) bool {
-			if grp.Values[i].Count != grp.Values[j].Count {
-				return grp.Values[i].Count > grp.Values[j].Count
-			}
-			return grp.Values[i].Value < grp.Values[j].Value
-		})
-		out.Labels = append(out.Labels, grp)
-	}
-	return out
-}
-
-// init registers the cardinality page area's routes. New page areas register
-// themselves the same way (see server.go's extension docs) so no central file
-// edit is required.
+// init registers the cardinality JSON endpoints. The cardinality data itself is
+// rendered as a tab on the single console page (folded from the old drill-down
+// pages); these endpoints remain for machine consumption and the export button.
 func init() { registerRoutes((*Server).registerCardinality) }
 
-// registerCardinality mounts the cardinality hub, its drill-down pages, the
-// export attachment, and the JSON twin.
+// registerCardinality mounts the cardinality JSON twin and the export attachment.
 func (s *Server) registerCardinality(mux *http.ServeMux) {
-	mux.HandleFunc("GET /cardinality", s.handleCardinality)
-	mux.HandleFunc("GET /cardinality/all-metrics", s.handleCardinalityAllMetrics)
-	mux.HandleFunc("GET /cardinality/all-labels", s.handleCardinalityAllLabels)
-	mux.HandleFunc("GET /cardinality/label-values/{metric}", s.handleCardinalityLabelValues)
 	mux.HandleFunc("GET /cardinality/export.json", s.handleCardinalityExport)
 	mux.HandleFunc("GET /api/cardinality.json", s.handleCardinalityJSON)
 }
 
-// cardinalityPage is the render envelope shared by the cardinality pages. Each
-// template reads the fields it needs; unused fields stay zero.
-type cardinalityPage struct {
-	Report      CardinalityReport
-	HeadMetrics []MetricCard      // capped list for the hub
-	HeadLabels  []LabelCard       // capped list for the hub
-	LabelValues MetricLabelValues // populated only on the drill-down page
-	Hot         int               // Warn+Crit, precomputed (no template add func)
-	Empty       bool
-	ScrapeAge   string
-}
-
-// cardinalitySnapshot builds the report from the passive metrics snapshot and
-// derives the empty-state / scrape-age chrome. It never gathers.
-func (s *Server) cardinalitySnapshot() (CardinalityReport, bool, string) {
+// cardinalitySnapshot builds the report from the passive metrics snapshot. It
+// never gathers. (The console page builds its own copy inside snapshot(); these
+// endpoints keep an independent build so they work even if that changes.)
+func (s *Server) cardinalitySnapshot() CardinalityReport {
 	var families []*dto.MetricFamily
-	var at time.Time
 	if s.deps.Metrics != nil {
-		families, at = s.deps.Metrics()
+		families, _ = s.deps.Metrics()
 	}
 	rep := buildCardinality(families, warnCardinality, critCardinality)
 	rep.Generated = time.Now()
 	if s.growth != nil {
 		rep.Growth = s.growth.rows()
 	}
-	empty := at.IsZero()
-	age := "never"
-	if !empty {
-		age = shortDur(time.Since(at)) + " ago"
-	}
-	return rep, empty, age
-}
-
-func headMetrics(in []MetricCard, n int) []MetricCard {
-	if len(in) > n {
-		return in[:n]
-	}
-	return in
-}
-
-func headLabels(in []LabelCard, n int) []LabelCard {
-	if len(in) > n {
-		return in[:n]
-	}
-	return in
-}
-
-func (s *Server) renderCardinality(w http.ResponseWriter, page string, id, title string, data cardinalityPage) {
-	v := s.newView(id, title, data)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := renderPage(w, page, v); err != nil {
-		http.Error(w, "render error", http.StatusInternalServerError)
-	}
-}
-
-func (s *Server) handleCardinality(w http.ResponseWriter, _ *http.Request) {
-	rep, empty, age := s.cardinalitySnapshot()
-	s.renderCardinality(w, "cardinality.html.tmpl", "cardinality", "Cardinality", cardinalityPage{
-		Report:      rep,
-		HeadMetrics: headMetrics(rep.TopMetrics, 15),
-		HeadLabels:  headLabels(rep.TopLabels, 15),
-		Hot:         rep.Warn + rep.Crit,
-		Empty:       empty,
-		ScrapeAge:   age,
-	})
-}
-
-func (s *Server) handleCardinalityAllMetrics(w http.ResponseWriter, _ *http.Request) {
-	rep, empty, age := s.cardinalitySnapshot()
-	s.renderCardinality(w, "cardinality_all_metrics.html.tmpl", "cardinality", "Cardinality · Metrics", cardinalityPage{
-		Report:    rep,
-		Empty:     empty,
-		ScrapeAge: age,
-	})
-}
-
-func (s *Server) handleCardinalityAllLabels(w http.ResponseWriter, _ *http.Request) {
-	rep, empty, age := s.cardinalitySnapshot()
-	s.renderCardinality(w, "cardinality_all_labels.html.tmpl", "cardinality", "Cardinality · Labels", cardinalityPage{
-		Report:    rep,
-		Empty:     empty,
-		ScrapeAge: age,
-	})
-}
-
-func (s *Server) handleCardinalityLabelValues(w http.ResponseWriter, r *http.Request) {
-	metric := r.PathValue("metric")
-	var families []*dto.MetricFamily
-	var at time.Time
-	if s.deps.Metrics != nil {
-		families, at = s.deps.Metrics()
-	}
-	empty := at.IsZero()
-	age := "never"
-	if !empty {
-		age = shortDur(time.Since(at)) + " ago"
-	}
-	s.renderCardinality(w, "cardinality_label_values.html.tmpl", "cardinality", "Cardinality · "+metric, cardinalityPage{
-		LabelValues: buildMetricLabelValues(families, metric),
-		Empty:       empty,
-		ScrapeAge:   age,
-	})
+	return rep
 }
 
 func (s *Server) handleCardinalityJSON(w http.ResponseWriter, _ *http.Request) {
-	rep, _, _ := s.cardinalitySnapshot()
-	writeJSON(w, rep)
+	writeJSON(w, s.cardinalitySnapshot())
 }
 
 func (s *Server) handleCardinalityExport(w http.ResponseWriter, _ *http.Request) {
-	rep, _, _ := s.cardinalitySnapshot()
 	w.Header().Set("Content-Disposition", `attachment; filename="cardinality.json"`)
-	writeJSON(w, rep)
+	writeJSON(w, s.cardinalitySnapshot())
 }

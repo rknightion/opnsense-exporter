@@ -108,40 +108,6 @@ func TestBuildCardinality_LabelDistinctValues(t *testing.T) {
 	}
 }
 
-func TestBuildMetricLabelValues(t *testing.T) {
-	fams := []*dto.MetricFamily{
-		{Name: sp("http_requests"), Metric: []*dto.Metric{
-			counterMetric(1, "code", "200", "method", "get"),
-			counterMetric(1, "code", "500", "method", "get"),
-			counterMetric(1, "code", "200", "method", "post"),
-		}},
-	}
-	mlv := buildMetricLabelValues(fams, "http_requests")
-	if !mlv.Found {
-		t.Fatalf("metric should be found")
-	}
-	if mlv.Series != 3 {
-		t.Fatalf("series want 3, got %d", mlv.Series)
-	}
-	var code *LabelValueGroup
-	for i := range mlv.Labels {
-		if mlv.Labels[i].Name == "code" {
-			code = &mlv.Labels[i]
-		}
-	}
-	if code == nil {
-		t.Fatalf("code label group missing: %+v", mlv.Labels)
-	}
-	// 200 appears twice, 500 once → 200 first (count desc).
-	if len(code.Values) != 2 || code.Values[0].Value != "200" || code.Values[0].Count != 2 {
-		t.Fatalf("code values want [200:2, 500:1], got %+v", code.Values)
-	}
-
-	if miss := buildMetricLabelValues(fams, "nope"); miss.Found {
-		t.Fatalf("nonexistent metric should not be Found")
-	}
-}
-
 // --- handler / render tests ---
 
 func cardinalityDeps(metrics func() ([]*dto.MetricFamily, time.Time)) Deps {
@@ -168,66 +134,27 @@ func populatedMetrics() func() ([]*dto.MetricFamily, time.Time) {
 	return func() ([]*dto.MetricFamily, time.Time) { return fams, at }
 }
 
-func TestHandler_CardinalityHub(t *testing.T) {
+// TestHandler_CardinalityFoldedIntoPage asserts the cardinality data is folded
+// into the single page as a tab (the old dedicated HTML drill-down handlers are
+// gone; those paths now fall through to the "/" catch-all page). The JSON/export
+// endpoints remain (covered by TestHandler_CardinalityExportAndJSON).
+func TestHandler_CardinalityFoldedIntoPage(t *testing.T) {
 	srv := NewServer(cardinalityDeps(populatedMetrics()))
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/cardinality", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("hub want 200, got %d", rec.Code)
-	}
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	body := rec.Body.String()
-	if !strings.Contains(body, "Cardinality") {
-		t.Fatalf("hub missing title")
+	if !strings.Contains(body, `data-tab="cardinality"`) {
+		t.Errorf("single page missing cardinality tab")
 	}
-	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-		t.Fatalf("hub content-type want html, got %q", got)
+	if !strings.Contains(body, "opnsense_big") {
+		t.Errorf("single page missing folded-in cardinality metric data")
 	}
-}
-
-func TestHandler_CardinalityEmptyState(t *testing.T) {
-	srv := NewServer(cardinalityDeps(func() ([]*dto.MetricFamily, time.Time) { return nil, time.Time{} }))
-	for _, path := range []string{"/cardinality", "/cardinality/all-metrics", "/cardinality/all-labels"} {
-		rec := httptest.NewRecorder()
-		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s want 200, got %d", path, rec.Code)
-		}
-		if !strings.Contains(rec.Body.String(), "first scrape") {
-			t.Fatalf("%s should show waiting-for-first-scrape empty state", path)
-		}
-	}
-}
-
-func TestHandler_CardinalityAllMetricsAndLabels(t *testing.T) {
-	srv := NewServer(cardinalityDeps(populatedMetrics()))
-	for _, tc := range []struct{ path, want string }{
-		{"/cardinality/all-metrics", "opnsense_big"},
-		{"/cardinality/all-labels", "id"},
-	} {
-		rec := httptest.NewRecorder()
-		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s want 200, got %d", tc.path, rec.Code)
-		}
-		body := rec.Body.String()
-		if !strings.Contains(body, tc.want) {
-			t.Fatalf("%s missing %q", tc.path, tc.want)
-		}
-		if !strings.Contains(body, "data-filter-target") {
-			t.Fatalf("%s missing client-side filter input", tc.path)
-		}
-	}
-}
-
-func TestHandler_CardinalityLabelValues(t *testing.T) {
-	srv := NewServer(cardinalityDeps(populatedMetrics()))
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/cardinality/label-values/opnsense_up", nil))
+	// The dedicated cardinality HTML handlers were removed; the pure builder and
+	// JSON endpoints remain.
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/cardinality.json", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("label-values want 200, got %d", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), "instance") {
-		t.Fatalf("label-values missing 'instance' label")
+		t.Errorf("cardinality JSON want 200, got %d", rec.Code)
 	}
 }
 

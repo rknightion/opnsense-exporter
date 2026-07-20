@@ -6,54 +6,57 @@ import (
 	"html/template"
 	"io"
 	"strings"
+
+	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
-//go:embed templates/*.tmpl
+//go:embed templates/page.html.tmpl
 var templatesFS embed.FS
 
-//go:embed static/app.css static/app.js
-var staticFS embed.FS
-
-// funcMap is shared by every page template.
+// funcMap is used by the single-page console template for first-paint rendering
+// (the JS mirrors these helpers for its live-refresh rebuild).
 var funcMap = template.FuncMap{
 	"sparkline":    sparkline,
 	"outcomeStrip": outcomeStrip,
 	"healthClass":  healthClass,
 	"stateClass":   stateClass,
+	"freshClass":   freshClass,
 	"pct":          pct,
 }
 
-// navItem is one entry in the console's top navigation. Active marks the
-// current page. The nav is data-driven (see Server.nav) so disabled pages are
-// simply omitted from the slice.
-type navItem struct {
-	Label, Href, Key string
-	Active           bool
-}
+// pageTmpl is the one console template, parsed once at init. A malformed
+// template panics here (caught by any test importing this package), never at
+// request time.
+var pageTmpl = template.Must(template.New("page.html.tmpl").Funcs(funcMap).ParseFS(templatesFS, "templates/page.html.tmpl"))
 
-// view is the root value passed to every page render: the shared shell (title,
-// page id, nav, refresh interval) plus the page-specific payload in Data. Every
-// page template accesses .Data for its own model and the shell fields for the
-// chrome, so a new page lane needs no changes to the layout.
+// view is the root value passed to the single-page console template. Data is the
+// poll-refreshed status snapshot; Config is the static, server-rendered
+// effective config (never re-fetched by the poll — EffectiveConfig reads secret
+// files from disk). RefreshMs is the client poll interval in milliseconds.
 type view struct {
 	Title          string
-	PageID         string
-	Nav            []navItem
-	RefreshSeconds int
-	Data           any
+	RefreshMs      int
+	Data           Status
+	Config         []options.ConfigSection
+	DisableConfig  bool
+	DisableDevices bool
 }
 
-// renderPage renders one page template composed with the shared layout. It
-// parses the layout and the named page template into a fresh set per call, so
-// each page's `{{define "body"}}` block is unambiguous. New page lanes call
-// this with their own template filename and a view built via Server.newView.
-func renderPage(w io.Writer, page string, v view) error {
-	t, err := template.New("layout.html.tmpl").Funcs(funcMap).
-		ParseFS(templatesFS, "templates/layout.html.tmpl", "templates/"+page)
-	if err != nil {
-		return err
+// renderPage renders the single console page from the pre-parsed template.
+func renderPage(w io.Writer, v view) error {
+	return pageTmpl.Execute(w, v)
+}
+
+// freshClass maps a collector freshness state to a badge modifier class.
+func freshClass(state string) string {
+	switch state {
+	case "fresh":
+		return "ok"
+	case "stale":
+		return "warn"
+	default:
+		return "pending"
 	}
-	return t.ExecuteTemplate(w, "layout.html.tmpl", v)
 }
 
 // sparkline renders a compact SVG polyline of durations. Fewer than two points

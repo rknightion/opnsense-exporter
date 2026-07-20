@@ -5,18 +5,19 @@ import (
 	"net/http"
 )
 
-// init wires the core page areas — status, static assets, and health — into the
-// registrar set. New page lanes add their own init() in their own file; this
-// one owns only what Task 5 ships.
+// init wires the core routes — the single console page, its JSON twin, and the
+// liveness probe. Other page areas (cardinality/devices JSON) add their own
+// init() in their own file; this one owns the status page + health.
 func init() {
 	registerRoutes(
 		(*Server).registerStatus,
-		(*Server).registerStatic,
 		(*Server).registerHealth,
 	)
 }
 
-// registerStatus mounts the status console page and its JSON twin.
+// registerStatus mounts the single-page console and its JSON twin. The console
+// is one tabbed page (Overview/Collectors/API/Cardinality/Devices/Config); the
+// JSON twin carries the poll-refreshed snapshot the page's JS patches into view.
 func (s *Server) registerStatus(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", s.handleStatus)
 	mux.HandleFunc("GET /api/status.json", s.handleStatusJSON)
@@ -27,18 +28,10 @@ func (s *Server) registerHealth(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 }
 
-// registerStatic mounts the embedded CSS/JS with explicit content types (no
-// FileServer content sniffing).
-func (s *Server) registerStatic(mux *http.ServeMux) {
-	mux.HandleFunc("GET /static/app.css", s.staticHandler("static/app.css", "text/css; charset=utf-8"))
-	mux.HandleFunc("GET /static/app.js", s.staticHandler("static/app.js", "text/javascript; charset=utf-8"))
-}
-
 func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
-	st := s.snapshot()
-	v := s.newView("status", "Status", st)
+	v := s.pageView()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := renderPage(w, "status.html.tmpl", v); err != nil {
+	if err := renderPage(w, v); err != nil {
 		http.Error(w, "render error", http.StatusInternalServerError)
 	}
 }
@@ -52,22 +45,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-// staticHandler serves one embedded asset with a fixed content type.
-func (s *Server) staticHandler(name, contentType string) http.HandlerFunc {
-	body, err := staticFS.ReadFile(name)
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err != nil {
-			http.Error(w, "asset unavailable", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Cache-Control", "no-cache")
-		_, _ = w.Write(body)
-	}
-}
-
-// writeJSON encodes v as an indented JSON body. Shared by every page's JSON
-// twin so encoding stays consistent across lanes.
+// writeJSON encodes v as an indented JSON body. Shared by every JSON twin so
+// encoding stays consistent.
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(w)

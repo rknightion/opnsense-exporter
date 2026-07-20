@@ -28,30 +28,42 @@ func fixtureSections() []options.ConfigSection {
 	}
 }
 
-func TestHandler_ConfigPage(t *testing.T) {
+// TestHandler_ConfigTab asserts the effective config is folded into the single
+// page as a tab (rendered server-side, once — never on the poll), with secrets
+// redacted.
+func TestHandler_ConfigTab(t *testing.T) {
 	srv := NewServer(configDeps(false, fixtureSections()))
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/config", nil))
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
+	if !strings.Contains(body, `data-tab="config"`) {
+		t.Fatalf("page missing config tab")
+	}
 	if !strings.Contains(body, "Connection") {
-		t.Fatalf("body missing section title, got %q", body)
+		t.Fatalf("page missing config section title")
 	}
 	if !strings.Contains(body, "••••") {
-		t.Fatalf("body missing redacted secret marker, got %q", body)
-	}
-	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-		t.Fatalf("content-type want html, got %q", got)
+		t.Fatalf("page missing redacted secret marker")
 	}
 }
 
+// TestHandler_ConfigDisabled asserts the config tab is omitted when the config
+// kill switch is set (the page still serves — the tab is just gone).
 func TestHandler_ConfigDisabled(t *testing.T) {
 	srv := NewServer(configDeps(true, fixtureSections()))
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/config", nil))
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("want 404, got %d", rec.Code)
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, `data-tab="config"`) {
+		t.Fatalf("config tab should be omitted when disabled")
+	}
+	if strings.Contains(body, "Connection") {
+		t.Fatalf("config section content should be absent when disabled")
 	}
 }

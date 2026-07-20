@@ -67,19 +67,31 @@ func TestMergeDevices(t *testing.T) {
 	}
 }
 
+// TestHandler_DevicesDisabled asserts the devices kill switch omits the devices
+// tab AND 404s the lazy JSON endpoint (which is a live firewall read).
 func TestHandler_DevicesDisabled(t *testing.T) {
 	d := testDeps()
 	d.DisableDevices = true
 	d.Devices = func(ctx context.Context) (DeviceReport, error) { return DeviceReport{}, nil }
 	srv := NewServer(d)
+
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/devices", nil))
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if strings.Contains(rec.Body.String(), `data-tab="devices"`) {
+		t.Fatalf("devices tab should be omitted when disabled")
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/devices.json", nil))
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("disabled devices page want 404, got %d", rec.Code)
+		t.Fatalf("disabled devices JSON want 404, got %d", rec.Code)
 	}
 }
 
-func TestHandler_DevicesPage(t *testing.T) {
+// TestHandler_DevicesLazyJSON asserts the Devices tab is present on the page and
+// the device rows load from the lazy /api/devices.json endpoint (NOT on the poll
+// — that endpoint is the only console call that reaches the firewall).
+func TestHandler_DevicesLazyJSON(t *testing.T) {
 	d := testDeps()
 	d.Devices = func(ctx context.Context) (DeviceReport, error) {
 		return DeviceReport{Devices: []DeviceRow{
@@ -87,16 +99,23 @@ func TestHandler_DevicesPage(t *testing.T) {
 		}}, nil
 	}
 	srv := NewServer(d)
+
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/devices", nil))
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), `data-tab="devices"`) {
+		t.Fatalf("page missing devices tab")
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/devices.json", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("devices page want 200, got %d", rec.Code)
+		t.Fatalf("devices JSON want 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, "192.168.1.10") || !strings.Contains(body, "Raspberry Pi") {
-		t.Fatalf("devices page missing row data, got %q", body)
+		t.Fatalf("devices JSON missing row data, got %q", body)
 	}
-	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-		t.Fatalf("content-type want html, got %q", got)
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("content-type want json, got %q", got)
 	}
 }

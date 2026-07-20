@@ -18,12 +18,12 @@ import (
 // passive StatusTracker snapshot, the last-scrape metric families, and the
 // API-client cache view — never from a live Gather().
 type Status struct {
-	Service    ServiceInfo
-	Health     string // healthy|degraded|starting
-	Reasons    []string
-	Stats      ExporterStats
-	Collectors []CollectorRow
-	Skipped    []SkippedRow
+	Service     ServiceInfo
+	Health      string // healthy|degraded|starting
+	Reasons     []string
+	Stats       ExporterStats
+	Collectors  []CollectorRow
+	Skipped     []SkippedRow
 	Cache       []CacheRow
 	API         APIStats
 	Runtime     RuntimeStats
