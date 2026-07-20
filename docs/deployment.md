@@ -63,19 +63,21 @@ See the [Security guide](security.md) for detailed guidance on:
 
 ## Web UI (operator console)
 
-When the metrics path is not `/`, the exporter serves a built-in operator console at `/` (in place of the minimal landing page). It is a set of server-rendered pages for inspecting the exporter's own health at a glance:
+When the metrics path is not `/`, the exporter serves a built-in operator console at `/` (in place of the minimal landing page). It is a single server-rendered page with a sticky tab bar, inline CSS/JS and zero external assets, a light/dark theme toggle, and a live poll-and-patch refresh (with Pause/Resume, an "updated Ns ago" freshness ticker, and a disconnect banner). The tabs:
 
-- **Status** (`/`) — overall health, per-collector run stats (success rate, last-scrape duration, a duration sparkline and pass/fail strip, staleness, last error), a **Run Now** button per collector, the response-cache freshness table, and API-request stats. Live-updates in place.
-- **Cardinality** (`/cardinality`) — total series and metric families, the highest-cardinality metrics and labels, threshold alerts/recommendations, per-metric label-value drill-downs, series growth-rate, and a JSON export.
-- **Config** (`/config`) — the effective runtime configuration, with every secret redacted.
-- **Devices** (`/devices`) — connected devices merged from the ARP table and DHCP leases (IP, MAC, hostname, interface, manufacturer).
+- **Overview** — health verdict, uptime, series/family/collector counts, and a ~10-minute runtime trend (goroutines, heap-in-use, GC rate).
+- **Collectors** — per-collector run stats: state, poll **Interval**, success rate, **Freshness**, runs/failures, **Next run** countdown, last duration (with a sparkline and pass/fail strip), and last error. Fed by the internal poll scheduler.
+- **API** — auth status and the exporter's OPNsense API-request stats, with a top-endpoint-errors table.
+- **Cardinality** — total series and metric families, the highest-cardinality metrics and labels, series growth-rate, and a JSON export (`/cardinality/export.json`, `/api/cardinality.json`).
+- **Config** — the effective runtime configuration, with every secret redacted (rendered once per page load, not on the refresh poll).
+- **Devices** — connected devices merged from the ARP table and DHCP leases (IP, MAC, hostname, interface, manufacturer). Loads on demand when you open the tab.
 
-The console reads only cached/last-scrape data, so opening it never triggers an extra scrape of the firewall.
+The console is read-only. It reads only cached/last-scrape data, so the auto-refresh never triggers an extra scrape of the firewall; the Devices tab is the only view that reaches the firewall (ARP/DHCP), and only when you open it.
 
 It is on by default and served without authentication, so expose the exporter's port only on a trusted network. Controls:
 
 - `--web.ui-enabled` — set to false to serve the minimal landing page instead of the console.
-- `--web.ui-disable-config` / `--web.ui-disable-devices` — hide the config or devices page (the devices page exposes device MACs/hostnames).
-- `--web.ui-refresh-interval` — how often the live pages poll for updates.
+- `--web.ui-disable-config` / `--web.ui-disable-devices` — hide the Config or Devices tab (the Devices tab exposes device MACs/hostnames, and its JSON endpoint returns 404 when disabled).
+- `--web.ui-refresh-interval` — how often the console polls for updates (default 5s).
 
 See the [Configuration reference](configuration.md) for the full flag/env details.

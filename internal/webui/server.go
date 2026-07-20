@@ -1,27 +1,29 @@
-// Package webui serves the opnsense-exporter operator console: a hub-and-spoke,
-// server-rendered set of pages (status, cardinality, config, devices) built
-// from passively-captured scrape data. No console request ever triggers a
-// firewall scrape — metrics come only from Deps.Metrics (a metricsnap snapshot),
-// the StatusTracker, and the API-client cache view.
+// Package webui serves the opnsense-exporter operator console: a single
+// server-rendered, tabbed page (Overview / Collectors / API / Cardinality /
+// Devices / Config) with inline CSS/JS and zero external assets. It mirrors the
+// tailscale2otel/graph2otel fleet console standard — a manual theme toggle, a
+// poll-and-patch refresh of /api/status.json, a freshness ticker, Pause/Resume,
+// and a disconnect banner.
 //
-// # Extending the console with a new page
+// No console request ever triggers a firewall scrape. The status snapshot is
+// built only from Deps.Metrics (a metricsnap snapshot), the StatusTracker, and
+// the API-client cache view — never a live Gather(). Two exceptions load
+// off the auto-refresh poll: the effective Config is rendered server-side once
+// per full page load (EffectiveConfig reads secret files from disk), and the
+// Devices tab loads /api/devices.json lazily on tab-open (the only console call
+// that reaches the firewall — ARP/DHCP only, never the metric collectors).
 //
-// Page areas register their own routes so new pages drop in as NEW files
-// without editing this file. The pattern (see handlers.go for the status/static
-// /health example, and Tasks 6–9 for cardinality/config/devices/trigger):
+// # Routes
 //
-//  1. Create internal/webui/<area>.go.
-//  2. In it, add `func init() { registerRoutes((*Server).register<Area>) }`.
-//  3. Implement `func (s *Server) register<Area>(mux *http.ServeMux)` that calls
-//     mux.HandleFunc("GET /<path>", s.handle<Area>), etc.
-//  4. Handler methods read s.deps (and s.snapshot()/s.deps.Metrics() for data —
-//     never Gather), build a view with s.newView("<key>", "<Title>", data), and
-//     render with renderPage(w, "<area>.html.tmpl", v).
-//  5. Add templates/<area>.html.tmpl defining `{{define "body"}}...{{end}}`.
-//  6. Nav already lists Status/Cardinality/Config/Devices (Config/Devices are
-//     omitted when DisableConfig/DisableDevices); a page whose key matches an
-//     existing nav entry needs no nav change.
+// Route areas register themselves from an init() so no central edit is needed:
 //
+//  1. In the area file, add `func init() { registerRoutes((*Server).register<Area>) }`.
+//  2. Implement `func (s *Server) register<Area>(mux *http.ServeMux)` calling
+//     mux.HandleFunc("GET /<path>", s.handle<Area>).
+//  3. Handlers read s.deps / s.snapshot() (never Gather).
+//
+// The console is one page (handlers.go's GET /), so new UI is a tab in
+// templates/page.html.tmpl fed by the status snapshot, not a new route.
 // Handler() iterates every registered registrar against a fresh ServeMux, so
 // registration order is init order and no central edit is required.
 package webui
