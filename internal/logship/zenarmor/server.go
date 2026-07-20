@@ -217,9 +217,49 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/_aliases":
 		writeJSON(w, http.StatusOK, map[string]any{"acknowledged": true})
 
+	case strings.HasSuffix(path, "/_alias"):
+		// GET /<family>*/_alias — ipdrstreamer's hourly alias-resolution probe (#331).
+		s.handleAlias(w)
+
+	case strings.HasSuffix(path, "/_settings"):
+		// GET /<family>_write/_settings — its hourly write-index settings probe (#331).
+		s.handleSettings(w, path)
+
 	default:
 		s.handleIndex(w, r, path)
 	}
+}
+
+// handleAlias serves the index-scoped alias probe. Zenarmor calls
+// GET /<family>*/_alias once an hour per family as index housekeeping; a real
+// Elasticsearch returns an empty object when the pattern matches no aliases, which
+// is exactly our state — this receiver holds none. Before #331 this fell through to
+// unhandled() and was logged + counted as an unimplemented endpoint every hour; it
+// is a known, benign, read-only probe, so it is answered directly instead.
+func (s *server) handleAlias(w http.ResponseWriter) {
+	writeJSON(w, http.StatusOK, map[string]any{})
+}
+
+// handleSettings serves the index-scoped settings probe
+// (GET /<family>_write/_settings) with a minimal, valid settings document keyed by
+// the requested index. It always answers 200 rather than 404-ing an index it has
+// not seen: the live stream has worked against this endpoint's previous empty answer
+// for the length of the deployment, so a 200 is the behaviour-safe choice — a 404
+// could push ipdrstreamer down an index-create/rollover path we have no reason to
+// provoke. The body is only shaped enough to satisfy a settings read.
+func (s *server) handleSettings(w http.ResponseWriter, path string) {
+	idx := strings.Trim(strings.TrimSuffix(strings.Trim(path, "/"), "/_settings"), "/")
+	writeJSON(w, http.StatusOK, map[string]any{
+		idx: map[string]any{
+			"settings": map[string]any{
+				"index": map[string]any{
+					"number_of_shards":   "1",
+					"number_of_replicas": "0",
+					"provided_name":      idx,
+				},
+			},
+		},
+	})
 }
 
 // handleIndex serves the bare /<index> paths: the exists probe, the create, and the

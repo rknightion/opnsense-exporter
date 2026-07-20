@@ -76,8 +76,9 @@ func TestUnhandledEndpointCapturedAndWarnSuppressed(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 
-	// The real control-plane path from the field: an index-scoped alias GET.
-	path := "/zenarmor_0000000000_019695d7_conn%2A/_alias"
+	// A genuinely unmodelled index sub-resource (the _alias/_settings probes are now
+	// handled directly, #331, so they no longer reach unhandled()).
+	path := "/zenarmor_0000000000_019695d7_conn/_mapping"
 	resp, err := http.Get(ts.URL + path) //nolint:noctx // test client
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +99,7 @@ func TestUnhandledEndpointCapturedAndWarnSuppressed(t *testing.T) {
 	if r["kind"] != capture.KindUnhandledEndpoint || r["method"] != "GET" {
 		t.Fatalf("wrong envelope: %+v", r)
 	}
-	if p, _ := r["path"].(string); !strings.Contains(p, "/_alias") {
+	if p, _ := r["path"].(string); !strings.Contains(p, "/_mapping") {
 		t.Fatalf("path not captured: %+v", r)
 	}
 	if _, ok := r["headers"]; !ok {
@@ -119,7 +120,7 @@ func TestUnhandledEndpointWarnsWithoutCapture(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 
-	resp, err := http.Get(ts.URL + "/some_index/_settings") //nolint:noctx // test client
+	resp, err := http.Get(ts.URL + "/some_index/_mapping") //nolint:noctx // test client
 	if err != nil {
 		t.Fatal(err)
 	}
