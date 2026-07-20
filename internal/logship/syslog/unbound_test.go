@@ -141,11 +141,60 @@ func TestUnboundClientEnrichment(t *testing.T) {
 	})
 }
 
-// TestUnboundNonQueryLinesDegrade: anything that is not the local-action query log
-// returns ok=false so BuildRecord ships it as a generic record.
+// TestUnboundServfail: the SERVFAIL error shape (#334) is structured, both the
+// "got SERVFAIL" and "upstream server timeout" details, and the root zone ".".
+func TestUnboundServfail(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want map[string]string
+	}{
+		{
+			name: "forward servers failed, named zone, got SERVFAIL",
+			msg:  "[46775:9] error: SERVFAIL <api.ipify.org.saga-turtle.ts.net. AAAA IN>: all the configured stub or forward servers failed, at zone saga-turtle.ts.net. from 100.100.100.100 got SERVFAIL",
+			want: map[string]string{
+				"dns.query_name":  "api.ipify.org.saga-turtle.ts.net.",
+				"dns.query_type":  "AAAA",
+				"dns.query_class": "IN",
+				"dns.rcode":       "SERVFAIL",
+				"dns.error_zone":  "saga-turtle.ts.net.",
+				"dns.upstream":    "100.100.100.100",
+				"dns.error":       "got SERVFAIL",
+			},
+		},
+		{
+			name: "root zone, upstream timeout",
+			msg:  "[46775:6] error: SERVFAIL <res.dod.cdn.office.net. A IN>: all the configured stub or forward servers failed, at zone . from 162.159.36.20 upstream server timeout",
+			want: map[string]string{
+				"dns.query_name": "res.dod.cdn.office.net.",
+				"dns.query_type": "A",
+				"dns.rcode":      "SERVFAIL",
+				"dns.error_zone": ".",
+				"dns.upstream":   "162.159.36.20",
+				"dns.error":      "upstream server timeout",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, ok := parseUnbound(unboundEnv(tc.msg), nil, func(string) {})
+			if !ok {
+				t.Fatalf("parseUnbound returned ok=false for %q", tc.msg)
+			}
+			assertAttrs(t, rec, tc.want)
+		})
+	}
+}
+
+// TestUnboundNonQueryLinesDegrade: DNSBL/plugin status chatter is deliberately NOT
+// parsed — it returns ok=false so BuildRecord ships it as a generic record (still
+// shipped, never dropped), exactly as sshd treats its non-auth chatter.
 func TestUnboundNonQueryLinesDegrade(t *testing.T) {
 	lines := []string{
-		"[46775:9] error: SERVFAIL <api.ipify.org.saga-turtle.ts.net. AAAA IN>: all the configured stub or forward servers failed",
+		"[46775:9] info: dnsbl_module: updating blocklist.",
+		"[46775:9] info: dnsbl_module: blocklist loaded. length is 414523",
+		"blocklist parsing done in 1.41 seconds (414523 records)",
+		`Q-Feeds : skip invalid whitelist exclude pattern "*.notion.com"`,
 		"[46775:0] notice: init module 0: iterator",
 		"start of service (unbound 1.19.3).",
 		"",

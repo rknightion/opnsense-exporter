@@ -45,11 +45,39 @@ import (
 var reUnboundQuery = regexp.MustCompile(
 	`^\[\d+:\d+\]\s+info:\s+(\S+)\s+(\S+)\s+(\S+)@(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$`)
 
+// A resolution failure, the only other unbound shape worth structuring (#334). The
+// remaining unparsed unbound lines are DNSBL/plugin status chatter (dnsbl_module,
+// Q-Feeds, "blocklist parsing done"); those deliberately fall through to a generic
+// record, exactly as sshd's non-auth chatter does — still shipped, never dropped.
+//
+// Captured verbatim:
+//
+//	[46775:9] error: SERVFAIL <api.ipify.org.saga-turtle.ts.net. AAAA IN>: all the configured stub or forward servers failed, at zone saga-turtle.ts.net. from 100.100.100.100 got SERVFAIL
+//	[46775:6] error: SERVFAIL <res.dod.cdn.office.net. AAAA IN>: all the configured stub or forward servers failed, at zone . from 162.159.36.20 upstream server timeout
+//
+// The reason clause ("all the configured stub or forward servers failed") is
+// constant boilerplate and dropped; the trailing detail ("got SERVFAIL" / "upstream
+// server timeout") is the discriminating signal and kept as dns.error.
+var reUnboundServfail = regexp.MustCompile(
+	`^\[\d+:\d+\]\s+error:\s+SERVFAIL\s+<(\S+)\s+(\S+)\s+(\S+)>:\s+.*?,\s+at zone\s+(\S+)\s+from\s+(\S+)\s+(.*?)\s*$`)
+
 func init() {
 	RegisterParser(parseUnbound, "unbound")
 }
 
 func parseUnbound(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logship.Record, bool) {
+	if m := reUnboundServfail.FindStringSubmatch(env.Message); m != nil {
+		rec, set := newRecord(env)
+		set("dns.query_name", m[1])
+		set("dns.query_type", m[2])
+		set("dns.query_class", m[3])
+		set("dns.rcode", "SERVFAIL")
+		set("dns.error_zone", m[4])
+		set("dns.upstream", m[5])
+		set("dns.error", m[6])
+		return rec, true
+	}
+
 	m := reUnboundQuery.FindStringSubmatch(env.Message)
 	if m == nil {
 		return logship.Record{}, false
