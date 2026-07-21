@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +61,9 @@ func TestRenderPage_Status(t *testing.T) {
 		"opnsense-theme", "Next run",
 		`id="themeToggle"`, `id="pauseBtn"`, `id="staleBanner"`, `id="tabs"`, `id="collBody"`,
 		`id="chGoroutines"`, "function showTab", "function toggleTheme", "Gateways",
+		// Trend charts: active series, emitted throughput, collector fleet.
+		`id="chCard"`, `id="chEmit"`, `id="chFailing"`, `id="chDuration"`,
+		"Throughput &amp; fleet trend (~10 min)", "Active series", "Mean run duration",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("rendered page missing %q", want)
@@ -117,6 +122,39 @@ func TestHandler_StatusJSON(t *testing.T) {
 	}
 	if st.ScrapeAge != "never" {
 		t.Fatalf("ScrapeAge want never, got %q", st.ScrapeAge)
+	}
+}
+
+// The trend block must be present in the JSON twin — the page's poll-and-patch
+// refresh reads its charts from there, so a missing key silently freezes them.
+func TestHandler_StatusJSONCarriesTrend(t *testing.T) {
+	srv := NewServer(testDeps())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/status.json", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("json want 200, got %d", rec.Code)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	blob, ok := raw["Trend"]
+	if !ok {
+		t.Fatalf("status.json has no Trend key; got %v", slices.Sorted(maps.Keys(raw)))
+	}
+	var trend map[string]json.RawMessage
+	if err := json.Unmarshal(blob, &trend); err != nil {
+		t.Fatalf("decode Trend: %v", err)
+	}
+	for _, key := range []string{
+		"SeriesCount", "SeriesCountSeries",
+		"LogShipping", "ShippedRate", "DroppedRate", "ShippedRateSeries", "DroppedRateSeries",
+		"ActiveCollectors", "FailingCollectors", "MeanDurationMs",
+		"FailingSeries", "MeanDurationMsSeries",
+	} {
+		if _, ok := trend[key]; !ok {
+			t.Errorf("status.json Trend missing %q", key)
+		}
 	}
 }
 

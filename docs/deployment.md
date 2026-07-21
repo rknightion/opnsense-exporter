@@ -65,7 +65,7 @@ See the [Security guide](security.md) for detailed guidance on:
 
 When the metrics path is not `/`, the exporter serves a built-in operator console at `/` (in place of the minimal landing page). It is a single server-rendered page with a sticky tab bar, inline CSS/JS and zero external assets, a light/dark theme toggle, and a live poll-and-patch refresh (with Pause/Resume, an "updated Ns ago" freshness ticker, and a disconnect banner). The tabs:
 
-- **Overview** — health verdict, uptime, series/family/collector counts, and a ~10-minute runtime trend (goroutines, heap-in-use, GC rate).
+- **Overview** — health verdict, uptime, series/family/collector counts, a ~10-minute runtime trend (goroutines, heap-in-use, GC rate, active series), and a throughput & fleet trend (log records shipped/dropped per second, collectors failing, mean run duration). The throughput chart covers the exporter's one push path — the OTLP log-shipping pipeline — so it stays empty unless `--logs.enabled` is set; `/metrics` is pulled, not emitted, so it has no per-second emit rate to chart.
 - **Collectors** — per-collector run stats: state, poll **Interval**, success rate, **Freshness**, runs/failures, **Next run** countdown, last duration (with a sparkline and pass/fail strip), and last error. Fed by the internal poll scheduler.
 - **API** — auth status and the exporter's OPNsense API-request stats, with a top-endpoint-errors table.
 - **Cardinality** — total series and metric families, the highest-cardinality metrics and labels, series growth-rate, and a JSON export (`/cardinality/export.json`, `/api/cardinality.json`).

@@ -112,9 +112,7 @@ func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, 
 		sources: sources, stateFile: cfg.StateFile,
 		ctx: pctx, cancel: cancel, limiter: NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
-	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
-		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
-	})
+	p.queue = newBoundedQueue(cfg.BufferSize, p.noteOverflow)
 	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) }, sourceNames{})
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {

@@ -52,10 +52,15 @@ type Deps struct {
 	Cache                                   func() []opnsense.CacheEntryView
 	EffectiveConfig                         func() []options.ConfigSection
 	Devices                                 func(ctx context.Context) (DeviceReport, error)
-	AllCollectorNames                       []string
-	RefreshSeconds                          int
-	DisableConfig                           bool
-	DisableDevices                          bool
+	// LogThroughput returns the log-shipping pipeline's process-lifetime totals of
+	// records confirmed exported and records lost (logship.Throughput). It is nil
+	// when --logs.enabled is off, which is how the console knows there is no emit
+	// boundary to chart at all — see TrendStats.LogShipping.
+	LogThroughput     func() (shipped, dropped uint64)
+	AllCollectorNames []string
+	RefreshSeconds    int
+	DisableConfig     bool
+	DisableDevices    bool
 }
 
 // DeviceReport is the connected-devices model surfaced on the /devices page.
@@ -77,6 +82,7 @@ type Server struct {
 	deps    Deps
 	growth  *growthSampler
 	runtime *runtimeSampler
+	trend   *trendSampler
 }
 
 // growthSampleInterval is how often the cardinality growth ring samples the
@@ -90,24 +96,49 @@ const (
 // growth sampling is not started until StartBackground is called (so tests that
 // build a Server don't spawn a goroutine).
 func NewServer(d Deps) *Server {
+	trend := newTrendSampler(growthRingSize)
+	trend.logShipping = d.LogThroughput != nil
 	return &Server{
 		deps:    d,
 		growth:  newGrowthSampler(growthRingSize),
 		runtime: newRuntimeSampler(growthRingSize),
+		trend:   trend,
 	}
 }
 
-// StartBackground begins the cardinality growth sampler and the runtime-stats
-// sampler. Call once after NewServer; pair with Close on shutdown.
+// StartBackground begins the cardinality growth sampler, the runtime-stats
+// sampler and the series/throughput/fleet trend sampler — all on the same
+// cadence. Call once after NewServer; pair with Close on shutdown.
 func (s *Server) StartBackground() {
 	s.growth.start(s.deps.Metrics, growthSampleInterval)
 	s.runtime.start(growthSampleInterval)
+	s.trend.start(s.trendSample, growthSampleInterval)
 }
 
 // Close stops background sampling.
 func (s *Server) Close() {
 	s.growth.close()
 	s.runtime.close()
+	s.trend.close()
+}
+
+// trendSample takes one trend observation from the same passive sources the rest
+// of the console reads: the metricsnap snapshot (for the exposed series count),
+// the status tracker (for the fleet roll-up) and the log pipeline's raw counters.
+// It never gathers and never touches the firewall.
+func (s *Server) trendSample() trendSample {
+	smp := trendSample{at: time.Now()}
+	if s.deps.Metrics != nil {
+		families, _ := s.deps.Metrics()
+		smp.series = countSeries(families)
+	}
+	if s.deps.Tracker != nil {
+		smp.active, smp.failing, smp.meanMs = aggregateFleet(s.deps.Tracker.Snapshot())
+	}
+	if s.deps.LogThroughput != nil {
+		smp.shipped, smp.dropped = s.deps.LogThroughput()
+	}
+	return smp
 }
 
 // routeRegistrars is the set of per-area route registration functions. Each
@@ -186,6 +217,7 @@ func (s *Server) snapshot() Status {
 	}
 	st := buildStatus(stats, families, cache, s.serviceInfo(), s.deps.AllCollectorNames)
 	st.Runtime = s.runtime.stats()
+	st.Trend = s.trend.stats()
 	// Fold the cardinality report from the SAME already-fetched families (single
 	// snapshot fetch) so the Cardinality tab refreshes with the poll. This is a
 	// pure, passive computation — no live API call. Config is deliberately NOT

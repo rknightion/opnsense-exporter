@@ -27,6 +27,7 @@ type Status struct {
 	Cache       []CacheRow
 	API         APIStats
 	Runtime     RuntimeStats
+	Trend       TrendStats
 	Cardinality CardinalityReport
 	ScrapeAge   string // "Ns ago" style; "never" if no capture yet
 	Generated   time.Time
@@ -136,10 +137,7 @@ func deriveHealth(stats []collector.CollectorStat) (string, []string) {
 func buildStatus(stats []collector.CollectorStat, families []*dto.MetricFamily, cache []opnsense.CacheEntryView, svc ServiceInfo, allNames []string) Status {
 	health, reasons := deriveHealth(stats)
 
-	series := 0
-	for _, mf := range families {
-		series += len(mf.GetMetric())
-	}
+	series := countSeries(families)
 
 	rows := make([]CollectorRow, 0, len(stats))
 	tracked := make(map[string]struct{}, len(stats))

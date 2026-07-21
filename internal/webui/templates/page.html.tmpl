@@ -155,6 +155,20 @@
       <div class="card"><div class="k">Goroutines</div><div class="chart-wrap"><svg class="chart" id="chGoroutines"></svg><div class="chart-tip"></div></div></div>
       <div class="card"><div class="k">Heap in use</div><div class="chart-wrap"><svg class="chart" id="chHeap"></svg><div class="chart-tip"></div></div></div>
       <div class="card"><div class="k">GC rate</div><div class="chart-wrap"><svg class="chart" id="chGC"></svg><div class="chart-tip"></div></div></div>
+      <div class="card"><div class="k">Active series</div><div class="chart-wrap"><svg class="chart" id="chCard"></svg><div class="chart-tip"></div></div></div>
+    </div>
+    <div class="sub-h">Throughput &amp; fleet trend (~10 min)</div>
+    <div class="cards">
+      <div class="card"><div class="k">Records shipped</div><div class="v" id="tpShipped">{{if .Trend.LogShipping}}{{printf "%.2f" .Trend.ShippedRate}}{{else}}—{{end}}</div><div class="sub">log records/sec (OTLP)</div></div>
+      <div class="card"><div class="k">Records dropped</div><div class="v" id="tpDropped">{{if .Trend.LogShipping}}{{printf "%.2f" .Trend.DroppedRate}}{{else}}—{{end}}</div><div class="sub">log records/sec lost</div></div>
+      <div class="card"><div class="k">Collectors active</div><div class="v" id="flActive">{{.Trend.ActiveCollectors}}</div><div class="sub">tracked by the scheduler</div></div>
+      <div class="card"><div class="k">Collectors failing</div><div class="v" id="flFailing">{{.Trend.FailingCollectors}}</div><div class="sub">last run failed</div></div>
+      <div class="card"><div class="k">Mean run duration</div><div class="v" id="flMeanMs">{{printf "%.1f" .Trend.MeanDurationMs}} ms</div><div class="sub">across collectors that have run</div></div>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="k">Emitted throughput</div><div class="chart-wrap"><svg class="chart" id="chEmit"></svg><div class="chart-tip"></div></div></div>
+      <div class="card"><div class="k">Collectors failing</div><div class="chart-wrap"><svg class="chart" id="chFailing"></svg><div class="chart-tip"></div></div></div>
+      <div class="card"><div class="k">Mean run duration</div><div class="chart-wrap"><svg class="chart" id="chDuration"></svg><div class="chart-tip"></div></div></div>
     </div>
   </section>
 
@@ -431,6 +445,15 @@ function updateOverview(d){
   if(d.Stats){ setText('ovCollectors',d.Stats.ActiveCollectors); setText('ovFamilies',d.Stats.MetricFamilies); setText('ovSeries',d.Stats.Series); }
   if(d.Runtime){ setText('goroutines',d.Runtime.Goroutines); setText('heapAlloc',d.Runtime.HeapAlloc); setText('numGC',d.Runtime.NumGC); var gr=d.Runtime.GCRateSeries; if(gr && gr.length) setText('gcRate', gr[gr.length-1].toFixed(2)+'/s'); }
 }
+function updateTrend(d){
+  var t=d.Trend; if(!t) return;
+  // No log-shipping pipeline means no emit boundary at all on a pull exporter, so
+  // show an em dash rather than 0.00/s — see TrendStats.LogShipping.
+  if(t.LogShipping){ setText('tpShipped',(t.ShippedRate||0).toFixed(2)); setText('tpDropped',(t.DroppedRate||0).toFixed(2)); }
+  else { setText('tpShipped','—'); setText('tpDropped','—'); }
+  setText('flActive', t.ActiveCollectors); setText('flFailing', t.FailingCollectors);
+  setText('flMeanMs', (t.MeanDurationMs||0).toFixed(1)+' ms');
+}
 function setHealth(d){
   var b=document.getElementById('healthBadge'); if(b){ b.textContent=d.Health; b.className='badge badge-'+healthClass(d.Health); b.title=(d.Reasons||[]).join('\n'); }
   var rb=document.getElementById('healthReasons'); if(rb){ if(d.Reasons && d.Reasons.length){ rb.textContent=d.Reasons.join(' · '); rb.style.display=''; } else { rb.style.display='none'; } }
@@ -456,7 +479,7 @@ function loadDevices(){
 function refresh(){
   fetch('/api/status.json',{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); }).then(function(d){
     lastData=d; lastOkMs=Date.now(); setStale(false);
-    setHealth(d); updateRollup(d); updateOverview(d);
+    setHealth(d); updateRollup(d); updateOverview(d); updateTrend(d);
     rebuildCollectors(d.Collectors); rebuildAPI(d.API); rebuildCardinality(d.Cardinality);
     if(d.Generated){ var g=new Date(d.Generated); if(!isNaN(g)) setText('generatedAt', g.toLocaleTimeString()); }
     redrawCharts();
@@ -470,6 +493,13 @@ function tickFreshness(){ setText('updatedAgo', relMs(lastOkMs)); var b=document
   registerChart('chGoroutines', function(d){ return d&&d.Runtime ? [{name:'goroutines', points:d.Runtime.GoroutinesSeries||[]}] : []; });
   registerChart('chHeap', function(d){ return d&&d.Runtime ? [{name:'heap', points:(d.Runtime.HeapAllocSeries||[]).map(function(b){return b/1048576;})}] : []; }, function(v){ return v.toFixed(0)+'M'; });
   registerChart('chGC', function(d){ return d&&d.Runtime ? [{name:'gc/s', color:cssVar('--warn'), points:d.Runtime.GCRateSeries||[]}] : []; }, function(v){ return v.toFixed(1); });
+  registerChart('chCard', function(d){ return d&&d.Trend ? [{name:'series', points:d.Trend.SeriesCountSeries||[]}] : []; });
+  // Emitted throughput on a PULL exporter is the log-shipping pipeline's OTLP push
+  // path — the only stream of records this process actually emits. With log shipping
+  // off there is nothing to chart, so draw nothing rather than a fabricated flat line.
+  registerChart('chEmit', function(d){ if(!d||!d.Trend||!d.Trend.LogShipping) return []; return [{name:'shipped/s', points:d.Trend.ShippedRateSeries||[]},{name:'dropped/s', color:cssVar('--err'), points:d.Trend.DroppedRateSeries||[]}]; }, function(v){ return v.toFixed(2); });
+  registerChart('chFailing', function(d){ return d&&d.Trend ? [{name:'failing', color:cssVar('--err'), points:d.Trend.FailingSeries||[]}] : []; });
+  registerChart('chDuration', function(d){ return d&&d.Trend ? [{name:'mean', points:d.Trend.MeanDurationMsSeries||[]}] : []; }, function(v){ return v.toFixed(0)+'ms'; });
   initTabs();
   var tt=document.getElementById('themeToggle'); if(tt) tt.addEventListener('click',toggleTheme);
   var p=document.getElementById('pauseBtn'); if(p) p.addEventListener('click',togglePause);

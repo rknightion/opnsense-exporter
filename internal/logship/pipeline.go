@@ -109,9 +109,7 @@ func Start(
 		cancel:      cancel,
 		limiter:     NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
-	p.queue = newBoundedQueue(cfg.BufferSize, func(e Entry) {
-		p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
-	})
+	p.queue = newBoundedQueue(cfg.BufferSize, p.noteOverflow)
 	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) },
 		collectSourceNames(sources, pushSources))
 
@@ -188,6 +186,15 @@ func collectSourceNames(sources []Source, pushSources []PushSource) sourceNames 
 		}
 	}
 	return names
+}
+
+// noteOverflow is the bounded queue's eviction callback: it counts the evicted
+// record on logs_dropped_total{reason="overflow"} and on the console's raw
+// throughput total. It is a method rather than an inline closure so both the
+// pipeline and the test harness that mirrors Start count overflow identically.
+func (p *pipeline) noteOverflow(e Entry) {
+	p.metrics.dropped.WithLabelValues(e.Source, dropReasonOverflow).Inc()
+	consoleDropped.Add(1)
 }
 
 // effectiveInterval is max(global poll interval, source floor).
@@ -283,6 +290,7 @@ func (p *pipeline) shipBatch(batch []Entry) {
 			for _, e := range batch {
 				p.metrics.shipped.WithLabelValues(e.Source).Inc()
 			}
+			consoleShipped.Add(uint64(len(batch)))
 			return
 		}
 		p.metrics.shipErrors.Inc()
@@ -294,6 +302,7 @@ func (p *pipeline) shipBatch(batch []Entry) {
 			for _, e := range batch {
 				p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailed).Inc()
 			}
+			consoleDropped.Add(uint64(len(batch)))
 			p.log.Error("log batch abandoned during shutdown; records lost", "count", len(batch))
 			return
 		case <-time.After(shipBackoff(attempt)):

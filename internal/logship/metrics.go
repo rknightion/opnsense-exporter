@@ -2,6 +2,7 @@ package logship
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -211,4 +212,31 @@ func recordResourceCapped() {
 	if c != nil {
 		c.Inc()
 	}
+}
+
+// consoleShipped and consoleDropped mirror logs_shipped_total and
+// logs_dropped_total as raw, process-lifetime totals for the operator console,
+// which differences them over elapsed wall time into a per-second rate.
+//
+// They exist because the console cannot read the Prometheus counters: those live
+// on the exporter's SELF-metrics registry, and the console is built only from the
+// metricsnap snapshot of the COLLECTOR registry (internal/server/metrics.go tees
+// that one alone), never from a Gather of its own. Two atomic adds per shipped
+// batch is cheaper than either alternative.
+//
+// Package-level for the same reason activePossibleGapVec is: source.go/pipeline.go
+// are the frozen cross-lane contract and metrics.go is the file self-metrics land
+// in. Only one pipeline runs per process in production.
+var (
+	consoleShipped atomic.Uint64
+	consoleDropped atomic.Uint64
+)
+
+// Throughput returns the process-lifetime totals of log records the sink confirmed
+// exported and of records lost before delivery (queue overflow, or a batch
+// abandoned at shutdown). Both are monotonic within a process, so a caller
+// differences successive reads over elapsed wall time to get a rate. Safe to call
+// before any pipeline starts — it reads zeroes.
+func Throughput() (shipped, dropped uint64) {
+	return consoleShipped.Load(), consoleDropped.Load()
 }

@@ -641,6 +641,11 @@ func main() {
 		os.Exit(1)
 	}
 	var stopLogs func()
+	// logThroughput feeds the console's emitted-throughput chart. It stays nil unless
+	// a log pipeline actually starts: this is a Prometheus PULL exporter, so with log
+	// shipping off there is no emit boundary at all, and the console must draw nothing
+	// rather than a flat 0/s that would read as "shipping nothing".
+	var logThroughput func() (shipped, dropped uint64)
 	if logsEnabled {
 		var logsTransport *options.OTLPConfig
 		if logsCfg.Sink == "otlp" {
@@ -734,6 +739,7 @@ func main() {
 			logger.Error("failed to start log shipping", "err", lerr)
 			os.Exit(1)
 		}
+		logThroughput = logship.Throughput
 		stopLogs = func() {
 			ctx, cancel := context.WithTimeout(context.Background(), logsShutdownTimeout)
 			defer cancel()
@@ -811,6 +817,7 @@ func main() {
 				Devices: func(ctx context.Context) (webui.DeviceReport, error) {
 					return webui.FetchDevices(ctx, &opnsenseClient)
 				},
+				LogThroughput:     logThroughput,
 				AllCollectorNames: collectorNames(),
 				RefreshSeconds:    int((*options.WebUIRefreshInterval).Seconds()),
 				DisableConfig:     *options.WebUIDisableConfig,
