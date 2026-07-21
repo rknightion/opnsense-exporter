@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"runtime"
@@ -18,6 +19,8 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/flow"
+	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
@@ -50,6 +53,17 @@ const logsShutdownTimeout = 10 * time.Second
 // scrape can finish, while staying comfortably under Kubernetes' default 30s
 // termination grace period so the container is never SIGKILLed mid-drain (#161).
 const httpShutdownTimeout = 10 * time.Second
+
+// flowDedupeEntries bounds the VLAN de-duplication table. Sized above the observed
+// in-flight instance count on the reference box (9,657 duplicate instances across a
+// whole capture, only a fraction ever concurrent) so the bound is memory insurance
+// rather than something steady-state traffic pushes against — at capacity the
+// oldest entry goes and a later duplicate is no longer suppressed.
+const flowDedupeEntries = 20000
+
+// ifIndexRefreshInterval rebuilds the NetFlow ifIndex map. Frequent because the
+// mapping is positional: an interface added or removed renumbers everything.
+const ifIndexRefreshInterval = 60 * time.Second
 
 // readyCacheTTL caches /-/ready probe results (success and failure). 10s
 // matches the default kubelet probe period, bounding upstream health calls to
@@ -663,6 +677,33 @@ func main() {
 	// shipping off there is no emit boundary at all, and the console must draw nothing
 	// rather than a flat 0/s that would read as "shipping nothing".
 	var logThroughput func() (shipped, dropped uint64)
+	// Declared before the log pipeline so its shutdown closure can capture it: the
+	// NetFlow lane reads the same enrichment snapshot, so it must be stopped BEFORE
+	// the refresher that feeds it.
+	var stopNetflow func()
+
+	// Log enrichment is shared by the log pipeline and the NetFlow lane, and is built
+	// at most ONCE: both want the same snapshot of interface names, local subnets and
+	// hostnames, and giving them a refresher each would double the API poll for
+	// identical data. Built lazily because the common case wants neither.
+	var enrichCache *enrich.Cache
+	var enrichRefresher *enrich.Refresher
+	var stopEnrich context.CancelFunc
+	ensureEnrich := func() *enrich.Cache {
+		if enrichCache != nil {
+			return enrichCache
+		}
+		enrichCache = enrich.NewCache()
+		enrichRefresher = enrich.NewRefresher(
+			&opnsenseClient, enrichCache, enrich.NewMetrics(selfMetricsRegistry), logger)
+		ectx, cancel := context.WithCancel(context.Background())
+		stopEnrich = cancel
+		go enrichRefresher.Run(ectx)
+		logger.Info("api enrichment enabled",
+			"lookups", "rule descriptions, interface names, hostnames, MACs, scope, services")
+		return enrichCache
+	}
+
 	if logsEnabled {
 		var logsTransport *options.OTLPConfig
 		if logsCfg.Sink == "otlp" {
@@ -737,18 +778,9 @@ func main() {
 		// LogsZenarmorEnrichWanted() is transport-independent (elasticsearch or
 		// syslog), so zenarmor-over-syslog enrichment is already covered here too —
 		// no extra branch needed.
-		var stopEnrich context.CancelFunc
 		if (syslogEnabled && syslogCfg.Enrich) || options.LogsZenarmorEnrichWanted() {
-			cache := enrich.NewCache()
-			refresher := enrich.NewRefresher(
-				&opnsenseClient, cache, enrich.NewMetrics(selfMetricsRegistry), logger)
-			ectx, cancel := context.WithCancel(context.Background())
-			stopEnrich = cancel
-			go refresher.Run(ectx)
-			deps.Cache = cache
-			deps.Miss = refresher.NoteMiss
-			logger.Info("log enrichment enabled",
-				"lookups", "rule descriptions, interface names, hostnames, MACs, scope, services")
+			deps.Cache = ensureEnrich()
+			deps.Miss = enrichRefresher.NoteMiss
 		}
 
 		stop, lerr := logship.Start(
@@ -772,7 +804,11 @@ func main() {
 			}
 			// Stop the enrichment refresher only after the pipeline has drained: records
 			// still in flight are enriched from the snapshot, and a refresher torn down
-			// first would strand them.
+			// first would strand them. The NetFlow lane reads the same snapshot, so it
+			// stops here too, ahead of the refresher.
+			if stopNetflow != nil {
+				stopNetflow()
+			}
 			if stopEnrich != nil {
 				stopEnrich()
 			}
@@ -781,6 +817,94 @@ func main() {
 			// drop an in-flight capture.
 			if debugCapturer != nil {
 				_ = debugCapturer.Close()
+			}
+		}
+	}
+
+	// NetFlow receiver (#346 phase 2). Opt-in, and bound EAGERLY so a port already in
+	// use is a startup error rather than a receiver that is silently never there.
+	//
+	// It shares the enrichment snapshot with the log pipeline but does not depend on
+	// it: with log shipping off entirely this still runs, which is the "works
+	// standalone with Zenarmor absent" requirement.
+	if collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.NetflowEnabled {
+		cache := ensureEnrich()
+		repairer := flow.NewRepairer(flowDedupeEntries)
+		proc := flow.NewProcessor(collector.Flow, repairer, cache)
+		decoder := netflow.New()
+
+		listener := netflow.NewListener(netflow.ListenerConfig{
+			Addr:         flowCfg.NetflowListen,
+			AllowedPeers: flowCfg.NetflowAllowedPeers,
+		}, decoder, func(dg *netflow.Datagram, _ netip.Addr) {
+			proc.ObserveDatagram(dg, time.Now())
+		}, logger)
+		if lerr := listener.Start(); lerr != nil {
+			logger.Error("failed to start netflow receiver", "err", lerr)
+			os.Exit(1)
+		}
+		go listener.Serve()
+
+		// Rebuild the ifIndex map on a ticker. ng_netflow numbers interfaces
+		// POSITIONALLY over ifinfo output, so adding or removing any interface
+		// renumbers every index and silently remaps historical series; a map that
+		// stops refreshing is a correctness problem, not a staleness nuisance.
+		nfCtx, cancelNetflow := context.WithCancel(context.Background())
+		go func() {
+			ticker := time.NewTicker(ifIndexRefreshInterval)
+			defer ticker.Stop()
+			for {
+				if snap := cache.Load(); snap != nil {
+					proc.SetIfMap(flow.BuildIfMap(snap.Ifaces, flowCfg.NetflowIfIndexMap, time.Now()))
+				}
+				select {
+				case <-nfCtx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+
+		collector.Flow.SetNetflowStats(func() collector.NetflowStats {
+			var mapStats flow.IfMapStats
+			var age time.Duration
+			if m := proc.IfMap(); m != nil {
+				mapStats = m.Stats()
+				age = m.Age(time.Now())
+			}
+			return collector.NetflowStats{
+				Listener: listener.Stats(),
+				Decoder:  decoder.Stats(),
+				Pipeline: proc.Stats(),
+				Repair:   repairer.Stats(),
+				IfMap:    mapStats,
+				IfMapAge: age,
+			}
+		})
+
+		stopNetflow = func() {
+			cancelNetflow()
+			_ = listener.Close()
+		}
+		// An empty allowlist is legitimate but it is a decision, not a default to
+		// drift into: NetFlow has no authentication, so anything that can reach this
+		// port can inject flow records and move every number on the dashboard.
+		if len(flowCfg.NetflowAllowedPeers) == 0 {
+			logger.Warn("netflow receiver accepts records from ANY peer",
+				"addr", listener.Addr(),
+				"fix", "restrict with --flow.netflow.allowed-peers or firewall the port")
+		}
+		logger.Info("netflow receiver listening",
+			"addr", listener.Addr(), "allowed_peers", len(flowCfg.NetflowAllowedPeers))
+	}
+
+	// With log shipping off, the NetFlow lane owns the enrichment refresher's
+	// lifetime, so it borrows the pipeline's shutdown slot rather than leaking both.
+	if stopNetflow != nil && stopLogs == nil {
+		stopLogs = func() {
+			stopNetflow()
+			if stopEnrich != nil {
+				stopEnrich()
 			}
 		}
 	}

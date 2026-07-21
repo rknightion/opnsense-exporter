@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 777
-- **Gauges:** 533
-- **Counters:** 244
+- **Total metrics:** 791
+- **Gauges:** 537
+- **Counters:** 254
 
 ## General
 
@@ -350,6 +350,20 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_rollup_top_n | Gauge | --- | Configured ceiling on emitted series (--flow.top-n); 0 means unbounded. | --exporter.disable-flow |
 | opnsense_flow_rollup_keys_folded | Gauge | --- | Tracked label combinations currently outside the top-N and therefore folded into __other__ rather than emitted individually. | --exporter.disable-flow |
 | opnsense_flow_rollup_capped_total | Counter | --- | Flow records folded into __other__ because the accumulator was already at --flow.max-keys when their label combination first appeared. A rising value means new dimensions are being lost to the cap, not merely folded by the top-N. | --exporter.disable-flow |
+| opnsense_flow_netflow_datagrams_total | Counter | result | NetFlow datagrams by outcome. result=\"accepted\" passed the peer allowlist; \"peer_rejected\" came from outside --flow.netflow.allowed-peers; \"queue_dropped\" arrived faster than the decoders drained them (the read loop never blocks, because blocking makes the KERNEL drop datagrams where nothing can count them); \"read_error\" is a socket error. Decode outcomes are counted separately below and are a subset of \"accepted\". | --exporter.disable-flow |
+| opnsense_flow_netflow_bytes_received_total | Counter | --- | Bytes received on the NetFlow socket, before decoding. This is wire volume of the export itself, NOT the traffic it describes — opnsense_flow_bytes_total is that. | --exporter.disable-flow |
+| opnsense_flow_netflow_records_decoded_total | Counter | --- | Flow records successfully decoded out of NetFlow datagrams. The head of the funnel: decoded = emitted + dropped, with records lost before decoding counted as opnsense_flow_netflow_records_dropped_total{reason=\"no_template\"}. | --exporter.disable-flow |
+| opnsense_flow_netflow_records_emitted_total | Counter | --- | Decoded records that survived repair and reached the rollup. The tail of the funnel: compare against decoded_total to see what the repair stage removed. | --exporter.disable-flow |
+| opnsense_flow_netflow_records_dropped_total | Counter | reason | Records the NetFlow lane discarded, by reason. \"no_template\" is a data flowset arriving before the template describing it — normal for up to ~2 minutes after either end restarts, since ng_netflow resends templates about every 2 minutes, and a sustained rate means template datagrams are being lost. \"vlan_duplicate\" is the parent-interface copy of a VLAN flow, which ng_netflow captures twice (~4% of bytes on the reference box) and which would otherwise be counted twice AND attributed to the parent. \"no_address\" is a record with unusable endpoints. | --exporter.disable-flow |
+| opnsense_flow_netflow_templates_total | Counter | result | NetFlow v9 template events. \"learned\" is a template id seen for the first time; \"replaced\" is a known id re-sent with a DIFFERENT field shape, which invalidates the decoder's understanding of every record behind it. A steady replaced rate means the exporter is flapping between configurations. | --exporter.disable-flow |
+| opnsense_flow_netflow_unexpected_field_total | Counter | field | Records carrying a field the decoder asserts is always empty on this export. Today only field=\"out_bytes\": OUT_BYTES/OUT_PKTS are declared in the template but were zero across all 84,513 records of the reference capture, so they are ignored rather than added to the volume. A non-zero rate here means that assumption has expired and the decoder needs revisiting — it does NOT mean volume is currently wrong. | --exporter.disable-flow |
+| opnsense_flow_egress_corrected_total | Counter | --- | Flow records whose egress interface was corrected from the WAN the FIB lookup named to the WAN the traffic actually left by. ng_netflow derives OUTPUT_SNMP from a route lookup, but OPNsense multi-WAN policy routing happens in pf, which ng_netflow never sees: on the reference capture this mislabelled 3.36 GB of WAN2 traffic as WAN1, a 99% under-report of WAN2. A zero rate on a single-WAN box is expected; a zero rate on a policy-routed multi-WAN box means the correction is not firing and per-WAN volume is wrong. | --exporter.disable-flow |
+| opnsense_flow_dedupe_entries | Gauge | --- | Flow instances currently held in the VLAN de-duplication table. | --exporter.disable-flow |
+| opnsense_flow_dedupe_entries_dropped_total | Counter | reason | Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path — the instance aged out having done its job. reason=\"capacity\" means the table was full and an entry was evicted early, so a duplicate arriving afterwards is NO LONGER SUPPRESSED and reaches the rollup twice; a non-zero rate is the signal to raise the bound. | --exporter.disable-flow |
+| opnsense_flow_ifindex_entries | Gauge | --- | Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 (traffic originated by the firewall itself). | --exporter.disable-flow |
+| opnsense_flow_ifindex_conflicts | Gauge | --- | Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's own ifinfo ordering — the override is winning, so labels are right, but every index the operator did not pin is suspect. | --exporter.disable-flow |
+| opnsense_flow_ifindex_map_age_seconds | Gauge | --- | Age of the ifIndex map. ng_netflow's indices are positional over ifinfo output, so adding or removing ANY interface renumbers everything and silently remaps historical series. A map that stops being refreshed is therefore a correctness problem, not a staleness nuisance. | --exporter.disable-flow |
+| opnsense_flow_ifindex_unmapped_total | Counter | --- | ifIndex lookups that resolved to no interface. These records are still counted, with an EMPTY interface label — a wrong interface name is worse than a missing one. A rising rate after a network change means the enumeration shifted and --flow.netflow.ifindex-map needs setting. | --exporter.disable-flow |
 
 ## Gateways
 

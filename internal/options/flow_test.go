@@ -65,6 +65,11 @@ func TestFlowConfig_ShippedDefaults(t *testing.T) {
 		"flow.zenarmor": "true",
 		"flow.top-n":    "1000",
 		"flow.max-keys": "2500",
+		// The NetFlow receiver is OFF by default and stays that way: unlike the
+		// Zenarmor lane it opens an unauthenticated UDP socket, and NetFlow has no
+		// authentication of any kind, so switching it on is a deliberate act.
+		"flow.netflow.enabled": "false",
+		"flow.netflow.listen":  ":2055",
 	} {
 		if got, ok := defaults[name]; !ok {
 			t.Errorf("--%s is not registered", name)
@@ -72,15 +77,59 @@ func TestFlowConfig_ShippedDefaults(t *testing.T) {
 			t.Errorf("--%s default = %q, want %q", name, got, want)
 		}
 	}
-	// The NetFlow lane is phase 2: no flag may exist for it yet, or an operator can
-	// turn on a listener that is not there.
-	for name := range defaults {
-		if strings.HasPrefix(name, "flow.netflow") {
-			t.Errorf("--%s exists but the NetFlow lane is phase 2", name)
-		}
-	}
 	// And those defaults must actually validate as a config.
 	if err := (FlowConfig{Enabled: true, Zenarmor: true, TopN: 1000, MaxKeys: 2500}).Validate(); err != nil {
 		t.Fatalf("the shipped defaults do not validate: %v", err)
+	}
+}
+
+func TestFlowConfig_RejectsNetflowWithNoListenAddress(t *testing.T) {
+	c := FlowConfig{Enabled: true, NetflowEnabled: true, NetflowListen: "", TopN: 1000, MaxKeys: 2500}
+	if err := c.Validate(); err == nil {
+		t.Fatal("--flow.netflow.enabled with an empty listen address must be a startup error")
+	}
+}
+
+func TestParseAllowedPeers(t *testing.T) {
+	got, err := parseAllowedPeers([]string{"10.0.0.0/8", "192.0.2.1/32", "2001:db8::/32"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("parsed %d prefixes, want 3", len(got))
+	}
+	// A bare address is the overwhelmingly likely operator typo, and silently
+	// ignoring it would leave the listener wide open while looking configured.
+	if _, err := parseAllowedPeers([]string{"10.0.0.1"}); err == nil {
+		t.Fatal("a bare address (no prefix length) must be rejected, not ignored")
+	}
+	if _, err := parseAllowedPeers([]string{"not-a-cidr"}); err == nil {
+		t.Fatal("malformed CIDR must be rejected")
+	}
+}
+
+func TestParseIfIndexMap(t *testing.T) {
+	// The live production mapping (#346): these ordinals are ng_netflow's ifinfo
+	// enumeration, not OS or SNMP indices.
+	got, err := parseIfIndexMap("1=ixl0,5=igb0,13=ixl0_vlan50,14=pppoe0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := map[uint32]string{1: "ixl0", 5: "igb0", 13: "ixl0_vlan50", 14: "pppoe0"}
+	if len(got) != len(want) {
+		t.Fatalf("parsed %d entries, want %d", len(got), len(want))
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("index %d = %q, want %q", k, got[k], v)
+		}
+	}
+	if m, err := parseIfIndexMap(""); err != nil || m != nil {
+		t.Errorf("empty override must yield a nil map and no error, got %v / %v", m, err)
+	}
+	for _, bad := range []string{"ixl0", "1=", "=ixl0", "x=ixl0", "-1=ixl0", "1=ixl0,1=igb0"} {
+		if _, err := parseIfIndexMap(bad); err == nil {
+			t.Errorf("malformed override %q accepted", bad)
+		}
 	}
 }

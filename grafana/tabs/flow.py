@@ -32,6 +32,10 @@ BY_SOURCE = "source"
 def build(b: Builder):
     b.sentinel("has_flow", 'label_values({__name__=~"opnsense_flow_.+"}, __name__)')
     b.sentinel("has_flow_volume", "label_values(opnsense_flow_bytes_total, __name__)")
+    # The NetFlow rows stay hidden entirely where the receiver was never enabled: its
+    # metrics are absent rather than zero there, deliberately, so a row of flat zeros
+    # would imply a receiver that does not exist.
+    b.sentinel("has_netflow", "label_values(opnsense_flow_netflow_datagrams_total, __name__)")
 
     iface = b.ts(
         "Throughput by Interface (bits/sec)",
@@ -154,9 +158,90 @@ def build(b: Builder):
              "is the repair working.",
     )
 
+    # ---- NetFlow lane (phase 2) -------------------------------------------------
+    # These are all "what did we refuse to trust" counters. On an unauthenticated UDP
+    # ingress that distinction is the whole security story, so none of them is allowed
+    # to be silent.
+    ingest = b.ts(
+        "NetFlow Ingest (datagrams/sec)",
+        [(f'sum by (result) (rate({sel("opnsense_flow_netflow_datagrams_total")}[{RATE}]))', "{{result}}"),
+         (f'rate({sel("opnsense_flow_netflow_bytes_received_total")}[{RATE}])', "bytes/sec received")],
+        unit="short",
+        desc="Datagrams by outcome. result=\"accepted\" passed the peer allowlist; \"peer_rejected\" "
+             "came from outside --flow.netflow.allowed-peers and is the signal that something else on "
+             "the network is pointed here; \"queue_dropped\" arrived faster than the decoders drained "
+             "them, which is real data loss and means raising the worker count or the queue. The "
+             "decode outcomes (malformed, unsupported_version, varlen_rejected) are a SUBSET of "
+             "accepted, not additional to it. bytes_received is the wire volume of the export itself, "
+             "not the traffic it describes.",
+    )
+
+    funnel = b.ts(
+        "NetFlow Record Funnel (records/sec)",
+        [(f'rate({sel("opnsense_flow_netflow_records_decoded_total")}[{RATE}])', "decoded"),
+         (f'rate({sel("opnsense_flow_netflow_records_emitted_total")}[{RATE}])', "emitted to rollup"),
+         (f'sum by (reason) (rate({sel("opnsense_flow_netflow_records_dropped_total")}[{RATE}]))',
+          "dropped: {{reason}}")],
+        unit="short",
+        desc="decoded = emitted + dropped. reason=\"vlan_duplicate\" is the parent-interface copy of a "
+             "VLAN flow being suppressed — ng_netflow captures both the trunk and the child, so this "
+             "SHOULD be non-zero on a VLAN'd box (~4% of bytes on the reference capture) and a flat "
+             "zero there means the de-dup is not firing and volume is double-counted. "
+             "reason=\"no_template\" is normal for ~2 minutes after either end restarts; sustained, it "
+             "means template datagrams are being lost and records are being discarded wholesale.",
+    )
+
+    decoder = b.ts(
+        "NetFlow Decoder Health",
+        [(f'sum by (result) (rate({sel("opnsense_flow_netflow_templates_total")}[{RATE}]))',
+          "templates {{result}}"),
+         (f'sum by (field) (rate({sel("opnsense_flow_netflow_unexpected_field_total")}[{RATE}]))',
+          "unexpected {{field}}")],
+        unit="short",
+        desc="templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the "
+             "exporter is re-sending a template id with a DIFFERENT field shape, which invalidates the "
+             "decoder's understanding of every record behind it. unexpected_field counts records "
+             "carrying a field asserted to be always-empty on this export (today OUT_BYTES, zero "
+             "across all 84,513 records of the reference capture): non-zero does NOT mean volume is "
+             "currently wrong, it means that assumption has expired and the decoder needs revisiting.",
+    )
+
+    repairs = b.ts(
+        "Flow Repairs & De-duplication",
+        [(f'rate({sel("opnsense_flow_egress_corrected_total")}[{RATE}])', "egress corrections/sec"),
+         (f'{sel("opnsense_flow_dedupe_entries")}', "dedupe table entries"),
+         (f'sum by (reason) (rate({sel("opnsense_flow_dedupe_entries_dropped_total")}[{RATE}]))',
+          "dedupe dropped: {{reason}}")],
+        unit="short",
+        desc="egress_corrected counts flows whose egress was corrected from the WAN the FIB lookup "
+             "named to the WAN the traffic actually left by — OPNsense policy routing happens in pf, "
+             "which ng_netflow never sees, and on the reference capture this mislabelled 3.36 GB of "
+             "WAN2 traffic as WAN1. On a policy-routed multi-WAN box a flat zero means the correction "
+             "is NOT firing and per-WAN volume is wrong. dedupe dropped reason=\"ttl\" is the healthy "
+             "path; \"capacity\" means the table filled and later duplicates are no longer suppressed.",
+    )
+
+    ifindex = b.ts(
+        "NetFlow ifIndex Map",
+        [(f'{sel("opnsense_flow_ifindex_entries")}', "entries"),
+         (f'{sel("opnsense_flow_ifindex_conflicts")}', "override conflicts"),
+         (f'{sel("opnsense_flow_ifindex_map_age_seconds")}', "map age (s)"),
+         (f'rate({sel("opnsense_flow_ifindex_unmapped_total")}[{RATE}])', "unmapped lookups/sec")],
+        unit="short",
+        desc="ng_netflow numbers interfaces POSITIONALLY over ifinfo output, so adding or removing any "
+             "interface renumbers everything and silently remaps historical series. conflicts > 0 "
+             "means the operator's --flow.netflow.ifindex-map disagrees with the map derived from the "
+             "API: the override wins so pinned indices are right, but every index NOT pinned is "
+             "suspect. Rising unmapped lookups after a network change means the enumeration shifted — "
+             "those records still count, with an empty interface label, because a wrong interface "
+             "name is worse than a missing one.",
+    )
+
     b.tab("Flow Volume", [
         b.row("Volume", [iface, direction], present="has_flow_volume"),
         b.row("Breakdown", [category, transport, scope], present="has_flow_volume"),
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
         b.row("Accumulator Health", [other_share, keys, capped]),
+        b.row("NetFlow Receiver", [ingest, funnel, decoder], present="has_netflow"),
+        b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_netflow"),
     ], present="has_flow")

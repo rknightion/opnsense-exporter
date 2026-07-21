@@ -274,7 +274,7 @@ func otherKey(source string) RollupKey {
 
 func keyFor(rec Record) RollupKey {
 	return RollupKey{
-		Interface: rec.In.Label(),
+		Interface: interfaceLabel(rec),
 		Direction: rec.Direction.String(),
 		Transport: transportName(rec.Proto),
 		Category:  rec.L7.AppCategory,

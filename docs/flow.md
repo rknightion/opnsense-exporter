@@ -5,9 +5,9 @@ how much traffic, on which interface, in which direction, for which application
 category — are answerable from Prometheus for years instead of by scanning several
 GB/day of logs with a 31-day retention.
 
-Today the source is the [Zenarmor receiver](log-shipping.md)'s per-connection `conn`
-records. A NetFlow v5/v9 receiver producing the same normalized record is in
-progress; see [#346](https://github.com/rknightion/opnsense-exporter/issues/346).
+There are two sources: the [Zenarmor receiver](log-shipping.md)'s per-connection
+`conn` records, and a NetFlow v5/v9 receiver. Both produce the same normalized
+record, and both feed the same bounded rollup.
 
 This is **not** a flow browser. Arbitrary 5-tuple forensics stays a log query, and
 addresses, ports, hostnames, application names and connection ids are deliberately
@@ -30,7 +30,89 @@ record ships exactly as it did before, and this only adds metrics.
 | `--exporter.disable-flow` | *(off)* | remove the collector entirely |
 
 To get any data you also need the Zenarmor receiver running
-(`--logs.zenarmor.enabled`).
+(`--logs.zenarmor.enabled`), the NetFlow receiver below, or both.
+
+## The NetFlow receiver
+
+Unlike the Zenarmor lane this is **off by default**, and the difference is real
+rather than stylistic: the Zenarmor lane derives counters from documents the
+exporter already receives, while this one opens a UDP socket.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--flow.netflow.enabled` | `false` | enable the receiver |
+| `--flow.netflow.listen` | `:2055` | bind address, bound eagerly at startup |
+| `--flow.netflow.allowed-peers` | *(empty)* | CIDR allowlist, repeatable |
+| `--flow.netflow.ifindex-map` | *(derived)* | pin the ifIndex map, e.g. `1=ixl0,5=igb0` |
+
+!!! warning "NetFlow has no authentication"
+
+    None. Anything that can reach the port can inject flow records and move every
+    number on your dashboards. `--flow.netflow.allowed-peers` is the only control
+    the protocol admits, so set it or firewall the port. Leaving it empty is a
+    decision to trust the network; the exporter logs a warning at startup so it
+    cannot be one you made by accident.
+
+Point **Reporting ‣ NetFlow** at the exporter's address. v9 and v5 are both decoded;
+OPNsense emits v9. No on-disk template cache is needed or kept — ng_netflow resends
+its templates about every two minutes, so a cold start is blind for at most that
+long, and records arriving before their template are counted as
+`records_dropped_total{reason="no_template"}` rather than guessed at.
+
+### What this lane repairs
+
+A generic flow collector gets three things wrong on OPNsense, and only something
+holding the firewall's own configuration can fix them.
+
+**VLAN traffic is captured twice.** ng_netflow captures the trunk *and* each VLAN
+child, so every tagged packet appears on both — and the trunk copy attributes it to
+the parent interface. On the reference box that is 9,657 of 80,275 flow instances,
+~4% of bytes, all of it silently inflating LAN. The exporter keeps the child copy and
+drops the parent, counting each as
+`records_dropped_total{reason="vlan_duplicate"}`. A flat zero there on a VLAN'd
+network means the de-dup is not firing and your volume is double-counted.
+
+**Policy-routed egress is mislabelled — the big one.** ng_netflow derives the egress
+interface from a FIB route lookup, but OPNsense multi-WAN policy routing happens in
+pf, which ng_netflow never sees. On the reference capture this reported 3.36 GB of
+WAN2 traffic as WAN1: WAN2 read 37.8 MB against ~3.4 GB actual, a 99% under-report.
+Every generic collector on that network is wrong about this today. Where a record's
+source address is a known WAN address, that WAN is the true egress regardless of what
+the export said; corrections are counted by `opnsense_flow_egress_corrected_total`,
+and the correction only fires when the two actually disagree, so it cannot mask
+ng_netflow starting to get it right.
+
+**Direction is not exported at all.** Field 61 is absent, so direction is inferred
+from the firewall's own topology and the ifIndex evidence, by the same rules the
+Zenarmor lane uses. `unknown` is emitted honestly rather than guessed.
+
+### ifIndex is positional, and that is fragile
+
+The `ifIndex` in a record is **not** an OS or SNMP index. It is a 1-based counter over
+`ifinfo` output, so **adding or removing any interface renumbers everything** and
+silently remaps historical series. The exporter derives the map from the API, but that
+derivation cannot be proven to reproduce `ifinfo`'s ordering on every box, so:
+
+- an index that resolves to nothing yields an **empty** `interface` label and
+  increments `opnsense_flow_ifindex_unmapped_total` — a wrong interface name is worse
+  than a missing one;
+- `--flow.netflow.ifindex-map` pins any index outright, and
+  `opnsense_flow_ifindex_conflicts` reports how many of your pins disagree with the
+  derivation. Non-zero means the indices you did *not* pin are suspect;
+- `opnsense_flow_ifindex_map_age_seconds` tracks the map's freshness, which is a
+  correctness signal here rather than a staleness nuisance.
+
+### What `interface` means on this lane
+
+A NetFlow record crosses two interfaces and the label names one: the **WAN-facing**
+side — egress for outbound, ingress for inbound. That is what makes per-WAN volume
+answerable, which is the entire point of the egress repair.
+
+The cost is deliberate and worth stating plainly: a LAN host's internet traffic is
+attributed to the WAN it left by, **not** to its own VLAN. Per-VLAN volume is
+therefore visible for internal traffic only, and the two lanes describe the same flow
+differently — Zenarmor keeps naming the VLAN child. This is a second reason, on top of
+the double-counting below, to pin `source` in every query.
 
 ## The label set, and why each dimension is on it
 
@@ -101,12 +183,12 @@ folds into `__other__` and is counted by `opnsense_flow_rollup_capped_total`.
 
 ## Never sum the two sources
 
-Once the NetFlow lane lands, the family carries **two independent measurements of
-the same traffic**. Zenarmor measures what it inspects; NetFlow measures the packet
+With both lanes enabled the family carries **two independent measurements of the
+same traffic**. Zenarmor measures what it inspects; NetFlow measures the packet
 path. They will legitimately disagree, and adding them is meaningless:
 
 ```promql
-# WRONG once NetFlow is enabled — counts the same bytes twice
+# WRONG with both lanes enabled — counts the same bytes twice
 sum by (interface) (rate(opnsense_flow_bytes_total[5m]))
 
 # Right: pin the source, or aggregate by it

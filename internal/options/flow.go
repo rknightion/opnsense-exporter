@@ -2,6 +2,9 @@ package options
 
 import (
 	"fmt"
+	"net/netip"
+	"strconv"
+	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
 )
@@ -52,29 +55,138 @@ var (
 			"Combinations first seen at the cap fold into __other__ and are counted by "+
 			"opnsense_flow_rollup_capped_total. 0 is unbounded.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_KEYS").Default("2500").Int()
+
+	// The NetFlow lane is opt-in, and stays opt-in even though --flow.enabled is not.
+	// The difference is real rather than stylistic: the Zenarmor lane derives records
+	// from documents the exporter already receives, while this one opens a UDP socket
+	// that anything on the network can write to.
+	flowNetflowEnabled = kingpin.Flag(
+		"flow.netflow.enabled",
+		"Enable the NetFlow v5/v9 receiver. Opens an UNAUTHENTICATED UDP socket: NetFlow has no "+
+			"authentication of any kind, so restrict it with --flow.netflow.allowed-peers or by "+
+			"firewalling the port. Requires --flow.enabled.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_ENABLED").Default("false").Bool()
+
+	flowNetflowListen = kingpin.Flag(
+		"flow.netflow.listen",
+		"Address the NetFlow receiver binds, host:port. Bound eagerly at startup, so a port "+
+			"already in use is a startup error rather than a receiver that is silently never there.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_LISTEN").Default(":2055").String()
+
+	flowNetflowPeers = kingpin.Flag(
+		"flow.netflow.allowed-peers",
+		"CIDR allowlist of exporters permitted to send flow records, repeatable. Empty means "+
+			"accept from anyone, which is a deliberate decision to trust the network rather than a "+
+			"default to drift into: anything that can reach the port can inject flow records.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_ALLOWED_PEERS").Strings()
+
+	// ng_netflow's ifIndex is a 1-based counter over ifinfo output, NOT an OS or SNMP
+	// index, and adding or removing ANY interface renumbers everything (#346). The
+	// exporter derives the map from the API, but that derivation cannot be proven to
+	// reproduce ifinfo's ordering on every box, and a WRONG interface label is worse
+	// than a missing one -- so an operator who has read the mapping off their own box
+	// can pin it here and win outright.
+	flowNetflowIfIndexMap = kingpin.Flag(
+		"flow.netflow.ifindex-map",
+		"Override the derived NetFlow ifIndex-to-device map, as comma-separated index=device "+
+			"pairs (e.g. \"1=ixl0,5=igb0,13=ixl0_vlan50\"). Entries listed here beat the derived "+
+			"map; indices not listed still use it. Read yours off the box with: "+
+			"ngctl list | grep netflow.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_IFINDEX_MAP").Default("").String()
 )
+
+// parseAllowedPeers turns the repeatable CIDR flag into prefixes. A bare address is
+// REJECTED rather than widened to a /32: an operator who writes one has almost
+// certainly mistyped, and quietly accepting it in a form that matches nothing would
+// leave the listener open while looking configured.
+func parseAllowedPeers(in []string) ([]netip.Prefix, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make([]netip.Prefix, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, fmt.Errorf("flow: --flow.netflow.allowed-peers %q is not a CIDR prefix "+
+				"(a bare address needs an explicit /32 or /128): %w", s, err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// parseIfIndexMap parses the "1=ixl0,5=igb0" override. Every malformed entry is an
+// error: a silently dropped entry would leave records labelled with the derived
+// mapping the operator was explicitly trying to override.
+func parseIfIndexMap(s string) (map[uint32]string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	out := map[uint32]string{}
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(pair, "=")
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if !ok || k == "" || v == "" {
+			return nil, fmt.Errorf("flow: --flow.netflow.ifindex-map entry %q is not index=device", pair)
+		}
+		idx, err := strconv.ParseUint(k, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("flow: --flow.netflow.ifindex-map index %q is not a number: %w", k, err)
+		}
+		if prev, dup := out[uint32(idx)]; dup {
+			return nil, fmt.Errorf("flow: --flow.netflow.ifindex-map lists index %d twice (%q and %q)",
+				idx, prev, v)
+		}
+		out[uint32(idx)] = v
+	}
+	return out, nil
+}
 
 // FlowConfig is the resolved flow configuration.
 //
-// NetflowEnabled has no flag behind it yet — the NetFlow receiver is phase 2. It is
-// modelled now so the cross-field validation below is already in place and tested
-// before anything can set it, rather than being written at the same time as the
-// thing it is meant to guard.
+// The two lanes differ in default deliberately: --flow.enabled is on because it only
+// reads documents the exporter already has, while --flow.netflow.enabled is off
+// because it opens an unauthenticated UDP socket.
 type FlowConfig struct {
 	Enabled        bool
 	Zenarmor       bool
 	NetflowEnabled bool
 	TopN           int
 	MaxKeys        int
+
+	NetflowListen       string
+	NetflowAllowedPeers []netip.Prefix
+	NetflowIfIndexMap   map[uint32]string
 }
 
 // Flow returns the resolved flow configuration, validated.
 func Flow() (FlowConfig, error) {
+	peers, err := parseAllowedPeers(*flowNetflowPeers)
+	if err != nil {
+		return FlowConfig{}, err
+	}
+	ifmap, err := parseIfIndexMap(*flowNetflowIfIndexMap)
+	if err != nil {
+		return FlowConfig{}, err
+	}
 	c := FlowConfig{
-		Enabled:  *flowEnabled,
-		Zenarmor: *flowZenarmor,
-		TopN:     *flowTopN,
-		MaxKeys:  *flowMaxKeys,
+		Enabled:             *flowEnabled,
+		Zenarmor:            *flowZenarmor,
+		NetflowEnabled:      *flowNetflowEnabled,
+		TopN:                *flowTopN,
+		MaxKeys:             *flowMaxKeys,
+		NetflowListen:       *flowNetflowListen,
+		NetflowAllowedPeers: peers,
+		NetflowIfIndexMap:   ifmap,
 	}
 	if err := c.Validate(); err != nil {
 		return FlowConfig{}, err
@@ -88,6 +200,11 @@ func Flow() (FlowConfig, error) {
 func (c FlowConfig) Validate() error {
 	if c.NetflowEnabled && !c.Enabled {
 		return fmt.Errorf("flow: --flow.netflow.enabled requires --flow.enabled")
+	}
+	// An enabled receiver with nowhere to bind is the "quiet no-op" failure again:
+	// the operator sees the flag accepted and no records ever arrive.
+	if c.NetflowEnabled && strings.TrimSpace(c.NetflowListen) == "" {
+		return fmt.Errorf("flow: --flow.netflow.enabled requires a --flow.netflow.listen address")
 	}
 	if c.TopN < 0 {
 		return fmt.Errorf("flow: --flow.top-n must not be negative (got %d); 0 means unbounded", c.TopN)

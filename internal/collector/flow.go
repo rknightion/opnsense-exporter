@@ -4,9 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"sync/atomic"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
+	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -43,10 +45,43 @@ type FlowStore struct {
 	// payload counter because its wire counter read zero. A repair nobody can
 	// observe is a repair nobody will trust.
 	payloadByteFallback atomic.Uint64
+
+	// netflow is nil until the NetFlow receiver is built, which is why the metrics
+	// it feeds are absent rather than zero on a deployment that never enables it.
+	netflow atomic.Pointer[func() NetflowStats]
 }
 
 func newFlowStore(topN, maxKeys int) *FlowStore {
 	return &FlowStore{rollup: flow.NewRollup(topN, maxKeys)}
+}
+
+// NetflowStats is everything the NetFlow lane knows about what it received and what
+// it chose not to trust, gathered from the four components that own the counters.
+type NetflowStats struct {
+	Listener netflow.ListenerStats
+	Decoder  netflow.Stats
+	Pipeline flow.ProcessorStats
+	Repair   flow.RepairStats
+	IfMap    flow.IfMapStats
+	IfMapAge time.Duration
+}
+
+// SetNetflowStats installs the source of the NetFlow self-metrics. main calls it
+// once, when it builds the receiver.
+//
+// Until it is called the NetFlow metrics are not emitted AT ALL, rather than emitted
+// as zeros. That is the opposite of the rule the rollup saturation metrics follow,
+// and deliberately so: a zero there means "this has never fired", which is worth
+// knowing, whereas a zero here would mean "a receiver exists and has seen nothing",
+// which is false on the many deployments that never turn the listener on.
+func (s *FlowStore) SetNetflowStats(fn func() NetflowStats) { s.netflow.Store(&fn) }
+
+func (s *FlowStore) netflowStats() (NetflowStats, bool) {
+	fn := s.netflow.Load()
+	if fn == nil || *fn == nil {
+		return NetflowStats{}, false
+	}
+	return (*fn)(), true
 }
 
 // Observe folds one flow record into the counters. It implements flow.Sink and is
@@ -90,6 +125,23 @@ type flowCollector struct {
 	rollupTopN    *prometheus.Desc
 	rollupFolded  *prometheus.Desc
 	rollupCapped  *prometheus.Desc
+
+	nfDatagrams  *prometheus.Desc
+	nfBytes      *prometheus.Desc
+	nfDecoded    *prometheus.Desc
+	nfEmitted    *prometheus.Desc
+	nfDropped    *prometheus.Desc
+	nfTemplates  *prometheus.Desc
+	nfUnexpected *prometheus.Desc
+
+	egressCorrected *prometheus.Desc
+	dedupeEntries   *prometheus.Desc
+	dedupeDropped   *prometheus.Desc
+
+	ifIndexEntries   *prometheus.Desc
+	ifIndexConflicts *prometheus.Desc
+	ifIndexAge       *prometheus.Desc
+	ifIndexUnmapped  *prometheus.Desc
 }
 
 func init() {
@@ -158,10 +210,120 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 	c.rollupFolded = buildPrometheusDesc(c.subsystem, "rollup_keys_folded",
 		"Tracked label combinations currently outside the top-N and therefore folded into "+
 			"__other__ rather than emitted individually.", nil)
+	c.registerNetflow()
+
 	c.rollupCapped = buildPrometheusDesc(c.subsystem, "rollup_capped_total",
 		"Flow records folded into __other__ because the accumulator was already at "+
 			"--flow.max-keys when their label combination first appeared. A rising value means new "+
 			"dimensions are being lost to the cap, not merely folded by the top-N.", nil)
+}
+
+// registerNetflow builds the NetFlow lane's self-metrics.
+//
+// Every one of these is a "what did we refuse to trust" counter. A receiver that
+// drops input silently is indistinguishable from a network with nothing on it, and
+// on an unauthenticated UDP ingress that difference is the whole security story.
+func (c *flowCollector) registerNetflow() {
+	// Literals, for the same docgen reason as the volume labels above.
+	resultLabel := []string{"result"}
+	reasonLabel := []string{"reason"}
+
+	c.nfDatagrams = buildPrometheusDesc(c.subsystem, "netflow_datagrams_total",
+		"NetFlow datagrams by outcome. result=\"accepted\" passed the peer allowlist; "+
+			"\"peer_rejected\" came from outside --flow.netflow.allowed-peers; \"queue_dropped\" arrived "+
+			"faster than the decoders drained them (the read loop never blocks, because blocking makes "+
+			"the KERNEL drop datagrams where nothing can count them); \"read_error\" is a socket error. "+
+			"Decode outcomes are counted separately below and are a subset of \"accepted\".",
+		resultLabel,
+	)
+	c.nfBytes = buildPrometheusDesc(c.subsystem, "netflow_bytes_received_total",
+		"Bytes received on the NetFlow socket, before decoding. This is wire volume of the export "+
+			"itself, NOT the traffic it describes — opnsense_flow_bytes_total is that.",
+		nil,
+	)
+	c.nfDecoded = buildPrometheusDesc(c.subsystem, "netflow_records_decoded_total",
+		"Flow records successfully decoded out of NetFlow datagrams. The head of the funnel: "+
+			"decoded = emitted + dropped, with records lost before decoding counted as "+
+			"opnsense_flow_netflow_records_dropped_total{reason=\"no_template\"}.",
+		nil,
+	)
+	c.nfEmitted = buildPrometheusDesc(c.subsystem, "netflow_records_emitted_total",
+		"Decoded records that survived repair and reached the rollup. The tail of the funnel: "+
+			"compare against decoded_total to see what the repair stage removed.",
+		nil,
+	)
+	c.nfDropped = buildPrometheusDesc(c.subsystem, "netflow_records_dropped_total",
+		"Records the NetFlow lane discarded, by reason. \"no_template\" is a data flowset arriving "+
+			"before the template describing it — normal for up to ~2 minutes after either end restarts, "+
+			"since ng_netflow resends templates about every 2 minutes, and a sustained rate means "+
+			"template datagrams are being lost. \"vlan_duplicate\" is the parent-interface copy of a "+
+			"VLAN flow, which ng_netflow captures twice (~4% of bytes on the reference box) and which "+
+			"would otherwise be counted twice AND attributed to the parent. \"no_address\" is a record "+
+			"with unusable endpoints.",
+		reasonLabel,
+	)
+	c.nfTemplates = buildPrometheusDesc(c.subsystem, "netflow_templates_total",
+		"NetFlow v9 template events. \"learned\" is a template id seen for the first time; "+
+			"\"replaced\" is a known id re-sent with a DIFFERENT field shape, which invalidates the "+
+			"decoder's understanding of every record behind it. A steady replaced rate means the "+
+			"exporter is flapping between configurations.",
+		resultLabel,
+	)
+	c.nfUnexpected = buildPrometheusDesc(c.subsystem, "netflow_unexpected_field_total",
+		"Records carrying a field the decoder asserts is always empty on this export. Today only "+
+			"field=\"out_bytes\": OUT_BYTES/OUT_PKTS are declared in the template but were zero across "+
+			"all 84,513 records of the reference capture, so they are ignored rather than added to the "+
+			"volume. A non-zero rate here means that assumption has expired and the decoder needs "+
+			"revisiting — it does NOT mean volume is currently wrong.",
+		[]string{"field"},
+	)
+
+	c.egressCorrected = buildPrometheusDesc(c.subsystem, "egress_corrected_total",
+		"Flow records whose egress interface was corrected from the WAN the FIB lookup named to the "+
+			"WAN the traffic actually left by. ng_netflow derives OUTPUT_SNMP from a route lookup, but "+
+			"OPNsense multi-WAN policy routing happens in pf, which ng_netflow never sees: on the "+
+			"reference capture this mislabelled 3.36 GB of WAN2 traffic as WAN1, a 99% under-report of "+
+			"WAN2. A zero rate on a single-WAN box is expected; a zero rate on a policy-routed "+
+			"multi-WAN box means the correction is not firing and per-WAN volume is wrong.",
+		nil,
+	)
+	c.dedupeEntries = buildPrometheusDesc(c.subsystem, "dedupe_entries",
+		"Flow instances currently held in the VLAN de-duplication table.",
+		nil,
+	)
+	c.dedupeDropped = buildPrometheusDesc(c.subsystem, "dedupe_entries_dropped_total",
+		"Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path — the "+
+			"instance aged out having done its job. reason=\"capacity\" means the table was full and an "+
+			"entry was evicted early, so a duplicate arriving afterwards is NO LONGER SUPPRESSED and "+
+			"reaches the rollup twice; a non-zero rate is the signal to raise the bound.",
+		reasonLabel,
+	)
+
+	c.ifIndexEntries = buildPrometheusDesc(c.subsystem, "ifindex_entries",
+		"Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 "+
+			"(traffic originated by the firewall itself).",
+		nil,
+	)
+	c.ifIndexConflicts = buildPrometheusDesc(c.subsystem, "ifindex_conflicts",
+		"Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from "+
+			"the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's "+
+			"own ifinfo ordering — the override is winning, so labels are right, but every index the "+
+			"operator did not pin is suspect.",
+		nil,
+	)
+	c.ifIndexAge = buildPrometheusDesc(c.subsystem, "ifindex_map_age_seconds",
+		"Age of the ifIndex map. ng_netflow's indices are positional over ifinfo output, so adding or "+
+			"removing ANY interface renumbers everything and silently remaps historical series. A map "+
+			"that stops being refreshed is therefore a correctness problem, not a staleness nuisance.",
+		nil,
+	)
+	c.ifIndexUnmapped = buildPrometheusDesc(c.subsystem, "ifindex_unmapped_total",
+		"ifIndex lookups that resolved to no interface. These records are still counted, with an "+
+			"EMPTY interface label — a wrong interface name is worse than a missing one. A rising rate "+
+			"after a network change means the enumeration shifted and --flow.netflow.ifindex-map needs "+
+			"setting.",
+		nil,
+	)
 }
 
 func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -174,6 +336,20 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.rollupTopN
 	ch <- c.rollupFolded
 	ch <- c.rollupCapped
+	ch <- c.nfDatagrams
+	ch <- c.nfBytes
+	ch <- c.nfDecoded
+	ch <- c.nfEmitted
+	ch <- c.nfDropped
+	ch <- c.nfTemplates
+	ch <- c.nfUnexpected
+	ch <- c.egressCorrected
+	ch <- c.dedupeEntries
+	ch <- c.dedupeDropped
+	ch <- c.ifIndexEntries
+	ch <- c.ifIndexConflicts
+	ch <- c.ifIndexAge
+	ch <- c.ifIndexUnmapped
 }
 
 // Update emits the accumulator's current totals. It ignores the client: this
@@ -199,5 +375,55 @@ func (c *flowCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- 
 	ch <- prometheus.MustNewConstMetric(c.rollupTopN, prometheus.GaugeValue, float64(st.TopN), c.instance)
 	ch <- prometheus.MustNewConstMetric(c.rollupFolded, prometheus.GaugeValue, float64(st.FoldedKeys), c.instance)
 	ch <- prometheus.MustNewConstMetric(c.rollupCapped, prometheus.CounterValue, float64(st.Capped), c.instance)
+
+	c.collectNetflow(ch)
 	return nil
+}
+
+// collectNetflow emits the NetFlow lane's self-metrics, and emits nothing at all
+// when the lane was never built — see SetNetflowStats for why absent beats zero here.
+func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
+	nf, ok := c.store.netflowStats()
+	if !ok {
+		return
+	}
+	counter := func(d *prometheus.Desc, v uint64, labels ...string) {
+		ch <- prometheus.MustNewConstMetric(d, prometheus.CounterValue, float64(v),
+			append(labels, c.instance)...)
+	}
+	gauge := func(d *prometheus.Desc, v float64, labels ...string) {
+		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, v, append(labels, c.instance)...)
+	}
+
+	// "accepted" deliberately excludes the decode outcomes rather than double
+	// counting them: a malformed datagram was accepted by the listener AND rejected
+	// by the decoder, and summing the two would exceed what the socket received.
+	counter(c.nfDatagrams, nf.Listener.Datagrams, "accepted")
+	counter(c.nfDatagrams, nf.Listener.PeerRejected, "peer_rejected")
+	counter(c.nfDatagrams, nf.Listener.QueueDropped, "queue_dropped")
+	counter(c.nfDatagrams, nf.Listener.ReadErrors, "read_error")
+	counter(c.nfDatagrams, nf.Decoder.Malformed, "malformed")
+	counter(c.nfDatagrams, nf.Decoder.UnsupportedVersion, "unsupported_version")
+	counter(c.nfDatagrams, nf.Decoder.VarLenRejected, "varlen_rejected")
+	counter(c.nfBytes, nf.Listener.Bytes)
+
+	counter(c.nfDecoded, nf.Decoder.Records)
+	counter(c.nfEmitted, nf.Pipeline.RecordsEmitted)
+	counter(c.nfDropped, nf.Decoder.NoTemplate, "no_template")
+	counter(c.nfDropped, nf.Pipeline.RecordsDropped, "vlan_duplicate")
+	counter(c.nfDropped, nf.Pipeline.RecordsNoAddr, "no_address")
+
+	counter(c.nfTemplates, nf.Decoder.TemplatesLearned, "learned")
+	counter(c.nfTemplates, nf.Decoder.TemplatesReplaced, "replaced")
+	counter(c.nfUnexpected, nf.Decoder.UnexpectedOutBytes, "out_bytes")
+
+	counter(c.egressCorrected, nf.Repair.EgressCorrected)
+	gauge(c.dedupeEntries, float64(nf.Repair.DedupeEntries))
+	counter(c.dedupeDropped, nf.Repair.DedupeEvicted, "ttl")
+	counter(c.dedupeDropped, nf.Repair.DedupeCapped, "capacity")
+
+	gauge(c.ifIndexEntries, float64(nf.IfMap.Entries))
+	gauge(c.ifIndexConflicts, float64(nf.IfMap.Conflicts))
+	gauge(c.ifIndexAge, nf.IfMapAge.Seconds())
+	counter(c.ifIndexUnmapped, nf.IfMap.UnmappedLookups)
 }
