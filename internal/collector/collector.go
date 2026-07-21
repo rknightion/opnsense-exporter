@@ -254,6 +254,10 @@ type Collector struct {
 	// (or before the first poll) they stay ABSENT rather than emitting a misleading
 	// 0 — 0 is the WARNING status code, not "unknown". Guarded by mutex.
 	healthOK bool
+	// healthPolled records whether the health poller has completed a poll at all,
+	// regardless of outcome. Unlike healthOK it never goes back to false, and it is
+	// the health half of SnapshotWarm. Guarded by mutex.
+	healthPolled bool
 }
 
 // defaultMaxScrapeDuration is the fallback bound applied to a no-deadline collection

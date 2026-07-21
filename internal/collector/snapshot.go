@@ -92,6 +92,20 @@ func (s *snapshotStore) view(include map[string]bool) map[string]snapshotEntry {
 	return out
 }
 
+// allPolled reports whether every named collector has completed at least one poll
+// (successful or not). It is the store half of the warm-up signal (#341): until it
+// is true, a scrape replays a snapshot that is missing whole collectors.
+func (s *snapshotStore) allPolled(names []string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, name := range names {
+		if e := s.data[name]; e == nil || !e.polled {
+			return false
+		}
+	}
+	return true
+}
+
 // entry returns the stored snapshot for one collector, or a zero entry with
 // polled=false if it has never been polled.
 func (s *snapshotStore) entry(name string) snapshotEntry {

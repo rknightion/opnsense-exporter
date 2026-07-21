@@ -58,9 +58,10 @@ type readyHandler struct {
 // prober with a short request timeout (kubelet default timeoutSeconds=1)
 // must not abort the probe and poison the cache for everyone else — the 5s
 // readyProbeTimeout is the only deadline. Results carrying context.Canceled
-// are never cached (belt and braces). Readiness means "the API answers", not
-// "the firewall is healthy": degraded-firewall signal belongs to
-// opnsense_up/opnsense_firewall_status.
+// are never cached (belt and braces). Readiness means "the API answers and this
+// exporter can serve a complete scrape" (the probe main supplies also gates on the
+// poll scheduler's warm-up, #341), not "the firewall is healthy": degraded-firewall
+// signal belongs to opnsense_up/opnsense_firewall_status.
 func NewReady(probe ProbeFunc, ttl time.Duration, log *slog.Logger) http.Handler {
 	return &readyHandler{probe: probe, ttl: ttl, log: log, now: time.Now}
 }
@@ -85,8 +86,10 @@ func (h *readyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	if err != nil {
 		// Deliberately generic: APICallError messages can carry response body
-		// excerpts. Details go to the log, never to unauthenticated probers.
-		http.Error(w, "Not Ready: OPNsense API health check failed", http.StatusServiceUnavailable)
+		// excerpts. Details go to the log, never to unauthenticated probers —
+		// which is also why the body does not name WHICH readiness condition
+		// failed (the upstream health check, or the poll scheduler's warm-up).
+		http.Error(w, "Not Ready", http.StatusServiceUnavailable)
 		return
 	}
 	_, _ = w.Write([]byte("OK"))

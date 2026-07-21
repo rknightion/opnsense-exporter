@@ -89,6 +89,33 @@ func (c *Collector) StopPolling() {
 	c.pollWG.Wait()
 }
 
+// SnapshotWarm reports whether the snapshot the serving path replays is COMPLETE:
+// the health poller and every enabled collector have each finished a first poll.
+//
+// Since #336 a scrape no longer fetches anything, so a scrape taken during cold
+// start replays only the collectors that happen to have polled already — with the
+// startup jitter (up to 5s) and the poll-concurrency cap, a freshly started
+// exporter needs tens of seconds to fill the snapshot. Readiness gates on this so
+// an ordered startup (and CI's live-box smoke, #341) waits for a full snapshot
+// instead of asserting against a partial one.
+//
+// Completeness, not success: a collector whose first poll errored has had its turn
+// and counts as warm — the failure is reported by scrape_collector_success=0, and
+// waiting for it to succeed would leave a box with one broken plugin never ready.
+func (c *Collector) SnapshotWarm() bool {
+	c.mutex.RLock()
+	healthPolled := c.healthPolled
+	c.mutex.RUnlock()
+	if !healthPolled {
+		return false
+	}
+	names := make([]string, 0, len(c.collectors))
+	for _, coll := range c.collectors {
+		names = append(names, coll.Name())
+	}
+	return c.store.allPolled(names)
+}
+
 // runCollectorPoller polls one collector immediately (jittered) then on a ticker.
 func (c *Collector) runCollectorPoller(ctx context.Context, coll CollectorInstance, interval time.Duration) {
 	defer c.pollWG.Done()
@@ -225,6 +252,10 @@ func (c *Collector) pollHealth(ctx context.Context) {
 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
+	// Set regardless of outcome: an unreachable box must not hold the warm-up
+	// signal open, since readiness already fails on its own health probe.
+	c.healthPolled = true
 
 	if err != nil {
 		c.isUp.Set(0)

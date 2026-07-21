@@ -57,6 +57,11 @@ const httpShutdownTimeout = 10 * time.Second
 // endpoint, while keeping readiness staleness within a single probe cycle.
 const readyCacheTTL = 10 * time.Second
 
+// errSnapshotWarming is the readiness failure raised while the poll scheduler is
+// still filling its first snapshot: the box is reachable, but a scrape now would
+// return only the collectors that have already polled (#341).
+var errSnapshotWarming = errors.New("poll scheduler is still warming: not every collector has completed its first poll")
+
 // resolveInstanceLabel deterministically chooses the opnsense_instance label
 // value (baked into every metric, the OTLP resource identity and Pyroscope
 // tags). An explicit --exporter.instance-label always wins. Otherwise the
@@ -778,6 +783,13 @@ func main() {
 	mux.Handle(server.ReadyPath, server.NewReady(func(ctx context.Context) error {
 		if _, err := opnsenseClient.WithContext(ctx).HealthCheck(); err != nil {
 			return err
+		}
+		// Reachable is not the same as serving a complete snapshot: since #336 the
+		// scrape replays whatever the poll scheduler has filled in, so a just-started
+		// exporter answers /metrics with only the collectors that have polled so far.
+		// Readiness holds until every collector has had its first poll (#341).
+		if !collectorInstance.SnapshotWarm() {
+			return errSnapshotWarming
 		}
 		return nil
 	}, readyCacheTTL, logger))

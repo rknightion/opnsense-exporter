@@ -6,16 +6,27 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 )
 
+// DefaultCacheTTL and DefaultFirmwareCacheTTL are the flag defaults, exported so the
+// invariant they carry is testable from the collector package (#338): a body TTL only
+// ever pays for itself when it is LONGER than the poll interval of the collector that
+// fetches the endpoint. The poll scheduler clamps every interval to at most
+// collector.IntervalCeil (15m), so both defaults sit above the slowest possible poll
+// and still elide real calls — see TestBodyCacheDefaultsOutliveThePollCeiling.
+const (
+	DefaultCacheTTL         = time.Hour
+	DefaultFirmwareCacheTTL = 12 * time.Hour
+)
+
 var (
 	firmwareCacheTTL = kingpin.Flag(
 		"exporter.firmware-cache-ttl",
-		"How long to cache firmware API responses (status and, when enabled, package details). The firmware data OPNsense serves is the stored result of the box's own update check, which it refreshes roughly daily, so re-fetching it every scrape only costs firewall CPU. Set to 0 to fetch on every scrape.",
-	).Envar("OPNSENSE_EXPORTER_FIRMWARE_CACHE_TTL").Default("12h").Duration()
+		"How long to cache firmware API responses (status and, when enabled, package details). The firmware data OPNsense serves is the stored result of the box's own update check, which it refreshes roughly daily, so re-fetching it on every poll only costs firewall CPU. Set to 0 to fetch on every poll.",
+	).Envar("OPNSENSE_EXPORTER_FIRMWARE_CACHE_TTL").Default(DefaultFirmwareCacheTTL.String()).Duration()
 
 	cacheTTL = kingpin.Flag(
 		"exporter.cache-ttl",
-		"How long to cache responses from slow-moving API endpoints (system/CPU identity, certificate inventory, Unbound DNS blocklist policy config) and to remember that a plugin-gated endpoint is absent (its 404). This data changes only on an admin action — a config edit, a certificate renewal, a plugin install — so re-fetching it every scrape only costs firewall CPU. The cost is staleness: a newly installed plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch everything on every scrape. Live data (counters, rates, service run-state) is never cached regardless of this setting.",
-	).Envar("OPNSENSE_EXPORTER_CACHE_TTL").Default("1h").Duration()
+		"How long to cache responses from slow-moving API endpoints (system/CPU identity, certificate inventory, Unbound DNS blocklist policy config) and to remember that a plugin-gated endpoint is absent (its 404). This data changes only on an admin action — a config edit, a certificate renewal, a plugin install — so re-fetching it on every poll only costs firewall CPU. Set it above the collector poll interval or it can never serve a hit. The cost is staleness: a newly installed plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch everything on every poll. Live data (counters, rates, service run-state) is never cached regardless of this setting.",
+	).Envar("OPNSENSE_EXPORTER_CACHE_TTL").Default(DefaultCacheTTL.String()).Duration()
 )
 
 // ruleIDsCacheTTL bounds how long the firewall rule-id map may be served from
@@ -26,7 +37,17 @@ const ruleIDsCacheTTL = time.Minute
 // EndpointCacheTTLs maps an OPNsense API endpoint name to how long a successful
 // GET response for it may be served from cache instead of re-fetched. Only
 // endpoints whose payload is wholly slow-moving belong here: anything carrying a
-// counter, rate or live status must be fetched every scrape.
+// counter, rate or live status must be fetched on every poll.
+//
+// This body cache is NOT made redundant by the internal poll scheduler (#338).
+// The two memoize different things at different layers: the poll snapshot caches
+// the metrics the SERVING path replays (so a scrape costs no API call), while this
+// caches API bodies for the POLL path (so a poll costs no API call). A collector
+// polling on the cold 15m tier still asks the box four times an hour; with the 1h
+// default it asks once, and the 12h firmware TTL removes 47 of every 48 calls.
+// Dropping it would hand every elided call straight back to the firewall. It also
+// dedupes endpoints shared by collectors on different tiers, which the snapshot —
+// keyed per collector, not per endpoint — cannot do.
 type EndpointCacheTTLs map[string]time.Duration
 
 // CacheTTLs returns the per-endpoint response-cache TTLs for successful responses.

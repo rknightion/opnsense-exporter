@@ -40,7 +40,7 @@ func TestReadyFailureIs503WithGenericBody(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want 503", rec.Code)
 	}
-	if got := rec.Body.String(); got != "Not Ready: OPNsense API health check failed\n" {
+	if got := rec.Body.String(); got != "Not Ready\n" {
 		t.Errorf("body = %q, want generic not-ready message", got)
 	}
 }

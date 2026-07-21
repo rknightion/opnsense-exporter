@@ -158,3 +158,61 @@ func TestResolveIntervalTierTableAndOverrides(t *testing.T) {
 		t.Errorf("override above ceil should clamp to ceil, got %v", got)
 	}
 }
+
+// TestSnapshotWarmNeedsHealthAndEveryCollector pins the readiness contract (#341):
+// warm means the snapshot a scrape would replay is COMPLETE — the health poll plus
+// every enabled collector has finished a first poll. A partially warm snapshot is
+// exactly what made the live-box canary see 24 of 47 collectors and 170 of ~495
+// metric names when it scraped 3s after start.
+func TestSnapshotWarmNeedsHealthAndEveryCollector(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	a := &fakeCollectorInstance{name: "a"}
+	b := &fakeCollectorInstance{name: "b"}
+	c := newScrapeTestCollector(t, client, a, b)
+
+	if c.SnapshotWarm() {
+		t.Fatal("a never-polled exporter must not report warm")
+	}
+	c.pollHealth(context.Background())
+	if c.SnapshotWarm() {
+		t.Fatal("health alone must not report warm while collectors are unpolled")
+	}
+	c.pollOnce(context.Background(), a)
+	if c.SnapshotWarm() {
+		t.Fatal("a partially polled snapshot must not report warm")
+	}
+	c.pollOnce(context.Background(), b)
+	if !c.SnapshotWarm() {
+		t.Fatal("health + every collector polled must report warm")
+	}
+}
+
+// TestSnapshotWarmCountsFailedPolls: warm is about completeness, not success. A
+// collector whose first poll errored has still had its turn, so it must not hold
+// readiness open forever — the failure surfaces as scrape_collector_success=0.
+func TestSnapshotWarmCountsFailedPolls(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	fake := &fakeCollectorInstance{name: "fake", err: &opnsense.APICallError{Endpoint: "ep", Message: "boom"}}
+	c := newScrapeTestCollector(t, client, fake)
+
+	c.pollHealth(context.Background())
+	c.pollOnce(context.Background(), fake)
+	if !c.SnapshotWarm() {
+		t.Error("a failed first poll must still count towards warm-up")
+	}
+}
+
+// TestSnapshotWarmWithNoCollectorsNeedsHealth guards the degenerate case: an
+// exporter with every collector disabled is warm as soon as health has polled.
+func TestSnapshotWarmWithNoCollectorsNeedsHealth(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	c := newScrapeTestCollector(t, client)
+
+	if c.SnapshotWarm() {
+		t.Error("no collectors but no health poll yet must not report warm")
+	}
+	c.pollHealth(context.Background())
+	if !c.SnapshotWarm() {
+		t.Error("no collectors + health polled must report warm")
+	}
+}

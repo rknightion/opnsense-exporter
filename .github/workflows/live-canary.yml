@@ -24,12 +24,13 @@ concurrency:
 
 env:
   # Distinct floors so a partial outage is distinguishable from drift:
-  # 47 sub-collectors must all succeed; the box currently emits 495 catalogue
-  # metric names (down from 507 since the unbound extended-statistics series
-  # are presence-gated — 26.7 ships extended-statistics: no, so emitting them
-  # would fabricate zero counters). Floor keeps ~15 names of headroom for
-  # box-state variance.
-  METRIC_NAME_FLOOR: '480'
+  # every enabled sub-collector must succeed (the smoke waits for /-/ready, i.e.
+  # for the poll scheduler to have polled all of them once); the box emits 622
+  # catalogue metric names on the last recorded clean run and 641 on a warm local
+  # run against it (2026-07-21) — the count grew with the collectors added since the
+  # 495-name figure this floor was first written against. Floor keeps ~10% of
+  # headroom for box-state variance (a plugin off, an empty lease table).
+  METRIC_NAME_FLOOR: '560'
 
 jobs:
   canary:
@@ -121,9 +122,26 @@ jobs:
             --exporter.enable-hasync &
           EXPORTER_PID=$!
           trap 'kill "$EXPORTER_PID" 2>/dev/null || true' EXIT
-          sleep 3
-          # One scrape hits all 47 sub-collectors; give it a generous ceiling.
-          curl -sf -m 120 --retry 5 --retry-delay 5 --retry-connrefused \
+
+          # Wait for the poll scheduler to warm up (#341). Since #336 a scrape
+          # replays the snapshot the per-collector pollers fill, so scraping a
+          # few seconds after start reports only the handful of collectors that
+          # have polled so far — which is what made this smoke read 24 of 47
+          # collectors and 170 of ~495 metric names. /-/ready turns 200 only once
+          # the health poll AND every collector have completed a first poll, so it
+          # is the correct gate; readiness results are cached for 10s, hence the
+          # 5s poll and the generous ceiling.
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -sf -m 10 -o /dev/null http://localhost:8080/-/ready; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          # Serving is a pure memory read now, so the scrape itself is fast; the
+          # retries only cover the (already-ready) listener being momentarily busy.
+          curl -sf -m 60 --retry 5 --retry-delay 5 --retry-connrefused \
             -o /tmp/metrics.txt http://localhost:8080/metrics
 
           fail=0
@@ -132,6 +150,12 @@ jobs:
             echo ""
             echo "## End-to-end exporter smoke"
             echo ""
+            if [ "$ready" = 1 ]; then
+              echo "- exporter reached \`/-/ready\` (poll scheduler warm) ✅"
+            else
+              echo "- exporter never reached \`/-/ready\` within 300s — the assertions below ran against a partial snapshot ❌"
+              fail=1
+            fi
             up=$(awk '$1 ~ /^opnsense_up\{/ { print $2 }' /tmp/metrics.txt | head -n1)
             if [ "$up" = "1" ]; then
               echo "- \`opnsense_up\` = 1 ✅"
