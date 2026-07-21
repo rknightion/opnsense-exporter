@@ -66,6 +66,28 @@ func TestSnapshotEmptyValuesMiss(t *testing.T) {
 	}
 }
 
+// clone() must carry the Ifaces table forward like every other table: a rules
+// refresh 60 seconds from now would otherwise wipe the interface topology the
+// NetFlow ifIndex map is derived from, and every flow would lose its interface
+// label until the 5-minute interfaces TTL came round again.
+func TestCloneCarriesIfaces(t *testing.T) {
+	s := testSnapshot()
+	s.Ifaces = []IfaceInfo{{
+		Device: "ixl0_vlan50", Name: "IOT", Identifier: "opt3",
+		VlanTag: "50", VlanParent: "ixl0",
+		Addrs: []netip.Addr{netip.MustParseAddr("10.50.0.1")},
+	}}
+
+	next := s.clone()
+	if len(next.Ifaces) != 1 {
+		t.Fatalf("clone() dropped the Ifaces table: %+v", next.Ifaces)
+	}
+	if next.Ifaces[0].Device != "ixl0_vlan50" || next.Ifaces[0].Name != "IOT" ||
+		next.Ifaces[0].VlanParent != "ixl0" || len(next.Ifaces[0].Addrs) != 1 {
+		t.Errorf("clone() mangled Ifaces[0] = %+v", next.Ifaces[0])
+	}
+}
+
 func TestScope(t *testing.T) {
 	s := testSnapshot()
 

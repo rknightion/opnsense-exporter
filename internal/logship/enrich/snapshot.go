@@ -29,6 +29,15 @@ type Snapshot struct {
 	SelfIPs     map[netip.Addr]bool  // addresses the firewall itself holds
 	LastRefresh map[string]time.Time // per TABLE: "rules" | "interfaces" | "leases" | "tunnels"
 
+	// Ifaces is every interface the box reports, IN THE ORDER THE API RETURNED
+	// THEM. Order is load-bearing and must never be sorted or filtered: NetFlow's
+	// ifIndex is a 1-based counter over the box's own interface enumeration
+	// (src/etc/rc.d/netflow: `ngctl mkpeer $iface: netflow lower iface$ifIndex`
+	// over `ifinfo` output), so internal/flow derives ifIndex -> interface from
+	// this slice's position. Dropping or reordering one row silently remaps every
+	// interface label on every historical flow series.
+	Ifaces []IfaceInfo
+
 	// Tunnels maps an IPsec connection UUID to its description. charon logs the
 	// tunnel as a bare UUID ("<5e891b0c-...|8> sending DPD request"), which is
 	// unreadable without the API — and the exporter is the one component that has it.
@@ -37,6 +46,26 @@ type Snapshot struct {
 	// the instance only in a management socket path (instance-<uuid>.sock).
 	VPNInstances map[string]string
 }
+
+// IfaceInfo is one interface's identity and topology, as the OPNsense API
+// reports it. It is a projection of opnsense.InterfaceOverview: the enrichment
+// snapshot must not leak the API package's types onto the hot path, and only
+// these fields are needed to derive interface topology.
+//
+// It is part of an immutable Snapshot — neither the struct nor Addrs may be
+// mutated after publication.
+type IfaceInfo struct {
+	Device     string       // kernel name: "ixl0", "ixl0_vlan50", "pppoe0"
+	Name       string       // OPNsense description: "LAN", "IOT"; may be empty
+	Identifier string       // config identifier: "lan", "wan", "opt3"; empty when unassigned
+	VlanTag    string       // 802.1q tag; empty for a non-VLAN interface
+	VlanParent string       // parent device for a VLAN child; empty otherwise
+	Addrs      []netip.Addr // every configured address, Unmap()ed
+	IsWAN      bool         // see isWANIface in refresh.go for the heuristic and its limits
+}
+
+// IsVLAN reports whether this interface is an 802.1q child of another.
+func (i IfaceInfo) IsVLAN() bool { return i.VlanTag != "" || i.VlanParent != "" }
 
 // emptySnapshot backs a cold Cache: every lookup misses, nothing panics.
 var emptySnapshot = &Snapshot{}
@@ -126,6 +155,7 @@ func (s *Snapshot) clone() *Snapshot {
 		MACs:         s.MACs,
 		LocalNets:    s.LocalNets,
 		SelfIPs:      s.SelfIPs,
+		Ifaces:       s.Ifaces,
 		Tunnels:      s.Tunnels,
 		VPNInstances: s.VPNInstances,
 		LastRefresh:  make(map[string]time.Time, len(s.LastRefresh)+1),

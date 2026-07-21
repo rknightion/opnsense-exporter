@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -233,7 +234,8 @@ func (r *Refresher) doRefreshRules() error {
 }
 
 // doRefreshIfaces rebuilds device -> name plus the firewall's own addresses
-// (SelfIPs) and configured subnets (LocalNets), which together drive Scope.
+// (SelfIPs) and configured subnets (LocalNets), which together drive Scope — and
+// the ordered Ifaces table internal/flow derives the NetFlow ifIndex map from.
 func (r *Refresher) doRefreshIfaces() error {
 	ov, err := r.client.FetchInterfacesOverview()
 	if err != nil {
@@ -244,10 +246,18 @@ func (r *Refresher) doRefreshIfaces() error {
 	selfIPs := make(map[netip.Addr]bool)
 	seenNet := make(map[netip.Prefix]bool)
 	var localNets []netip.Prefix
+	ifaces := make([]IfaceInfo, 0, len(ov.Interfaces))
 
 	for _, iface := range ov.Interfaces {
 		if iface.Device != "" && iface.Description != "" {
 			names[iface.Device] = iface.Description
+		}
+		info := IfaceInfo{
+			Device:     iface.Device,
+			Name:       iface.Description,
+			Identifier: iface.Identifier,
+			VlanTag:    iface.VlanTag,
+			VlanParent: iface.VlanParent,
 		}
 		for _, cidr := range append(append([]string{}, iface.IPv4...), iface.IPv6...) {
 			addr, pfx, perr := parseAddrPrefix(cidr)
@@ -255,19 +265,97 @@ func (r *Refresher) doRefreshIfaces() error {
 				continue
 			}
 			selfIPs[addr] = true
+			info.Addrs = append(info.Addrs, addr)
 			if !seenNet[pfx] {
 				seenNet[pfx] = true
 				localNets = append(localNets, pfx)
 			}
 		}
+		info.IsWAN = isWANIface(info)
+		// EVERY row is appended, including a nameless or address-less one: ifIndex is
+		// a positional counter over this same enumeration, so skipping a row here
+		// would shift every later index by one.
+		ifaces = append(ifaces, info)
 	}
 
 	r.update("interfaces", func(s *Snapshot) {
 		s.IfaceNames = names
 		s.SelfIPs = selfIPs
 		s.LocalNets = localNets
+		s.Ifaces = ifaces
 	})
 	return nil
+}
+
+// isWANIface decides whether an interface faces the internet.
+//
+// The obvious test — "it holds an address outside every LocalNets prefix" — is
+// CIRCULAR: LocalNets is built from these very addresses, so every configured
+// address is inside it by construction and the test can never fire. So the
+// decision comes from what the API actually states: OPNsense's own config
+// identifier, plus whether the interface holds a globally-routable address.
+//
+//	not a VLAN child, AND
+//	Identifier is "wan" or "optN" (never "lan"; never empty/unassigned), AND
+//	at least one configured address is globally routable
+//
+// Known failure modes, both deliberate:
+//
+//   - FALSE NEGATIVE: a WAN behind ISP CPE double-NAT, holding only an RFC1918
+//     address, is not detected. Nothing in the payload distinguishes it from a LAN.
+//     (A CGNAT 100.64/10 WAN IS detected — CGNAT is not RFC1918.)
+//   - FALSE POSITIVE: a non-VLAN optN interface carrying a routed public subnet
+//     (a physical DMZ port) reads as a WAN. Excluding VLAN children removes the
+//     common case of that — a tagged DMZ — at the cost of missing the rare
+//     VLAN-tagged WAN handoff.
+//
+// The consumer of this must therefore treat IsWAN as a hint, never as ground
+// truth: a wrong interface attribution is worse than an absent one.
+func isWANIface(i IfaceInfo) bool {
+	if i.IsVLAN() || !isWANIdentifier(i.Identifier) {
+		return false
+	}
+	for _, a := range i.Addrs {
+		if isGloballyRoutable(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWANIdentifier reports whether an OPNsense config identifier is one a WAN can
+// use. OPNsense assigns "lan", "wan", then "opt1".."optN"; a second WAN is an optN,
+// so optN has to be accepted, and "lan" and the empty (unassigned) identifier are
+// the only ones that can be ruled out.
+func isWANIdentifier(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if id == "wan" {
+		return true
+	}
+	rest, ok := strings.CutPrefix(id, "opt")
+	if !ok || rest == "" {
+		return false
+	}
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isGloballyRoutable reports whether an address could plausibly be reached from
+// the internet: not loopback, not link-local, not multicast, not unspecified and
+// not RFC1918/ULA private. Carrier-grade NAT space (100.64.0.0/10) is NOT excluded
+// — it is what many ISPs hand a WAN, and netip does not classify it as private.
+func isGloballyRoutable(a netip.Addr) bool {
+	a = a.Unmap()
+	if !a.IsValid() {
+		return false
+	}
+	return !a.IsLoopback() && !a.IsUnspecified() && !a.IsPrivate() &&
+		!a.IsLinkLocalUnicast() && !a.IsLinkLocalMulticast() &&
+		!a.IsInterfaceLocalMulticast() && !a.IsMulticast()
 }
 
 // doRefreshLeases rebuilds IP -> hostname and IP -> MAC from every source the box

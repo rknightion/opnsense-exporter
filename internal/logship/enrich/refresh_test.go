@@ -5,12 +5,18 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
+	"github.com/rknightion/opnsense-exporter/internal/options"
+	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
 var errBoom = errors.New("boom")
@@ -259,6 +265,199 @@ func TestRunRefreshesOnMissSignal(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// ifaceOverviewFixture is an interfaces_info response in the shape verified
+// against OPNsense 26.1 (see opnsense/interfaces.go): addresses arrive as arrays
+// of {"ipaddr": "<cidr>"} objects, and a VLAN child carries either the flat
+// "vlan_tag" or the nested "vlan" object.
+const ifaceOverviewFixture = `{"rows":[
+  {"device":"ixl0","identifier":"lan","description":"LAN",
+   "ipv4":[{"ipaddr":"10.0.0.114/24"}],"ipv6":[{"ipaddr":"fe80::1/64"}]},
+  {"device":"igb0","identifier":"opt5","description":"WAN2",
+   "ipv4":[{"ipaddr":"203.0.113.9/29"}]},
+  {"device":"lo0","identifier":"","description":"","ipv4":[{"ipaddr":"127.0.0.1/8"}]},
+  {"device":"ixl0_vlan50","identifier":"opt3","description":"IOT",
+   "vlan":{"tag":"50","parent":"ixl0"},"ipv4":[{"ipaddr":"192.168.50.1/24"}]},
+  {"device":"ixl0_vlan60","identifier":"opt7","description":"DMZ",
+   "vlan":{"tag":"60","parent":"ixl0"},"ipv4":[{"ipaddr":"203.0.113.130/29"}]},
+  {"device":"pppoe0","identifier":"wan","description":"WAN1",
+   "ipv4":[{"ipaddr":"198.51.100.42/32"}]}
+]}`
+
+// newFixtureRefresher wires a Refresher to a real API client pointed at an
+// httptest server serving body for every request, so doRefreshIfaces is exercised
+// end to end rather than through a stub.
+func newFixtureRefresher(t *testing.T, body string) *Refresher {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := opnsense.NewClient(options.OPNSenseConfig{
+		Protocol: "http", Host: strings.TrimPrefix(srv.URL, "http://"),
+		APIKey: "k", APISecret: "s",
+	}, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	return &Refresher{
+		client: &client,
+		cache:  NewCache(),
+		m:      NewMetrics(prometheus.NewRegistry()),
+		log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		now:    time.Now,
+	}
+}
+
+// The new Ifaces table must carry EVERY interface the box reports, in the order the
+// API returned it — that order is what the ifIndex enumeration is derived from, so
+// reordering or dropping a row silently remaps every historical series.
+func TestDoRefreshIfacesPopulatesIfacesInAPIOrder(t *testing.T) {
+	r := newFixtureRefresher(t, ifaceOverviewFixture)
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+	got := r.cache.Load().Ifaces
+
+	want := []IfaceInfo{
+		{Device: "ixl0", Name: "LAN", Identifier: "lan",
+			Addrs: mustAddrs("10.0.0.114", "fe80::1")},
+		{Device: "igb0", Name: "WAN2", Identifier: "opt5", IsWAN: true,
+			Addrs: mustAddrs("203.0.113.9")},
+		{Device: "lo0", Addrs: mustAddrs("127.0.0.1")},
+		{Device: "ixl0_vlan50", Name: "IOT", Identifier: "opt3",
+			VlanTag: "50", VlanParent: "ixl0", Addrs: mustAddrs("192.168.50.1")},
+		{Device: "ixl0_vlan60", Name: "DMZ", Identifier: "opt7",
+			VlanTag: "60", VlanParent: "ixl0", Addrs: mustAddrs("203.0.113.130")},
+		{Device: "pppoe0", Name: "WAN1", Identifier: "wan", IsWAN: true,
+			Addrs: mustAddrs("198.51.100.42")},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Ifaces has %d entries, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if !ifaceInfoEqual(got[i], want[i]) {
+			t.Errorf("Ifaces[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// IsWAN is a heuristic and its failure modes are deliberate. Pin them, so a later
+// change to the signal is a decision rather than an accident.
+func TestDoRefreshIfacesIsWANHeuristic(t *testing.T) {
+	r := newFixtureRefresher(t, ifaceOverviewFixture)
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+	byDevice := map[string]IfaceInfo{}
+	for _, i := range r.cache.Load().Ifaces {
+		byDevice[i.Device] = i
+	}
+
+	tests := []struct {
+		device string
+		want   bool
+		why    string
+	}{
+		{"pppoe0", true, "identifier wan + a globally-routable address"},
+		{"igb0", true, "identifier optN + a globally-routable address"},
+		{"ixl0", false, "identifier lan is never a WAN"},
+		{"lo0", false, "no identifier, and 127.0.0.1 is not globally routable"},
+		{"ixl0_vlan50", false, "a VLAN child is never treated as a WAN"},
+		{"ixl0_vlan60", false, "a routed public subnet on a VLAN DMZ is NOT a WAN — " +
+			"the deliberate false-negative side of excluding VLANs"},
+	}
+	for _, tc := range tests {
+		if got := byDevice[tc.device].IsWAN; got != tc.want {
+			t.Errorf("IsWAN(%s) = %v, want %v — %s", tc.device, got, tc.want, tc.why)
+		}
+	}
+}
+
+// The Ifaces table is an ADDITION. Everything the interfaces refresh already
+// produced must be bit-for-bit unchanged.
+func TestDoRefreshIfacesPreservesExistingTables(t *testing.T) {
+	r := newFixtureRefresher(t, ifaceOverviewFixture)
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+	s := r.cache.Load()
+
+	wantNames := map[string]string{
+		"ixl0": "LAN", "igb0": "WAN2", "ixl0_vlan50": "IOT",
+		"ixl0_vlan60": "DMZ", "pppoe0": "WAN1",
+	}
+	if len(s.IfaceNames) != len(wantNames) {
+		t.Errorf("IfaceNames = %v, want %v (lo0 has no description and must be absent)",
+			s.IfaceNames, wantNames)
+	}
+	for dev, name := range wantNames {
+		if got := s.IfaceNames[dev]; got != name {
+			t.Errorf("IfaceNames[%s] = %q, want %q", dev, got, name)
+		}
+	}
+
+	for _, ip := range []string{"10.0.0.114", "fe80::1", "203.0.113.9", "127.0.0.1",
+		"192.168.50.1", "203.0.113.130", "198.51.100.42"} {
+		if !s.SelfIPs[netip.MustParseAddr(ip)] {
+			t.Errorf("SelfIPs missing %s", ip)
+		}
+	}
+	if got := len(s.SelfIPs); got != 7 {
+		t.Errorf("len(SelfIPs) = %d, want 7", got)
+	}
+
+	wantNets := []string{"10.0.0.0/24", "fe80::/64", "203.0.113.8/29", "127.0.0.0/8",
+		"192.168.50.0/24", "203.0.113.128/29", "198.51.100.42/32"}
+	if len(s.LocalNets) != len(wantNets) {
+		t.Fatalf("LocalNets = %v, want %d entries", s.LocalNets, len(wantNets))
+	}
+	for i, want := range wantNets {
+		if s.LocalNets[i] != netip.MustParsePrefix(want) {
+			t.Errorf("LocalNets[%d] = %v, want %v (order follows the API)", i, s.LocalNets[i], want)
+		}
+	}
+
+	// And the behaviour those tables drive is unchanged.
+	if got := s.Scope("10.0.0.114"); got != "self" {
+		t.Errorf("Scope(10.0.0.114) = %q, want self", got)
+	}
+	if got := s.Scope("10.0.0.6"); got != "local" {
+		t.Errorf("Scope(10.0.0.6) = %q, want local", got)
+	}
+	if got := s.Scope("8.8.8.8"); got != "remote" {
+		t.Errorf("Scope(8.8.8.8) = %q, want remote", got)
+	}
+	if got, ok := s.InterfaceName("ixl0"); !ok || got != "LAN" {
+		t.Errorf("InterfaceName(ixl0) = %q,%v want LAN,true", got, ok)
+	}
+}
+
+func mustAddrs(ss ...string) []netip.Addr {
+	out := make([]netip.Addr, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, netip.MustParseAddr(s).Unmap())
+	}
+	return out
+}
+
+func ifaceInfoEqual(a, b IfaceInfo) bool {
+	if a.Device != b.Device || a.Name != b.Name || a.Identifier != b.Identifier ||
+		a.VlanTag != b.VlanTag || a.VlanParent != b.VlanParent || a.IsWAN != b.IsWAN {
+		return false
+	}
+	if len(a.Addrs) != len(b.Addrs) {
+		return false
+	}
+	for i := range a.Addrs {
+		if a.Addrs[i] != b.Addrs[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestParseAddrPrefix(t *testing.T) {
