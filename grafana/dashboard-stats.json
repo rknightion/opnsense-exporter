@@ -1,7 +1,7 @@
 {
-  "metrics": 768,
-  "panels": 682,
-  "tabs": 40,
+  "metrics": 777,
+  "panels": 692,
+  "tabs": 41,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -40,6 +40,7 @@
     "Nginx",
     "Siproxd",
     "Log-derived Events",
+    "Flow Volume",
     "Log Shipping",
     "Recording rules",
     "Diagnostics"

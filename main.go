@@ -216,6 +216,23 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutLogEventsCollector())
 		logger.Info("log_events collector disabled")
 	}
+	// Flow rollups (#346). Resolved and SIZED HERE, before collector.New and
+	// therefore before StartPolling launches a poller per collector. ConfigureFlow
+	// is safe to call at any time — it retunes under the accumulator's own mutex
+	// rather than replacing it — but doing it before the pollers exist keeps the
+	// ordering obviously correct as well as actually correct.
+	flowCfg, ferr := options.Flow()
+	if ferr != nil {
+		logger.Error("invalid flow configuration", "err", ferr)
+		os.Exit(1)
+	}
+	if !collectorsSwitches.Flow {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFlowCollector())
+		logger.Info("flow collector disabled")
+	} else if flowCfg.Enabled {
+		collector.ConfigureFlow(flowCfg.TopN, flowCfg.MaxKeys)
+		logger.Info("flow rollups enabled", "top_n", flowCfg.TopN, "max_keys", flowCfg.MaxKeys)
+	}
 	if !collectorsSwitches.Firewall {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallCollector())
 		logger.Info("firewall collector disabled")
@@ -672,6 +689,13 @@ func main() {
 		// nil sink and skips derivation entirely.
 		if collectorsSwitches.LogEvents {
 			deps.MetricSink = collector.LogEvents
+		}
+		// Flow records are derived only when something consumes them: the collector is
+		// on, the feature is on, and this lane is selected. A nil sink means the
+		// Zenarmor lane skips building records entirely rather than building them for
+		// nobody.
+		if collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.Zenarmor {
+			deps.FlowSink = collector.Flow
 		}
 		// Debug-capture sink (#330): shared across receivers, constructed once when
 		// --logs.debug-capture.dir is set. A per-receiver --logs.<recv>.debug-capture is

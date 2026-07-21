@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 768
-- **Gauges:** 529
-- **Counters:** 239
+- **Total metrics:** 777
+- **Gauges:** 533
+- **Counters:** 244
 
 ## General
 
@@ -336,6 +336,20 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firmware_reinstall_packages_count | Gauge | --- | Number of packages available to reinstall | --exporter.disable-firmware |
 | opnsense_firmware_package_update_available | Gauge | name, installed_version, new_version | Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 | opnsense_firmware_plugin_installed | Gauge | name, version | Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
+
+## Flow Volume
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_flow_bytes_total | Counter | interface, direction, transport, category, action, source, scope | Bytes observed in flow records, by bounded dimension. Keys beyond --flow.top-n fold into __other__, which preserves the source label, so the family still sums exactly at any limit. A series that leaves the top-N and later returns resumes from the volume it accumulated while folded, so it reads as a counter reset — deliberate, since the alternative is freezing it at its last value forever. From phase 2 this family carries BOTH sources' measurement of the same traffic: pin source= in any query or it double-counts. IPs, ports, hostnames, application names, domains and connection ids are never labels; they stay as structured metadata on the shipped record. | --exporter.disable-flow |
+| opnsense_flow_packets_total | Counter | interface, direction, transport, category, action, source, scope | Packets observed in flow records, by bounded dimension. Same folding, reset and cross-source semantics as opnsense_flow_bytes_total. | --exporter.disable-flow |
+| opnsense_flow_records_total | Counter | interface, direction, transport, category, action, source, scope | Flow records observed, by bounded dimension. Counts records, not connections: a Zenarmor conn document is one per connection, but a NetFlow connection produces several records. | --exporter.disable-flow |
+| opnsense_flow_payload_byte_fallback_total | Counter | --- | Flow records whose byte count came from Zenarmor's payload counter because its wire counter read zero. Zenarmor only accumulates wire bytes once it has tracked a flow past its first packets, so short UDP flows (DNS, STUN, SSDP) report zero; without the fallback those records would count toward records_total with no bytes at all. | --exporter.disable-flow |
+| opnsense_flow_rollup_keys | Gauge | --- | Distinct label combinations currently tracked by the flow rollup accumulator. | --exporter.disable-flow |
+| opnsense_flow_rollup_keys_max | Gauge | --- | Configured ceiling on tracked label combinations (--flow.max-keys); 0 means unbounded. At the ceiling every NEW combination folds into __other__ indefinitely, so compare against opnsense_flow_rollup_keys to see saturation coming. | --exporter.disable-flow |
+| opnsense_flow_rollup_top_n | Gauge | --- | Configured ceiling on emitted series (--flow.top-n); 0 means unbounded. | --exporter.disable-flow |
+| opnsense_flow_rollup_keys_folded | Gauge | --- | Tracked label combinations currently outside the top-N and therefore folded into __other__ rather than emitted individually. | --exporter.disable-flow |
+| opnsense_flow_rollup_capped_total | Counter | --- | Flow records folded into __other__ because the accumulator was already at --flow.max-keys when their label combination first appeared. A rising value means new dimensions are being lost to the cap, not merely folded by the top-N. | --exporter.disable-flow |
 
 ## Gateways
 

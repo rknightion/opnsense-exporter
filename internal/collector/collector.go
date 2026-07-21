@@ -90,6 +90,11 @@ const (
 	// syslog receiver feeds its running totals out of band via collector.LogEvents,
 	// and Update simply emits the current totals as const metrics.
 	LogEventsSubsystem = "log_events"
+	// FlowSubsystem holds byte and packet volume rolled up from flow records
+	// (#346) — Zenarmor conn documents today, plus a NetFlow receiver from phase 2.
+	// Like log_events it never polls an API: the receiver lanes feed collector.Flow
+	// out of band and Update emits the accumulator's current totals.
+	FlowSubsystem = "flow"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -158,6 +163,7 @@ var SubsystemDisplayNames = map[string]string{
 	RelaydSubsystem:        "Relayd Load Balancer",
 	SiproxdSubsystem:       "Siproxd",
 	LogEventsSubsystem:     "Log-derived Events",
+	FlowSubsystem:          "Flow Volume",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -696,6 +702,14 @@ func WithoutSiproxdCollector() Option {
 // receiver's MetricSink to nil when this collector is off.
 func WithoutLogEventsCollector() Option {
 	return withoutCollectorInstance(LogEventsSubsystem)
+}
+
+// WithoutFlowCollector Option
+// removes the flow collector (byte/packet volume rolled up from flow records, #346).
+// Disabling it also stops the receiver lanes deriving flow records at all: main
+// leaves logship.Deps.FlowSink nil when this collector is off.
+func WithoutFlowCollector() Option {
+	return withoutCollectorInstance(FlowSubsystem)
 }
 
 // WithFirmwarePackageDetails enables per-package detail metrics for the

@@ -1,6 +1,6 @@
 ---
 title: OPNsense Exporter
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 768 metrics across 61 collectors
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 777 metrics across 62 collectors
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
-A Prometheus exporter that polls OPNsense REST APIs and exposes 768 metrics across 61 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 777 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more.
 
 <div class="hero-badges" markdown>
 
@@ -45,7 +45,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 768 metrics acro
 
     ---
 
-    Browse all 768 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 777 Prometheus metrics with types, labels, and PromQL examples.
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 
@@ -53,7 +53,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 768 metrics acro
 
     ---
 
-    61 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
+    62 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
 
     [:octicons-arrow-right-24: Collectors](collectors/index.md)
 
@@ -81,7 +81,7 @@ OPNsense Exporter targets OPNsense specifically, covering the firewall, its plug
 
 Key highlights:
 
-- **61 collectors** covering every major OPNsense subsystem
+- **62 collectors** covering every major OPNsense subsystem
 - **Concurrent collection** via goroutines for fast scrapes
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail

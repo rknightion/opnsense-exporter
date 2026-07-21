@@ -345,6 +345,15 @@ var (
 		"exporter.disable-log-events",
 		"Disable the log_events collector (Prometheus counters derived from received syslog lines: firewall/haproxy/sshd/dhcp/audit/ids event totals). Silent until the syslog receiver is enabled and feeding it.",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS").Default("false").Bool()
+	// flow is default-on and low-cardinality by construction: every dimension it
+	// labels is a closed enumeration or a bounded taxonomy, and the accumulator
+	// folds anything beyond --flow.top-n into a single __other__ series. Like
+	// log_events it is silent until a flow source is feeding it, and disabling it
+	// here also stops the receiver lanes deriving flow records at all (#346).
+	flowCollectorDisabled = kingpin.Flag(
+		"exporter.disable-flow",
+		"Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source — today the Zenarmor receiver — is enabled and feeding it.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_FLOW").Default("false").Bool()
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -428,6 +437,7 @@ type CollectorsDisableSwitch struct {
 	HostDiscovery          bool
 	Relayd                 bool
 	LogEvents              bool
+	Flow                   bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -512,6 +522,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Relayd:                 !*relaydCollectorDisabled,
 		Siproxd:                !*siproxdCollectorDisabled,
 		LogEvents:              !*logEventsCollectorDisabled,
+		Flow:                   !*flowCollectorDisabled,
 	}
 }
 
@@ -610,4 +621,5 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-relayd", Subsystem: "relayd"},
 	{Flag: "exporter.disable-siproxd", Subsystem: "siproxd"},
 	{Flag: "exporter.disable-log-events", Subsystem: "log_events"},
+	{Flag: "exporter.disable-flow", Subsystem: "flow"},
 }

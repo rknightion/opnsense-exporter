@@ -165,11 +165,25 @@ pipeline — [goflow2](https://github.com/netsampler/goflow2),
 [ntopng](https://www.ntop.org/products/traffic-analysis/ntop/) are common
 choices — and it ingests independently of Loki/Prometheus.
 
-Flow data does not belong in this exporter and never will: the OPNsense API
-only exposes **pre-aggregated Insight data** (already-bucketed traffic
-summaries), not per-flow records. There is no API endpoint that could feed a
-per-flow exporter collector even if one were built — native NetFlow export is
-the only path to raw flow data, full stop.
+This page used to say flow data "does not belong in this exporter and never
+will". That was written about the **poll/API** path, where it is still true and
+worth keeping: the OPNsense API exposes only **pre-aggregated Insight data**
+(already-bucketed traffic summaries), never per-flow records, so no polling
+collector could produce flow telemetry however hard it tried.
+
+What changed is that the exporter is no longer only a poller. It now runs push
+receivers — syslog and Zenarmor — and flow data arrives on those, not from the
+API. So the exporter does ship flow telemetry today: the Zenarmor receiver's
+per-connection records become bounded byte and packet metrics, and a NetFlow
+v5/v9 receiver is in progress. See [Flow volume](flow.md).
+
+Both paths remain valid and they answer different questions. A dedicated flow
+pipeline is still the right tool for arbitrary 5-tuple forensics and long-term
+per-flow storage; the exporter is not a flow browser and will not become one.
+What it can do that a generic collector cannot is **repair** flow data using the
+firewall's own configuration — splitting VLAN traffic off the parent interface,
+resolving policy-routed egress that a FIB lookup gets wrong, and naming
+interfaces the export only numbers.
 
 ## Decision matrix
 

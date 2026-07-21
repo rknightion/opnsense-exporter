@@ -5,7 +5,7 @@ OPNsense Exporter:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | A **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 7 top-level domains and 40 tabs that render conditionally. |
+| `dashboard.json` | A **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 7 top-level domains and 41 tabs that render conditionally. |
 | `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
@@ -27,10 +27,10 @@ datasource carrying the exporter's shipped logs is selected.
 
 ## The dashboard
 
-One dashboard, 7 top-level domains and 40 tabs grouped by feature (generated list, do not hand-edit):
+One dashboard, 7 top-level domains and 41 tabs grouped by feature (generated list, do not hand-edit):
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS — Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Log Shipping, Recording rules, Diagnostics
+Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS — Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the

@@ -66,7 +66,7 @@ TAB_GROUPS = [
     ("VPN & remote access", ("VPN", "Tailscale", "NetBird", "Tor")),
     ("Services", ("Syslog", "HAProxy", "Relayd", "Nginx", "Siproxd")),
     ("Observability", (
-        "Log-derived Events", "Log Shipping", "Recording rules", "Diagnostics",
+        "Log-derived Events", "Flow Volume", "Log Shipping", "Recording rules", "Diagnostics",
     )),
 ]
 
@@ -101,6 +101,7 @@ OPTIONAL_TAB_PRESENCE = {
     "Tor": "has_tor",
     "Siproxd": "has_siproxd",
     "Log-derived Events": "has_log_events",
+    "Flow Volume": "has_flow",
     "Zenarmor": ["has_zenarmor_metrics", "has_zenarmor_logs"],
     "Log Shipping": "has_logs",
     "Recording rules": "has_recording_rules",
@@ -468,7 +469,7 @@ def register_subsystem_tabs(b: Builder):
         "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
         "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
         "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events",
-        "zenarmor", "logs", "recording_rules",
+        "flow", "zenarmor", "logs", "recording_rules",
     ]
     import importlib
     for mod in order:
