@@ -156,6 +156,18 @@ type Enrichment struct {
 	DstDomain  string // from the phase-2 DNS answer cache; unbounded, metadata only
 }
 
+// Repairs records the normalisations applied on the way in, so each one is
+// countable at the sink instead of being silent. A repair nobody can observe is a
+// repair nobody will trust — the same reasoning behind Iface.Corrected, which
+// covers the phase-2 WAN-egress correction.
+type Repairs struct {
+	// PayloadByteFallback is set when a side reported zero wire bytes against a
+	// non-zero payload byte count, so the payload figure was used instead. Zenarmor
+	// only starts accumulating wire bytes once it has tracked a flow past its first
+	// packets, which leaves 27.6% of flow-sides at zero (#346).
+	PayloadByteFallback bool
+}
+
 // Record is one normalized flow. Both lanes produce it; the rollup, the correlator
 // and the OTLP emitter all consume it.
 type Record struct {
@@ -192,6 +204,7 @@ type Record struct {
 	Verdict Verdict
 	L7      L7
 	Enrich  Enrichment
+	Repairs Repairs
 }
 
 // Tuple is the canonical, direction-independent identity of a conversation.

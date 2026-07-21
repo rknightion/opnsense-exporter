@@ -73,9 +73,22 @@ func buildRecord(family string, doc []byte, snap *enrich.Snapshot) (logship.Reco
 // parseDoc is buildRecord's inner form. parsed reports whether the document decoded
 // cleanly; the returned record is shippable either way.
 func parseDoc(family string, doc []byte, snap *enrich.Snapshot) (logship.Record, bool) {
+	rec, _, parsed := parseDocFull(family, doc, snap)
+	return rec, parsed
+}
+
+// parseDocFull is parseDoc plus the decoded document itself, for the one caller
+// that needs the typed fields rather than the string attributes: the flow adapter,
+// which builds a flow.Record out of the byte and packet counts.
+//
+// It exists as a separate entry point rather than as a wider parseDoc signature
+// because parseDoc has seven call sites, all of them wanting only the record, and
+// widening it would churn every one of them for a single caller's benefit. d is nil
+// when the document did not decode.
+func parseDocFull(family string, doc []byte, snap *enrich.Snapshot) (logship.Record, *zenDoc, bool) {
 	var d zenDoc
 	if err := json.Unmarshal(doc, &d); err != nil {
-		return logship.Record{Body: string(doc)}, false
+		return logship.Record{Body: string(doc)}, nil, false
 	}
 
 	attrs := make(map[string]string, 40)
@@ -165,6 +178,13 @@ func parseDoc(family string, doc []byte, snap *enrich.Snapshot) (logship.Record,
 		setInt("src_nbytes", d.SrcNBytes)
 		setInt("dst_npackets", d.DstNPackets)
 		setInt("dst_nbytes", d.DstNBytes)
+		// pbytes is the PAYLOAD byte count, distinct from nbytes' wire count by the
+		// per-packet header overhead. It is worth shipping in its own right, and it is
+		// what the flow rollup falls back to: Zenarmor leaves nbytes at zero until it
+		// has tracked a flow past its first packets, which is 27.6% of flow-sides with
+		// packets>0 on a live box — all of them short UDP (#346).
+		setInt("src_pbytes", d.SrcPBytes)
+		setInt("dst_pbytes", d.DstPBytes)
 
 	case "dns":
 		set("query", d.Query)
@@ -242,7 +262,7 @@ func parseDoc(family string, doc []byte, snap *enrich.Snapshot) (logship.Record,
 		}
 	}
 
-	return rec, true
+	return rec, &d, true
 }
 
 // timestamp resolves the document's event time.
@@ -330,8 +350,10 @@ type zenDoc struct {
 	AppCategory string `json:"app_category"`
 	SrcNPackets int64  `json:"src_npackets"`
 	SrcNBytes   int64  `json:"src_nbytes"`
+	SrcPBytes   int64  `json:"src_pbytes"`
 	DstNPackets int64  `json:"dst_npackets"`
 	DstNBytes   int64  `json:"dst_nbytes"`
+	DstPBytes   int64  `json:"dst_pbytes"`
 
 	// dns
 	Query            string   `json:"query"`

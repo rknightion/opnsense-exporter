@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
@@ -156,6 +157,9 @@ type docProcessor struct {
 	families map[string]bool // nil = all
 	// cap is the debug-capture sink, or nil when this receiver did not opt in.
 	cap *capture.Capturer
+	// flow receives normalized flow records derived from conn documents (#346), or
+	// is nil when flow rollups are off — in which case no record is built at all.
+	flow flow.Sink
 }
 
 // newDocProcessor builds the shared processor: metrics are registered and the
@@ -184,6 +188,7 @@ func newDocProcessor(d logship.Deps, cfg Config) *docProcessor {
 		m:        newMetrics(d.Registerer, cfg.Excludes),
 		families: familyAllowSet(cfg.Families),
 		cap:      cp,
+		flow:     d.FlowSink,
 	}
 }
 
@@ -206,7 +211,7 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	if p.cfg.Enrich {
 		snap = p.cache.Load()
 	}
-	rec, parsed := parseDoc(family, doc, snap)
+	rec, d, parsed := parseDocFull(family, doc, snap)
 	rec.Source = sourceName
 	if !parsed {
 		// Counted, never dropped: the record ships below with its raw body.
@@ -236,6 +241,19 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	// counters — those outlive both the exclusion and Loki's retention, and they are
 	// all that remains of it.
 	observeDerived(p.sink, family, rec.Attributes)
+
+	// Flow rollups (#346) sit HERE, beside observeDerived, and deliberately not in
+	// parseDoc. parseDoc runs upstream of the self-traffic drop above, and the
+	// exporter's own ingest link is ~11% of the flow family, so rolling up there
+	// would make our own bookkeeping the operator's top talker — scaling with how
+	// much they log. Placed before the exclusion for the same reason observeDerived
+	// is: an excluded record is real traffic the operator merely does not want
+	// stored, and these counters are all that outlive it.
+	if p.flow != nil {
+		if fr, ok := flowFromDoc(family, d, snap, time.Now()); ok {
+			p.flow.Observe(fr)
+		}
+	}
 
 	if rule, ok := excludedBy(p.cfg.Excludes, rec.Attributes); ok {
 		p.m.exclude(rule)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	"github.com/rknightion/opnsense-exporter/opnsense"
@@ -101,6 +102,13 @@ type Deps struct {
 	// programs (#258). It is nil when metric derivation is disabled (the
 	// log_events collector is off); the receiver substitutes a NopMetricSink.
 	MetricSink MetricSink
+	// FlowSink receives normalized flow records derived from a receiver's own
+	// documents (#346). It is nil when flow rollups are off (the flow collector is
+	// disabled, or --flow.enabled=false), and a receiver that sees nil skips
+	// derivation entirely rather than building records nothing consumes.
+	//
+	// Observe MUST NOT block and MUST NOT perform I/O — same contract as Miss above.
+	FlowSink flow.Sink
 	// DebugCapture is the shared debug-capture sink (#330), or nil when
 	// --logs.debug-capture.dir is unset. A receiver uses it only when its own
 	// --logs.<recv>.debug-capture is on; a nil *capture.Capturer is a safe no-op, so
