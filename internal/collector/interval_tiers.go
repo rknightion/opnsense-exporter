@@ -37,10 +37,19 @@ const (
 //     (gateway RTT/loss, interface + protocol + pf counters, live activity, netflow,
 //     CARP failover state).
 //   - slow: data that drifts over minutes, or is comparatively expensive to fetch
-//     (rule hit-counters, alias table contents, NTP peers, dyndns/qfeeds status, shaper
-//     pipes, siproxd registrations, tor circuits).
+//     (rule hit-counters, alias table contents, NTP/chrony peers, dyndns/qfeeds status,
+//     shaper pipes, siproxd registrations, tor circuits, LLDP neighbours).
 //   - cold: near-static inventory/health (firmware, certificates, ACME, SMART, cron,
-//     snapshots, vnstat's aggregated history).
+//     snapshots, vnstat's aggregated history, local auth inventory, config-backup
+//     history, ClamAV signature-database version).
+//
+// A collector belongs in cold when its data changes only on an admin action, NOT
+// merely because its endpoint carries a body cache TTL: the tier must state the
+// volatility on its own, so the poll stays sane at --exporter.cache-ttl=0. Where a
+// collector mixes live and static endpoints in one poll (firewall, unbound_dns,
+// hardware, system, crowdsec, tor), the tier follows the LIVE half and the body
+// cache handles the static endpoints — a per-collector interval cannot split them
+// (#344).
 var collectorTiers = map[string]time.Duration{
 	// fast (15s)
 	GatewaysSubsystem:   IntervalFast,
@@ -59,6 +68,8 @@ var collectorTiers = map[string]time.Duration{
 	TrafficShaperSubsystem: IntervalSlow,
 	SiproxdSubsystem:       IntervalSlow,
 	TorSubsystem:           IntervalSlow,
+	ChronySubsystem:        IntervalSlow,
+	LLDPSubsystem:          IntervalSlow,
 	// cold (15m)
 	FirmwareSubsystem:     IntervalCold,
 	CertificatesSubsystem: IntervalCold,
@@ -67,6 +78,9 @@ var collectorTiers = map[string]time.Duration{
 	CronTableSubsystem:    IntervalCold,
 	SnapshotsSubsystem:    IntervalCold,
 	VnstatSubsystem:       IntervalCold,
+	AuthSubsystem:         IntervalCold,
+	BackupSubsystem:       IntervalCold,
+	ClamAVSubsystem:       IntervalCold,
 }
 
 // IntervalCollector is an optional interface a CollectorInstance may implement to

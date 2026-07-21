@@ -218,25 +218,19 @@ func PluginGatedEndpoints() []EndpointName {
 		"quaggaServiceStatus", "syslogServiceStatus", "tailscaleServiceStatus",
 		"unboundServiceStatus", "wireguardServiceStatus", "netbirdServiceStatus",
 
-		// Plugin data endpoints (GET).
+		// Plugin data endpoints (GET). Kept alphabetical and unique —
+		// TestPluginGatedEndpoints_HasNoDuplicates enforces the uniqueness, because a
+		// list carrying the same name three times cannot be reviewed for what is
+		// MISSING, which is the only question that matters here.
 		"acmeCertificates", "apcupsdUpsStatus", "bpfStatistics", "captivePortalZones",
-		"chronySources", "chronySourceStats", "chronyTracking", "clamavVersion", "dhcpv4",
-		"dhcpv6Leases", "dhcpv6Prefixes", "dyndnsAccounts", "haproxyCounters",
-		"haproxyInfo", "haproxyTables", "ipsecPhase1", "ipsecPools", "monitStatus", "nginxVts",
-		"haproxyInfo", "ipsecPhase1", "ipsecPools", "monitStatus", "nginxVts", "nginxBans",
-		"nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
-		"chronySources", "chronySourceStats", "chronyTracking", "dechwPowerStatus",
-		"dhcpv4", "dhcpv6Leases", "dhcpv6Prefixes", "dmidecodeInfo", "dyndnsAccounts",
-		"haproxyCounters", "haproxyInfo", "ipsecPhase1", "ipsecPools", "monitStatus",
-		"nginxVts", "nutUpsStatus", "qfeedsStats", "quaggaBfdCounters", "quaggaBfdNeighbors",
-		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus",
-		"trafficShaperStatistics", "lldpdNeighbors",
-		"quaggaBgpSummary", "quaggaOspfOverview", "tailscaleStatus", "netbirdStatus",
-		"trafficShaperStatistics",
-		"trafficShaperStatistics", "crowdsecVersion",
-		"trafficShaperStatistics", "torCircuits", "torStreams", "torHiddenServices",
-		"relaydStatusSum",
-		"siproxdRegistrations",
+		"chronySourceStats", "chronySources", "chronyTracking", "clamavVersion",
+		"crowdsecVersion", "dechwPowerStatus", "dhcpv4", "dhcpv6Leases", "dhcpv6Prefixes",
+		"dmidecodeInfo", "dyndnsAccounts", "haproxyCounters", "haproxyInfo", "haproxyTables",
+		"ipsecPhase1", "ipsecPools", "lldpdNeighbors", "monitStatus", "netbirdStatus",
+		"nginxBans", "nginxVts", "nutUpsStatus", "qfeedsStats", "quaggaBfdCounters",
+		"quaggaBfdNeighbors", "quaggaBgpSummary", "quaggaOspfOverview", "relaydStatusSum",
+		"siproxdRegistrations", "tailscaleStatus", "torCircuits", "torHiddenServices",
+		"torStreams", "trafficShaperStatistics",
 
 		// FRR (quagga) session/interface detail (#197/#198) and opt-in
 		// route/LSDB volume gauges (#199). All ten are plain GETs on the

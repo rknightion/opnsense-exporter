@@ -182,6 +182,22 @@ func TestPluginGatedEndpoints_ExcludesCoreEndpoints(t *testing.T) {
 	}
 }
 
+// The list is hand-maintained and grew through several union merges (#227), which
+// is exactly how an entry gets written twice and a missing one gets overlooked: a
+// list with duplicates cannot be reviewed by eye. Callers build a set from it, so a
+// duplicate is harmless at runtime and would otherwise never be noticed.
+func TestPluginGatedEndpoints_HasNoDuplicates(t *testing.T) {
+	seen := make(map[EndpointName]int, len(PluginGatedEndpoints()))
+	for _, name := range PluginGatedEndpoints() {
+		seen[name]++
+	}
+	for name, count := range seen {
+		if count > 1 {
+			t.Errorf("plugin-gated endpoint %q is listed %d times; keep the list unique so it stays reviewable", name, count)
+		}
+	}
+}
+
 // POST endpoints are allowed on the plugin-gated list (only their 404 is cached),
 // but they must never receive a POSITIVE TTL: a POST's response body depends on what
 // was posted, so replaying it would serve one request's data for another.
