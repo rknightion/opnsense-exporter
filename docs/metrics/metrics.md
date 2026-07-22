@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 791
-- **Gauges:** 537
-- **Counters:** 254
+- **Total metrics:** 799
+- **Gauges:** 538
+- **Counters:** 261
 
 ## General
 
@@ -350,6 +350,14 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_rollup_top_n | Gauge | --- | Configured ceiling on emitted series (--flow.top-n); 0 means unbounded. | --exporter.disable-flow |
 | opnsense_flow_rollup_keys_folded | Gauge | --- | Tracked label combinations currently outside the top-N and therefore folded into __other__ rather than emitted individually. | --exporter.disable-flow |
 | opnsense_flow_rollup_capped_total | Counter | --- | Flow records folded into __other__ because the accumulator was already at --flow.max-keys when their label combination first appeared. A rising value means new dimensions are being lost to the cap, not merely folded by the top-N. | --exporter.disable-flow |
+| opnsense_flow_correlator_entries | Gauge | --- | Connection-windows the correlator is currently holding, waiting for their window to elapse or a Zenarmor conn document to arrive. | --exporter.disable-flow |
+| opnsense_flow_correlator_emitted_total | Counter | --- | Flow-log records the correlator has emitted: NetFlow fragments collapsed into one record per connection-window, merged with Zenarmor L7 where a conn document matched. | --exporter.disable-flow |
+| opnsense_flow_correlator_matched_total | Counter | --- | Subset of emitted records that carried Zenarmor enrichment (source=merged). Against correlator_emitted_total this is the join hit-rate, which #346 shows is materially lower for long flows whose NetFlow records arrive up to ~30m after the connection ended. | --exporter.disable-flow |
+| opnsense_flow_correlator_evicted_total | Counter | --- | Entries force-emitted early because the map hit --flow.correlate.max-entries. A forced emit loses no bytes, but a rising rate means the cap is binding under load and should be raised. | --exporter.disable-flow |
+| opnsense_flow_correlator_expired_total | Counter | --- | Entries emitted on the normal window-expiry path (the healthy path, as opposed to eviction). | --exporter.disable-flow |
+| opnsense_flow_logs_emitted_total | Counter | --- | Flow records shipped to the OTLP log pipeline. Zero when --flow.log-mode=off even though the correlator still runs and its metrics still move. | --exporter.disable-flow |
+| opnsense_flow_logs_truncated_total | Counter | --- | Flow log records dropped by the --flow.max-logs-per-window budget. Truncated, never sampled, and counted: a flood on the unauthenticated NetFlow ingress is visible here rather than as a silently thinned stream. Metrics are never truncated. | --exporter.disable-flow |
+| opnsense_flow_logs_dropped_total | Counter | --- | Flow log records dropped because the log pipeline was not accepting records — before it started or after shutdown began. Distinct from a budget truncation. | --exporter.disable-flow |
 | opnsense_flow_netflow_datagrams_total | Counter | result | NetFlow datagrams by outcome. result=\"accepted\" passed the peer allowlist; \"peer_rejected\" came from outside --flow.netflow.allowed-peers; \"queue_dropped\" arrived faster than the decoders drained them (the read loop never blocks, because blocking makes the KERNEL drop datagrams where nothing can count them); \"read_error\" is a socket error. Decode outcomes are counted separately below and are a subset of \"accepted\". | --exporter.disable-flow |
 | opnsense_flow_netflow_bytes_received_total | Counter | --- | Bytes received on the NetFlow socket, before decoding. This is wire volume of the export itself, NOT the traffic it describes — opnsense_flow_bytes_total is that. | --exporter.disable-flow |
 | opnsense_flow_netflow_records_decoded_total | Counter | --- | Flow records successfully decoded out of NetFlow datagrams. The head of the funnel: decoded = emitted + dropped, with records lost before decoding counted as opnsense_flow_netflow_records_dropped_total{reason=\"no_template\"}. | --exporter.disable-flow |

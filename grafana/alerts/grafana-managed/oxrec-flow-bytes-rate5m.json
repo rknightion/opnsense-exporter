@@ -1,0 +1,47 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "RecordingRule",
+  "metadata": {
+    "name": "oxrec-flow-bytes-rate5m",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "instance:opnsense_flow_bytes:rate5m",
+    "metric": "instance:opnsense_flow_bytes:rate5m",
+    "targetDatasourceUID": "grafanacloud-prom",
+    "paused": false,
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {},
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "10m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (opnsense_instance, interface, direction) (rate(opnsense_flow_bytes_total{source=\"netflow\"}[5m]))",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        },
+        "source": true
+      }
+    }
+  }
+}

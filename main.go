@@ -24,6 +24,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
+	"github.com/rknightion/opnsense-exporter/internal/logship/flowlog"
 	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog"   // registers the syslog push source
 	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor" // registers the zenarmor push source
 	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
@@ -64,6 +65,16 @@ const flowDedupeEntries = 20000
 // ifIndexRefreshInterval rebuilds the NetFlow ifIndex map. Frequent because the
 // mapping is positional: an interface added or removed renumbers everything.
 const ifIndexRefreshInterval = 60 * time.Second
+
+// flowExpireTick is how often the correlator sweeps for windows that have elapsed. An
+// entry therefore emits within its window plus at most one tick; the sweep is a whole-map
+// scan, so the tick is coarse rather than sub-second.
+const flowExpireTick = 30 * time.Second
+
+// flowCorrelateMinWindow is the floor below which a correlate window is almost certainly
+// a misconfiguration: NetFlow export lag runs to minutes (mean 1m34s on the reference
+// box, #346), so a sub-minute window would split nearly every connection into partials.
+const flowCorrelateMinWindow = time.Minute
 
 // readyCacheTTL caches /-/ready probe results (success and failure). 10s
 // matches the default kubelet probe period, bounding upstream health calls to
@@ -240,12 +251,63 @@ func main() {
 		logger.Error("invalid flow configuration", "err", ferr)
 		os.Exit(1)
 	}
+	// flowSink is what the two receiver lanes feed. By default it is the metric rollup
+	// alone; when flow-log emission is on it becomes a tee that also feeds the correlator,
+	// so metrics and logs are derived from one Observe without either lane knowing about
+	// the log path.
+	var flowSink flow.Sink = collector.Flow
+	var stopFlowLog func()
 	if !collectorsSwitches.Flow {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFlowCollector())
 		logger.Info("flow collector disabled")
 	} else if flowCfg.Enabled {
 		collector.ConfigureFlow(flowCfg.TopN, flowCfg.MaxKeys)
 		logger.Info("flow rollups enabled", "top_n", flowCfg.TopN, "max_keys", flowCfg.MaxKeys)
+
+		// Flow-log lane (#346 phase 3): the correlator collapses NetFlow fragments and
+		// merges Zenarmor L7, emitting one OTLP log record per connection-window. Built
+		// only when --flow.log-mode=per_flow; off leaves the lanes feeding metrics alone.
+		// Configured BEFORE logship.Start so its registered push source sees the mode.
+		if flowCfg.LogMode == flowlog.LogModePerFlow {
+			flowlog.Sink.Configure(flowCfg.LogMode, flowCfg.MaxLogsPerWindow)
+			if flowCfg.Correlate && flowCfg.CorrelateWindow < flowCorrelateMinWindow {
+				logger.Warn("flow correlate window is shorter than typical NetFlow export lag; "+
+					"most connections will emit partials rather than one joined record",
+					"window", flowCfg.CorrelateWindow, "floor", flowCorrelateMinWindow)
+			}
+			corr := flow.NewCorrelator(flow.CorrelatorConfig{
+				Enabled:    flowCfg.Correlate,
+				Window:     flowCfg.CorrelateWindow,
+				MaxEntries: flowCfg.CorrelateMaxEntries,
+			}, flowlog.Sink.Emit)
+			flowSink = flow.Tee(collector.Flow, corr)
+			collector.Flow.SetCorrelatorStats(corr.Stats)
+			collector.Flow.SetFlowLogStats(func() collector.FlowLogStats {
+				s := flowlog.Sink.Stats()
+				return collector.FlowLogStats{Emitted: s.Emitted, Truncated: s.Truncated, Dropped: s.Dropped}
+			})
+			flowCtx, cancelFlow := context.WithCancel(context.Background())
+			go func() {
+				t := time.NewTicker(flowExpireTick)
+				defer t.Stop()
+				for {
+					select {
+					case <-flowCtx.Done():
+						return
+					case now := <-t.C:
+						corr.Expire(now)
+					}
+				}
+			}()
+			// Flush drains pending entries into the still-live log pipeline, so it MUST run
+			// before the pipeline itself drains — stopLogs calls this first.
+			stopFlowLog = func() {
+				cancelFlow()
+				corr.Flush()
+			}
+			logger.Info("flow log emission enabled",
+				"mode", flowCfg.LogMode, "correlate", flowCfg.Correlate, "window", flowCfg.CorrelateWindow)
+		}
 	}
 	if !collectorsSwitches.Firewall {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFirewallCollector())
@@ -736,7 +798,7 @@ func main() {
 		// Zenarmor lane skips building records entirely rather than building them for
 		// nobody.
 		if collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.Zenarmor {
-			deps.FlowSink = collector.Flow
+			deps.FlowSink = flowSink
 		}
 		// Debug-capture sink (#330): shared across receivers, constructed once when
 		// --logs.debug-capture.dir is set. A per-receiver --logs.<recv>.debug-capture is
@@ -799,6 +861,11 @@ func main() {
 		stopLogs = func() {
 			ctx, cancel := context.WithTimeout(context.Background(), logsShutdownTimeout)
 			defer cancel()
+			// Flush the correlator FIRST, while the pipeline is still live: its final
+			// records must reach the queue before stop drains it, or they are dropped.
+			if stopFlowLog != nil {
+				stopFlowLog()
+			}
 			if err := stop(ctx); err != nil {
 				logger.Error("failed to flush log pipeline on shutdown", "err", err)
 			}
@@ -830,7 +897,7 @@ func main() {
 	if collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.NetflowEnabled {
 		cache := ensureEnrich()
 		repairer := flow.NewRepairer(flowDedupeEntries)
-		proc := flow.NewProcessor(collector.Flow, repairer, cache)
+		proc := flow.NewProcessor(flowSink, repairer, cache)
 		decoder := netflow.New()
 
 		listener := netflow.NewListener(netflow.ListenerConfig{
@@ -900,13 +967,23 @@ func main() {
 
 	// With log shipping off, the NetFlow lane owns the enrichment refresher's
 	// lifetime, so it borrows the pipeline's shutdown slot rather than leaking both.
+	// stopFlowLog rides along here too: with no log pipeline its flushed records have
+	// nowhere to go (and are counted as dropped), but the expiry ticker still needs
+	// cancelling so it does not leak.
 	if stopNetflow != nil && stopLogs == nil {
 		stopLogs = func() {
+			if stopFlowLog != nil {
+				stopFlowLog()
+			}
 			stopNetflow()
 			if stopEnrich != nil {
 				stopEnrich()
 			}
 		}
+	} else if stopFlowLog != nil && stopLogs == nil {
+		// Flow-log lane on but neither the log pipeline nor the NetFlow receiver exists
+		// to own shutdown: take the slot so the ticker is cancelled cleanly.
+		stopLogs = stopFlowLog
 	}
 
 	// Validate the metrics path before registering it: net/http.ServeMux panics on an

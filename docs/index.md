@@ -1,6 +1,6 @@
 ---
 title: OPNsense Exporter
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 791 metrics across 62 collectors
+description: Comprehensive Prometheus exporter for OPNsense firewalls with 799 metrics across 62 collectors
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
-A Prometheus exporter that polls OPNsense REST APIs and exposes 791 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 799 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more.
 
 <div class="hero-badges" markdown>
 
@@ -45,7 +45,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 791 metrics acro
 
     ---
 
-    Browse all 791 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 799 Prometheus metrics with types, labels, and PromQL examples.
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 

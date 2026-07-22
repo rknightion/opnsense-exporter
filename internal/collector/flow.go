@@ -49,6 +49,44 @@ type FlowStore struct {
 	// netflow is nil until the NetFlow receiver is built, which is why the metrics
 	// it feeds are absent rather than zero on a deployment that never enables it.
 	netflow atomic.Pointer[func() NetflowStats]
+
+	// correlator and flowLog are nil until the flow-log lane is built (only when
+	// --flow.log-mode=per_flow). Absent-until-built, like netflow above: a deployment
+	// that ships no flow logs has no correlator, so absent is the honest reading rather
+	// than a flat zero that implies one exists and has done nothing.
+	correlator atomic.Pointer[func() flow.CorrelatorStats]
+	flowLog    atomic.Pointer[func() FlowLogStats]
+}
+
+// FlowLogStats is the flow-log emission lane's health, mirrored here so the collector
+// need not import the flowlog package. main wires the accessor.
+type FlowLogStats struct {
+	Emitted   uint64
+	Truncated uint64 // dropped by the per-window budget
+	Dropped   uint64 // no active pipeline (pre-start / post-shutdown)
+}
+
+// SetCorrelatorStats installs the source of the correlator self-metrics; main calls it
+// once when it builds the flow-log lane.
+func (s *FlowStore) SetCorrelatorStats(fn func() flow.CorrelatorStats) { s.correlator.Store(&fn) }
+
+// SetFlowLogStats installs the source of the flow-log self-metrics.
+func (s *FlowStore) SetFlowLogStats(fn func() FlowLogStats) { s.flowLog.Store(&fn) }
+
+func (s *FlowStore) correlatorStats() (flow.CorrelatorStats, bool) {
+	fn := s.correlator.Load()
+	if fn == nil || *fn == nil {
+		return flow.CorrelatorStats{}, false
+	}
+	return (*fn)(), true
+}
+
+func (s *FlowStore) flowLogStats() (FlowLogStats, bool) {
+	fn := s.flowLog.Load()
+	if fn == nil || *fn == nil {
+		return FlowLogStats{}, false
+	}
+	return (*fn)(), true
 }
 
 func newFlowStore(topN, maxKeys int) *FlowStore {
@@ -142,6 +180,16 @@ type flowCollector struct {
 	ifIndexConflicts *prometheus.Desc
 	ifIndexAge       *prometheus.Desc
 	ifIndexUnmapped  *prometheus.Desc
+
+	corrEntries *prometheus.Desc
+	corrEmitted *prometheus.Desc
+	corrMatched *prometheus.Desc
+	corrEvicted *prometheus.Desc
+	corrExpired *prometheus.Desc
+
+	logEmitted   *prometheus.Desc
+	logTruncated *prometheus.Desc
+	logDropped   *prometheus.Desc
 }
 
 func init() {
@@ -216,6 +264,41 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Flow records folded into __other__ because the accumulator was already at "+
 			"--flow.max-keys when their label combination first appeared. A rising value means new "+
 			"dimensions are being lost to the cap, not merely folded by the top-N.", nil)
+	c.registerCorrelator()
+}
+
+// registerCorrelator builds the self-metrics for the correlator and the flow-log
+// emission lane. Both are absent unless --flow.log-mode=per_flow built the lane, for
+// the same reason the NetFlow metrics are (see SetNetflowStats).
+func (c *flowCollector) registerCorrelator() {
+	c.corrEntries = buildPrometheusDesc(c.subsystem, "correlator_entries",
+		"Connection-windows the correlator is currently holding, waiting for their window to elapse "+
+			"or a Zenarmor conn document to arrive.", nil)
+	c.corrEmitted = buildPrometheusDesc(c.subsystem, "correlator_emitted_total",
+		"Flow-log records the correlator has emitted: NetFlow fragments collapsed into one record per "+
+			"connection-window, merged with Zenarmor L7 where a conn document matched.", nil)
+	c.corrMatched = buildPrometheusDesc(c.subsystem, "correlator_matched_total",
+		"Subset of emitted records that carried Zenarmor enrichment (source=merged). Against "+
+			"correlator_emitted_total this is the join hit-rate, which #346 shows is materially lower "+
+			"for long flows whose NetFlow records arrive up to ~30m after the connection ended.", nil)
+	c.corrEvicted = buildPrometheusDesc(c.subsystem, "correlator_evicted_total",
+		"Entries force-emitted early because the map hit --flow.correlate.max-entries. A forced emit "+
+			"loses no bytes, but a rising rate means the cap is binding under load and should be raised.",
+		nil)
+	c.corrExpired = buildPrometheusDesc(c.subsystem, "correlator_expired_total",
+		"Entries emitted on the normal window-expiry path (the healthy path, as opposed to eviction).",
+		nil)
+
+	c.logEmitted = buildPrometheusDesc(c.subsystem, "logs_emitted_total",
+		"Flow records shipped to the OTLP log pipeline. Zero when --flow.log-mode=off even though the "+
+			"correlator still runs and its metrics still move.", nil)
+	c.logTruncated = buildPrometheusDesc(c.subsystem, "logs_truncated_total",
+		"Flow log records dropped by the --flow.max-logs-per-window budget. Truncated, never sampled, "+
+			"and counted: a flood on the unauthenticated NetFlow ingress is visible here rather than as "+
+			"a silently thinned stream. Metrics are never truncated.", nil)
+	c.logDropped = buildPrometheusDesc(c.subsystem, "logs_dropped_total",
+		"Flow log records dropped because the log pipeline was not accepting records — before it "+
+			"started or after shutdown began. Distinct from a budget truncation.", nil)
 }
 
 // registerNetflow builds the NetFlow lane's self-metrics.
@@ -350,6 +433,14 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ifIndexConflicts
 	ch <- c.ifIndexAge
 	ch <- c.ifIndexUnmapped
+	ch <- c.corrEntries
+	ch <- c.corrEmitted
+	ch <- c.corrMatched
+	ch <- c.corrEvicted
+	ch <- c.corrExpired
+	ch <- c.logEmitted
+	ch <- c.logTruncated
+	ch <- c.logDropped
 }
 
 // Update emits the accumulator's current totals. It ignores the client: this
@@ -377,7 +468,26 @@ func (c *flowCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- 
 	ch <- prometheus.MustNewConstMetric(c.rollupCapped, prometheus.CounterValue, float64(st.Capped), c.instance)
 
 	c.collectNetflow(ch)
+	c.collectCorrelator(ch)
 	return nil
+}
+
+// collectCorrelator emits the correlator and flow-log self-metrics, and emits nothing
+// when the flow-log lane was never built (--flow.log-mode=off), for the same reason
+// collectNetflow does: a zero here would claim a lane exists and has been idle.
+func (c *flowCollector) collectCorrelator(ch chan<- prometheus.Metric) {
+	if st, ok := c.store.correlatorStats(); ok {
+		ch <- prometheus.MustNewConstMetric(c.corrEntries, prometheus.GaugeValue, float64(st.Entries), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrEmitted, prometheus.CounterValue, float64(st.Emitted), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrMatched, prometheus.CounterValue, float64(st.Matched), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrEvicted, prometheus.CounterValue, float64(st.Evicted), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrExpired, prometheus.CounterValue, float64(st.Expired), c.instance)
+	}
+	if st, ok := c.store.flowLogStats(); ok {
+		ch <- prometheus.MustNewConstMetric(c.logEmitted, prometheus.CounterValue, float64(st.Emitted), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.logTruncated, prometheus.CounterValue, float64(st.Truncated), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.logDropped, prometheus.CounterValue, float64(st.Dropped), c.instance)
+	}
 }
 
 // collectNetflow emits the NetFlow lane's self-metrics, and emits nothing at all

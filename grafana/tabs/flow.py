@@ -237,6 +237,35 @@ def build(b: Builder):
              "name is worse than a missing one.",
     )
 
+    correlator = b.ts(
+        "Flow Correlator",
+        [(f'{sel("opnsense_flow_correlator_entries")}', "live entries"),
+         (f'rate({sel("opnsense_flow_correlator_emitted_total")}[{RATE}])', "emitted/sec"),
+         (f'rate({sel("opnsense_flow_correlator_matched_total")}[{RATE}])', "merged/sec"),
+         (f'rate({sel("opnsense_flow_correlator_evicted_total")}[{RATE}])', "force-evicted/sec"),
+         (f'rate({sel("opnsense_flow_correlator_expired_total")}[{RATE}])', "expired/sec")],
+        unit="short",
+        desc="The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) "
+             "into one record per connection-window and merges Zenarmor L7 where a conn document "
+             "matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is "
+             "materially lower for long flows whose NetFlow records arrive up to ~30m after the "
+             "connection ended. A rising force-evicted rate means --flow.correlate.max-entries is "
+             "binding under load and should be raised; expired is the healthy path.",
+    )
+
+    flowlogs = b.ts(
+        "Flow Log Emission",
+        [(f'rate({sel("opnsense_flow_logs_emitted_total")}[{RATE}])', "emitted/sec"),
+         (f'rate({sel("opnsense_flow_logs_truncated_total")}[{RATE}])', "truncated/sec"),
+         (f'rate({sel("opnsense_flow_logs_dropped_total")}[{RATE}])', "dropped/sec")],
+        unit="short",
+        desc="Flow records shipped to the OTLP log pipeline in --flow.log-mode=per_flow. truncated is "
+             "the --flow.max-logs-per-window budget dropping records under a flood on the "
+             "unauthenticated NetFlow ingress — truncated, never sampled, and metrics are never "
+             "affected. dropped means the log pipeline was not accepting records (before start / after "
+             "shutdown began). Flat zero throughout when --flow.log-mode=off.",
+    )
+
     b.tab("Flow Volume", [
         b.row("Volume", [iface, direction], present="has_flow_volume"),
         b.row("Breakdown", [category, transport, scope], present="has_flow_volume"),
@@ -244,4 +273,5 @@ def build(b: Builder):
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("NetFlow Receiver", [ingest, funnel, decoder], present="has_netflow"),
         b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_netflow"),
+        b.row("Correlator & Log Emission", [correlator, flowlogs], present="has_flow"),
     ], present="has_flow")

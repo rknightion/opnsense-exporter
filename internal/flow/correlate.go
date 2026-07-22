@@ -37,11 +37,11 @@ type Correlator struct {
 	mu    sync.Mutex
 	cells map[corrKey]*corrEntry
 
-	entries    int // == len(cells); tracked so Stats never scans
-	emitted    uint64
-	matched    uint64
-	evicted    uint64
-	expired    uint64
+	entries int // == len(cells); tracked so Stats never scans
+	emitted uint64
+	matched uint64
+	evicted uint64
+	expired uint64
 }
 
 // corrKey groups fragments of one conversation whose flow-end falls in the same

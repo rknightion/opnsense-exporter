@@ -231,6 +231,27 @@ RULES = [
          description="More than 50 blocked IDS alerts held in the recent-alerts window for 5m. The "
                      "threshold and --exporter.ids-alert-lookback window are deployment-specific — tune "
                      "both per site. action is only ever allowed/blocked (no drop/reject)."),
+    # No bytes are lost on eviction (the oldest is force-emitted, not dropped), so this is a warning,
+    # not a page: the correlate window can no longer be held under current flow volume.
+    dict(name="opnsense-flow-correlator-evicting", title="OPNsenseFlowCorrelatorEvicting",
+         A="sum by (opnsense_instance) (rate(opnsense_flow_correlator_evicted_total[5m]))",
+         op="gt", params=[0, 0], for_min=15, severity="warning",
+         summary="OPNsense flow correlator evicting entries ({{ $labels.opnsense_instance }})",
+         description="The flow correlator has force-emitted entries for 15m because "
+                     "--flow.correlate.max-entries is binding under current flow volume. No bytes are "
+                     "lost, but the cap should be raised so the accumulator can hold a full correlate "
+                     "window; sustained eviction shortens the effective join window and lowers the "
+                     "merged hit-rate."),
+    # Metrics are never truncated, only per-flow logs, so this is a warning about log completeness and a
+    # possible flood on the unauthenticated NetFlow ingress rather than a data-integrity page.
+    dict(name="opnsense-flow-logs-truncated", title="OPNsenseFlowLogsTruncated",
+         A="sum by (opnsense_instance) (rate(opnsense_flow_logs_truncated_total[5m]))",
+         op="gt", params=[0, 0], for_min=10, severity="warning",
+         summary="OPNsense flow logs truncated by budget ({{ $labels.opnsense_instance }})",
+         description="Flow log records have been dropped by the --flow.max-logs-per-window budget for "
+                     "10m. Metrics are unaffected, but per-flow logs are incomplete. Raise the budget if "
+                     "this is expected volume, or restrict the unauthenticated NetFlow ingress with "
+                     "--flow.netflow.allowed-peers if it is a flood."),
 ]
 
 # Recording rules: metric name (level:metric:operation) + value query.
@@ -266,6 +287,13 @@ RECORDING = [
          expr="sum by (opnsense_instance) (opnsense_wireguard_peer_status == bool 0)"),
     dict(metric="instance:opnsense_ids_alerts:active",
          expr='sum by (opnsense_instance) (opnsense_ids_recent_alerts{action="blocked"})'),
+    # Pins source="netflow" deliberately. The flow family carries TWO independent measurements of the
+    # same traffic (Zenarmor and NetFlow) and #346 decision 3 forbids summing them; NetFlow post-repair
+    # is authoritative for volume, so pinning it here gives a double-count-safe per-WAN byte rate that
+    # dashboards and alerts can build on without every query having to remember the source filter.
+    dict(metric="instance:opnsense_flow_bytes:rate5m",
+         expr='sum by (opnsense_instance, interface, direction) '
+              '(rate(opnsense_flow_bytes_total{source="netflow"}[5m]))'),
 ]
 
 def grafana_for(for_min: int) -> str:

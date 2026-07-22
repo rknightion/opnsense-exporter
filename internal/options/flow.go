@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/kingpin/v2"
 )
@@ -93,6 +94,52 @@ var (
 			"map; indices not listed still use it. Read yours off the box with: "+
 			"ngctl list | grep netflow.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_IFINDEX_MAP").Default("").String()
+
+	// Correlation joins the two sources' view of one conversation. It is a pass-through
+	// when only one source is configured, so the no-second-source deployment pays
+	// nothing; turning it off makes NetFlow emit one log per raw fragment (mean 3.75 per
+	// connection) instead of one collapsed record.
+	flowCorrelate = kingpin.Flag(
+		"flow.correlate",
+		"Correlate NetFlow fragments and Zenarmor conn documents into one merged flow record per "+
+			"connection-window. A pass-through when only one source is present. Off emits NetFlow "+
+			"records raw and per-fragment.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_CORRELATE").Default("true").Bool()
+
+	flowCorrelateWindow = kingpin.Flag(
+		"flow.correlate.window",
+		"How long the correlator holds a connection-window before emitting. Also the maximum a flow "+
+			"log is delayed. NetFlow export lag runs to ~30m for long flows (#346), so a flow whose "+
+			"records straddle the window emits a partial per window rather than one joined record.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_CORRELATE_WINDOW").Default("3m").Duration()
+
+	flowCorrelateMaxEntries = kingpin.Flag(
+		"flow.correlate.max-entries",
+		"Hard cap on live correlator entries. At the cap the oldest is force-emitted (never "+
+			"dropped) and counted. The NetFlow ingress is unauthenticated, so this bounds memory "+
+			"against a flood. 0 is unbounded (unwise with the listener on).",
+	).Envar("OPNSENSE_EXPORTER_FLOW_CORRELATE_MAX_ENTRIES").Default("50000").Int()
+
+	flowLogMode = kingpin.Flag(
+		"flow.log-mode",
+		"Flow log emission: \"per_flow\" ships one OTLP log record per correlated flow on the shared "+
+			"log pipeline; \"off\" ships none while still deriving all metrics. Zenarmor conn documents "+
+			"ship on their own lane regardless.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_LOG_MODE").Default("per_flow").Enum("per_flow", "off")
+
+	flowMaxLogsPerWindow = kingpin.Flag(
+		"flow.max-logs-per-window",
+		"Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled) and counted. "+
+			"A flood guard on the unauthenticated NetFlow ingress. 0 is unlimited. Metrics are never "+
+			"truncated.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_LOGS_PER_WINDOW").Default("0").Int()
+
+	flowDNSCacheSize = kingpin.Flag(
+		"flow.dns-cache.size",
+		"Entries in the DNS answer cache that gives a flow to a bare IP its dst.domain, fed by the "+
+			"Zenarmor dns family. Over the cap it stops inserting rather than evicting hot entries. 0 "+
+			"disables domain enrichment.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_DNS_CACHE_SIZE").Default("50000").Int()
 )
 
 // parseAllowedPeers turns the repeatable CIDR flag into prefixes. A bare address is
@@ -166,6 +213,13 @@ type FlowConfig struct {
 	NetflowListen       string
 	NetflowAllowedPeers []netip.Prefix
 	NetflowIfIndexMap   map[uint32]string
+
+	Correlate           bool
+	CorrelateWindow     time.Duration
+	CorrelateMaxEntries int
+	LogMode             string
+	MaxLogsPerWindow    int
+	DNSCacheSize        int
 }
 
 // Flow returns the resolved flow configuration, validated.
@@ -187,6 +241,12 @@ func Flow() (FlowConfig, error) {
 		NetflowListen:       *flowNetflowListen,
 		NetflowAllowedPeers: peers,
 		NetflowIfIndexMap:   ifmap,
+		Correlate:           *flowCorrelate,
+		CorrelateWindow:     *flowCorrelateWindow,
+		CorrelateMaxEntries: *flowCorrelateMaxEntries,
+		LogMode:             *flowLogMode,
+		MaxLogsPerWindow:    *flowMaxLogsPerWindow,
+		DNSCacheSize:        *flowDNSCacheSize,
 	}
 	if err := c.Validate(); err != nil {
 		return FlowConfig{}, err
@@ -220,6 +280,23 @@ func (c FlowConfig) Validate() error {
 			"flow: --flow.top-n (%d) exceeds --flow.max-keys (%d); the accumulator never tracks more "+
 				"than max-keys combinations, so the larger top-n can never take effect",
 			c.TopN, c.MaxKeys)
+	}
+	// A correlator that holds nothing collapses no fragments and joins no sources, so a
+	// zero or negative window is the quiet no-op again rather than a fast correlator.
+	if c.Correlate && c.CorrelateWindow <= 0 {
+		return fmt.Errorf("flow: --flow.correlate.window must be positive (got %s)", c.CorrelateWindow)
+	}
+	if c.CorrelateMaxEntries < 0 {
+		return fmt.Errorf("flow: --flow.correlate.max-entries must not be negative (got %d); 0 is unbounded",
+			c.CorrelateMaxEntries)
+	}
+	if c.MaxLogsPerWindow < 0 {
+		return fmt.Errorf("flow: --flow.max-logs-per-window must not be negative (got %d); 0 is unlimited",
+			c.MaxLogsPerWindow)
+	}
+	if c.DNSCacheSize < 0 {
+		return fmt.Errorf("flow: --flow.dns-cache.size must not be negative (got %d); 0 disables it",
+			c.DNSCacheSize)
 	}
 	return nil
 }
