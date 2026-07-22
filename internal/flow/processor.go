@@ -35,6 +35,11 @@ type Processor struct {
 	// lock; the map itself is immutable after construction.
 	ifmap atomic.Pointer[IfMap]
 
+	// dnsCache resolves a bare destination IP to the domain the client looked up
+	// (#353). nil when domain enrichment is off (--flow.dns-cache.size=0); a nil cache
+	// is a safe no-op, so enrichRecord holds it unconditionally.
+	dnsCache *DNSCache
+
 	datagrams  atomic.Uint64
 	recordsIn  atomic.Uint64
 	emitted    atomic.Uint64
@@ -63,6 +68,12 @@ func NewProcessor(sink Sink, rep *Repairer, cache *enrich.Cache) *Processor {
 
 // SetIfMap publishes a new ifIndex map. Safe to call while records are in flight.
 func (p *Processor) SetIfMap(m *IfMap) { p.ifmap.Store(m) }
+
+// SetDNSCache installs the DNS answer cache the enrich stage reads for dst.domain.
+// Late-bound like SetIfMap: the cache is built in main alongside the Zenarmor lane
+// that feeds it, after the processor is constructed. Safe to call before records
+// flow; not intended to be called concurrently with ObserveDatagram.
+func (p *Processor) SetDNSCache(c *DNSCache) { p.dnsCache = c }
 
 // IfMap returns the current map, which may be nil before the first interface
 // refresh completes.
@@ -105,7 +116,7 @@ func (p *Processor) ObserveDatagram(dg *netflow.Datagram, now time.Time) {
 			continue
 		}
 
-		enrichRecord(&rec, snap)
+		enrichRecord(&rec, snap, p.dnsCache, now)
 		p.emitted.Add(1)
 		if p.sink != nil {
 			p.sink.Observe(rec)
@@ -174,10 +185,20 @@ func normalizeNetflow(nr netflow.Record, now time.Time) (Record, bool) {
 	return r, true
 }
 
-// enrichRecord resolves everything the enrichment snapshot knows. It is applied
-// identically to both lanes, so the same flow described by both sources lands on
-// the same labels.
-func enrichRecord(r *Record, snap *enrich.Snapshot) {
+// enrichRecord resolves everything the enrichment snapshot knows, plus the DNS
+// answer cache's dst.domain. It is applied identically to both lanes, so the same
+// flow described by both sources lands on the same labels. cache and now drive the
+// domain lookup only; a nil cache or snapshot each degrade independently to "no such
+// enrichment" rather than skipping the rest.
+func enrichRecord(r *Record, snap *enrich.Snapshot, cache *DNSCache, now time.Time) {
+	// The DNS lookup is independent of the snapshot: it needs neither interface table
+	// nor local-net topology, only the client/answer pair, so it runs even on a cold
+	// snapshot where every scope lookup would miss.
+	if cache != nil && r.Enrich.DstDomain == "" {
+		if dom, ok := cache.Lookup(r.SrcAddr, r.DstAddr, now); ok {
+			r.Enrich.DstDomain = dom
+		}
+	}
 	if snap == nil {
 		return
 	}
@@ -247,6 +268,11 @@ func vlanString(tag uint16) string {
 //
 // Zenarmor records are unaffected: Out is always empty there, so this returns In,
 // exactly as phase 1 did.
+// InterfaceLabel exposes interfaceLabel to other packages: the Zenarmor lane stamps
+// the same normalized interface onto its conn record in place (#353 §10), so the
+// conn document and a NetFlow record agree on the label for one flow.
+func (r Record) InterfaceLabel() string { return interfaceLabel(r) }
+
 func interfaceLabel(r Record) string {
 	if r.Direction == DirectionInbound {
 		if lbl := r.In.Label(); lbl != "" {

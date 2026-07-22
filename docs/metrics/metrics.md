@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 799
-- **Gauges:** 538
-- **Counters:** 261
+- **Total metrics:** 806
+- **Gauges:** 541
+- **Counters:** 265
 
 ## General
 
@@ -350,6 +350,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_rollup_top_n | Gauge | --- | Configured ceiling on emitted series (--flow.top-n); 0 means unbounded. | --exporter.disable-flow |
 | opnsense_flow_rollup_keys_folded | Gauge | --- | Tracked label combinations currently outside the top-N and therefore folded into __other__ rather than emitted individually. | --exporter.disable-flow |
 | opnsense_flow_rollup_capped_total | Counter | --- | Flow records folded into __other__ because the accumulator was already at --flow.max-keys when their label combination first appeared. A rising value means new dimensions are being lost to the cap, not merely folded by the top-N. | --exporter.disable-flow |
+| opnsense_flow_unique_destinations | Gauge | interface | Distinct destination addresses seen per interface — a bounded stand-in for a per-destination series (one gauge per interface, never one per destination). A set, not a sum, so a destination reported by both the NetFlow and Zenarmor lanes counts once. Saturates at an internal per-interface cap; a value pinned at the cap means the true count is at least that high, which is itself a scanning/fan-out signal. | --exporter.disable-flow |
+| opnsense_flow_top_talker_bytes_total | Counter | host, direction | Bytes per internal host and direction, top-N with an __other__ remainder per direction so a sum-by-direction stays exact. OPT-IN behind --flow.top-talkers because the host label is unbounded cardinality the other flow metrics refuse. Counts a single source, so on a box running both lanes a host's bytes are not doubled; it therefore has no source label. A host that leaves and re-enters the top-N reads as a counter reset on that one series. | --exporter.disable-flow |
+| opnsense_flow_source_byte_delta_ratio | Gauge | interface | Histogram of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — the payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a value well above 1 means Zenarmor inspected far fewer bytes than crossed the wire, which is a security signal, not an error. Present only where both lanes run and correlate (--flow.log-mode=per_flow); absent otherwise, since there is no disagreement to measure. | --exporter.disable-flow |
+| opnsense_flow_dns_cache_entries | Gauge | --- | Answers currently held in the DNS answer cache, which gives a flow to a bare IP its dst.domain (§7). Compare against --flow.dns-cache.size to see it approaching the insert cap. | --exporter.disable-flow |
+| opnsense_flow_dns_cache_hits_total | Counter | --- | DNS answer-cache lookups that resolved a domain for a flow's destination. | --exporter.disable-flow |
+| opnsense_flow_dns_cache_misses_total | Counter | --- | DNS answer-cache lookups with no cached (or a TTL-expired) answer. High against hits is normal for a mostly-IP workload; it is the denominator that tells a cold cache from a thrashing one. | --exporter.disable-flow |
+| opnsense_flow_dns_cache_rejected_total | Counter | --- | DNS answers refused insertion because the cache was already at --flow.dns-cache.size. Over the cap it stops inserting rather than evicting hot entries, so a rising value means the cap is binding and domain enrichment is going stale for new answers. | --exporter.disable-flow |
 | opnsense_flow_correlator_entries | Gauge | --- | Connection-windows the correlator is currently holding, waiting for their window to elapse or a Zenarmor conn document to arrive. | --exporter.disable-flow |
 | opnsense_flow_correlator_emitted_total | Counter | --- | Flow-log records the correlator has emitted: NetFlow fragments collapsed into one record per connection-window, merged with Zenarmor L7 where a conn document matched. | --exporter.disable-flow |
 | opnsense_flow_correlator_matched_total | Counter | --- | Subset of emitted records that carried Zenarmor enrichment (source=merged). Against correlator_emitted_total this is the join hit-rate, which #346 shows is materially lower for long flows whose NetFlow records arrive up to ~30m after the connection ended. | --exporter.disable-flow |

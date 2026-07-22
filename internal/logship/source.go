@@ -109,6 +109,11 @@ type Deps struct {
 	//
 	// Observe MUST NOT block and MUST NOT perform I/O — same contract as Miss above.
 	FlowSink flow.Sink
+	// FlowDNSCache is the (client, answer) -> qname answer cache (#353). A receiver's
+	// dns family feeds it and its flow family reads it for dst.domain. nil when domain
+	// enrichment is off (--flow.dns-cache.size=0 or flow disabled); a nil cache is a
+	// safe no-op, so receivers hold and call it unconditionally.
+	FlowDNSCache *flow.DNSCache
 	// DebugCapture is the shared debug-capture sink (#330), or nil when
 	// --logs.debug-capture.dir is unset. A receiver uses it only when its own
 	// --logs.<recv>.debug-capture is on; a nil *capture.Capturer is a safe no-op, so

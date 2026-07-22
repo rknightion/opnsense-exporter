@@ -22,7 +22,7 @@ import (
 // This adds NO new shipped log record. The conn document continues to ship exactly
 // as before; the record built here feeds the metric rollup and, from phase 3, the
 // correlator.
-func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, now time.Time) (flow.Record, bool) {
+func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, cache *flow.DNSCache, now time.Time) (flow.Record, bool) {
 	if family != "flow" || d == nil {
 		return flow.Record{}, false
 	}
@@ -105,7 +105,62 @@ func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, now time.Time)
 		}
 	}
 	r.Direction = directionOf(dst, r.Enrich.SrcScope, r.Enrich.DstScope, d.Direction)
+
+	// dst.domain from the DNS answer cache: a Zenarmor conn document carries no domain
+	// of its own, so this is the only place it gets one. Keyed on the client (src) and
+	// the answer (dst) the client connected to — the same pair the dns family recorded
+	// under. A nil cache (domain enrichment off) simply leaves it empty.
+	if cache != nil {
+		if dom, ok := cache.Lookup(src, dst, now); ok {
+			r.Enrich.DstDomain = dom
+		}
+	}
 	return r, true
+}
+
+// feedDNSCache records a dns family document's answers so a later flow to one of
+// those addresses can recover the domain (#353 §7). The querying client is the
+// document's source; each answer token that parses as an IP is cached under
+// (client, answer) -> query. Non-IP answer tokens (CNAME targets, an empty answer on
+// a request-only document) are skipped, as is a document missing a client or a query.
+func feedDNSCache(cache *flow.DNSCache, d *zenDoc, now time.Time) {
+	if d == nil || d.Query == "" || d.Answers == "" {
+		return
+	}
+	client, err := netip.ParseAddr(d.SrcIP)
+	if err != nil {
+		return
+	}
+	for _, tok := range strings.FieldsFunc(d.Answers, isAnswerSep) {
+		if answer, err := netip.ParseAddr(tok); err == nil {
+			cache.Put(client, answer, d.Query, now)
+		}
+	}
+}
+
+// isAnswerSep splits Zenarmor's answers field, which packs multiple resolved
+// addresses into one string. The exact delimiter is not documented and has been seen
+// as both comma and whitespace, so any of comma, semicolon or space separates.
+func isAnswerSep(r rune) bool {
+	return r == ',' || r == ';' || r == ' ' || r == '\t'
+}
+
+// addFlowAttrs stamps the normalized flow.* attributes onto a conn document's
+// existing attribute map (#353 §10) — no new record. Each is set only when it
+// carries information, so an unknown direction or an unresolved domain leaves no key.
+func addFlowAttrs(attrs map[string]string, fr flow.Record) {
+	if fr.CommunityID != "" {
+		attrs["flow.community_id"] = fr.CommunityID
+	}
+	if d := fr.Direction.String(); d != "unknown" {
+		attrs["flow.direction"] = d
+	}
+	if lbl := fr.InterfaceLabel(); lbl != "" {
+		attrs["flow.interface"] = lbl
+	}
+	if fr.Enrich.DstDomain != "" {
+		attrs["dst.domain"] = fr.Enrich.DstDomain
+	}
 }
 
 // vlanDevice synthesises the child device name OPNsense gives a VLAN interface.

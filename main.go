@@ -76,6 +76,15 @@ const flowExpireTick = 30 * time.Second
 // box, #346), so a sub-minute window would split nearly every connection into partials.
 const flowCorrelateMinWindow = time.Minute
 
+// flowDNSCacheTTL is how long a DNS answer stays usable for domain enrichment (#353).
+// There is no operator flag by design (§11 lists only --flow.dns-cache.size); one hour
+// comfortably spans the correlator window plus the worst measured NetFlow export lag
+// (~30m), so an answer is still resolvable when the flow it explains finally arrives,
+// while being short enough that a shared CDN address is not handed a stale domain for
+// long. dst.domain is metadata only, never a label, so a modest staleness rate is
+// acceptable where a wrong metric label would not be.
+const flowDNSCacheTTL = time.Hour
+
 // readyCacheTTL caches /-/ready probe results (success and failure). 10s
 // matches the default kubelet probe period, bounding upstream health calls to
 // roughly one per probe period regardless of how many probers hit the
@@ -257,12 +266,35 @@ func main() {
 	// the log path.
 	var flowSink flow.Sink = collector.Flow
 	var stopFlowLog func()
+	// flowDNSCache is shared by both receiver lanes: the Zenarmor lane feeds it from the
+	// dns family and reads it on the conn family, the NetFlow lane reads it in enrich.
+	// Built once here so both see the same answers; nil (and a safe no-op) when flow is
+	// off or --flow.dns-cache.size=0.
+	var flowDNSCache *flow.DNSCache
 	if !collectorsSwitches.Flow {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFlowCollector())
 		logger.Info("flow collector disabled")
 	} else if flowCfg.Enabled {
 		collector.ConfigureFlow(flowCfg.TopN, flowCfg.MaxKeys)
 		logger.Info("flow rollups enabled", "top_n", flowCfg.TopN, "max_keys", flowCfg.MaxKeys)
+
+		// DNS answer cache (#353 §7). NewDNSCache treats size<=0 as disabled, so this is
+		// safe to build unconditionally; the stats accessor publishes its self-metrics from
+		// zero so an empty cache reads as "on but idle" rather than absent.
+		flowDNSCache = flow.NewDNSCache(flowCfg.DNSCacheSize, flowDNSCacheTTL)
+		collector.Flow.SetDNSCacheStats(flowDNSCache.Stats)
+
+		// Top-talkers (#353 §9), opt-in. Pin the counted source so a two-source box does
+		// not double a host's bytes: prefer Zenarmor (one document per connection, no
+		// fragmentation) when its lane is on, else NetFlow.
+		if flowCfg.TopTalkers {
+			primary := flow.SourceNetflow
+			if flowCfg.Zenarmor {
+				primary = flow.SourceZenarmor
+			}
+			collector.ConfigureTopTalkers(true, primary)
+			logger.Info("flow top-talkers enabled", "primary_source", primary.String())
+		}
 
 		// Flow-log lane (#346 phase 3): the correlator collapses NetFlow fragments and
 		// merges Zenarmor L7, emitting one OTLP log record per connection-window. Built
@@ -275,11 +307,19 @@ func main() {
 					"most connections will emit partials rather than one joined record",
 					"window", flowCfg.CorrelateWindow, "floor", flowCorrelateMinWindow)
 			}
+			// Observe the NF-vs-Zen byte disagreement (#353 §9) at emit time, before
+			// shipping the log: a merged record is the only place both sources' counters
+			// meet, and this is that place. Metrics-first, so a stalled log sink never
+			// starves the histogram.
+			emit := func(r flow.Record) {
+				collector.Flow.ObserveDelta(r)
+				flowlog.Sink.Emit(r)
+			}
 			corr := flow.NewCorrelator(flow.CorrelatorConfig{
 				Enabled:    flowCfg.Correlate,
 				Window:     flowCfg.CorrelateWindow,
 				MaxEntries: flowCfg.CorrelateMaxEntries,
-			}, flowlog.Sink.Emit)
+			}, emit)
 			flowSink = flow.Tee(collector.Flow, corr)
 			collector.Flow.SetCorrelatorStats(corr.Stats)
 			collector.Flow.SetFlowLogStats(func() collector.FlowLogStats {
@@ -800,6 +840,12 @@ func main() {
 		if collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.Zenarmor {
 			deps.FlowSink = flowSink
 		}
+		// The DNS answer cache is wired whenever flow is enabled, independent of the
+		// Zenarmor flow lane: the dns family feeds the cache for the NetFlow lane's
+		// benefit even when conn-derivation (--flow.zenarmor) is off. nil is a safe no-op.
+		if collectorsSwitches.Flow && flowCfg.Enabled {
+			deps.FlowDNSCache = flowDNSCache
+		}
 		// Debug-capture sink (#330): shared across receivers, constructed once when
 		// --logs.debug-capture.dir is set. A per-receiver --logs.<recv>.debug-capture is
 		// what actually routes signals into it; a receiver that did not opt in never
@@ -898,6 +944,9 @@ func main() {
 		cache := ensureEnrich()
 		repairer := flow.NewRepairer(flowDedupeEntries)
 		proc := flow.NewProcessor(flowSink, repairer, cache)
+		// Read dst.domain from the same answer cache the Zenarmor dns family fills (#353),
+		// so a bare NetFlow flow to an IP recovers the domain a client looked up.
+		proc.SetDNSCache(flowDNSCache)
 		decoder := netflow.New()
 
 		listener := netflow.NewListener(netflow.ListenerConfig{

@@ -41,10 +41,24 @@ var Flow = newFlowStore(defaultFlowTopN, defaultFlowMaxKeys)
 // way in.
 type FlowStore struct {
 	rollup *flow.Rollup
+	// uniqueDests and topTalkers are §9's per-interface distinct-destination gauge and
+	// opt-in per-host byte ranking (#353). Both are fed from every observed record, so
+	// they live beside the rollup; topTalkers is inert until Configure turns it on.
+	uniqueDests *flow.DistinctDests
+	topTalkers  *flow.TopTalkers
+	// delta is §9's NF-vs-Zen byte-ratio histogram (#353). It is fed only from merged
+	// records at correlator-emit time (via ObserveDelta), never from the raw arrival
+	// path, so it stays empty — and the metric absent — unless both lanes correlate.
+	delta *flow.DeltaRatio
 	// payloadByteFallback counts records whose byte figure came from Zenarmor's
 	// payload counter because its wire counter read zero. A repair nobody can
 	// observe is a repair nobody will trust.
 	payloadByteFallback atomic.Uint64
+
+	// dnsCache is the source of the DNS answer-cache self-metrics (#353). nil until
+	// main builds the cache, which it does whenever flow is enabled; published from
+	// zero once wired, since an empty cache is a normal state worth seeing.
+	dnsCache atomic.Pointer[func() flow.DNSCacheStats]
 
 	// netflow is nil until the NetFlow receiver is built, which is why the metrics
 	// it feeds are absent rather than zero on a deployment that never enables it.
@@ -89,8 +103,25 @@ func (s *FlowStore) flowLogStats() (FlowLogStats, bool) {
 	return (*fn)(), true
 }
 
+// SetDNSCacheStats installs the source of the DNS answer-cache self-metrics; main
+// calls it once when it builds the cache (whenever flow is enabled).
+func (s *FlowStore) SetDNSCacheStats(fn func() flow.DNSCacheStats) { s.dnsCache.Store(&fn) }
+
+func (s *FlowStore) dnsCacheStats() (flow.DNSCacheStats, bool) {
+	fn := s.dnsCache.Load()
+	if fn == nil || *fn == nil {
+		return flow.DNSCacheStats{}, false
+	}
+	return (*fn)(), true
+}
+
 func newFlowStore(topN, maxKeys int) *FlowStore {
-	return &FlowStore{rollup: flow.NewRollup(topN, maxKeys)}
+	return &FlowStore{
+		rollup:      flow.NewRollup(topN, maxKeys),
+		uniqueDests: flow.NewDistinctDests(),
+		topTalkers:  flow.NewTopTalkers(),
+		delta:       flow.NewDeltaRatio(),
+	}
 }
 
 // NetflowStats is everything the NetFlow lane knows about what it received and what
@@ -130,7 +161,15 @@ func (s *FlowStore) Observe(r flow.Record) {
 		s.payloadByteFallback.Add(1)
 	}
 	s.rollup.Observe(r)
+	s.uniqueDests.Observe(r)
+	s.topTalkers.Observe(r)
 }
+
+// ObserveDelta folds one merged record's source disagreement into the byte-ratio
+// histogram. main calls it from the correlator's emit path, NOT from Observe: the
+// ratio needs both sources' counters on one record, which only the correlator
+// produces. DeltaRatio.Observe ignores anything that is not a genuine merge.
+func (s *FlowStore) ObserveDelta(r flow.Record) { s.delta.Observe(r) }
 
 // setBounds retunes the accumulator in place.
 func (s *FlowStore) setBounds(topN, maxKeys int) { s.rollup.SetBounds(topN, maxKeys) }
@@ -144,6 +183,14 @@ func (s *FlowStore) setBounds(topN, maxKeys int) { s.rollup.SetBounds(topN, maxK
 // replacement would be a data race that -race never reaches, because it would live
 // in untested main.go wiring.
 func ConfigureFlow(topN, maxKeys int) { Flow.setBounds(topN, maxKeys) }
+
+// ConfigureTopTalkers enables the opt-in per-host byte ranking and pins the single
+// source it counts (§9, #353). primary is the flow source that is actually active,
+// so a box running both lanes never adds a host's bytes twice — the metric carries
+// no source label to separate them.
+func ConfigureTopTalkers(enabled bool, primary flow.Source) {
+	Flow.topTalkers.Configure(enabled, primary)
+}
 
 var _ flow.Sink = (*FlowStore)(nil)
 
@@ -190,6 +237,15 @@ type flowCollector struct {
 	logEmitted   *prometheus.Desc
 	logTruncated *prometheus.Desc
 	logDropped   *prometheus.Desc
+
+	uniqueDests *prometheus.Desc
+	topTalker   *prometheus.Desc
+	deltaRatio  *prometheus.Desc
+
+	dnsCacheEntries  *prometheus.Desc
+	dnsCacheHits     *prometheus.Desc
+	dnsCacheMisses   *prometheus.Desc
+	dnsCacheRejected *prometheus.Desc
 }
 
 func init() {
@@ -265,6 +321,55 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 			"--flow.max-keys when their label combination first appeared. A rising value means new "+
 			"dimensions are being lost to the cap, not merely folded by the top-N.", nil)
 	c.registerCorrelator()
+	c.registerExtras()
+}
+
+// registerExtras builds the §9 volume/talker metrics and the DNS answer-cache
+// self-metrics (#353).
+func (c *flowCollector) registerExtras() {
+	// Literals, for the same docgen static-resolution reason as the volume labels.
+	ifaceLabel := []string{"interface"}
+	hostDirLabel := []string{"host", "direction"}
+
+	c.uniqueDests = buildPrometheusDesc(c.subsystem, "unique_destinations",
+		"Distinct destination addresses seen per interface — a bounded stand-in for a per-destination "+
+			"series (one gauge per interface, never one per destination). A set, not a sum, so a "+
+			"destination reported by both the NetFlow and Zenarmor lanes counts once. Saturates at an "+
+			"internal per-interface cap; a value pinned at the cap means the true count is at least "+
+			"that high, which is itself a scanning/fan-out signal.",
+		ifaceLabel,
+	)
+	c.topTalker = buildPrometheusDesc(c.subsystem, "top_talker_bytes_total",
+		"Bytes per internal host and direction, top-N with an __other__ remainder per direction so a "+
+			"sum-by-direction stays exact. OPT-IN behind --flow.top-talkers because the host label is "+
+			"unbounded cardinality the other flow metrics refuse. Counts a single source, so on a box "+
+			"running both lanes a host's bytes are not doubled; it therefore has no source label. A "+
+			"host that leaves and re-enters the top-N reads as a counter reset on that one series.",
+		hostDirLabel,
+	)
+	c.deltaRatio = buildPrometheusDesc(c.subsystem, "source_byte_delta_ratio",
+		"Histogram of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — the "+
+			"payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a value well "+
+			"above 1 means Zenarmor inspected far fewer bytes than crossed the wire, which is a security "+
+			"signal, not an error. Present only where both lanes run and correlate (--flow.log-mode="+
+			"per_flow); absent otherwise, since there is no disagreement to measure.",
+		ifaceLabel,
+	)
+
+	c.dnsCacheEntries = buildPrometheusDesc(c.subsystem, "dns_cache_entries",
+		"Answers currently held in the DNS answer cache, which gives a flow to a bare IP its "+
+			"dst.domain (§7). Compare against --flow.dns-cache.size to see it approaching the insert cap.",
+		nil)
+	c.dnsCacheHits = buildPrometheusDesc(c.subsystem, "dns_cache_hits_total",
+		"DNS answer-cache lookups that resolved a domain for a flow's destination.", nil)
+	c.dnsCacheMisses = buildPrometheusDesc(c.subsystem, "dns_cache_misses_total",
+		"DNS answer-cache lookups with no cached (or a TTL-expired) answer. High against hits is normal "+
+			"for a mostly-IP workload; it is the denominator that tells a cold cache from a thrashing one.",
+		nil)
+	c.dnsCacheRejected = buildPrometheusDesc(c.subsystem, "dns_cache_rejected_total",
+		"DNS answers refused insertion because the cache was already at --flow.dns-cache.size. Over the "+
+			"cap it stops inserting rather than evicting hot entries, so a rising value means the cap is "+
+			"binding and domain enrichment is going stale for new answers.", nil)
 }
 
 // registerCorrelator builds the self-metrics for the correlator and the flow-log
@@ -441,6 +546,13 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.logEmitted
 	ch <- c.logTruncated
 	ch <- c.logDropped
+	ch <- c.uniqueDests
+	ch <- c.topTalker
+	ch <- c.deltaRatio
+	ch <- c.dnsCacheEntries
+	ch <- c.dnsCacheHits
+	ch <- c.dnsCacheMisses
+	ch <- c.dnsCacheRejected
 }
 
 // Update emits the accumulator's current totals. It ignores the client: this
@@ -469,7 +581,33 @@ func (c *flowCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- 
 
 	c.collectNetflow(ch)
 	c.collectCorrelator(ch)
+	c.collectExtras(ch)
 	return nil
+}
+
+// collectExtras emits the §9 volume/talker metrics and the DNS answer-cache
+// self-metrics (#353). Each is driven by its accumulator's snapshot, so a metric with
+// no data (top-talkers disabled, no merged records, an interface never seen) emits no
+// series rather than a misleading zero. The DNS cache stats are the exception: once
+// wired they publish from zero, because an empty cache is a state worth seeing.
+func (c *flowCollector) collectExtras(ch chan<- prometheus.Metric) {
+	for iface, n := range c.store.uniqueDests.Snapshot() {
+		ch <- prometheus.MustNewConstMetric(c.uniqueDests, prometheus.GaugeValue, float64(n), iface, c.instance)
+	}
+	for _, e := range c.store.topTalkers.Snapshot() {
+		ch <- prometheus.MustNewConstMetric(c.topTalker, prometheus.CounterValue, float64(e.Bytes),
+			e.Host, e.Direction, c.instance)
+	}
+	for iface, h := range c.store.delta.Snapshot() {
+		ch <- prometheus.MustNewConstHistogram(c.deltaRatio, h.Count, h.Sum, h.Buckets, iface, c.instance)
+	}
+
+	if st, ok := c.store.dnsCacheStats(); ok {
+		ch <- prometheus.MustNewConstMetric(c.dnsCacheEntries, prometheus.GaugeValue, float64(st.Entries), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.dnsCacheHits, prometheus.CounterValue, float64(st.Hits), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.dnsCacheMisses, prometheus.CounterValue, float64(st.Misses), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.dnsCacheRejected, prometheus.CounterValue, float64(st.Rejected), c.instance)
+	}
 }
 
 // collectCorrelator emits the correlator and flow-log self-metrics, and emits nothing

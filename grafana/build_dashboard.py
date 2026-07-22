@@ -30,7 +30,12 @@ STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
 # opnsense_exporter_api_request_duration_seconds_bucket), never the bare base name. The
 # metric IS paneled (see build_diagnostics), so exempt only the base name from the
 # substring check (#126).
-COVERAGE_EXEMPT = {"opnsense_exporter_api_request_duration_seconds"}
+COVERAGE_EXEMPT = {
+    "opnsense_exporter_api_request_duration_seconds",
+    # Same histogram case (#353): the flow source-byte-delta-ratio is charted via its
+    # _bucket series (histogram_quantile on the Flow Volume tab), never the bare base.
+    "opnsense_flow_source_byte_delta_ratio",
+}
 
 # The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's
 # Prometheus scrape config sets. The docs use `job_name: opnsense` (getting-started,

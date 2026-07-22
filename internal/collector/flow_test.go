@@ -94,10 +94,16 @@ func TestFlowCollector_NoHighCardinalityLabels(t *testing.T) {
 		"hostname": true, "src_hostname": true, "dst_hostname": true,
 		"community_id": true, "conn_uuid": true, "domain": true, "ja3": true, "host": true,
 	}
-	ch := make(chan *prometheus.Desc, 32)
+	ch := make(chan *prometheus.Desc, 64)
 	c.Describe(ch)
 	close(ch)
 	for d := range ch {
+		// top_talker_bytes_total is the ONE deliberate exception: it carries a host
+		// label, which is exactly why it is opt-in behind --flow.top-talkers and bounded
+		// by top-N + __other__ (§9). Every other flow metric stays under the rule.
+		if descFQName(d.String()) == "opnsense_flow_top_talker_bytes_total" {
+			continue
+		}
 		for _, l := range descVarLabels(t, d) {
 			if forbidden[l] {
 				t.Fatalf("forbidden high-cardinality label %q on %s", l, d)
@@ -173,6 +179,63 @@ func TestFlowCollector_EmitsAccumulatedVolume(t *testing.T) {
 	}
 	if v := got["opnsense_flow_records_total"+series]; v != 2 {
 		t.Fatalf("records = %v, want 2", v)
+	}
+}
+
+func TestFlowCollector_EmitsUniqueDestinationsAndTopTalkers(t *testing.T) {
+	store := newFlowStore(10, 100)
+	store.topTalkers.Configure(true, flow.SourceZenarmor)
+	// Two flows from one internal host to two destinations on the LAN interface.
+	store.Observe(talkerFlowRec("LAN", "10.0.0.5", "198.51.100.1", 1000))
+	store.Observe(talkerFlowRec("LAN", "10.0.0.5", "198.51.100.2", 500))
+	c := newFlowTestCollector(t, store)
+
+	got := collect(t, c)
+	if v := got["opnsense_flow_unique_destinations|interface=LAN"]; v != 2 {
+		t.Errorf("unique_destinations = %v, want 2", v)
+	}
+	if v := got["opnsense_flow_top_talker_bytes_total|direction=outbound|host=10.0.0.5"]; v != 1500 {
+		t.Errorf("top_talker_bytes_total for 10.0.0.5 = %v, want 1500", v)
+	}
+}
+
+func TestFlowCollector_DNSCacheMetricsPublishedFromZeroWhenWired(t *testing.T) {
+	store := newFlowStore(10, 100)
+	cache := flow.NewDNSCache(50, 0)
+	store.SetDNSCacheStats(cache.Stats)
+	c := newFlowTestCollector(t, store)
+
+	got := collect(t, c)
+	for _, name := range []string{
+		"opnsense_flow_dns_cache_entries",
+		"opnsense_flow_dns_cache_hits_total",
+		"opnsense_flow_dns_cache_misses_total",
+		"opnsense_flow_dns_cache_rejected_total",
+	} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("%s not published from zero once the cache is wired", name)
+		}
+	}
+}
+
+// Without the wiring the DNS cache metrics are absent, not zero — a zero would claim a
+// cache exists on a deployment that never built one (flow disabled).
+func TestFlowCollector_DNSCacheMetricsAbsentUntilWired(t *testing.T) {
+	c := newFlowTestCollector(t, newFlowStore(10, 100))
+	got := collect(t, c)
+	if _, ok := got["opnsense_flow_dns_cache_entries"]; ok {
+		t.Error("dns_cache_entries emitted with no cache wired; must be absent")
+	}
+}
+
+// talkerFlowRec is a zenarmor flow record with a local source, for the talker/dest tests.
+func talkerFlowRec(iface, src, dst string, bytes uint64) flow.Record {
+	return flow.Record{
+		Source: flow.SourceZenarmor, Proto: 6,
+		SrcAddr: netip.MustParseAddr(src), DstAddr: netip.MustParseAddr(dst),
+		In: flow.Iface{Name: iface}, Direction: flow.DirectionOutbound,
+		Enrich: flow.Enrichment{SrcScope: "local", DstScope: "remote"},
+		Zen:    flow.Counters{TxBytes: bytes, Present: true},
 	}
 }
 

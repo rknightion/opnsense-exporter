@@ -261,7 +261,7 @@ func TestEnrichRecord_ResolvesNamesScopeAndService(t *testing.T) {
 		DstPort: 443, Proto: 6,
 		In: Iface{Device: "ixl0_vlan50"},
 	}
-	enrichRecord(&r, testSnapshot())
+	enrichRecord(&r, testSnapshot(), nil, time.Time{})
 
 	if r.In.Name != "IOT" {
 		t.Errorf("In.Name = %q, want IOT", r.In.Name)
@@ -274,5 +274,32 @@ func TestEnrichRecord_ResolvesNamesScopeAndService(t *testing.T) {
 	}
 	if r.Enrich.DstService != "https" {
 		t.Errorf("DstService = %q, want https", r.Enrich.DstService)
+	}
+}
+
+func TestEnrichRecord_DNSCacheResolvesDomain(t *testing.T) {
+	now := time.Unix(1784224500, 0)
+	cache := NewDNSCache(100, time.Hour)
+	client := mustAddr(t, "10.0.0.5")
+	answer := mustAddr(t, "93.184.216.34")
+	cache.Put(client, answer, "example.com", now)
+
+	r := Record{SrcAddr: client, DstAddr: answer, DstPort: 443, Proto: 6}
+	// A cold snapshot: the domain must still resolve, since the DNS lookup does not
+	// depend on the enrichment snapshot.
+	enrichRecord(&r, nil, cache, now)
+
+	if r.Enrich.DstDomain != "example.com" {
+		t.Fatalf("DstDomain = %q, want example.com", r.Enrich.DstDomain)
+	}
+}
+
+func TestEnrichRecord_DNSCacheMissLeavesDomainEmpty(t *testing.T) {
+	now := time.Unix(1784224500, 0)
+	cache := NewDNSCache(100, time.Hour)
+	r := Record{SrcAddr: mustAddr(t, "10.0.0.5"), DstAddr: mustAddr(t, "1.2.3.4")}
+	enrichRecord(&r, testSnapshot(), cache, now)
+	if r.Enrich.DstDomain != "" {
+		t.Fatalf("DstDomain = %q, want empty on cache miss", r.Enrich.DstDomain)
 	}
 }

@@ -95,7 +95,7 @@ func flowDoc(t *testing.T, family, doc string) *zenDoc {
 
 func mustFlow(t *testing.T, doc string) flow.Record {
 	t.Helper()
-	r, ok := flowFromDoc("flow", flowDoc(t, "flow", doc), flowSnapshot(), time.Unix(1784656800, 0))
+	r, ok := flowFromDoc("flow", flowDoc(t, "flow", doc), flowSnapshot(), nil, time.Unix(1784656800, 0))
 	if !ok {
 		t.Fatal("a well-formed conn document must produce a flow record")
 	}
@@ -132,24 +132,24 @@ func TestFlowFromDoc_MapsCountersBothDirections(t *testing.T) {
 func TestFlowFromDoc_OnlyAcceptsTheFlowFamily(t *testing.T) {
 	for _, family := range []string{"dns", "tls", "web", "ids", "voip", ""} {
 		d := flowDoc(t, family, flowLANToInternet) // shape is irrelevant; the family is the gate
-		if _, ok := flowFromDoc(family, d, flowSnapshot(), time.Now()); ok {
+		if _, ok := flowFromDoc(family, d, flowSnapshot(), nil, time.Now()); ok {
 			t.Fatalf("family %q must not produce a flow record", family)
 		}
 	}
 }
 
 func TestFlowFromDoc_RejectsUnusableInput(t *testing.T) {
-	if _, ok := flowFromDoc("flow", nil, flowSnapshot(), time.Now()); ok {
+	if _, ok := flowFromDoc("flow", nil, flowSnapshot(), nil, time.Now()); ok {
 		t.Fatal("a nil document must not produce a flow record")
 	}
 	// A document with no parseable endpoints is not a flow; emitting one would put a
 	// zero-address series into the rollup.
 	noEndpoints := flowDoc(t, "flow", `{"transport_proto":"TCP","interface":"ixl0"}`)
-	if _, ok := flowFromDoc("flow", noEndpoints, flowSnapshot(), time.Now()); ok {
+	if _, ok := flowFromDoc("flow", noEndpoints, flowSnapshot(), nil, time.Now()); ok {
 		t.Fatal("a document with no addresses must not produce a flow record")
 	}
 	halfEndpoints := flowDoc(t, "flow", `{"transport_proto":"TCP","ip_src_saddr":"192.0.2.1"}`)
-	if _, ok := flowFromDoc("flow", halfEndpoints, flowSnapshot(), time.Now()); ok {
+	if _, ok := flowFromDoc("flow", halfEndpoints, flowSnapshot(), nil, time.Now()); ok {
 		t.Fatal("a document with only one address must not produce a flow record")
 	}
 }
@@ -197,7 +197,7 @@ func TestFlowFromDoc_DirectionCases(t *testing.T) {
 // With no snapshot there is no topology, so "internal" cannot be established and
 // the record falls back to Zenarmor's stated direction rather than guessing.
 func TestFlowFromDoc_DirectionWithoutSnapshotFallsBackToZenarmor(t *testing.T) {
-	r, ok := flowFromDoc("flow", flowDoc(t, "flow", flowLANToSelf), nil, time.Now())
+	r, ok := flowFromDoc("flow", flowDoc(t, "flow", flowLANToSelf), nil, nil, time.Now())
 	if !ok {
 		t.Fatal("a nil snapshot must not prevent a record")
 	}
@@ -213,7 +213,7 @@ func TestFlowFromDoc_DirectionWithoutSnapshotFallsBackToZenarmor(t *testing.T) {
 // stay unknown rather than being assigned one.
 func TestFlowFromDoc_DirectionUnknownWhenNothingStatesIt(t *testing.T) {
 	d := flowDoc(t, "flow", `{"transport_proto":"TCP","ip_src_saddr":"203.0.113.1","ip_src_port":1,"ip_dst_saddr":"203.0.113.2","ip_dst_port":2}`)
-	r, ok := flowFromDoc("flow", d, nil, time.Now())
+	r, ok := flowFromDoc("flow", d, nil, nil, time.Now())
 	if !ok {
 		t.Fatal("expected a record")
 	}
@@ -250,7 +250,7 @@ func TestFlowFromDoc_SynthesisesTheVLANChildDevice(t *testing.T) {
 func TestFlowFromDoc_UnknownDeviceYieldsNoName(t *testing.T) {
 	snap := flowSnapshot()
 	delete(snap.IfaceNames, "ixl0_vlan50")
-	r, _ := flowFromDoc("flow", flowDoc(t, "flow", flowVLANTagged), snap, time.Now())
+	r, _ := flowFromDoc("flow", flowDoc(t, "flow", flowVLANTagged), snap, nil, time.Now())
 	if r.In.Name != "" {
 		t.Fatalf("In.Name = %q, want empty for an unmapped device", r.In.Name)
 	}
@@ -322,7 +322,7 @@ func TestFlowFromDoc_ProtocolNames(t *testing.T) {
 // never stated would corrupt the action label.
 func TestFlowFromDoc_VerdictFollowsTheAbsentMeansUnknownRule(t *testing.T) {
 	unstated := flowDoc(t, "flow", `{"transport_proto":"TCP","ip_src_saddr":"192.0.2.1","ip_src_port":1,"ip_dst_saddr":"203.0.113.1","ip_dst_port":443}`)
-	r, _ := flowFromDoc("flow", unstated, flowSnapshot(), time.Now())
+	r, _ := flowFromDoc("flow", unstated, flowSnapshot(), nil, time.Now())
 	if r.Verdict != flow.VerdictUnknown {
 		t.Fatalf("Verdict = %v, want unknown", r.Verdict)
 	}
@@ -341,7 +341,7 @@ func TestFlowFromDoc_VerdictFollowsTheAbsentMeansUnknownRule(t *testing.T) {
 // uint64 into the rollup as an astronomical value.
 func TestFlowFromDoc_ClampsNegativeCounters(t *testing.T) {
 	d := flowDoc(t, "flow", `{"transport_proto":"TCP","ip_src_saddr":"192.0.2.1","ip_src_port":1,"ip_dst_saddr":"203.0.113.1","ip_dst_port":443,"src_nbytes":-5,"src_pbytes":-9,"src_npackets":-3,"dst_nbytes":-1,"dst_npackets":-1}`)
-	r, _ := flowFromDoc("flow", d, flowSnapshot(), time.Now())
+	r, _ := flowFromDoc("flow", d, flowSnapshot(), nil, time.Now())
 	if r.Zen.Bytes() != 0 || r.Zen.Packets() != 0 {
 		t.Fatalf("negative counters must clamp to zero, got %d bytes / %d packets", r.Zen.Bytes(), r.Zen.Packets())
 	}

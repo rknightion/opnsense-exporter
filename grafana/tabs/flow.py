@@ -266,11 +266,66 @@ def build(b: Builder):
              "shutdown began). Flat zero throughout when --flow.log-mode=off.",
     )
 
+    # ---- Domain enrichment, talkers & source disagreement (#353) ----------------
+    dnscache = b.ts(
+        "DNS Answer Cache",
+        [(f'{sel("opnsense_flow_dns_cache_entries")}', "entries"),
+         (f'rate({sel("opnsense_flow_dns_cache_hits_total")}[{RATE}])', "hits/sec"),
+         (f'rate({sel("opnsense_flow_dns_cache_misses_total")}[{RATE}])', "misses/sec"),
+         (f'rate({sel("opnsense_flow_dns_cache_rejected_total")}[{RATE}])', "rejected/sec")],
+        unit="short",
+        desc="The DNS answer cache maps a client's resolved answer IPs to the name it looked up, so a "
+             "flow to a bare IP recovers dst.domain (structured metadata, never a label). Fed from the "
+             "Zenarmor dns family. entries approaching --flow.dns-cache.size with a rising rejected/sec "
+             "means the cap is binding and new answers stop being cached — raise the size. A high "
+             "misses/sec against hits is normal for a mostly-IP workload; it is the denominator that "
+             "distinguishes a cold cache from a thrashing one.",
+    )
+
+    uniquedest = b.ts(
+        "Unique Destinations per Interface",
+        [(f'{sel("opnsense_flow_unique_destinations")}', "{{interface}}")],
+        unit="short",
+        desc="opnsense_flow_unique_destinations: distinct destination addresses seen per interface — a "
+             "bounded stand-in for per-destination series (one gauge per interface, never one per "
+             "destination). A set, not a sum, so a destination reported by both lanes counts once. A "
+             "value pinned at the internal per-interface cap means the true count is at least that "
+             "high, which is itself a scanning/fan-out signal worth an alert.",
+    )
+
+    toptalkers = b.table(
+        "Top Talkers by Bytes (host, direction)",
+        [f'topk(25, sum by (host, direction) (rate({sel("opnsense_flow_top_talker_bytes_total")}[{RATE}])))'],
+        desc="opnsense_flow_top_talker_bytes_total: byte rate per internal host and direction. OPT-IN "
+             "behind --flow.top-talkers because the host label is unbounded cardinality; empty unless "
+             "enabled. Bounded by top-N with an __other__ remainder per direction, so a host that "
+             "leaves and re-enters the top-N reads as a counter reset on that one series. Counts a "
+             "single source, so a two-source box does not double a host's bytes.",
+    )
+
+    delta = b.ts(
+        "Source Byte-Delta Ratio (NetFlow / Zenarmor)",
+        [(f'histogram_quantile(0.5, sum by (le, interface) '
+          f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p50 {{interface}}"),
+         (f'histogram_quantile(0.9, sum by (le, interface) '
+          f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p90 {{interface}}"),
+         (f'histogram_quantile(0.99, sum by (le, interface) '
+          f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p99 {{interface}}")],
+        unit="short",
+        desc="Distribution of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — "
+             "the payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a p90/p99 "
+             "well above 1 means Zenarmor inspected far fewer bytes than crossed the wire on those "
+             "flows, which is a security signal (traffic Zenarmor is not seeing), not an error. Present "
+             "only where both lanes run and correlate (--flow.log-mode=per_flow); absent otherwise, "
+             "since there is no disagreement to measure.",
+    )
+
     b.tab("Flow Volume", [
         b.row("Volume", [iface, direction], present="has_flow_volume"),
         b.row("Breakdown", [category, transport, scope], present="has_flow_volume"),
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
         b.row("Accumulator Health", [other_share, keys, capped]),
+        b.row("Domain, Talkers & Source Delta", [dnscache, uniquedest, toptalkers, delta], present="has_flow"),
         b.row("NetFlow Receiver", [ingest, funnel, decoder], present="has_netflow"),
         b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs], present="has_flow"),

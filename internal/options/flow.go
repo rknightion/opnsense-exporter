@@ -134,6 +134,16 @@ var (
 			"truncated.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_LOGS_PER_WINDOW").Default("0").Int()
 
+	// Opt-in because the host label is unbounded cardinality — one series per internal
+	// host, unlike every other flow metric, which is exactly why it is off by default
+	// and gated on the operator asking for it (§9).
+	flowTopTalkers = kingpin.Flag(
+		"flow.top-talkers",
+		"Emit opnsense_flow_top_talker_bytes_total: bytes per internal host and direction, top-N with "+
+			"an __other__ remainder. OFF by default because the host label is high cardinality; the top-N "+
+			"bounds it but a host label is still one series per host.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_TOP_TALKERS").Default("false").Bool()
+
 	flowDNSCacheSize = kingpin.Flag(
 		"flow.dns-cache.size",
 		"Entries in the DNS answer cache that gives a flow to a bare IP its dst.domain, fed by the "+
@@ -219,6 +229,7 @@ type FlowConfig struct {
 	CorrelateMaxEntries int
 	LogMode             string
 	MaxLogsPerWindow    int
+	TopTalkers          bool
 	DNSCacheSize        int
 }
 
@@ -246,6 +257,7 @@ func Flow() (FlowConfig, error) {
 		CorrelateMaxEntries: *flowCorrelateMaxEntries,
 		LogMode:             *flowLogMode,
 		MaxLogsPerWindow:    *flowMaxLogsPerWindow,
+		TopTalkers:          *flowTopTalkers,
 		DNSCacheSize:        *flowDNSCacheSize,
 	}
 	if err := c.Validate(); err != nil {

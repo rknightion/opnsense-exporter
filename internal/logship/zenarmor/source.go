@@ -160,6 +160,10 @@ type docProcessor struct {
 	// flow receives normalized flow records derived from conn documents (#346), or
 	// is nil when flow rollups are off — in which case no record is built at all.
 	flow flow.Sink
+	// dnsCache is fed from the dns family (client + answer -> qname) and read on the
+	// flow family to stamp dst.domain (#353). nil when domain enrichment is off; a nil
+	// cache is a safe no-op on both Put and Lookup.
+	dnsCache *flow.DNSCache
 }
 
 // newDocProcessor builds the shared processor: metrics are registered and the
@@ -189,6 +193,7 @@ func newDocProcessor(d logship.Deps, cfg Config) *docProcessor {
 		families: familyAllowSet(cfg.Families),
 		cap:      cp,
 		flow:     d.FlowSink,
+		dnsCache: d.FlowDNSCache,
 	}
 }
 
@@ -242,6 +247,16 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	// all that remains of it.
 	observeDerived(p.sink, family, rec.Attributes)
 
+	now := time.Now()
+
+	// Feed the DNS answer cache from the dns family (#353 §7): a query's client and its
+	// answer IPs, so a later flow to one of those IPs recovers the domain. Independent
+	// of p.flow — the cache benefits the NetFlow lane even when conn-derivation is off
+	// — and of the exclusion below, since an excluded dns record still resolved a name.
+	if family == "dns" && p.dnsCache != nil {
+		feedDNSCache(p.dnsCache, d, now)
+	}
+
 	// Flow rollups (#346) sit HERE, beside observeDerived, and deliberately not in
 	// parseDoc. parseDoc runs upstream of the self-traffic drop above, and the
 	// exporter's own ingest link is ~11% of the flow family, so rolling up there
@@ -250,8 +265,14 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	// is: an excluded record is real traffic the operator merely does not want
 	// stored, and these counters are all that outlive it.
 	if p.flow != nil {
-		if fr, ok := flowFromDoc(family, d, snap, time.Now()); ok {
+		if fr, ok := flowFromDoc(family, d, snap, p.dnsCache, now); ok {
 			p.flow.Observe(fr)
+			// The conn document gains the normalized flow attributes IN PLACE (#353 §10),
+			// no new record: community_id v1, the resolved direction, the VLAN-corrected
+			// interface, and dst.domain, so a conn record and a NetFlow record for the same
+			// flow share one queryable schema. Only the flow.* namespace is added; the
+			// Zenarmor-raw community_id/direction/interface keep their own keys.
+			addFlowAttrs(rec.Attributes, fr)
 		}
 	}
 
