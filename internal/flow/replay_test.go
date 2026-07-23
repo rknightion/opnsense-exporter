@@ -130,9 +130,11 @@ func TestReplayRepair_VLANParentDuplicateSuppressed(t *testing.T) {
 	m := replayIfMap()
 	now := time.Unix(1700000000, 0)
 
-	// Discovery pass: normalize every record WITHOUT repair and find an instance seen
-	// on both ixl0 and a VLAN child.
-	byKey := map[dedupKey]map[string]bool{}
+	// Discovery pass: normalize every record WITHOUT repair and COUNT the copies of
+	// each instance per device. Counts, not a set: how many copies an instance has on
+	// each device is exactly what decides how many may survive, and collapsing that to
+	// "seen here" is what made this test pick unassertable candidates.
+	byKey := map[dedupKey]map[string]int{}
 	for _, dg := range readReplayDatagrams(t) {
 		for _, nr := range dg.Records {
 			rec, ok := normalizeNetflow(nr, now)
@@ -142,39 +144,59 @@ func TestReplayRepair_VLANParentDuplicateSuppressed(t *testing.T) {
 			rec.In = m.Iface(nr.InIfIndex)
 			k := dedupKey{rec.CanonicalTuple(), rec.Start.UnixNano(), rec.End.UnixNano()}
 			if byKey[k] == nil {
-				byKey[k] = map[string]bool{}
+				byKey[k] = map[string]int{}
 			}
-			byKey[k][rec.In.Device] = true
+			byKey[k][rec.In.Device]++
 		}
 	}
-	var pair dedupKey
-	found := false
+
+	// The case this test models is an instance exported EXACTLY TWICE: once on the
+	// trunk and once on one of its VLAN children, and nowhere else. Restricting to
+	// that shape is what makes "exactly one survivor" a sound assertion, and the
+	// fixture holds 9 such instances.
+	//
+	// Selecting any instance merely *seen* on ixl0 and some child — as this test did
+	// until #350's follow-up — also admits three shapes whose survivor count is
+	// legitimately greater than one, so the assertion held for only 9 of 13
+	// candidates and the test failed ~40% of runs on Go's randomized map iteration:
+	//   - an instance with several copies on the trunk itself (two in this fixture):
+	//     same-device copies are not a parent/child pair, so the de-dup rule does not
+	//     touch them and all of them correctly survive;
+	//   - an instance ALSO exported on an unrelated interface (pppoe0, two here):
+	//     that third copy is not proven a duplicate and is correctly kept.
+	// Both are correct pipeline behaviour, so the fix is to assert the modelled shape
+	// rather than to loosen the count.
+	var pairs []dedupKey
 	for k, devs := range byKey {
-		if !devs["ixl0"] {
+		if len(devs) != 2 || devs["ixl0"] != 1 {
 			continue
 		}
-		for dev := range devs {
-			if p, ok := m.ParentOf(dev); ok && p == "ixl0" {
-				pair, found = k, true
+		for dev, n := range devs {
+			if dev == "ixl0" {
+				continue
+			}
+			if p, ok := m.ParentOf(dev); ok && p == "ixl0" && n == 1 {
+				pairs = append(pairs, k)
 			}
 		}
 	}
-	if !found {
+	if len(pairs) == 0 {
 		t.Fatal("fixture no longer retains a VLAN parent/child duplicate pair — the case was lost")
 	}
 
-	// Repaired pass: that instance must survive exactly once, and the repair must have
-	// counted the drop.
+	// Repaired pass: EVERY such instance must survive exactly once. Asserting over all
+	// of them rather than one arbitrary pick is both deterministic and strictly
+	// stronger than the single random assertion it replaces.
 	recs, rstats, pstats := runReplayPipeline(t)
-	survivors := 0
+	survivors := map[dedupKey]int{}
 	for _, r := range recs {
-		k := dedupKey{r.CanonicalTuple(), r.Start.UnixNano(), r.End.UnixNano()}
-		if k == pair {
-			survivors++
-		}
+		survivors[dedupKey{r.CanonicalTuple(), r.Start.UnixNano(), r.End.UnixNano()}]++
 	}
-	if survivors != 1 {
-		t.Fatalf("VLAN-duplicated instance survived %d times, want exactly 1 (one copy must be dropped)", survivors)
+	for _, pair := range pairs {
+		if n := survivors[pair]; n != 1 {
+			t.Errorf("VLAN-duplicated instance survived %d times, want exactly 1 (one copy must be dropped); "+
+				"instance first=%d last=%d", n, pair.first, pair.last)
+		}
 	}
 	if rstats.VLANDuplicatesDropped == 0 {
 		t.Fatal("VLANDuplicatesDropped = 0, want > 0")
