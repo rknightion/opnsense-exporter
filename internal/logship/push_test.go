@@ -34,7 +34,7 @@ func newTestPipeline(t *testing.T, capacity int) *pipeline {
 		limiter: NewLogLimiter(time.Second, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(capacity, func(Entry) {})
-	p.metrics = newMetrics(prometheus.NewRegistry(), capacity, func() float64 { return float64(p.queue.length()) }, sourceNames{})
+	p.metrics = newMetrics(prometheus.NewRegistry(), queueBounds{capacity: capacity, length: func() float64 { return float64(p.queue.length()) }}, sourceNames{})
 	return p
 }
 
@@ -142,6 +142,55 @@ func TestPushSourceRecordSourceOverride(t *testing.T) {
 	if got := gaugeValue(t, p.metrics.lastEventTime.WithLabelValues("fake")); got != 1700000002 {
 		t.Errorf("lastEventTime{source=fake} = %v, want 1700000002 (from the plain record)", got)
 	}
+}
+
+// #318: a record larger than --logs.max-record-bytes must be rejected BEFORE it
+// enters the queue, and counted under its own reason. Rejecting at ingest is what
+// stops one oversized record from later becoming a batch the sink permanently
+// refuses (#325a).
+func TestPushSourceRejectsOversizedRecord(t *testing.T) {
+	p := newTestPipeline(t, 16)
+	p.cfg.MaxRecordBytes = 256
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go p.runPushSource(ctx, &fakePushBodies{bodies: []string{string(make([]byte, 4096)), "small"}})
+
+	got := drainN(t, p, 1, 2*time.Second)
+	if got[0].Record.Body != "small" {
+		t.Fatalf("oversized record reached the queue: body len %d", len(got[0].Record.Body))
+	}
+	if v := counterValue(t, p.metrics.dropped.WithLabelValues("fake", dropReasonRecordTooLarge)); v != 1 {
+		t.Errorf("logs_dropped_total{source=fake,reason=%s} = %v, want 1", dropReasonRecordTooLarge, v)
+	}
+}
+
+// MaxRecordBytes = 0 disables the per-record cap.
+func TestPushSourceOversizedAllowedWhenCapDisabled(t *testing.T) {
+	p := newTestPipeline(t, 16)
+	p.cfg.MaxRecordBytes = 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go p.runPushSource(ctx, &fakePushBodies{bodies: []string{string(make([]byte, 4096))}})
+
+	got := drainN(t, p, 1, 2*time.Second)
+	if len(got[0].Record.Body) != 4096 {
+		t.Fatalf("record rejected with the per-record cap disabled: body len %d", len(got[0].Record.Body))
+	}
+}
+
+// fakePushBodies emits one record per body, then blocks on ctx.
+type fakePushBodies struct{ bodies []string }
+
+func (f *fakePushBodies) Name() string { return "fake" }
+
+func (f *fakePushBodies) Run(ctx context.Context, emit func(Record)) error {
+	for _, b := range f.bodies {
+		emit(Record{Body: b, Timestamp: time.Unix(1700000000, 0)})
+	}
+	<-ctx.Done()
+	return nil
 }
 
 func TestPushSourceEmitsIntoQueue(t *testing.T) {

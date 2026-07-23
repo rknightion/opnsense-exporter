@@ -78,7 +78,7 @@ func newDeliveryPipeline(sink Sink, reg prometheus.Registerer) (*pipeline, conte
 		limiter: NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(100, func(Entry) {})
-	p.metrics = newMetrics(reg, 100, func() float64 { return 0 }, sourceNames{all: []string{"firewall"}})
+	p.metrics = newMetrics(reg, queueBounds{capacity: 100, length: func() float64 { return 0 }}, sourceNames{all: []string{"firewall"}})
 	return p, cancel
 }
 

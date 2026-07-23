@@ -89,7 +89,7 @@ func mustBeAbsent(t *testing.T, series map[string]float64, key string) {
 // to invisible.
 func TestPipelineCountersPreInitialisedToZero(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	newMetrics(reg, 10, func() float64 { return 0 }, sourceNames{
+	newMetrics(reg, queueBounds{capacity: 10, length: func() float64 { return 0 }}, sourceNames{
 		all:  []string{"syslog", "unbound"},
 		poll: []string{"unbound"},
 		gap:  []string{"unbound"},
@@ -153,7 +153,7 @@ func assertSameSet(t *testing.T, what string, got, want []string) {
 
 func TestRecordPossibleGap_IncrementsCounterPerSource(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := newMetrics(reg, 10, func() float64 { return 0 }, sourceNames{})
+	m := newMetrics(reg, queueBounds{capacity: 10, length: func() float64 { return 0 }}, sourceNames{})
 
 	recordPossibleGap("unbound")
 	recordPossibleGap("unbound")
@@ -172,7 +172,7 @@ func TestRecordPossibleGap_NoOpBeforeAnyPipelineMetrics(t *testing.T) {
 	// afterwards so later tests in this package are unaffected.
 	setActivePossibleGapVec(nil)
 	t.Cleanup(func() {
-		newMetrics(prometheus.NewRegistry(), 10, func() float64 { return 0 }, sourceNames{})
+		newMetrics(prometheus.NewRegistry(), queueBounds{capacity: 10, length: func() float64 { return 0 }}, sourceNames{})
 	})
 
 	recordPossibleGap("unbound") // must not panic
@@ -185,7 +185,7 @@ func TestRecordPossibleGap_NoOpBeforeAnyPipelineMetrics(t *testing.T) {
 // degrade path must be counted.
 func TestRecordResourceCapped_IncrementsCounter(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	m := newMetrics(reg, 10, func() float64 { return 0 }, sourceNames{})
+	m := newMetrics(reg, queueBounds{capacity: 10, length: func() float64 { return 0 }}, sourceNames{})
 
 	recordResourceCapped()
 	recordResourceCapped()

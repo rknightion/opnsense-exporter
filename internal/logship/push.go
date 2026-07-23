@@ -87,7 +87,13 @@ func (p *pipeline) runPushSource(ctx context.Context, s PushSource) {
 				le = p.metrics.lastEventTime.WithLabelValues(src)
 			}
 		}
-		p.queue.push(Entry{Source: src, Record: r})
+		// enqueue applies the per-record size cap before the record can reach the
+		// queue (#318). A rejected record must NOT advance the last-event gauge: it
+		// was never accepted, and claiming progress for data we dropped would hide
+		// the loss behind a healthy-looking cursor.
+		if !p.enqueue(Entry{Source: src, Record: r}) {
+			return
+		}
 		if !r.Timestamp.IsZero() {
 			le.Set(float64(r.Timestamp.Unix()))
 		}

@@ -113,7 +113,7 @@ func startWithSink(t *testing.T, cfg *options.LogsConfig, sink Sink, deps Deps, 
 		ctx: pctx, cancel: cancel, limiter: NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
 	p.queue = newBoundedQueue(cfg.BufferSize, p.noteOverflow)
-	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) }, sourceNames{})
+	p.metrics = newMetrics(reg, queueBounds{capacity: cfg.BufferSize, length: func() float64 { return float64(p.queue.length()) }}, sourceNames{})
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {
 			p.stateful = append(p.stateful, st)
@@ -240,6 +240,111 @@ func TestPipeline_StateFileRoundTrip(t *testing.T) {
 
 	if string(base2.loaded) != "cursor-1" {
 		t.Fatalf("LoadState did not restore cursor: got %q", string(base2.loaded))
+	}
+}
+
+// alwaysFailSink rejects every batch and records the first record body of each
+// distinct batch it was handed, so a test can tell "the emitter is still retrying
+// batch 1" apart from "the emitter moved on to batch 2".
+type alwaysFailSink struct {
+	mu       sync.Mutex
+	attempts int
+	seen     []string
+}
+
+func (s *alwaysFailSink) Emit(_ context.Context, batch []Entry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.attempts++
+	if len(batch) > 0 {
+		s.seen = append(s.seen, batch[0].Record.Body)
+	}
+	return errors.New("permanently refused")
+}
+
+func (s *alwaysFailSink) Shutdown(context.Context) error { return nil }
+
+func (s *alwaysFailSink) sawBody(body string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, b := range s.seen {
+		if b == body {
+			return true
+		}
+	}
+	return false
+}
+
+// #325a: there is exactly ONE emitter goroutine, so an unbounded retry loop on a
+// batch the sink permanently refuses never returns to drainUpTo — every later
+// record silently oldest-drops behind it. With ShipMaxAttempts set, the emitter
+// must abandon the poison batch (counted under reason="ship_failed_permanent")
+// and go on to attempt the NEXT batch.
+//
+// Against the pre-fix code this test times out: the emitter is still retrying
+// batch "first" and never drains "second".
+func TestPipeline_PermanentShipFailureDoesNotWedgeEmitter(t *testing.T) {
+	sink := &alwaysFailSink{}
+	reg := prometheus.NewRegistry()
+	cfg := testCfg()
+	cfg.BatchMax = 1 // one record per batch, so "first" and "second" are separate batches
+	cfg.ShipMaxAttempts = 2
+
+	pctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p := &pipeline{
+		sink: sink, cfg: cfg, log: testDeps().Logger,
+		ctx: pctx, cancel: cancel,
+		limiter: NewLogLimiter(errorLogInterval, errorLogMaxKeys),
+	}
+	p.queue = newBoundedQueue(cfg.BufferSize, p.noteOverflow)
+	p.metrics = newMetrics(reg, queueBounds{capacity: cfg.BufferSize, length: func() float64 { return float64(p.queue.length()) }}, sourceNames{all: []string{"s"}})
+
+	p.emitterWG.Add(1)
+	go p.runEmitter()
+
+	p.queue.push(Entry{Source: "s", Record: Record{Body: "first"}})
+	p.queue.push(Entry{Source: "s", Record: Record{Body: "second"}})
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !sink.sawBody("second") {
+		if time.Now().After(deadline) {
+			t.Fatal("emitter wedged: the second batch was never attempted " +
+				"(the first batch is being retried forever)")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// The abandoned first batch must be visible, and under its own reason so it is
+	// distinguishable from the shutdown-time ship_failed drop.
+	if got := counterValue(t, p.metrics.dropped.WithLabelValues("s", dropReasonShipFailedPermanent)); got < 1 {
+		t.Fatalf("logs_dropped_total{source=s,reason=%s} = %v, want >= 1", dropReasonShipFailedPermanent, got)
+	}
+	if got := counterValue(t, p.metrics.dropped.WithLabelValues("s", dropReasonShipFailed)); got != 0 {
+		t.Fatalf("logs_dropped_total{source=s,reason=%s} = %v, want 0 "+
+			"(nothing was abandoned at shutdown; the two reasons must stay distinct)", dropReasonShipFailed, got)
+	}
+
+	cancel()
+	p.queue.close()
+	p.emitterWG.Wait()
+}
+
+// ShipMaxAttempts = 0 must preserve the pre-#325 unlimited-retry behaviour: a
+// transient failure is ridden out rather than dropped.
+func TestPipeline_ShipMaxAttemptsZeroRetriesUnbounded(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	p, cancel := newDeliveryPipeline(&flakySink{failN: 3}, reg)
+	defer cancel()
+	p.cfg.ShipMaxAttempts = 0
+
+	p.shipBatch([]Entry{{Source: "firewall", Record: Record{Body: "a"}}})
+
+	if got := counterValue(t, p.metrics.shipped.WithLabelValues("firewall")); got != 1 {
+		t.Fatalf("logs_shipped_total{source=firewall} = %v, want 1 (unlimited retries must ride out 3 failures)", got)
+	}
+	if got := counterValue(t, p.metrics.dropped.WithLabelValues("firewall", dropReasonShipFailedPermanent)); got != 0 {
+		t.Fatalf("logs_dropped_total{reason=%s} = %v, want 0 with ShipMaxAttempts=0", dropReasonShipFailedPermanent, got)
 	}
 }
 

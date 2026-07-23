@@ -27,8 +27,8 @@ const stateFlushInterval = 30 * time.Second
 const errorLogInterval = 30 * time.Second
 
 // errorLogMaxKeys bounds the pipeline limiter's key set. Its keys are code-defined
-// and few ("poll:"+source name, "ship"), so this is only a backstop and is never
-// reached in practice.
+// and few ("poll:"+source name, "oversize:"+source name, "ship", "ship_permanent"),
+// so this is only a backstop and is never reached in practice.
 const errorLogMaxKeys = 64
 
 // pipeline is the running log-shipping loop.
@@ -109,9 +109,13 @@ func Start(
 		cancel:      cancel,
 		limiter:     NewLogLimiter(errorLogInterval, errorLogMaxKeys),
 	}
-	p.queue = newBoundedQueue(cfg.BufferSize, p.noteOverflow)
-	p.metrics = newMetrics(reg, cfg.BufferSize, func() float64 { return float64(p.queue.length()) },
-		collectSourceNames(sources, pushSources))
+	p.queue = newBoundedQueueBytes(cfg.BufferSize, cfg.BufferMaxBytes, p.noteOverflow)
+	p.metrics = newMetrics(reg, queueBounds{
+		capacity: cfg.BufferSize,
+		maxBytes: cfg.BufferMaxBytes,
+		length:   func() float64 { return float64(p.queue.length()) },
+		bytes:    func() float64 { return float64(p.queue.queuedBytes()) },
+	}, collectSourceNames(sources, pushSources))
 
 	for _, s := range sources {
 		if st, ok := s.(StatefulSource); ok {
@@ -152,7 +156,9 @@ func Start(
 		names = append(names, s.Name())
 	}
 	deps.Logger.Info("log shipping enabled", "sink", cfg.Sink, "sources", names,
-		"poll_interval", cfg.PollInterval.String(), "buffer_size", cfg.BufferSize)
+		"poll_interval", cfg.PollInterval.String(), "buffer_size", cfg.BufferSize,
+		"buffer_max_bytes", cfg.BufferMaxBytes, "max_record_bytes", cfg.MaxRecordBytes,
+		"ship_max_attempts", cfg.ShipMaxAttempts)
 
 	return p.stop, nil
 }
@@ -197,6 +203,30 @@ func (p *pipeline) noteOverflow(e Entry) {
 	consoleDropped.Add(1)
 }
 
+// enqueue is the single ingest gate every record passes through, whether it came
+// from a poll Source or a push receiver. It rejects a record whose estimated
+// retained size exceeds --logs.max-record-bytes (0 = no cap), counting it under
+// reason="record_too_large" instead of queueing it, and returns whether the record
+// was accepted.
+//
+// Rejecting at INGEST rather than at export is the point (#318/#325a): an
+// oversized record that reaches the queue both displaces other records under the
+// byte budget AND can become a batch the sink permanently refuses, which before
+// the attempt cap wedged the single emitter goroutine outright.
+func (p *pipeline) enqueue(e Entry) bool {
+	if maxBytes := p.cfg.MaxRecordBytes; maxBytes > 0 && recordBytes(e.Record) > maxBytes {
+		p.metrics.dropped.WithLabelValues(e.Source, dropReasonRecordTooLarge).Inc()
+		consoleDropped.Add(1)
+		if p.limiter.Allow("oversize:" + e.Source) {
+			p.log.Warn("log record exceeds the per-record size cap; rejected at ingest",
+				"source", e.Source, "bytes", recordBytes(e.Record), "max_record_bytes", maxBytes)
+		}
+		return false
+	}
+	p.queue.push(e)
+	return true
+}
+
 // effectiveInterval is max(global poll interval, source floor).
 func (p *pipeline) effectiveInterval(s Source) time.Duration {
 	interval := p.cfg.PollInterval
@@ -239,7 +269,9 @@ func (p *pipeline) pollOnce(s Source, name string) {
 	var newest time.Time
 	for _, r := range records {
 		r.Attributes = sanitizeAttributes(r.Attributes)
-		p.queue.push(Entry{Source: name, Record: r})
+		if !p.enqueue(Entry{Source: name, Record: r}) {
+			continue
+		}
 		if r.Timestamp.After(newest) {
 			newest = r.Timestamp
 		}
@@ -253,9 +285,12 @@ func (p *pipeline) pollOnce(s Source, name string) {
 // attempts. The emitter retries a failed batch in memory (records stay queued, never
 // re-fetched) rather than dropping it, so a transient endpoint outage is ridden out for
 // as long as the bounded queue behind it holds — the at-least-once-within-a-run contract
-// (#290). Loss during a run therefore happens only two ways, both counted: the queue
-// overflows (logs_dropped_total{reason="overflow"}) or shutdown abandons an
-// undeliverable batch (logs_dropped_total{reason="ship_failed"}). It does NOT survive a
+// (#290), up to the --logs.ship-max-attempts cap. Loss during a run happens only four
+// ways, all counted on logs_dropped_total: the queue overflows its count cap or byte
+// budget (reason="overflow"), a record is rejected at ingest for exceeding
+// --logs.max-record-bytes (reason="record_too_large"), the sink refuses a batch for
+// --logs.ship-max-attempts consecutive attempts (reason="ship_failed_permanent"), or
+// shutdown abandons a still-failing batch (reason="ship_failed"). It does NOT survive a
 // process restart mid-outage — that is the in-memory tier's documented boundary.
 const (
 	shipRetryBase = 200 * time.Millisecond
@@ -275,15 +310,26 @@ func (p *pipeline) runEmitter() {
 	}
 }
 
-// shipBatch exports one batch, retrying on failure until it is acknowledged or the
-// pipeline is shutting down. Each failed attempt counts logs_ship_errors_total; a
-// confirmed export counts logs_shipped_total per record. It uses a background context
-// for the export itself so records queued at shutdown still get a delivery attempt, but
-// the retry backoff is interruptible by pipeline cancellation so stop() stays bounded:
-// once shutdown begins, a still-failing batch is abandoned and counted
-// logs_dropped_total{reason="ship_failed"} rather than blocking the drain — the records
-// could not be delivered, and that loss is made visible rather than silently skipped.
+// shipBatch exports one batch, retrying on failure until it is acknowledged, the
+// attempt cap is reached, or the pipeline is shutting down. Each failed attempt counts
+// logs_ship_errors_total; a confirmed export counts logs_shipped_total per record. It
+// uses a background context for the export itself so records queued at shutdown still
+// get a delivery attempt, but the retry backoff is interruptible by pipeline
+// cancellation so stop() stays bounded: once shutdown begins, a still-failing batch is
+// abandoned and counted logs_dropped_total{reason="ship_failed"} rather than blocking
+// the drain — the records could not be delivered, and that loss is made visible rather
+// than silently skipped.
+//
+// Retries are bounded by --logs.ship-max-attempts (#325a). There is exactly ONE emitter
+// goroutine, so an unbounded loop on a batch the sink permanently refuses (an oversized
+// record, a schema rejection, a bad credential, an exhausted quota) never returns to
+// drainUpTo: delivery halts for the life of the process while everything behind it
+// silently oldest-drops as the queue fills. On exhaustion the batch is DROPPED and
+// counted under reason="ship_failed_permanent" — deliberately trading "never lose a
+// deliverable batch" for "never wedge", and keeping the two loss modes distinguishable
+// from the shutdown-time ship_failed. 0 attempts restores the old unlimited behaviour.
 func (p *pipeline) shipBatch(batch []Entry) {
+	maxAttempts := p.cfg.ShipMaxAttempts
 	for attempt := 1; ; attempt++ {
 		err := p.sink.Emit(context.Background(), batch)
 		if err == nil {
@@ -294,6 +340,18 @@ func (p *pipeline) shipBatch(batch []Entry) {
 			return
 		}
 		p.metrics.shipErrors.Inc()
+		if maxAttempts > 0 && attempt >= maxAttempts {
+			for _, e := range batch {
+				p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailedPermanent).Inc()
+			}
+			consoleDropped.Add(uint64(len(batch)))
+			if p.limiter.Allow("ship_permanent") {
+				p.log.Error("log sink refused a batch for the maximum number of attempts; dropping it "+
+					"so delivery of later batches continues; records lost",
+					"attempts", attempt, "count", len(batch), "err", err)
+			}
+			return
+		}
 		if p.limiter.Allow("ship") {
 			p.log.Warn("log sink export failed; retrying", "attempt", attempt, "count", len(batch), "err", err)
 		}
