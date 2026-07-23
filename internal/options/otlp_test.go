@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -202,6 +203,31 @@ func TestAssembleOTLP_InvalidConfigErrors(t *testing.T) {
 	in.protocol = "thrift"
 	if _, _, err := assembleOTLP(in); err == nil {
 		t.Error("expected validate error for bad protocol")
+	}
+}
+
+// #308: a malformed --otlp.headers segment must never echo the raw segment or its
+// value back in the error, because main.go logs this error verbatim at startup and
+// the value half of a header is very often a bearer token or similar secret.
+func TestParseHeaders_ColonTypoDoesNotLeakSecret(t *testing.T) {
+	const canary = "supersecrettoken"
+	_, err := parseHeaders("Authorization:Bearer " + canary)
+	if err == nil {
+		t.Fatal("expected an error for a colon-separated header (missing '=')")
+	}
+	if strings.Contains(err.Error(), canary) {
+		t.Errorf("error must not contain the secret value, got: %v", err)
+	}
+}
+
+func TestParseHeaders_EmptyKeyDoesNotLeakSecret(t *testing.T) {
+	const canary = "supersecrettoken"
+	_, err := parseHeaders("=Bearer " + canary)
+	if err == nil {
+		t.Fatal("expected an error for a header with an empty key")
+	}
+	if strings.Contains(err.Error(), canary) {
+		t.Errorf("error must not contain the secret value, got: %v", err)
 	}
 }
 

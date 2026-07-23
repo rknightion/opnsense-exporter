@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -232,5 +233,140 @@ func TestScrapeTimeoutRejectsNonFinite(t *testing.T) {
 		if got, ok := scrapeTimeout(h, 500*time.Millisecond); ok || got != 0 {
 			t.Errorf("scrapeTimeout(%q) = (%s, %v), want (0s, false)", h, got, ok)
 		}
+	}
+}
+
+// blockingViews holds every ScrapeView call open until release is closed, so a
+// test can pin N requests inside the handler at once.
+type blockingViews struct {
+	names   []string
+	release chan struct{}
+
+	mu      sync.Mutex
+	entered int
+}
+
+func (b *blockingViews) EnabledCollectorNames() []string { return b.names }
+
+func (b *blockingViews) ScrapeView(ctx context.Context, include map[string]bool) prometheus.Collector {
+	b.mu.Lock()
+	b.entered++
+	b.mu.Unlock()
+	<-b.release
+	g := prometheus.NewGauge(prometheus.GaugeOpts{Name: "fake_view_metric", Help: "fake"})
+	g.Set(1)
+	return g
+}
+
+func (b *blockingViews) inHandler() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.entered
+}
+
+// TestMetricsHandler_ConcurrencyLimitReturns503 pins the in-flight bound on
+// /metrics. The listener is unauthenticated by default, so without a cap an
+// unbounded number of concurrent scrapes each materialize a full gathered metric
+// set in memory. Overflow must degrade to 503, and a normal single scrape must
+// still succeed once the pressure clears.
+func TestMetricsHandler_ConcurrencyLimitReturns503(t *testing.T) {
+	if maxMetricsInFlight <= 0 {
+		t.Fatalf("maxMetricsInFlight = %d, want a positive bound", maxMetricsInFlight)
+	}
+	b := &blockingViews{names: []string{"a"}, release: make(chan struct{})}
+	h := NewMetricsHandler(b, prometheus.NewRegistry(), 500*time.Millisecond, promslog.NewNopLogger(), nil)
+
+	var wg sync.WaitGroup
+	for range maxMetricsInFlight {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			serve(h, "/metrics", nil)
+		}()
+	}
+	// Wait until every slot is genuinely occupied inside the handler.
+	deadline := time.Now().Add(5 * time.Second)
+	for b.inHandler() < maxMetricsInFlight {
+		if time.Now().After(deadline) {
+			close(b.release)
+			wg.Wait()
+			t.Fatalf("only %d/%d requests reached the handler", b.inHandler(), maxMetricsInFlight)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	over := serve(h, "/metrics", nil)
+	if over.Code != http.StatusServiceUnavailable {
+		t.Fatalf("overflow status = %d, want 503; body: %s", over.Code, over.Body.String())
+	}
+	if !strings.Contains(over.Body.String(), "concurrent requests") {
+		t.Errorf("overflow body = %q, want a concurrency message", over.Body.String())
+	}
+	if b.inHandler() != maxMetricsInFlight {
+		t.Errorf("overflow request entered the handler: %d", b.inHandler())
+	}
+
+	close(b.release)
+	wg.Wait()
+
+	// Slots are released, so a normal scrape succeeds again.
+	after := serve(h, "/metrics", nil)
+	if after.Code != http.StatusOK {
+		t.Fatalf("post-drain status = %d, want 200; body: %s", after.Code, after.Body.String())
+	}
+}
+
+// deadlineRecorder is a ResponseWriter that supports SetWriteDeadline (as a real
+// net/http connection does) and records every deadline set on it.
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	set []time.Time
+}
+
+func (d *deadlineRecorder) SetWriteDeadline(t time.Time) error {
+	d.set = append(d.set, t)
+	return nil
+}
+
+// TestMetricsHandler_SetsAndClearsWriteDeadline pins the slow-reader bound.
+// promhttp gathers the whole metric set into memory before writing, so a client
+// that dribbles its response otherwise pins that set plus a goroutine forever
+// (IdleTimeout does not apply to an actively-writing connection). The deadline
+// must be cleared before returning, or it would leak onto the next request on a
+// kept-alive connection — net/http only resets write deadlines per request when
+// Server.WriteTimeout is set, and it is deliberately unset here.
+func TestMetricsHandler_SetsAndClearsWriteDeadline(t *testing.T) {
+	_, h := newTestMetricsSetup("a")
+	w := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	before := time.Now()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if len(w.set) != 2 {
+		t.Fatalf("write deadlines set = %v, want exactly 2 (set then clear)", w.set)
+	}
+	got := w.set[0].Sub(before)
+	if got < metricsWriteDeadline-time.Second || got > metricsWriteDeadline+time.Second {
+		t.Errorf("write deadline = %s from request start, want ~%s", got, metricsWriteDeadline)
+	}
+	if !w.set[1].IsZero() {
+		t.Errorf("final write deadline = %v, want the zero time (cleared)", w.set[1])
+	}
+}
+
+// TestMetricsHandler_WriteDeadlineUnsupportedIsIgnored asserts a ResponseWriter
+// that cannot carry a deadline (any wrapper without Unwrap, and every
+// httptest.ResponseRecorder) still serves normally — the cap is best-effort
+// hardening, not a correctness requirement.
+func TestMetricsHandler_WriteDeadlineUnsupportedIsIgnored(t *testing.T) {
+	_, h := newTestMetricsSetup("a")
+	rec := serve(h, "/metrics", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "fake_view_metric") {
+		t.Errorf("expected metrics body, got %q", rec.Body.String())
 	}
 }

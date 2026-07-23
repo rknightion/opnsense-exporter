@@ -152,25 +152,35 @@ type otlpRawInputs struct {
 // as is a non-empty input that yields zero pairs: silently dropping these would let a
 // malformed --otlp.headers fall back to OTEL_EXPORTER_OTLP_HEADERS, inverting the
 // documented "when set, replaces it entirely" contract (#92).
+//
+// Error messages deliberately never interpolate the raw segment or its value (#308):
+// main.go logs this error verbatim at startup, and a header value is very often a
+// bearer token or similar secret, so a typo (e.g. ':' instead of '=') must not print
+// the secret to stderr/log sinks. Errors instead cite the segment's 1-based position
+// in the comma-separated list; where a key was successfully extracted it is named too
+// (a key name is not a secret — only the value, and the pre-'=' text when no '=' was
+// found at all, are treated as sensitive).
 func parseHeaders(s string) (map[string]string, error) {
 	out := map[string]string{}
+	pos := 0
 	for pair := range strings.SplitSeq(s, ",") {
+		pos++
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
 		}
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok {
-			return nil, fmt.Errorf("otlp header %q is missing '='; expected key=value", pair)
+			return nil, fmt.Errorf("otlp header at position %d is missing '='; expected key=value", pos)
 		}
 		k = strings.TrimSpace(k)
 		if k == "" {
-			return nil, fmt.Errorf("otlp header %q has an empty key", pair)
+			return nil, fmt.Errorf("otlp header at position %d has an empty key", pos)
 		}
 		out[k] = strings.TrimSpace(v)
 	}
 	if strings.TrimSpace(s) != "" && len(out) == 0 {
-		return nil, fmt.Errorf("otlp headers %q parsed to zero valid key=value pairs", s)
+		return nil, fmt.Errorf("otlp headers parsed to zero valid key=value pairs")
 	}
 	return out, nil
 }

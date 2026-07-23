@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -117,5 +120,183 @@ func TestHandler_DevicesLazyJSON(t *testing.T) {
 	}
 	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
 		t.Fatalf("content-type want json, got %q", got)
+	}
+}
+
+// countingDevices returns a Deps.Devices func that counts invocations and blocks
+// on gate (when non-nil) before returning, so a test can hold a fetch open and
+// observe how many upstream fetches a burst of requests produced.
+func countingDevices(calls *int64, gate <-chan struct{}) func(context.Context) (DeviceReport, error) {
+	return func(ctx context.Context) (DeviceReport, error) {
+		atomic.AddInt64(calls, 1)
+		if gate != nil {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return DeviceReport{}, ctx.Err()
+			}
+		}
+		return DeviceReport{Devices: []DeviceRow{{IP: "192.168.1.10", MAC: "B8:27:EB:11:22:33"}}}, nil
+	}
+}
+
+// TestDevicesJSON_ConcurrentRequestsCollapseToOneFetch pins the single-flight
+// guarantee: /api/devices.json is unauthenticated and each miss costs THREE live
+// OPNsense calls on the same shared client the poll scheduler uses, so a burst
+// must collapse into exactly one upstream fetch.
+func TestDevicesJSON_ConcurrentRequestsCollapseToOneFetch(t *testing.T) {
+	var calls int64
+	gate := make(chan struct{})
+	d := testDeps()
+	d.Devices = countingDevices(&calls, gate)
+	srv := NewServer(d)
+
+	const n = 25
+	var wg sync.WaitGroup
+	codes := make([]int, n)
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/devices.json", nil))
+			codes[i] = rec.Code
+		}()
+	}
+	// Let the burst pile up behind the in-flight fetch, then release it.
+	time.Sleep(50 * time.Millisecond)
+	close(gate)
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&calls); got != 1 {
+		t.Fatalf("upstream fetches = %d, want exactly 1 for %d concurrent requests", got, n)
+	}
+	for i, c := range codes {
+		if c != http.StatusOK {
+			t.Fatalf("request %d: status = %d, want 200", i, c)
+		}
+	}
+}
+
+// TestDevicesJSON_SecondRequestWithinTTLIsServedFromCache asserts a repeat request
+// inside the TTL window costs zero further upstream fetches and returns the same
+// payload shape.
+func TestDevicesJSON_SecondRequestWithinTTLIsServedFromCache(t *testing.T) {
+	var calls int64
+	d := testDeps()
+	d.Devices = countingDevices(&calls, nil)
+	srv := NewServer(d)
+
+	first := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/api/devices.json", nil))
+	second := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/api/devices.json", nil))
+
+	if got := atomic.LoadInt64(&calls); got != 1 {
+		t.Fatalf("upstream fetches = %d, want 1 (second request served from cache)", got)
+	}
+	if first.Code != http.StatusOK || second.Code != http.StatusOK {
+		t.Fatalf("codes = %d/%d, want 200/200", first.Code, second.Code)
+	}
+	if first.Body.String() != second.Body.String() {
+		t.Fatalf("cached body differs:\n%s\n%s", first.Body.String(), second.Body.String())
+	}
+	if !strings.Contains(second.Body.String(), "192.168.1.10") {
+		t.Fatalf("cached body missing row data: %s", second.Body.String())
+	}
+}
+
+// TestDevicesCache_ExpiresAfterTTL asserts the cache is a short-TTL window, not a
+// permanent freeze: once the TTL lapses the next request re-fetches.
+func TestDevicesCache_ExpiresAfterTTL(t *testing.T) {
+	c := &devicesCache{ttl: 20 * time.Millisecond, timeout: time.Second}
+	var calls int64
+	fetch := func(context.Context) devicesView {
+		atomic.AddInt64(&calls, 1)
+		return devicesView{Report: DeviceReport{Generated: time.Now()}}
+	}
+
+	c.get(t.Context(), fetch)
+	c.get(t.Context(), fetch)
+	if got := atomic.LoadInt64(&calls); got != 1 {
+		t.Fatalf("fetches within TTL = %d, want 1", got)
+	}
+	time.Sleep(40 * time.Millisecond)
+	c.get(t.Context(), fetch)
+	if got := atomic.LoadInt64(&calls); got != 2 {
+		t.Fatalf("fetches after TTL = %d, want 2", got)
+	}
+}
+
+// TestDevicesCache_FailedFetchIsNotCached asserts only a SUCCESSFUL report is
+// cached — caching a failure would pin an error callout on the tab for the whole
+// TTL after a transient API blip.
+func TestDevicesCache_FailedFetchIsNotCached(t *testing.T) {
+	c := &devicesCache{ttl: time.Minute, timeout: time.Second}
+	var calls int64
+	fetch := func(context.Context) devicesView {
+		n := atomic.AddInt64(&calls, 1)
+		if n == 1 {
+			return devicesView{Error: "boom"}
+		}
+		return devicesView{Report: DeviceReport{Generated: time.Now()}}
+	}
+
+	if v := c.get(t.Context(), fetch); v.Error != "boom" {
+		t.Fatalf("first view error = %q, want boom", v.Error)
+	}
+	if v := c.get(t.Context(), fetch); v.Error != "" {
+		t.Fatalf("second view error = %q, want a fresh successful fetch", v.Error)
+	}
+	if got := atomic.LoadInt64(&calls); got != 2 {
+		t.Fatalf("fetches = %d, want 2 (failure must not be cached)", got)
+	}
+}
+
+// TestDevicesCache_FetchTimeoutBoundsTheRoute asserts a request cannot wait
+// indefinitely on an unresponsive firewall: the route-local deadline cancels the
+// fetch context and the request returns.
+func TestDevicesCache_FetchTimeoutBoundsTheRoute(t *testing.T) {
+	c := &devicesCache{ttl: time.Minute, timeout: 30 * time.Millisecond}
+	fetch := func(ctx context.Context) devicesView {
+		<-ctx.Done()
+		return devicesView{Error: ctx.Err().Error()}
+	}
+
+	done := make(chan devicesView, 1)
+	go func() { done <- c.get(context.Background(), fetch) }()
+	select {
+	case v := <-done:
+		if v.Error == "" {
+			t.Fatalf("want a deadline error in the view, got %+v", v)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("get did not return: the route has no deadline")
+	}
+}
+
+// TestDevicesCache_WaiterHonoursRequestContext asserts a request that is itself
+// cancelled stops waiting on someone else's in-flight fetch.
+func TestDevicesCache_WaiterHonoursRequestContext(t *testing.T) {
+	c := &devicesCache{ttl: time.Minute, timeout: time.Minute}
+	gate := make(chan struct{})
+	defer close(gate)
+	fetch := func(context.Context) devicesView {
+		<-gate
+		return devicesView{}
+	}
+
+	go c.get(context.Background(), fetch)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	done := make(chan devicesView, 1)
+	go func() { done <- c.get(ctx, fetch) }()
+	select {
+	case v := <-done:
+		if v.Error == "" {
+			t.Fatalf("cancelled waiter should surface an error, got %+v", v)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter ignored its own request context")
 	}
 }
