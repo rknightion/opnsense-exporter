@@ -57,7 +57,8 @@
       "product_abi",
       "product_id",
       "product_version",
-      "upgrade_packages"
+      "upgrade_packages",
+      "upgrade_packages[].size"
     ],
     "knownExtraTopKeys": [
       "all_packages",
@@ -75,7 +76,7 @@
       "upgrade_needs_reboot",
       "upgrade_sets"
     ],
-    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 12); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. downgrade_packages/reinstall_packages are now modelled as count gauges (#237). The 26.7 full-inventory keys (all_packages/all_sets) remain a #227 opportunity"
+    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 12); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. downgrade_packages/reinstall_packages are now modelled as count gauges (#237). The 26.7 full-inventory keys (all_packages/all_sets) remain a #227 opportunity. upgrade_packages[].size is BOX STATE, not drift: core's check.sh builds an ordinary package-upgrade entry as name/repository/current_version/new_version with no size key at all (check.sh:271-281), and emits size only on the synthetic base and kernel entries, each guarded on opnsense-update reporting a non-empty size (check.sh:328-337, 350-359). FirmwareController.php:133 reads it back behind !empty()+is_numeric(), so upstream itself treats it as optional. The field therefore appears only while a BASE OR KERNEL upgrade is pending; a box with only ordinary package upgrades legitimately omits it. Exempting rather than fixing the testbed is safe here because size backs no exported metric - it is parsed into firmware.go's UpgradePackages struct but never copied into FirmwarePackageUpgrade, so the canary blinds us to nothing consumed. PRUNE TRIGGER: if size is ever consumed by a metric, delete this entry and instead hold a pending base/kernel upgrade on the testbed so the path is genuinely covered"
   },
   "firmwareInfo": {
     "knownExtraTopKeys": [
