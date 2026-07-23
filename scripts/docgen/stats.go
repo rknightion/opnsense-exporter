@@ -122,6 +122,10 @@ func statRules(s docStats) []statRule {
 		// on future drift.
 		{File: "CLAUDE.md", Pattern: subCollectors, Replace: subCollectorsRepl, MinHits: 1},
 		{File: "docs/404.md", Pattern: allCollectors, Replace: allCollectorsRepl, MinHits: 1},
+		// The metric count on 404.md drifted to a stale "300+" because the phrase read
+		// "all 300+ available Prometheus metrics" and the stray "available" kept it from
+		// matching allProm, so no rule covered it. Reworded to match, and pinned here.
+		{File: "docs/404.md", Pattern: allProm, Replace: allPromRepl, MinHits: 1},
 		{File: "docs/getting-started.md", Pattern: allCollectors, Replace: allCollectorsRepl, MinHits: 1},
 		{File: "docs/troubleshooting.md", Pattern: approxCollectors, Replace: approxCollectorsRepl, MinHits: 1},
 		{File: "README.md", Pattern: across, Replace: acrossRepl, MinHits: 1},

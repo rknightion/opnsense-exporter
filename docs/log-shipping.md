@@ -8,13 +8,13 @@ exposes at `/metrics`. This is opt-in and off by default: it runs only when
 Log shipping is a long-lived background pipeline, not a scrape-time collector.
 Registered sources poll OPNsense event APIs on their own cadence, records pass
 through a bounded in-memory queue, and an emitter ships batches to the configured
-sink. It is fully independent of OTLP metrics export (`--otlp.enabled`): metrics
+sink. It is independent of OTLP metrics export (`--otlp.enabled`): metrics
 and logs are gated by separate flags and neither turns the other on.
 
 High-cardinality event data (IP addresses, ports, Suricata SIDs, domains) is
 shipped as log **body** and Loki **structured metadata** — never as a metric and
 never as a Loki label. The only labels are the resource identity, plus `opnsense.source`
-and `opnsense.subsystem` if you choose to promote them (see [Loki label model](#loki-label-model)).
+and `opnsense.subsystem` if you promote them (see [Loki label model](#loki-label-model)).
 
 The pipeline is implemented in
 [`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship);
@@ -102,7 +102,7 @@ totals.
 ### Zenarmor (`--logs.zenarmor.enabled`)
 
 The exporter can also pose as an Elasticsearch node and receive Zenarmor's reporting
-data directly — a second **push** source, and the first genuinely high-volume one. See
+data directly — a second **push** source, and the first high-volume one. See
 **[Zenarmor receiver](zenarmor-receiver.md)** for the full setup, including the GUI
 fields on the Zenarmor side and a warning about a similarly-named but destructive
 install-time Elasticsearch option you must not confuse this with.

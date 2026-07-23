@@ -20,7 +20,7 @@ The rollup, the NetFlow receiver and the flow correlator are implemented in
 ## Enabling it
 
 Flow rollups are **on by default** and cost nothing where no flow source is
-configured: the metrics are simply silent, in the same way `log_events` is silent
+configured: the metrics are silent, in the same way `log_events` is silent
 without the syslog receiver. Nothing new is shipped to Loki — the Zenarmor `conn`
 record ships exactly as it did before, and this only adds metrics.
 
@@ -37,9 +37,9 @@ To get any data you also need the Zenarmor receiver running
 
 ## The NetFlow receiver
 
-Unlike the Zenarmor lane this is **off by default**, and the difference is real
-rather than stylistic: the Zenarmor lane derives counters from documents the
-exporter already receives, while this one opens a UDP socket.
+Unlike the Zenarmor lane this is **off by default**: the Zenarmor lane derives
+counters from documents the exporter already receives, while this one opens a UDP
+socket.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -111,8 +111,8 @@ A NetFlow record crosses two interfaces and the label names one: the **WAN-facin
 side — egress for outbound, ingress for inbound. That is what makes per-WAN volume
 answerable, which is the entire point of the egress repair.
 
-The cost is deliberate and worth stating plainly: a LAN host's internet traffic is
-attributed to the WAN it left by, **not** to its own VLAN. Per-VLAN volume is
+The cost is deliberate: a LAN host's internet traffic is attributed to the WAN it
+left by, **not** to its own VLAN. Per-VLAN volume is
 therefore visible for internal traffic only, and the two lanes describe the same flow
 differently — Zenarmor keeps naming the VLAN child. This is a second reason, on top of
 the double-counting below, to pin `source` in every query.
@@ -171,12 +171,12 @@ single `__other__` series **per source**, so:
 - the `source` label survives the fold, because a query that does not pin it will
   double-count once the NetFlow lane lands (see below).
 
-One deliberate cost, so it is not a surprise: a series that drops out of the top-N
-and later returns **resumes from the volume it accumulated while folded**, so it
+One deliberate cost: a series that drops out of the top-N and later returns
+**resumes from the volume it accumulated while folded**, so it
 reads as a counter reset on that series. The alternative — leaving a fallen-out
 series frozen at its last value forever — is the failure mode that makes a top-K
 exporter quietly lie, so this trade is taken on purpose. Ranking is by cumulative
-lifetime bytes, which is very stable: displacing a series requires overtaking its
+lifetime bytes, which is stable: displacing a series requires overtaking its
 total since process start, not merely its recent rate.
 
 `--flow.max-keys` is a **separate** bound and neither substitutes for the other.
@@ -239,4 +239,4 @@ ordinary top-N overflow and is expected.
 - [Log shipping](log-shipping.md) — the Zenarmor receiver that feeds this
 - [Native log export](log-export-native.md) — when a dedicated flow pipeline is the
   better tool
-- [Metrics reference](metrics.md) — the full `opnsense_flow_*` family
+- [Metrics reference](metrics/metrics.md) — the full `opnsense_flow_*` family

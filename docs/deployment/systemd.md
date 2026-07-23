@@ -56,7 +56,7 @@ sudo chown root:root /etc/opnsense-exporter/exporter.env
 ```
 
 !!! tip "File-based secrets"
-    For even better security, store the API key and secret in separate files and use `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`:
+    To keep the credentials out of the service's environment, store the API key and secret in separate files and use `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`:
 
     ```bash
     echo "your-api-key" | sudo tee /etc/opnsense-exporter/api-key > /dev/null

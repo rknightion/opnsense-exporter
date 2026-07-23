@@ -116,7 +116,8 @@ tick every two minutes and says nothing; HAProxy logs every request. So:
 
 Syslog severity is **inverted** (0 = emerg, 7 = debug), so `--min-severity=notice` keeps
 everything *at or above* notice. Anything dropped is counted in
-`opnsense_exporter_logs_rejected_total{reason="filtered"}` — never silently discarded.
+`opnsense_exporter_logs_rejected_total{reason="filtered"}`, so nothing is
+discarded silently.
 
 You can also filter on the firewall itself (the target's Applications/Levels/Facilities
 selectors). Use that for coarse cuts you never want to see; use the exporter for tuning
@@ -298,7 +299,7 @@ successor to complete it is flushed after 250ms rather than waiting for the next
 Octet-counted frames carry their own length and are passed through untouched, as are
 UDP datagrams — one datagram is always exactly one message.
 
-### The rule description is the interesting one
+### Resolving rule ids
 
 A filterlog rule id is *either* a rule UUID (for rules you wrote) *or* a content hash
 (for the auto-generated ones: anti-lockout, default-deny, bogon blocks, DHCP-allow,
@@ -371,7 +372,7 @@ their environment variables) are still set.
     If you had `--logs.enabled` set, you were shipping the audit/configd/gateway/
     portal trail **without asking for it**. That stops at upgrade and does not come
     back until you configure a syslog target on the firewall as described above. This
-    is the one genuinely disruptive part of the change.
+    is the one disruptive part of the change.
 
 ## Troubleshooting
 

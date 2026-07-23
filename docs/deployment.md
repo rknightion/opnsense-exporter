@@ -7,7 +7,7 @@ tags:
 
 # Deployment
 
-The OPNsense Exporter can run on any machine with network access to the OPNsense API -- it does not need to run on the firewall itself. Choose the deployment method that fits your infrastructure.
+The OPNsense Exporter can run on any machine with network access to the OPNsense API. It does not need to run on the firewall itself. Choose the deployment method that fits your infrastructure.
 
 Container images are published to
 [`ghcr.io/rknightion/opnsense-exporter`](https://github.com/rknightion/opnsense-exporter/pkgs/container/opnsense-exporter),
@@ -61,7 +61,7 @@ To monitor multiple OPNsense firewalls, run a separate exporter instance for eac
 
 ### Security
 
-See the [Security guide](security.md) for detailed guidance on:
+See the [Security guide](security.md) for:
 
 - Creating least-privilege API keys
 - Configuring TLS

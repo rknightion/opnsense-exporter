@@ -8,7 +8,7 @@ tags:
 
 # Kubernetes Deployment
 
-Deploy the OPNsense Exporter in a Kubernetes cluster with proper secret management and Prometheus integration.
+Deploy the OPNsense Exporter in a Kubernetes cluster with file-based secrets and Prometheus integration.
 
 ## Prerequisites
 
@@ -217,7 +217,7 @@ kubectl run debug --rm -i --tty --restart=Never --image=alpine -- \
 
 ## Security considerations
 
-The deployment manifest follows security best practices:
+The deployment manifest is hardened:
 
 - **Read-only root filesystem** -- no writable paths in the container
 - **Non-root user** -- runs as UID 65532
@@ -226,7 +226,7 @@ The deployment manifest follows security best practices:
 - **File-based secrets** -- API credentials are mounted as files, not passed as environment variables
 
 !!! tip "Self-signed certificates"
-    If your OPNsense uses a self-signed certificate, add `OPNSENSE_EXPORTER_OPS_INSECURE: "true"` to the env section. For production, consider adding the CA certificate to the container's trust store instead.
+    If your OPNsense uses a self-signed certificate, add `OPNSENSE_EXPORTER_OPS_INSECURE: "true"` to the env section. For production, add the CA certificate to the container's trust store instead.
 
 ## Restrict access with a NetworkPolicy
 

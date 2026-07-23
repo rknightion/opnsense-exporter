@@ -8,7 +8,7 @@ image: assets/social-card.png
 
 # OPNsense Exporter
 
-**Comprehensive Prometheus metrics for OPNsense firewalls**
+**Prometheus and OpenTelemetry metrics for OPNsense firewalls**
 
 A Prometheus exporter that polls OPNsense REST APIs and exposes 808 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
 
@@ -100,4 +100,4 @@ Most OPNsense exporters scrape a few endpoints and stop at `/metrics`. This one 
 The source for all of it is on GitHub at [rknightion/opnsense-exporter](https://github.com/rknightion/opnsense-exporter) under Apache-2.0. Bug reports and questions go to [GitHub issues](https://github.com/rknightion/opnsense-exporter/issues) and [discussions](https://github.com/rknightion/opnsense-exporter/discussions); if the project is useful to you, [a star on the repository](https://github.com/rknightion/opnsense-exporter) helps other OPNsense operators find it.
 
 !!! info "Fork notice"
-    This began as a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and became a hard fork early on, as its changes quickly grew incompatible with upstream. Credit to the original authors for the foundation this builds on. It now evolves independently — see the [changelog](changelog.md) for release history.
+    This began as a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and became a hard fork early on, as its changes quickly grew incompatible with upstream. Credit to the original authors for the foundation this builds on. It now evolves independently; see the [changelog](changelog.md) for release history.

@@ -23,7 +23,7 @@ Get the OPNsense Exporter up and running in under five minutes.
 2. Navigate to **System > Access > Users**.
 3. Select the user you want to generate an API key for (or create a dedicated monitoring user).
 4. Scroll to **API keys** and click the **+** button to generate a new key pair.
-5. Save the downloaded `.txt` file -- it contains the key and secret.
+5. Save the downloaded `.txt` file: it contains the key and secret.
 
 !!! warning "Least privilege"
     Avoid using the `root` user for API keys. Create a dedicated user and assign only the [required permissions](security.md#opnsense-user-permissions) for the metrics you need.

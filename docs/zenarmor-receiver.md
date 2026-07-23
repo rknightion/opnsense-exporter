@@ -60,11 +60,10 @@ generic program filters, so it's `--logs.zenarmor.families` and `--logs.zenarmor
 above that decide what ships, not the syslog-side flags.
 
 Only one transport ingests at a time — `transport` picks exactly one receiver to
-register, so there is no dual-ship path to reason about and no risk of the same
-record arriving twice. The syslog copy carries `opnsense.source=zenarmor` in Loki
-identically to the Elasticsearch copy, so dashboards, alerts and the derived
-counters below are transport-agnostic; nothing downstream needs to know which one
-is configured.
+register, so there is no dual-ship path and no risk of the same record arriving
+twice. The syslog copy carries `opnsense.source=zenarmor` in Loki identically to
+the Elasticsearch copy, so dashboards, alerts and the derived counters below are
+transport-agnostic.
 
 On the Zenarmor side, point its syslog target at the exporter's syslog listener —
 whichever of `--logs.syslog.listen-udp`, `--logs.syslog.listen-tcp` or
@@ -189,9 +188,8 @@ both the exclusion and Loki's retention. But the record itself, and every
 high-cardinality field on it, is gone for good — and unlike a query-time filter, that
 decision cannot be revisited after the fact.
 
-So the honest summary: exclusion trades forensic detail for bytes, permanently. Prefer
-filtering at query time, or cutting families at the Zenarmor end, unless volume
-genuinely forces this.
+Exclusion trades forensic detail for bytes, permanently. Prefer filtering at query
+time, or cutting families at the Zenarmor end, unless volume forces this.
 
 ### Drops are counted, per rule
 
@@ -208,10 +206,9 @@ from startup, so a rule that has never matched reads `0` rather than vanishing.
 
 ### On the Grafana Cloud case specifically
 
-The motivating example is real: on one live box `camden`, the observability host, is
-**57k of 78k records (~73%)** — it spends its life talking to
-`otlp-gateway-prod-*.grafana.net` and `profiles-prod-*.grafana.net`, which dominate
-every top-N panel.
+On one live box `camden`, the observability host, is **57k of 78k records
+(~73%)** — it spends its life talking to `otlp-gateway-prod-*.grafana.net` and
+`profiles-prod-*.grafana.net`, which dominate every top-N panel.
 
 **There is deliberately no default rule for it, and filtering Grafana-side is the better
 first move.** `camden` is the most privileged host on that network, and "high-volume
@@ -257,9 +254,9 @@ own network namespace and cannot know the host address the firewall actually dia
 (the record says `10.0.0.5`; the container is `172.17.0.2`), so an address-based filter
 would silently never fire in the deployment nearly everyone runs.
 
-The one case this gets wrong, stated rather than hidden: if the **firewall itself**
-opens a connection to a real Elasticsearch on the same port number the receiver listens
-on, that record is dropped too. It requires the Zenarmor host specifically as the source
+The one case this gets wrong: if the **firewall itself** opens a connection to a
+real Elasticsearch on the same port number the receiver listens on, that record is
+dropped too. It requires the Zenarmor host specifically as the source
 — a LAN client talking to an Elasticsearch is unaffected — and
 `--logs.zenarmor.drop-self-traffic=false` turns the behaviour off entirely.
 

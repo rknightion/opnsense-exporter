@@ -96,7 +96,7 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 
 ### High-cardinality detail metrics
 
-These produce one time series per item and should be evaluated carefully before enabling:
+These produce one time series per item, so check the cardinality cost before enabling:
 
 | Detail option | Parent collector | Enable flag |
 |---------------|-----------------|-------------|

@@ -27,8 +27,7 @@ $user_shell = $is_admin && !empty($user['shell']) ? $user['shell'] : '/usr/sbin/
 
 Any account without the full `page-all` admin privilege is force-set to shell `/usr/sbin/nologin`
 and group `nobody`, regardless of what shell the GUI's user editor claims to offer. There is no
-separate "shell access" privilege distinct from full admin: OPNsense's privilege model does not
-model that tier. On top of that, the generated `sshd_config`
+separate "shell access" privilege distinct from full admin. On top of that, the generated `sshd_config`
 (`plugins.inc.d/openssh.inc:171`) hardcodes `AllowGroups wheel` unconditionally, so even a
 `nologin`-shelled account that somehow reached sshd would be refused at the group check.
 
@@ -60,7 +59,7 @@ Most of what an SSH channel would have chased is already covered by installing t
 | `cpu`, `meminfo`, `loadavg`, `filesystem`, `netdev`, `time`, `ntp` | Standard OS-level coverage; not the reason for this spike but worth enabling alongside the above. |
 
 node_exporter does **not** cover ZFS pool health (degraded/faulted vdevs) or CARP demotion state.
-Those two are the only genuinely API-absent signals the spike confirmed, and they need the recipe
+Those two are the only API-absent signals the spike confirmed, and they need the recipe
 below.
 
 ## Textfile-collector recipe: ZFS pool health + CARP demotion

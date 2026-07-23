@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Diagnosing common OPNsense Exporter problems — opnsense_up=0, missing metrics, permission errors, slow scrapes, and TLS failures
+description: Diagnosing common OPNsense Exporter problems - opnsense_up=0, missing metrics, permission errors, slow scrapes, and TLS failures
 tags:
   - troubleshooting
 ---

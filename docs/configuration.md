@@ -36,7 +36,7 @@ These settings control how the exporter connects to the OPNsense API.
 
 ### File-based secrets
 
-For secure credential management in containers and orchestrated environments, credentials can be read from files:
+In containers and orchestrated environments, credentials can be read from files:
 
 | Env Var | Description |
 |---------|-------------|
@@ -44,7 +44,7 @@ For secure credential management in containers and orchestrated environments, cr
 | `OPS_API_SECRET_FILE` | Path to a file containing the API secret (first line is read) |
 
 !!! note
-    These environment variables do **not** use the `OPNSENSE_EXPORTER_` prefix. They are checked first -- if a file-based secret is set and non-empty, it takes precedence over the flag/env var value.
+    These environment variables do **not** use the `OPNSENSE_EXPORTER_` prefix. They are checked first: if a file-based secret is set and non-empty, it takes precedence over the flag/env var value.
 
 ## Exporter settings
 
@@ -303,7 +303,7 @@ well as on `target_info`. That is the gateway's behaviour rather than the
 exporter's, and it cannot be switched off from this side; changing the list means
 [asking Grafana Support](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#metrics).
 
-It is worth knowing about if you run per-commit builds rather than release tags.
+That matters if you run per-commit builds rather than release tags.
 Each version is then a distinct series, so for a few minutes after a redeploy a
 rate-based aggregation sees the old build's series decaying alongside the new
 one's and over-reports. Aggregating the label away does not help — that sums both

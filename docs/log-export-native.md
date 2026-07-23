@@ -194,23 +194,23 @@ page states this as a hard rule and it applies symmetrically here.
 
 | Log type | Native syslog wins when… | Exporter log shipping wins when… |
 | --- | --- | --- |
-| Firewall (`filterlog`) | You need enterprise-grade volume with zero exporter memory/queue state, and raw fidelity (every line, no polling gaps) matters more than labels. | You want rule **labels** and OS interface names attached instead of raw rule-hash CSV (#229). |
+| Firewall (`filterlog`) | You need high volume with zero exporter memory/queue state, and raw fidelity (every line, no polling gaps) matters more than labels. | You want rule **labels** and OS interface names attached instead of raw rule-hash CSV (#229). |
 | IDS (Suricata) | You already run `syslog_eve` and want alerts flowing the moment Suricata writes them, with no exporter poll interval. | You want the exporter's structured EVE ingestion (#231) without standing up a syslog listener/demux stage. |
 | Audit (config changes) | — | The exporter parses the single prose audit line into structured fields (#230); native syslog ships it as one unparsed string. |
 | Gateway / CARP / captive portal / DHCP | You just want the raw log lines in Loki with no extra infrastructure beyond syslog-ng. | You want these correlated with the exporter's other structured sources through one poll loop (#230). |
 | Unbound per-query DNS | Not available — unbound has no per-query syslog output. | Only path: DuckDB/API-only enrichment (#233), with the sampling caveats documented there. |
 | CrowdSec alerts/decisions | Not available — CrowdSec has **no syslog path** at all. | Only path: the exporter's CrowdSec source (#232). |
 
-General rule of thumb: native syslog wins on **volume and zero exporter
+Rule of thumb: native syslog wins on **volume and zero exporter
 state**; exporter log shipping wins on **parsed/enriched records and a single
 pull-based agent** instead of standing up syslog listener infrastructure.
 Two sources (Unbound, CrowdSec) have no native path at all, so the exporter is
-not a choice there — it's the only option.
+the only option for them.
 
 ## Known gaps of the native path
 
 These are the reasons the exporter's log shipping sources (#229–#233) exist
-alongside native syslog rather than being redundant with it:
+alongside native syslog:
 
 - **`filterlog` is headerless CSV keyed by rule MD5**, not a label — no rule
   name, no OS-level interface name, just positional fields and a hash you have
