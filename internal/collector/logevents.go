@@ -20,9 +20,15 @@ import (
 // that lets both reach the same totals without one package importing the other.
 var LogEvents = newLogEventStore()
 
-// Label tuples. Each is the full, bounded label set for one derived metric family.
+// Label tuples. Each is the full label set for one derived metric family.
 // Deliberately no IP, port, SID, MAC, hostname, username or free-text rule
 // description — those would be unbounded and must stay as log-line metadata.
+//
+// The dimensions that remain are either closed vocabularies resolved in code
+// (action, result, status class, DNS rcode, IDS severity, EVE event type) or
+// deployment-scale free-form values a sender still controls: iface and ruleID here,
+// backend and server on haproxy, iface and server on dhcp, category on ids and
+// zenarmor. The second group is what LogEventStore's per-family key budget bounds.
 type (
 	fwKey    struct{ action, iface, ruleID, ruleName, scope string }
 	haKey    struct{ event, backend, server, state, statusClass string }
@@ -30,86 +36,136 @@ type (
 	dhcpKey  struct{ action, iface, server string }
 	auditKey struct{ event, result string }
 	idsKey   struct{ eventType, action, category, severity string }
-	// zenKey is Zenarmor's bounded tuple. Zenarmor is the highest-cardinality data
-	// this exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
-	// conn_uuid are deliberately absent and must stay absent.
+	// zenKey is Zenarmor's tuple, and Zenarmor is the highest-cardinality data this
+	// exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
+	// conn_uuid are deliberately absent and must stay absent. Of what is left,
+	// category and iface are the free-form pair the key budget exists for.
 	zenKey struct{ family, action, category, iface, rcode, severity, statusClass string }
 )
 
+// Family label values for the saturation metrics below. CODE-DEFINED constants, one
+// per counter family and spelled the same as that family's metric name — a label
+// value must never be a wire value, least of all on the metric whose job is to say
+// that wire values are being refused.
+const (
+	logFamilyFirewall = "firewall"
+	logFamilyHAProxy  = "haproxy"
+	logFamilySSHD     = "sshd"
+	logFamilyDHCP     = "dhcp"
+	logFamilyAudit    = "audit"
+	logFamilyIDS      = "ids"
+	logFamilyZenarmor = "zenarmor"
+)
+
+// defaultMaxLogEventKeys is the per-family key budget a store starts with, matching
+// the default of --logs.max-metric-keys. main overrides it via SetMaxKeys once flags
+// are parsed; this value only governs the window before that call, and exists so the
+// store is never unbounded by accident.
+const defaultMaxLogEventKeys = 5000
+
 // LogEventStore holds the monotonic per-family counters. Observe* run on the
 // receiver read goroutine; the collector reads under the same mutex at scrape time.
-// The maps are bounded by the ruleset/interface/backend inventory, so they do not
-// grow without limit. Totals reset to zero only on process restart, like any
-// process counter.
+// Totals reset to zero only on process restart, like any process counter.
+//
+// Each family is a cappedCounter with a per-family INSERT-TIME key budget
+// (--logs.max-metric-keys, 0 disables), because the label values are not ours: both
+// receivers are push-based, syslog over UDP is on by default with a spoofable source
+// address, and several dimensions are genuinely free-form on the wire (rule id,
+// interface, HAProxy backend/server, IDS category). An earlier version of this
+// comment claimed the maps were "bounded by the ruleset/interface/backend
+// inventory" — that described the traffic we expected, not anything the code
+// enforced, and nothing stopped a sender from growing these maps for the life of the
+// process. Saturation is visible and lossless: refused tuples fold into a per-family
+// overflow total emitted as opnsense_log_events_cardinality_capped_total, so the
+// live series plus the overflow still sum to the true observed count.
 type LogEventStore struct {
 	mu    sync.Mutex
-	fw    map[fwKey]float64
-	ha    map[haKey]float64
-	ssh   map[sshKey]float64
-	dhcp  map[dhcpKey]float64
-	audit map[auditKey]float64
-	ids   map[idsKey]float64
-	zen   map[zenKey]float64
+	fw    *cappedCounter[fwKey]
+	ha    *cappedCounter[haKey]
+	ssh   *cappedCounter[sshKey]
+	dhcp  *cappedCounter[dhcpKey]
+	audit *cappedCounter[auditKey]
+	ids   *cappedCounter[idsKey]
+	zen   *cappedCounter[zenKey]
 }
 
 func newLogEventStore() *LogEventStore {
 	return &LogEventStore{
-		fw:    map[fwKey]float64{},
-		ha:    map[haKey]float64{},
-		ssh:   map[sshKey]float64{},
-		dhcp:  map[dhcpKey]float64{},
-		audit: map[auditKey]float64{},
-		ids:   map[idsKey]float64{},
-		zen:   map[zenKey]float64{},
+		fw:    newCappedCounter[fwKey](defaultMaxLogEventKeys),
+		ha:    newCappedCounter[haKey](defaultMaxLogEventKeys),
+		ssh:   newCappedCounter[sshKey](defaultMaxLogEventKeys),
+		dhcp:  newCappedCounter[dhcpKey](defaultMaxLogEventKeys),
+		audit: newCappedCounter[auditKey](defaultMaxLogEventKeys),
+		ids:   newCappedCounter[idsKey](defaultMaxLogEventKeys),
+		zen:   newCappedCounter[zenKey](defaultMaxLogEventKeys),
 	}
+}
+
+// SetMaxKeys applies the per-family key budget from --logs.max-metric-keys; 0
+// disables the cap. main calls it once at startup, before the receivers start.
+//
+// The budget is PER FAMILY, not shared across them: one noisy program must not be
+// able to starve another family's legitimate tuples out of existence.
+//
+// Lowering it does not evict tuples already tracked — see cappedCounter.setMax.
+func (s *LogEventStore) SetMaxKeys(max int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fw.setMax(max)
+	s.ha.setMax(max)
+	s.ssh.setMax(max)
+	s.dhcp.setMax(max)
+	s.audit.setMax(max)
+	s.ids.setMax(max)
+	s.zen.setMax(max)
 }
 
 // ObserveFirewall implements logship.MetricSink.
 func (s *LogEventStore) ObserveFirewall(action, iface, ruleID, ruleName, scope string) {
 	s.mu.Lock()
-	s.fw[fwKey{action, iface, ruleID, ruleName, scope}]++
+	s.fw.inc(fwKey{action, iface, ruleID, ruleName, scope})
 	s.mu.Unlock()
 }
 
 // ObserveHAProxy implements logship.MetricSink.
 func (s *LogEventStore) ObserveHAProxy(event, backend, server, state, statusClass string) {
 	s.mu.Lock()
-	s.ha[haKey{event, backend, server, state, statusClass}]++
+	s.ha.inc(haKey{event, backend, server, state, statusClass})
 	s.mu.Unlock()
 }
 
 // ObserveSSHD implements logship.MetricSink.
 func (s *LogEventStore) ObserveSSHD(result, method, scope string) {
 	s.mu.Lock()
-	s.ssh[sshKey{result, method, scope}]++
+	s.ssh.inc(sshKey{result, method, scope})
 	s.mu.Unlock()
 }
 
 // ObserveDHCP implements logship.MetricSink.
 func (s *LogEventStore) ObserveDHCP(action, iface, server string) {
 	s.mu.Lock()
-	s.dhcp[dhcpKey{action, iface, server}]++
+	s.dhcp.inc(dhcpKey{action, iface, server})
 	s.mu.Unlock()
 }
 
 // ObserveAudit implements logship.MetricSink.
 func (s *LogEventStore) ObserveAudit(event, result string) {
 	s.mu.Lock()
-	s.audit[auditKey{event, result}]++
+	s.audit.inc(auditKey{event, result})
 	s.mu.Unlock()
 }
 
 // ObserveIDS implements logship.MetricSink.
 func (s *LogEventStore) ObserveIDS(eventType, action, category, severity string) {
 	s.mu.Lock()
-	s.ids[idsKey{eventType, action, category, severity}]++
+	s.ids.inc(idsKey{eventType, action, category, severity})
 	s.mu.Unlock()
 }
 
 // ObserveZenarmor implements logship.MetricSink.
 func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) {
 	s.mu.Lock()
-	s.zen[zenKey{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}]++
+	s.zen.inc(zenKey{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass})
 	s.mu.Unlock()
 }
 
@@ -126,6 +182,9 @@ type logEventsCollector struct {
 	audit    *prometheus.Desc
 	ids      *prometheus.Desc
 	zenarmor *prometheus.Desc
+
+	capped *prometheus.Desc
+	keys   *prometheus.Desc
 }
 
 func init() {
@@ -178,6 +237,24 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"ids, URIs and DNS queries are never labels; they stay as structured metadata on the record.",
 		[]string{"family", "action", "category", "interface", "rcode", "severity", "status_class"},
 	)
+
+	c.capped = buildPrometheusDesc(c.subsystem, "cardinality_capped_total",
+		"Log events counted into a family's overflow total instead of their own series, because the "+
+			"label tuple was new and the family already held --logs.max-metric-keys distinct tuples. "+
+			"Both receivers are push-based (and syslog over UDP has a spoofable source), so tuple "+
+			"values are sender-controlled and the budget is what stops one sender growing metric state "+
+			"for the life of the process. Nothing is lost: this plus the family's own series is the "+
+			"true event count. Non-zero and rising means the family is saturated and new tuples are no "+
+			"longer individually visible — raise the budget or find what is minting them.",
+		[]string{"family"},
+	)
+	c.keys = buildPrometheusDesc(c.subsystem, "cardinality_keys",
+		"Distinct label tuples currently tracked for each log_events family. Compare against "+
+			"--logs.max-metric-keys to see saturation coming before "+
+			"opnsense_log_events_cardinality_capped_total starts rising. Tuples are never evicted, so "+
+			"this only grows within a process lifetime.",
+		[]string{"family"},
+	)
 }
 
 func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -188,6 +265,34 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.audit
 	ch <- c.ids
 	ch <- c.zenarmor
+	ch <- c.capped
+	ch <- c.keys
+}
+
+// keyed is one family's series: a label tuple and its running total, copied out of
+// the store so the emit loop runs without the lock held.
+type keyed[K comparable] struct {
+	k K
+	v float64
+}
+
+// familySaturation is one family's cardinality state, emitted under the family label.
+type familySaturation struct {
+	family string
+	capped float64
+	keys   float64
+}
+
+// drainFamily copies one family's live series and its saturation state out of the
+// store. The CALLER holds the store mutex — cappedCounter is not internally locked,
+// and snapshot returns the live map, so the copy must happen before the unlock.
+func drainFamily[K comparable](family string, c *cappedCounter[K]) ([]keyed[K], familySaturation) {
+	m, overflow := c.snapshot()
+	out := make([]keyed[K], 0, len(m))
+	for k, v := range m {
+		out = append(out, keyed[K]{k, v})
+	}
+	return out, familySaturation{family: family, capped: overflow, keys: float64(len(m))}
 }
 
 // Update emits the current running totals as const counter metrics. It ignores the
@@ -195,65 +300,32 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 // The maps are snapshotted under lock and emitted after unlocking, so a slow metric
 // channel can never stall an Observe call on the receiver goroutine.
 func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
-	type fwPair struct {
-		k fwKey
-		v float64
-	}
-	type haPair struct {
-		k haKey
-		v float64
-	}
-	type sshPair struct {
-		k sshKey
-		v float64
-	}
-	type dhcpPair struct {
-		k dhcpKey
-		v float64
-	}
-	type auditPair struct {
-		k auditKey
-		v float64
-	}
-	type idsPair struct {
-		k idsKey
-		v float64
-	}
-	type zenPair struct {
-		k zenKey
-		v float64
-	}
+	var sat []familySaturation
 
 	c.store.mu.Lock()
-	fw := make([]fwPair, 0, len(c.store.fw))
-	for k, v := range c.store.fw {
-		fw = append(fw, fwPair{k, v})
-	}
-	ha := make([]haPair, 0, len(c.store.ha))
-	for k, v := range c.store.ha {
-		ha = append(ha, haPair{k, v})
-	}
-	ssh := make([]sshPair, 0, len(c.store.ssh))
-	for k, v := range c.store.ssh {
-		ssh = append(ssh, sshPair{k, v})
-	}
-	dhcp := make([]dhcpPair, 0, len(c.store.dhcp))
-	for k, v := range c.store.dhcp {
-		dhcp = append(dhcp, dhcpPair{k, v})
-	}
-	audit := make([]auditPair, 0, len(c.store.audit))
-	for k, v := range c.store.audit {
-		audit = append(audit, auditPair{k, v})
-	}
-	ids := make([]idsPair, 0, len(c.store.ids))
-	for k, v := range c.store.ids {
-		ids = append(ids, idsPair{k, v})
-	}
-	zen := make([]zenPair, 0, len(c.store.zen))
-	for k, v := range c.store.zen {
-		zen = append(zen, zenPair{k, v})
-	}
+	fw, s := drainFamily(logFamilyFirewall, c.store.fw)
+	sat = append(sat, s)
+	ha, s := drainFamily(logFamilyHAProxy, c.store.ha)
+	sat = append(sat, s)
+	ssh, s := drainFamily(logFamilySSHD, c.store.ssh)
+	sat = append(sat, s)
+	dhcp, s := drainFamily(logFamilyDHCP, c.store.dhcp)
+	sat = append(sat, s)
+	audit, s := drainFamily(logFamilyAudit, c.store.audit)
+	sat = append(sat, s)
+	ids, s := drainFamily(logFamilyIDS, c.store.ids)
+	sat = append(sat, s)
+	zen, s := drainFamily(logFamilyZenarmor, c.store.zen)
+	sat = append(sat, s)
 	c.store.mu.Unlock()
+
+	// Published for every family on every scrape, including the zeros: a saturation
+	// counter that only materialises once it is non-zero cannot be alerted on until
+	// after it has already mattered.
+	for _, f := range sat {
+		ch <- prometheus.MustNewConstMetric(c.capped, prometheus.CounterValue, f.capped, f.family, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.keys, prometheus.GaugeValue, f.keys, f.family, c.instance)
+	}
 
 	for _, p := range fw {
 		ch <- prometheus.MustNewConstMetric(c.firewall, prometheus.CounterValue, p.v,

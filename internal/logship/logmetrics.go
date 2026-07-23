@@ -11,10 +11,21 @@ package logship
 // avoid a cycle). The concrete implementation is *collector.LogEventStore, wired in
 // by main.go; the receiver only ever sees this interface.
 //
-// Every method takes a small, fixed, low-cardinality set of label values. An
-// implementation MUST treat these purely as counter labels: no IP, port, SID, MAC,
-// hostname, username or free-text rule description is ever passed here, and none may
-// be added — those stay as structured metadata on the shipped log line.
+// Every method takes a small, FIXED set of label values. An implementation MUST
+// treat these purely as counter labels: no IP, port, SID, MAC, hostname, username or
+// free-text rule description is ever passed here, and none may be added — those stay
+// as structured metadata on the shipped log line.
+//
+// Fixed in ARITY, though, not in cardinality. Some of these values are closed
+// vocabularies the deriver resolves in code (action, DHCP action, auth result, status
+// class, EVE event type and severity); the rest — rule id, interface, HAProxy
+// backend and server, IDS category — are free-form on the wire, and both receivers
+// are push-based, with syslog over UDP carrying a spoofable source address. So the
+// caller cannot promise a low-cardinality tuple, and an earlier version of this
+// comment promising one was describing expected traffic rather than anything
+// enforced. An implementation MUST bound its own key growth; collector.LogEventStore
+// does it with a per-family insert-time budget (--logs.max-metric-keys) that folds
+// refused tuples into a counted overflow rather than dropping them.
 //
 // Calls happen on the receiver read goroutine, so an implementation must be
 // non-blocking and safe for concurrent use with its own scrape-time reads.
@@ -33,21 +44,23 @@ type MetricSink interface {
 	// ObserveAudit counts one audit line (event = config_change/authorization/…).
 	ObserveAudit(event, result string)
 	// ObserveIDS counts one Suricata EVE line. sid and signature text are NEVER
-	// passed — only the bounded category/action/severity/event_type.
+	// passed. eventType, action and severity are closed vocabularies resolved by the
+	// deriver; category is the rule author's own text and is bounded only by the
+	// implementation's key budget.
 	ObserveIDS(eventType, action, category, severity string)
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation)
 }
 
-// ZenarmorObservation carries one Zenarmor record's bounded dimensions. Fields
-// that do not apply to a family stay empty.
+// ZenarmorObservation carries the seven dimensions of one Zenarmor record that may
+// become labels. Fields that do not apply to a family stay empty.
 //
 // A struct rather than positional arguments, unlike its siblings above: this
 // carries seven dimensions, and a seven-string call site is precisely where a
 // dimension goes missing unnoticed.
 //
 // Zenarmor is the highest-cardinality data this exporter touches — every field
-// here is a deliberate, bounded choice. app_name, any IP or port, hostname, MAC,
+// here is a deliberate inclusion, and the omissions are the point. app_name, any IP or port, hostname, MAC,
 // ja3, session_id, community_id, conn_uuid, signature, uri, query and server_name
 // are NOT represented and must never be added; they stay as structured metadata on
 // the shipped record, where they are still filterable and cannot become labels.
@@ -56,14 +69,18 @@ type ZenarmorObservation struct {
 	Family string
 	// Action is the normalised AttrAction: pass | block | "" (unknown).
 	Action string
-	// Category is the family's bounded classification: app_category (flow),
-	// domain_category (dns, tls) or alert_category (ids).
+	// Category is the family's classification: app_category (flow),
+	// domain_category (dns, tls) or alert_category (ids). Zenarmor's own taxonomies
+	// are closed sets, but alert_category is named by whoever wrote the rule, so
+	// this dimension is free-form and is bounded only by the sink's key budget.
 	Category string
-	// Interface is the friendly interface name.
+	// Interface is the friendly interface name, falling back to the raw device.
+	// Deployment-scale, not code-defined.
 	Interface string
-	// RCode is the DNS response code. dns only.
+	// RCode is the DNS response code, clamped to the 4-bit RCODE range plus
+	// Zenarmor's -1 "no response yet" sentinel. dns only.
 	RCode string
-	// Severity is the alert severity. ids only.
+	// Severity is the alert severity, clamped to the 1-4 scale. ids only.
 	Severity string
 	// StatusClass buckets the HTTP status: 2xx | 3xx | 4xx | 5xx. web only.
 	StatusClass string

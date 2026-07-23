@@ -90,6 +90,62 @@ func parseSuricata(env Envelope, snap *enrich.Snapshot, _ func(table string)) (l
 	return rec, true
 }
 
+// eveOther is the single bucket every value outside the closed vocabularies below
+// folds into. One bucket, not one label value per invented input: the receiver is
+// push-based over a spoofable UDP source, so a metric label must never be a
+// pass-through of what a sender chose to put on the wire.
+const eveOther = "other"
+
+// eveEventTypes is the allowlist of EVE event types that may become a metric label,
+// in the same shape as dhcp.go's iscActions/keaActions: an explicit map, so a type
+// we have not seen on a real box cannot mint a series by arriving.
+//
+// OPNsense's syslog_eve output is alerts only — "alert" is the only value observed
+// in practice. The rest are listed because they are EVE's own documented types and
+// are what a differently-configured Suricata would send; anything at all outside
+// this set is a sender inventing values and folds into eveOther.
+var eveEventTypes = map[string]string{
+	"alert":   "alert",
+	"anomaly": "anomaly",
+	"drop":    "drop",
+	"stats":   "stats",
+}
+
+// eveSeverities is the same treatment for Suricata's numeric alert priority. The
+// real range is 1-4 (1 = most severe); the field is a JSON number, so without this
+// a sender could push an unbounded integer straight into a label value.
+var eveSeverities = map[string]string{
+	"1": "1",
+	"2": "2",
+	"3": "3",
+	"4": "4",
+}
+
+// mapEveEventType folds an EVE event type to the label vocabulary. Absent stays
+// absent — an empty label means "the line carried none", which must stay distinct
+// from "the line carried something we do not recognise".
+func mapEveEventType(v string) string {
+	if v == "" {
+		return ""
+	}
+	if mapped, ok := eveEventTypes[v]; ok {
+		return mapped
+	}
+	return eveOther
+}
+
+// mapEveSeverity folds an EVE alert severity to the label vocabulary, on the same
+// absent-vs-unknown rule as mapEveEventType.
+func mapEveSeverity(v string) string {
+	if v == "" {
+		return ""
+	}
+	if mapped, ok := eveSeverities[v]; ok {
+		return mapped
+	}
+	return eveOther
+}
+
 // eveRecord is the subset of Suricata's EVE schema that survives the syslog copy.
 type eveRecord struct {
 	EventType string    `json:"event_type"`

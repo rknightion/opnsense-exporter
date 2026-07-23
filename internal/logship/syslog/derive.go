@@ -81,13 +81,23 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 
 	switch fam {
 	case familyFirewall:
-		action := attrs["action"]
-		if action == "" {
+		// The GATE is the raw wire verb — its presence is what proves the line parsed
+		// structurally — but the LABEL is the normalised disposition filterlog.go already
+		// computed under AttrAction. Reading the raw verb into the label (which is what
+		// this did until #311/#326) put pf's whole open vocabulary on a metric: pass,
+		// block and reject where two values exist, plus whatever a NAT/rdr rule emits.
+		//
+		// MapFilterlogAction returns "" for a verb that is neither a pass nor a deny, so
+		// AttrAction is legitimately absent on such a line. It is still COUNTED, under an
+		// empty action: refusing it would under-report the counter and, via sampleKeep,
+		// exempt the line from sampling for no reason. An empty action means "no stated
+		// disposition", which is honest; guessing "block" would not be.
+		if attrs["action"] == "" {
 			return false
 		}
 		iface := firstNonEmpty(attrs["interface.name"], attrs["interface"])
 		ruleID := firstNonEmpty(attrs["rule.id"], attrs["rule.ref"])
-		sink.ObserveFirewall(action, iface, ruleID, attrs["rule.description"], attrs["src.scope"])
+		sink.ObserveFirewall(attrs[logship.AttrAction], iface, ruleID, attrs["rule.description"], attrs["src.scope"])
 		return true
 
 	case familyHAProxy:
@@ -124,11 +134,21 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		return true
 
 	case familyIDS:
-		eventType := attrs["event_type"]
-		if eventType == "" {
+		// Same split as familyFirewall: gate on the raw event_type, label with the
+		// bounded forms. event_type and severity fold through suricata.go's closed
+		// vocabularies, and the action label is the normalised AttrAction rather than
+		// Suricata's own "blocked"/"allowed" wire words — alert_category is the one
+		// dimension left free-form (rule authors name it), which is what the
+		// log_events key budget bounds.
+		if attrs["event_type"] == "" {
 			return false
 		}
-		sink.ObserveIDS(eventType, attrs["alert_action"], attrs["alert_category"], attrs["alert_severity"])
+		sink.ObserveIDS(
+			mapEveEventType(attrs["event_type"]),
+			attrs[logship.AttrAction],
+			attrs["alert_category"],
+			mapEveSeverity(attrs["alert_severity"]),
+		)
 		return true
 	}
 

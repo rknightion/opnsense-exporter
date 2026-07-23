@@ -773,6 +773,15 @@ func main() {
 		logger.Error("invalid logs configuration", "err", err)
 		os.Exit(1)
 	}
+	// Bound the derived log_events label tuples before any receiver can start feeding
+	// them (#311/#326/#327). Both receivers are push-based and syslog over UDP has a
+	// spoofable source, so these values are sender-controlled: without a budget a
+	// sender grows process-lifetime metric state without limit. Applied here rather
+	// than at store construction because the store is a package-level singleton that
+	// exists before flags are parsed.
+	if logsEnabled {
+		collector.LogEvents.SetMaxKeys(logsCfg.MaxMetricKeys)
+	}
 	var stopLogs func()
 	// logThroughput feeds the console's emitted-throughput chart. It stays nil unless
 	// a log pipeline actually starts: this is a Prometheus PULL exporter, so with log

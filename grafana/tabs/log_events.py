@@ -103,6 +103,31 @@ def build(b: Builder):
              "(shipped in full — IDS is never sampled) for per-alert detail.",
     )
 
+    cardinality_keys = b.ts(
+        "Derived Metric Label Tuples in Use",
+        [(f'sum by (family) ({sel("opnsense_log_events_cardinality_keys")})',
+          "{{family}}")],
+        unit="short",
+        desc="opnsense_log_events_cardinality_keys: distinct label tuples currently retained per "
+             "derived family, against the --logs.max-metric-keys budget. Both receivers are "
+             "push-based and syslog over UDP has a spoofable source, so these values are "
+             "sender-controlled; the budget is what stops a sender growing this without limit. "
+             "A family sitting flat AT the budget is saturated — read it with the capped counter.",
+    )
+
+    cardinality_capped = b.ts(
+        "Derived Metric Tuples Folded Into Overflow (rate)",
+        [(f'sum by (family) (rate({sel("opnsense_log_events_cardinality_capped_total")}[{RATE}]))',
+          "{{family}}")],
+        unit="short",
+        desc="opnsense_log_events_cardinality_capped_total: observations per second whose label "
+             "tuple was refused by the per-family key budget and folded into the overflow total. "
+             "Nothing is lost — the counted series plus this overflow equal the true observed "
+             "count — but the detail is gone. Sustained non-zero means either a genuinely larger "
+             "ruleset/backend inventory than the budget allows (raise --logs.max-metric-keys) or "
+             "a sender minting novel tuples (investigate the source).",
+    )
+
     b.tab("Log-derived Events", [
         b.row("Firewall", [fw_action, fw_rule], present="has_log_events_firewall"),
         b.row("HAProxy", [haproxy, haproxy_backend], present="has_log_events_haproxy"),
@@ -110,4 +135,5 @@ def build(b: Builder):
         b.row("DHCP", [dhcp], present="has_log_events_dhcp"),
         b.row("Config / Audit", [audit], present="has_log_events_audit"),
         b.row("IDS / IPS", [ids], present="has_log_events_ids"),
+        b.row("Cardinality Budget", [cardinality_keys, cardinality_capped]),
     ], present="has_log_events")

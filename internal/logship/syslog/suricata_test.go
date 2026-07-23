@@ -88,3 +88,46 @@ func TestParseSuricata_SetsAttrAction(t *testing.T) {
 		t.Errorf("opnsense.action = %q, want %q", got, logship.ActionPass)
 	}
 }
+
+// eventType and severity reach a metric LABEL, and both are raw JSON values from a
+// push sender whose source address is spoofable — so both are folded to closed
+// vocabularies before they become one. The record keeps the raw value either way;
+// only the label is constrained.
+func TestMapEveEventType(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"alert", "alert"},
+		{"anomaly", "anomaly"},
+		{"", ""},
+		{"flow", eveOther},
+		{"a-value-a-sender-invented", eveOther},
+		{"ALERT", eveOther}, // case-sensitive: EVE emits lowercase
+	}
+	for _, tt := range tests {
+		if got := mapEveEventType(tt.in); got != tt.want {
+			t.Errorf("mapEveEventType(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestMapEveSeverity(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"1", "1"},
+		{"2", "2"},
+		{"3", "3"},
+		{"4", "4"},
+		{"", ""},
+		{"0", eveOther},
+		{"5", eveOther},
+		{"99999", eveOther},
+		{"not-a-number", eveOther},
+	}
+	for _, tt := range tests {
+		if got := mapEveSeverity(tt.in); got != tt.want {
+			t.Errorf("mapEveSeverity(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

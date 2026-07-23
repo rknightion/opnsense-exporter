@@ -100,6 +100,7 @@ func TestObserveDerived_Firewall(t *testing.T) {
 			name: "happy path with resolved interface and rule id",
 			attrs: map[string]string{
 				"action":           "block",
+				logship.AttrAction: logship.ActionBlock,
 				"interface.name":   "LAN",
 				"interface":        "igb0",
 				"rule.id":          "abc123",
@@ -113,12 +114,39 @@ func TestObserveDerived_Firewall(t *testing.T) {
 		{
 			name: "falls back to raw interface and rule ref when unresolved",
 			attrs: map[string]string{
-				"action":    "pass",
-				"interface": "igb0",
-				"rule.ref":  "rule #16.1",
+				"action":           "pass",
+				logship.AttrAction: logship.ActionPass,
+				"interface":        "igb0",
+				"rule.ref":         "rule #16.1",
 			},
 			wantCounted: true,
 			wantArgs:    []string{"pass", "igb0", "rule #16.1", "", ""},
+		},
+		// The label carries the NORMALISED disposition, not the raw wire verb: pf's
+		// "reject" is a block, and a label whose value depends on which verb the rule
+		// happened to use is not aggregatable.
+		{
+			name: "reject is counted under the normalised block",
+			attrs: map[string]string{
+				"action":           "reject",
+				logship.AttrAction: logship.ActionBlock,
+				"interface":        "igb0",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"block", "igb0", "", "", ""},
+		},
+		// A NAT/rdr verb maps to no disposition at all, so filterlog leaves AttrAction
+		// unset. The line still parsed, so it is still COUNTED -- under an empty action
+		// rather than a guessed one. Dropping it here would under-report the counter and
+		// (via sampleKeep) exempt the line from sampling for no reason.
+		{
+			name: "unrecognised verb is counted with an empty action",
+			attrs: map[string]string{
+				"action":    "rdr",
+				"interface": "igb0",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"", "igb0", "", "", ""},
 		},
 		{
 			name:        "missing action is not counted",
@@ -369,13 +397,62 @@ func TestObserveDerived_IDS(t *testing.T) {
 		{
 			name: "happy path",
 			attrs: map[string]string{
-				"event_type":     "alert",
-				"alert_action":   "blocked",
-				"alert_category": "trojan",
-				"alert_severity": "1",
+				"event_type":       "alert",
+				"alert_action":     "blocked",
+				logship.AttrAction: logship.ActionBlock,
+				"alert_category":   "trojan",
+				"alert_severity":   "1",
 			},
 			wantCounted: true,
-			wantArgs:    []string{"alert", "blocked", "trojan", "1"},
+			// action is the normalised "block", not Suricata's wire word "blocked":
+			// the same query must reach a filterlog block and a Suricata block.
+			wantArgs: []string{"alert", "block", "trojan", "1"},
+		},
+		{
+			name: "unrecognised alert action counts with an empty action",
+			attrs: map[string]string{
+				"event_type":     "alert",
+				"alert_action":   "dropped",
+				"alert_category": "trojan",
+				"alert_severity": "2",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"alert", "", "trojan", "2"},
+		},
+		// event_type is a raw JSON value from a push sender. OPNsense's syslog_eve path
+		// only ever emits "alert", so anything else folds into one bucket instead of
+		// minting a label value per invented type.
+		{
+			name: "unknown event_type folds into other",
+			attrs: map[string]string{
+				"event_type":       "wat-injected",
+				logship.AttrAction: logship.ActionPass,
+				"alert_category":   "trojan",
+				"alert_severity":   "3",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"other", "pass", "trojan", "3"},
+		},
+		// Severity is Suricata's numeric priority. 1-4 is the real range; anything
+		// else is a sender inventing values and folds into one bucket.
+		{
+			name: "out-of-range severity folds into other",
+			attrs: map[string]string{
+				"event_type":     "alert",
+				"alert_category": "trojan",
+				"alert_severity": "99999",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"alert", "", "trojan", "other"},
+		},
+		{
+			name: "absent severity stays empty",
+			attrs: map[string]string{
+				"event_type":     "alert",
+				"alert_category": "trojan",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"alert", "", "trojan", ""},
 		},
 		{
 			name:        "missing event_type is not counted",
