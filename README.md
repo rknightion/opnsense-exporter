@@ -1,4 +1,4 @@
-# OPNsense Exporter: Prometheus and OpenTelemetry Monitoring for OPNsense Firewalls
+# OPNsense Exporter: Prometheus and OpenTelemetry monitoring for OPNsense firewalls
 
 [![Documentation](https://img.shields.io/badge/docs-m7kni.io-2563eb)](https://m7kni.io/opnsense-exporter/)
 [![Release](https://img.shields.io/github/v/release/rknightion/opnsense-exporter)](https://github.com/rknightion/opnsense-exporter/releases)
@@ -7,7 +7,7 @@
 ![Go version](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense-exporter/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense-exporter)
 
-**A complete observability agent for [OPNsense](https://opnsense.org/) firewalls.** It exposes
+**An observability agent for [OPNsense](https://opnsense.org/) firewalls.** It exposes
 Prometheus metrics, pushes native OpenTelemetry metrics and logs over OTLP, receives and
 enriches syslog, and turns NetFlow and Zenarmor flow records into bounded traffic-volume
 metrics. One binary, one API user, no agent on the firewall.
@@ -17,17 +17,17 @@ metrics. One binary, one API user, no agent on the firewall.
 ## What this does that other OPNsense exporters don't
 
 Most OPNsense exporters scrape a handful of endpoints and stop at `/metrics`. This one covers
-all four telemetry paths off the firewall:
+all four telemetry paths off the firewall, plus a local console:
 
 | Capability | What you get | Docs |
 |---|---|---|
-| **Native OpenTelemetry** | Push metrics **and** logs over OTLP to any collector or Grafana Cloud, with no Prometheus scrape at all. Not a sidecar or a translation layer. | [OTLP export](https://m7kni.io/opnsense-exporter/configuration/) |
+| **Native OpenTelemetry** | Push metrics **and** logs over OTLP to any collector or Grafana Cloud, with no Prometheus scrape involved. Not a sidecar or a translation layer. | [OTLP export](https://m7kni.io/opnsense-exporter/configuration/) |
 | **Syslog receiver** | OPNsense pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive these lines; it cannot understand them. | [Syslog receiver](https://m7kni.io/opnsense-exporter/syslog-receiver/) |
 | **Zenarmor receiver** | Per-connection, DNS, TLS/SNI, HTTP and threat-alert records pulled straight out of Zenarmor by posing as its Elasticsearch streaming target. This is the only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated. | [Zenarmor receiver](https://m7kni.io/opnsense-exporter/zenarmor-receiver/) |
-| **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so "how much traffic, which interface, which direction, which application category" is answerable from Prometheus for years instead of by scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense-exporter/flow/) |
+| **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so you can answer "how much traffic, which interface, which direction, which application category" from Prometheus for years, instead of scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense-exporter/flow/) |
 | **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense-exporter/architecture/) |
 
-Underneath all of that: 808 metrics across 62 collectors covering firewall and PF statistics,
+Underneath that: 808 metrics across 62 collectors covering firewall and PF statistics,
 interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq, ISC), Unbound DNS,
 certificates and ACME, hardware temperatures, SMART disk health, system resources and more.
 Collection is decoupled from scraping: each collector polls on its own volatility tier and
@@ -112,13 +112,13 @@ collector can be switched off individually (`--exporter.disable-<name>`); a few 
 high-cardinality collectors are opt-in (`--exporter.enable-<name>`). Grafana Cloud Pyroscope
 continuous profiling is also available.
 
-The complete generated flag and collector reference lives in the
+The generated flag and collector reference lives in the
 [configuration docs](https://m7kni.io/opnsense-exporter/configuration/) and the
 [collector reference](https://m7kni.io/opnsense-exporter/collectors/reference/).
 
 ## Grafana dashboard
 
-> **Minimum Grafana version: 13+** — the dashboard uses the v2 dynamic schema
+> **Minimum Grafana version: 13+** - the dashboard uses the v2 dynamic schema
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
 A single dynamic dashboard covers all 808 metrics across 41 tabs, auto-hiding tabs and rows for
@@ -180,10 +180,9 @@ silent when the plugin is absent rather than erroring. See
 ## Fork notice
 
 This project began as a fork of
-[AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and became a
-hard fork early on, as its changes quickly grew incompatible with upstream. Many thanks to the
-AthennaMind authors for the original exporter this project is built on. It now evolves
-independently. See [CHANGELOG.md](./CHANGELOG.md) for release history.
+[AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and hard-forked
+early, once the changes grew incompatible with upstream. Thanks to the AthennaMind authors for the
+original exporter this one is built on. See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ## Contributing
 
