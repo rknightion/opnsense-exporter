@@ -14,6 +14,10 @@ import (
 	"github.com/grafana/pyroscope-go"
 )
 
+// oneMiB matches maxUploadResponseBytes; spelled out locally so the test asserts
+// against a literal, not a tautological reference to the constant it's checking.
+const oneMiB = 1 << 20
+
 // heapSink keeps a live allocation so the heap delta profile has data to flush.
 var heapSink [][]byte
 
@@ -145,5 +149,89 @@ func TestLoggerAdapter_RoutesLevels(t *testing.T) {
 		if !bytes.Contains([]byte(out), []byte(want)) {
 			t.Errorf("expected log output to contain %q, got:\n%s", want, out)
 		}
+	}
+}
+
+// TestLimitedBodyHTTPClient_CapsResponseBody reproduces #309: a backend that returns
+// a far-oversized response body must not have all of it read into memory by callers
+// of limitedBodyHTTPClient.Do — the returned body must stop yielding bytes at
+// maxUploadResponseBytes, well short of what the server actually wrote.
+func TestLimitedBodyHTTPClient_CapsResponseBody(t *testing.T) {
+	const oversized = 10 * oneMiB // far more than the cap
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bytes.Repeat([]byte("a"), oversized))
+	}))
+	defer srv.Close()
+
+	client := newLimitedBodyHTTPClient(5 * time.Second)
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil) //nolint:noctx
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		t.Errorf("Close: %v", closeErr)
+	}
+
+	if len(got) != maxUploadResponseBytes {
+		t.Fatalf("expected exactly the %d-byte cap, got %d bytes", maxUploadResponseBytes, len(got))
+	}
+	if maxUploadResponseBytes != oneMiB {
+		t.Fatalf("sanity check: maxUploadResponseBytes = %d, expected %d (1 MiB)", maxUploadResponseBytes, oneMiB)
+	}
+}
+
+// TestStop_BoundedByTimeoutOnSlowServer reproduces #310: previously Stop() raced
+// Flush(true) against stopFlushTimeout but then called profiler.Stop() unconditionally
+// afterward — including on the timeout branch — and the vendored Profiler.Stop() does
+// an uncancellable wg.Wait() on any goroutine already blocked inside an HTTP
+// round-trip. So the real bound on Stop() was the HTTP client's timeout (tens of
+// seconds), not the advertised stopFlushTimeout. With Flush+Stop moved into the same
+// abandonable goroutine, Stop() must return close to stopFlushTimeout even against a
+// server that never responds.
+func TestStop_BoundedByTimeoutOnSlowServer(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block // never respond until the test releases it during cleanup
+	}))
+	defer srv.Close()
+	defer close(block)
+
+	orig := stopFlushTimeout
+	stopFlushTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { stopFlushTimeout = orig })
+
+	profiler, err := pyroscope.Start(pyroscope.Config{
+		ApplicationName: "opnsense-exporter.test",
+		ServerAddress:   srv.URL,
+		UploadRate:      time.Hour, // no periodic upload within the test window
+		ProfileTypes:    profileTypes(false),
+		Logger:          nil,
+	})
+	if err != nil {
+		t.Fatalf("pyroscope.Start: %v", err)
+	}
+
+	start := time.Now()
+	Stop(profiler, discardLogger())
+	elapsed := time.Since(start)
+
+	// Generous epsilon: this only needs to prove Stop() did NOT wait for the ~30s
+	// HTTP client timeout or block indefinitely, not that it hit stopFlushTimeout
+	// to the millisecond.
+	const epsilon = 2 * time.Second
+	if elapsed > stopFlushTimeout+epsilon {
+		t.Fatalf("Stop took %s, expected roughly bounded by stopFlushTimeout=%s (+%s epsilon)",
+			elapsed, stopFlushTimeout, epsilon)
 	}
 }
