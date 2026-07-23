@@ -58,12 +58,47 @@ const (
 	// see readBody. The two are not the same number for a gzip body, and only the wire
 	// limit says nothing about how far a zip bomb expands.
 	maxBodyBytes = 64 << 20
+
+	// maxBulkItems caps how many items one _bulk request may produce. handleBulk builds
+	// a fully-populated, three-level response map per parsed action line — several
+	// hundred bytes of heap out of a 14-byte {"delete":{}} — so a maximally compact
+	// body amplifies roughly 100x on the way to the response envelope, and an
+	// uncapped 64 MiB request can drive a multi-GB heap (#325). Live batches run a few
+	// hundred documents, so this is >100x anything real while bounding the envelope to
+	// tens of MB. A hard cap is deliberately preferred over streaming the response:
+	// simpler, and a constant an auditor can multiply out.
+	//
+	// It is enforced against the NDJSON LINE count, taken ONCE before any line is
+	// processed. Every item consumes at least one line, so lines >= items and the line
+	// count is a sound (conservative) ceiling; checking it up front is what keeps an
+	// over-cap request from having documents handed to onBulk for a request we then
+	// answer 400.
+	maxBulkItems = 100_000
+
+	// maxIndices caps the index registry. A PUT inserts a WIRE-CHOSEN name into a map
+	// held for the process lifetime, so without a ceiling a peer walking distinct paths
+	// grows it without bound (#316) — the same reason unhandledLogMaxKeys exists a few
+	// lines below.
+	//
+	// Real traffic cannot reach this: Zenarmor streams six reporting families, each as
+	// a dated index plus its _write alias, and a DELETE frees its slot again (see
+	// dropIndex). 512 therefore covers months of continuous uptime even if every daily
+	// rollover creates fresh names, and the entries are short strings — tens of KB at
+	// the ceiling. Should a very long-lived process ever reach it, ingest itself is
+	// unaffected: handleBulk never consults the registry, which only backs the exists
+	// probe.
+	maxIndices = 512
 )
 
 // errBodyTooLarge is returned by readBody when the DECOMPRESSED stream would exceed
 // maxBodyBytes. It joins the same 400 + reject("body") path as any other unreadable
 // body — a distinct label would only split a signal the operator already reads as one.
 var errBodyTooLarge = errors.New("zenarmor: decompressed body exceeds limit")
+
+// errTooManyItems is returned when a _bulk body carries more lines than maxBulkItems.
+// It rides the same 400 + reject("body") path as errBodyTooLarge, for the same
+// reason: to the operator both are "a body this receiver refused to buffer".
+var errTooManyItems = errors.New("zenarmor: bulk request exceeds item limit")
 
 // Config is the receiver's runtime configuration. options.ZenarmorConfig is
 // converted into it, so that this package never imports options for its own config
@@ -82,14 +117,27 @@ type Config struct {
 	Excludes []ExcludeRule
 	// Enrich turns the per-record snapshot lookups on.
 	Enrich bool
-	// AuthUser and AuthPassword, when set, require HTTP basic auth.
+	// AuthUser and AuthPassword, when set, require HTTP basic auth. BOTH must be set:
+	// a username with an empty password is a misconfiguration, not blank-password auth,
+	// and authOK refuses every request rather than admitting anyone who guesses the
+	// username (#314).
 	AuthUser     string
 	AuthPassword string
+	// MaxConcurrentRequests bounds simultaneous _bulk handlers. maxBodyBytes caps ONE
+	// request, so without this N concurrent requests each buffer that full allowance
+	// (#315). Zero disables the limit.
+	MaxConcurrentRequests int
 	// TLSConfig, when non-nil, serves HTTPS instead of HTTP.
 	TLSConfig *tls.Config
 	// DebugCapture opts this receiver into the shared debug-capture sink (#330). The
 	// sink itself arrives via Deps; this bool is what gates whether it is used.
 	DebugCapture bool
+	// Warnings are startup advisories resolved by options, which has no logger of its
+	// own. Today that is the open-ingest notice (#317): an enabled receiver with
+	// neither a peer allowlist nor credentials accepts records from anything that can
+	// reach the port. That remains ALLOWED — it is the documented shape for a trusted
+	// management network — but it must not be silent, so the factory logs these once.
+	Warnings []string
 }
 
 // unhandledLogInterval throttles the unhandled-endpoint log per method+path. It is
@@ -117,6 +165,10 @@ type server struct {
 	cap *capture.Capturer
 	// unhandledLog throttles the per-route log below, keyed by method+path.
 	unhandledLog *logship.LogLimiter
+	// sem is the buffered-channel semaphore bounding concurrent _bulk handlers, or nil
+	// when the limit is disabled. Same idiom as the syslog listener's connection cap,
+	// and for the same reason: this is an ingress a peer can drive as hard as it likes.
+	sem chan struct{}
 
 	mu      sync.RWMutex
 	indices map[string]bool
@@ -137,11 +189,15 @@ func newServer(cfg Config, onBulk func(index string, doc []byte, peer netip.Addr
 	if log == nil {
 		log = slog.Default()
 	}
-	return &server{
+	s := &server{
 		cfg: cfg, onBulk: onBulk, m: m, log: log,
 		unhandledLog: logship.NewLogLimiter(unhandledLogInterval, unhandledLogMaxKeys),
 		indices:      make(map[string]bool),
 	}
+	if cfg.MaxConcurrentRequests > 0 {
+		s.sem = make(chan struct{}, cfg.MaxConcurrentRequests)
+	}
+	return s
 }
 
 // remotePeer resolves the request's sender address, unmapped so a v4-mapped v6 peer
@@ -283,7 +339,15 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request, path string
 		}})
 
 	case http.MethodPut:
-		s.addIndex(idx)
+		if !s.addIndex(idx) {
+			// REFUSED, never accepted-and-dropped: a 200 here would promise an index the
+			// exists probe would then 404, which is a worse failure than an honest error.
+			s.m.reject("index_limit")
+			esHeaders(w)
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":{"type":"circuit_breaking_exception","reason":"index registry at capacity"},"status":429}`))
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true, "shards_acknowledged": true, "index": idx,
 		})
@@ -384,10 +448,17 @@ func (s *server) hasIndex(idx string) bool {
 	return s.indices[idx]
 }
 
-func (s *server) addIndex(idx string) {
+// addIndex registers idx, reporting false when the registry is at maxIndices and idx
+// is not already in it. Re-registering a name already held always succeeds: it cannot
+// grow the map, so a legitimate family keeps working even at the ceiling.
+func (s *server) addIndex(idx string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.indices[idx] && len(s.indices) >= maxIndices {
+		return false
+	}
 	s.indices[idx] = true
+	return true
 }
 
 func (s *server) dropIndex(idx string) {
@@ -416,6 +487,16 @@ func (s *server) peerAllowed(r *http.Request) bool {
 func (s *server) authOK(r *http.Request) bool {
 	if s.cfg.AuthUser == "" && s.cfg.AuthPassword == "" {
 		return true
+	}
+	// Exactly one half configured is a misconfiguration, and the constant-time compare
+	// below would ADMIT it: a client sending the username and an empty password matches
+	// an empty configured password byte for byte, so the receiver reads as protected
+	// while accepting anyone who knows a username (#314). The options layer refuses this
+	// config at startup; this is the runtime half of the same guard, so a server
+	// constructed by any other path (a test, a future caller) refuses rather than
+	// admits.
+	if s.cfg.AuthUser == "" || s.cfg.AuthPassword == "" {
+		return false
 	}
 	u, p, ok := r.BasicAuth()
 	if !ok {
@@ -461,11 +542,51 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	return b, nil
 }
 
+// acquireSlot takes one of the receiver's concurrent-request slots, returning the
+// release func and true on success. A nil sem (MaxConcurrentRequests=0) is unlimited.
+//
+// Non-blocking on purpose, mirroring the syslog listener's connection cap: queueing
+// the request would keep the connection — and its body — alive, which is the memory
+// this exists to refuse.
+func (s *server) acquireSlot() (release func(), ok bool) {
+	if s.sem == nil {
+		return func() {}, true
+	}
+	select {
+	case s.sem <- struct{}{}:
+		return func() { <-s.sem }, true
+	default:
+		return nil, false
+	}
+}
+
 // handleBulk parses the NDJSON action/document pairs and returns the response
 // envelope the client needs to consider the write a success.
 func (s *server) handleBulk(w http.ResponseWriter, r *http.Request, path string) {
+	// BEFORE readBody, deliberately: maxBodyBytes is a per-request allowance, so the
+	// only way to bound aggregate in-flight memory is to refuse the request before that
+	// allowance is ever allocated (#315). The 503 tells the client to come back — it is
+	// the honest answer to "we are at capacity", and it never claims a write we did not
+	// take.
+	release, ok := s.acquireSlot()
+	if !ok {
+		s.m.reject("overloaded")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error": map[string]any{
+				"type":   "circuit_breaking_exception",
+				"reason": "receiver at its concurrent-request limit",
+			},
+			"status": http.StatusServiceUnavailable,
+		})
+		return
+	}
+	defer release()
+
 	start := time.Now()
 	b, err := readBody(w, r)
+	if err == nil && bytes.Count(b, []byte{'\n'})+1 > maxBulkItems {
+		err = errTooManyItems
+	}
 	if err != nil {
 		// Answer honestly rather than claim success: a 200 with errors:false would make
 		// the client drop a batch it never actually delivered.

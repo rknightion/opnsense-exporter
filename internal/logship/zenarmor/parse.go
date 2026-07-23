@@ -40,6 +40,59 @@ const (
 	attrAlertSeverity  = "alert_severity"
 )
 
+// zenOther is the single bucket that out-of-range values of the two SMALL ENUMS
+// below fold into.
+//
+// Both rcode and alert_severity become metric label values (derive.go reads them
+// straight onto ZenarmorObservation), and both arrive from a push receiver: the
+// value is whatever the sender put on the wire. Each has a real, tiny domain, so
+// anything outside it is not data — it is a sender minting label values. One shared
+// bucket keeps that at exactly one extra series per dimension instead of one per
+// invented value.
+//
+// The RECORD keeps its fidelity regardless: rec.Body is the document verbatim, so
+// the true value is never lost, only kept out of the label.
+const zenOther = "other"
+
+// clampRCode folds a DNS response code to the label vocabulary. RCODE is a 4-bit
+// header field (0-15), and -1 is Zenarmor's own "this is the request, there is no
+// response yet" sentinel — a real state, so it is kept rather than folded. The
+// extended RCODEs above 15 exist only in EDNS/TSIG, which Zenarmor does not report
+// here, so anything else folds.
+func clampRCode(code int) string {
+	if code >= 0 && code <= 15 {
+		return strconv.Itoa(code)
+	}
+	if code == -1 {
+		return "-1"
+	}
+	return zenOther
+}
+
+// zenAlertSeverities is the closed severity vocabulary, in the same explicit-map
+// shape as syslog/dhcp.go's iscActions. Zenarmor carries Suricata's 1-4 priority
+// scale (1 = most severe) as a STRING, so without this the field is a free-text
+// pass-through into a label.
+var zenAlertSeverities = map[string]string{
+	"1": "1",
+	"2": "2",
+	"3": "3",
+	"4": "4",
+}
+
+// clampAlertSeverity folds an IDS severity to the label vocabulary. Empty stays
+// empty: "the document carried no severity" must stay distinguishable from "the
+// document carried something we do not recognise".
+func clampAlertSeverity(v string) string {
+	if v == "" {
+		return ""
+	}
+	if mapped, ok := zenAlertSeverities[v]; ok {
+		return mapped
+	}
+	return zenOther
+}
+
 // familyFor resolves an index name to its family, or "" when it is not one of ours.
 //
 // Two forms arrive: the _write alias (zenarmor_0000000000_<uuid>_conn_write), which
@@ -195,7 +248,7 @@ func parseDocFull(family string, doc []byte, snap *enrich.Snapshot) (logship.Rec
 		if d.RespCode != nil {
 			// -1 is Zenarmor's "this is the request, there is no response yet", which is a
 			// value worth keeping rather than a missing one.
-			attrs[attrRCode] = strconv.Itoa(*d.RespCode)
+			attrs[attrRCode] = clampRCode(*d.RespCode)
 		}
 		// Zenarmor sends domain_categories, an ARRAY (up to two entries live). Only the
 		// primary becomes the singular attribute derive.go reads: joining them would
@@ -226,7 +279,7 @@ func parseDocFull(family string, doc []byte, snap *enrich.Snapshot) (logship.Rec
 
 	case "ids":
 		set(attrAlertCategory, d.AlertCategory)
-		set(attrAlertSeverity, d.AlertSeverity)
+		set(attrAlertSeverity, clampAlertSeverity(d.AlertSeverity))
 		if d.AlertInfo != nil {
 			set("alertinfo.signature", string(d.AlertInfo.Signature))
 			set("alertinfo.category", string(d.AlertInfo.Category))

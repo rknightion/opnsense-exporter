@@ -86,6 +86,98 @@ func TestLogsZenarmor_PasswordWithoutUserIsAnError(t *testing.T) {
 	})
 }
 
+// #314: a username with no password reads as "auth on" too, but the receiver's
+// constant-time comparison of an empty configured password against an empty
+// client-supplied one succeeds — an auth bypass, not merely a misconfiguration.
+func TestLogsZenarmor_UsernameWithoutPasswordIsAnError(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorListenHTTP = ":9200"
+		*logsZenarmorAuthUser = "admin"
+		*logsZenarmorAuthPassword = ""
+		if _, _, err := LogsZenarmor(); err == nil {
+			t.Fatal("expected an error for a username with no password (auth bypass)")
+		}
+	})
+}
+
+func TestLogsZenarmor_AuthBothSetIsOK(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorListenHTTP = ":9200"
+		*logsZenarmorAuthUser = "admin"
+		*logsZenarmorAuthPassword = "hunter2"
+		if _, ok, err := LogsZenarmor(); err != nil || !ok {
+			t.Fatalf("both auth fields set: got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+	})
+}
+
+func TestLogsZenarmor_AuthBothEmptyIsOK(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorListenHTTP = ":9200"
+		*logsZenarmorAuthUser = ""
+		*logsZenarmorAuthPassword = ""
+		if _, ok, err := LogsZenarmor(); err != nil || !ok {
+			t.Fatalf("both auth fields empty (auth disabled): got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+	})
+}
+
+// #317: an enabled receiver with neither a peer allowlist nor authentication must
+// warn (not fail) since open mode is a deliberate, documented option.
+func TestLogsZenarmor_WarnsWhenNoAdmissionControl(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorListenHTTP = ":9200"
+		*logsZenarmorAllowedPeers = ""
+		*logsZenarmorAuthUser = ""
+		*logsZenarmorAuthPassword = ""
+		cfg, ok, err := LogsZenarmor()
+		if err != nil || !ok {
+			t.Fatalf("got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+		if len(cfg.Warnings) != 1 {
+			t.Fatalf("Warnings = %v, want exactly 1", cfg.Warnings)
+		}
+	})
+}
+
+func TestLogsZenarmor_NoWarningWithAllowlist(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorListenHTTP = ":9200"
+		*logsZenarmorAllowedPeers = "10.0.0.254/32"
+		*logsZenarmorAuthUser = ""
+		*logsZenarmorAuthPassword = ""
+		cfg, ok, err := LogsZenarmor()
+		if err != nil || !ok {
+			t.Fatalf("got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+		if len(cfg.Warnings) != 0 {
+			t.Errorf("Warnings = %v, want none (allowlist set)", cfg.Warnings)
+		}
+	})
+}
+
+func TestLogsZenarmor_NoWarningWithAuth(t *testing.T) {
+	withZenarmorFlags(t, func() {
+		*logsZenarmorEnabled = true
+		*logsZenarmorListenHTTP = ":9200"
+		*logsZenarmorAllowedPeers = ""
+		*logsZenarmorAuthUser = "admin"
+		*logsZenarmorAuthPassword = "hunter2"
+		cfg, ok, err := LogsZenarmor()
+		if err != nil || !ok {
+			t.Fatalf("got ok=%v err=%v, want ok=true err=nil", ok, err)
+		}
+		if len(cfg.Warnings) != 0 {
+			t.Errorf("Warnings = %v, want none (auth set)", cfg.Warnings)
+		}
+	})
+}
+
 func TestLogsZenarmor_TLSHalfConfiguredIsAnError(t *testing.T) {
 	withZenarmorFlags(t, func() {
 		*logsZenarmorEnabled = true

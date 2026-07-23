@@ -34,11 +34,13 @@ const sourceName = "zenarmor"
 // payload, so pre-initialising them would trade a dozen zeroes for unbounded
 // cardinality.
 var (
-	// RejectReasons: peer/auth/unhandled_endpoint/body are the HTTP receiver's
-	// (server.go); unknown_family/filtered/self_traffic/excluded are the record's
+	// RejectReasons: peer/auth/unhandled_endpoint/body/overloaded/index_limit are the
+	// HTTP receiver's (server.go) — overloaded is a bulk request refused at the
+	// concurrency cap (#315), index_limit a create refused at the index-registry
+	// ceiling (#316); unknown_family/filtered/self_traffic/excluded are the record's
 	// (source.go). There is no "oversized" here — that is a syslog framing concern only.
 	RejectReasons = []string{
-		"peer", "auth", "unhandled_endpoint", "body",
+		"peer", "auth", "unhandled_endpoint", "body", "overloaded", "index_limit",
 		"unknown_family", "filtered", "self_traffic", "excluded",
 	}
 	// ParseStages: bulk is the _bulk envelope (server.go), document one record inside
@@ -70,6 +72,11 @@ func init() {
 		if err != nil || !enabled {
 			return nil, err
 		}
+		// Logged before either transport branches, so the advisory reaches the operator
+		// whichever receiver shape they configured.
+		for _, w := range cfg.Warnings {
+			d.Logger.Warn(w)
+		}
 		if options.LogsZenarmorTransport() == "syslog" {
 			// Driven by the syslog receiver, not an independent listener: register the
 			// shared processor and return no push source at all.
@@ -99,16 +106,18 @@ func loadConfig() (Config, bool, error) {
 		return Config{}, false, err
 	}
 	return Config{
-		Excludes:        excludes,
-		Addr:            oc.Addr,
-		AllowedPeers:    oc.AllowedPeers,
-		Families:        oc.Families,
-		Enrich:          oc.Enrich,
-		AuthUser:        oc.AuthUser,
-		AuthPassword:    oc.AuthPassword,
-		TLSConfig:       oc.TLSConfig,
-		DropSelfTraffic: oc.DropSelfTraffic,
-		DebugCapture:    oc.DebugCapture,
+		Excludes:              excludes,
+		Addr:                  oc.Addr,
+		AllowedPeers:          oc.AllowedPeers,
+		Families:              oc.Families,
+		Enrich:                oc.Enrich,
+		AuthUser:              oc.AuthUser,
+		AuthPassword:          oc.AuthPassword,
+		TLSConfig:             oc.TLSConfig,
+		DropSelfTraffic:       oc.DropSelfTraffic,
+		DebugCapture:          oc.DebugCapture,
+		MaxConcurrentRequests: oc.MaxConcurrentRequests,
+		Warnings:              oc.Warnings,
 	}, true, nil
 }
 

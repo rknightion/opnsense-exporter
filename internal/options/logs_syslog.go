@@ -53,8 +53,11 @@ var (
 
 	logsSyslogMaxConns = kingpin.Flag(
 		"logs.syslog.max-conns",
-		"Maximum concurrent TCP connections to the syslog receiver. Bounds goroutine "+
-			"growth on an unauthenticated ingress.",
+		"Maximum concurrent connections to the syslog receiver, applied PER TRANSPORT: plain TCP and "+
+			"TLS each get this budget from a separate pool. They are separate so a plaintext flood "+
+			"cannot starve authenticated mTLS senders out of the capacity they need. Bounds goroutine "+
+			"growth on an unauthenticated ingress; with both transports enabled the worst-case "+
+			"connection count is twice this value.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_MAX_CONNS").Default("64").Int()
 
 	// Filtering is OPT-IN. The receiver's contract is that nothing is silently

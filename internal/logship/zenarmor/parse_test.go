@@ -370,3 +370,58 @@ func TestBuildRecordNilSnapshotSkipsEnrichment(t *testing.T) {
 		}
 	}
 }
+
+// rcode and alert_severity both reach a metric LABEL, and both come off the wire
+// from a push sender. DNS RCODE is a 4-bit field and IDS severity is a 1-4 scale, so
+// anything outside those folds into ONE bucket rather than minting a series per
+// value a sender invents. -1 is Zenarmor's own "request, no response yet" sentinel
+// and is kept.
+func TestParseDoc_RCodeClamped(t *testing.T) {
+	tests := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"noerror", `{"resp_code":0}`, "0"},
+		{"nxdomain", `{"resp_code":3}`, "3"},
+		{"top of the 4-bit range", `{"resp_code":15}`, "15"},
+		{"no-response sentinel", `{"resp_code":-1}`, "-1"},
+		{"above the 4-bit range", `{"resp_code":16}`, zenOther},
+		{"absurd", `{"resp_code":999999}`, zenOther},
+		{"below the sentinel", `{"resp_code":-2}`, zenOther},
+		{"absent stays absent", `{"query":"example.com"}`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, ok := buildRecord("dns", []byte(tt.doc), nil)
+			if !ok {
+				t.Fatal("buildRecord returned !ok")
+			}
+			assertAttr(t, rec, attrRCode, tt.want)
+		})
+	}
+}
+
+func TestParseDoc_AlertSeverityClamped(t *testing.T) {
+	tests := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{"most severe", `{"alert_severity":"1"}`, "1"},
+		{"least severe of the real range", `{"alert_severity":"4"}`, "4"},
+		{"zero is not a severity", `{"alert_severity":"0"}`, zenOther},
+		{"out of range", `{"alert_severity":"9001"}`, zenOther},
+		{"free text", `{"alert_severity":"critical-é"}`, zenOther},
+		{"absent stays absent", `{"alert_category":"trojan"}`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec, ok := buildRecord("ids", []byte(tt.doc), nil)
+			if !ok {
+				t.Fatal("buildRecord returned !ok")
+			}
+			assertAttr(t, rec, attrAlertSeverity, tt.want)
+		})
+	}
+}

@@ -23,6 +23,14 @@ const defaultMaxConns = 64
 // forever, but a busy one is never cut off.
 const connIdleTimeout = 5 * time.Minute
 
+// defaultTLSHandshakeTimeout bounds how long a connection accepted on the TLS port may
+// hold a capacity slot BEFORE it has authenticated. tls.NewListener is lazy: Accept
+// returns a *tls.Conn whose handshake has not run, and left to the scan loop it would
+// only run on the first read — under connIdleTimeout, so an anonymous peer could hold
+// a slot for five minutes by simply connecting and saying nothing (#328). Ten seconds
+// is far more than a handshake across any real link needs.
+const defaultTLSHandshakeTimeout = 10 * time.Second
+
 // Config configures the receiver's sockets. An empty address disables that
 // transport. AllowedPeers, when non-empty, is an allowlist: anything else is
 // dropped and counted (syslog is unauthenticated — whatever can reach the port can
@@ -35,7 +43,12 @@ type Config struct {
 	TLSAddr      string
 	TLSConfig    *tls.Config
 	AllowedPeers []netip.Prefix
-	MaxConns     int
+	// MaxConns is PER TRANSPORT, not a single global pool: plain TCP and TLS hold
+	// separate budgets of this size (see the semaphores on Listener).
+	MaxConns int
+	// TLSHandshakeTimeout bounds a pre-authentication TLS connection's hold on a slot.
+	// Zero means defaultTLSHandshakeTimeout.
+	TLSHandshakeTimeout time.Duration
 }
 
 // Listener is a hardened UDP + TCP syslog receiver. It hands each framed line to
@@ -51,7 +64,15 @@ type Listener struct {
 	tcp   *net.TCPListener
 	tlsLn net.Listener
 
-	sem     chan struct{}
+	// tcpSem and tlsSem are SEPARATE budgets, deliberately. They were one shared
+	// semaphore, which meant a plaintext flood — needing no credentials whatsoever —
+	// consumed the very slots the operator's mTLS senders depend on, so the
+	// authenticated transport could be starved by the unauthenticated one (#328).
+	// Separate budgets over a reserved share: a reservation still lets plaintext take
+	// the unreserved remainder of a shared pool, and there is no reason the two
+	// transports should compete at all. MaxConns is therefore per transport.
+	tcpSem  chan struct{}
+	tlsSem  chan struct{}
 	conns   sync.WaitGroup
 	closing chan struct{}
 	once    sync.Once
@@ -65,6 +86,9 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = defaultMaxConns
 	}
+	if cfg.TLSHandshakeTimeout <= 0 {
+		cfg.TLSHandshakeTimeout = defaultTLSHandshakeTimeout
+	}
 	if log == nil {
 		log = slog.Default()
 	}
@@ -73,7 +97,8 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 		handle:  handle,
 		m:       m,
 		log:     log,
-		sem:     make(chan struct{}, cfg.MaxConns),
+		tcpSem:  make(chan struct{}, cfg.MaxConns),
+		tlsSem:  make(chan struct{}, cfg.MaxConns),
 		closing: make(chan struct{}),
 	}
 }
@@ -123,8 +148,8 @@ func (l *Listener) Start() error {
 			_ = l.closeSockets()
 			return fmt.Errorf("syslog: listen TLS %q: %w", l.cfg.TLSAddr, err)
 		}
-		// tls.NewListener yields *tls.Conn from Accept; the handshake is lazy and
-		// completes on the first Read inside serveConn.
+		// tls.NewListener yields *tls.Conn from Accept, with the handshake NOT yet run —
+		// serveTLS drives it explicitly, under its own deadline, before serving (#328).
 		l.tlsLn = tls.NewListener(raw, l.cfg.TLSConfig)
 	}
 	return nil
@@ -306,7 +331,7 @@ func (l *Listener) serveTCP() {
 		}
 
 		select {
-		case l.sem <- struct{}{}:
+		case l.tcpSem <- struct{}{}:
 		default:
 			// At the connection cap: refuse rather than fork an unbounded goroutine.
 			l.log.Warn("syslog: TCP connection limit reached, refusing peer",
@@ -318,16 +343,19 @@ func (l *Listener) serveTCP() {
 		l.conns.Add(1)
 		go func() {
 			defer l.conns.Done()
-			defer func() { <-l.sem }()
+			defer func() { <-l.tcpSem }()
 			defer func() { _ = conn.Close() }()
 			l.serveConn(conn, peer)
 		}()
 	}
 }
 
-// serveTLS accepts TLS-wrapped connections. It mirrors serveTCP exactly — same peer
-// allowlist at accept, same MaxConns semaphore, same per-connection handoff to
-// serveConn — differing only in that Accept yields a *tls.Conn (as net.Conn).
+// serveTLS accepts TLS-wrapped connections. It mirrors serveTCP — same peer allowlist
+// at accept, same per-connection handoff to serveConn — differing in two ways: Accept
+// yields a *tls.Conn (as net.Conn), and the slot it takes comes from the TLS budget,
+// which no plaintext peer can touch. It also completes the handshake under its own
+// short deadline before serveConn, so the slot is held pre-authentication for seconds
+// rather than for connIdleTimeout (#328).
 func (l *Listener) serveTLS() {
 	for {
 		conn, err := l.tlsLn.Accept()
@@ -351,7 +379,7 @@ func (l *Listener) serveTLS() {
 		}
 
 		select {
-		case l.sem <- struct{}{}:
+		case l.tlsSem <- struct{}{}:
 		default:
 			// At the connection cap: refuse rather than fork an unbounded goroutine.
 			l.log.Warn("syslog: TLS connection limit reached, refusing peer",
@@ -363,11 +391,55 @@ func (l *Listener) serveTLS() {
 		l.conns.Add(1)
 		go func() {
 			defer l.conns.Done()
-			defer func() { <-l.sem }()
+			defer func() { <-l.tlsSem }()
 			defer func() { _ = conn.Close() }()
+			if !l.handshake(conn, peer) {
+				return
+			}
 			l.serveConn(conn, peer)
 		}()
 	}
+}
+
+// handshake completes the TLS handshake under an explicit deadline, reporting whether
+// the connection may proceed. It exists because tls.NewListener is LAZY: without it
+// the handshake happens on the first read inside serveConn, whose only deadline is
+// connIdleTimeout, so a peer that connects and never speaks holds a capacity slot for
+// five minutes without ever presenting a credential (#328).
+//
+// A non-TLS conn passes through untouched, so the helper is safe for any caller.
+func (l *Listener) handshake(conn net.Conn, peer netip.Addr) bool {
+	tc, ok := conn.(*tls.Conn)
+	if !ok {
+		return true
+	}
+	// The wall-clock deadline covers the socket; the context is what also aborts the
+	// handshake when the listener closes, so shutdown is never held up for the length
+	// of the timeout by a peer that is deliberately stalling.
+	if err := conn.SetDeadline(time.Now().Add(l.cfg.TLSHandshakeTimeout)); err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), l.cfg.TLSHandshakeTimeout)
+	defer cancel()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		select {
+		case <-l.closing:
+			cancel()
+		case <-stop:
+		}
+	}()
+	if err := tc.HandshakeContext(ctx); err != nil {
+		l.log.Debug("syslog: TLS handshake failed", "peer", peer.String(), "err", err)
+		return false
+	}
+	// Clear it again: serveConn drives its own per-frame idle deadline, and leaving the
+	// handshake's short one in place would cut a healthy stream off mid-flight.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		return false
+	}
+	return true
 }
 
 // serveConn reads framed messages from one connection. The read deadline is
@@ -376,9 +448,10 @@ func (l *Listener) serveTLS() {
 //
 // It takes net.Conn (not *net.TCPConn) so the SAME framing/assembly path serves
 // both plain TCP and TLS: a *tls.Conn from serveTLS satisfies net.Conn, and its
-// SetReadDeadline drives the same idle-deadline machinery. On a TLS connection the
-// handshake is lazy — a client-cert failure surfaces as a read error inside the
-// scan loop below, which the loop already tolerates (the connection simply ends).
+// SetReadDeadline drives the same idle-deadline machinery. A TLS connection has
+// already completed its handshake by the time it gets here (see handshake), so a
+// client-cert failure never reaches this loop — it is refused, and its slot released,
+// before serveConn is called at all.
 func (l *Listener) serveConn(conn net.Conn, peer netip.Addr) {
 	// Unblock the read when the listener closes, so a connection goroutine can never
 	// outlive Close().

@@ -107,6 +107,13 @@ var (
 		"Password for --logs.zenarmor.auth-user.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_AUTH_PASSWORD").Default("").String()
 
+	logsZenarmorMaxConcurrentRequests = kingpin.Flag(
+		"logs.zenarmor.max-concurrent-requests",
+		"Maximum bulk requests processed concurrently by the Zenarmor receiver. The per-request body "+
+			"limit bounds one request; without this, N simultaneous requests each buffer that full allowance. "+
+			"Excess requests are refused with 503 before a body is read. 0 disables the limit.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_MAX_CONCURRENT_REQUESTS").Default("8").Int()
+
 	logsZenarmorTLSCertFile = kingpin.Flag(
 		"logs.zenarmor.tls-cert-file",
 		"PEM server certificate for the Zenarmor receiver. Set with --logs.zenarmor.tls-key-file to "+
@@ -154,9 +161,19 @@ type ZenarmorConfig struct {
 	AuthPassword    string
 	TLSConfig       *tls.Config
 	DropSelfTraffic bool
+	// MaxConcurrentRequests bounds simultaneous bulk handlers. The per-request body
+	// limit is per request, so aggregate in-flight memory is otherwise unbounded.
+	// Zero disables the limit.
+	MaxConcurrentRequests int
 	// DebugCapture opts this receiver into the shared debug-capture sink
 	// (--logs.debug-capture.dir). Validated against that dir being set.
 	DebugCapture bool
+	// Warnings holds non-fatal startup advisories discovered while resolving this
+	// config (#317) — e.g. an enabled receiver with no admission control at all. This
+	// package has no logger and never fails the build for these, so it does not log
+	// them itself; the caller (main) owns logging each entry after LogsZenarmor
+	// returns, so an operator actually sees the gap instead of it being silent.
+	Warnings []string
 }
 
 // LogsZenarmorEnabled reports whether the receiver is switched on, without
@@ -203,6 +220,14 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 		DropSelfTraffic: *logsZenarmorDropSelfTraffic,
 		Excludes:        *logsZenarmorExclude,
 		DebugCapture:    *logsZenarmorDebugCapture,
+
+		MaxConcurrentRequests: *logsZenarmorMaxConcurrentRequests,
+	}
+
+	if cfg.MaxConcurrentRequests < 0 {
+		return nil, false, fmt.Errorf(
+			"logs.zenarmor: --logs.zenarmor.max-concurrent-requests must not be negative, got %d",
+			cfg.MaxConcurrentRequests)
 	}
 
 	if cfg.DebugCapture && !LogsDebugCaptureEnabled() {
@@ -246,12 +271,18 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 	}
 	cfg.AllowedPeers = peers
 
-	// A password with no username is a configuration the operator plainly did not
-	// mean: it reads as "auth on" but leaves the ingress open.
-	if cfg.AuthUser == "" && cfg.AuthPassword != "" {
+	// Either both auth-user and auth-password must be set, or neither. Either
+	// half-configured case is a configuration the operator plainly did not mean: a
+	// password with no username reads as "auth on" but basic auth never activates; a
+	// username with no password reads as "auth on" too, but the receiver's
+	// constant-time comparison of an empty configured password against an empty
+	// client-supplied one succeeds, so a client needs only the (non-secret) username
+	// to get in (#314) — a real auth bypass, not merely misleading. Reject both.
+	if (cfg.AuthUser == "") != (cfg.AuthPassword == "") {
 		return nil, false, fmt.Errorf(
-			"logs.zenarmor: --logs.zenarmor.auth-password is set without --logs.zenarmor.auth-user; " +
-				"basic auth would be off and the receiver open")
+			"logs.zenarmor: --logs.zenarmor.auth-user and --logs.zenarmor.auth-password must both be " +
+				"set, or both left empty; one without the other reads as auth-on but leaves the " +
+				"receiver open to anyone who knows (or guesses) the one value that is set")
 	}
 
 	if transport == "elasticsearch" {
@@ -274,6 +305,19 @@ func LogsZenarmor() (*ZenarmorConfig, bool, error) {
 				MinVersion:   tls.VersionTLS12,
 			}
 		}
+	}
+
+	// #317: an enabled receiver with neither a peer allowlist nor authentication
+	// accepts records from any reachable sender, which then become metrics and
+	// shipped logs. This is a deliberate, documented open mode (trusted management
+	// networks) so it is not fatal — but nothing else tells the operator at startup
+	// that they are running it, so warn.
+	if len(cfg.AllowedPeers) == 0 && cfg.AuthUser == "" && cfg.AuthPassword == "" {
+		cfg.Warnings = append(cfg.Warnings,
+			"logs.zenarmor: the receiver is enabled with no peer allowlist and no authentication, "+
+				"so any host that can reach the listener can inject records that become metrics and "+
+				"shipped logs; recommend setting --logs.zenarmor.allowed-peers or "+
+				"--logs.zenarmor.auth-user/--logs.zenarmor.auth-password")
 	}
 
 	return cfg, true, nil
