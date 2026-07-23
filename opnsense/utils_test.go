@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"math"
 	"reflect"
 	"regexp"
 	"testing"
@@ -166,6 +167,67 @@ func TestSafeParseFloat(t *testing.T) {
 				t.Errorf("safeParseFloat(%q) = %f; want %f", tc.value, result, tc.expected)
 			}
 		})
+	}
+}
+
+// nonFiniteFloatStrings are the literals strconv.ParseFloat accepts WITHOUT
+// returning an error but which are useless as metric values: every comparison
+// against NaN is false (so a NaN seed can never be displaced by a max() scan)
+// and ±Inf poisons any gauge it reaches. #323.
+var nonFiniteFloatStrings = []string{"NaN", "nan", "+Inf", "-Inf", "Inf", "inf", "Infinity", "-Infinity"}
+
+// TestSafeParseFloat_NonFinite pins the #323 fix: safeParseFloat must treat
+// NaN/±Inf as unparseable and return 0, exactly as it already does for "abc".
+func TestSafeParseFloat_NonFinite(t *testing.T) {
+	for _, s := range nonFiniteFloatStrings {
+		t.Run(s, func(t *testing.T) {
+			got := safeParseFloat(s)
+			if got != 0 {
+				t.Errorf("safeParseFloat(%q) = %v; want 0 (non-finite values must not escape)", s, got)
+			}
+			if math.IsNaN(got) || math.IsInf(got, 0) {
+				t.Errorf("safeParseFloat(%q) returned a non-finite value: %v", s, got)
+			}
+		})
+	}
+}
+
+// TestSafeParseFloatOK_NonFinite is the more consequential half of #323:
+// callers use the ok flag to distinguish absent-from-present (certificates.go
+// gates cert_valid_to_seconds on it), so a NaN reported as ok=true emits a NaN
+// gauge and silently defeats cert-expiry alerting.
+func TestSafeParseFloatOK_NonFinite(t *testing.T) {
+	for _, s := range nonFiniteFloatStrings {
+		t.Run(s, func(t *testing.T) {
+			got, ok := safeParseFloatOK(s)
+			if ok {
+				t.Errorf("safeParseFloatOK(%q) reported ok=true; a non-finite value is not a usable reading", s)
+			}
+			if got != 0 {
+				t.Errorf("safeParseFloatOK(%q) = %v; want 0", s, got)
+			}
+		})
+	}
+}
+
+// TestSafeParseFloatOK_FiniteStillOK guards against the non-finite rejection
+// over-reaching: real readings must still report ok=true.
+func TestSafeParseFloatOK_FiniteStillOK(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want float64
+	}{
+		{"0", 0},
+		{"1783886416.55", 1783886416.55},
+		{"-1.5", -1.5},
+	} {
+		got, ok := safeParseFloatOK(tc.in)
+		if !ok || got != tc.want {
+			t.Errorf("safeParseFloatOK(%q) = (%v, %v); want (%v, true)", tc.in, got, ok, tc.want)
+		}
+	}
+	if _, ok := safeParseFloatOK(""); ok {
+		t.Error(`safeParseFloatOK("") should report ok=false`)
 	}
 }
 

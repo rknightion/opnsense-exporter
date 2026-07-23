@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -287,5 +288,72 @@ func TestFetchActivity_ServerError(t *testing.T) {
 	}
 	if err.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
+
+// TestFetchActivity_ThreadStateMatchesAreBounded covers #321: the thread-state
+// scan used FindAllStringSubmatch(header, -1), so an appliance-controlled
+// header — bounded only by the 64 MiB response cap — could make the client
+// materialize millions of submatch slices (allocation amplification; this is
+// NOT ReDoS, Go's RE2 cannot backtrack). Only 7 thread states exist and
+// FreeBSD's top prints each at most once, so a small cap cannot lose real
+// data. The parse of a pathological header must stay finite and the last
+// occurrence of each state must still be what wins for a normal header.
+func TestFetchActivity_ThreadStateMatchesAreBounded(t *testing.T) {
+	// Far more state segments than any real `top` header carries.
+	var sb strings.Builder
+	sb.WriteString("849 threads:")
+	for i := 0; i < 100000; i++ {
+		sb.WriteString(" 1 running,")
+	}
+	header := sb.String()
+
+	if got := len(parseThreadStates(header)); got > threadStateMatchLimit {
+		t.Fatalf("thread-state scan returned %d matches; expected at most %d", got, threadStateMatchLimit)
+	}
+	if threadStateMatchLimit <= 0 || threadStateMatchLimit > 64 {
+		t.Fatalf("threadStateMatchLimit=%d is outside the sane range (must bound allocation, must exceed the 7 real states)", threadStateMatchLimit)
+	}
+
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"headers":[%q],"details":[]}`, header)
+	})
+	defer server.Close()
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ThreadsTotal != 849 {
+		t.Errorf("expected ThreadsTotal=849, got %d", data.ThreadsTotal)
+	}
+	if data.ThreadsRunning != 1 {
+		t.Errorf("expected ThreadsRunning=1, got %d", data.ThreadsRunning)
+	}
+}
+
+// TestFetchActivity_AllSevenThreadStatesParse pins the lower bound of the
+// #321 cap: every state FreeBSD's top can print must still be seen, so the
+// bound can never be tightened below the real maximum.
+func TestFetchActivity_AllSevenThreadStatesParse(t *testing.T) {
+	const header = "849 threads:   1 starting, 13 running, 802 sleeping, 2 stopped, 3 zombie, 34 waiting, 5 lock"
+
+	states := parseThreadStates(header)
+	if len(states) != 7 {
+		t.Fatalf("expected all 7 thread states to be captured under the cap, got %d", len(states))
+	}
+
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"headers":[%q],"details":[]}`, header)
+	})
+	defer server.Close()
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.ThreadsRunning != 13 || data.ThreadsSleeping != 802 || data.ThreadsWaiting != 34 {
+		t.Errorf("expected running/sleeping/waiting = 13/802/34, got %d/%d/%d",
+			data.ThreadsRunning, data.ThreadsSleeping, data.ThreadsWaiting)
 	}
 }

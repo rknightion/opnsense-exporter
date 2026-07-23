@@ -150,15 +150,12 @@ func TestFetchFirewallGeoIPStatus_ServerError(t *testing.T) {
 }
 
 // TestFetchFirewallGeoIPStatus_NeverLeaksLicenseKey is the SECURITY assertion
-// (#221): even when the raw body carries the MaxMind URL with an embedded
-// license key, nothing about FetchFirewallGeoIPStatus's decoded GeoIPStatus
-// can expose it — there is no URL field on the struct at all. This test
-// documents that guarantee at the type level (a compile-time fact) and
-// additionally guards the error path: if the server ever answered with a
-// malformed body, the raw bytes reaching the error message are still passed
-// through the shared client-wide redaction (verified generically in
-// client_test.go); this test only needs to confirm this endpoint's decode
-// path never threads the URL out through GeoIPStatus.
+// (#221) for the SUCCESS path: even when the raw body carries the MaxMind URL
+// with an embedded license key, nothing about FetchFirewallGeoIPStatus's
+// decoded GeoIPStatus can expose it — there is no URL field on the struct at
+// all. The error paths are covered separately and concretely by
+// TestFetchFirewallGeoIPStatus_ErrorPathRedactsLicenseKey below; they are NOT
+// implied by this test.
 func TestFetchFirewallGeoIPStatus_NeverLeaksLicenseKey(t *testing.T) {
 	const licenseKey = "SECRETKEY123"
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -177,5 +174,55 @@ func TestFetchFirewallGeoIPStatus_NeverLeaksLicenseKey(t *testing.T) {
 	repr := fmt.Sprintf("%+v", data)
 	if strings.Contains(repr, licenseKey) {
 		t.Fatalf("GeoIPStatus leaked the MaxMind license key: %s", repr)
+	}
+}
+
+// TestFetchFirewallGeoIPStatus_ErrorPathRedactsLicenseKey is the #305
+// regression test: the geoip payload carries a field literally named "url"
+// whose VALUE embeds "&license_key=<secret>". Redacting by key name alone
+// never matched it, so on any non-2xx (readResponse) or malformed-JSON body
+// (unmarshalBody) the live MaxMind credential was copied verbatim into
+// APICallError.Message — which internal/collector/firewall.go logs. Both
+// error paths must scrub it.
+func TestFetchFirewallGeoIPStatus_ErrorPathRedactsLicenseKey(t *testing.T) {
+	const licenseKey = "SECRETKEY123"
+	const geoipURL = `https://download.maxmind.com/geoip/databases/GeoLite2-Country-CSV/download?suffix=zip&license_key=` + licenseKey
+
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{
+			name:   "non-2xx body",
+			status: http.StatusInternalServerError,
+			body:   `{"errorMessage":"failed to refresh geoip alias","alias":{"geoip":{"url":"` + geoipURL + `","usages":1}}}`,
+		},
+		{
+			name:   "malformed json body",
+			status: http.StatusOK,
+			// Unterminated JSON: forces the unmarshalBody error path, which
+			// dumps the body into the error message.
+			body: `{"alias":{"geoip":{"url":"` + geoipURL + `","usages":`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				w.Write([]byte(tc.body))
+			})
+			defer server.Close()
+
+			_, err := client.FetchFirewallGeoIPStatus()
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if strings.Contains(err.Error(), licenseKey) || strings.Contains(err.Message, licenseKey) {
+				t.Fatalf("MaxMind license key leaked into the error: %s", err.Error())
+			}
+			if !strings.Contains(err.Message, "REDACTED") {
+				t.Errorf("expected a REDACTED marker in the error message, got: %s", err.Message)
+			}
+		})
 	}
 }

@@ -164,6 +164,55 @@ func TestDo_BasicAuth(t *testing.T) {
 	client.do("GET", "api/core/service/search", nil, &result)
 }
 
+// TestDo_DoesNotFollowRedirect covers #306/#307: the shared client must never
+// follow a redirect, because Go's stdlib only strips the Authorization header
+// when the redirect target's HOSTNAME differs — shouldCopyHeaderOnRedirect
+// compares hostname only, not scheme and not port. So a 302 from
+// https://fw/api/... to http://fw/api/... (or to another port on the same
+// host) FORWARDS the API key and secret in cleartext, an SSL-strip shape.
+// The OPNsense /api/* REST surface never redirects, so refusing to follow is
+// correct: readResponse turns the 3xx into a loud APICallError.
+func TestDo_DoesNotFollowRedirect(t *testing.T) {
+	var targetHits atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHits.Add(1)
+		user, pass, _ := r.BasicAuth()
+		t.Errorf("redirect target was reached with credentials %q/%q; the client must not follow redirects", user, pass)
+		w.Write([]byte(`{}`))
+	}))
+	defer target.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/api/core/service/search", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	// A client built by NewClient, not the bare test helper: the CheckRedirect
+	// policy under test lives on the http.Client that NewClient constructs.
+	cfg := options.OPNSenseConfig{
+		Protocol:  "http",
+		Host:      strings.TrimPrefix(origin.URL, "http://"),
+		APIKey:    "test-key",
+		APISecret: "test-secret",
+	}
+	c, err := NewClient(cfg, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	var result map[string]any
+	apiErr := c.do("GET", "api/core/service/search", nil, &result)
+	if apiErr == nil {
+		t.Fatal("expected an APICallError for a 3xx response, got nil")
+	}
+	if apiErr.StatusCode != http.StatusFound {
+		t.Errorf("expected the 302 to surface as StatusCode=302, got %d (%s)", apiErr.StatusCode, apiErr.Message)
+	}
+	if n := targetHits.Load(); n != 0 {
+		t.Errorf("expected the redirect target never to be hit, got %d request(s)", n)
+	}
+}
+
 func TestDo_Headers(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Accept"); got != "application/json" {
@@ -414,6 +463,84 @@ func TestTruncateBody_RedactsCAPrivateKey(t *testing.T) {
 	}
 	if !strings.Contains(got, `"descr":"OPNsense-CA"`) {
 		t.Errorf("expected benign descr value to be untouched, got: %s", got)
+	}
+}
+
+// TestTruncateBody_RedactsCredentialInURLValue covers #305: redaction by KEY
+// name alone is not enough. The firewall GeoIP config returns a field literally
+// named "url" whose VALUE embeds "&license_key=<secret>", so a non-2xx or
+// malformed-JSON body copies a live MaxMind/ipinfo credential verbatim into
+// APICallError.Message, which the firewall collector then logs. Credential-
+// bearing query parameters and URL userinfo must be scrubbed by value,
+// whatever the enclosing key is called.
+func TestTruncateBody_RedactsCredentialInURLValue(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		body   string
+		secret string
+		keep   string
+	}{
+		{
+			name:   "maxmind license_key in a url field",
+			body:   `{"url":"https://download.maxmind.com/geoip/databases/GeoLite2-Country-CSV/download?suffix=zip&license_key=SECRETKEY123","usages":1}`,
+			secret: "SECRETKEY123",
+			keep:   "download.maxmind.com",
+		},
+		{
+			name:   "api_key query parameter",
+			body:   `{"endpoint":"https://example.com/v1/fetch?api_key=hunter2&fmt=json"}`,
+			secret: "hunter2",
+			keep:   "example.com",
+		},
+		{
+			name:   "leading question-mark token parameter",
+			body:   `{"href":"https://example.com/cb?token=abc123def"}`,
+			secret: "abc123def",
+			keep:   "example.com",
+		},
+		{
+			name:   "bare key parameter",
+			body:   `{"src":"https://ipinfo.io/data/country.mmdb?key=ipinfosecret"}`,
+			secret: "ipinfosecret",
+			keep:   "ipinfo.io",
+		},
+		{
+			name:   "url userinfo",
+			body:   `{"remote":"https://admin:supersecret@backup.example.com/config.xml"}`,
+			secret: "supersecret",
+			keep:   "backup.example.com",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := string(truncateBody([]byte(tc.body)))
+			if strings.Contains(got, tc.secret) {
+				t.Errorf("expected credential %q to be redacted, got: %s", tc.secret, got)
+			}
+			if !strings.Contains(got, "REDACTED") {
+				t.Errorf("expected a REDACTED marker, got: %s", got)
+			}
+			if !strings.Contains(got, tc.keep) {
+				t.Errorf("expected the benign part %q to survive redaction, got: %s", tc.keep, got)
+			}
+		})
+	}
+}
+
+// TestTruncateBody_LeavesBenignQueryParametersAlone guards against the
+// value-based pass over-redacting: only credential-named parameters go, the
+// rest of the URL must stay legible for debugging.
+func TestTruncateBody_LeavesBenignQueryParametersAlone(t *testing.T) {
+	body := []byte(`{"url":"https://example.com/download?suffix=zip&edition_id=GeoLite2-Country&license_key=SECRET"}`)
+
+	got := string(truncateBody(body))
+
+	for _, keep := range []string{"suffix=zip", "edition_id=GeoLite2-Country"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("expected benign query parameter %q to survive, got: %s", keep, got)
+		}
+	}
+	if strings.Contains(got, "SECRET") {
+		t.Errorf("expected the license key to be redacted, got: %s", got)
 	}
 }
 

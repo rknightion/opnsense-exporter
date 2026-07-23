@@ -3,6 +3,7 @@ package opnsense
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -114,9 +115,21 @@ func safeAtoi(s string) int64 {
 // safeParseFloat parses a string to float64, returning 0 on any error —
 // including out-of-range values, where strconv would otherwise hand back ±Inf.
 // Useful for OPNsense API fields that may be empty or missing.
+//
+// Non-finite results are rejected as if they had failed to parse (#323).
+// strconv.ParseFloat accepts the literals "NaN", "Inf" and "Infinity" (any
+// case, optionally signed) and returns them with a NIL error, so without this
+// guard they sail straight through into metric values. That is not a harmless
+// odd number: every comparison against NaN is false, so a NaN seed in a
+// max()-style scan (opnsense/backup.go, opnsense/snapshots.go) can never be
+// displaced, and the resulting NaN gauge makes a `time() - metric > X`
+// staleness alert silently never fire. +Inf is the mirror image — it wins
+// every comparison and pins the gauge at infinity. Every caller already
+// treats 0 (or ok=false) as "absent", so folding non-finite into that path
+// fixes all of them at once.
 func safeParseFloat(s string) float64 {
 	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
 		return 0
 	}
 	return v
@@ -125,9 +138,15 @@ func safeParseFloat(s string) float64 {
 // safeParseFloatOK is like safeParseFloat but also reports whether the parse
 // succeeded, so callers can distinguish an absent/empty field from a genuine 0
 // (e.g. a pending-CSR certificate with no valid_from/valid_to vs. epoch 0).
+//
+// This is the more consequential half of the non-finite guard described on
+// safeParseFloat: opnsense/certificates.go uses the ok flag specifically to
+// decide whether to emit cert_valid_to_seconds / ca_valid_to_seconds at all,
+// so a NaN reported as ok=true is published as a NaN gauge and defeats every
+// certificate-expiry alert built on it.
 func safeParseFloatOK(s string) (float64, bool) {
 	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
 		return 0, false
 	}
 	return v, true

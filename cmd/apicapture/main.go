@@ -59,6 +59,14 @@ func main() {
 
 	httpClient := &http.Client{
 		Timeout: 20 * time.Second,
+		// Never follow a redirect, matching opnsense/client.go (#306/#307). This
+		// tool also SetBasicAuth's the API key+secret before every Do, and Go's
+		// stdlib strips Authorization on a redirect only when the target's
+		// HOSTNAME differs — not its scheme, not its port — so an https->http
+		// bounce on the same host would hand the credentials over in cleartext.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: *insecure}, //nolint:gosec // opt-in for self-signed boxes
 			// Load-bearing, and easy to lose: setting TLSClientConfig on a custom

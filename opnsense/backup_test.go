@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"math"
 	"net/http"
 	"testing"
 )
@@ -114,5 +115,60 @@ func TestFetchConfigBackupHistory_ServerError(t *testing.T) {
 	}
 	if err.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
+
+// TestFetchConfigBackupHistory_NaNTimestamp is the #323 regression test.
+// backup.go seeds its newest-timestamp scan from Items[0]; strconv.ParseFloat
+// accepts "NaN" WITHOUT an error, and every comparison against NaN is false,
+// so a NaN seed could never be displaced by a later, larger timestamp. The
+// resulting NaN opnsense_backup_last_timestamp_seconds makes a
+// `time() - metric > X` staleness alert silently never fire.
+func TestFetchConfigBackupHistory_NaNTimestamp(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"items": [
+				{"time": "NaN", "filesize": 100},
+				{"time": "1783886416.55", "filesize": 417639}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchConfigBackupHistory()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if math.IsNaN(data.LastTimestamp) || math.IsInf(data.LastTimestamp, 0) {
+		t.Fatalf("LastTimestamp is non-finite (%v); a NaN gauge defeats staleness alerting", data.LastTimestamp)
+	}
+	if data.LastTimestamp != 1783886416.55 {
+		t.Errorf("expected LastTimestamp=1783886416.55 (the real entry must win over the NaN seed), got %v", data.LastTimestamp)
+	}
+}
+
+// TestFetchConfigBackupHistory_InfTimestamp covers the ±Inf half of #323:
+// +Inf DOES compare greater than every real timestamp, so it wins the scan
+// outright and pins the gauge at infinity.
+func TestFetchConfigBackupHistory_InfTimestamp(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"items": [
+				{"time": "+Inf", "filesize": 100},
+				{"time": "1783886416.55", "filesize": 417639}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchConfigBackupHistory()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if math.IsInf(data.LastTimestamp, 0) || math.IsNaN(data.LastTimestamp) {
+		t.Fatalf("LastTimestamp is non-finite (%v)", data.LastTimestamp)
+	}
+	if data.LastTimestamp != 1783886416.55 {
+		t.Errorf("expected LastTimestamp=1783886416.55, got %v", data.LastTimestamp)
 	}
 }

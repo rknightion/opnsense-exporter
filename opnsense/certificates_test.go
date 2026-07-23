@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"math"
 	"net/http"
 	"testing"
 )
@@ -156,5 +157,86 @@ func TestFetchCACertificates_Success(t *testing.T) {
 	}
 	if ca.ValidFrom != 1643140565 || ca.ValidTo != 1958500565 {
 		t.Errorf("unexpected CA validity: %+v", ca)
+	}
+}
+
+// TestFetchCertificates_NonFiniteValidTo is the #323 regression test for the
+// sibling that matters most: certificates.go uses safeParseFloatOK precisely
+// to distinguish an absent valid_to (a pending CSR) from a real one, and the
+// collector gates cert_valid_to_seconds on the ok flag. strconv.ParseFloat
+// accepts "NaN" without an error, so a NaN was reported as present, emitted as
+// a gauge, and every `cert_valid_to_seconds - time() < 30d` expiry alert
+// silently stopped firing for that certificate.
+func TestFetchCertificates_NonFiniteValidTo(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rows": [
+				{
+					"uuid": "nan-1",
+					"descr": "Broken Cert",
+					"commonname": "broken.example.com",
+					"valid_from": "Inf",
+					"valid_to": "NaN",
+					"in_use": "",
+					"%cert_type": "server"
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchCertificates()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Certificates) != 1 {
+		t.Fatalf("expected 1 certificate, got %d", len(data.Certificates))
+	}
+	c := data.Certificates[0]
+	if c.HasValidTo {
+		t.Errorf("expected HasValidTo=false for a NaN valid_to, got true (value=%v)", c.ValidTo)
+	}
+	if c.HasValidFrom {
+		t.Errorf("expected HasValidFrom=false for an Inf valid_from, got true (value=%v)", c.ValidFrom)
+	}
+	if math.IsNaN(c.ValidTo) || math.IsInf(c.ValidTo, 0) {
+		t.Errorf("ValidTo is non-finite: %v", c.ValidTo)
+	}
+	if math.IsNaN(c.ValidFrom) || math.IsInf(c.ValidFrom, 0) {
+		t.Errorf("ValidFrom is non-finite: %v", c.ValidFrom)
+	}
+}
+
+// TestFetchCACertificates_NonFiniteValidTo covers the CA half of the same
+// path (ca_valid_to_seconds).
+func TestFetchCACertificates_NonFiniteValidTo(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"descr": "Broken CA",
+					"commonname": "Broken CA",
+					"valid_from": "1672531200",
+					"valid_to": "NaN"
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchCACertificates()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.CAs) != 1 {
+		t.Fatalf("expected 1 CA, got %d", len(data.CAs))
+	}
+	ca := data.CAs[0]
+	if ca.HasValidTo {
+		t.Errorf("expected HasValidTo=false for a NaN valid_to, got true (value=%v)", ca.ValidTo)
+	}
+	if !ca.HasValidFrom || ca.ValidFrom != 1672531200 {
+		t.Errorf("expected the finite valid_from to still parse, got (%v, %v)", ca.ValidFrom, ca.HasValidFrom)
 	}
 }

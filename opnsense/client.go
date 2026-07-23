@@ -416,6 +416,19 @@ func NewClient(cfg options.OPNSenseConfig, userAgentVersion string, log *slog.Lo
 		sem:         sem,
 		httpClient: &http.Client{
 			Timeout: timeout,
+			// Never follow a redirect (#306/#307). Every request carries the API
+			// key+secret in an Authorization header (SetBasicAuth, below in
+			// doWithContentType), and Go's stdlib only strips that header when the
+			// redirect target's HOSTNAME differs — shouldCopyHeaderOnRedirect
+			// compares hostname ONLY, not scheme and not port. So a 302 from
+			// https://fw/api/... to http://fw/api/... (or to another port on the
+			// same host) forwards the credentials in cleartext: an SSL-strip.
+			// The OPNsense /api/* REST surface never redirects, so nothing
+			// legitimate is lost; ErrUseLastResponse hands the 3xx back to
+			// readResponse, which turns any non-2xx into a loud APICallError.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					MinVersion:         tls.VersionTLS12,
@@ -777,10 +790,34 @@ func unmarshalBody(path EndpointPath, body []byte, statusCode int, responseStruc
 // a password and must never surface in an error-path body dump.
 var sensitiveJSONField = regexp.MustCompile(`(?i)("(?:%+)?[^"]*(?:password|passwd|secret|token|api_?key|private_?key|prv|otp_?seed)[^"]*"\s*:\s*)("(?:[^"\\]|\\.)*"|[0-9eE+.\-]+|null)`)
 
+// sensitiveURLQueryParam matches a credential-bearing query parameter ANYWHERE
+// in a body, regardless of what the enclosing JSON key is called (#305).
+// Redacting by key name alone is not enough: the firewall GeoIP config returns
+// a field literally named "url" whose VALUE embeds
+// "...&license_key=<MaxMind secret>", so a non-2xx or malformed-JSON body
+// copied a live credential verbatim into APICallError.Message — which
+// internal/collector/firewall.go logs. The value stops at the first delimiter
+// that can end a query parameter inside a JSON string (& " ' whitespace) so
+// the rest of the URL stays legible for debugging.
+var sensitiveURLQueryParam = regexp.MustCompile(`(?i)([?&](?:license_?key|api_?key|apikey|auth_?token|access_?token|key|secret|token|password|passwd|auth)=)[^&"'\s\\]+`)
+
+// urlUserinfo matches the "user:password@" credential form of a URL
+// (https://admin:hunter2@host/...), which no key-name rule would ever catch
+// either. Only the password half is replaced; the scheme, username and host
+// survive so the body still says what it was talking to.
+var urlUserinfo = regexp.MustCompile(`(?i)([a-z][a-z0-9+.\-]*://[^/@\s"']*:)[^/@\s"']+@`)
+
 // redactSensitiveFields replaces the values of credential-like JSON fields
-// with "[REDACTED]". Non-JSON bodies pass through unchanged.
+// with "[REDACTED]", then makes a second pass over the whole body to scrub
+// credentials embedded in URL VALUES (query parameters and userinfo), which
+// the key-name rule cannot see. Non-JSON bodies pass through unchanged apart
+// from that second pass, which is deliberate — an HTML error page can carry
+// the same URL.
 func redactSensitiveFields(b []byte) []byte {
-	return sensitiveJSONField.ReplaceAll(b, []byte(`${1}"[REDACTED]"`))
+	b = sensitiveJSONField.ReplaceAll(b, []byte(`${1}"[REDACTED]"`))
+	b = sensitiveURLQueryParam.ReplaceAll(b, []byte(`${1}[REDACTED]`))
+	b = urlUserinfo.ReplaceAll(b, []byte(`${1}[REDACTED]@`))
+	return b
 }
 
 // truncateBody redacts credential-like field values from a response body
