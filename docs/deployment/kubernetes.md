@@ -62,7 +62,7 @@ spec:
           # pull a breaking version. The tag tracks version.txt and is auto-updated on
           # each release (release-please rewrites the x-release-please-version marker line).
           # Published image tags carry no leading "v" (git tag v2.2.1 -> image tag 2.2.1).
-          image: ghcr.io/rknightion/opnsense-exporter:2.2.1 # x-release-please-version
+          image: ghcr.io/rknightion/opnsense-exporter:3.0.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: api-key-vol

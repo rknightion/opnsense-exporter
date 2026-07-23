@@ -1,5 +1,188 @@
 # Changelog
 
+## [3.0.0](https://github.com/rknightion/opnsense-exporter/compare/v2.2.1...v3.0.0) (2026-07-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **zenarmor,syslog:** close username-only auth bypass, bound receiver resources
+* **zenarmor:** the receiver no longer ships records describing its own ingest connection. Set --logs.zenarmor.drop-self-traffic=false to restore the old behaviour.
+* **logship:** opnsense_exporter_logs_parse_errors_total and opnsense_exporter_logs_rejected_total gain a `source` label. Aggregations such as sum by (stage) / sum by (reason) are unaffected; only exact full-label-set matches need updating.
+* **pyroscope:** --pyroscope.enable-mutex-block (default off) is replaced by --pyroscope.disable-mutex-block (default off = contention profiling ON), following the repo disable-* convention for default-on features. Env var is now OPNSENSE_EXPORTER_PYROSCOPE_DISABLE_MUTEX_BLOCK.
+* **logship:** --logs.diaglog.enabled DEFAULTED TO TRUE, so this is not a quiet opt-in removal -- every existing log-shipping user loses the config-change/gateway/CARP/portal audit trail until they configure a syslog target on the firewall pointing at the exporter. --logs.firewall.enabled and --logs.scopes are removed with it.
+
+### Features
+
+* **collector:** add StatusTracker + RunCollector for web UI ([33e4976](https://github.com/rknightion/opnsense-exporter/commit/33e4976c5e9c2439aa3f2a08a9272bb45043ca4e)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **collector:** decouple serving from collection via internal poll scheduler ([#336](https://github.com/rknightion/opnsense-exporter/issues/336) phase 1) ([ac86cb9](https://github.com/rknightion/opnsense-exporter/commit/ac86cb9828cd10c6fd588efa6a0870cf1f824b9f))
+* **collector:** derive bounded counters from Zenarmor records ([a632f14](https://github.com/rknightion/opnsense-exporter/commit/a632f1406ea1977817eac50fec3de35a82800e78)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+* **collector:** flow volume metrics, flags, docs and dashboard ([280dcb5](https://github.com/rknightion/opnsense-exporter/commit/280dcb5ca5c6a329ab0cb94bb416773032bd6846)), closes [#346](https://github.com/rknightion/opnsense-exporter/issues/346)
+* **collector:** per-collector poll tiers + interval config ([#336](https://github.com/rknightion/opnsense-exporter/issues/336) phase 2) ([165d400](https://github.com/rknightion/opnsense-exporter/commit/165d400631262ad7e04b330773894ee9978bb7a0))
+* **collector:** poll-observability metrics + interval in status snapshot ([#336](https://github.com/rknightion/opnsense-exporter/issues/336) phase 3) ([8edea9c](https://github.com/rknightion/opnsense-exporter/commit/8edea9cec8ad9edf9218fb86ad80e2add1b0a291))
+* **flow:** bounded top-N rollup with monotone __other__ folding ([c266b48](https://github.com/rknightion/opnsense-exporter/commit/c266b4834570129486a44b297fc37acbb960fbc8)), closes [#346](https://github.com/rknightion/opnsense-exporter/issues/346)
+* **flow:** correlator + DNS answer cache ([#346](https://github.com/rknightion/opnsense-exporter/issues/346) phase 3 seam) ([8e35af9](https://github.com/rknightion/opnsense-exporter/commit/8e35af96540d99c9d971e90da7b0dcf3e51960a7))
+* **flow:** DNS-domain enrichment, §9 metrics, Zenarmor conn attrs in place ([#353](https://github.com/rknightion/opnsense-exporter/issues/353)) ([8c1be6c](https://github.com/rknightion/opnsense-exporter/commit/8c1be6cf116e4b73ac3d8264bcbc45a650612f2a))
+* **flow:** interface topology and the NetFlow ifIndex map ([b303514](https://github.com/rknightion/opnsense-exporter/commit/b303514deaa4d9c317c7c91d0688a1ad8c8f4bc2))
+* **flow:** NetFlow pipeline, metrics, flags, docs and dashboard ([20d5684](https://github.com/rknightion/opnsense-exporter/commit/20d5684a3c2cf1a1c618dfde3610e91bfaa4ac8f))
+* **flow:** NetFlow v5/v9 decoder and hardened UDP receiver ([d56d1c6](https://github.com/rknightion/opnsense-exporter/commit/d56d1c6ca71a3d0d0f7c2de5cc072ace3c264c8d))
+* **flow:** normalized flow.Record seam and community-id join key ([0f14ede](https://github.com/rknightion/opnsense-exporter/commit/0f14edeeb303a961f8ad467a1c963e05287ce6f6)), closes [#346](https://github.com/rknightion/opnsense-exporter/issues/346)
+* **flow:** OTLP flow-log emission path ([#346](https://github.com/rknightion/opnsense-exporter/issues/346) phase 3) ([c00e524](https://github.com/rknightion/opnsense-exporter/commit/c00e5245c1aedc9c9df8ea00cd10557c2b8d9da5))
+* **flow:** VLAN de-dup, WAN egress correction and direction inference ([06701db](https://github.com/rknightion/opnsense-exporter/commit/06701dbd5af5b55aa7dfa89400cd281327bcd8da))
+* **flow:** wire correlator -&gt; OTLP flow logs, phase-4 dashboard + rules ([#346](https://github.com/rknightion/opnsense-exporter/issues/346)) ([c974d21](https://github.com/rknightion/opnsense-exporter/commit/c974d21655d2fa238e5a786ef2f7bd0da6082dc9))
+* **grafana:** comprehensive coverage — Zenarmor tab, mixed Prometheus+Loki panels, curated alerts/recording rules ([8818c03](https://github.com/rknightion/opnsense-exporter/commit/8818c039788aec37f5b64dc3207e68ed37dc8479)), closes [#301](https://github.com/rknightion/opnsense-exporter/issues/301)
+* **grafana:** overhaul OPNsense dashboard ([659c98a](https://github.com/rknightion/opnsense-exporter/commit/659c98afd38a130bf3c1f4d99e909a4170367b49)), closes [#303](https://github.com/rknightion/opnsense-exporter/issues/303)
+* **logship:** add debug-capture mode for unmodelled receiver signals ([f973082](https://github.com/rknightion/opnsense-exporter/commit/f973082e519fa3b401ce4c3f038e6423c9a715a1)), closes [#330](https://github.com/rknightion/opnsense-exporter/issues/330)
+* **logship:** add opnsense.action, a binary pass/block resource attribute ([19d407b](https://github.com/rknightion/opnsense-exporter/commit/19d407beeef17c5d33920a6126d58c17176ebd7a)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+* **logship:** add the Zenarmor Elasticsearch receiver ([02edcdc](https://github.com/rknightion/opnsense-exporter/commit/02edcdcd3ee65405752b805b50f16fdeabfc4870)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+* **logship:** align syslog log attributes with OTel semantic conventions ([f461953](https://github.com/rknightion/opnsense-exporter/commit/f461953d2ca1c42495e3da10df391d996f7d44c1)), closes [#266](https://github.com/rknightion/opnsense-exporter/issues/266)
+* **logship:** map every lane's disposition onto opnsense.action ([1060108](https://github.com/rknightion/opnsense-exporter/commit/1060108e1eb29076ebff9d6f2ac079a530054f68)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+* **logship:** per-record source override for transport-agnostic sources ([47c4476](https://github.com/rknightion/opnsense-exporter/commit/47c447667336260eb7dbf5b551cefac8e3084fa3))
+* **logship:** replace the firewall and diaglog poll lanes with the syslog receiver ([6f98b35](https://github.com/rknightion/opnsense-exporter/commit/6f98b350d90ac5dbfbff2e1ed0a4b58f9990ed92)), closes [#238](https://github.com/rknightion/opnsense-exporter/issues/238) [#248](https://github.com/rknightion/opnsense-exporter/issues/248)
+* **logship:** source-label the receiver self-metrics ([c990cc7](https://github.com/rknightion/opnsense-exporter/commit/c990cc7c9735267633425738f555961c912a4c80)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+* **logship:** syslog receiver with OPNsense API log enrichment ([174212d](https://github.com/rknightion/opnsense-exporter/commit/174212d5246bb16a6ca7b320133f25f152ec78b3)), closes [#248](https://github.com/rknightion/opnsense-exporter/issues/248)
+* **metricsnap:** passive last-scrape family recorder ([7b815cc](https://github.com/rknightion/opnsense-exporter/commit/7b815cce53b19104fabfd9f989109166ead554f2)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **opnsense:** CacheSnapshot accessor for web UI freshness card ([39d9323](https://github.com/rknightion/opnsense-exporter/commit/39d9323dcf0504ace9e1d799f748a1a216c4c3bc)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **options:** add --logs.zenarmor.transport selector (elasticsearch|syslog) ([cf87f79](https://github.com/rknightion/opnsense-exporter/commit/cf87f79f641080eca1ad06315ea7a8be0be874fa))
+* **options:** require the syslog receiver for zenarmor transport=syslog ([f6610a5](https://github.com/rknightion/opnsense-exporter/commit/f6610a5f3d9457ffea08597892cd5f07debd8558))
+* **options:** web UI flags + redacted EffectiveConfig ([53081ff](https://github.com/rknightion/opnsense-exporter/commit/53081ff8a9195d45b8b8e4008125458b08edace7)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **options:** wire the Zenarmor receiver behind --logs.zenarmor.* ([6d0cbae](https://github.com/rknightion/opnsense-exporter/commit/6d0cbae39fb3c5c0ddf4e4562aebfda68e158a36)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+* **pyroscope:** collect all profile types by default incl. goroutine-leak ([f5ab4d8](https://github.com/rknightion/opnsense-exporter/commit/f5ab4d86111d00c58765f62f2e99c9ee6eabfb49)), closes [#269](https://github.com/rknightion/opnsense-exporter/issues/269)
+* **syslog:** add optional ProgramProcessor delegation hook ([4d27493](https://github.com/rknightion/opnsense-exporter/commit/4d27493c09a13219b98e8817be0b70599c1299df))
+* **syslog:** derive metrics from received logs, sample raw lines, and add TLS transport ([18c2024](https://github.com/rknightion/opnsense-exporter/commit/18c2024f9d8a5eddc4e0a8526f3c77841eb466d7)), closes [#258](https://github.com/rknightion/opnsense-exporter/issues/258) [#259](https://github.com/rknightion/opnsense-exporter/issues/259)
+* **syslog:** enrich every record, not just filterlog (+ parser registry) ([310dd28](https://github.com/rknightion/opnsense-exporter/commit/310dd28735883cc0c1ab252f6ebf05c67aefa457)), closes [#261](https://github.com/rknightion/opnsense-exporter/issues/261)
+* **syslog:** optional program and severity filtering ([269c7e9](https://github.com/rknightion/opnsense-exporter/commit/269c7e9ca91147779125b04c0370b1703e7fb603)), closes [#261](https://github.com/rknightion/opnsense-exporter/issues/261)
+* **syslog:** parse Suricata EVE alerts, and refuse to double-ship them ([8ce1e9b](https://github.com/rknightion/opnsense-exporter/commit/8ce1e9b86c09d17a2aa9ebd345e0b2c294d4ba4a)), closes [#261](https://github.com/rknightion/opnsense-exporter/issues/261)
+* **syslog:** parse the residual unparsed tail (cron, radvd, kea-dhcp6, dnsmasq-dhcp, configd.py) ([2d1a718](https://github.com/rknightion/opnsense-exporter/commit/2d1a7186abc0b29a5bcf67a1e6257d2b3a7a002b)), closes [#335](https://github.com/rknightion/opnsense-exporter/issues/335)
+* **syslog:** parse unbound local-zone query log ([fecf5e3](https://github.com/rknightion/opnsense-exporter/commit/fecf5e38aa457db019059656e490ddf62a2a31ee)), closes [#332](https://github.com/rknightion/opnsense-exporter/issues/332)
+* **syslog:** structure unbound SERVFAIL resolution failures ([b169933](https://github.com/rknightion/opnsense-exporter/commit/b1699333eeffe4f11d0bcfdf0df4ffdff52ae542)), closes [#334](https://github.com/rknightion/opnsense-exporter/issues/334)
+* **syslog:** structured parsers for audit, sshd, DHCP and HAProxy + tunnel names ([e829bf6](https://github.com/rknightion/opnsense-exporter/commit/e829bf6d391c9d84dc97fe3c2b68f207c6f910c5)), closes [#261](https://github.com/rknightion/opnsense-exporter/issues/261)
+* **webui:** active-series, log-throughput and fleet trend charts ([58e48bb](https://github.com/rknightion/opnsense-exporter/commit/58e48bbd74549035ee24b4980f9a024dd8e886bc)), closes [#347](https://github.com/rknightion/opnsense-exporter/issues/347)
+* **webui:** cardinality suite (hub, drill-downs, label-values, export) ([68cc734](https://github.com/rknightion/opnsense-exporter/commit/68cc734c6481316a099f63de9d62744aa29c93f9)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **webui:** connected-devices page with embedded OUI lookup ([8211cce](https://github.com/rknightion/opnsense-exporter/commit/8211cce73ca2a8a7178876f7e1071de511f1ab0d)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **webui:** fold cardinality into status snapshot for the single-page tabs ([#337](https://github.com/rknightion/opnsense-exporter/issues/337)) ([1705605](https://github.com/rknightion/opnsense-exporter/commit/170560582fbfd786f52a9e072303a36f3b16ef6f))
+* **webui:** per-collector interval/next-run/freshness on CollectorRow ([#337](https://github.com/rknightion/opnsense-exporter/issues/337)) ([e5f55b2](https://github.com/rknightion/opnsense-exporter/commit/e5f55b21bfcdf50bea36c99d271281d8024e7421))
+* **webui:** redacted /config page with kill switch ([d37523d](https://github.com/rknightion/opnsense-exporter/commit/d37523de2b9dafe5b010862a41fedc900211e36b)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **webui:** Run Now trigger endpoint + live-polling/filter/sort JS ([6f2ce75](https://github.com/rknightion/opnsense-exporter/commit/6f2ce75284405ce89482c6bf8481250cbb4d4c78)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **webui:** runtime-stats sampler for Overview parity ([#337](https://github.com/rknightion/opnsense-exporter/issues/337)) ([3f0e3bc](https://github.com/rknightion/opnsense-exporter/commit/3f0e3bccefd736d1cd9a67ed0029abe70b517e4b))
+* **webui:** show pretty + raw collector names on /config ([d9ed4fd](https://github.com/rknightion/opnsense-exporter/commit/d9ed4fdfadbac3008801bf6037f9cba8c0054b58)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **webui:** single inline tabbed console page ([#337](https://github.com/rknightion/opnsense-exporter/issues/337)) ([99630de](https://github.com/rknightion/opnsense-exporter/commit/99630de000ce033be0806c43206a49cc0ac36d06))
+* **webui:** status console page + /api/status.json + render core ([5e7a5b1](https://github.com/rknightion/opnsense-exporter/commit/5e7a5b15b21c757d9fe17f2c64ce8642aa7f80be)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **webui:** wire operator console into main + passive metrics recorder ([0d34fcd](https://github.com/rknightion/opnsense-exporter/commit/0d34fcdd2cbc1729ab34d034495df018f0111621)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **zenarmor:** derive flow.Record from conn documents ([fbf51a1](https://github.com/rknightion/opnsense-exporter/commit/fbf51a1a79ebfad91444202bad3457cd1ab87266)), closes [#346](https://github.com/rknightion/opnsense-exporter/issues/346)
+* **zenarmor:** drive the shared processor from the syslog receiver ([142575f](https://github.com/rknightion/opnsense-exporter/commit/142575f6043a59154a333b3338003be292b69320))
+* **zenarmor:** drop records describing our own ingest connection ([b454b0e](https://github.com/rknightion/opnsense-exporter/commit/b454b0e896a1db6d69ad4994466598f690d5074f)), closes [#278](https://github.com/rknightion/opnsense-exporter/issues/278)
+* **zenarmor:** handle _alias / _settings control-plane probes ([b74523a](https://github.com/rknightion/opnsense-exporter/commit/b74523af2a6ca3b89eae360f88496cc5014af7c4)), closes [#331](https://github.com/rknightion/opnsense-exporter/issues/331)
+* **zenarmor:** let operators exclude known-boring traffic from the log stream ([d31296f](https://github.com/rknightion/opnsense-exporter/commit/d31296ff8f92403656ff01e293ef559171b5a59b)), closes [#279](https://github.com/rknightion/opnsense-exporter/issues/279)
+* **zenarmor:** parse the daemon=zenarmor syslog message envelope ([f2e1fba](https://github.com/rknightion/opnsense-exporter/commit/f2e1fba6e0058ac38695633728874201ef443f60))
+
+
+### Bug Fixes
+
+* **canary:** exempt firmware upgrade_packages[].size as box state, not drift ([47c8d9b](https://github.com/rknightion/opnsense-exporter/commit/47c8d9b5a3efca9891223e6dd172962fb74635ef))
+* **canary:** triage the live-box drift, and stop plugin-gated 404s warning ([1473097](https://github.com/rknightion/opnsense-exporter/commit/1473097a1072c4c8d7552fd579348d227a0b9e3b)), closes [#243](https://github.com/rknightion/opnsense-exporter/issues/243)
+* **config:** reject telemetry paths that collide with health/ready routes ([f3a96b1](https://github.com/rknightion/opnsense-exporter/commit/f3a96b192a8026c695060299eee144c9a614947c)), closes [#291](https://github.com/rknightion/opnsense-exporter/issues/291)
+* **deps:** update module github.com/prometheus/client_golang to v1.24.0 ([#339](https://github.com/rknightion/opnsense-exporter/issues/339)) ([9b126b8](https://github.com/rknightion/opnsense-exporter/commit/9b126b8affc432f917a2f7a9f927810825242617))
+* **deps:** update module github.com/prometheus/common to v0.70.1 ([#352](https://github.com/rknightion/opnsense-exporter/issues/352)) ([1e60b7f](https://github.com/rknightion/opnsense-exporter/commit/1e60b7fcec564b01c8475c22aaca644a4fdc5378))
+* **deps:** update module google.golang.org/grpc to v1.82.1 ([#273](https://github.com/rknightion/opnsense-exporter/issues/273)) ([3eb0fac](https://github.com/rknightion/opnsense-exporter/commit/3eb0fac58001289535a6e6da48dd3c9f09f6de28))
+* **logship,collector:** bound sender-controlled derived metric cardinality ([8dc167f](https://github.com/rknightion/opnsense-exporter/commit/8dc167fb9e82b78d21bf4b50b9cd1ba944ef874c)), closes [#311](https://github.com/rknightion/opnsense-exporter/issues/311) [#326](https://github.com/rknightion/opnsense-exporter/issues/326) [#327](https://github.com/rknightion/opnsense-exporter/issues/327)
+* **logship:** actually rename subsystem to opnsense.subsystem on the wire ([1ea8afd](https://github.com/rknightion/opnsense-exporter/commit/1ea8afdb31c8199455d1002fa5e36f1ae4abeb6e)), closes [#266](https://github.com/rknightion/opnsense-exporter/issues/266)
+* **logship:** HAProxy status_class label was always empty ([e312922](https://github.com/rknightion/opnsense-exporter/commit/e31292242dcdd0284ced9db4de72ee9b61b8452e)), closes [#277](https://github.com/rknightion/opnsense-exporter/issues/277)
+* **logship:** make OTLP delivery observable with in-memory at-least-once ([736289b](https://github.com/rknightion/opnsense-exporter/commit/736289b0a487353627e47eef4fdb700482c4b786)), closes [#290](https://github.com/rknightion/opnsense-exporter/issues/290)
+* **logship:** publish labelled counters at zero from startup ([9f64c66](https://github.com/rknightion/opnsense-exporter/commit/9f64c6671a394f3895f11f6b4fed5ee2251f677b)), closes [#280](https://github.com/rknightion/opnsense-exporter/issues/280)
+* **logship:** stop a permanently-refused batch wedging delivery, bound queue bytes ([f697018](https://github.com/rknightion/opnsense-exporter/commit/f6970186720f8b88913e4cb72aff231eeabf6a1f)), closes [#304](https://github.com/rknightion/opnsense-exporter/issues/304) [#318](https://github.com/rknightion/opnsense-exporter/issues/318) [#325](https://github.com/rknightion/opnsense-exporter/issues/325)
+* **opnsense:** block credential-forwarding redirects, redact URL secrets, reject non-finite floats ([2be2b4c](https://github.com/rknightion/opnsense-exporter/commit/2be2b4ca7c45c5835e4696d7eba867781e9caaa1)), closes [#305](https://github.com/rknightion/opnsense-exporter/issues/305) [#306](https://github.com/rknightion/opnsense-exporter/issues/306) [#307](https://github.com/rknightion/opnsense-exporter/issues/307) [#321](https://github.com/rknightion/opnsense-exporter/issues/321) [#323](https://github.com/rknightion/opnsense-exporter/issues/323)
+* **opnsense:** drop the metadata.subsystems model; it exists on no release ([80649b1](https://github.com/rknightion/opnsense-exporter/commit/80649b19b5092a5a8f97393830de0caadd44efe9)), closes [#284](https://github.com/rknightion/opnsense-exporter/issues/284)
+* **pyroscope:** always collect goroutine profiles, not just under mutex/block ([31d2aa7](https://github.com/rknightion/opnsense-exporter/commit/31d2aa710fa0ff2eab54a8eb3eba7dd3aae358e9)), closes [#268](https://github.com/rknightion/opnsense-exporter/issues/268)
+* **pyroscope:** cap backend response bodies and make the flush timeout bound shutdown ([1bb8c2e](https://github.com/rknightion/opnsense-exporter/commit/1bb8c2ebc542205a062821cd3d02a4e545f9615e)), closes [#309](https://github.com/rknightion/opnsense-exporter/issues/309) [#310](https://github.com/rknightion/opnsense-exporter/issues/310)
+* **server,otlp:** bound scrape admission and stop echoing header secrets ([342d15e](https://github.com/rknightion/opnsense-exporter/commit/342d15e08f54d6cea8160c1239b7d5c98fe1e8ce)), closes [#308](https://github.com/rknightion/opnsense-exporter/issues/308) [#313](https://github.com/rknightion/opnsense-exporter/issues/313) [#324](https://github.com/rknightion/opnsense-exporter/issues/324)
+* **server:** gate /-/ready on poll-scheduler warm-up ([9d43334](https://github.com/rknightion/opnsense-exporter/commit/9d4333453683e6e425e0636a7d1dab1b4d5feed8)), closes [#341](https://github.com/rknightion/opnsense-exporter/issues/341) [#338](https://github.com/rknightion/opnsense-exporter/issues/338)
+* **syslog:** reassemble multi-line messages, and put promotable keys on the resource ([9763ebf](https://github.com/rknightion/opnsense-exporter/commit/9763ebf06dc28f99c9b8132246ecd2fdad5076f9)), closes [#262](https://github.com/rknightion/opnsense-exporter/issues/262) [#263](https://github.com/rknightion/opnsense-exporter/issues/263)
+* **syslog:** satisfy errcheck and staticcheck ([1788afb](https://github.com/rknightion/opnsense-exporter/commit/1788afbb873cd791a51caf7d60108b12d3eaf7bf)), closes [#248](https://github.com/rknightion/opnsense-exporter/issues/248)
+* **zenarmor,syslog:** close username-only auth bypass, bound receiver resources ([4865dca](https://github.com/rknightion/opnsense-exporter/commit/4865dca00291f405d9864500c1a5e1bfd716f674)), closes [#314](https://github.com/rknightion/opnsense-exporter/issues/314) [#315](https://github.com/rknightion/opnsense-exporter/issues/315) [#316](https://github.com/rknightion/opnsense-exporter/issues/316) [#317](https://github.com/rknightion/opnsense-exporter/issues/317) [#328](https://github.com/rknightion/opnsense-exporter/issues/328)
+* **zenarmor:** bound decompressed body size and request-body time ([1605294](https://github.com/rknightion/opnsense-exporter/commit/16052940126c6fbe9cd6683bb10778a0ef21f4ac)), closes [#288](https://github.com/rknightion/opnsense-exporter/issues/288) [#289](https://github.com/rknightion/opnsense-exporter/issues/289)
+* **zenarmor:** decode alertinfo arrays/number/string sid ([9b2a0fb](https://github.com/rknightion/opnsense-exporter/commit/9b2a0fbb001cc223a650ac2243214d0877d61cf2)), closes [#297](https://github.com/rknightion/opnsense-exporter/issues/297)
+* **zenarmor:** log which endpoint an unhandled call hit ([bc800b0](https://github.com/rknightion/opnsense-exporter/commit/bc800b08b887cd6270c3286525f3a252bf6ad51c)), closes [#285](https://github.com/rknightion/opnsense-exporter/issues/285)
+* **zenarmor:** match self-traffic against any bound syslog port ([ccf8b9d](https://github.com/rknightion/opnsense-exporter/commit/ccf8b9decf7ce984ee7b004d0ef03eab389ecc55)), closes [#299](https://github.com/rknightion/opnsense-exporter/issues/299)
+
+
+### Performance
+
+* **collector:** tier wholly-static collectors cold/slow, dedupe plugin-gated list ([bcb5caf](https://github.com/rknightion/opnsense-exporter/commit/bcb5cafe81b4e4f9083ed33a3b1e1072c0efb732)), closes [#344](https://github.com/rknightion/opnsense-exporter/issues/344)
+* **runtime:** bound concurrent OPNsense API fan-out during scrapes ([8847e3f](https://github.com/rknightion/opnsense-exporter/commit/8847e3f99d8c7b22dc8d289c251e0dfd14980acc)), closes [#294](https://github.com/rknightion/opnsense-exporter/issues/294)
+
+
+### Refactoring
+
+* remove per-collector Run Now (POST trigger + inflight guard + RunCollector plumbing) ([#337](https://github.com/rknightion/opnsense-exporter/issues/337)) ([0d4b061](https://github.com/rknightion/opnsense-exporter/commit/0d4b0616dbbfb15d2b3efae648cb9e5635dcf626))
+* **zenarmor:** extract shared docProcessor from handleDoc ([6e8e988](https://github.com/rknightion/opnsense-exporter/commit/6e8e98828679331c7b1b73d6700629daf1ec2191))
+
+
+### Miscellaneous
+
+* **deps:** update actions/checkout action to v7.0.1 ([#340](https://github.com/rknightion/opnsense-exporter/issues/340)) ([527651d](https://github.com/rknightion/opnsense-exporter/commit/527651df12db96077b8802f8e5d72c36c33538e6))
+* **deps:** update actions/setup-go action to v7 ([#275](https://github.com/rknightion/opnsense-exporter/issues/275)) ([0896994](https://github.com/rknightion/opnsense-exporter/commit/08969948de2d90af1218bcbf6063c3f6af737b18))
+* **deps:** update actions/setup-python action to v7 ([#333](https://github.com/rknightion/opnsense-exporter/issues/333)) ([bbe5c45](https://github.com/rknightion/opnsense-exporter/commit/bbe5c45ec215243456a8e5c8b9c607de28e353b8))
+* **deps:** update anthropics/claude-code-action action to v1.0.172 ([#245](https://github.com/rknightion/opnsense-exporter/issues/245)) ([260c8da](https://github.com/rknightion/opnsense-exporter/commit/260c8da4a2280f0cd6aa5820ef9671ca994b9c85))
+* **deps:** update anthropics/claude-code-action action to v1.0.173 ([#247](https://github.com/rknightion/opnsense-exporter/issues/247)) ([373c8dc](https://github.com/rknightion/opnsense-exporter/commit/373c8dc8c3fb889b41045837d1bafe9ec57eaa63))
+* **deps:** update anthropics/claude-code-action action to v1.0.174 ([#265](https://github.com/rknightion/opnsense-exporter/issues/265)) ([b4ae77e](https://github.com/rknightion/opnsense-exporter/commit/b4ae77ec4480dd04fbf4f60edb786bd15780c82f))
+* **deps:** update anthropics/claude-code-action action to v1.0.175 ([#272](https://github.com/rknightion/opnsense-exporter/issues/272)) ([27eeb7a](https://github.com/rknightion/opnsense-exporter/commit/27eeb7ac4bc56b5cb33048279a0326833866fe2f))
+* **deps:** update anthropics/claude-code-action action to v1.0.176 ([#287](https://github.com/rknightion/opnsense-exporter/issues/287)) ([a334691](https://github.com/rknightion/opnsense-exporter/commit/a3346914f5feb9ff2d964d9304f495630f5291d8))
+* **deps:** update anthropics/claude-code-action action to v1.0.177 ([#300](https://github.com/rknightion/opnsense-exporter/issues/300)) ([7e1fa25](https://github.com/rknightion/opnsense-exporter/commit/7e1fa25d9a64831e7476c832f925987e517e0e60))
+* **deps:** update anthropics/claude-code-action action to v1.0.178 ([#329](https://github.com/rknightion/opnsense-exporter/issues/329)) ([84d20d2](https://github.com/rknightion/opnsense-exporter/commit/84d20d247c48a63795fdff2eeb92fe0403fd5330))
+* **deps:** update anthropics/claude-code-action action to v1.0.179 ([#342](https://github.com/rknightion/opnsense-exporter/issues/342)) ([892c72c](https://github.com/rknightion/opnsense-exporter/commit/892c72c02b32fd262e6cb82d4f459467fa451942))
+* **deps:** update anthropics/claude-code-action action to v1.0.180 ([#351](https://github.com/rknightion/opnsense-exporter/issues/351)) ([842351d](https://github.com/rknightion/opnsense-exporter/commit/842351d8c9c3147012d18598e50e21834ef7b204))
+* **deps:** update anthropics/claude-code-action action to v1.0.181 ([#354](https://github.com/rknightion/opnsense-exporter/issues/354)) ([d20f894](https://github.com/rknightion/opnsense-exporter/commit/d20f8943cd2199d824088b6b8539cffc3b2df74a))
+* **deps:** update gcr.io/distroless/static-debian13:nonroot docker digest to f7f8f72 ([#244](https://github.com/rknightion/opnsense-exporter/issues/244)) ([047ef4e](https://github.com/rknightion/opnsense-exporter/commit/047ef4edc4ce19560be938f2c67cc9badf7c7461))
+* **deps:** update module github.com/anchore/syft to v1.47.0 ([#274](https://github.com/rknightion/opnsense-exporter/issues/274)) ([c3bfe94](https://github.com/rknightion/opnsense-exporter/commit/c3bfe94a8f46bfb05e219f6b3f55b01ea1431930))
+* **deps:** update module github.com/anchore/syft to v1.48.0 ([#282](https://github.com/rknightion/opnsense-exporter/issues/282)) ([b2a1da5](https://github.com/rknightion/opnsense-exporter/commit/b2a1da58b6e4182bc0528f00ac32d69fb6543e70))
+* **deps:** update module github.com/anchore/syft to v1.49.0 ([#345](https://github.com/rknightion/opnsense-exporter/issues/345)) ([9cc3f33](https://github.com/rknightion/opnsense-exporter/commit/9cc3f330a0f7adef3bf80121a33b568206bdd279))
+* **deps:** update module github.com/anchore/syft/cmd/syft to v1.47.0 ([#281](https://github.com/rknightion/opnsense-exporter/issues/281)) ([94a3eec](https://github.com/rknightion/opnsense-exporter/commit/94a3eeceaed82385ada7e250d3d0963b7824e943))
+* **deps:** update module github.com/anchore/syft/cmd/syft to v1.48.0 ([#283](https://github.com/rknightion/opnsense-exporter/issues/283)) ([98b3166](https://github.com/rknightion/opnsense-exporter/commit/98b3166c07ccb31ffa620259f2bdc75d950f56b6))
+* **deps:** update module github.com/anchore/syft/cmd/syft to v1.49.0 ([#348](https://github.com/rknightion/opnsense-exporter/issues/348)) ([310c0c3](https://github.com/rknightion/opnsense-exporter/commit/310c0c36c5ac4a17a5026284ee9d3f2c72ad2a43))
+* **deps:** update opnsense-docs digest to aced3de ([#355](https://github.com/rknightion/opnsense-exporter/issues/355)) ([46f85a4](https://github.com/rknightion/opnsense-exporter/commit/46f85a412ba80ed554e58e46822437f6089c9713))
+* **deps:** update opnsense-docs digest to c296d26 ([#264](https://github.com/rknightion/opnsense-exporter/issues/264)) ([12de5b4](https://github.com/rknightion/opnsense-exporter/commit/12de5b48cc7182c3f50b542cbf5b0b6e2957785e))
+* **deps:** update opnsense-docs digest to ee0a0c6 ([#343](https://github.com/rknightion/opnsense-exporter/issues/343)) ([92e8b7d](https://github.com/rknightion/opnsense-exporter/commit/92e8b7d8d18e6e74f8c124a8e6abb446eed6aa5a))
+* **deps:** update opnsense-docs digest to f9807ac ([#349](https://github.com/rknightion/opnsense-exporter/issues/349)) ([a8da466](https://github.com/rknightion/opnsense-exporter/commit/a8da4664fc797a124270dbcde5bb66c211366f76))
+
+
+### Documentation
+
+* **assets:** replace the hub's social card with a real project card ([efda35b](https://github.com/rknightion/opnsense-exporter/commit/efda35b7d67c504f0a04ebff2ded9bfca4222075))
+* **canary:** record healthCheck subsystems and nginxVts cacheZones as box state ([dfd73ee](https://github.com/rknightion/opnsense-exporter/commit/dfd73ee165fe71d0d4a935f3c96625753eadff78)), closes [#271](https://github.com/rknightion/opnsense-exporter/issues/271)
+* **claude:** add box-state as the fifth canary drift verdict ([5a5c62a](https://github.com/rknightion/opnsense-exporter/commit/5a5c62a7861e872c890470c0cacd8407cb51c5f5))
+* **collector:** document the poll model + fix stale references ([#336](https://github.com/rknightion/opnsense-exporter/issues/336) phase 4) ([7ebc2cb](https://github.com/rknightion/opnsense-exporter/commit/7ebc2cb71c7f29be90e7d36bd687ed3c670f1556))
+* **config:** regenerate flag reference for the web UI flags ([9b19a00](https://github.com/rknightion/opnsense-exporter/commit/9b19a00c84f1df646a854bdf26c4d67ef97bb95f))
+* correct two false claims left behind by [#92](https://github.com/rknightion/opnsense-exporter/issues/92) and [#248](https://github.com/rknightion/opnsense-exporter/issues/248) ([c1ae453](https://github.com/rknightion/opnsense-exporter/commit/c1ae45320e0c506954d307504c05cba05dad6738))
+* **deployment:** document the web UI operator console ([28ff317](https://github.com/rknightion/opnsense-exporter/commit/28ff317879119291d9ae0c783c9aba158b8a8fd2)), closes [#302](https://github.com/rknightion/opnsense-exporter/issues/302)
+* **docker:** show the receiver ports in the compose example ([37a0e7f](https://github.com/rknightion/opnsense-exporter/commit/37a0e7f3aee2a9e61a989ac67543dc29570f0692))
+* **nav:** add the syslog receiver page to the site nav ([7fd56da](https://github.com/rknightion/opnsense-exporter/commit/7fd56da377c913478c262532f8a41b0554dc90e1)), closes [#248](https://github.com/rknightion/opnsense-exporter/issues/248)
+* **readme,site:** lead with OTLP, syslog and flow differentiators; add GitHub backlinks ([ce54152](https://github.com/rknightion/opnsense-exporter/commit/ce54152c40fa35f7468f1f1a39621b9e1d3ce050))
+* **security:** fix distroless private-CA trust recipe ([ea9b864](https://github.com/rknightion/opnsense-exporter/commit/ea9b86478b4108bf9a1a5d6e045c352ced2263f9)), closes [#292](https://github.com/rknightion/opnsense-exporter/issues/292)
+* **syslog:** align prose with the phase-4 receiver features ([0dd307e](https://github.com/rknightion/opnsense-exporter/commit/0dd307ed0c463bd961e30f6b86ab0688497d3b82)), closes [#267](https://github.com/rknightion/opnsense-exporter/issues/267)
+* **syslog:** document the LogQL name mangling, and fix a duplicated bullet ([69a7a62](https://github.com/rknightion/opnsense-exporter/commit/69a7a62c197b92d7f0a06156d18d59a4fd878434))
+* **syslog:** document the parsers, universal enrichment and filtering ([cabb84a](https://github.com/rknightion/opnsense-exporter/commit/cabb84a5c09a32a5f47de3705132cc0c31b08f78)), closes [#261](https://github.com/rknightion/opnsense-exporter/issues/261)
+* **syslog:** setup guide, k8s manifests and dashboard panels for the receiver ([f41a600](https://github.com/rknightion/opnsense-exporter/commit/f41a6004082cf313b6e4c5b760870d429893afee)), closes [#248](https://github.com/rknightion/opnsense-exporter/issues/248)
+* **telemetry:** document the OTLP resource-attribute convention ([eee3006](https://github.com/rknightion/opnsense-exporter/commit/eee3006230b559a41888113d400c60c8998c14ba)), closes [#270](https://github.com/rknightion/opnsense-exporter/issues/270)
+* voice + de-AI pass across the docs base ([63fb0ef](https://github.com/rknightion/opnsense-exporter/commit/63fb0ef6a1666875b8c00ba21a4dd6fd497b7279)), closes [#267](https://github.com/rknightion/opnsense-exporter/issues/267)
+* **webui:** describe the single-page tabbed console; drop multi-page/Run-Now refs ([#337](https://github.com/rknightion/opnsense-exporter/issues/337)) ([eaa00c5](https://github.com/rknightion/opnsense-exporter/commit/eaa00c535da6ed06fbc3cf177fa8b8e6413434e0))
+* **zenarmor:** document the elasticsearch|syslog transport selector ([410b0f0](https://github.com/rknightion/opnsense-exporter/commit/410b0f0272612715689a7076a5df8b5850848e94))
+* **zenarmor:** document the receiver and add its dashboard panels ([9e217a8](https://github.com/rknightion/opnsense-exporter/commit/9e217a8ed3b02f796d68fc1b34dd80e2a47a453f)), closes [#276](https://github.com/rknightion/opnsense-exporter/issues/276)
+
+
+### Tests
+
+* **cache:** guard body TTLs against fast-polling collectors ([e43abb4](https://github.com/rknightion/opnsense-exporter/commit/e43abb40d9097f9432d13cd55b55824fde0053b2))
+* **flow:** fix flaky TestReplayRepair_VLANParentDuplicateSuppressed ([06e5262](https://github.com/rknightion/opnsense-exporter/commit/06e52629e7b5bbb462d7e83cadb188e727c0a055))
+* **flow:** golden NetFlow v9 replay fixture from real capture ([#346](https://github.com/rknightion/opnsense-exporter/issues/346)) ([2d20aeb](https://github.com/rknightion/opnsense-exporter/commit/2d20aebe3d81f323e379bf094beb8bbf60310df0))
+* **syslog:** benchmark the enrichment path and pin its allocations ([54e62fc](https://github.com/rknightion/opnsense-exporter/commit/54e62fcdeae299b97c445a9eec22c6ea25c4bd12)), closes [#286](https://github.com/rknightion/opnsense-exporter/issues/286)
+* **zenarmor:** cover the syslog-transport factory branch; note filter bypass ([cf5f150](https://github.com/rknightion/opnsense-exporter/commit/cf5f1501485ee98ad4250032f32db21f350b92fd))
+* **zenarmor:** end-to-end syslog transport across all five families ([20ca1b7](https://github.com/rknightion/opnsense-exporter/commit/20ca1b7f47d25beeae6ed4e54324355fd3ad8fd0))
+
+
+### CI/CD
+
+* add a clean go test -race gate ([87b705e](https://github.com/rknightion/opnsense-exporter/commit/87b705ef2826c7f3c4fc5e9c5b8ee452755b64f1)), closes [#295](https://github.com/rknightion/opnsense-exporter/issues/295)
+
 ## [2.2.1](https://github.com/rknightion/opnsense-exporter/compare/v2.2.0...v2.2.1) (2026-07-13)
 
 
