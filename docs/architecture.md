@@ -9,6 +9,11 @@ tags:
 
 This page covers the exporter's internal architecture: package structure, data flow, and extension points.
 
+It describes the code in the
+[rknightion/opnsense-exporter repository on GitHub](https://github.com/rknightion/opnsense-exporter),
+which is Apache-2.0 licensed. Every path named below links to the real source, so this page and the
+implementation can be read side by side.
+
 ## Package structure
 
 ```mermaid

@@ -7,6 +7,12 @@ tags:
 
 # Troubleshooting
 
+If nothing here matches what you are seeing, search the
+[existing GitHub issues](https://github.com/rknightion/opnsense-exporter/issues), ask in
+[GitHub Discussions](https://github.com/rknightion/opnsense-exporter/discussions), or
+[file a bug report](https://github.com/rknightion/opnsense-exporter/issues/new) with the exporter
+version, your OPNsense release, and the relevant log lines.
+
 ## `opnsense_up` is 0
 
 `opnsense_up 0` means the exporter could not complete the OPNsense health check. Work through:

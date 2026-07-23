@@ -1,33 +1,37 @@
-# OPNsense Prometheus Exporter
+# OPNsense Exporter: Prometheus and OpenTelemetry Monitoring for OPNsense Firewalls
 
-![GitHub License](https://img.shields.io/github/license/rknightion/opnsense-exporter)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/rknightion/opnsense-exporter/ci.yml)
-![GitHub go.mod Go version (branch)](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
+[![Documentation](https://img.shields.io/badge/docs-m7kni.io-2563eb)](https://m7kni.io/opnsense-exporter/)
+[![Release](https://img.shields.io/github/v/release/rknightion/opnsense-exporter)](https://github.com/rknightion/opnsense-exporter/releases)
+[![GitHub License](https://img.shields.io/github/license/rknightion/opnsense-exporter)](https://github.com/rknightion/opnsense-exporter/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/rknightion/opnsense-exporter/ci.yml)](https://github.com/rknightion/opnsense-exporter/actions)
+![Go version](https://img.shields.io/github/go-mod/go-version/rknightion/opnsense-exporter/main)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rknightion/opnsense-exporter/badge)](https://scorecard.dev/viewer/?uri=github.com/rknightion/opnsense-exporter)
 
-A Prometheus exporter for [OPNsense](https://opnsense.org/) firewalls. It polls the
-OPNsense REST API and exposes 808 metrics across 62 collectors: firewall and PF
-statistics, interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq,
-ISC), Unbound DNS, certificates and ACME, hardware temperatures, SMART disk health,
-system resources, and more. Metrics are served at `/metrics` and can optionally be
-pushed over OTLP.
+**A complete observability agent for [OPNsense](https://opnsense.org/) firewalls.** It exposes
+Prometheus metrics, pushes native OpenTelemetry metrics and logs over OTLP, receives and
+enriches syslog, and turns NetFlow and Zenarmor flow records into bounded traffic-volume
+metrics. One binary, one API user, no agent on the firewall.
 
-> **Fork notice:** this project began as a fork of
-> [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and
-> became a hard fork early on, as its changes quickly grew incompatible with upstream.
-> Many thanks to the AthennaMind authors for the original exporter this project is
-> built on. It now evolves independently. See [CHANGELOG.md](./CHANGELOG.md) for
-> release history.
+📖 **[Full documentation: m7kni.io/opnsense-exporter](https://m7kni.io/opnsense-exporter/)**
 
-**Full documentation: [m7kni.io/opnsense-exporter](https://m7kni.io/opnsense-exporter/)** —
-[getting started](https://m7kni.io/opnsense-exporter/getting-started/) ·
-[configuration](https://m7kni.io/opnsense-exporter/configuration/) ·
-[metrics reference](https://m7kni.io/opnsense-exporter/metrics/metrics/) ·
-[collectors](https://m7kni.io/opnsense-exporter/collectors/) ·
-[deployment](https://m7kni.io/opnsense-exporter/deployment/) ·
-[security](https://m7kni.io/opnsense-exporter/security/) ·
-[troubleshooting](https://m7kni.io/opnsense-exporter/troubleshooting/) ·
-[upgrading](https://m7kni.io/opnsense-exporter/upgrading/)
+## What this does that other OPNsense exporters don't
+
+Most OPNsense exporters scrape a handful of endpoints and stop at `/metrics`. This one covers
+all four telemetry paths off the firewall:
+
+| Capability | What you get | Docs |
+|---|---|---|
+| **Native OpenTelemetry** | Push metrics **and** logs over OTLP to any collector or Grafana Cloud, with no Prometheus scrape at all. Not a sidecar or a translation layer. | [OTLP export](https://m7kni.io/opnsense-exporter/configuration/) |
+| **Syslog receiver** | OPNsense pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive these lines; it cannot understand them. | [Syslog receiver](https://m7kni.io/opnsense-exporter/syslog-receiver/) |
+| **Zenarmor receiver** | Per-connection, DNS, TLS/SNI, HTTP and threat-alert records pulled straight out of Zenarmor by posing as its Elasticsearch streaming target. This is the only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated. | [Zenarmor receiver](https://m7kni.io/opnsense-exporter/zenarmor-receiver/) |
+| **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so "how much traffic, which interface, which direction, which application category" is answerable from Prometheus for years instead of by scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense-exporter/flow/) |
+| **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense-exporter/architecture/) |
+
+Underneath all of that: 808 metrics across 62 collectors covering firewall and PF statistics,
+interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq, ISC), Unbound DNS,
+certificates and ACME, hardware temperatures, SMART disk health, system resources and more.
+Collection is decoupled from scraping: each collector polls on its own volatility tier and
+`/metrics` replays the latest snapshot, so a slow firewall API never stalls a scrape.
 
 ## Quick start
 
@@ -42,9 +46,9 @@ docker run -p 8080:8080 \
       --opnsense.address=ops.example.com
 ```
 
-Metrics are now available at `http://localhost:8080/metrics`. The instance label
-defaults to the hostname the OPNsense API reports for itself, so it does not need
-to be configured for a single firewall.
+Metrics are now at `http://localhost:8080/metrics` and the operator console at
+`http://localhost:8080/`. The instance label defaults to the hostname the OPNsense API reports
+for itself, so a single firewall needs no further configuration.
 
 For production, prefer file-based secrets over plain environment variables:
 
@@ -72,21 +76,43 @@ secrets:
     external: true
 ```
 
-Other deployment methods:
-[Docker & Compose](https://m7kni.io/opnsense-exporter/deployment/docker/) ·
+Full walkthrough: [Getting started](https://m7kni.io/opnsense-exporter/getting-started/). Other
+deployment methods: [Docker & Compose](https://m7kni.io/opnsense-exporter/deployment/docker/) ·
 [Kubernetes](https://m7kni.io/opnsense-exporter/deployment/kubernetes/) (manifests in
 [`deploy/k8s/`](./deploy/k8s/)) ·
 [Systemd](https://m7kni.io/opnsense-exporter/deployment/systemd/)
 
+## OpenTelemetry and log shipping
+
+OTLP export and log shipping are independent of each other and both off by default.
+
+```bash
+# Push metrics and logs over OTLP instead of (or alongside) a Prometheus scrape
+--otlp.enabled --otlp.endpoint=https://otlp-gateway.example.com/otlp
+
+# Receive syslog from the firewall and ship enriched events to Loki
+--logs.enabled --logs.syslog.enabled --logs.syslog.listen-udp=0.0.0.0:5140
+
+# Receive Zenarmor flow, DNS, TLS and alert records
+--logs.zenarmor.enabled --logs.zenarmor.listen-http=0.0.0.0:9200
+
+# Receive NetFlow v5/v9
+--flow.netflow.enabled --flow.netflow.listen=0.0.0.0:2055
+```
+
+High-cardinality event data (addresses, ports, Suricata SIDs, domains) ships as log body and
+structured metadata, never as a metric label and never as a Loki label. See
+[log shipping](https://m7kni.io/opnsense-exporter/log-shipping/) and
+[flow volume](https://m7kni.io/opnsense-exporter/flow/).
+
 ## Configuration
 
-Everything is configured with CLI flags or `OPNSENSE_EXPORTER_*` environment
-variables. Each collector can be switched off individually
-(`--exporter.disable-<name>`); a few high-cost or high-cardinality collectors are
-opt-in (`--exporter.enable-<name>`). Optional integrations include OTLP metrics
-push and Grafana Cloud Pyroscope continuous profiling.
+Everything is configured with CLI flags or `OPNSENSE_EXPORTER_*` environment variables. Each
+collector can be switched off individually (`--exporter.disable-<name>`); a few high-cost or
+high-cardinality collectors are opt-in (`--exporter.enable-<name>`). Grafana Cloud Pyroscope
+continuous profiling is also available.
 
-The complete, generated flag and collector reference lives in the
+The complete generated flag and collector reference lives in the
 [configuration docs](https://m7kni.io/opnsense-exporter/configuration/) and the
 [collector reference](https://m7kni.io/opnsense-exporter/collectors/reference/).
 
@@ -95,11 +121,12 @@ The complete, generated flag and collector reference lives in the
 > **Minimum Grafana version: 13+** — the dashboard uses the v2 dynamic schema
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
-A single dynamic dashboard covers all 808 metrics across 41 tabs, auto-hiding
-tabs and rows for collectors and OPNsense plugins you don't run. Import
-[`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or
-GitOps. Alert and recording rules ship alongside it in
-[`grafana/alerts/`](./grafana/alerts/). See [`grafana/README.md`](./grafana/README.md).
+A single dynamic dashboard covers all 808 metrics across 41 tabs, auto-hiding tabs and rows for
+collectors and OPNsense plugins you don't run. Import
+[`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or GitOps. Alert
+and recording rules ship alongside it in [`grafana/alerts/`](./grafana/alerts/). See
+[`grafana/README.md`](./grafana/README.md) and
+[integration & dashboards](https://m7kni.io/opnsense-exporter/integration-dashboards/).
 
 ## OPNsense user permissions
 
@@ -128,12 +155,46 @@ Required OPNsense settings:
 
 - Unbound collector: *Unbound DNS > Advanced > Extended Statistics* must be enabled.
 
+Details and least-privilege guidance: [security](https://m7kni.io/opnsense-exporter/security/).
+
+## Compatibility
+
+Supported against the current and previous stable OPNsense releases. Plugin-gated collectors go
+silent when the plugin is absent rather than erroring. See
+[compatibility](https://m7kni.io/opnsense-exporter/compatibility/) and
+[upgrading](https://m7kni.io/opnsense-exporter/upgrading/).
+
+## Documentation
+
+| | |
+|---|---|
+| [Getting started](https://m7kni.io/opnsense-exporter/getting-started/) | API key, first deploy, verifying metrics |
+| [Configuration](https://m7kni.io/opnsense-exporter/configuration/) | Every flag and environment variable |
+| [Metrics reference](https://m7kni.io/opnsense-exporter/metrics/metrics/) | All 808 metrics with types, labels and PromQL |
+| [Collectors](https://m7kni.io/opnsense-exporter/collectors/) | What each of the 62 collectors covers |
+| [Deployment](https://m7kni.io/opnsense-exporter/deployment/) | Docker, Kubernetes, systemd |
+| [Log shipping](https://m7kni.io/opnsense-exporter/log-shipping/) | Syslog, Zenarmor, NetFlow, Loki |
+| [Architecture](https://m7kni.io/opnsense-exporter/architecture/) | Poll scheduler, snapshot model, operator console |
+| [Troubleshooting](https://m7kni.io/opnsense-exporter/troubleshooting/) | Common failures and how to read them |
+
+## Fork notice
+
+This project began as a fork of
+[AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and became a
+hard fork early on, as its changes quickly grew incompatible with upstream. Many thanks to the
+AthennaMind authors for the original exporter this project is built on. It now evolves
+independently. See [CHANGELOG.md](./CHANGELOG.md) for release history.
+
 ## Contributing
 
+Bug reports, questions and ideas are welcome in
+[issues](https://github.com/rknightion/opnsense-exporter/issues) and
+[discussions](https://github.com/rknightion/opnsense-exporter/discussions).
+
 See [CONTRIBUTING.md](./CONTRIBUTING.md) and the
-[development docs](https://m7kni.io/opnsense-exporter/development/contributing/).
-Docs for metrics and configuration are generated from code. Run `make docs` after
-changing flags or collectors.
+[development docs](https://m7kni.io/opnsense-exporter/development/contributing/). Docs for
+metrics and configuration are generated from code; run `make docs` after changing flags or
+collectors.
 
 ## License
 

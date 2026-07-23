@@ -1,6 +1,6 @@
 ---
 title: OPNsense Exporter
-description: Comprehensive Prometheus exporter for OPNsense firewalls with 808 metrics across 62 collectors
+description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 808 metrics across 62 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Comprehensive Prometheus metrics for OPNsense firewalls**
 
-A Prometheus exporter that polls OPNsense REST APIs and exposes 808 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 808 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
 
 <div class="hero-badges" markdown>
 
@@ -88,5 +88,16 @@ Key highlights:
 - **File-based secrets** for credentials outside plain environment variables
 - **Continuous profiling** (opt-in) pushed to Grafana Cloud Pyroscope
 
+## What sets it apart
+
+Most OPNsense exporters scrape a few endpoints and stop at `/metrics`. This one covers all four telemetry paths off the firewall:
+
+- **Native OpenTelemetry** — push metrics *and* logs over OTLP to any collector or to Grafana Cloud, with no Prometheus scrape at all. See [configuration](configuration.md).
+- **[Syslog receiver](syslog-receiver.md)** — the firewall pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive those lines; it cannot understand them.
+- **[Zenarmor receiver](zenarmor-receiver.md)** — per-connection, DNS, TLS/SNI, HTTP and threat-alert records taken straight from Zenarmor by posing as its Elasticsearch streaming target. The only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated.
+- **[NetFlow and flow volume](flow.md)** — a NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so traffic-volume questions are answerable from Prometheus for years instead of by scanning GB/day of logs.
+
+The source for all of it is on GitHub at [rknightion/opnsense-exporter](https://github.com/rknightion/opnsense-exporter) under Apache-2.0. Bug reports and questions go to [GitHub issues](https://github.com/rknightion/opnsense-exporter/issues) and [discussions](https://github.com/rknightion/opnsense-exporter/discussions); if the project is useful to you, [a star on the repository](https://github.com/rknightion/opnsense-exporter) helps other OPNsense operators find it.
+
 !!! info "Fork notice"
-    This is a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter). Credit to the original authors for the foundation this builds on. This fork adds 14 new collectors, extends the existing ones, modernizes the build infrastructure, and fixes bugs beyond what the upstream project covers.
+    This began as a fork of [AthennaMind/opnsense-exporter](https://github.com/AthennaMind/opnsense-exporter) and became a hard fork early on, as its changes quickly grew incompatible with upstream. Credit to the original authors for the foundation this builds on. It now evolves independently — see the [changelog](changelog.md) for release history.

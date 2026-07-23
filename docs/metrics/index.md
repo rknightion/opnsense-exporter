@@ -10,6 +10,12 @@ tags:
 
 The OPNsense Exporter provides 808 Prometheus metrics across 62 collectors, covering every major subsystem of the firewall platform.
 
+Every metric on this page is generated from the collector source, so it always matches the shipped
+binary. Read the collector implementations in
+[`internal/collector/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/collector),
+or [open an issue](https://github.com/rknightion/opnsense-exporter/issues/new) if a metric you need
+is missing.
+
 <div class="grid cards" markdown>
 
 -   :material-book-open-variant:{ .lg .middle } **Metrics Overview**

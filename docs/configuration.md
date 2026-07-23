@@ -9,7 +9,8 @@ tags:
 
 The OPNsense Exporter follows standard Prometheus ecosystem conventions. It can be configured using command-line flags, environment variables, or a combination of both. Environment variables take the prefix `OPNSENSE_EXPORTER_` unless noted otherwise.
 
-The flag tables on this page are generated from the exporter's own flag definitions by `make docs`, so they always match the binary.
+The flag tables on this page are generated from the exporter's own flag definitions by `make docs`, so they always match the binary. The definitions themselves live in
+[`internal/options/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/options).
 
 ## OPNsense connection
 

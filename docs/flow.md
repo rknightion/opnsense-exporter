@@ -14,6 +14,9 @@ addresses, ports, hostnames, application names and connection ids are deliberate
 never metric labels — they stay as structured metadata on the shipped record, where
 they are still filterable but cannot multiply series.
 
+The rollup, the NetFlow receiver and the flow correlator are implemented in
+[`internal/flow/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/flow).
+
 ## Enabling it
 
 Flow rollups are **on by default** and cost nothing where no flow source is

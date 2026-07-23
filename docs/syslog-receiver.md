@@ -12,6 +12,10 @@ OPNsense API before shipping it on through the [log pipeline](log-shipping.md).
 This is off by default. It needs configuration on **both** sides: the receiver on the
 exporter, and a logging target on the firewall.
 
+If a log line from your firewall is not parsed the way you expect, the parsers are open source:
+see [`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship)
+and [report the format](https://github.com/rknightion/opnsense-exporter/issues/new) with a sample line.
+
 ## Why this exists
 
 A generic syslog collector (Alloy, Vector, rsyslog) can already receive these logs.

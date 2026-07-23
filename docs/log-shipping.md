@@ -16,6 +16,12 @@ shipped as log **body** and Loki **structured metadata** — never as a metric a
 never as a Loki label. The only labels are the resource identity, plus `opnsense.source`
 and `opnsense.subsystem` if you choose to promote them (see [Loki label model](#loki-label-model)).
 
+The pipeline is implemented in
+[`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship);
+parsers live one file per program, so
+[adding a parser](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship) is a
+self-contained contribution.
+
 !!! note "Sources are added incrementally"
     Enabling `--logs.enabled` starts the pipeline, but nothing is shipped until at
     least one **source** is also enabled (each source has its own

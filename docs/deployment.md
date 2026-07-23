@@ -9,6 +9,13 @@ tags:
 
 The OPNsense Exporter can run on any machine with network access to the OPNsense API -- it does not need to run on the firewall itself. Choose the deployment method that fits your infrastructure.
 
+Container images are published to
+[`ghcr.io/rknightion/opnsense-exporter`](https://github.com/rknightion/opnsense-exporter/pkgs/container/opnsense-exporter),
+and static binaries for each release are attached to the
+[GitHub releases page](https://github.com/rknightion/opnsense-exporter/releases). Ready-made
+Kubernetes manifests live in
+[`deploy/k8s/`](https://github.com/rknightion/opnsense-exporter/tree/main/deploy/k8s).
+
 ## Deployment options
 
 | Method | Best for | Guide |

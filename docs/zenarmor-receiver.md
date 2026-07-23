@@ -14,6 +14,11 @@ what it receives, enriches it, and ships it on through the [log pipeline](log-sh
 This is off by default. It needs configuration on **both** sides: the receiver on the
 exporter, and the streaming destination in the Zenarmor GUI.
 
+Zenarmor changes its payloads between releases. If a record family stops being ingested,
+[open an issue on GitHub](https://github.com/rknightion/opnsense-exporter/issues/new) with a
+captured document, or read the receiver in
+[`internal/logship/` on GitHub](https://github.com/rknightion/opnsense-exporter/tree/main/internal/logship).
+
 ## Why this exists
 
 Zenarmor's syslog export — the obvious path for this data — is licence-gated above the
