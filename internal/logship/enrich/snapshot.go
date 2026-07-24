@@ -42,8 +42,11 @@ type Snapshot struct {
 	// OPNsense derives the same list twice — src/etc/rc.d/netflow counts it to
 	// name the netgraph hook `ifaceN`, and its own flowd reporting
 	// (scripts/netflow/lib/parse.py) counts it again to read those names back.
-	// The exporter reads it from api/diagnostics/interface/get_interface_config,
-	// whose JSON key order reproduces it exactly.
+	//
+	// It is built from api/diagnostics/interface/get_interface_config, whose key
+	// order is ATTACH order rather than `ifinfo` order, corrected with the kernel
+	// indices in IfaceStatedIndex — see reconstructIfinfoOrder (#363). The two
+	// orders agree until an interface is recreated, and diverge silently after.
 	//
 	// Empty means the fetch has never succeeded. It must NOT be treated as "no
 	// interfaces": a map built from an empty ordering resolves nothing, so

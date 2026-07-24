@@ -3,6 +3,7 @@ package enrich
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -419,6 +420,16 @@ func (r *Refresher) doRefreshIfaceOrder() error {
 		}
 	}
 
+	// The endpoint returns ATTACH order, not `ifinfo` order, and the two diverge
+	// the moment any interface is destroyed and recreated (#363). Correct it with
+	// the kernel indices before publishing; a reconstruction that cannot be trusted
+	// is an error, which leaves the previous ordering in place rather than
+	// publishing one we know is wrong.
+	order, rerr := reconstructIfinfoOrder(order, stated)
+	if rerr != nil {
+		return rerr
+	}
+
 	r.update("ifaceorder", func(s *Snapshot) {
 		s.IfaceOrder = order
 		s.IfaceStatedIndex = stated
@@ -666,3 +677,120 @@ func (r *Refresher) doRefreshTunnels() error {
 	})
 	return nil
 }
+
+// reconstructIfinfoOrder turns the attach-ordered device list the API returns into
+// the kernel-index order `ifinfo` prints, which is the order NetFlow's ifIndex is a
+// position over.
+//
+// # Why this exists at all
+//
+// #361 moved the enumeration onto get_interface_config because its JSON key order
+// reproduced `ifinfo` exactly — 16/16 devices. That was measured, and it was true,
+// and it was not invariant. The API is in ATTACH order; `ifinfo` sorts by KERNEL
+// INDEX. The two agree only until a device is destroyed and recreated, because
+// FreeBSD hands the recreated device back the lowest free index (usually its own)
+// while appending it to the end of the interface list.
+//
+// Bouncing a PPPoE WAN proved it inside minutes: `ifinfo` had pppoe0 at 15 and
+// tailscale0 at 16, every API endpoint had them the other way round, and
+// rc.d/netflow re-derived the netgraph hook as `iface15` — so `ifinfo` is what the
+// records mean and the API order was simply wrong (#363).
+//
+// # The reconstruction
+//
+// api/diagnostics/traffic/interface states a kernel index, but only for CONFIGURED
+// interfaces. That turns out to be exactly enough, because only a configured
+// interface can be destroyed and recreated at runtime: the devices with no stated
+// index are the unassigned physical ports and kernel pseudo-devices, which attach
+// at boot and never churn, so their attach order is still their index order.
+//
+// So: place every device whose index the API states at that index, then fill the
+// remaining slots in attach order with the rest.
+//
+// # Where it is exact, and where it refuses
+//
+// It is exact while the kernel index space is DENSE, which is the case it solves.
+// A permanent removal leaves a gap, and past a gap `ifinfo` position and kernel
+// index are no longer equal — a stated index would then place its device one slot
+// too high. Every way that can show up (an index past the device count, two devices
+// claiming one slot, a stated device the enumeration does not list) is refused
+// rather than guessed at, and the caller keeps its previous map.
+//
+// That is the same rule the rest of this path follows: a wrong interface label is
+// worse than a missing one, because a missing one is visibly missing.
+func reconstructIfinfoOrder(attach []string, stated map[string]uint32) ([]string, error) {
+	n := len(attach)
+	if n == 0 {
+		return nil, errors.New("enrich: cannot reconstruct an order from an empty device list")
+	}
+	if len(stated) == 0 {
+		// Nothing to correct with. Attach order is the only answer available and is
+		// right on any box that has not recreated an interface since boot, which is
+		// most of them most of the time. Refusing here would cost a working map for
+		// a transient failure of the cross-check fetch.
+		return append([]string(nil), attach...), nil
+	}
+
+	known := make(map[string]bool, n)
+	for _, device := range attach {
+		known[device] = true
+	}
+
+	slots := make([]string, n+1) // 1-based; slots[0] is unused
+	for device, idx := range stated {
+		if idx == 0 {
+			continue // "the API stated nothing", not "slot zero"
+		}
+		if !known[device] {
+			return nil, fmt.Errorf(
+				"enrich: %s states ifIndex %d for %q, which the enumeration does not list",
+				statedIndexSource, idx, device)
+		}
+		if int(idx) > n {
+			return nil, fmt.Errorf(
+				"enrich: %s states ifIndex %d for %q but the box reports only %d interfaces; "+
+					"the index space has a gap and position no longer equals index",
+				statedIndexSource, idx, device, n)
+		}
+		if prev := slots[idx]; prev != "" {
+			return nil, fmt.Errorf(
+				"enrich: %q and %q both state ifIndex %d", prev, device, idx)
+		}
+		slots[idx] = device
+	}
+
+	placed := make(map[string]bool, len(stated))
+	for _, device := range slots {
+		if device != "" {
+			placed[device] = true
+		}
+	}
+	rest := make([]string, 0, n-len(placed))
+	for _, device := range attach {
+		if !placed[device] {
+			rest = append(rest, device)
+		}
+	}
+
+	out := make([]string, 0, n)
+	next := 0
+	for idx := 1; idx <= n; idx++ {
+		if slots[idx] != "" {
+			out = append(out, slots[idx])
+			continue
+		}
+		if next >= len(rest) {
+			// Unreachable while the slot count and the device count agree, which the
+			// checks above enforce. Guarded anyway: silently returning a short list
+			// would shift every index after the hole.
+			return nil, fmt.Errorf("enrich: ran out of devices filling ifIndex slot %d", idx)
+		}
+		out = append(out, rest[next])
+		next++
+	}
+	return out, nil
+}
+
+// statedIndexSource names the endpoint the cross-check indices come from, so an
+// error message points at the thing to go and look at.
+const statedIndexSource = "api/diagnostics/traffic/interface"

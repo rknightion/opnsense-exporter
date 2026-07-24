@@ -160,14 +160,26 @@ OPNsense's own flowd reporting counts it again to read those names back
 (`scripts/netflow/lib/parse.py`). One ng_netflow node is created per captured interface,
 each with a single `ifaceN` hook, rather than one node with many hooks.
 
-The exporter reads the enumeration from **`api/diagnostics/interface/get_interface_config`**,
-which returns a JSON object keyed by device and reproduces `ifinfo` order exactly. That
-ordering is the only thing that decides an index. Interface metadata - names, addresses,
-WAN flags, VLAN parents - still comes from `api/interfaces/overview/interfaces_info` and
-is joined onto the enumeration **by device name, never by position**. A device in the
-enumeration that the metadata does not know (`pfsync0` is the common one) still occupies
-its slot and falls back to labelling itself with its device name, which is what keeps
-every later index correct.
+The exporter reads the device set from **`api/diagnostics/interface/get_interface_config`**,
+which returns a JSON object keyed by device. Its key order is **attach order**, not `ifinfo`
+order - the two agree until any interface is destroyed and recreated, at which point the
+recreated device reclaims its old kernel index but is appended to the end of the list. So the
+attach order is corrected before use, with the kernel indices
+`api/diagnostics/traffic/interface` states per interface: each device with a stated index is
+placed at that index, and the remainder fill the free slots in attach order.
+
+That works because the devices with no stated index are the unassigned ports and kernel
+pseudo-devices, which attach at boot and never churn - and anything that *can* be recreated
+at runtime is a configured interface, so it always carries an index. The correction is exact
+while the kernel index space is dense, and **refuses rather than guesses** when it is not: a
+permanent removal leaves a gap, past which position and index stop being equal. A refusal
+keeps the previous map, exactly like a failed fetch.
+
+Interface metadata - names, addresses, WAN flags, VLAN parents - comes from
+`api/interfaces/overview/interfaces_info` and is joined onto the enumeration **by device
+name, never by position**. A device in the enumeration that the metadata does not know
+(`pfsync0` is the common one) still occupies its slot and falls back to labelling itself with
+its device name, which is what keeps every later index correct.
 
 That split exists because the alternative was tried and was wrong. The map used to be
 derived by counting `interfaces_info` rows, which **omits `pfsync0`** - 15 rows where the
@@ -208,11 +220,19 @@ the map cannot resolve. The second is rate-limited, because the NetFlow socket i
 unauthenticated and an unbounded trigger there would let any sender drive the firewall's
 API load.
 
-A **reconnect does not renumber anything**, which is worth knowing before treating the
-triggers as urgent. Bouncing a PPPoE WAN was tested live: the interface was genuinely
-destroyed and recreated, reclaimed the lowest free index — its own, because nothing else
-had taken it — and returned to its old slot. Only a permanent removal leaves the gap that
-shifts everything above it.
+A **reconnect does not renumber `ifinfo`**, and therefore does not change what the netgraph
+hooks mean. Bouncing a PPPoE WAN was tested live: the interface was genuinely destroyed and
+recreated, reclaimed the lowest free index - its own, because nothing else had taken it - and
+`ifinfo` still listed it in its old slot. `rc.d/netflow` re-derived the hook as `iface15`,
+confirming it.
+
+What a reconnect *does* change is the **API's** ordering, which is attach order and puts the
+recreated device last. That is why the correction above exists, and why an unpatched
+derivation reading raw key order would mislabel the WAN after every reconnect while `ifinfo`,
+the hooks, and the records all still agreed with each other.
+
+Only a permanent removal leaves the gap that shifts everything above it - and that is the case
+the correction refuses rather than guesses at.
 
 The resolved map is rendered on the operator console's **ifIndex** tab, so
 `index → device → name` can be read straight down against `ifinfo` output without

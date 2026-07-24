@@ -732,3 +732,192 @@ func signalled(ch chan struct{}) bool {
 		return false
 	}
 }
+
+// --- reconstructing ifinfo order (#363) -------------------------------------
+
+// The pair that broke #361's assumption, captured live on 2026-07-24 after a
+// PPPoE reconnect. get_interface_config is in ATTACH order, so the recreated
+// pppoe0 is last; ifinfo sorts by kernel index, so it is back at 15. The netgraph
+// hook proved ifinfo right: rc.d/netflow re-derived it as iface15.
+func bouncedAttachOrder() []string {
+	return []string{
+		"ixl0", "ixl1", "ixl2", "ixl3", "igb0", "igb1", "lo0", "enc0",
+		"pflog0", "pfsync0", "ixl0_vlan100", "ixl0_vlan25", "ixl0_vlan50",
+		"zen0", "tailscale0", "pppoe0",
+	}
+}
+
+// bouncedStated is what traffic/interface reports: an index for the CONFIGURED
+// interfaces only. The unconfigured remainder has none, which is the whole
+// difficulty — and also why it works, since only a configured interface can be
+// destroyed and recreated at runtime.
+func bouncedStated() map[string]uint32 {
+	return map[string]uint32{
+		"ixl0": 1, "ixl1": 2, "ixl0_vlan100": 11, "ixl0_vlan25": 12,
+		"ixl0_vlan50": 13, "zen0": 14, "pppoe0": 15, "tailscale0": 16,
+	}
+}
+
+func ifinfoTruth() []string {
+	return []string{
+		"ixl0", "ixl1", "ixl2", "ixl3", "igb0", "igb1", "lo0", "enc0",
+		"pflog0", "pfsync0", "ixl0_vlan100", "ixl0_vlan25", "ixl0_vlan50",
+		"zen0", "pppoe0", "tailscale0",
+	}
+}
+
+func sameOrder(t *testing.T, got, want []string, label string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s: got %d devices, want %d: %v", label, len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("%s: position %d = %q, want %q\n got: %v\nwant: %v",
+				label, i+1, got[i], want[i], got, want)
+		}
+	}
+}
+
+// The regression. Attach order alone puts pppoe0 at 16 and tailscale0 at 15,
+// which mislabels the WAN carrying 91% of the box's volume.
+func TestReconstructIfinfoOrderRecoversTheKernelIndexOrder(t *testing.T) {
+	got, err := reconstructIfinfoOrder(bouncedAttachOrder(), bouncedStated())
+	if err != nil {
+		t.Fatalf("reconstructIfinfoOrder: %v", err)
+	}
+	sameOrder(t, got, ifinfoTruth(), "reconstructed")
+
+	// Guard the guard: the raw attach order must NOT already equal the truth, or
+	// this test would pass without the reconstruction doing anything.
+	if attach := bouncedAttachOrder(); attach[14] == ifinfoTruth()[14] {
+		t.Fatal("fixture is not exercising the bug: attach order already matches ifinfo")
+	}
+}
+
+// The undisturbed case must be a no-op rather than a reshuffle.
+func TestReconstructIfinfoOrderLeavesAnAgreeingListAlone(t *testing.T) {
+	stated := map[string]uint32{}
+	for i, d := range ifinfoTruth() {
+		stated[d] = uint32(i + 1) //nolint:gosec // fixture
+	}
+	got, err := reconstructIfinfoOrder(ifinfoTruth(), stated)
+	if err != nil {
+		t.Fatalf("reconstructIfinfoOrder: %v", err)
+	}
+	sameOrder(t, got, ifinfoTruth(), "unchanged")
+}
+
+// With no stated indices at all there is nothing to correct with, so attach order
+// is the only answer available. It must be returned as-is rather than refused:
+// a box whose traffic/interface fetch failed is still better served by the
+// probably-right order than by no map.
+func TestReconstructIfinfoOrderWithoutAnyStatedIndexReturnsAttachOrder(t *testing.T) {
+	got, err := reconstructIfinfoOrder(bouncedAttachOrder(), nil)
+	if err != nil {
+		t.Fatalf("reconstructIfinfoOrder: %v", err)
+	}
+	sameOrder(t, got, bouncedAttachOrder(), "passthrough")
+}
+
+// A stated index outside the device count means the index space has a GAP - an
+// interface was removed permanently - and position no longer equals index. The
+// reconstruction cannot resolve that, and must say so rather than place a device
+// in a slot it invented.
+func TestReconstructIfinfoOrderRefusesAnOutOfRangeIndex(t *testing.T) {
+	stated := bouncedStated()
+	stated["pppoe0"] = 99
+	if _, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated); err == nil {
+		t.Fatal("accepted a stated index beyond the device count; want an error")
+	}
+}
+
+// Two devices claiming one slot is the same class of unresolvable input.
+func TestReconstructIfinfoOrderRefusesACollision(t *testing.T) {
+	stated := bouncedStated()
+	stated["tailscale0"] = 15 // pppoe0 already states 15
+	if _, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated); err == nil {
+		t.Fatal("accepted two devices claiming index 15; want an error")
+	}
+}
+
+// A stated index for a device the enumeration does not list says the two sources
+// disagree about which interfaces exist, so neither can be trusted to order.
+func TestReconstructIfinfoOrderRefusesAnUnknownDevice(t *testing.T) {
+	stated := bouncedStated()
+	stated["vtnet9"] = 3
+	if _, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated); err == nil {
+		t.Fatal("accepted a stated index for a device absent from the enumeration; want an error")
+	}
+}
+
+// An index of 0 is "the API stated nothing", not "slot zero" - ifIndex 0 is the
+// synthetic locally-originated entry and is never a device.
+func TestReconstructIfinfoOrderIgnoresAZeroStatedIndex(t *testing.T) {
+	stated := map[string]uint32{"ixl0": 0, "pppoe0": 15, "tailscale0": 16}
+	got, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated)
+	if err != nil {
+		t.Fatalf("reconstructIfinfoOrder: %v", err)
+	}
+	sameOrder(t, got, ifinfoTruth(), "zero ignored")
+}
+
+// End to end through the refresh, not just the pure function: the published
+// ordering must be the corrected one. This is the shape the reference box was
+// actually serving after the WAN bounce — pppoe0 last in the API, 15 in ifinfo.
+const bouncedConfigFixture = `{
+ "ixl0":{"device":"ixl0"},"ixl1":{"device":"ixl1"},"ixl2":{"device":"ixl2"},
+ "ixl3":{"device":"ixl3"},"igb0":{"device":"igb0"},"igb1":{"device":"igb1"},
+ "lo0":{"device":"lo0"},"enc0":{"device":"enc0"},"pflog0":{"device":"pflog0"},
+ "pfsync0":{"device":"pfsync0"},"ixl0_vlan100":{"device":"ixl0_vlan100"},
+ "ixl0_vlan25":{"device":"ixl0_vlan25"},"ixl0_vlan50":{"device":"ixl0_vlan50"},
+ "zen0":{"device":"zen0"},"tailscale0":{"device":"tailscale0"},
+ "pppoe0":{"device":"pppoe0"}}`
+
+const bouncedTrafficFixture = `{"interfaces":{
+ "lan":{"device":"ixl0","index":"1","name":"LAN"},
+ "opt6":{"device":"ixl1","index":"2","name":"VIRGIN"},
+ "opt3":{"device":"ixl0_vlan100","index":"11","name":"MGMT"},
+ "opt4":{"device":"ixl0_vlan25","index":"12","name":"CAM"},
+ "opt2":{"device":"ixl0_vlan50","index":"13","name":"IOT"},
+ "opt5":{"device":"zen0","index":"14","name":"zenoverlay"},
+ "opt7":{"device":"pppoe0","index":"15","name":"AAISP"},
+ "opt1":{"device":"tailscale0","index":"16","name":"tailscale"}}}`
+
+func TestDoRefreshIfaceOrderPublishesTheCorrectedOrder(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"get_interface_config": bouncedConfigFixture,
+		"traffic/interface":    bouncedTrafficFixture,
+	})
+	if err := r.doRefreshIfaceOrder(); err != nil {
+		t.Fatalf("doRefreshIfaceOrder: %v", err)
+	}
+	got := r.cache.Load().IfaceOrder
+	sameOrder(t, got, ifinfoTruth(), "published")
+
+	// The two that matter: 91% of the box's volume arrives on ifIndex 15.
+	if got[14] != "pppoe0" {
+		t.Errorf("ifIndex 15 = %q, want pppoe0 (the API served tailscale0 there)", got[14])
+	}
+	if got[15] != "tailscale0" {
+		t.Errorf("ifIndex 16 = %q, want tailscale0", got[15])
+	}
+}
+
+// A reconstruction that cannot be trusted must leave the previous ordering alone,
+// never publish a guess. Same rule as a failed fetch.
+func TestDoRefreshIfaceOrderKeepsThePreviousOrderWhenReconstructionFails(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"get_interface_config": bouncedConfigFixture,
+		// pppoe0 claims an index past the device count: the index space has a gap,
+		// so position and index are no longer equal and this cannot be resolved.
+		"traffic/interface": `{"interfaces":{"opt7":{"device":"pppoe0","index":"99","name":"AAISP"}}}`,
+	})
+	good := []string{"previous", "order"}
+	r.update("ifaceorder", func(s *Snapshot) { s.IfaceOrder = good })
+
+	if err := r.doRefreshIfaceOrder(); err == nil {
+		t.Fatal("published an unreconstructable ordering; want an error")
+	}
+	sameOrder(t, r.cache.Load().IfaceOrder, good, "kept previous")
+}
