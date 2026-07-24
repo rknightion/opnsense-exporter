@@ -160,20 +160,30 @@ OPNsense's own flowd reporting counts it again to read those names back
 (`scripts/netflow/lib/parse.py`). One ng_netflow node is created per captured interface,
 each with a single `ifaceN` hook, rather than one node with many hooks.
 
-The exporter reads the device set from **`api/diagnostics/interface/get_interface_config`**,
-which returns a JSON object keyed by device. Its key order is **attach order**, not `ifinfo`
-order - the two agree until any interface is destroyed and recreated, at which point the
-recreated device reclaims its old kernel index but is appended to the end of the list. So the
-attach order is corrected before use, with the kernel indices
-`api/diagnostics/traffic/interface` states per interface: each device with a stated index is
-placed at that index, and the remainder fill the free slots in attach order.
+The exporter reads each device's **kernel interface index** from
+**`api/diagnostics/interface/get_interface_statistics`** (`netstat -i --libxo json`, where
+each interface's AF_LINK row carries `network` as the literal `<Link#N>` and N is the kernel
+index), sorts by it, and takes the **rank** as the ifIndex.
 
-That works because the devices with no stated index are the unassigned ports and kernel
-pseudo-devices, which attach at boot and never churn - and anything that *can* be recreated
-at runtime is a configured interface, so it always carries an index. The correction is exact
-while the kernel index space is dense, and **refuses rather than guesses** when it is not: a
-permanent removal leaves a gap, past which position and index stop being equal. A refusal
-keeps the previous map, exactly like a failed fetch.
+Rank, not the index itself. `ifinfo` walks the kernel's interface table by row number and
+skips absent rows, so its position is the rank over live indexes - and rank equals index only
+while the index space is dense. A permanently removed interface leaves a gap, past which they
+diverge, and `rc.d/netflow` counts the position.
+
+This endpoint is the only one that carries an index for **every** device. `get_interface_config`
+has no index at all, and `interfaces_info` omits `pfsync0` outright - which is disqualifying,
+because `pfsync0` sits in the middle of the index space, so dropping it shifts every device
+above it. `get_interface_config` is still fetched, but only for its device **count**, as a
+cross-check that two independent sources agree on how many interfaces exist.
+
+`api/diagnostics/traffic/interface` states an index for the *configured* interfaces and is kept
+as a genuinely independent second opinion - a different producer (`ifinfo` via PHP, against
+netstat) - never as an input to the derivation. Under a dense index space the derived rank must
+equal the stated index for every configured device, so a divergence is direct evidence of a gap.
+
+Every guard **refuses rather than guesses**: no `<Link#N>` rows at all, a device with two
+different indexes, two devices sharing one, or a count the enumeration disagrees with. A refusal
+keeps the previous map and lets `opnsense_flow_ifindex_map_age_seconds` rise.
 
 Interface metadata - names, addresses, WAN flags, VLAN parents - comes from
 `api/interfaces/overview/interfaces_info` and is joined onto the enumeration **by device
@@ -226,10 +236,11 @@ recreated, reclaimed the lowest free index - its own, because nothing else had t
 `ifinfo` still listed it in its old slot. `rc.d/netflow` re-derived the hook as `iface15`,
 confirming it.
 
-What a reconnect *does* change is the **API's** ordering, which is attach order and puts the
-recreated device last. That is why the correction above exists, and why an unpatched
-derivation reading raw key order would mislabel the WAN after every reconnect while `ifinfo`,
-the hooks, and the records all still agreed with each other.
+What a reconnect *does* change is the **key order** of the endpoints that list devices without
+an index: those are in attach order, so the recreated device moves to the end. Deriving the
+enumeration from that order mislabels the WAN after every reconnect while `ifinfo`, the hooks
+and the records all still agree with each other - which is exactly what happened, and why the
+enumeration is built from kernel indexes instead.
 
 Only a permanent removal leaves the gap that shifts everything above it - and that is the case
 the correction refuses rather than guesses at.

@@ -1,0 +1,27 @@
+{
+  "endpoint": "interfaceStatistics",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_interface_statistics",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "statistics"
+  ],
+  "fields": [
+    {
+      "path": "statistics",
+      "kind": "object"
+    },
+    {
+      "path": "statistics.*",
+      "kind": "object"
+    },
+    {
+      "path": "statistics.*.name",
+      "kind": "string"
+    },
+    {
+      "path": "statistics.*.network",
+      "kind": "string"
+    }
+  ]
+}

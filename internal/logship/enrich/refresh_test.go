@@ -3,6 +3,7 @@ package enrich
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -597,8 +598,9 @@ func newRoutedRefresher(t *testing.T, byPath map[string]string) *Refresher {
 // reordered device silently relabels every historical flow series.
 func TestDoRefreshIfaceOrderPublishesTheBoxEnumeration(t *testing.T) {
 	r := newRoutedRefresher(t, map[string]string{
-		"get_interface_config": ifaceConfigFixture,
-		"traffic/interface":    trafficIfaceFixture,
+		"get_interface_config":     ifaceConfigFixture,
+		"traffic/interface":        trafficIfaceFixture,
+		"get_interface_statistics": statsFixture(liveKernelIndexes()),
 	})
 	if err := r.doRefreshIfaceOrder(); err != nil {
 		t.Fatalf("doRefreshIfaceOrder: %v", err)
@@ -631,13 +633,14 @@ func TestDoRefreshIfaceOrderPublishesTheBoxEnumeration(t *testing.T) {
 // An empty enumeration is a failed fetch wearing a success. Publishing it would
 // blank the map, and a blank map labels nothing at all, so it must be an error
 // and leave whatever was there in place.
-func TestDoRefreshIfaceOrderRefusesAnEmptyEnumeration(t *testing.T) {
+func TestDoRefreshIfaceOrderRefusesAResponseWithNoKernelIndexes(t *testing.T) {
 	r := newRoutedRefresher(t, map[string]string{
-		"get_interface_config": `{}`,
-		"traffic/interface":    trafficIfaceFixture,
+		"get_interface_config":     ifaceConfigFixture,
+		"traffic/interface":        trafficIfaceFixture,
+		"get_interface_statistics": `{"statistics":{}}`,
 	})
 	if err := r.doRefreshIfaceOrder(); err == nil {
-		t.Fatal("doRefreshIfaceOrder accepted an empty enumeration; want an error")
+		t.Fatal("doRefreshIfaceOrder accepted a response carrying no kernel indexes; want an error")
 	}
 	if got := r.cache.Load().IfaceOrder; len(got) != 0 {
 		t.Errorf("IfaceOrder = %v, want it left untouched", got)
@@ -649,14 +652,18 @@ func TestDoRefreshIfaceOrderRefusesAnEmptyEnumeration(t *testing.T) {
 // "nothing disagrees" when the truth is "nothing was checked".
 func TestDoRefreshIfaceOrderKeepsTheLastStatedIndexesOnFailure(t *testing.T) {
 	r := newRoutedRefresher(t, map[string]string{
-		"get_interface_config": ifaceConfigFixture,
-		"traffic/interface":    trafficIfaceFixture,
+		"get_interface_config":     ifaceConfigFixture,
+		"traffic/interface":        trafficIfaceFixture,
+		"get_interface_statistics": statsFixture(liveKernelIndexes()),
 	})
 	if err := r.doRefreshIfaceOrder(); err != nil {
 		t.Fatalf("first refresh: %v", err)
 	}
 
-	broken := newRoutedRefresher(t, map[string]string{"get_interface_config": ifaceConfigFixture})
+	broken := newRoutedRefresher(t, map[string]string{
+		"get_interface_config":     ifaceConfigFixture,
+		"get_interface_statistics": statsFixture(liveKernelIndexes()),
+	})
 	broken.cache = r.cache // carry the good snapshot forward
 	if err := broken.doRefreshIfaceOrder(); err != nil {
 		t.Fatalf("doRefreshIfaceOrder failed on a stated-index error; the ordering was fine: %v", err)
@@ -673,6 +680,7 @@ func TestDoRefreshIfacesSignalsWhenTheInterfaceSetOutgrowsTheOrdering(t *testing
 		"get_interface_config":     ifaceConfigFixture,
 		"traffic/interface":        trafficIfaceFixture,
 		"overview/interfaces_info": ifaceOverviewFixture,
+		"get_interface_statistics": statsFixture(liveKernelIndexes()),
 	})
 	if err := r.doRefreshIfaceOrder(); err != nil {
 		t.Fatalf("doRefreshIfaceOrder: %v", err)
@@ -779,89 +787,6 @@ func sameOrder(t *testing.T, got, want []string, label string) {
 	}
 }
 
-// The regression. Attach order alone puts pppoe0 at 16 and tailscale0 at 15,
-// which mislabels the WAN carrying 91% of the box's volume.
-func TestReconstructIfinfoOrderRecoversTheKernelIndexOrder(t *testing.T) {
-	got, err := reconstructIfinfoOrder(bouncedAttachOrder(), bouncedStated())
-	if err != nil {
-		t.Fatalf("reconstructIfinfoOrder: %v", err)
-	}
-	sameOrder(t, got, ifinfoTruth(), "reconstructed")
-
-	// Guard the guard: the raw attach order must NOT already equal the truth, or
-	// this test would pass without the reconstruction doing anything.
-	if attach := bouncedAttachOrder(); attach[14] == ifinfoTruth()[14] {
-		t.Fatal("fixture is not exercising the bug: attach order already matches ifinfo")
-	}
-}
-
-// The undisturbed case must be a no-op rather than a reshuffle.
-func TestReconstructIfinfoOrderLeavesAnAgreeingListAlone(t *testing.T) {
-	stated := map[string]uint32{}
-	for i, d := range ifinfoTruth() {
-		stated[d] = uint32(i + 1) //nolint:gosec // fixture
-	}
-	got, err := reconstructIfinfoOrder(ifinfoTruth(), stated)
-	if err != nil {
-		t.Fatalf("reconstructIfinfoOrder: %v", err)
-	}
-	sameOrder(t, got, ifinfoTruth(), "unchanged")
-}
-
-// With no stated indices at all there is nothing to correct with, so attach order
-// is the only answer available. It must be returned as-is rather than refused:
-// a box whose traffic/interface fetch failed is still better served by the
-// probably-right order than by no map.
-func TestReconstructIfinfoOrderWithoutAnyStatedIndexReturnsAttachOrder(t *testing.T) {
-	got, err := reconstructIfinfoOrder(bouncedAttachOrder(), nil)
-	if err != nil {
-		t.Fatalf("reconstructIfinfoOrder: %v", err)
-	}
-	sameOrder(t, got, bouncedAttachOrder(), "passthrough")
-}
-
-// A stated index outside the device count means the index space has a GAP - an
-// interface was removed permanently - and position no longer equals index. The
-// reconstruction cannot resolve that, and must say so rather than place a device
-// in a slot it invented.
-func TestReconstructIfinfoOrderRefusesAnOutOfRangeIndex(t *testing.T) {
-	stated := bouncedStated()
-	stated["pppoe0"] = 99
-	if _, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated); err == nil {
-		t.Fatal("accepted a stated index beyond the device count; want an error")
-	}
-}
-
-// Two devices claiming one slot is the same class of unresolvable input.
-func TestReconstructIfinfoOrderRefusesACollision(t *testing.T) {
-	stated := bouncedStated()
-	stated["tailscale0"] = 15 // pppoe0 already states 15
-	if _, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated); err == nil {
-		t.Fatal("accepted two devices claiming index 15; want an error")
-	}
-}
-
-// A stated index for a device the enumeration does not list says the two sources
-// disagree about which interfaces exist, so neither can be trusted to order.
-func TestReconstructIfinfoOrderRefusesAnUnknownDevice(t *testing.T) {
-	stated := bouncedStated()
-	stated["vtnet9"] = 3
-	if _, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated); err == nil {
-		t.Fatal("accepted a stated index for a device absent from the enumeration; want an error")
-	}
-}
-
-// An index of 0 is "the API stated nothing", not "slot zero" - ifIndex 0 is the
-// synthetic locally-originated entry and is never a device.
-func TestReconstructIfinfoOrderIgnoresAZeroStatedIndex(t *testing.T) {
-	stated := map[string]uint32{"ixl0": 0, "pppoe0": 15, "tailscale0": 16}
-	got, err := reconstructIfinfoOrder(bouncedAttachOrder(), stated)
-	if err != nil {
-		t.Fatalf("reconstructIfinfoOrder: %v", err)
-	}
-	sameOrder(t, got, ifinfoTruth(), "zero ignored")
-}
-
 // End to end through the refresh, not just the pure function: the published
 // ordering must be the corrected one. This is the shape the reference box was
 // actually serving after the WAN bounce — pppoe0 last in the API, 15 in ifinfo.
@@ -886,8 +811,9 @@ const bouncedTrafficFixture = `{"interfaces":{
 
 func TestDoRefreshIfaceOrderPublishesTheCorrectedOrder(t *testing.T) {
 	r := newRoutedRefresher(t, map[string]string{
-		"get_interface_config": bouncedConfigFixture,
-		"traffic/interface":    bouncedTrafficFixture,
+		"get_interface_config":     bouncedConfigFixture,
+		"traffic/interface":        bouncedTrafficFixture,
+		"get_interface_statistics": statsFixture(liveKernelIndexes()),
 	})
 	if err := r.doRefreshIfaceOrder(); err != nil {
 		t.Fatalf("doRefreshIfaceOrder: %v", err)
@@ -895,29 +821,126 @@ func TestDoRefreshIfaceOrderPublishesTheCorrectedOrder(t *testing.T) {
 	got := r.cache.Load().IfaceOrder
 	sameOrder(t, got, ifinfoTruth(), "published")
 
-	// The two that matter: 91% of the box's volume arrives on ifIndex 15.
+	// The two that matter: 91% of the box's volume arrives on ifIndex 15, and
+	// bouncedConfigFixture — the attach-ordered enumeration — puts tailscale0
+	// there. The kernel indexes have to win.
 	if got[14] != "pppoe0" {
-		t.Errorf("ifIndex 15 = %q, want pppoe0 (the API served tailscale0 there)", got[14])
+		t.Errorf("ifIndex 15 = %q, want pppoe0; attach order was followed instead", got[14])
 	}
 	if got[15] != "tailscale0" {
 		t.Errorf("ifIndex 16 = %q, want tailscale0", got[15])
 	}
 }
 
-// A reconstruction that cannot be trusted must leave the previous ordering alone,
-// never publish a guess. Same rule as a failed fetch.
-func TestDoRefreshIfaceOrderKeepsThePreviousOrderWhenReconstructionFails(t *testing.T) {
+// A ranking that cannot be trusted must leave the previous ordering alone, never
+// publish a guess. Same rule as a failed fetch.
+//
+// The trip here is the count cross-check: the statistics endpoint reports one
+// device, the enumeration lists sixteen. One source is missing devices, and a
+// missing device shifts every rank above it.
+func TestDoRefreshIfaceOrderKeepsThePreviousOrderWhenRankingFails(t *testing.T) {
 	r := newRoutedRefresher(t, map[string]string{
-		"get_interface_config": bouncedConfigFixture,
-		// pppoe0 claims an index past the device count: the index space has a gap,
-		// so position and index are no longer equal and this cannot be resolved.
-		"traffic/interface": `{"interfaces":{"opt7":{"device":"pppoe0","index":"99","name":"AAISP"}}}`,
+		"get_interface_config":     bouncedConfigFixture,
+		"traffic/interface":        bouncedTrafficFixture,
+		"get_interface_statistics": statsFixture(map[string]uint32{"ixl0": 1}),
 	})
 	good := []string{"previous", "order"}
 	r.update("ifaceorder", func(s *Snapshot) { s.IfaceOrder = good })
 
 	if err := r.doRefreshIfaceOrder(); err == nil {
-		t.Fatal("published an unreconstructable ordering; want an error")
+		t.Fatal("published an ordering the cross-check rejected; want an error")
 	}
 	sameOrder(t, r.cache.Load().IfaceOrder, good, "kept previous")
+}
+
+// --- ranking by kernel index (#364) -----------------------------------------
+
+// statsFixture renders a get_interface_statistics body: one AF_LINK row per
+// device plus an address row, which is the shape netstat really produces and
+// which the parser has to filter.
+func statsFixture(indexes map[string]uint32) string {
+	var b strings.Builder
+	b.WriteString(`{"statistics":{`)
+	first := true
+	for dev, idx := range indexes {
+		if !first {
+			b.WriteString(",")
+		}
+		first = false
+		fmt.Fprintf(&b, `"(%s) / link":{"name":%q,"network":"<Link#%d>"},`, dev, dev, idx)
+		fmt.Fprintf(&b, `"(%s) / addr":{"name":%q,"network":"10.0.0.0/24"}`, dev, dev)
+	}
+	b.WriteString("}}")
+	return b.String()
+}
+
+// The kernel indexes the reference box reports for all 16 devices, post-bounce.
+// pfsync0 at 10 is the point: it churns, it sits mid-range, and it is absent from
+// every other endpoint that carries an index.
+func liveKernelIndexes() map[string]uint32 {
+	return map[string]uint32{
+		"ixl0": 1, "ixl1": 2, "ixl2": 3, "ixl3": 4, "igb0": 5, "igb1": 6,
+		"lo0": 7, "enc0": 8, "pflog0": 9, "pfsync0": 10,
+		"ixl0_vlan100": 11, "ixl0_vlan25": 12, "ixl0_vlan50": 13,
+		"zen0": 14, "pppoe0": 15, "tailscale0": 16,
+	}
+}
+
+func TestRankByKernelIndexReproducesIfinfoOrder(t *testing.T) {
+	got, err := rankByKernelIndex(liveKernelIndexes(), 16)
+	if err != nil {
+		t.Fatalf("rankByKernelIndex: %v", err)
+	}
+	sameOrder(t, got, ifinfoTruth(), "ranked")
+	if got[14] != "pppoe0" {
+		t.Errorf("ifIndex 15 = %q, want pppoe0 — the WAN carrying 91%% of volume", got[14])
+	}
+}
+
+// Rank, not index. With a gap the two differ, and rc.d/netflow counts position.
+func TestRankByKernelIndexRanksRatherThanUsingTheIndex(t *testing.T) {
+	// 5 is missing: an interface was removed permanently.
+	got, err := rankByKernelIndex(map[string]uint32{
+		"a": 1, "b": 2, "c": 3, "d": 4, "e": 6, "f": 7,
+	}, 6)
+	if err != nil {
+		t.Fatalf("rankByKernelIndex: %v", err)
+	}
+	sameOrder(t, got, []string{"a", "b", "c", "d", "e", "f"}, "gapped")
+	// "e" holds kernel index 6 but is the FIFTH device, so its ifIndex is 5.
+	if got[4] != "e" {
+		t.Errorf("position 5 = %q, want e; the index was used instead of the rank", got[4])
+	}
+}
+
+// Two sources disagreeing about how many interfaces exist means one is missing a
+// device, and a missing device shifts every rank above it.
+func TestRankByKernelIndexRefusesACountMismatch(t *testing.T) {
+	if _, err := rankByKernelIndex(liveKernelIndexes(), 15); err == nil {
+		t.Fatal("accepted 16 indexed devices against an enumeration of 15; want an error")
+	}
+}
+
+// A zero count means the cross-check fetch failed. That must not veto a good
+// ranking - the indexes are the authority, the count is only corroboration.
+func TestRankByKernelIndexAcceptsAnAbsentCount(t *testing.T) {
+	got, err := rankByKernelIndex(liveKernelIndexes(), 0)
+	if err != nil {
+		t.Fatalf("rankByKernelIndex: %v", err)
+	}
+	sameOrder(t, got, ifinfoTruth(), "no cross-check")
+}
+
+func TestRankByKernelIndexRefusesACollision(t *testing.T) {
+	idx := liveKernelIndexes()
+	idx["tailscale0"] = 15 // pppoe0 already holds 15
+	if _, err := rankByKernelIndex(idx, 16); err == nil {
+		t.Fatal("accepted two devices holding kernel index 15; want an error")
+	}
+}
+
+func TestRankByKernelIndexRefusesAnEmptyInput(t *testing.T) {
+	if _, err := rankByKernelIndex(nil, 0); err == nil {
+		t.Fatal("accepted an empty index map; want an error")
+	}
 }

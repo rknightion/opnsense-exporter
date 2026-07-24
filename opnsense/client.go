@@ -161,6 +161,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"dyndnsServiceStatus":           "api/dyndns/service/status",
 		"interfacesOverview":            "api/interfaces/overview/interfaces_info",
 		"interfaceConfig":               "api/diagnostics/interface/get_interface_config",
+		"interfaceStatistics":           "api/diagnostics/interface/get_interface_statistics",
 		"unboundInfra":                  "api/unbound/diagnostics/dumpinfra",
 		"syslogStats":                   "api/syslog/service/stats",
 		"syslogServiceStatus":           "api/syslog/service/status",
