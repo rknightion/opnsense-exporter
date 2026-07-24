@@ -61,7 +61,7 @@ var fixtureFrames = []selection{
 	{0, "templates 256 (IPv4) + 259 (IPv6), plus IPv6 data flows (the IPv6 case)"},
 	{82, "VLAN-duplicate pair copy: 5-tuple also seen on the parent/child interface in frame 88"},
 	{88, "VLAN-duplicate pair copy: same 5-tuple+FIRST+LAST across ixl0 and ixl0_vlan50"},
-	{182, "policy-routed WAN mislabel: src is WAN2 (igb0) NAT addr but OUTPUT_SNMP names pppoe0 (WAN1)"},
+	{182, "policy-routed WAN mislabel: src is a WAN2 NAT addr but OUTPUT_SNMP names pppoe0 (WAN1)"},
 	{19681, "multi-fragment connection: 3+ records of one 5-tuple share a community-id"},
 	{19691, "multi-fragment connection (continued)"},
 }

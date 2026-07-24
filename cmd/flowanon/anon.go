@@ -69,7 +69,9 @@ type anonymizer struct {
 // depend on, so the replay test can name them as documented constants rather than
 // chasing an allocation order. Everything else is allocated sequentially.
 //
-//   - 86.31.203.106 is the box's WAN2 (igb0) NAT address; the egress-correction case
+//   - 86.31.203.106 is the box's WAN2 NAT address (on ixl1 as of 2026-07-24; it was
+//     igb0 when this capture was taken, before the router moved to the SFP cage —
+//     the ADDRESS is what the fixture pins, not the device); the egress-correction case
 //     turns on the replay test's IfMap owning it, so it is pinned to a stable
 //     documentation address.
 //   - 135.181.211.203 is the destination of that mislabelled WAN2 flow; pinned only
