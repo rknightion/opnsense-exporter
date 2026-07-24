@@ -106,8 +106,11 @@ var (
 		"flow.netflow.ifindex-map",
 		"Override the derived NetFlow ifIndex-to-device map, as comma-separated index=device "+
 			"pairs (e.g. \"1=ixl0,5=igb0,13=ixl0_vlan50\"). Entries listed here beat the derived "+
-			"map; indices not listed still use it. Read yours off the box with: "+
-			"ngctl list | grep netflow.",
+			"map; indices not listed still use it, so pin every index that carries traffic. "+
+			"Read yours off the box with: ifinfo | awk '$1 == \"Interface\" { n++; print n, $2 }' "+
+			"- that is the whole enumeration. ngctl list | grep netflow shows only the "+
+			"interfaces netflow captures, and an egress index can legitimately name one it "+
+			"does not.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_IFINDEX_MAP").Default("").String()
 
 	// Correlation joins the two sources' view of one conversation. It is a pass-through
