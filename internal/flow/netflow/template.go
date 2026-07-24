@@ -61,7 +61,14 @@ func (t *template) sameShape(o *template) bool {
 // going invents records. Definitions parsed BEFORE the bad one stay cached —
 // they are independently valid, and discarding them would re-open the ~2 minute
 // cold-start window every time a sender emits one bad flowset.
-func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint32) error {
+//
+// It also returns every element the decoder does not model, so the caller can
+// report them (#360). They are collected only for definitions that were actually
+// STORED — a re-send of a shape already held tells us nothing new, and reporting one
+// every ~2 minutes forever would make the counter a clock and the debug capture a
+// full stream dump.
+func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint32) ([]Unidentified, error) {
+	var unknown []Unidentified
 	// A template definition header is 4 bytes; a shorter tail is the flowset's
 	// alignment padding, not a truncated definition.
 	for len(set) >= 4 {
@@ -72,10 +79,10 @@ func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint3
 		if count == 0 {
 			// A zero-field template has a zero-width record, which would make the
 			// data reader loop forever over any flowset naming it.
-			return ErrMalformed
+			return nil, ErrMalformed
 		}
 		if len(set) < count*4 {
-			return ErrMalformed
+			return nil, ErrMalformed
 		}
 
 		fields := make([]templateField, count)
@@ -90,10 +97,10 @@ func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint3
 				// decoder that guessed at one would desynchronise every subsequent
 				// record in the set — so the datagram is rejected, loudly and counted,
 				// rather than half-read.
-				return ErrVariableLength
+				return nil, ErrVariableLength
 			}
 			if f.length == 0 {
-				return ErrMalformed
+				return nil, ErrMalformed
 			}
 			fields[i] = f
 			recLen += int(f.length)
@@ -104,22 +111,34 @@ func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint3
 			// Ids 0-255 are reserved for flowset types, so no data flowset can ever
 			// name one. A template claiming one is a broken sender, not a shape we
 			// could store and never use.
-			return ErrMalformed
+			return nil, ErrMalformed
 		}
-		d.store(templateKey{exporter: exporter, sourceID: sourceID, id: id}, &template{fields: fields, recLen: recLen})
+		if d.store(templateKey{exporter: exporter, sourceID: sourceID, id: id},
+			&template{fields: fields, recLen: recLen}) {
+			// Reported only for a shape we actually took on, and only once per
+			// element — see the doc comment.
+			for _, f := range fields {
+				if !modelledFields[f.typ] {
+					d.stats.UnknownFields++
+					unknown = append(unknown, Unidentified{Kind: UnidentifiedField, Detail: f.typ})
+				}
+			}
+		}
 	}
-	return nil
+	return unknown, nil
 }
 
-// store caches a template, distinguishing a refresh from a replacement. Callers
-// hold d.mu.
+// store caches a template, distinguishing a refresh from a replacement. It reports
+// whether the shape was actually taken on — false for a re-send of a shape already
+// held — which is what gates the unmodelled-element reporting in learnTemplates.
+// Callers hold d.mu.
 //
 // ng_netflow re-sends every template roughly every 2 minutes (#346), so the
 // overwhelming majority of definitions arriving here are re-sends of a shape
 // already held. Counting those as replacements would make TemplatesReplaced a
 // clock rather than the drift signal it exists to be: a non-zero rate there must
 // mean the sender genuinely changed its export shape.
-func (d *Decoder) store(k templateKey, t *template) {
+func (d *Decoder) store(k templateKey, t *template) bool {
 	old, ok := d.templates[k]
 	switch {
 	case !ok:
@@ -127,11 +146,12 @@ func (d *Decoder) store(k templateKey, t *template) {
 	case old.sameShape(t):
 		// Refresh. Nothing to do — keeping the existing pointer avoids churning a
 		// slice that every in-flight record decode is reading from.
-		return
+		return false
 	default:
 		d.stats.TemplatesReplaced++
 	}
 	d.templates[k] = t
+	return true
 }
 
 // lookup returns the cached template for a data flowset, if one has been

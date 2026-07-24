@@ -103,6 +103,51 @@ ng_netflow starting to get it right.
 from the firewall's own topology and the ifIndex evidence, by the same rules the
 Zenarmor lane uses. `unknown` is emitted honestly rather than guessed.
 
+### What the decoder could not interpret
+
+A NetFlow export can carry things this decoder does not model: a template element it
+has nowhere to put, an options template, a control flowset in the reserved range.
+Each is stepped over by its *template-declared* length, which is the only safe thing
+to do - assuming a width shifts every following field and corrupts records with no
+parse error to show for it. What changed is that it no longer happens in silence.
+
+`opnsense_flow_netflow_unidentified_total` counts them by `kind`. A non-zero
+`unknown_field` is **expected**: the box's IPv4 template declares four elements the
+decoder does not read (TOS, the two masks, the next hop), so it is a *change* here
+that means the export gained something. It is counted once per element when a
+template shape is first learned or changes, never on the roughly two-minutely
+re-send, so the counter is a drift signal rather than a clock. Alongside it, a
+rate-limited log line names the element or flowset ids and the exporter that sent
+them - those ids are deliberately not metric labels, because the socket is
+unauthenticated and a sender could mint as many as it liked.
+
+### Capturing datagrams
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--flow.netflow.debug-capture` | `off` | `unidentified` or `all` - write raw datagrams to the shared capture dir |
+| `--logs.debug-capture.dir` | *(unset)* | where captures are written; shared with the log receivers |
+| `--logs.debug-capture.max-bytes` | `256MiB` | total cap across the whole dir |
+
+`unidentified` writes only datagrams carrying something the decoder could not
+interpret, including one that would not decode at all. On a healthy box that is a
+couple of datagrams around startup and nothing after, which is what makes it the mode
+worth leaving on. A data flowset arriving before its template is deliberately *not*
+counted as surprising - it is the expected state for the first two minutes after
+either end restarts, and treating it as surprising would spend the whole byte cap on
+a condition that resolves itself.
+
+`all` writes every datagram. That is the mode for regenerating a replay fixture or
+measuring the export, and it is deliberately heavy: turn it on for a window. The byte
+cap governs the whole capture dir and *stops* capture when reached, keeping the
+oldest samples rather than rotating them away, so a debug capture can never fill the
+disk.
+
+Captures are NDJSON under `<dir>/netflow/`, one line per datagram with the payload
+base64-encoded, at mode 0600 - they carry real addresses and the traffic pattern of
+the whole network. `cmd/flowanon` reads them (a file or a whole rotated directory)
+and builds an anonymised replay fixture from a selection of them.
+
 ### ifIndex is positional, and that is fragile
 
 The `ifIndex` in a record is **not** an OS or SNMP index. It is a 1-based counter over

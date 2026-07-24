@@ -196,14 +196,23 @@ def build(b: Builder):
         [(f'sum by (result) (rate({sel("opnsense_flow_netflow_templates_total")}[{RATE}]))',
           "templates {{result}}"),
          (f'sum by (field) (rate({sel("opnsense_flow_netflow_unexpected_field_total")}[{RATE}]))',
-          "unexpected {{field}}")],
+          "unexpected {{field}}"),
+         (f'sum by (kind) (rate({sel("opnsense_flow_netflow_unidentified_total")}[{RATE}]))',
+          "unidentified {{kind}}")],
         unit="short",
         desc="templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the "
              "exporter is re-sending a template id with a DIFFERENT field shape, which invalidates the "
              "decoder's understanding of every record behind it. unexpected_field counts records "
              "carrying a field asserted to be always-empty on this export (today OUT_BYTES, zero "
              "across all 84,513 records of the reference capture): non-zero does NOT mean volume is "
-             "currently wrong, it means that assumption has expired and the decoder needs revisiting.",
+             "currently wrong, it means that assumption has expired and the decoder needs revisiting. "
+             "unidentified counts what the decoder stepped over rather than interpreted — an "
+             "unmodelled template element, an options template, an unknown control flowset. Stepping "
+             "over is CORRECT (assuming a width would corrupt every field behind it); a non-zero "
+             "unknown_field is expected, since the box's IPv4 template declares four elements we do "
+             "not model, so it is a CHANGE here that means the export gained something. The element "
+             "IDs are in the log line, not a label — this socket is unauthenticated. Set "
+             "--flow.netflow.debug-capture=unidentified to keep the datagrams themselves.",
     )
 
     repairs = b.ts(

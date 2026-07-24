@@ -41,6 +41,7 @@ import (
 const (
 	ReceiverZenarmor = "zenarmor"
 	ReceiverSyslog   = "syslog"
+	ReceiverNetflow  = "netflow"
 
 	// Zenarmor kinds.
 	KindUnhandledEndpoint = "unhandled_endpoint"
@@ -50,6 +51,19 @@ const (
 	// Syslog kind: a line no parser matched (unknown program, parser miss, or an
 	// envelope that would not parse).
 	KindUnparsed = "unparsed"
+
+	// NetFlow kinds (#360). These MUST match the notice-kind constants in
+	// internal/flow/netflow — capture_netflow_test.go pins that, since the two
+	// packages cannot import each other's vocabulary without inverting the layering.
+	// They are all code-defined: nothing a sender supplies ever becomes a kind.
+	KindUnknownField       = "unknown_field"
+	KindOptionsTemplate    = "options_template"
+	KindUnknownFlowset     = "unknown_flowset"
+	KindMalformed          = "malformed"
+	KindUnsupportedVersion = "unsupported_version"
+	KindVarLenRejected     = "var_len_rejected"
+	KindDecodeError        = "decode_error"
+	KindDatagram           = "datagram"
 )
 
 // capturedKinds is the {receiver -> kinds} matrix used only to pre-initialise the
@@ -57,13 +71,18 @@ const (
 var capturedKinds = map[string][]string{
 	ReceiverZenarmor: {KindUnhandledEndpoint, KindUnknownFamily, KindParseError},
 	ReceiverSyslog:   {KindUnparsed},
+	ReceiverNetflow: {
+		KindUnknownField, KindOptionsTemplate, KindUnknownFlowset,
+		KindMalformed, KindUnsupportedVersion, KindVarLenRejected,
+		KindDecodeError, KindDatagram,
+	},
 }
 
 // dropReasons is the closed reason set for the dropped counter.
 var dropReasons = []string{"buffer_full", "cap_reached", "write_error"}
 
 // receivers is the closed set the dropped counter is pre-initialised across.
-var receivers = []string{ReceiverZenarmor, ReceiverSyslog}
+var receivers = []string{ReceiverZenarmor, ReceiverSyslog, ReceiverNetflow}
 
 // Defaults for the tunables a caller does not set.
 const (
@@ -201,6 +220,29 @@ func (c *Capturer) Capture(receiver, kind string, fields map[string]any) {
 		// bounded channel: a debug tool must never be able to stall ingest.
 		c.m.dropped.WithLabelValues(receiver, "buffer_full").Inc()
 	}
+}
+
+// ReceiverSink binds one receiver's name to a Capturer, so a receiver that captures
+// need not know — or be able to get wrong — which name its entries are filed under.
+// A nil *ReceiverSink is a no-op, exactly like a nil *Capturer.
+type ReceiverSink struct {
+	c        *Capturer
+	receiver string
+}
+
+// For returns this Capturer as one receiver's sink. A nil Capturer yields a sink
+// whose Capture does nothing, so a caller never has to branch on capture being off.
+func (c *Capturer) For(receiver string) *ReceiverSink {
+	return &ReceiverSink{c: c, receiver: receiver}
+}
+
+// Capture enqueues one entry under this sink's receiver. Same contract as
+// Capturer.Capture: never blocks, copies what it needs, nil-safe.
+func (s *ReceiverSink) Capture(kind string, fields map[string]any) {
+	if s == nil {
+		return
+	}
+	s.c.Capture(s.receiver, kind, fields)
 }
 
 // copyFields returns a shallow copy of fields with every []byte / json.RawMessage

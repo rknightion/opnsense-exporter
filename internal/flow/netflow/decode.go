@@ -134,7 +134,8 @@ func (d *Decoder) decodeV9(payload []byte, exporter netip.Addr, now time.Time) (
 
 		switch {
 		case id == flowsetTemplate:
-			if err := d.learnTemplates(set, exporter, dg.SourceID); err != nil {
+			unknown, err := d.learnTemplates(set, exporter, dg.SourceID)
+			if err != nil {
 				if errors.Is(err, ErrVariableLength) {
 					d.stats.VarLenRejected++
 				} else {
@@ -142,13 +143,21 @@ func (d *Decoder) decodeV9(payload []byte, exporter netip.Addr, now time.Time) (
 				}
 				return nil, err
 			}
+			for _, u := range unknown {
+				dg.note(u)
+			}
 		case id == flowsetOptionsTemplate:
 			// Stepped over by length and never interpreted. This export carries no
 			// scoped data the pipeline consumes, and a half-understood options
-			// template would desynchronise every flowset behind it.
+			// template would desynchronise every flowset behind it. Stepping over is
+			// still right; doing it SILENTLY was the defect (#360).
+			d.stats.OptionsTemplates++
+			dg.note(Unidentified{Kind: UnidentifiedOptions, Detail: id})
 		case id < firstDataFlowsetID:
 			// The rest of the reserved 2-255 range: unknown control flowsets, also
 			// stepped over by length rather than taking the datagram down.
+			d.stats.UnknownFlowsets++
+			dg.note(Unidentified{Kind: UnidentifiedFlowset, Detail: id})
 		default:
 			d.readDataFlowset(dg, set, exporter, id, sysUpTime)
 		}

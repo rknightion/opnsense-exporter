@@ -13,6 +13,7 @@ package netflow
 import (
 	"errors"
 	"net/netip"
+	"slices"
 	"time"
 )
 
@@ -60,6 +61,59 @@ type Datagram struct {
 	Sequence   uint32
 	ExportTime time.Time // the firewall's clock, from the header
 	Records    []Record
+
+	// Unidentified lists everything in this datagram the decoder stepped over
+	// because it could not interpret it (#360). Stepping over is the CORRECT parse
+	// behaviour and is not what this reports on; what it reports is that the export
+	// carried something we do not model, so an operator can see it and a debug
+	// capture can keep the bytes. Empty on a datagram the decoder fully understood,
+	// which is what makes "capture only the unidentified" a bounded mode.
+	Unidentified []Unidentified
+}
+
+// Unidentified names one thing the decoder did not interpret.
+//
+// Detail is the identifier the kind refers to — the v9 element id for
+// UnidentifiedField, the flowset id for the two flowset kinds — and is deliberately
+// NEVER used as a metric label: this arrives on an unauthenticated socket, so a
+// sender could mint arbitrary ids. It reaches the log line and the debug capture
+// only, and the metric counts by KIND, which is a closed code-defined set.
+type Unidentified struct {
+	Kind   string
+	Detail uint16
+}
+
+// The closed kind vocabulary. The three below are the decoder's; the listener adds
+// its own error-derived kinds (see capture.go).
+const (
+	// UnidentifiedField is a template element the decoder does not model. It is
+	// reported at LEARN time, once per element, and only when the template was
+	// actually stored (a new id, or a known id whose shape changed) — never on the
+	// ~2-minutely re-send of a shape already held.
+	UnidentifiedField = "unknown_field"
+	// UnidentifiedOptions is an options-template flowset, stepped over and never
+	// interpreted.
+	UnidentifiedOptions = "options_template"
+	// UnidentifiedFlowset is a flowset in the reserved 2-255 range that is neither a
+	// template nor an options template.
+	UnidentifiedFlowset = "unknown_flowset"
+)
+
+// maxUnidentifiedPerDatagram bounds the report, NOT the counters. A datagram is at
+// most 65535 bytes, so a sender could pack it with ~16,000 four-byte unknown control
+// flowsets and make every worker allocate a slice that large and render it into a log
+// line and a capture entry. The counters stay exact — they are what an operator acts
+// on — while the list stays a SAMPLE, which is all it was ever read as.
+const maxUnidentifiedPerDatagram = 32
+
+// note records one unidentified item, deduplicated and bounded. Deduplication
+// matters as much as the bound: a flowset id repeated 400 times in one datagram is
+// one fact, and 400 identical entries would bury the others past the cap.
+func (d *Datagram) note(u Unidentified) {
+	if slices.Contains(d.Unidentified, u) || len(d.Unidentified) >= maxUnidentifiedPerDatagram {
+		return
+	}
+	d.Unidentified = append(d.Unidentified, u)
 }
 
 // Stats counts everything the decoder chose not to trust. Every field here is
@@ -87,6 +141,35 @@ type Stats struct {
 	// so instead we assert and count: a non-zero rate here means the export shape
 	// changed and this decision needs revisiting.
 	UnexpectedOutBytes uint64
+
+	// The three things the decoder used to step over in TOTAL silence (#360). Each
+	// is counted per occurrence, not per record: UnknownFields at template-learn
+	// time (once per unmodelled element of a stored template), the other two per
+	// flowset. A non-zero UnknownFields is EXPECTED on OPNsense — the production
+	// IPv4 template declares four elements this decoder does not model — so it is a
+	// CHANGE in these that is the signal, not their existence.
+	UnknownFields    uint64
+	OptionsTemplates uint64
+	UnknownFlowsets  uint64
+}
+
+// modelledFields is exactly the element set readRecord acts on. It is the decoder's
+// own switch, restated as data so learnTemplates can answer "will we read this?"
+// without duplicating the list by hand.
+//
+// FieldDirection is deliberately ABSENT: the constant exists because the element is
+// worth recognising in a log line, but Record has nowhere to put it, so a template
+// declaring it is carrying something we do not model and must say so.
+var modelledFields = map[uint16]bool{
+	FieldInBytes: true, FieldInPkts: true, FieldProtocol: true, FieldTCPFlags: true,
+	FieldL4SrcPort: true, FieldL4DstPort: true,
+	FieldIPv4SrcAddr: true, FieldIPv4DstAddr: true,
+	FieldIPv6SrcAddr: true, FieldIPv6DstAddr: true,
+	FieldInputSNMP: true, FieldOutputSNMP: true,
+	FieldSrcAS: true, FieldDstAS: true,
+	FieldFirstSwitched: true, FieldLastSwitched: true,
+	FieldOutBytes: true, FieldOutPkts: true,
+	FieldSrcVLAN: true, FieldDstVLAN: true,
 }
 
 // Decoder errors. A caller distinguishes "this datagram was not for us" from "this

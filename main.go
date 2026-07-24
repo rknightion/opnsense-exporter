@@ -811,6 +811,46 @@ func main() {
 	// the refresher that feeds it.
 	var stopNetflow func()
 
+	// The NetFlow lane's debug-capture mode (#360). Resolved here rather than at the
+	// receiver because whether the shared sink below is built at all depends on it.
+	// options.Flow has already rejected an unknown mode, so an error here would be a
+	// programming fault — it is still fatal rather than silently off, because an
+	// operator who asked for a capture and got none finds out only when they go
+	// looking for the samples.
+	netflowCaptureMode, cmErr := netflow.ParseCaptureMode(flowCfg.NetflowDebugCapture)
+	if cmErr != nil {
+		logger.Error("invalid netflow debug-capture mode", "err", cmErr)
+		os.Exit(1)
+	}
+	netflowWantsCapture := collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.NetflowEnabled &&
+		netflowCaptureMode != netflow.CaptureOff
+
+	// Debug-capture sink (#330, extended to the NetFlow lane by #360): shared across
+	// receivers, constructed once when --logs.debug-capture.dir is set. A per-receiver
+	// toggle (--logs.<recv>.debug-capture, --flow.netflow.debug-capture) is what
+	// actually routes signals into it; a receiver that did not opt in never touches it.
+	// A construction failure (unwritable dir) is fatal — the operator asked for capture
+	// and must know it is not happening.
+	//
+	// Built OUTSIDE the log-pipeline block because the NetFlow lane runs even with log
+	// shipping off entirely and needs the same sink — but built only when one of the
+	// two will actually feed it, since a capturer nobody writes to is a writer
+	// goroutine that, with log shipping off, nothing would own closing.
+	var debugCapturer *capture.Capturer
+	if options.LogsDebugCaptureEnabled() && (logsEnabled || netflowWantsCapture) {
+		dc, cerr := capture.New(capture.Config{
+			Dir:      options.LogsDebugCaptureDir(),
+			MaxBytes: options.LogsDebugCaptureMaxBytes(),
+		}, selfMetricsRegistry, logger)
+		if cerr != nil {
+			logger.Error("invalid debug-capture configuration", "err", cerr)
+			os.Exit(1)
+		}
+		debugCapturer = dc
+		logger.Info("debug capture enabled",
+			"dir", options.LogsDebugCaptureDir(), "max_bytes", options.LogsDebugCaptureMaxBytes())
+	}
+
 	// Log enrichment is shared by the log pipeline and the NetFlow lane, and is built
 	// at most ONCE: both want the same snapshot of interface names, local subnets and
 	// hostnames, and giving them a refresher each would double the API poll for
@@ -873,26 +913,10 @@ func main() {
 		if collectorsSwitches.Flow && flowCfg.Enabled {
 			deps.FlowDNSCache = flowDNSCache
 		}
-		// Debug-capture sink (#330): shared across receivers, constructed once when
-		// --logs.debug-capture.dir is set. A per-receiver --logs.<recv>.debug-capture is
-		// what actually routes signals into it; a receiver that did not opt in never
-		// touches it. A construction failure (unwritable dir) is fatal — the operator
-		// asked for capture and must know it is not happening.
-		var debugCapturer *capture.Capturer
-		if options.LogsDebugCaptureEnabled() {
-			dc, cerr := capture.New(capture.Config{
-				Dir:      options.LogsDebugCaptureDir(),
-				MaxBytes: options.LogsDebugCaptureMaxBytes(),
-			}, selfMetricsRegistry, logger)
-			if cerr != nil {
-				logger.Error("invalid debug-capture configuration", "err", cerr)
-				os.Exit(1)
-			}
-			debugCapturer = dc
-			deps.DebugCapture = dc
-			logger.Info("debug capture enabled",
-				"dir", options.LogsDebugCaptureDir(), "max_bytes", options.LogsDebugCaptureMaxBytes())
-		}
+		// The shared sink is built above, before this block, because the NetFlow lane
+		// needs it too and runs with log shipping off. nil when no dir is configured,
+		// which every receiver treats as capture-off.
+		deps.DebugCapture = debugCapturer
 		syslogCfg, syslogEnabled, serr := options.LogsSyslog()
 		if serr != nil {
 			logger.Error("invalid syslog receiver configuration", "err", serr)
@@ -976,9 +1000,21 @@ func main() {
 		proc.SetDNSCache(flowDNSCache)
 		decoder := netflow.New()
 
+		// Debug capture (#360). Resolved above, alongside the shared sink it writes to.
+		var captureSink netflow.CaptureSink
+		if netflowWantsCapture && debugCapturer != nil {
+			captureSink = debugCapturer.For(capture.ReceiverNetflow)
+			logger.Warn("netflow debug capture enabled; RAW datagrams are being written to disk",
+				"mode", netflowCaptureMode.String(),
+				"dir", options.LogsDebugCaptureDir(),
+				"max_bytes", options.LogsDebugCaptureMaxBytes())
+		}
+
 		listener := netflow.NewListener(netflow.ListenerConfig{
 			Addr:         flowCfg.NetflowListen,
 			AllowedPeers: flowCfg.NetflowAllowedPeers,
+			Capture:      captureSink,
+			CaptureMode:  netflowCaptureMode,
 		}, decoder, func(dg *netflow.Datagram, _ netip.Addr) {
 			proc.ObserveDatagram(dg, time.Now())
 		}, logger)
@@ -1074,6 +1110,11 @@ func main() {
 			stopNetflow()
 			if stopEnrich != nil {
 				stopEnrich()
+			}
+			// Same ordering rule as the log-pipeline path: the capture writer is fed
+			// from the receiver goroutines, so it closes only once they are quiesced.
+			if debugCapturer != nil {
+				_ = debugCapturer.Close()
 			}
 		}
 	} else if stopFlowLog != nil && stopLogs == nil {

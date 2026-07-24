@@ -1,21 +1,34 @@
-// Command flowanon builds the committed NetFlow v9 replay fixture from a raw
-// production capture.
+// Command flowanon builds the committed NetFlow v9 replay fixture from a production
+// capture.
 //
-// It reads the raw capture (the frame format the throwaway flowcapture tool wrote:
-// [unix-nanos u64][addr-len u8][addr][payload-len u32][payload] per datagram),
-// selects the minimal set of real datagrams that retains every case the replay test
-// needs, anonymises them (see anon.go for the contract), and writes the anonymised
-// subset to the fixture path in the same frame format.
+// It reads a capture in either supported form, selects the minimal set of real
+// datagrams that retains every case the replay test needs, anonymises them (see
+// anon.go for the contract), and writes the anonymised subset to the fixture path.
 //
-// The raw capture is NEVER committed and is not available in CI. This tool is
+// Two input forms, both auto-detected (see capture.go):
+//
+//   - The exporter's own debug capture — NDJSON under <capture-dir>/netflow/, written
+//     by --flow.netflow.debug-capture=all with --logs.debug-capture.dir set (#360).
+//     This is how a NEW capture is taken. Point -in at the file or the directory; a
+//     rotated set is read whole, in file order.
+//   - The raw frame dump [unix-nanos u64][addr-len u8][addr][payload-len u32][payload]
+//     per datagram. The committed fixture was produced from one of these, by a
+//     throwaway tool that predates the exporter's own capture path and was never
+//     committed — which is exactly why that path exists now.
+//
+// The capture itself is NEVER committed and is not available in CI. This tool is
 // committed and its address/byte-rewriting core is unit-tested (anon_test.go); the
 // fixture it produced is committed and replayed by internal/flow/netflow and
 // internal/flow tests. Re-running it against the same capture reproduces the fixture
 // byte for byte.
 //
+// The frame indices in fixtureFrames below are into the ORIGINAL 2026-07-21 capture.
+// A fresh capture is a different stream, so regenerating the fixture from one means
+// re-selecting the cases as well — see the comment on fixtureFrames.
+//
 // Usage:
 //
-//	go run ./cmd/flowanon -in ~/flow-captures/2026-07-21/netflow-v9-capture.bin \
+//	go run ./cmd/flowanon -in /var/opnsense-capture/netflow \
 //	    -out internal/flow/netflow/testdata/replay-v9.bin
 package main
 
@@ -67,7 +80,7 @@ type frame struct {
 }
 
 func main() {
-	in := flag.String("in", "", "raw capture path (required)")
+	in := flag.String("in", "", "capture path: a debug-capture file or directory, or a raw frame dump (required)")
 	out := flag.String("out", "internal/flow/netflow/testdata/replay-v9.bin", "fixture output path")
 	flag.Parse()
 	if *in == "" {
@@ -81,11 +94,7 @@ func main() {
 }
 
 func run(inPath, outPath string) error {
-	raw, err := os.ReadFile(inPath)
-	if err != nil {
-		return err
-	}
-	frames, err := readFrames(raw)
+	frames, err := readInput(inPath)
 	if err != nil {
 		return err
 	}

@@ -39,6 +39,14 @@ type ListenerConfig struct {
 	AllowedPeers []netip.Prefix
 	Workers      int
 	QueueSize    int
+
+	// Capture and CaptureMode are the opt-in debug capture (#360). Capture is where
+	// datagrams are written; CaptureMode decides which ones. Both must be set for
+	// anything to be written, and the default — a nil sink and CaptureOff — costs one
+	// comparison per datagram. The always-on counting and rate-limited logging of
+	// unidentified content happens regardless of these.
+	Capture     CaptureSink
+	CaptureMode CaptureMode
 }
 
 // ListenerStats counts everything the listener discarded. Each becomes a metric:
@@ -66,6 +74,10 @@ type Listener struct {
 	closing chan struct{}
 	once    sync.Once
 	wg      sync.WaitGroup
+
+	// notices rate-limits the always-on log for content the decoder could not
+	// interpret. Shared by every worker, hence its own mutex.
+	notices *noticeLimiter
 
 	datagrams, bytes  atomic.Uint64
 	peerRejected      atomic.Uint64
@@ -96,6 +108,7 @@ func NewListener(cfg ListenerConfig, dec decoder, handle func(*Datagram, netip.A
 		log:     log,
 		work:    make(chan job, cfg.QueueSize),
 		closing: make(chan struct{}),
+		notices: newNoticeLimiter(maxNoticeKeys),
 	}
 }
 
@@ -177,11 +190,21 @@ func (l *Listener) Serve() {
 func (l *Listener) worker() {
 	defer l.wg.Done()
 	for j := range l.work {
-		dg, err := l.dec.Decode(j.payload, j.peer, time.Now())
+		recv := time.Now()
+		dg, err := l.dec.Decode(j.payload, j.peer, recv)
 		if err != nil {
 			l.decErrs.Add(1)
+			// A datagram that would not decode is the most interesting thing this
+			// socket ever sees, and the payload is about to be garbage — this is the
+			// only place it still exists (#360).
+			l.note(j.payload, j.peer, recv, []Unidentified{{Kind: errorNoticeKind(err)}}, nil, err)
 			continue
 		}
+		var notices []Unidentified
+		if dg != nil {
+			notices = dg.Unidentified
+		}
+		l.note(j.payload, j.peer, recv, notices, dg, nil)
 		if l.handle != nil && dg != nil {
 			l.handle(dg, j.peer)
 		}

@@ -81,6 +81,21 @@ var (
 			"default to drift into: anything that can reach the port can inject flow records.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_ALLOWED_PEERS").Strings()
 
+	// Off by default and it must stay that way: this writes RAW datagrams — real
+	// addresses, ports and the traffic pattern of the whole network — to disk. It is
+	// an investigation tool for a window, not a running mode. The always-on counting
+	// and rate-limited logging of what the decoder could not interpret needs no flag.
+	flowNetflowDebugCapture = kingpin.Flag(
+		"flow.netflow.debug-capture",
+		"Dump raw NetFlow datagrams to --logs.debug-capture.dir. \"unidentified\" writes only "+
+			"datagrams carrying something the decoder could not interpret (an unmodelled template "+
+			"element, an options template, an unknown flowset, or a datagram that would not decode "+
+			"at all) - cheap, and the mode worth leaving on. \"all\" writes every datagram, for "+
+			"regenerating a replay fixture or measuring the export; deliberately heavy, bounded only "+
+			"by --logs.debug-capture.max-bytes. Requires --flow.netflow.enabled and the shared dir.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_DEBUG_CAPTURE").Default("off").
+		Enum("off", "unidentified", "all")
+
 	// ng_netflow's ifIndex is a 1-based counter over ifinfo output, NOT an OS or SNMP
 	// index, and adding or removing ANY interface renumbers everything (#346). The
 	// exporter derives the map from the API, but that derivation cannot be proven to
@@ -208,6 +223,17 @@ func parseIfIndexMap(s string) (map[uint32]string, error) {
 	return out, nil
 }
 
+// captureModeOrOff resolves the empty value to the explicit "off". kingpin applies
+// Default() only once the command line has been parsed, so the flag reads empty in
+// any code path that has not parsed one — and a resolved config whose capture mode
+// is "" would leave every consumer deciding for itself what that means.
+func captureModeOrOff(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "off"
+	}
+	return s
+}
+
 // FlowConfig is the resolved flow configuration.
 //
 // The two lanes differ in default deliberately: --flow.enabled is on because it only
@@ -223,6 +249,9 @@ type FlowConfig struct {
 	NetflowListen       string
 	NetflowAllowedPeers []netip.Prefix
 	NetflowIfIndexMap   map[uint32]string
+	// NetflowDebugCapture is "off", "unidentified" or "all"; kingpin's Enum has
+	// already rejected anything else. main resolves it with netflow.ParseCaptureMode.
+	NetflowDebugCapture string
 
 	Correlate           bool
 	CorrelateWindow     time.Duration
@@ -252,6 +281,7 @@ func Flow() (FlowConfig, error) {
 		NetflowListen:       *flowNetflowListen,
 		NetflowAllowedPeers: peers,
 		NetflowIfIndexMap:   ifmap,
+		NetflowDebugCapture: captureModeOrOff(*flowNetflowDebugCapture),
 		Correlate:           *flowCorrelate,
 		CorrelateWindow:     *flowCorrelateWindow,
 		CorrelateMaxEntries: *flowCorrelateMaxEntries,
@@ -277,6 +307,20 @@ func (c FlowConfig) Validate() error {
 	// the operator sees the flag accepted and no records ever arrive.
 	if c.NetflowEnabled && strings.TrimSpace(c.NetflowListen) == "" {
 		return fmt.Errorf("flow: --flow.netflow.enabled requires a --flow.netflow.listen address")
+	}
+	// Both halves of the same "a capture that quietly never happens" failure: without
+	// the receiver there are no datagrams to write, and without the shared dir there
+	// is nowhere to write them. Either way the operator asked for samples and would
+	// find out they were never taken only when they went looking.
+	if c.NetflowDebugCapture != "" && c.NetflowDebugCapture != "off" {
+		if !c.NetflowEnabled {
+			return fmt.Errorf("flow: --flow.netflow.debug-capture=%s requires --flow.netflow.enabled; "+
+				"there are no datagrams to capture without the receiver", c.NetflowDebugCapture)
+		}
+		if !LogsDebugCaptureEnabled() {
+			return fmt.Errorf("flow: --flow.netflow.debug-capture=%s requires --logs.debug-capture.dir "+
+				"(the shared capture destination)", c.NetflowDebugCapture)
+		}
 	}
 	if c.TopN < 0 {
 		return fmt.Errorf("flow: --flow.top-n must not be negative (got %d); 0 means unbounded", c.TopN)

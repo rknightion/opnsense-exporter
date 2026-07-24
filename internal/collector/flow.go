@@ -219,6 +219,8 @@ type flowCollector struct {
 	nfTemplates  *prometheus.Desc
 	nfUnexpected *prometheus.Desc
 
+	nfUnidentified *prometheus.Desc
+
 	egressCorrected    *prometheus.Desc
 	dedupeEntries      *prometheus.Desc
 	dedupeDropped      *prometheus.Desc
@@ -467,6 +469,19 @@ func (c *flowCollector) registerNetflow() {
 			"revisiting - it does NOT mean volume is currently wrong.",
 		[]string{"field"},
 	)
+	c.nfUnidentified = buildPrometheusDesc(c.subsystem, "netflow_unidentified_total",
+		"Things in the export this decoder could not interpret and stepped over, by kind. "+
+			"kind=\"unknown_field\" is a template element the decoder does not model, counted once "+
+			"per element when a template shape is first learned or CHANGED (never on the ~2-minutely "+
+			"re-send); a non-zero value is EXPECTED on OPNsense, whose IPv4 template declares four "+
+			"such elements, so it is a CHANGE here that means the export gained something. "+
+			"kind=\"options_template\" and kind=\"unknown_flowset\" are control flowsets stepped "+
+			"over by length. Stepping over is the correct parse behaviour - doing it silently was "+
+			"not, and --flow.netflow.debug-capture=unidentified keeps the datagrams. The element and "+
+			"flowset IDs themselves are deliberately NOT labels: this arrives on an unauthenticated "+
+			"socket, so they go to the log line and the capture file instead.",
+		[]string{"kind"},
+	)
 
 	c.egressCorrected = buildPrometheusDesc(c.subsystem, "egress_corrected_total",
 		"Flow records whose egress interface was corrected from the WAN the FIB lookup named to the "+
@@ -548,6 +563,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.nfDropped
 	ch <- c.nfTemplates
 	ch <- c.nfUnexpected
+	ch <- c.nfUnidentified
 	ch <- c.egressCorrected
 	ch <- c.dedupeEntries
 	ch <- c.dedupeDropped
@@ -683,6 +699,9 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	counter(c.nfTemplates, nf.Decoder.TemplatesLearned, "learned")
 	counter(c.nfTemplates, nf.Decoder.TemplatesReplaced, "replaced")
 	counter(c.nfUnexpected, nf.Decoder.UnexpectedOutBytes, "out_bytes")
+	counter(c.nfUnidentified, nf.Decoder.UnknownFields, "unknown_field")
+	counter(c.nfUnidentified, nf.Decoder.OptionsTemplates, "options_template")
+	counter(c.nfUnidentified, nf.Decoder.UnknownFlowsets, "unknown_flowset")
 
 	counter(c.egressCorrected, nf.Repair.EgressCorrected)
 	gauge(c.dedupeEntries, float64(nf.Repair.DedupeEntries))
