@@ -84,6 +84,12 @@ const flowHoldReleaseInterval = time.Second
 // mapping is positional: an interface added or removed renumbers everything.
 const ifIndexRefreshInterval = 60 * time.Second
 
+// ifIndexColdRetryInterval is how fast the ifIndex map is retried BEFORE the first
+// successful publish. Until a map exists no record can be labelled and none can be
+// resolved, so the cold window is pure loss - it is worth spending a poll per
+// second to close it, and it stops the moment a map lands (#365).
+const ifIndexColdRetryInterval = time.Second
+
 // flowExpireTick is how often the correlator sweeps for windows that have elapsed. An
 // entry therefore emits within its window plus at most one tick; the sweep is a whole-map
 // scan, so the tick is coarse rather than sub-second.
@@ -1044,8 +1050,15 @@ func main() {
 		// derivation is the bug (#361), and a wrong label is worse than a missing one.
 		nfCtx, cancelNetflow := context.WithCancel(context.Background())
 		go func() {
-			ticker := time.NewTicker(ifIndexRefreshInterval)
+			// Until the first map is published, retry FAST. The enrichment refresher
+			// fetches the enumeration on its own schedule, and the first tick here
+			// fires before that has completed — so settling straight into the 60s
+			// interval left up to a minute in which every record was unlabellable.
+			// On a busy WAN that is gigabytes into the empty-label bucket on every
+			// restart (#365).
+			ticker := time.NewTicker(ifIndexColdRetryInterval)
 			defer ticker.Stop()
+			var published bool
 			var lastUnmapped uint64
 			for {
 				if snap := cache.Load(); snap != nil && len(snap.IfaceOrder) > 0 {
@@ -1056,6 +1069,10 @@ func main() {
 						Override: flowCfg.NetflowIfIndexMap,
 						Built:    time.Now(),
 					}))
+					if !published {
+						published = true
+						ticker.Reset(ifIndexRefreshInterval)
+					}
 				}
 				// An ifIndex the map could not resolve is direct evidence the
 				// enumeration moved, and is worth re-reading well before the hourly

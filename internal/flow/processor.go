@@ -126,12 +126,20 @@ func (p *Processor) ObserveDatagram(dg *netflow.Datagram, now time.Time) {
 			p.noAddress.Add(1)
 			continue
 		}
+		// The count is OUTSIDE the nil check on purpose. It used to sit inside, which
+		// meant the one window where nothing can be labelled — before the first map
+		// is published — was also the window where nothing was counted. A restart on
+		// a busy WAN put gigabytes into the empty-label bucket with every health
+		// metric reading zero, which is indistinguishable from a quiet network (#365).
+		//
+		// A record still EMITS with an empty label rather than being dropped. Dropping
+		// loses data and an empty label is honest; it was the silence that was wrong.
 		if m != nil {
 			rec.In = m.Iface(nr.InIfIndex)
 			rec.Out = m.Iface(nr.OutIfIndex)
-			if rec.In.Device == "" && rec.Out.Device == "" {
-				p.noIfaceMap.Add(1)
-			}
+		}
+		if rec.In.Device == "" && rec.Out.Device == "" {
+			p.noIfaceMap.Add(1)
 		}
 
 		// Repair mutates in place and reports what to do with the record. A drop is a

@@ -348,3 +348,34 @@ func TestEnrichRecord_DNSCacheMissLeavesDomainEmpty(t *testing.T) {
 		t.Fatalf("DstDomain = %q, want empty on cache miss", r.Enrich.DstDomain)
 	}
 }
+
+// A nil ifIndex map must still COUNT the records it cannot label.
+//
+// This was silent, and it hid 4.2 GB of traffic in the empty-label bucket on one
+// restart (#365). The increment sat inside the `if m != nil` guard, so the exact
+// window where nothing can be labelled was also the window where nothing was
+// counted — indistinguishable from a quiet network.
+func TestProcessor_NilIfMapCountsUnmappedRecords(t *testing.T) {
+	sink := &captureSink{}
+	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
+	// Deliberately NO SetIfMap: this is the cold-start state.
+
+	p.ObserveDatagram(&netflow.Datagram{
+		Version: netflow.V9,
+		Records: []netflow.Record{
+			{
+				Proto:   6,
+				SrcAddr: netip.MustParseAddr("10.0.0.10"),
+				DstAddr: netip.MustParseAddr("1.1.1.1"),
+				SrcPort: 1234, DstPort: 443,
+				Bytes: 1000, Packets: 10,
+				InIfIndex: 1, OutIfIndex: 15,
+			},
+		},
+	}, time.Now())
+
+	if got := p.Stats().RecordsUnmapped; got != 1 {
+		t.Errorf("RecordsUnmapped = %d with no ifIndex map, want 1; "+
+			"an unlabellable record that is not counted is invisible", got)
+	}
+}
