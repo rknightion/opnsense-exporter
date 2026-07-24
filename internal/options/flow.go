@@ -21,7 +21,7 @@ var (
 	flowEnabled = kingpin.Flag(
 		"flow.enabled",
 		"Enable flow rollups: bounded byte and packet volume counters derived from flow records. "+
-			"Costs nothing where no flow source is configured — the metrics are simply silent, like "+
+			"Costs nothing where no flow source is configured - the metrics are simply silent, like "+
 			"log_events without the syslog receiver. Set --exporter.disable-flow to remove the "+
 			"collector entirely.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_ENABLED").Default("true").Bool()

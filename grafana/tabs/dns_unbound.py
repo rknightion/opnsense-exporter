@@ -1,5 +1,5 @@
 """
-DNS — Unbound tab for the OPNsense Exporter dashboard.
+DNS - Unbound tab for the OPNsense Exporter dashboard.
 
 Covers all opnsense_unbound_dns_* metrics across seven rows:
   1. Service         — uptime, service running, blocklist, queries qps, cache hit ratio
@@ -365,7 +365,7 @@ def build(b: Builder):
     # Assemble the tab
     # =====================================================================
     b.tab(
-        "DNS — Unbound",
+        "DNS - Unbound",
         [row_service, row_cache, row_dnssec, row_breakdowns, row_cache_mem, row_infra, row_qstats],
         present="has_unbound",
     )

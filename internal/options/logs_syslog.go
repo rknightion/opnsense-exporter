@@ -67,7 +67,7 @@ var (
 		"logs.syslog.exclude-programs",
 		"Comma-separated syslog programs to DROP (e.g. radvd,cron). Empty ships everything. "+
 			"Dropped records are counted in opnsense_exporter_logs_rejected_total{reason=\"filtered\"} "+
-			"— never silently discarded.",
+			"- never silently discarded.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_EXCLUDE_PROGRAMS").Default("").String()
 
 	logsSyslogInclude = kingpin.Flag(
@@ -113,7 +113,7 @@ var (
 		"logs.syslog.debug-capture",
 		"Dump syslog lines this receiver cannot parse (unknown program, no matching parser, or an "+
 			"unparseable envelope) to --logs.debug-capture.dir for inspection. Requires "+
-			"--logs.debug-capture.dir. Additive — these lines still ship as generic records.",
+			"--logs.debug-capture.dir. Additive - these lines still ship as generic records.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_DEBUG_CAPTURE").Default("false").Bool()
 
 	// TLS is a third listener feeding the same handler. For most users the firewall
@@ -140,7 +140,7 @@ var (
 	logsSyslogTLSClientCAFile = kingpin.Flag(
 		"logs.syslog.tls-client-ca-file",
 		"PEM CA bundle to verify sender client certificates on the TLS syslog listener. When "+
-			"set, a sender MUST present a certificate signed by this CA — the only real sender "+
+			"set, a sender MUST present a certificate signed by this CA - the only real sender "+
 			"authentication syslog offers. Empty accepts any TLS client (encryption only).",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_TLS_CLIENT_CA_FILE").Default("").String()
 )

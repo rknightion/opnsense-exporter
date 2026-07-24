@@ -19,7 +19,7 @@ var logsUnboundEnabled = kingpin.Flag(
 		"domain, client, action, resolution source, blocklist and dnssec_status per query). "+
 		"Off by default; requires --logs.enabled. CAVEAT: without a per-client filter, "+
 		"Unbound's query-log backend (DuckDB) only ever exposes the newest 1000 rows across "+
-		"the WHOLE resolver — on a firewall sustaining more than roughly 1000 queries between "+
+		"the WHOLE resolver - on a firewall sustaining more than roughly 1000 queries between "+
 		"polls, older rows silently fall out of that window before this exporter ever sees "+
 		"them. This is accepted, honestly-counted sampling loss, not a bug: it is tracked via "+
 		"opnsense_exporter_logs_possible_gap_total{source=\"unbound\"}, never silently dropped. "+

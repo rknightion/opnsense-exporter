@@ -22,10 +22,10 @@ Where `<subsystem>` corresponds to a collector (e.g., `gateways`, `firewall`, `u
 
 Examples:
 
-- `opnsense_gateways_loss_percentage` -- packet loss for a gateway
-- `opnsense_firewall_ipv4_pass_packets_total` -- IPv4 pass packet counter per interface
-- `opnsense_unbound_dns_queries_total` -- total DNS queries handled by Unbound
-- `opnsense_system_memory_used_bytes` -- memory currently in use
+- `opnsense_gateways_loss_percentage` - packet loss for a gateway
+- `opnsense_firewall_ipv4_pass_packets_total` - IPv4 pass packet counter per interface
+- `opnsense_unbound_dns_queries_total` - total DNS queries handled by Unbound
+- `opnsense_system_memory_used_bytes` - memory currently in use
 
 ## Common labels
 

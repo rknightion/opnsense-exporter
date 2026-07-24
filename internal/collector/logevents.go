@@ -232,7 +232,7 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 		"Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), "+
 			"action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do "+
 			"not apply to a family are empty. Zenarmor ships ~2.5-3.3M records/day, so these counters are "+
-			"the way to ask rate questions without querying the raw log stream — and they outlive Loki's "+
+			"the way to ask rate questions without querying the raw log stream - and they outlive Loki's "+
 			"retention. Application name, IPs, ports, hostnames, MACs, JA3, session/community/connection "+
 			"ids, URIs and DNS queries are never labels; they stay as structured metadata on the record.",
 		[]string{"family", "action", "category", "interface", "rcode", "severity", "status_class"},
@@ -245,7 +245,7 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"values are sender-controlled and the budget is what stops one sender growing metric state "+
 			"for the life of the process. Nothing is lost: this plus the family's own series is the "+
 			"true event count. Non-zero and rising means the family is saturated and new tuples are no "+
-			"longer individually visible — raise the budget or find what is minting them.",
+			"longer individually visible - raise the budget or find what is minting them.",
 		[]string{"family"},
 	)
 	c.keys = buildPrometheusDesc(c.subsystem, "cardinality_keys",

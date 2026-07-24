@@ -17,7 +17,7 @@ This guide covers secure configuration of the OPNsense Exporter, including API k
 3. Create a dedicated monitoring user (do not use the `root` account).
 4. Assign the user to a group with only the [required permissions](#opnsense-user-permissions).
 5. Scroll to the **API keys** section and click **+** to generate a new key pair.
-6. Save the downloaded file -- it contains the key and secret.
+6. Save the downloaded file - it contains the key and secret.
 
 !!! danger "Avoid root API keys"
     API keys generated for the `root` user have full access to all OPNsense APIs, including write operations. Always create a dedicated read-only monitoring user.
@@ -49,7 +49,7 @@ Create a group (e.g., `monitoring`) with only the following GUI permissions and 
     Some of the newer collectors (temperature, CARP, NTP, certificates, activity, Kea, network diagnostics, NetFlow, PF stats, NDP) may require additional API endpoint permissions beyond this list. If a collector logs permission errors, grant the corresponding permission in OPNsense.
 
 !!! warning "Page-level ACLs include write endpoints"
-    OPNsense ACLs are page-level: each GUI permission grants access to *all* of that page's API endpoints, including its write endpoints -- there is no read-only variant. Use a dedicated monitoring user so a leaked key's blast radius is limited to the pages listed above.
+    OPNsense ACLs are page-level: each GUI permission grants access to *all* of that page's API endpoints, including its write endpoints - there is no read-only variant. Use a dedicated monitoring user so a leaked key's blast radius is limited to the pages listed above.
 
 ## TLS configuration
 
@@ -191,10 +191,10 @@ One collector needs an extra OPNsense setting enabled:
 
 The official container image is hardened:
 
-- **Distroless base image** -- minimal attack surface with no shell, package manager, or unnecessary binaries
-- **Non-root execution** -- runs as UID 65532 (nonroot)
-- **Read-only root filesystem** -- supported in Kubernetes and Docker
-- **No capabilities** -- all Linux capabilities are dropped in the Kubernetes deployment manifest
-- **Static binary** -- no runtime dependencies, CGO disabled
+- **Distroless base image** - minimal attack surface with no shell, package manager, or unnecessary binaries
+- **Non-root execution** - runs as UID 65532 (nonroot)
+- **Read-only root filesystem** - supported in Kubernetes and Docker
+- **No capabilities** - all Linux capabilities are dropped in the Kubernetes deployment manifest
+- **Static binary** - no runtime dependencies, CGO disabled
 
 The `/metrics` endpoint requires no authentication by default, so restrict who can reach it at the network layer. On Kubernetes, a sample [NetworkPolicy](deployment/kubernetes.md#restrict-access-with-a-networkpolicy) limiting ingress on the metrics port to Prometheus is provided at [`deploy/k8s/networkpolicy.yaml`](https://github.com/rknightion/opnsense-exporter/blob/main/deploy/k8s/networkpolicy.yaml).

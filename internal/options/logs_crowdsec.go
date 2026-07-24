@@ -9,7 +9,7 @@ import "github.com/alecthomas/kingpin/v2"
 var logsCrowdSecEnabled = kingpin.Flag(
 	"logs.crowdsec.enabled",
 	"Enable the crowdsec log source: ships CrowdSec alert and decision records to Loki "+
-		"(there is no native syslog path for these — the plugin registers no syslog scope; "+
+		"(there is no native syslog path for these - the plugin registers no syslog scope; "+
 		"alerts live only in the LAPI). Requires --logs.enabled. Polls at a 60s floor "+
 		"regardless of --logs.poll-interval. Silent when the os-crowdsec plugin is absent. "+
 		"Off by default.",

@@ -72,19 +72,19 @@ See the [Security guide](security.md) for:
 
 When the metrics path is not `/`, the exporter serves a built-in operator console at `/` (in place of the minimal landing page). It is a single server-rendered page with a sticky tab bar, inline CSS/JS and zero external assets, a light/dark theme toggle, and a live poll-and-patch refresh (with Pause/Resume, an "updated Ns ago" freshness ticker, and a disconnect banner). The tabs:
 
-- **Overview** — health verdict, uptime, series/family/collector counts, a ~10-minute runtime trend (goroutines, heap-in-use, GC rate, active series), and a throughput & fleet trend (log records shipped/dropped per second, collectors failing, mean run duration). The throughput chart covers the exporter's one push path — the OTLP log-shipping pipeline — so it stays empty unless `--logs.enabled` is set; `/metrics` is pulled, not emitted, so it has no per-second emit rate to chart.
-- **Collectors** — per-collector run stats: state, poll **Interval**, success rate, **Freshness**, runs/failures, **Next run** countdown, last duration (with a sparkline and pass/fail strip), and last error. Fed by the internal poll scheduler.
-- **API** — auth status and the exporter's OPNsense API-request stats, with a top-endpoint-errors table.
-- **Cardinality** — total series and metric families, the highest-cardinality metrics and labels, series growth-rate, and a JSON export (`/cardinality/export.json`, `/api/cardinality.json`).
-- **Config** — the effective runtime configuration, with every secret redacted (rendered once per page load, not on the refresh poll).
-- **Devices** — connected devices merged from the ARP table and DHCP leases (IP, MAC, hostname, interface, manufacturer). Loads on demand when you open the tab.
+- **Overview** - health verdict, uptime, series/family/collector counts, a ~10-minute runtime trend (goroutines, heap-in-use, GC rate, active series), and a throughput & fleet trend (log records shipped/dropped per second, collectors failing, mean run duration). The throughput chart covers the exporter's one push path - the OTLP log-shipping pipeline - so it stays empty unless `--logs.enabled` is set; `/metrics` is pulled, not emitted, so it has no per-second emit rate to chart.
+- **Collectors** - per-collector run stats: state, poll **Interval**, success rate, **Freshness**, runs/failures, **Next run** countdown, last duration (with a sparkline and pass/fail strip), and last error. Fed by the internal poll scheduler.
+- **API** - auth status and the exporter's OPNsense API-request stats, with a top-endpoint-errors table.
+- **Cardinality** - total series and metric families, the highest-cardinality metrics and labels, series growth-rate, and a JSON export (`/cardinality/export.json`, `/api/cardinality.json`).
+- **Config** - the effective runtime configuration, with every secret redacted (rendered once per page load, not on the refresh poll).
+- **Devices** - connected devices merged from the ARP table and DHCP leases (IP, MAC, hostname, interface, manufacturer). Loads on demand when you open the tab.
 
 The console is read-only. It reads only cached/last-scrape data, so the auto-refresh never triggers an extra scrape of the firewall; the Devices tab is the only view that reaches the firewall (ARP/DHCP), and only when you open it.
 
 It is on by default and served without authentication, so expose the exporter's port only on a trusted network. Controls:
 
-- `--web.ui-enabled` — set to false to serve the minimal landing page instead of the console.
-- `--web.ui-disable-config` / `--web.ui-disable-devices` — hide the Config or Devices tab (the Devices tab exposes device MACs/hostnames, and its JSON endpoint returns 404 when disabled).
-- `--web.ui-refresh-interval` — how often the console polls for updates (default 5s).
+- `--web.ui-enabled` - set to false to serve the minimal landing page instead of the console.
+- `--web.ui-disable-config` / `--web.ui-disable-devices` - hide the Config or Devices tab (the Devices tab exposes device MACs/hostnames, and its JSON endpoint returns 404 when disabled).
+- `--web.ui-refresh-interval` - how often the console polls for updates (default 5s).
 
 See the [Configuration reference](configuration.md) for the full flag/env details.

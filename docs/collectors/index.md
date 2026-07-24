@@ -32,7 +32,7 @@ graph LR
 
 ## Auto-registration pattern
 
-Sub-collectors register themselves via `init()` functions that append to a global `collectorInstances` slice. Adding a new collector requires only creating the file with an `init()` function -- no manual registration is needed. See [Adding a Collector](../development/adding-collector.md) for details.
+Sub-collectors register themselves via `init()` functions that append to a global `collectorInstances` slice. Adding a new collector requires only creating the file with an `init()` function - no manual registration is needed. See [Adding a Collector](../development/adding-collector.md) for details.
 
 ## Top-level exporter metrics
 

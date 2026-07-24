@@ -1111,7 +1111,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.scrapeSkips = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_scrape_skips_total",
-		Help:      "Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics — opnsense_up and the per-collector series are absent — so this counter is the signal to distinguish a skipped scrape from a completed one.",
+		Help:      "Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics - opnsense_up and the per-collector series are absent - so this counter is the signal to distinguish a skipped scrape from a completed one.",
 	}, []string{"opnsense_instance"})
 
 	c.endpointErrors = *prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -1142,7 +1142,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.apiCacheMisses = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_api_cache_misses_total",
-		Help:      "Total number of OPNsense API calls that went to the firewall and populated the response cache — a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched every scrape by design (only its 404 would be cached).",
+		Help:      "Total number of OPNsense API calls that went to the firewall and populated the response cache - a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched every scrape by design (only its 404 would be cached).",
 	}, []string{"endpoint", "opnsense_instance"})
 
 	// isUp, scrapes and endpointErrors are exposed through this Collector's own

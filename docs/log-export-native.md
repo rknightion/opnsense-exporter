@@ -13,14 +13,14 @@ exporter at all: syslog-ng ships structured syslog off-box, Suricata can embed
 full alert JSON in its syslog stream, and NetFlow exports v5/v9 records to any
 flow collector. This page is the native-path recipe, and the companion to
 [Log shipping](log-shipping.md), which covers the exporter's own opt-in
-pipeline (`--logs.enabled`). Read both before picking a path — see
+pipeline (`--logs.enabled`). Read both before picking a path - see
 [Decision matrix](#decision-matrix) below.
 
 **Run no agent on the firewall itself.** OPNsense's own plugins cover this:
 `os-beats` is Filebeat-to-Elasticsearch only (no Loki output), `os-telegraf`
 has no Loki output either, and hand-installing Alloy, Vector, or Promtail
 directly on OPNsense is unsupported and not how any of the recipes below work.
-Every recipe here runs the collector **off-box** — OPNsense only ever pushes
+Every recipe here runs the collector **off-box** - OPNsense only ever pushes
 syslog or NetFlow packets to it.
 
 ## Syslog-ng recipe: OPNsense to Alloy to Loki
@@ -39,7 +39,7 @@ syslog or NetFlow packets to it.
   `openvpn`, `kea-dhcp4`/`kea-dhcp6`, `captiveportal`, and plugin programs such
   as `squid-*`.
 
-Each Target can point at a different collector or all at the same one — add
+Each Target can point at a different collector or all at the same one - add
 multiple Targets if you want to split transports (e.g. TLS for the WAN-facing
 collector, plain TCP for a LAN-only one).
 
@@ -127,7 +127,7 @@ Loki 3.x instance.
 
 ### Community pipelines for `filterlog`
 
-`filterlog` is a headerless CSV line keyed by rule **hash**, not a label — see
+`filterlog` is a headerless CSV line keyed by rule **hash**, not a label - see
 [Known gaps](#known-gaps-of-the-native-path) below. The exporter's
 [syslog receiver](syslog-receiver.md) resolves the rule hash to a rule name and the
 interface to its OS name for you; if you want that labelling on the **native** path
@@ -138,7 +138,7 @@ instead, two community pipelines do the same parsing in Alloy/Promtail stages:
 
 ## Suricata: `syslog_eve` vs fastlog `syslog`
 
-OPNsense's Suricata plugin has two independent syslog toggles — pick the one
+OPNsense's Suricata plugin has two independent syslog toggles - pick the one
 that matches what you want out of the native path:
 
 - **`syslog_eve`** ships the **full EVE alert JSON** (the same record shape as
@@ -154,16 +154,16 @@ that matches what you want out of the native path:
   volume down.
 
 Enable at most one of these per deployment alongside the exporter's IDS
-source — see the [decision matrix](#decision-matrix).
+source - see the [decision matrix](#decision-matrix).
 
 ## NetFlow v5/v9: native export, not the exporter
 
 **Reporting ‣ NetFlow** exports NetFlow v5 or v9 directly from OPNsense, with
 samplicate fan-out to multiple collectors at once. Point it at a flow
-pipeline — [goflow2](https://github.com/netsampler/goflow2),
+pipeline - [goflow2](https://github.com/netsampler/goflow2),
 [Akvorado](https://github.com/akvorado/akvorado), or
 [ntopng](https://www.ntop.org/products/traffic-analysis/ntop/) are common
-choices — and it ingests independently of Loki/Prometheus.
+choices - and it ingests independently of Loki/Prometheus.
 
 This page used to say flow data "does not belong in this exporter and never
 will". That was written about the **poll/API** path, where it is still true and
@@ -172,7 +172,7 @@ worth keeping: the OPNsense API exposes only **pre-aggregated Insight data**
 collector could produce flow telemetry however hard it tried.
 
 What changed is that the exporter is no longer only a poller. It now runs push
-receivers — syslog and Zenarmor — and flow data arrives on those, not from the
+receivers - syslog and Zenarmor - and flow data arrives on those, not from the
 API. So the exporter does ship flow telemetry today: the Zenarmor receiver's
 per-connection records become bounded byte and packet metrics, and a NetFlow
 v5/v9 receiver is in progress. See [Flow volume](flow.md).
@@ -181,7 +181,7 @@ Both paths remain valid and they answer different questions. A dedicated flow
 pipeline is still the right tool for arbitrary 5-tuple forensics and long-term
 per-flow storage; the exporter is not a flow browser and will not become one.
 What it can do that a generic collector cannot is **repair** flow data using the
-firewall's own configuration — splitting VLAN traffic off the parent interface,
+firewall's own configuration - splitting VLAN traffic off the parent interface,
 resolving policy-routed egress that a FIB lookup gets wrong, and naming
 interfaces the export only numbers.
 
@@ -189,17 +189,17 @@ interfaces the export only numbers.
 
 Pick **one** path per log type. Enabling both the exporter's log shipping
 pipeline and native syslog for the same log type double-ships the same events
-into Loki under different pipelines — the [Log shipping](log-shipping.md#delivery-semantics)
+into Loki under different pipelines - the [Log shipping](log-shipping.md#delivery-semantics)
 page states this as a hard rule and it applies symmetrically here.
 
 | Log type | Native syslog wins when… | Exporter log shipping wins when… |
 | --- | --- | --- |
 | Firewall (`filterlog`) | You need high volume with zero exporter memory/queue state, and raw fidelity (every line, no polling gaps) matters more than labels. | You want rule **labels** and OS interface names attached instead of raw rule-hash CSV (#229). |
 | IDS (Suricata) | You already run `syslog_eve` and want alerts flowing the moment Suricata writes them, with no exporter poll interval. | You want the exporter's structured EVE ingestion (#231) without standing up a syslog listener/demux stage. |
-| Audit (config changes) | — | The exporter parses the single prose audit line into structured fields (#230); native syslog ships it as one unparsed string. |
+| Audit (config changes) | - | The exporter parses the single prose audit line into structured fields (#230); native syslog ships it as one unparsed string. |
 | Gateway / CARP / captive portal / DHCP | You just want the raw log lines in Loki with no extra infrastructure beyond syslog-ng. | You want these correlated with the exporter's other structured sources through one poll loop (#230). |
-| Unbound per-query DNS | Not available — unbound has no per-query syslog output. | Only path: DuckDB/API-only enrichment (#233), with the sampling caveats documented there. |
-| CrowdSec alerts/decisions | Not available — CrowdSec has **no syslog path** at all. | Only path: the exporter's CrowdSec source (#232). |
+| Unbound per-query DNS | Not available - unbound has no per-query syslog output. | Only path: DuckDB/API-only enrichment (#233), with the sampling caveats documented there. |
+| CrowdSec alerts/decisions | Not available - CrowdSec has **no syslog path** at all. | Only path: the exporter's CrowdSec source (#232). |
 
 Rule of thumb: native syslog wins on **volume and zero exporter
 state**; exporter log shipping wins on **parsed/enriched records and a single
@@ -212,22 +212,22 @@ the only option for them.
 These are the reasons the exporter's log shipping sources (#229–#233) exist
 alongside native syslog:
 
-- **`filterlog` is headerless CSV keyed by rule MD5**, not a label — no rule
+- **`filterlog` is headerless CSV keyed by rule MD5**, not a label - no rule
   name, no OS-level interface name, just positional fields and a hash you have
   to look up separately.
-- **`audit` ships as one prose line** — no structured fields for actor,
+- **`audit` ships as one prose line** - no structured fields for actor,
   action, or target; a downstream parser has to regex it back apart.
 - **Unbound per-query enrichment (client, blocklist/policy hit) is DuckDB/API-only**
-  — unbound has no per-query syslog output to tap.
-- **Captive portal sessions and VPN session tables are API-only** — syslog
+  - unbound has no per-query syslog output to tap.
+- **Captive portal sessions and VPN session tables are API-only** - syslog
   carries individual auth events, not the live session table.
 
 ## See also
 
-- [Log shipping](log-shipping.md) — the exporter's own opt-in log pipeline
+- [Log shipping](log-shipping.md) - the exporter's own opt-in log pipeline
   (`--logs.enabled`), its Loki label model, and delivery semantics.
-- [API Landmines](development/api-landmines.md) — why `stream_log` and the
+- [API Landmines](development/api-landmines.md) - why `stream_log` and the
   generic `/live` SSE endpoints are unsuitable as ingestion transports, native
   or exporter-side.
-- [API-surface roadmap (#227)](https://github.com/rknightion/opnsense-exporter/issues/227) —
+- [API-surface roadmap (#227)](https://github.com/rknightion/opnsense-exporter/issues/227) -
   the tracker for the exporter's per-source log shipping work.

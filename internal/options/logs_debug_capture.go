@@ -15,7 +15,7 @@ var (
 	logsDebugCaptureDir = kingpin.Flag(
 		"logs.debug-capture.dir",
 		"Directory to dump UNMODELLED receiver signals into for inspection, as NDJSON under "+
-			"<dir>/<receiver>/ (files are 0600 and carry real network data — addresses, DNS "+
+			"<dir>/<receiver>/ (files are 0600 and carry real network data - addresses, DNS "+
 			"queries, TLS SNI, HTTP hosts). Off unless set. Enable capture per receiver with "+
 			"--logs.zenarmor.debug-capture / --logs.syslog.debug-capture. Point a writable bind "+
 			"mount here; only signals the exporter cannot model are written, never the full stream.",

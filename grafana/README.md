@@ -1,4 +1,4 @@
-# OPNsense Exporter — Grafana assets
+# OPNsense Exporter - Grafana assets
 
 This folder ships everything you need to visualise and alert on the metrics exposed by the
 OPNsense Exporter:
@@ -30,7 +30,7 @@ datasource carrying the exporter's shipped logs is selected.
 One dashboard, 7 top-level domains and 41 tabs grouped by feature (generated list, do not hand-edit):
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS — Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
+Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the
@@ -50,13 +50,13 @@ tabs; OpenVPN / WireGuard-peer / IPsec-tunnel rows; CARP VIPs, SMART, ACME, DynD
 
 ### Variables
 
-- **Data source** — pick your Prometheus datasource.
-- **Loki data source** — pick the Loki datasource carrying the exporter's shipped logs
+- **Data source** - pick your Prometheus datasource.
+- **Loki data source** - pick the Loki datasource carrying the exporter's shipped logs
   (default `grafanacloud-logs`). The Loki panels/rows (Zenarmor, syslog streams) hide when it
   has no matching stream, so a metrics-only deployment is unaffected.
-- **OPNsense instance** — multi-select over `opnsense_instance` (supports multiple exporters).
-- **Interface** — multi-select, scopes the Interfaces tab.
-- **Device (pf/netflow)** — multi-select over kernel interface names used by PF and NetFlow.
+- **OPNsense instance** - multi-select over `opnsense_instance` (supports multiple exporters).
+- **Interface** - multi-select, scopes the Interfaces tab.
+- **Device (pf/netflow)** - multi-select over kernel interface names used by PF and NetFlow.
 
 ### Deploy the dashboard
 
@@ -100,7 +100,7 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 ## Alerts & recording rules
 
 `alerts/` contains **31 alert rules** and **14 recording rules**, shipped as **Grafana-managed
-alerting** manifests. Grafana-managed is the only supported format — it carries `noDataState`
+alerting** manifests. Grafana-managed is the only supported format - it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
 annotation; recording rules follow the `instance:opnsense_<subsystem>_<measurement>:<op>`
@@ -145,19 +145,19 @@ target a specific Grafana folder.
 | OPNsenseNTPPeerUnreachable | warning | an NTP peer's reachability register is 0 for 15m |
 | OPNsenseUnboundDNSSECBogus | info | > 5 DNSSEC-bogus answers in 15m |
 
-Thresholds are conservative defaults — tune them in `build_rules.py` for your environment.
+Thresholds are conservative defaults - tune them in `build_rules.py` for your environment.
 Note: `OPNsenseEndpointErrors` and `OPNsenseServiceDown` emit one alert per endpoint/service.
 
 **Gateway coverage.** `opnsense_gateways_status` is emitted for every *enabled* gateway using the
 API-reported status, including gateways with OPNsense monitoring disabled (a common PPPoE/DHCPv6-PD
-default-gateway pattern) — so `OPNsenseGatewayDown` covers them too. The rule's `noDataState` stays
+default-gateway pattern) - so `OPNsenseGatewayDown` covers them too. The rule's `noDataState` stays
 `OK` (a totally-absent series means the exporter itself is down, which `OPNsenseExporterDown`
 already pages on); it does not fire for *disabled* gateways, which have no status series by design.
 
 **`opnsense_up` is reachability-only.** It is 1 whenever the exporter reaches and parses the
 OPNsense system-status API, and 0 only when that call fails (unreachable / auth / HTTP error).
-A reachable box that self-reports a degraded subsystem — e.g. a leftover crash report puts
-OPNsense's *own* overall status into ERROR — keeps `opnsense_up = 1`; that state surfaces via
+A reachable box that self-reports a degraded subsystem - e.g. a leftover crash report puts
+OPNsense's *own* overall status into ERROR - keeps `opnsense_up = 1`; that state surfaces via
 `opnsense_system_status_code` (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) and the per-subsystem
 `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, which drive the
 lower-severity warnings above. So `OPNsenseExporterDown` (critical/page) fires only on genuine

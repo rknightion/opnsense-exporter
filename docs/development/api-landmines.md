@@ -84,8 +84,8 @@ at all).
 
 ## See also
 
-- [API contract canary](../compatibility.md#how-drift-is-caught) — the automated checks that catch
+- [API contract canary](../compatibility.md#how-drift-is-caught) - the automated checks that catch
   renamed or removed endpoints; this page is the manual counterpart for endpoints that are safe to
   reach but wrong to poll.
-- [Adding a Collector](adding-collector.md) — before wiring up a new endpoint, check it is not
+- [Adding a Collector](adding-collector.md) - before wiring up a new endpoint, check it is not
   listed above.

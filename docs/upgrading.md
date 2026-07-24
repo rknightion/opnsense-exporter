@@ -14,53 +14,53 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 ## Upgrading to v2.0 from v1.x
 
-- **SMART collector is now opt-in** — the `opnsense_smart_*` metrics are no longer
+- **SMART collector is now opt-in** - the `opnsense_smart_*` metrics are no longer
   emitted by default. Set `--exporter.enable-smart` (env
   `OPNSENSE_EXPORTER_ENABLE_SMART=true`) to restore them. Querying SMART data is one
   of the more expensive per-scrape calls, so it now has to be requested explicitly.
-- **ARP/NDP per-entry series are opt-in** — the per-entry `opnsense_arp_table_entries`
+- **ARP/NDP per-entry series are opt-in** - the per-entry `opnsense_arp_table_entries`
   and `opnsense_ndp_entries` series (one series per host, high cardinality) are no
   longer emitted by default. Set `--exporter.enable-arp-details` /
   `--exporter.enable-ndp-details` to restore them. Otherwise switch dashboards and
   alerts to the new `opnsense_arp_table_entries_total` /
   `opnsense_ndp_entries_total` aggregate gauges, which are always emitted.
-- **`opnsense_firewall_interface_hits_total` renamed and re-typed** — it is now
+- **`opnsense_firewall_interface_hits_total` renamed and re-typed** - it is now
   `opnsense_firewall_interface_log_entries_recent` and is a **gauge**, not a counter.
   It reflects the current count of recent log entries, so it no longer makes sense to
-  wrap in `rate()`/`increase()` — plot the gauge directly. The bundled Grafana
+  wrap in `rate()`/`increase()` - plot the gauge directly. The bundled Grafana
   dashboard has already been updated.
-- **Default instance label changed** — when `--exporter.instance-label` is unset, the
+- **Default instance label changed** - when `--exporter.instance-label` is unset, the
   `instance` label now defaults to the **configured OPNsense address** (deterministic
   across restarts) rather than the hostname reported by the API. To keep the old
   hostname-derived behaviour, set `--exporter.instance-use-hostname`; to pin an
   explicit value, set `--exporter.instance-label`. If you relied on the old default,
   existing series will change their `instance` label after the upgrade.
-- **Portable Prometheus alert rules removed** — `grafana/alerts/opnsense.rules.yaml`
+- **Portable Prometheus alert rules removed** - `grafana/alerts/opnsense.rules.yaml`
   no longer ships. If you were loading that file into Prometheus, Mimir, or the
   Grafana Cloud ruler, migrate to the Grafana-managed alert manifests under
   `grafana/alerts/grafana-managed/` (pushed as Grafana resources). See
   [Integration & Dashboards](integration-dashboards.md).
-- **Unknown link state no longer reported as down** — interfaces whose link state the
+- **Unknown link state no longer reported as down** - interfaces whose link state the
   API reports as unknown (e.g. some PPPoE WANs) are now distinguished from interfaces
   that are actually down instead of being flattened to down. Alerts that treated "not up" as
   "down" may fire differently; check any rules built on interface link-state metrics.
 
 ## Upgrading to v1.0 from v0.x
 
-- **IPsec SPI labels removed** — phase-2 metrics no longer carry `spi_in`/`spi_out`
+- **IPsec SPI labels removed** - phase-2 metrics no longer carry `spi_in`/`spi_out`
   labels (remaining: `description`, `name`, `phase1_name`). SPIs rotate on every
   rekey, so the labels caused unbounded series churn. Update any PromQL that
   referenced them.
-- **OpenVPN per-session metrics are opt-in** — the per-session
+- **OpenVPN per-session metrics are opt-in** - the per-session
   `opnsense_openvpn_sessions` series (username and tunnel-address labels) is only
   emitted with `--exporter.enable-openvpn-details`. The aggregate
   `opnsense_openvpn_sessions_total` and `opnsense_openvpn_sessions_by_instance`
   series are always emitted. Set the flag to restore the old behaviour.
-- **WireGuard handshake metric type** — `opnsense_wireguard_peer_last_handshake_seconds`
+- **WireGuard handshake metric type** - `opnsense_wireguard_peer_last_handshake_seconds`
   changed from counter to gauge (it is a Unix timestamp). Replace
   `rate(opnsense_wireguard_peer_last_handshake_seconds[...])` with the purpose-built
   `opnsense_wireguard_peer_handshake_age_seconds` gauge.
-- **`opnsense_up` semantics** — `opnsense_up` no longer flips to 0 for a box that is
+- **`opnsense_up` semantics** - `opnsense_up` no longer flips to 0 for a box that is
   reachable but self-reports as degraded (e.g. a leftover crash report). Such a box
   now trips the warning-level `OPNsenseCrashReports` / `OPNsenseFirewallUnhealthy`
   alerts instead of the critical `OPNsenseExporterDown`. If you alerted on
@@ -70,21 +70,21 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 In addition to the items above:
 
-- **Image and module path** — pull `ghcr.io/rknightion/opnsense-exporter`; the Go
+- **Image and module path** - pull `ghcr.io/rknightion/opnsense-exporter`; the Go
   module is `github.com/rknightion/opnsense-exporter`.
-- **`--runtime.gomaxprocs` removed** — Go now auto-detects CPUs; delete the flag from
+- **`--runtime.gomaxprocs` removed** - Go now auto-detects CPUs; delete the flag from
   any unit files or manifests.
-- **`/debug/pprof/*` endpoints removed** — replaced by optional authenticated push
+- **`/debug/pprof/*` endpoints removed** - replaced by optional authenticated push
   profiling via `--pyroscope.*` flags. See
   [Configuration](configuration.md#continuous-profiling-pyroscope).
-- **Firmware metrics reworked** — version strings consolidated into
+- **Firmware metrics reworked** - version strings consolidated into
   `opnsense_firmware_info` (labels) plus numeric gauges (`needs_reboot`,
   `upgrade_needs_reboot`, `last_check_timestamp_seconds`, `new_packages_count`,
   `upgrade_packages_count`).
-- **`--exporter.instance-label` now optional** — when left empty it defaults to the
+- **`--exporter.instance-label` now optional** - when left empty it defaults to the
   configured OPNsense address (see the v2.0 note above for the change from the old
   hostname default; set `--exporter.instance-use-hostname` for hostname-derived
   labels).
-- **Many new collectors are enabled by default** — review the
+- **Many new collectors are enabled by default** - review the
   [collector switches](configuration.md#collector-switches) and disable what you
   don't need.

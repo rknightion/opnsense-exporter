@@ -55,7 +55,7 @@ services:
     ports:
       - "8080:8080"
       # The receivers listen on their own ports and are off by default. Publish
-      # one only when you enable its receiver — an unpublished port is the
+      # one only when you enable its receiver - an unpublished port is the
       # commonest reason a receiver appears to receive nothing.
       #
       # Zenarmor's Elasticsearch stream (--logs.zenarmor.enabled). 9200 is the

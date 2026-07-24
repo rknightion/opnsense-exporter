@@ -124,8 +124,8 @@ Two things make this safe to run unattended:
 
 ## See also
 
-- [API Landmines](api-landmines.md) — the same "verified against source, not guessed at" treatment
+- [API Landmines](api-landmines.md) - the same "verified against source, not guessed at" treatment
   for endpoints inside the OPNsense REST API itself.
-- [Compatibility](../compatibility.md#how-drift-is-caught) — the automated canaries that keep the
+- [Compatibility](../compatibility.md#how-drift-is-caught) - the automated canaries that keep the
   in-API surface honest; there is no equivalent canary for this page's shell commands, so treat
   the recipe as a starting point to adapt, not a pinned contract.

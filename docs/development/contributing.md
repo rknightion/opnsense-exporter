@@ -11,10 +11,10 @@ This guide covers the development workflow, tooling, and conventions for contrib
 
 ## Prerequisites
 
-- **Go** -- Check `go.mod` for the required version (currently Go 1.26)
-- **Make** -- For build automation
-- **golangci-lint** -- Optional; runs in CI but can be used locally
-- **Docker** -- Optional; for container builds
+- **Go** - Check `go.mod` for the required version (currently Go 1.26)
+- **Make** - For build automation
+- **golangci-lint** - Optional; runs in CI but can be used locally
+- **Docker** - Optional; for container builds
 
 ## Getting started
 

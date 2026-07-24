@@ -54,7 +54,7 @@ spec:
       labels:
         app.kubernetes.io/name: opnsense-exporter
     spec:
-      # The exporter never calls the Kubernetes API — don't mount a SA token.
+      # The exporter never calls the Kubernetes API - don't mount a SA token.
       automountServiceAccountToken: false
       containers:
         - name: opnsense-exporter
@@ -211,7 +211,7 @@ scrape_configs:
 ## Verify the deployment
 
 ```bash
-kubectl run debug --rm -i --tty --restart=Never --image=alpine -- \
+kubectl run debug --rm -i --tty --restart=Never --image=alpine - \
   wget --quiet -O- opnsense-exporter.default.svc.cluster.local:8080/metrics | head -20
 ```
 
@@ -219,11 +219,11 @@ kubectl run debug --rm -i --tty --restart=Never --image=alpine -- \
 
 The deployment manifest is hardened:
 
-- **Read-only root filesystem** -- no writable paths in the container
-- **Non-root user** -- runs as UID 65532
-- **Dropped capabilities** -- all Linux capabilities are dropped
-- **No privilege escalation** -- `allowPrivilegeEscalation: false`
-- **File-based secrets** -- API credentials are mounted as files, not passed as environment variables
+- **Read-only root filesystem** - no writable paths in the container
+- **Non-root user** - runs as UID 65532
+- **Dropped capabilities** - all Linux capabilities are dropped
+- **No privilege escalation** - `allowPrivilegeEscalation: false`
+- **File-based secrets** - API credentials are mounted as files, not passed as environment variables
 
 !!! tip "Self-signed certificates"
     If your OPNsense uses a self-signed certificate, add `OPNSENSE_EXPORTER_OPS_INSECURE: "true"` to the env section. For production, add the CA certificate to the container's trust store instead.

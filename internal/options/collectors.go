@@ -21,7 +21,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_SERVICES").Default("false").Bool()
 	arpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-arp-details",
-		"Enable per-entry ARP metrics (ip/mac/hostname labels — high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted.",
+		"Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS").Default("false").Bool()
 	cronTableCollectorDisabled = kingpin.Flag(
 		"exporter.disable-cron-table",
@@ -49,7 +49,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA").Default("false").Bool()
 	unboundQStatsEnabled = kingpin.Flag(
 		"exporter.enable-unbound-qstats",
-		"Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scrape) — skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scrape once it is on.",
+		"Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scrape) - skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scrape once it is on.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS").Default("false").Bool()
 	openVPNCollectorDisabled = kingpin.Flag(
 		"exporter.disable-openvpn",
@@ -150,7 +150,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_NDP").Default("false").Bool()
 	ndpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-ndp-details",
-		"Enable per-entry NDP metrics (ip/mac labels — high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted.",
+		"Enable per-entry NDP metrics (ip/mac labels - high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS").Default("false").Bool()
 	dhcpv4CollectorDisabled = kingpin.Flag(
 		"exporter.disable-dhcpv4",
@@ -229,7 +229,7 @@ var (
 	frrRoutesEnabled = kingpin.Flag(
 		"exporter.enable-frr-routes",
 		"Enable FRR routing-state volume gauges (zebra RIB / OSPF route table / LSDB counts by "+
-			"protocol, route type, area and LSA type — never per-prefix or per-LSA series). Off by "+
+			"protocol, route type, area and LSA type - never per-prefix or per-LSA series). Off by "+
 			"default: the underlying bootgrid endpoints have no success-body caching and their "+
 			"payload size scales with route-table size (up to 6 extra vtysh execs per scrape).",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES").Default("false").Bool()
@@ -324,7 +324,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS").Default("false").Bool()
 	authCollectorDisabled = kingpin.Flag(
 		"exporter.disable-auth",
-		"Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only — no per-user data)",
+		"Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only - no per-user data)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_AUTH").Default("false").Bool()
 	hostdiscoveryCollectorDisabled = kingpin.Flag(
 		"exporter.disable-hostdiscovery",
@@ -352,7 +352,7 @@ var (
 	// here also stops the receiver lanes deriving flow records at all (#346).
 	flowCollectorDisabled = kingpin.Flag(
 		"exporter.disable-flow",
-		"Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source — today the Zenarmor receiver — is enabled and feeding it.",
+		"Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source - today the Zenarmor receiver - is enabled and feeding it.",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FLOW").Default("false").Bool()
 )
 

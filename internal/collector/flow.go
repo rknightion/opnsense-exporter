@@ -278,7 +278,7 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		"Bytes observed in flow records, by bounded dimension. Keys beyond --flow.top-n fold into "+
 			"__other__, which preserves the source label, so the family still sums exactly at any "+
 			"limit. A series that leaves the top-N and later returns resumes from the volume it "+
-			"accumulated while folded, so it reads as a counter reset — deliberate, since the "+
+			"accumulated while folded, so it reads as a counter reset - deliberate, since the "+
 			"alternative is freezing it at its last value forever. From phase 2 this family carries "+
 			"BOTH sources' measurement of the same traffic: pin source= in any query or it "+
 			"double-counts. IPs, ports, hostnames, application names, domains and connection ids are "+
@@ -332,7 +332,7 @@ func (c *flowCollector) registerExtras() {
 	hostDirLabel := []string{"host", "direction"}
 
 	c.uniqueDests = buildPrometheusDesc(c.subsystem, "unique_destinations",
-		"Distinct destination addresses seen per interface — a bounded stand-in for a per-destination "+
+		"Distinct destination addresses seen per interface - a bounded stand-in for a per-destination "+
 			"series (one gauge per interface, never one per destination). A set, not a sum, so a "+
 			"destination reported by both the NetFlow and Zenarmor lanes counts once. Saturates at an "+
 			"internal per-interface cap; a value pinned at the cap means the true count is at least "+
@@ -348,7 +348,7 @@ func (c *flowCollector) registerExtras() {
 		hostDirLabel,
 	)
 	c.deltaRatio = buildPrometheusDesc(c.subsystem, "source_byte_delta_ratio",
-		"Histogram of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — the "+
+		"Histogram of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface - the "+
 			"payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a value well "+
 			"above 1 means Zenarmor inspected far fewer bytes than crossed the wire, which is a security "+
 			"signal, not an error. Present only where both lanes run and correlate (--flow.log-mode="+
@@ -402,7 +402,7 @@ func (c *flowCollector) registerCorrelator() {
 			"and counted: a flood on the unauthenticated NetFlow ingress is visible here rather than as "+
 			"a silently thinned stream. Metrics are never truncated.", nil)
 	c.logDropped = buildPrometheusDesc(c.subsystem, "logs_dropped_total",
-		"Flow log records dropped because the log pipeline was not accepting records — before it "+
+		"Flow log records dropped because the log pipeline was not accepting records - before it "+
 			"started or after shutdown began. Distinct from a budget truncation.", nil)
 }
 
@@ -426,7 +426,7 @@ func (c *flowCollector) registerNetflow() {
 	)
 	c.nfBytes = buildPrometheusDesc(c.subsystem, "netflow_bytes_received_total",
 		"Bytes received on the NetFlow socket, before decoding. This is wire volume of the export "+
-			"itself, NOT the traffic it describes — opnsense_flow_bytes_total is that.",
+			"itself, NOT the traffic it describes - opnsense_flow_bytes_total is that.",
 		nil,
 	)
 	c.nfDecoded = buildPrometheusDesc(c.subsystem, "netflow_records_decoded_total",
@@ -442,7 +442,7 @@ func (c *flowCollector) registerNetflow() {
 	)
 	c.nfDropped = buildPrometheusDesc(c.subsystem, "netflow_records_dropped_total",
 		"Records the NetFlow lane discarded, by reason. \"no_template\" is a data flowset arriving "+
-			"before the template describing it — normal for up to ~2 minutes after either end restarts, "+
+			"before the template describing it - normal for up to ~2 minutes after either end restarts, "+
 			"since ng_netflow resends templates about every 2 minutes, and a sustained rate means "+
 			"template datagrams are being lost. \"vlan_duplicate\" is the parent-interface copy of a "+
 			"VLAN flow, which ng_netflow captures twice (~4% of bytes on the reference box) and which "+
@@ -462,7 +462,7 @@ func (c *flowCollector) registerNetflow() {
 			"field=\"out_bytes\": OUT_BYTES/OUT_PKTS are declared in the template but were zero across "+
 			"all 84,513 records of the reference capture, so they are ignored rather than added to the "+
 			"volume. A non-zero rate here means that assumption has expired and the decoder needs "+
-			"revisiting — it does NOT mean volume is currently wrong.",
+			"revisiting - it does NOT mean volume is currently wrong.",
 		[]string{"field"},
 	)
 
@@ -480,7 +480,7 @@ func (c *flowCollector) registerNetflow() {
 		nil,
 	)
 	c.dedupeDropped = buildPrometheusDesc(c.subsystem, "dedupe_entries_dropped_total",
-		"Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path — the "+
+		"Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path - the "+
 			"instance aged out having done its job. reason=\"capacity\" means the table was full and an "+
 			"entry was evicted early, so a duplicate arriving afterwards is NO LONGER SUPPRESSED and "+
 			"reaches the rollup twice; a non-zero rate is the signal to raise the bound.",
@@ -495,7 +495,7 @@ func (c *flowCollector) registerNetflow() {
 	c.ifIndexConflicts = buildPrometheusDesc(c.subsystem, "ifindex_conflicts",
 		"Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from "+
 			"the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's "+
-			"own ifinfo ordering — the override is winning, so labels are right, but every index the "+
+			"own ifinfo ordering - the override is winning, so labels are right, but every index the "+
 			"operator did not pin is suspect.",
 		nil,
 	)
@@ -507,7 +507,7 @@ func (c *flowCollector) registerNetflow() {
 	)
 	c.ifIndexUnmapped = buildPrometheusDesc(c.subsystem, "ifindex_unmapped_total",
 		"ifIndex lookups that resolved to no interface. These records are still counted, with an "+
-			"EMPTY interface label — a wrong interface name is worse than a missing one. A rising rate "+
+			"EMPTY interface label - a wrong interface name is worse than a missing one. A rising rate "+
 			"after a network change means the enumeration shifted and --flow.netflow.ifindex-map needs "+
 			"setting.",
 		nil,

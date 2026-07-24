@@ -80348,7 +80348,7 @@
                     {
                       "kind": "TabsLayoutTab",
                       "spec": {
-                        "title": "DNS \u2014 Unbound",
+                        "title": "DNS - Unbound",
                         "layout": {
                           "kind": "RowsLayout",
                           "spec": {

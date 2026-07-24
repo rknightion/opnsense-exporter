@@ -45,7 +45,7 @@ func (c *authCollector) Register(namespace, instanceLabel string, log *slog.Logg
 	c.log.Debug("Registering collector", "collector", c.Name())
 
 	c.usersByDisabled = buildPrometheusDesc(c.subsystem, "users",
-		"Number of local users, by disabled state (aggregate count only — no usernames are exposed).",
+		"Number of local users, by disabled state (aggregate count only - no usernames are exposed).",
 		[]string{"disabled"},
 	)
 	c.adminUsers = buildPrometheusDesc(c.subsystem, "admin_users",
@@ -57,11 +57,11 @@ func (c *authCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		nil,
 	)
 	c.usersWithOTP = buildPrometheusDesc(c.subsystem, "users_with_otp",
-		"Number of local users with a TOTP seed configured (aggregate count only — the seed itself is never read into exporter memory beyond a transient presence check).",
+		"Number of local users with a TOTP seed configured (aggregate count only - the seed itself is never read into exporter memory beyond a transient presence check).",
 		nil,
 	)
 	c.apiKeys = buildPrometheusDesc(c.subsystem, "api_keys",
-		"Total number of local-user API keys configured (aggregate count only — key material is never decoded).",
+		"Total number of local-user API keys configured (aggregate count only - key material is never decoded).",
 		nil,
 	)
 	c.groups = buildPrometheusDesc(c.subsystem, "groups",

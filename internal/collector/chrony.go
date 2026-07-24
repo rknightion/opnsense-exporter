@@ -77,7 +77,7 @@ func (c *chronyCollector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.leapStatus = buildPrometheusDesc(c.subsystem, "leap_status",
 		"Leap second status (0=Normal, 1=Insert second, 2=Delete second, 3=Not synchronised)", nil)
 	c.trackingInfo = buildPrometheusDesc(c.subsystem, "tracking_info",
-		"Chrony tracking info label gauge (always 1) — pool-rotation note: source labels churn with pool directives; use instant queries/tables",
+		"Chrony tracking info label gauge (always 1) - pool-rotation note: source labels churn with pool directives; use instant queries/tables",
 		[]string{"reference_id", "reference_name", "leap_status"})
 	c.sourcesTotal = buildPrometheusDesc(c.subsystem, "sources_total",
 		"Total number of NTP sources chrony is currently tracking", nil)

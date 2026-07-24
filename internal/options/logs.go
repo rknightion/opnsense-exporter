@@ -44,7 +44,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_LOGS_BUFFER_MAX_BYTES").Default("134217728").Int()
 	logsMaxRecordBytes = kingpin.Flag(
 		"logs.max-record-bytes",
-		"Maximum estimated retained size for a single record — its body, source and attributes plus a "+
+		"Maximum estimated retained size for a single record - its body, source and attributes plus a "+
 			"fixed overhead allowance, measured the same way as --logs.buffer-max-bytes so the two read "+
 			"against one number. A record larger than this is rejected at ingest and counted rather than "+
 			"queued, so one oversized record cannot occupy the whole queue budget or become a batch the "+

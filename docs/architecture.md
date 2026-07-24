@@ -59,7 +59,7 @@ graph TD
 
 ## Three main packages
 
-### `opnsense/` -- API client
+### `opnsense/` - API client
 
 The API client layer handles all communication with the OPNsense REST API. Each subsystem has a dedicated `Fetch*()` method (e.g., `FetchGateways()`, `FetchWireguardConfig()`, `FetchSystemTemperature()`).
 
@@ -73,7 +73,7 @@ The API client layer handles all communication with the OPNsense REST API. Each 
 
 Data structs for JSON unmarshaling live alongside each `Fetch*()` method.
 
-### `internal/collector/` -- Prometheus collectors
+### `internal/collector/` - Prometheus collectors
 
 This package contains the top-level `Collector` struct and all 62 sub-collectors. Each sub-collector lives in its own file and implements the `CollectorInstance` interface:
 
@@ -88,18 +88,18 @@ type CollectorInstance interface {
 
 **Key design decisions:**
 
-- **Auto-registration via `init()`** -- Each sub-collector file has an `init()` function that appends itself to the global `collectorInstances` slice. No central registry to maintain.
-- **Poll/serve split (#336)** -- Sub-collectors do not run on the scrape. An internal poll scheduler (`scheduler.go`) runs each collector's `Update()` on its own timer into an in-memory snapshot (`snapshot.go`); serving `/metrics` replays that snapshot and makes no API call. See [Data flow](#data-flow).
-- **Per-collector poll tiers** -- Each collector's timer follows its data-volatility tier (`interval_tiers.go`): fast 15s, medium 60s (default), slow 5m, cold 15m. An operator overrides one with `--collector.poll-interval-override=<collector>=<dur>`.
-- **Option pattern** -- Sub-collectors are removed or configured via functional options (e.g., `WithoutArpTableCollector()`, `WithFirewallRulesDetails()`).
+- **Auto-registration via `init()`** - Each sub-collector file has an `init()` function that appends itself to the global `collectorInstances` slice. No central registry to maintain.
+- **Poll/serve split (#336)** - Sub-collectors do not run on the scrape. An internal poll scheduler (`scheduler.go`) runs each collector's `Update()` on its own timer into an in-memory snapshot (`snapshot.go`); serving `/metrics` replays that snapshot and makes no API call. See [Data flow](#data-flow).
+- **Per-collector poll tiers** - Each collector's timer follows its data-volatility tier (`interval_tiers.go`): fast 15s, medium 60s (default), slow 5m, cold 15m. An operator overrides one with `--collector.poll-interval-override=<collector>=<dur>`.
+- **Option pattern** - Sub-collectors are removed or configured via functional options (e.g., `WithoutArpTableCollector()`, `WithFirewallRulesDetails()`).
 
-### `internal/options/` -- Configuration
+### `internal/options/` - Configuration
 
 [kingpin](https://github.com/alecthomas/kingpin) CLI flags handle configuration, each with a corresponding environment variable:
 
-- **`ops.go`** -- OPNsense connection config (protocol, address, API key/secret, TLS)
-- **`exporter.go`** -- Server config (listen address, metrics path, instance label)
-- **`collectors.go`** -- Per-collector disable/enable switches
+- **`ops.go`** - OPNsense connection config (protocol, address, API key/secret, TLS)
+- **`exporter.go`** - Server config (listen address, metrics path, instance label)
+- **`collectors.go`** - Per-collector disable/enable switches
 
 All environment variables use the `OPNSENSE_EXPORTER_` prefix, except for `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`.
 
@@ -148,7 +148,7 @@ sequenceDiagram
 1. A collector's timer fires. If the last health poll found the box unreachable, the poll is skipped and the previous snapshot entry is retained (#127).
 2. Otherwise the collector's `Update()` runs under the concurrency cap and the per-poll timeout (`--exporter.max-scrape-duration`, now a per-poll bound), invoking one or more `Fetch*()` methods and emitting metrics into a buffer.
 3. The buffer, its duration, and its success flag are stored under the collector's name (`snapshot.put`), replacing that collector's previous entry.
-4. The health goroutine polls the system status API on the global interval and sets the persistent health gauges: `opnsense_up` (API reachability), `opnsense_system_status_code`, the `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the payload reports — disk space, root lock, plugin overrides, and anything beyond the two dedicated gauges). A transport-level failure flags the box unreachable, which pauses the collector polls until it recovers.
+4. The health goroutine polls the system status API on the global interval and sets the persistent health gauges: `opnsense_up` (API reachability), `opnsense_system_status_code`, the `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the payload reports - disk space, root lock, plugin overrides, and anything beyond the two dedicated gauges). A transport-level failure flags the box unreachable, which pauses the collector polls until it recovers.
 
 ### Serve lifecycle
 
@@ -163,7 +163,7 @@ A scrape taken during cold start replays only the collectors that have already p
 
 - **Health poll failure:** Sets `opnsense_up=0` (the only condition that does so). A transport-level failure also pauses collector polls until the box is reachable again; the last-good snapshot keeps serving in the meantime.
 - **Collector poll failure:** Logs the error, increments `opnsense_exporter_endpoint_errors_total` for the failing endpoint, and records `scrape_collector_success=0` for that collector. Its previous snapshot entry is replaced with the (empty or partial) result of the failed poll; other collectors are unaffected.
-- **Partial failure tolerance:** Several collectors (system info, mbuf memory stats, firewall interface hits, network diagnostics pfsync) are partially failure tolerant -- if an optional supplementary API call fails, the collector still emits metrics from successful calls.
+- **Partial failure tolerance:** Several collectors (system info, mbuf memory stats, firewall interface hits, network diagnostics pfsync) are partially failure tolerant - if an optional supplementary API call fails, the collector still emits metrics from successful calls.
 
 ## Metric namespace
 
@@ -215,8 +215,8 @@ All profile types are collected by default when profiling is enabled:
 - Block profiling
 - Goroutine-leak profiling
 
-Set `--pyroscope.disable-mutex-block` to drop the two contention profiles (mutex and block) and their process-global sampling rates — the one set with non-trivial per-event overhead. CPU, memory, goroutine and goroutine-leak profiling are unaffected.
+Set `--pyroscope.disable-mutex-block` to drop the two contention profiles (mutex and block) and their process-global sampling rates - the one set with non-trivial per-event overhead. CPU, memory, goroutine and goroutine-leak profiling are unaffected.
 
-Goroutine-leak profiling relies on the Go `goroutineleakprofile` runtime experiment, which the release binaries and container image are built with (`GOEXPERIMENT=goroutineleakprofile`). A binary built without it silently omits that one profile type; everything else is unchanged. It periodically runs a short stop-the-world analysis (at each upload) to surface goroutines that are blocked forever — cheap for an exporter's modest goroutine count.
+Goroutine-leak profiling relies on the Go `goroutineleakprofile` runtime experiment, which the release binaries and container image are built with (`GOEXPERIMENT=goroutineleakprofile`). A binary built without it silently omits that one profile type; everything else is unchanged. It periodically runs a short stop-the-world analysis (at each upload) to surface goroutines that are blocked forever - cheap for an exporter's modest goroutine count.
 
 There are **no** unauthenticated `/debug/pprof/*` HTTP endpoints; the exporter dropped the previously always-on pprof/godeltaprof handlers in favour of authenticated push.

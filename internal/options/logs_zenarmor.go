@@ -24,7 +24,7 @@ var (
 			"reporting data (connections, DNS, TLS, HTTP, threat alerts) to the exporter, which ships "+
 			"it enriched over OTLP. Off by default. Requires --logs.enabled. Configure the firewall "+
 			"under Configuration/Zenarmor > Settings > Streaming Data > 'Stream Reporting Data to "+
-			"External Elasticsearch' — NOT the initial wizard's 'Remote Elasticsearch Database', which "+
+			"External Elasticsearch' - NOT the initial wizard's 'Remote Elasticsearch Database', which "+
 			"replaces local reporting irreversibly.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_ENABLED").Default("false").Bool()
 
@@ -51,7 +51,7 @@ var (
 	logsZenarmorFamilies = kingpin.Flag(
 		"logs.zenarmor.families",
 		"Comma-separated Zenarmor families to ship (conn, dns, tls, http, alert, sip). Empty ships "+
-			"all of them. Prefer restricting this at the Zenarmor end instead — data cut at source "+
+			"all of them. Prefer restricting this at the Zenarmor end instead - data cut at source "+
 			"never crosses the wire. Zenarmor streams ~2.5-3.3M records/day (~4-6 GB/day of JSON), "+
 			"of which conn is ~61%.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_FAMILIES").Default("").String()
@@ -63,7 +63,7 @@ var (
 	// describes the same connection properly, so the default is to drop it.
 	logsZenarmorDropSelfTraffic = kingpin.Flag(
 		"logs.zenarmor.drop-self-traffic",
-		"Drop records describing the exporter's own Elasticsearch ingest connection — Zenarmor "+
+		"Drop records describing the exporter's own Elasticsearch ingest connection - Zenarmor "+
 			"inspects the link the receiver listens on, so it reports the very connection "+
 			"delivering its records (roughly 15% of all volume, and most of the http family). "+
 			"Matched on the streaming peer's address plus the receiver's listen port, never the "+
@@ -80,7 +80,7 @@ var (
 		"logs.zenarmor.exclude",
 		"Drop Zenarmor records whose FIELD matches REGEX, as FIELD=~REGEX (e.g. "+
 			"'server_name=~.*\\.grafana\\.net'). Repeatable; default off. The field name is "+
-			"validated at startup against the receiver's attribute vocabulary — a typo is a "+
+			"validated at startup against the receiver's attribute vocabulary - a typo is a "+
 			"startup error, never a silent no-op. Derived counters are observed BEFORE the drop, "+
 			"so opnsense_log_events_zenarmor_total stays complete; drops are counted as "+
 			"logs_rejected_total{reason=\"excluded\"} and logs_zenarmor_excluded_total{rule}. "+
@@ -130,7 +130,7 @@ var (
 		"Dump Zenarmor signals this receiver does not model (unhandled Elasticsearch endpoints, "+
 			"unknown families, documents that would not parse) to --logs.debug-capture.dir for "+
 			"inspection. Requires --logs.debug-capture.dir. While on, the unhandled-endpoint warning "+
-			"is suppressed — the capture file carries the same signal.",
+			"is suppressed - the capture file carries the same signal.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_ZENARMOR_DEBUG_CAPTURE").Default("false").Bool()
 
 	logsZenarmorTransport = kingpin.Flag(

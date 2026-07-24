@@ -27,7 +27,7 @@ LEAF_TITLES = {
     "Firewall & PF",
     "Aliases",
     "Gateways & WAN",
-    "DNS — Unbound",
+    "DNS - Unbound",
     "DHCP",
     "VPN",
     "Tailscale",
@@ -65,7 +65,7 @@ LEAF_TITLES = {
 
 OPTIONAL_LEAVES = {
     "Aliases",
-    "DNS — Unbound",
+    "DNS - Unbound",
     "DHCP",
     "VPN",
     "Tailscale",

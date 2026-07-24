@@ -92,10 +92,10 @@ Key highlights:
 
 Most OPNsense exporters scrape a few endpoints and stop at `/metrics`. This one covers all four telemetry paths off the firewall:
 
-- **Native OpenTelemetry** — push metrics *and* logs over OTLP to any collector or to Grafana Cloud, with no Prometheus scrape at all. See [configuration](configuration.md).
-- **[Syslog receiver](syslog-receiver.md)** — the firewall pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive those lines; it cannot understand them.
-- **[Zenarmor receiver](zenarmor-receiver.md)** — per-connection, DNS, TLS/SNI, HTTP and threat-alert records taken straight from Zenarmor by posing as its Elasticsearch streaming target. The only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated.
-- **[NetFlow and flow volume](flow.md)** — a NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so traffic-volume questions are answerable from Prometheus for years instead of by scanning GB/day of logs.
+- **Native OpenTelemetry** - push metrics *and* logs over OTLP to any collector or to Grafana Cloud, with no Prometheus scrape at all. See [configuration](configuration.md).
+- **[Syslog receiver](syslog-receiver.md)** - the firewall pushes logs to the exporter, which parses `filterlog`, sshd, DHCP, HAProxy and Suricata lines and enriches them with rule descriptions, interface names and hostnames from the API. A generic collector can receive those lines; it cannot understand them.
+- **[Zenarmor receiver](zenarmor-receiver.md)** - per-connection, DNS, TLS/SNI, HTTP and threat-alert records taken straight from Zenarmor by posing as its Elasticsearch streaming target. The only way to get that data off a Home-tier box, since Zenarmor's syslog export is licence-gated.
+- **[NetFlow and flow volume](flow.md)** - a NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so traffic-volume questions are answerable from Prometheus for years instead of by scanning GB/day of logs.
 
 The source for all of it is on GitHub at [rknightion/opnsense-exporter](https://github.com/rknightion/opnsense-exporter) under Apache-2.0. Bug reports and questions go to [GitHub issues](https://github.com/rknightion/opnsense-exporter/issues) and [discussions](https://github.com/rknightion/opnsense-exporter/discussions); if the project is useful to you, [a star on the repository](https://github.com/rknightion/opnsense-exporter) helps other OPNsense operators find it.
 

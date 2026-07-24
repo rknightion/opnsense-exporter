@@ -60,7 +60,7 @@ TAB_GROUPS = [
         "Monit", "HA Sync", "CARP / HA",
     )),
     ("Network", (
-        "Interfaces", "Gateways & WAN", "DNS — Unbound", "DHCP",
+        "Interfaces", "Gateways & WAN", "DNS - Unbound", "DHCP",
         "Routing & Neighbors", "Protocol Stats", "NTP", "Chrony",
         "Traffic Shaper", "NetFlow", "FRR Routing", "Captive Portal",
     )),
@@ -80,7 +80,7 @@ TAB_GROUPS = [
 # form an OR group for features with multiple implementations or datasources.
 OPTIONAL_TAB_PRESENCE = {
     "Aliases": "has_alias",
-    "DNS — Unbound": "has_unbound",
+    "DNS - Unbound": "has_unbound",
     "DHCP": ["has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"],
     "VPN": ["has_wireguard", "has_openvpn", "has_ipsec"],
     "Tailscale": "has_tailscale",
