@@ -823,3 +823,41 @@ func TestFetchInterfacesOverview_Addresses(t *testing.T) {
 		t.Errorf("expected no addresses on dmz iface, got %v / %v", dmz.IPv4, dmz.IPv6)
 	}
 }
+
+// TestFetchInterfaces_StatedIndex covers the kernel's own per-interface index
+// (the "index" key of api/diagnostics/traffic/interface). It is a cross-check
+// for the positional NetFlow enumeration, never a substitute for it (#361), so
+// it must be surfaced — and it must parse as tolerantly as every other counter
+// on the struct: a missing or non-numeric value degrades to 0 for that one
+// interface, it does not fail the fetch.
+func TestFetchInterfaces_StatedIndex(t *testing.T) {
+	cases := []struct {
+		name  string
+		index string
+		want  int
+	}{
+		{"numeric", `"index":"7",`, 7},
+		{"missing", ``, 0},
+		{"garbage", `"index":"not-a-number",`, 0},
+		{"empty", `"index":"",`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet",` + tc.index + `"link state":"2","mtu":"1500"}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfaces()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			if got := data.Interfaces[0].Index; got != tc.want {
+				t.Errorf("index %q: got %d, want %d", tc.index, got, tc.want)
+			}
+		})
+	}
+}

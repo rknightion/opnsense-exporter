@@ -58,9 +58,25 @@ type interfaceResponse struct {
 }
 
 type Interface struct {
-	Name                  string
-	Device                string
-	Type                  string
+	Name   string
+	Device string
+	Type   string
+
+	// Index is the interface index the kernel states for this device (the
+	// "index" key of api/diagnostics/traffic/interface). It is a per-interface
+	// property assigned at creation, NOT the positional hook number NetFlow
+	// uses — and the two diverge in normal operation: a destroyed-and-recreated
+	// interface (pppoe0 on every PPPoE reconnect is the routine case) keeps its
+	// old stated index but is re-appended to the END of the device list, so its
+	// position changes while this number does not.
+	//
+	// So this is a CROSS-CHECK for the positional enumeration derived by
+	// FetchInterfaceEnumeration, never a replacement for it (#361). Do not
+	// "simplify" the ifIndex derivation to read this field: on a box that has
+	// so much as reconnected PPPoE once, it will label flow records with the
+	// wrong interface. 0 when the box reports no index or an unparseable one.
+	Index int
+
 	MTU                   int64
 	PacketsReceived       int64
 	PacketsTransmitted    int64
@@ -128,6 +144,7 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			Name:                  v.Name,
 			Device:                v.Device,
 			Type:                  v.Type,
+			Index:                 int(safeAtoi(v.Index)),
 			MTU:                   safeAtoi(v.MTU),
 			BytesReceived:         safeAtoi(v.BytesReceived),
 			BytesTransmitted:      safeAtoi(v.BytesTransmitted),

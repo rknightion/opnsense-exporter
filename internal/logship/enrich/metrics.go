@@ -23,7 +23,7 @@ type Metrics struct {
 // the table label can take on logs_enrich_refresh_errors_total and
 // logs_enrich_last_refresh_timestamp_seconds. Enforced against Run's tick() call
 // sites by TestTablesMatchTickCallSites.
-var Tables = []string{"rules", "interfaces", "leases", "tunnels"}
+var Tables = []string{"rules", "interfaces", "leases", "tunnels", "ifaceorder"}
 
 // MissTables is the subset of Tables that can report a LOOKUP miss, and it is
 // deliberately much smaller than Tables (#280).

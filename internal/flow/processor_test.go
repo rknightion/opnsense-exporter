@@ -164,7 +164,7 @@ func TestInterfaceLabel_NamesTheWANFacingSide(t *testing.T) {
 func TestProcessor_EmitsRecordsAndCountsThem(t *testing.T) {
 	sink := &captureSink{}
 	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
-	p.SetIfMap(BuildIfMap(testIfaces(), nil, time.Now()))
+	p.SetIfMap(BuildIfMap(IfMapInput{Order: devicesOf(testIfaces()), Ifaces: testIfaces(), Built: time.Now()}))
 
 	p.ObserveDatagram(&netflow.Datagram{
 		Version: netflow.V9,
@@ -215,7 +215,7 @@ func TestProcessor_EmitsRecordsAndCountsThem(t *testing.T) {
 func TestProcessor_RecordOnNoTrunkEmitsImmediately(t *testing.T) {
 	sink := &captureSink{}
 	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
-	p.SetIfMap(BuildIfMap(testIfaces(), nil, time.Now()))
+	p.SetIfMap(BuildIfMap(IfMapInput{Order: devicesOf(testIfaces()), Ifaces: testIfaces(), Built: time.Now()}))
 
 	p.ObserveDatagram(&netflow.Datagram{
 		Version: netflow.V9,
@@ -244,7 +244,7 @@ func TestProcessor_RecordOnNoTrunkEmitsImmediately(t *testing.T) {
 func TestProcessor_DoesNotEmitWhatTheRepairStageDrops(t *testing.T) {
 	sink := &captureSink{}
 	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
-	p.SetIfMap(BuildIfMap(testIfaces(), nil, time.Now()))
+	p.SetIfMap(BuildIfMap(IfMapInput{Order: devicesOf(testIfaces()), Ifaces: testIfaces(), Built: time.Now()}))
 
 	// A record tagged VLAN 50 but sitting on the PARENT device (ifIndex 1 = ixl0) is
 	// by construction the duplicate copy of one captured on ixl0_vlan50.

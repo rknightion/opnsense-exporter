@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 811
-- **Gauges:** 543
+- **Total metrics:** 812
+- **Gauges:** 544
 - **Counters:** 268
 
 ## General
@@ -381,6 +381,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_ifindex_entries | Gauge | --- | Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 (traffic originated by the firewall itself). | --exporter.disable-flow |
 | opnsense_flow_ifindex_conflicts | Gauge | --- | Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's own ifinfo ordering - the override is winning, so labels are right, but every index the operator did not pin is suspect. | --exporter.disable-flow |
 | opnsense_flow_ifindex_map_age_seconds | Gauge | --- | Age of the ifIndex map. ng_netflow's indices are positional over ifinfo output, so adding or removing ANY interface renumbers everything and silently remaps historical series. A map that stops being refreshed is therefore a correctness problem, not a staleness nuisance. | --exporter.disable-flow |
+| opnsense_flow_ifindex_source_disagreements | Gauge | reason | Cross-checks that failed on the derived ifIndex enumeration. reason=\"stated_index\" counts devices where the ifIndex the API states differs from the position the enumeration put them at, which means an interface was destroyed and recreated and every index above it may have moved. reason=\"unlisted_device\" counts interfaces the box reports that the enumeration does not contain at all, so they can never be resolved from an ifIndex. Either one non-zero means the labels on every NetFlow series are suspect - the derivation was measurably wrong this way for months (#361). | --exporter.disable-flow |
 | opnsense_flow_ifindex_unmapped_total | Counter | --- | ifIndex lookups that resolved to no interface. These records are still counted, with an EMPTY interface label - a wrong interface name is worse than a missing one. A rising rate after a network change means the enumeration shifted and --flow.netflow.ifindex-map needs setting. | --exporter.disable-flow |
 
 ## Gateways

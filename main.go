@@ -811,6 +811,13 @@ func main() {
 	// the refresher that feeds it.
 	var stopNetflow func()
 
+	// netflowProc is hoisted out of the receiver block so the operator console can
+	// render the resolved ifIndex map. That map was wrong in production for months
+	// and nothing in the product ever showed it, which is why the console page is
+	// part of the fix rather than a nicety (#361). Nil when the lane is off, which
+	// is what makes the console route 404 rather than render an empty table.
+	var netflowProc *flow.Processor
+
 	// The NetFlow lane's debug-capture mode (#360). Resolved here rather than at the
 	// receiver because whether the shared sink below is built at all depends on it.
 	// options.Flow has already rejected an unknown mode, so an error here would be a
@@ -995,6 +1002,7 @@ func main() {
 		cache := ensureEnrich()
 		repairer := flow.NewRepairer(flowDedupeEntries, flowHoldEntries)
 		proc := flow.NewProcessor(flowSink, repairer, cache)
+		netflowProc = proc
 		// Read dst.domain from the same answer cache the Zenarmor dns family fills (#353),
 		// so a bare NetFlow flow to an IP recovers the domain a client looked up.
 		proc.SetDNSCache(flowDNSCache)
@@ -1028,13 +1036,39 @@ func main() {
 		// POSITIONALLY over ifinfo output, so adding or removing any interface
 		// renumbers every index and silently remaps historical series; a map that
 		// stops refreshing is a correctness problem, not a staleness nuisance.
+		//
+		// The ENUMERATION comes from snap.IfaceOrder and nothing else. An empty one
+		// means the fetch has never succeeded, and a map built from it would resolve
+		// nothing — so the previous map is kept and ifindex_map_age_seconds is left
+		// to rise. There is deliberately no fallback to counting snap.Ifaces: that
+		// derivation is the bug (#361), and a wrong label is worse than a missing one.
 		nfCtx, cancelNetflow := context.WithCancel(context.Background())
 		go func() {
 			ticker := time.NewTicker(ifIndexRefreshInterval)
 			defer ticker.Stop()
+			var lastUnmapped uint64
 			for {
-				if snap := cache.Load(); snap != nil {
-					proc.SetIfMap(flow.BuildIfMap(snap.Ifaces, flowCfg.NetflowIfIndexMap, time.Now()))
+				if snap := cache.Load(); snap != nil && len(snap.IfaceOrder) > 0 {
+					proc.SetIfMap(flow.BuildIfMap(flow.IfMapInput{
+						Order:    snap.IfaceOrder,
+						Ifaces:   snap.Ifaces,
+						Stated:   snap.IfaceStatedIndex,
+						Override: flowCfg.NetflowIfIndexMap,
+						Built:    time.Now(),
+					}))
+				}
+				// An ifIndex the map could not resolve is direct evidence the
+				// enumeration moved, and is worth re-reading well before the hourly
+				// tick. It is sampled HERE, once per rebuild, rather than signalled
+				// from the lookup itself: the NetFlow socket is unauthenticated, and
+				// a hook on the per-record path would let anything that can reach
+				// port 2055 drive both our CPU and the firewall's API load. The
+				// refresher rate-limits it again on its own side.
+				if m := proc.IfMap(); m != nil && enrichRefresher != nil {
+					if now := m.Stats().UnmappedLookups; now > lastUnmapped {
+						lastUnmapped = now
+						enrichRefresher.NoteIfIndexUnresolved()
+					}
 				}
 				select {
 				case <-nfCtx.Done():
@@ -1179,6 +1213,7 @@ func main() {
 				Devices: func(ctx context.Context) (webui.DeviceReport, error) {
 					return webui.FetchDevices(ctx, &opnsenseClient)
 				},
+				IfIndexMap:        ifIndexReportFunc(netflowProc),
 				LogThroughput:     logThroughput,
 				AllCollectorNames: collectorNames(),
 				RefreshSeconds:    int((*options.WebUIRefreshInterval).Seconds()),
@@ -1266,5 +1301,49 @@ func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopLogs, st
 	}
 	if stopProfiling != nil {
 		stopProfiling()
+	}
+}
+
+// ifIndexReportFunc adapts the NetFlow processor's ifIndex map to the operator
+// console's view of it, or returns nil when the lane is off so the console route
+// 404s instead of rendering an empty table as though the map were empty.
+//
+// The two types are deliberately separate: internal/webui must not import
+// internal/flow, because a console handler that can reach the pipeline is one
+// refactor away from a console handler that can scrape the firewall.
+func ifIndexReportFunc(proc *flow.Processor) func() webui.IfIndexReport {
+	if proc == nil {
+		return nil
+	}
+	return func() webui.IfIndexReport {
+		m := proc.IfMap()
+		stats := m.Stats()
+		entries := m.Entries()
+		rows := make([]webui.IfIndexRow, 0, len(entries))
+		for _, e := range entries {
+			source := "derived"
+			if e.Overridden {
+				source = "override"
+			}
+			rows = append(rows, webui.IfIndexRow{
+				Index:     e.Index,
+				Device:    e.Device,
+				Name:      e.Name,
+				Source:    source,
+				Stated:    e.Stated,
+				Disagrees: e.Disagrees,
+			})
+		}
+		return webui.IfIndexReport{
+			Rows:       rows,
+			Built:      m.BuiltAt(),
+			Entries:    stats.Entries,
+			Overridden: stats.Overridden,
+			Conflicts:  stats.Conflicts,
+			// Both guards land in one number on the page; the metric carries the
+			// breakdown by reason for anything that needs to tell them apart.
+			Disagreements: stats.StatedIndexDisagreements + stats.UnlistedDevices,
+			Unmapped:      stats.UnmappedLookups,
+		}
 	}
 }

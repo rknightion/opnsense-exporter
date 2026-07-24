@@ -56,7 +56,10 @@ type Deps struct {
 	// records confirmed exported and records lost (logship.Throughput). It is nil
 	// when --logs.enabled is off, which is how the console knows there is no emit
 	// boundary to chart at all — see TrendStats.LogShipping.
-	LogThroughput     func() (shipped, dropped uint64)
+	LogThroughput func() (shipped, dropped uint64)
+	// IfIndexMap returns the resolved NetFlow ifIndex map. Nil when the flow
+	// lane is disabled.
+	IfIndexMap        func() IfIndexReport
 	AllCollectorNames []string
 	RefreshSeconds    int
 	DisableConfig     bool

@@ -60,7 +60,7 @@ func replayIfaces() []enrich.IfaceInfo {
 }
 
 func replayIfMap() *IfMap {
-	return BuildIfMap(replayIfaces(), nil, time.Unix(1700000000, 0))
+	return BuildIfMap(IfMapInput{Order: devicesOf(replayIfaces()), Ifaces: replayIfaces(), Built: time.Unix(1700000000, 0)})
 }
 
 // readReplayDatagrams decodes every fixture datagram in file order with one decoder,

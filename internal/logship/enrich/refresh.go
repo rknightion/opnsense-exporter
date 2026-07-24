@@ -2,6 +2,7 @@ package enrich
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -23,10 +24,24 @@ const (
 	// fetched by the metrics collectors.
 	tunnelsTTL = 10 * time.Minute
 
+	// ifaceOrderTTL is the base rate for re-reading the box's interface
+	// enumeration. It changes only when an interface is created or destroyed, so
+	// polling it at the metadata rate would be waste — but a wrong enumeration
+	// mislabels everything, so the base rate is backed by two triggers (an
+	// interface the ordering does not contain, and an unresolvable ifIndex)
+	// rather than left to run for a full period on its own.
+	ifaceOrderTTL = time.Hour
+
 	// missInterval rate-limits miss-triggered refreshes. Without it, a flood of
 	// unknown rids (a rule was just deleted; a scanner is hammering the WAN) would
 	// turn every log line into an API call.
 	missInterval = 30 * time.Second
+
+	// orderReqInterval rate-limits enumeration re-fetches triggered by an
+	// unresolvable ifIndex. That trigger is reachable from the UNAUTHENTICATED
+	// NetFlow socket, so without a bound a sender could mint indices and turn
+	// each one into an API call against the firewall.
+	orderReqInterval = time.Minute
 
 	// warnInterval rate-limits refresh-failure logging, so a firewall that is down
 	// does not also flood our own log.
@@ -64,15 +79,24 @@ type Refresher struct {
 	missInterval time.Duration
 	missCh       chan struct{}
 
-	rulesTTL   time.Duration
-	ifacesTTL  time.Duration
-	leasesTTL  time.Duration
-	tunnelsTTL time.Duration
+	// orderCh carries "the enumeration may have moved, re-fetch it" from the two
+	// places that can notice: an interface appearing that the ordering does not
+	// contain, and an ifIndex arriving that the map cannot resolve. Buffered(1)
+	// like missCh, so a burst coalesces into one pending refresh.
+	orderCh      chan struct{}
+	lastOrderReq time.Time
 
-	refreshRules   func() error
-	refreshIfaces  func() error
-	refreshLeases  func() error
-	refreshTunnels func() error
+	rulesTTL      time.Duration
+	ifacesTTL     time.Duration
+	leasesTTL     time.Duration
+	tunnelsTTL    time.Duration
+	ifaceOrderTTL time.Duration
+
+	refreshRules      func() error
+	refreshIfaces     func() error
+	refreshLeases     func() error
+	refreshTunnels    func() error
+	refreshIfaceOrder func() error
 }
 
 // NewRefresher wires a Refresher to the API client and the cache it publishes to.
@@ -86,16 +110,57 @@ func NewRefresher(c *opnsense.Client, cache *Cache, m *Metrics, log *slog.Logger
 		lastWarn:     make(map[string]time.Time),
 		missInterval: missInterval,
 		missCh:       make(chan struct{}, 1), // buffered(1): misses coalesce
+		orderCh:      make(chan struct{}, 1),
 		rulesTTL:     rulesTTL,
 		ifacesTTL:    ifacesTTL,
 		leasesTTL:    leasesTTL,
 		tunnelsTTL:   tunnelsTTL,
+
+		ifaceOrderTTL: ifaceOrderTTL,
 	}
 	r.refreshRules = r.doRefreshRules
 	r.refreshIfaces = r.doRefreshIfaces
 	r.refreshLeases = r.doRefreshLeases
 	r.refreshTunnels = r.doRefreshTunnels
+	r.refreshIfaceOrder = r.doRefreshIfaceOrder
 	return r
+}
+
+// NoteIfIndexUnresolved reports that a NetFlow record named an ifIndex the map
+// could not resolve.
+//
+// That is direct evidence the enumeration moved — an interface was created or
+// destroyed and every index above it shifted — so it is worth re-fetching well
+// before the hourly tick. It is called from the flow pipeline, so like NoteMiss
+// it must never block and never perform I/O: the NetFlow socket is
+// UNAUTHENTICATED, and a synchronous API call per unresolvable index would let
+// anything that can reach port 2055 drive the firewall's API load.
+func (r *Refresher) NoteIfIndexUnresolved() {
+	r.mu.Lock()
+	now := r.now()
+	if !r.lastOrderReq.IsZero() && now.Sub(r.lastOrderReq) < orderReqInterval {
+		r.mu.Unlock()
+		return
+	}
+	r.lastOrderReq = now
+	r.mu.Unlock()
+
+	select {
+	case r.orderCh <- struct{}{}:
+	default: // a re-fetch is already pending
+	}
+}
+
+// noteOrderStale signals a re-fetch without the rate limit, for the callers that
+// are already bounded by their own refresh interval.
+func (r *Refresher) noteOrderStale() {
+	if r.orderCh == nil {
+		return
+	}
+	select {
+	case r.orderCh <- struct{}{}:
+	default:
+	}
 }
 
 // NoteMiss reports a lookup miss for table.
@@ -127,11 +192,17 @@ func (r *Refresher) NoteMiss(table string) {
 // Run refreshes every table once, then keeps them fresh until ctx is cancelled:
 // on each table's TTL ticker, and on the miss signal from NoteMiss. It blocks.
 func (r *Refresher) Run(ctx context.Context) {
+	// The enumeration goes first: the interfaces refresh compares against it to
+	// decide whether the device set has outgrown the ordering, and doing that
+	// against an empty ordering would signal on every device.
+	r.tick("ifaceorder", r.refreshIfaceOrder)
 	r.tick("rules", r.refreshRules)
 	r.tick("interfaces", r.refreshIfaces)
 	r.tick("leases", r.refreshLeases)
 	r.tick("tunnels", r.refreshTunnels)
 
+	ifaceOrderT := time.NewTicker(r.ifaceOrderTTL)
+	defer ifaceOrderT.Stop()
 	rulesT := time.NewTicker(r.rulesTTL)
 	defer rulesT.Stop()
 	ifacesT := time.NewTicker(r.ifacesTTL)
@@ -153,6 +224,13 @@ func (r *Refresher) Run(ctx context.Context) {
 			r.tick("leases", r.refreshLeases)
 		case <-tunnelsT.C:
 			r.tick("tunnels", r.refreshTunnels)
+		case <-ifaceOrderT.C:
+			r.tick("ifaceorder", r.refreshIfaceOrder)
+		case <-r.orderCh:
+			// Something saw evidence the enumeration moved. Only that one table is
+			// refreshed: it is the only one a shifted enumeration invalidates, and
+			// this path is reachable from an unauthenticated socket.
+			r.tick("ifaceorder", r.refreshIfaceOrder)
 		case <-r.missCh:
 			// A miss means the log named something we have never seen. Any of the
 			// three tables could be the stale one, and this is rate-limited to once
@@ -272,9 +350,11 @@ func (r *Refresher) doRefreshIfaces() error {
 			}
 		}
 		info.IsWAN = isWANIface(info)
-		// EVERY row is appended, including a nameless or address-less one: ifIndex is
-		// a positional counter over this same enumeration, so skipping a row here
-		// would shift every later index by one.
+		// EVERY row is appended, including a nameless or address-less one. This is
+		// metadata, joined onto IfaceOrder by device NAME — the row's position here
+		// means nothing, and reading it as the ifIndex enumeration is the bug this
+		// endpoint was retired from (#361): it omits pfsync0, so counting its rows
+		// put every index from 10 up one too low.
 		ifaces = append(ifaces, info)
 	}
 
@@ -283,6 +363,65 @@ func (r *Refresher) doRefreshIfaces() error {
 		s.SelfIPs = selfIPs
 		s.LocalNets = localNets
 		s.Ifaces = ifaces
+	})
+
+	// An interface the enumeration does not contain can never be resolved from an
+	// ifIndex, so its appearance means the enumeration has moved. Signal a
+	// re-fetch rather than wait out the rest of the hour with a stale ordering.
+	// Skipped entirely before the first successful enumeration fetch, when every
+	// device would look new.
+	if snap := r.cache.Load(); len(snap.IfaceOrder) > 0 {
+		listed := make(map[string]bool, len(snap.IfaceOrder))
+		for _, dev := range snap.IfaceOrder {
+			listed[dev] = true
+		}
+		for _, info := range ifaces {
+			if info.Device != "" && !listed[info.Device] {
+				r.noteOrderStale()
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// doRefreshIfaceOrder reads the box's interface enumeration — the list NetFlow's
+// ifIndex is a 1-based position over — and the index the API states per device,
+// which cross-checks it.
+//
+// The two are deliberately not equal partners. The ordering is authoritative and
+// its absence is a hard failure; the stated indices are a guard, and losing them
+// must not cost us a good ordering. It must also not silently BLANK the guard,
+// because an empty guard reads as "nothing disagrees" when the truth is "nothing
+// was checked" — so a failed stated fetch carries the previous values forward.
+func (r *Refresher) doRefreshIfaceOrder() error {
+	order, err := r.client.FetchInterfaceEnumeration()
+	if err != nil {
+		return err
+	}
+	// An empty enumeration is a failed fetch wearing a success. Publishing it
+	// would blank the map, and a map that resolves nothing labels nothing.
+	if len(order) == 0 {
+		return errors.New("enrich: interface enumeration came back empty")
+	}
+
+	stated := r.cache.Load().IfaceStatedIndex
+	if ifaces, ferr := r.client.FetchInterfaces(); ferr == nil {
+		fresh := make(map[string]uint32, len(ifaces.Interfaces))
+		for _, iface := range ifaces.Interfaces {
+			if iface.Device == "" || iface.Index <= 0 {
+				continue
+			}
+			fresh[iface.Device] = uint32(iface.Index) //nolint:gosec // an interface index is small and positive
+		}
+		if len(fresh) > 0 {
+			stated = fresh
+		}
+	}
+
+	r.update("ifaceorder", func(s *Snapshot) {
+		s.IfaceOrder = order
+		s.IfaceStatedIndex = stated
 	})
 	return nil
 }

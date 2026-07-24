@@ -64,16 +64,17 @@ func metricValue(t *testing.T, reg *prometheus.Registry, name, table string) flo
 func newTestRefresher(now func() time.Time) *testRefresher {
 	reg := prometheus.NewRegistry()
 	r := &Refresher{
-		cache:        NewCache(),
-		m:            NewMetrics(reg),
-		log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
-		now:          now,
-		missInterval: missInterval,
-		missCh:       make(chan struct{}, 1),
-		rulesTTL:     time.Hour,
-		ifacesTTL:    time.Hour,
-		leasesTTL:    time.Hour,
-		tunnelsTTL:   time.Hour,
+		cache:         NewCache(),
+		m:             NewMetrics(reg),
+		log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		now:           now,
+		missInterval:  missInterval,
+		missCh:        make(chan struct{}, 1),
+		rulesTTL:      time.Hour,
+		ifacesTTL:     time.Hour,
+		leasesTTL:     time.Hour,
+		tunnelsTTL:    time.Hour,
+		ifaceOrderTTL: time.Hour,
 	}
 	r.refreshTunnels = func() error {
 		r.update("tunnels", func(s *Snapshot) {
@@ -535,5 +536,199 @@ func TestRefreshOneTableKeepsTheOthers(t *testing.T) {
 	}
 	if _, ok := s.RuleLabel("rid1"); !ok {
 		t.Error("the rules table itself did not land")
+	}
+}
+
+// --- the ifIndex enumeration (#361) -----------------------------------------
+
+// The 16-device enumeration the reference box actually returns, and the 15-row
+// overview that omits pfsync0. The pair is the whole of #361: counting overview
+// rows put every index from 10 up one too low.
+const ifaceConfigFixture = `{
+ "ixl0":{"device":"ixl0"},"ixl1":{"device":"ixl1"},"ixl2":{"device":"ixl2"},
+ "ixl3":{"device":"ixl3"},"igb0":{"device":"igb0"},"igb1":{"device":"igb1"},
+ "lo0":{"device":"lo0"},"enc0":{"device":"enc0"},"pflog0":{"device":"pflog0"},
+ "pfsync0":{"device":"pfsync0"},"ixl0_vlan100":{"device":"ixl0_vlan100"},
+ "ixl0_vlan25":{"device":"ixl0_vlan25"},"ixl0_vlan50":{"device":"ixl0_vlan50"},
+ "zen0":{"device":"zen0"},"pppoe0":{"device":"pppoe0"},
+ "tailscale0":{"device":"tailscale0"}}`
+
+const trafficIfaceFixture = `{"interfaces":{
+ "opt7":{"device":"pppoe0","index":"15","name":"AAISP"},
+ "lan":{"device":"ixl0","index":"1","name":"LAN"},
+ "opt1":{"device":"tailscale0","index":"16","name":"tailscale"}}}`
+
+// newRoutedRefresher serves a different body per URL path, which the enumeration
+// refresh needs: it reads TWO endpoints and they must not answer each other.
+func newRoutedRefresher(t *testing.T, byPath map[string]string) *Refresher {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		for suffix, body := range byPath {
+			if strings.Contains(req.URL.Path, suffix) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, body)
+				return
+			}
+		}
+		http.Error(w, "no fixture for "+req.URL.Path, http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := opnsense.NewClient(options.OPNSenseConfig{
+		Protocol: "http", Host: strings.TrimPrefix(srv.URL, "http://"),
+		APIKey: "k", APISecret: "s",
+	}, "test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	return &Refresher{
+		client:  &client,
+		cache:   NewCache(),
+		m:       NewMetrics(prometheus.NewRegistry()),
+		log:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		now:     time.Now,
+		missCh:  make(chan struct{}, 1),
+		orderCh: make(chan struct{}, 1),
+	}
+}
+
+// The enumeration must arrive in the box's own order, pfsync0 included. This is
+// the table internal/flow turns into ifIndex -> interface, so a dropped or
+// reordered device silently relabels every historical flow series.
+func TestDoRefreshIfaceOrderPublishesTheBoxEnumeration(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"get_interface_config": ifaceConfigFixture,
+		"traffic/interface":    trafficIfaceFixture,
+	})
+	if err := r.doRefreshIfaceOrder(); err != nil {
+		t.Fatalf("doRefreshIfaceOrder: %v", err)
+	}
+	snap := r.cache.Load()
+
+	want := []string{
+		"ixl0", "ixl1", "ixl2", "ixl3", "igb0", "igb1", "lo0", "enc0",
+		"pflog0", "pfsync0", "ixl0_vlan100", "ixl0_vlan25", "ixl0_vlan50",
+		"zen0", "pppoe0", "tailscale0",
+	}
+	if len(snap.IfaceOrder) != len(want) {
+		t.Fatalf("IfaceOrder has %d devices, want %d: %v", len(snap.IfaceOrder), len(want), snap.IfaceOrder)
+	}
+	for i := range want {
+		if snap.IfaceOrder[i] != want[i] {
+			t.Errorf("IfaceOrder[%d] = %q, want %q", i, snap.IfaceOrder[i], want[i])
+		}
+	}
+	// pppoe0 sits at position 15 and the API states 15. Agreement is what the
+	// guard is checking for; the value itself is only ever a cross-check.
+	if got := snap.IfaceStatedIndex["pppoe0"]; got != 15 {
+		t.Errorf("IfaceStatedIndex[pppoe0] = %d, want 15", got)
+	}
+	if got := snap.IfaceStatedIndex["tailscale0"]; got != 16 {
+		t.Errorf("IfaceStatedIndex[tailscale0] = %d, want 16", got)
+	}
+}
+
+// An empty enumeration is a failed fetch wearing a success. Publishing it would
+// blank the map, and a blank map labels nothing at all, so it must be an error
+// and leave whatever was there in place.
+func TestDoRefreshIfaceOrderRefusesAnEmptyEnumeration(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"get_interface_config": `{}`,
+		"traffic/interface":    trafficIfaceFixture,
+	})
+	if err := r.doRefreshIfaceOrder(); err == nil {
+		t.Fatal("doRefreshIfaceOrder accepted an empty enumeration; want an error")
+	}
+	if got := r.cache.Load().IfaceOrder; len(got) != 0 {
+		t.Errorf("IfaceOrder = %v, want it left untouched", got)
+	}
+}
+
+// The stated index is a guard, not the map. Losing it must never cost us the
+// ordering — but it must also not silently blank the guard, which would read as
+// "nothing disagrees" when the truth is "nothing was checked".
+func TestDoRefreshIfaceOrderKeepsTheLastStatedIndexesOnFailure(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"get_interface_config": ifaceConfigFixture,
+		"traffic/interface":    trafficIfaceFixture,
+	})
+	if err := r.doRefreshIfaceOrder(); err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+
+	broken := newRoutedRefresher(t, map[string]string{"get_interface_config": ifaceConfigFixture})
+	broken.cache = r.cache // carry the good snapshot forward
+	if err := broken.doRefreshIfaceOrder(); err != nil {
+		t.Fatalf("doRefreshIfaceOrder failed on a stated-index error; the ordering was fine: %v", err)
+	}
+	if got := broken.cache.Load().IfaceStatedIndex["pppoe0"]; got != 15 {
+		t.Errorf("IfaceStatedIndex[pppoe0] = %d after a failed stated fetch, want the previous 15", got)
+	}
+}
+
+// A device the overview knows that the ordering does not is direct evidence the
+// enumeration moved. It must trigger a re-fetch rather than wait out the hour.
+func TestDoRefreshIfacesSignalsWhenTheInterfaceSetOutgrowsTheOrdering(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"get_interface_config":     ifaceConfigFixture,
+		"traffic/interface":        trafficIfaceFixture,
+		"overview/interfaces_info": ifaceOverviewFixture,
+	})
+	if err := r.doRefreshIfaceOrder(); err != nil {
+		t.Fatalf("doRefreshIfaceOrder: %v", err)
+	}
+
+	// An ordering that already covers every device the overview names must stay
+	// quiet — otherwise the trigger fires on every refresh and stops meaning
+	// anything.
+	r.update("ifaceorder", func(s *Snapshot) {
+		s.IfaceOrder = []string{"ixl0", "igb0", "lo0", "ixl0_vlan50", "ixl0_vlan60", "pppoe0"}
+	})
+	drain(r.orderCh)
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+	if signalled(r.orderCh) {
+		t.Error("a device set already covered by the ordering signalled a re-fetch")
+	}
+
+	// Drop one device from the ordering: the overview now names an interface that
+	// has no slot, which is the enumeration having moved under us.
+	r.update("ifaceorder", func(s *Snapshot) { s.IfaceOrder = []string{"ixl0"} })
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+	if !signalled(r.orderCh) {
+		t.Error("a device absent from the ordering did not signal a re-fetch")
+	}
+}
+
+// Before the first successful enumeration fetch every device looks new, so the
+// trigger must stay silent rather than firing on a cold start.
+func TestDoRefreshIfacesDoesNotSignalBeforeTheFirstEnumeration(t *testing.T) {
+	r := newRoutedRefresher(t, map[string]string{
+		"overview/interfaces_info": ifaceOverviewFixture,
+	})
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+	if signalled(r.orderCh) {
+		t.Error("signalled a re-fetch with no enumeration yet; every device looks new there")
+	}
+}
+
+func drain(ch chan struct{}) {
+	select {
+	case <-ch:
+	default:
+	}
+}
+
+func signalled(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
 	}
 }

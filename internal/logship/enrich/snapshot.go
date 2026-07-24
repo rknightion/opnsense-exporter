@@ -29,14 +29,34 @@ type Snapshot struct {
 	SelfIPs     map[netip.Addr]bool  // addresses the firewall itself holds
 	LastRefresh map[string]time.Time // per TABLE: "rules" | "interfaces" | "leases" | "tunnels"
 
-	// Ifaces is every interface the box reports, IN THE ORDER THE API RETURNED
-	// THEM. Order is load-bearing and must never be sorted or filtered: NetFlow's
-	// ifIndex is a 1-based counter over the box's own interface enumeration
-	// (src/etc/rc.d/netflow: `ngctl mkpeer $iface: netflow lower iface$ifIndex`
-	// over `ifinfo` output), so internal/flow derives ifIndex -> interface from
-	// this slice's position. Dropping or reordering one row silently remaps every
-	// interface label on every historical flow series.
+	// Ifaces is every interface the box reports, with its identity and topology.
+	// It is METADATA ONLY: internal/flow joins it onto IfaceOrder by device name.
+	// Its own order carries no meaning and must not be read as one — doing exactly
+	// that is what mislabelled 93% of NetFlow byte volume for months (#361).
 	Ifaces []IfaceInfo
+
+	// IfaceOrder is the box's interface devices in `ifinfo` order: element i is
+	// ifIndex i+1. THIS is the NetFlow enumeration, and the only thing that
+	// decides an index.
+	//
+	// OPNsense derives the same list twice — src/etc/rc.d/netflow counts it to
+	// name the netgraph hook `ifaceN`, and its own flowd reporting
+	// (scripts/netflow/lib/parse.py) counts it again to read those names back.
+	// The exporter reads it from api/diagnostics/interface/get_interface_config,
+	// whose JSON key order reproduces it exactly.
+	//
+	// Empty means the fetch has never succeeded. It must NOT be treated as "no
+	// interfaces": a map built from an empty ordering resolves nothing, so
+	// consumers keep their previous map instead of publishing one built from it.
+	IfaceOrder []string
+
+	// IfaceStatedIndex is the ifIndex the API states per device, from
+	// api/diagnostics/traffic/interface. It is a CROSS-CHECK on IfaceOrder and
+	// never a substitute: the stated value is a per-interface property the kernel
+	// assigns, while the netflow hook number is a position in a list, and the two
+	// diverge once an interface is destroyed and recreated. A disagreement is the
+	// signal that the enumeration has moved.
+	IfaceStatedIndex map[string]uint32
 
 	// Tunnels maps an IPsec connection UUID to its description. charon logs the
 	// tunnel as a bare UUID ("<5e891b0c-...|8> sending DPD request"), which is
@@ -149,13 +169,22 @@ func (s *Snapshot) Scope(ip string) string {
 // mutated after Store; LastRefresh is copied because every rebuild writes to it.
 func (s *Snapshot) clone() *Snapshot {
 	next := &Snapshot{
-		RuleLabels:   s.RuleLabels,
-		IfaceNames:   s.IfaceNames,
-		Hostnames:    s.Hostnames,
-		MACs:         s.MACs,
-		LocalNets:    s.LocalNets,
-		SelfIPs:      s.SelfIPs,
-		Ifaces:       s.Ifaces,
+		RuleLabels: s.RuleLabels,
+		IfaceNames: s.IfaceNames,
+		Hostnames:  s.Hostnames,
+		MACs:       s.MACs,
+		LocalNets:  s.LocalNets,
+		SelfIPs:    s.SelfIPs,
+		Ifaces:     s.Ifaces,
+
+		// EVERY field must be carried here. A field omitted is not a partial
+		// clone, it is a field that silently reverts to zero the next time any
+		// OTHER table refreshes — which is minutes, so it never survives to be
+		// noticed in a test that only exercises its own refresh.
+		// TestSnapshotCloneCarriesEveryField enforces this by reflection.
+		IfaceOrder:       s.IfaceOrder,
+		IfaceStatedIndex: s.IfaceStatedIndex,
+
 		Tunnels:      s.Tunnels,
 		VPNInstances: s.VPNInstances,
 		LastRefresh:  make(map[string]time.Time, len(s.LastRefresh)+1),

@@ -40,6 +40,9 @@ type Processor struct {
 	// is a safe no-op, so enrichRecord holds it unconditionally.
 	dnsCache *DNSCache
 
+	// ifmapCounters outlives every map SetIfMap publishes; see IfMapCounters.
+	ifmapCounters IfMapCounters
+
 	datagrams  atomic.Uint64
 	recordsIn  atomic.Uint64
 	emitted    atomic.Uint64
@@ -80,7 +83,17 @@ func NewProcessor(sink Sink, rep *Repairer, cache *enrich.Cache) *Processor {
 }
 
 // SetIfMap publishes a new ifIndex map. Safe to call while records are in flight.
-func (p *Processor) SetIfMap(m *IfMap) { p.ifmap.Store(m) }
+//
+// It adopts the map into the processor's OWN unmapped-lookup counter before
+// publishing it. That is not bookkeeping: main rebuilds the map on a ticker, and
+// a counter living on the map instance went back to zero on every rebuild, so
+// the one alarm for "the enumeration moved" could never accumulate far enough to
+// be visible (#361). Attaching before the atomic store is what makes the
+// happens-before hold for concurrent readers.
+func (p *Processor) SetIfMap(m *IfMap) {
+	m.AttachCounters(&p.ifmapCounters)
+	p.ifmap.Store(m)
+}
 
 // SetDNSCache installs the DNS answer cache the enrich stage reads for dst.domain.
 // Late-bound like SetIfMap: the cache is built in main alongside the Zenarmor lane

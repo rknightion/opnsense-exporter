@@ -9,7 +9,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 )
 
-// liveIfaces is an interface list in the order the OPNsense API returns it,
+// liveIfaces is the interface list as the box enumerated it for #346,
 // constructed so that the 1-based ifinfo enumeration reproduces the ifIndex
 // mapping VERIFIED LIVE on the production box (#346):
 //
@@ -58,10 +58,244 @@ func addrs(ss ...string) []netip.Addr {
 	return out
 }
 
+// devicesOf builds an enumeration that agrees exactly with a metadata list.
+// Fixtures that are not about the two lists DISAGREEING use it, so the cases
+// below that do disagree are the only ones where they can.
+func devicesOf(ifaces []enrich.IfaceInfo) []string {
+	order := make([]string, 0, len(ifaces))
+	for _, info := range ifaces {
+		order = append(order, info.Device)
+	}
+	return order
+}
+
+func liveInput() IfMapInput {
+	return IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()}
+}
+
+// --- the #361 regression -----------------------------------------------------
+//
+// shiftedOrder and shiftedMetadata are the REAL pair captured from the reference
+// box on 2026-07-24, and they are the whole bug in two fixtures: the box
+// enumerates 16 devices, the metadata endpoint returns 15 because it omits
+// pfsync0, and the old derivation counted metadata ROWS. Every index from 10 up
+// came out one too low, which put 91% of the box's inbound bytes — the PPPoE WAN
+// at index 15 — under the label belonging to index 16.
+//
+// Structure only: device names, descriptions and identifiers, no addresses.
+func shiftedOrder() []string {
+	return []string{
+		"ixl0", "ixl1", "ixl2", "ixl3", "igb0", "igb1", "lo0", "enc0",
+		"pflog0", "pfsync0", "ixl0_vlan100", "ixl0_vlan25", "ixl0_vlan50",
+		"zen0", "pppoe0", "tailscale0",
+	}
+}
+
+// shiftedMetadata is what api/interfaces/overview/interfaces_info returns for the
+// same box: the same devices MINUS pfsync0. Deliberately shuffled relative to the
+// ordering, because the join is by device NAME and must not care.
+func shiftedMetadata() []enrich.IfaceInfo {
+	return []enrich.IfaceInfo{
+		{Device: "pppoe0", Name: "AAISP", Identifier: "opt7", IsWAN: true},
+		{Device: "ixl0_vlan25", Name: "CAM", Identifier: "opt4", VlanTag: "25", VlanParent: "ixl0"},
+		{Device: "ixl0_vlan50", Name: "IOT", Identifier: "opt2", VlanTag: "50", VlanParent: "ixl0"},
+		{Device: "ixl0", Name: "LAN", Identifier: "lan"},
+		{Device: "ixl0_vlan100", Name: "MGMT", Identifier: "opt3", VlanTag: "100", VlanParent: "ixl0"},
+		{Device: "ixl1", Name: "VIRGIN", Identifier: "opt6", IsWAN: true},
+		{Device: "tailscale0", Name: "tailscale", Identifier: "opt1"},
+		{Device: "zen0", Name: "zenoverlay", Identifier: "opt5"},
+		{Device: "lo0", Name: "Loopback"},
+		{Device: "ixl2"}, {Device: "ixl3"}, {Device: "igb0"}, {Device: "igb1"},
+		{Device: "enc0"}, {Device: "pflog0"},
+	}
+}
+
+// The regression this issue exists for. Before the fix the metadata list WAS the
+// enumeration, so index 15 resolved to tailscale0 and index 16 to nothing.
+func TestBuildIfMap_MetadataMissingADeviceDoesNotShiftLaterIndices(t *testing.T) {
+	m := BuildIfMap(IfMapInput{Order: shiftedOrder(), Ifaces: shiftedMetadata()})
+
+	tests := []struct {
+		idx        uint32
+		wantDevice string
+		wantName   string
+	}{
+		{1, "ixl0", "LAN"},
+		{2, "ixl1", "VIRGIN"},
+		{7, "lo0", "Loopback"},
+		// pfsync0 has no metadata row. It still occupies slot 10 with an empty
+		// Name, which is exactly what keeps everything below correct.
+		{10, "pfsync0", ""},
+		{11, "ixl0_vlan100", "MGMT"},
+		{12, "ixl0_vlan25", "CAM"},
+		{13, "ixl0_vlan50", "IOT"},
+		{14, "zen0", "zenoverlay"},
+		{15, "pppoe0", "AAISP"},
+		{16, "tailscale0", "tailscale"},
+	}
+	for _, tc := range tests {
+		got := m.Iface(tc.idx)
+		if got.Device != tc.wantDevice || got.Name != tc.wantName {
+			t.Errorf("Iface(%d) = {Device:%q Name:%q}, want {Device:%q Name:%q}",
+				tc.idx, got.Device, got.Name, tc.wantDevice, tc.wantName)
+		}
+	}
+	// The slot with no metadata must still label itself honestly rather than
+	// resolving to nothing at all.
+	if got := m.Iface(10).Label(); got != "pfsync0" {
+		t.Errorf("Iface(10).Label() = %q, want the device name %q", got, "pfsync0")
+	}
+	if got := m.Stats().UnmappedLookups; got != 0 {
+		t.Errorf("UnmappedLookups = %d; every index in the enumeration must resolve", got)
+	}
+}
+
+// A device the metadata knows but the enumeration does not is the guard for the
+// ordering source going stale or wrong. It must be counted, not swallowed.
+func TestBuildIfMap_CountsDevicesMissingFromTheOrdering(t *testing.T) {
+	ifaces := append(shiftedMetadata(), enrich.IfaceInfo{Device: "vtnet9", Name: "GHOST"})
+	m := BuildIfMap(IfMapInput{Order: shiftedOrder(), Ifaces: ifaces})
+
+	if got := m.Stats().UnlistedDevices; got != 1 {
+		t.Errorf("UnlistedDevices = %d, want 1 (vtnet9 is in the metadata, not in the ordering)", got)
+	}
+	if got := m.Stats().StatedIndexDisagreements; got != 0 {
+		t.Errorf("StatedIndexDisagreements = %d, want 0 (nothing stated an index here)", got)
+	}
+}
+
+// The index the API STATES for a device is an independent cross-check on the
+// position we derived. Agreement is silent; disagreement is the signal that
+// something was destroyed and recreated and the enumeration has moved.
+func TestBuildIfMap_StatedIndexIsAGuardNotTheMap(t *testing.T) {
+	stated := map[string]uint32{
+		"ixl0":   1,  // agrees
+		"pppoe0": 16, // disagrees: position says 15
+	}
+	m := BuildIfMap(IfMapInput{Order: shiftedOrder(), Ifaces: shiftedMetadata(), Stated: stated})
+
+	if got := m.Stats().StatedIndexDisagreements; got != 1 {
+		t.Errorf("StatedIndexDisagreements = %d, want 1", got)
+	}
+	// The map must still follow the POSITION. rc.d/netflow names the netgraph
+	// hook from the position, so the position is what the exporter is receiving.
+	if got := m.Iface(15); got.Device != "pppoe0" {
+		t.Errorf("Iface(15).Device = %q, want pppoe0; the stated index must not win", got.Device)
+	}
+	if got := m.Iface(16); got.Device != "tailscale0" {
+		t.Errorf("Iface(16).Device = %q, want tailscale0", got.Device)
+	}
+}
+
+// An empty ordering means the fetch never succeeded. Building a map from nothing
+// must not invent one: only the synthetic local-origin entry survives, so every
+// real index misses visibly instead of resolving to a lie.
+func TestBuildIfMap_EmptyOrderingDerivesNothing(t *testing.T) {
+	m := BuildIfMap(IfMapInput{Ifaces: shiftedMetadata()})
+	if got := m.Iface(1); got != (Iface{}) {
+		t.Errorf("Iface(1) = %+v with no ordering, want the zero Iface", got)
+	}
+	if got := m.Iface(0).Name; got != LocalOriginName {
+		t.Errorf("Iface(0).Name = %q, want %q", got, LocalOriginName)
+	}
+}
+
+// The counter that must outlive the map.
+//
+// UnmappedLookups is the alarm for the whole class of fault this issue is about,
+// and it could never fire: it lived on the IfMap instance, which main rebuilds
+// every 60 seconds, so it reset before anything could scrape it. It read 0 on a
+// box where 0.9% of volume was landing on an unmapped index.
+func TestIfMapCounters_SurviveARebuild(t *testing.T) {
+	var counters IfMapCounters
+
+	first := BuildIfMap(liveInput())
+	first.AttachCounters(&counters)
+	first.Iface(900)
+	first.Iface(901)
+	if got := first.Stats().UnmappedLookups; got != 2 {
+		t.Fatalf("UnmappedLookups = %d before the rebuild, want 2", got)
+	}
+
+	second := BuildIfMap(liveInput())
+	second.AttachCounters(&counters)
+	second.Iface(902)
+
+	if got := second.Stats().UnmappedLookups; got != 3 {
+		t.Errorf("UnmappedLookups = %d after a rebuild, want 3; the counter reset", got)
+	}
+	if got := first.Stats().UnmappedLookups; got != 3 {
+		t.Errorf("the superseded map reports %d, want 3; both must read the same counter", got)
+	}
+}
+
+// A map with no counters attached still counts, into its own. Tests and the
+// cold-start path build maps without a Processor, and a nil dereference there
+// would be a worse bug than the one being fixed.
+func TestIfMapCounters_UnattachedMapStillCounts(t *testing.T) {
+	m := BuildIfMap(liveInput())
+	m.Iface(900)
+	if got := m.Stats().UnmappedLookups; got != 1 {
+		t.Errorf("UnmappedLookups = %d on an unattached map, want 1", got)
+	}
+}
+
+// SetIfMap is where the attachment has to happen: main builds a fresh map on a
+// ticker and hands it straight to the processor, so if the processor does not
+// adopt it into its own counters the reset comes back.
+func TestProcessor_SetIfMapKeepsUnmappedCountAcrossRebuilds(t *testing.T) {
+	p := NewProcessor(&captureSink{}, NewRepairer(100, 1000), nil)
+
+	p.SetIfMap(BuildIfMap(liveInput()))
+	p.IfMap().Iface(900)
+	p.SetIfMap(BuildIfMap(liveInput()))
+	p.IfMap().Iface(901)
+
+	if got := p.IfMap().Stats().UnmappedLookups; got != 2 {
+		t.Errorf("UnmappedLookups = %d across a SetIfMap rebuild, want 2", got)
+	}
+}
+
+// Entries is what the operator console renders. This bug survived for months
+// because nothing in the product ever showed the mapping, so the accessor is
+// part of the fix, not a convenience.
+func TestIfMap_EntriesAreSortedAndFlagged(t *testing.T) {
+	m := BuildIfMap(IfMapInput{
+		Order:    shiftedOrder(),
+		Ifaces:   shiftedMetadata(),
+		Stated:   map[string]uint32{"pppoe0": 16},
+		Override: map[uint32]string{2: "ixl1"},
+	})
+
+	entries := m.Entries()
+	for i := 1; i < len(entries); i++ {
+		if entries[i-1].Index > entries[i].Index {
+			t.Fatalf("Entries not sorted by Index: %d before %d",
+				entries[i-1].Index, entries[i].Index)
+		}
+	}
+	byIdx := make(map[uint32]IfaceEntry, len(entries))
+	for _, e := range entries {
+		byIdx[e.Index] = e
+	}
+	if e := byIdx[0]; e.Name != LocalOriginName {
+		t.Errorf("Entries missing the synthetic index 0: %+v", e)
+	}
+	if e := byIdx[2]; !e.Overridden {
+		t.Errorf("Entries[2].Overridden = false, want true")
+	}
+	if e := byIdx[15]; !e.Disagrees || e.Stated != 16 {
+		t.Errorf("Entries[15] = {Stated:%d Disagrees:%v}, want {16 true}", e.Stated, e.Disagrees)
+	}
+	if e := byIdx[1]; e.Disagrees {
+		t.Errorf("Entries[1].Disagrees = true; nothing stated an index for ixl0")
+	}
+}
+
 // The derived enumeration must reproduce the mapping verified on the live box.
 // These expectations are the live table, not this code's own output.
 func TestBuildIfMap_DerivesVerifiedLiveEnumeration(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Unix(1700000000, 0))
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Built: time.Unix(1700000000, 0)})
 
 	tests := []struct {
 		idx        uint32
@@ -98,7 +332,7 @@ func TestBuildIfMap_DerivesVerifiedLiveEnumeration(t *testing.T) {
 // ifIndex 0 is ng_netflow's "locally originated" — traffic the firewall itself
 // sourced. It is a real, known value and must NEVER fall through to unmapped.
 func TestBuildIfMap_IndexZeroIsLocallyOriginated(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 	got := m.Iface(0)
 	if got.Name != LocalOriginName {
 		t.Errorf("Iface(0).Name = %q, want %q", got.Name, LocalOriginName)
@@ -115,7 +349,7 @@ func TestBuildIfMap_IndexZeroIsLocallyOriginated(t *testing.T) {
 // no guess — and must be countable, because a wrong interface label is worse than a
 // missing one and silent misses are how a renumbering goes unnoticed.
 func TestBuildIfMap_UnmappedIndexIsEmptyAndCounted(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 
 	for _, idx := range []uint32{15, 99, 4294967295} {
 		got := m.Iface(idx)
@@ -139,7 +373,7 @@ func TestBuildIfMap_OverrideBeatsDerivation(t *testing.T) {
 		1: "igb0",            // names a KNOWN device: resolves to that interface
 		5: "SATELLITE",       // names nothing we know: honoured verbatim as the name
 	}
-	m := BuildIfMap(liveIfaces(), override, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: override})
 
 	if got := m.Iface(0); got.Name != "firewall-itself" {
 		t.Errorf("Iface(0).Name = %q, want the override %q", got.Name, "firewall-itself")
@@ -168,7 +402,7 @@ func TestBuildIfMap_OverrideBeatsDerivation(t *testing.T) {
 // An override that AGREES with the derivation is applied but is not a conflict:
 // disagreement is the signal worth surfacing, so it must not be drowned out.
 func TestBuildIfMap_AgreeingOverrideIsNotAConflict(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), map[uint32]string{1: "ixl0"}, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: map[uint32]string{1: "ixl0"}})
 	st := m.Stats()
 	if st.Overridden != 1 {
 		t.Errorf("Overridden = %d, want 1", st.Overridden)
@@ -181,7 +415,7 @@ func TestBuildIfMap_AgreeingOverrideIsNotAConflict(t *testing.T) {
 // An index BEYOND the enumeration can still be overridden — that is exactly the
 // case where the API list is short of what ifinfo enumerated.
 func TestBuildIfMap_OverrideCanAddAnIndexTheDerivationNeverSaw(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), map[uint32]string{40: "ixl0_vlan50"}, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: map[uint32]string{40: "ixl0_vlan50"}})
 	got := m.Iface(40)
 	if got.Device != "ixl0_vlan50" || got.Name != "IOT" || got.Index != 40 {
 		t.Errorf("Iface(40) = %+v, want the overridden ixl0_vlan50/IOT at index 40", got)
@@ -192,7 +426,7 @@ func TestBuildIfMap_OverrideCanAddAnIndexTheDerivationNeverSaw(t *testing.T) {
 }
 
 func TestBuildIfMap_EmptyOverrideValueIsIgnored(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), map[uint32]string{1: "", 5: "   "}, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: map[uint32]string{1: "", 5: "   "}})
 	if got := m.Iface(1); got.Device != "ixl0" {
 		t.Errorf("Iface(1).Device = %q, want ixl0 — a blank override states nothing "+
 			"and must not blank out a derived entry", got.Device)
@@ -203,7 +437,7 @@ func TestBuildIfMap_EmptyOverrideValueIsIgnored(t *testing.T) {
 }
 
 func TestBuildIfMap_StatsEntries(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 	// 14 enumerated interfaces + the synthetic ifIndex 0.
 	if got := m.Stats().Entries; got != 15 {
 		t.Errorf("Entries = %d, want 15 (14 enumerated + ifIndex 0)", got)
@@ -219,7 +453,7 @@ func TestBuildIfMap_BlankDeviceStillConsumesAnIndex(t *testing.T) {
 		{Device: "", Name: ""},
 		{Device: "igb0", Name: "WAN2"},
 	}
-	m := BuildIfMap(ifaces, nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(ifaces), Ifaces: ifaces})
 	if got := m.Iface(3); got.Device != "igb0" {
 		t.Errorf("Iface(3).Device = %q, want igb0 — a nameless row must not shift the enumeration", got.Device)
 	}
@@ -229,7 +463,7 @@ func TestBuildIfMap_BlankDeviceStillConsumesAnIndex(t *testing.T) {
 }
 
 func TestIfMap_WANFor(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 
 	tests := []struct {
 		addr       string
@@ -261,7 +495,7 @@ func TestIfMap_WANFor(t *testing.T) {
 }
 
 func TestIfMap_WANForCarriesTheIndex(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 	got, ok := m.WANFor(netip.MustParseAddr("198.51.100.42"))
 	if !ok || got.Index != 14 {
 		t.Errorf("WANFor(198.51.100.42) = %+v, %v; want pppoe0 at ifIndex 14", got, ok)
@@ -269,7 +503,7 @@ func TestIfMap_WANForCarriesTheIndex(t *testing.T) {
 }
 
 func TestIfMap_ParentOf(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 
 	tests := []struct {
 		device     string
@@ -297,7 +531,7 @@ func TestIfMap_ParentOf(t *testing.T) {
 // ParentOf misses on, and it must never claim a device the interface list did not
 // contain.
 func TestIfMap_HasVLANChildren(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 
 	tests := []struct {
 		device string
@@ -319,7 +553,7 @@ func TestIfMap_HasVLANChildren(t *testing.T) {
 
 func TestIfMap_Age(t *testing.T) {
 	built := time.Unix(1700000000, 0)
-	m := BuildIfMap(liveIfaces(), nil, built)
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Built: built})
 	if got := m.Age(built.Add(90 * time.Second)); got != 90*time.Second {
 		t.Errorf("Age = %v, want 90s", got)
 	}
@@ -328,7 +562,7 @@ func TestIfMap_Age(t *testing.T) {
 		t.Errorf("Age(before built) = %v, want 0", got)
 	}
 	// A map built with no timestamp has no meaningful age.
-	if got := BuildIfMap(nil, nil, time.Time{}).Age(built); got != 0 {
+	if got := BuildIfMap(IfMapInput{}).Age(built); got != 0 {
 		t.Errorf("Age of an unstamped map = %v, want 0", got)
 	}
 }
@@ -357,7 +591,7 @@ func TestIfMap_NilIsSafe(t *testing.T) {
 }
 
 func TestBuildIfMap_EmptyInputStillKnowsLocalOrigin(t *testing.T) {
-	m := BuildIfMap(nil, nil, time.Time{})
+	m := BuildIfMap(IfMapInput{})
 	if got := m.Iface(0).Name; got != LocalOriginName {
 		t.Errorf("Iface(0).Name = %q, want %q even with no interfaces", got, LocalOriginName)
 	}
@@ -369,7 +603,7 @@ func TestBuildIfMap_EmptyInputStillKnowsLocalOrigin(t *testing.T) {
 // An IfMap is rebuilt and swapped, never mutated, so any number of readers may run
 // against one concurrently with no lock. Run under -race.
 func TestIfMap_ConcurrentReaders(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), map[uint32]string{5: "SATELLITE"}, time.Unix(1700000000, 0))
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: map[uint32]string{5: "SATELLITE"}, Built: time.Unix(1700000000, 0)})
 
 	const readers = 16
 	const iterations = 500

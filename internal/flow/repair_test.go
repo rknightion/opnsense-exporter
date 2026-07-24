@@ -964,7 +964,7 @@ func TestRepairer_ConcurrentRepairIsRaceFree(t *testing.T) {
 // This is the majority of WAN traffic. It read "unknown" until rule 3b existed, and
 // it is the reason 3b exists.
 func TestRepairer_ProductionShapeOutboundIsNotUnknown(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 	snap := &enrich.Snapshot{
 		SelfIPs:   map[netip.Addr]bool{netip.MustParseAddr(rpWAN1Addr): true},
 		LocalNets: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
@@ -1004,7 +1004,7 @@ func TestRepairer_ProductionShapeOutboundIsNotUnknown(t *testing.T) {
 // topology alone would prove the logic but not that the map it will actually run
 // against answers ParentOf the way the logic assumes.
 func TestRepairer_VLANDedupeAgainstTheRealIfMap(t *testing.T) {
-	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
 	parent, child := rpVLANPair()
 	parent.In, parent.Out = m.Iface(1), m.Iface(1)
 	child.In, child.Out = m.Iface(13), m.Iface(1)

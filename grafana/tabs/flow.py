@@ -243,7 +243,8 @@ def build(b: Builder):
         [(f'{sel("opnsense_flow_ifindex_entries")}', "entries"),
          (f'{sel("opnsense_flow_ifindex_conflicts")}', "override conflicts"),
          (f'{sel("opnsense_flow_ifindex_map_age_seconds")}', "map age (s)"),
-         (f'rate({sel("opnsense_flow_ifindex_unmapped_total")}[{RATE}])', "unmapped lookups/sec")],
+         (f'rate({sel("opnsense_flow_ifindex_unmapped_total")}[{RATE}])', "unmapped lookups/sec"),
+         (f'{sel("opnsense_flow_ifindex_source_disagreements")}', "guard: {{reason}}")],
         unit="short",
         desc="ng_netflow numbers interfaces POSITIONALLY over ifinfo output, so adding or removing any "
              "interface renumbers everything and silently remaps historical series. conflicts > 0 "
@@ -251,7 +252,11 @@ def build(b: Builder):
              "API: the override wins so pinned indices are right, but every index NOT pinned is "
              "suspect. Rising unmapped lookups after a network change means the enumeration shifted — "
              "those records still count, with an empty interface label, because a wrong interface "
-             "name is worse than a missing one.",
+             "name is worse than a missing one. The guard series cross-check the enumeration against "
+             "the index the API states per device and against the set of interfaces the box reports; "
+             "either one non-zero means every NetFlow interface label is suspect. This map was "
+             "measurably wrong for months and read entirely clean while it was (#361), so treat a "
+             "flat zero here as 'checked', not as 'nothing to check'.",
     )
 
     correlator = b.ts(

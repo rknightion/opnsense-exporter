@@ -150,19 +150,66 @@ and builds an anonymised replay fixture from a selection of them.
 
 ### ifIndex is positional, and that is fragile
 
-The `ifIndex` in a record is **not** an OS or SNMP index. It is a 1-based counter over
-`ifinfo` output, so **adding or removing any interface renumbers everything** and
-silently remaps historical series. The exporter derives the map from the API, but that
-derivation cannot be proven to reproduce `ifinfo`'s ordering on every box, so:
+The `ifIndex` in a record is **not** an OS or SNMP index. It is a **1-based position in
+the device list `/usr/local/sbin/ifinfo` prints**, so **adding or removing any interface
+renumbers everything** and silently remaps historical series.
+
+OPNsense derives that position twice, and both agree. `src/etc/rc.d/netflow` counts the
+list to name the netgraph hook - `ngctl mkpeer $iface: netflow lower ifaceN` - and
+OPNsense's own flowd reporting counts it again to read those names back
+(`scripts/netflow/lib/parse.py`). One ng_netflow node is created per captured interface,
+each with a single `ifaceN` hook, rather than one node with many hooks.
+
+The exporter reads the enumeration from **`api/diagnostics/interface/get_interface_config`**,
+which returns a JSON object keyed by device and reproduces `ifinfo` order exactly. That
+ordering is the only thing that decides an index. Interface metadata - names, addresses,
+WAN flags, VLAN parents - still comes from `api/interfaces/overview/interfaces_info` and
+is joined onto the enumeration **by device name, never by position**. A device in the
+enumeration that the metadata does not know (`pfsync0` is the common one) still occupies
+its slot and falls back to labelling itself with its device name, which is what keeps
+every later index correct.
+
+That split exists because the alternative was tried and was wrong. The map used to be
+derived by counting `interfaces_info` rows, which **omits `pfsync0`** - 15 rows where the
+kernel has 16 - so every index from 10 upward came out one too low. On the reference box
+that put 93% of measured NetFlow byte volume under the wrong interface (index 15,
+`pppoe0`, the PPPoE WAN, labelled as the interface belonging to index 16) and left a
+further 0.9% with an empty label, for months, with every health metric reading clean.
+
+So the guards matter more here than the mechanism:
 
 - an index that resolves to nothing yields an **empty** `interface` label and
   increments `opnsense_flow_ifindex_unmapped_total` - a wrong interface name is worse
   than a missing one;
+- `opnsense_flow_ifindex_source_disagreements` cross-checks the enumeration two ways.
+  `reason="stated_index"` counts devices where the ifIndex the API states differs from
+  the position we derived, which is what a destroyed-and-recreated interface looks like
+  (`pppoe0` on every PPPoE reconnect keeps its stated index but is re-appended to the end
+  of the list). `reason="unlisted_device"` counts interfaces the box reports that the
+  enumeration does not contain at all. Either one non-zero means every label is suspect;
 - `--flow.netflow.ifindex-map` pins any index outright, and
   `opnsense_flow_ifindex_conflicts` reports how many of your pins disagree with the
-  derivation. Non-zero means the indices you did *not* pin are suspect;
+  derivation. Non-zero means the indices you did *not* pin are suspect. Unlisted indices
+  keep using the derivation, so pin every index that carries traffic:
+
+  ```
+  --flow.netflow.ifindex-map=1=ixl0,2=ixl1,7=lo0,15=pppoe0,16=tailscale0
+  ```
+
 - `opnsense_flow_ifindex_map_age_seconds` tracks the map's freshness, which is a
-  correctness signal here rather than a staleness nuisance.
+  correctness signal here rather than a staleness nuisance. On a failed fetch or a
+  tripped guard the exporter **keeps the last good map** and lets the age rise. It never
+  falls back to the old row-counting derivation.
+
+The enumeration is re-read hourly, and immediately on either of two triggers: an
+interface appearing that the enumeration does not contain, or an ifIndex arriving that
+the map cannot resolve. The second is rate-limited, because the NetFlow socket is
+unauthenticated and an unbounded trigger there would let any sender drive the firewall's
+API load.
+
+The resolved map is rendered on the operator console's **ifIndex** tab, so
+`index → device → name` can be read straight down against `ifinfo` output without
+decoding a capture.
 
 ### What `interface` means on this lane
 

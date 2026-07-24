@@ -2,6 +2,7 @@ package flow
 
 import (
 	"net/netip"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -33,26 +34,38 @@ const vlanInfix = "_vlan"
 // Nothing about it is stable: adding or removing any interface renumbers every
 // interface after it, silently remapping historical series.
 //
-// # Why this is a best effort
+// # Where the enumeration comes from, and where it must not come from
 //
-// The map is derived by replaying that same enumeration over the interface list
-// the OPNsense API returns, in API order. The API is NOT GUARANTEED to reproduce
-// ifinfo's ordering — in particular it may omit unassigned kernel interfaces,
-// which would shift every index from that point on. So:
+// The ordering is the box's own `ifinfo` device list, fetched from
+// api/diagnostics/interface/get_interface_config, whose JSON key order
+// reproduces it exactly. Nothing else decides an index.
+//
+// It used to be derived by counting the rows of the interface OVERVIEW endpoint,
+// which is a different list: on the reference box it returns 15 rows where the
+// kernel has 16, because it omits pfsync0. Every index from 10 up came out one
+// too low, and 93% of measured byte volume was attributed to the wrong interface
+// for months (#361). So interface METADATA — names, addresses, WAN flags, VLAN
+// parents — is joined onto the ordering BY DEVICE NAME, never by position, and a
+// device the metadata does not know still occupies its slot.
+//
+// The rest of the contract:
 //
 //   - An operator override wins OUTRIGHT for any index it names.
 //   - An index with no entry yields the ZERO Iface — an empty name, never a
 //     guessed one. A wrong interface label is worse than a missing one, because a
 //     missing one is visibly missing while a wrong one silently poisons a query.
-//   - Every unmapped lookup is counted, and every override that disagrees with the
-//     derivation is counted, so the disagreement is observable rather than silent.
+//   - Every unmapped lookup is counted, every override that disagrees with the
+//     derivation is counted, and every disagreement between the derived position
+//     and the index the API states is counted, so a wrong map is observable
+//     rather than silent.
 //
 // # Concurrency
 //
 // An IfMap is immutable after construction and is REBUILT AND SWAPPED, never
 // mutated, so any number of readers may use one concurrently with no locking.
-// UnmappedLookups is the single exception and is an atomic counter. Lookups
-// allocate nothing: they are map reads returning values.
+// The unmapped-lookup counter is the single exception; see IfMapCounters for why
+// it does not live here. Lookups allocate nothing: they are map reads returning
+// values.
 type IfMap struct {
 	byIndex map[uint32]Iface
 	wanAddr map[netip.Addr]Iface
@@ -63,11 +76,50 @@ type IfMap struct {
 	// name a parent the interface list itself never contained.
 	trunks map[string]bool
 
-	built      time.Time
-	overridden int
-	conflicts  int
+	// stated is the ifIndex the API states per device, and overriddenIdx is the
+	// set of indices the operator pinned. Both exist for Entries — the operator
+	// console has to show WHERE an entry came from, because this bug survived
+	// entirely on nothing ever displaying the mapping.
+	stated        map[string]uint32
+	overriddenIdx map[uint32]bool
 
+	built         time.Time
+	overridden    int
+	conflicts     int
+	disagreements int
+	unlisted      int
+
+	// ownCounters backs a map nobody attached shared counters to — tests, and the
+	// cold-start path before a Processor exists.
+	ownCounters IfMapCounters
+	counters    *IfMapCounters
+}
+
+// IfMapCounters holds the counters whose lifetime must OUTLIVE any one IfMap.
+//
+// This type exists because of a real, shipped bug. UnmappedLookups is the alarm
+// for "the enumeration moved and indices no longer resolve" — the entire class of
+// fault this map can suffer — and it lived as an atomic.Uint64 field on the IfMap
+// itself. main rebuilds the map every 60 seconds and swaps it in, so the counter
+// went back to zero every minute and a Prometheus counter that only ever counts
+// to a handful before resetting is indistinguishable from one that never fires.
+// It read 0 on a box where 0.9% of byte volume was landing on an index with no
+// entry (#361).
+//
+// The Processor owns one of these for the life of the process and attaches it to
+// every map it publishes.
+type IfMapCounters struct {
 	unmapped atomic.Uint64
+}
+
+// AttachCounters points the map at counters that survive a rebuild. It must be
+// called BEFORE the map is published to readers — Processor.SetIfMap does it — so
+// that it happens-before any concurrent lookup.
+func (m *IfMap) AttachCounters(c *IfMapCounters) {
+	if m == nil || c == nil {
+		return
+	}
+	m.counters = c
 }
 
 // IfMapStats is a point-in-time view of an IfMap, for metrics and the operator
@@ -79,48 +131,97 @@ type IfMapStats struct {
 	Overridden int
 	// Conflicts is how many of those overrides DISAGREED with what the derived
 	// enumeration produced for the same index (including an index the derivation
-	// never produced at all). A non-zero value means the API's interface list does
-	// not reproduce ifinfo order — the failure mode this map cannot detect on its
-	// own — and is the signal worth alerting on.
+	// never produced at all). A non-zero value means the ordering source does not
+	// reproduce ifinfo order and is the signal worth alerting on.
 	Conflicts int
+	// StatedIndexDisagreements is how many devices the API states an ifIndex for
+	// that differs from the position the ordering put them at. It is the guard on
+	// an ordering carried by JSON key order: agreement is silent, disagreement
+	// means something was destroyed and recreated and the enumeration has moved.
+	StatedIndexDisagreements int
+	// UnlistedDevices is how many devices the metadata knows that the ordering
+	// does not contain. A device with no slot can never be resolved from an
+	// ifIndex, so this is the ordering source going stale or wrong.
+	UnlistedDevices int
 	// UnmappedLookups is how many lookups found nothing and returned the zero Iface.
 	UnmappedLookups uint64
 }
 
-// BuildIfMap replays the netflow(8) interface enumeration over ifaces — which MUST
-// be in the order the OPNsense API returned them — assigning ifIndex 1 to the
-// first, 2 to the second and so on, then lets override replace any index outright.
+// IfaceEntry is one resolved ifIndex entry, for the operator console.
+//
+// Rendering the map is part of the fix rather than a convenience: the off-by-one
+// in #361 mislabelled 93% of byte volume for months, and it survived that long
+// because the only way to see the mapping was to decode a raw packet capture.
+type IfaceEntry struct {
+	Index      uint32
+	Device     string
+	Name       string
+	Overridden bool
+	// Stated is the ifIndex the API states for this device, 0 when it states
+	// none. Disagrees is Stated being non-zero and not equal to Index.
+	Stated    uint32
+	Disagrees bool
+}
+
+// IfMapInput is everything BuildIfMap needs. It is a struct rather than a
+// parameter list because Order and Ifaces are two different lists from two
+// different endpoints that are easy to transpose, and transposing them is
+// precisely the bug this replaced.
+type IfMapInput struct {
+	// Order is the box's interface devices in ifinfo order: element i is ifIndex
+	// i+1. This is THE enumeration. Empty means the fetch has not succeeded yet,
+	// and nothing is derived — callers must keep their previous map rather than
+	// publishing one built from nothing.
+	Order []string
+	// Ifaces carries interface metadata, joined onto Order BY DEVICE NAME. Its own
+	// order is never read; a row for a device absent from Order still contributes
+	// its VLAN parent and WAN addresses, and is counted in UnlistedDevices.
+	Ifaces []enrich.IfaceInfo
+	// Stated is device -> the ifIndex the API states for it. A cross-check only:
+	// it is a per-interface property the kernel assigns, while the netflow hook
+	// number is a POSITION in a list, and the two diverge once an interface is
+	// destroyed and recreated (pppoe0, on every PPPoE reconnect, keeps its index
+	// but is re-appended to the end of the list). rc.d/netflow follows the
+	// position, so the position wins and this only ever raises the alarm.
+	Stated map[string]uint32
+	// Override is the operator's --flow.netflow.ifindex-map, which wins outright.
+	Override map[uint32]string
+	// Built stamps the map for Age; pass the time the underlying data was fetched.
+	Built time.Time
+}
+
+// BuildIfMap replays the netflow(8) interface enumeration over in.Order,
+// assigning ifIndex 1 to the first device, 2 to the second and so on, joins
+// in.Ifaces onto it by device name, then lets in.Override replace any index
+// outright.
 //
 // An override value may name a known device ("igb0") or a known interface name
 // ("WAN2"), in which case the index resolves to that whole interface; anything else
 // is taken verbatim as the interface's name, because an operator asserting a label
 // we cannot corroborate is still an assertion, not a guess of ours. A blank value
 // states nothing and is ignored.
-//
-// built stamps the map for Age; pass the time the underlying snapshot was fetched.
-func BuildIfMap(ifaces []enrich.IfaceInfo, override map[uint32]string, built time.Time) *IfMap {
+func BuildIfMap(in IfMapInput) *IfMap {
 	m := &IfMap{
-		byIndex: make(map[uint32]Iface, len(ifaces)+1+len(override)),
-		wanAddr: make(map[netip.Addr]Iface),
-		wanDev:  make(map[string]bool),
-		parents: make(map[string]string),
-		trunks:  make(map[string]bool),
-		built:   built,
+		byIndex:       make(map[uint32]Iface, len(in.Order)+1+len(in.Override)),
+		wanAddr:       make(map[netip.Addr]Iface),
+		wanDev:        make(map[string]bool),
+		parents:       make(map[string]string),
+		trunks:        make(map[string]bool),
+		stated:        in.Stated,
+		overriddenIdx: make(map[uint32]bool, len(in.Override)),
+		built:         in.Built,
 	}
+	m.counters = &m.ownCounters
 
 	// ifIndex 0 is not part of the enumeration: it is the firewall itself.
 	m.byIndex[0] = Iface{Name: LocalOriginName}
 
-	byDevice := make(map[string]Iface, len(ifaces))
-	byName := make(map[string]Iface, len(ifaces))
-
-	for i, info := range ifaces {
-		// The counter advances for EVERY row, mapped or not: a row we cannot name
-		// still occupied a slot in the box's own enumeration, and skipping it would
-		// shift every index after it.
-		idx := uint32(i + 1) //nolint:gosec // bounded by len(ifaces); an interface count cannot overflow uint32
-		iface := Iface{Device: info.Device, Name: info.Name, Index: idx}
-
+	// Metadata first, keyed by device. Every row contributes its topology whether
+	// or not the ordering lists it — a VLAN child's parent and a WAN's addresses
+	// are facts about the interface, not about its slot.
+	meta := make(map[string]enrich.IfaceInfo, len(in.Ifaces))
+	byName := make(map[string]Iface, len(in.Ifaces))
+	for _, info := range in.Ifaces {
 		if parent := parentOfIface(info); parent != "" {
 			m.parents[info.Device] = parent
 			m.trunks[parent] = true
@@ -128,28 +229,62 @@ func BuildIfMap(ifaces []enrich.IfaceInfo, override map[uint32]string, built tim
 		if info.Device == "" {
 			continue
 		}
+		meta[info.Device] = info
+		if info.IsWAN {
+			m.wanDev[info.Device] = true
+		}
+	}
+
+	byDevice := make(map[string]Iface, len(in.Order))
+	listed := make(map[string]bool, len(in.Order))
+
+	for i, device := range in.Order {
+		// The counter advances for EVERY device, known to the metadata or not: a
+		// device the metadata omits still occupied a slot in the box's own
+		// enumeration, and skipping it shifts every index after it. That is
+		// exactly what pfsync0 did in #361.
+		idx := uint32(i + 1) //nolint:gosec // bounded by len(in.Order); an interface count cannot overflow uint32
+		if device == "" {
+			continue
+		}
+		listed[device] = true
+		if stated, ok := in.Stated[device]; ok && stated != 0 && stated != idx {
+			m.disagreements++
+		}
+
+		info := meta[device]
+		iface := Iface{Device: device, Name: info.Name, Index: idx}
 		m.byIndex[idx] = iface
-		byDevice[info.Device] = iface
+		byDevice[device] = iface
 		if info.Name != "" {
 			if _, dup := byName[info.Name]; !dup {
 				byName[info.Name] = iface
 			}
 		}
-		if info.IsWAN {
-			m.wanDev[info.Device] = true
-			for _, a := range info.Addrs {
-				a = a.Unmap()
-				if !a.IsValid() {
-					continue
-				}
-				if _, dup := m.wanAddr[a]; !dup {
-					m.wanAddr[a] = iface
-				}
+		for _, a := range info.Addrs {
+			if !info.IsWAN {
+				break
+			}
+			a = a.Unmap()
+			if !a.IsValid() {
+				continue
+			}
+			if _, dup := m.wanAddr[a]; !dup {
+				m.wanAddr[a] = iface
 			}
 		}
 	}
 
-	for idx, raw := range override {
+	// A device the metadata knows but the ordering does not can never be reached
+	// from an ifIndex. That is the ordering source being stale or wrong, which is
+	// the failure this map cannot otherwise detect, so it is counted.
+	for device := range meta {
+		if !listed[device] {
+			m.unlisted++
+		}
+	}
+
+	for idx, raw := range in.Override {
 		value := strings.TrimSpace(raw)
 		if value == "" {
 			continue // states nothing; leave the derivation alone
@@ -170,6 +305,7 @@ func BuildIfMap(ifaces []enrich.IfaceInfo, override map[uint32]string, built tim
 			m.conflicts++
 		}
 		m.byIndex[idx] = resolved
+		m.overriddenIdx[idx] = true
 		m.overridden++
 	}
 
@@ -221,7 +357,7 @@ func (m *IfMap) Iface(idx uint32) Iface {
 	if iface, ok := m.byIndex[idx]; ok {
 		return iface
 	}
-	m.unmapped.Add(1)
+	m.counters.unmapped.Add(1)
 	return Iface{}
 }
 
@@ -307,9 +443,44 @@ func (m *IfMap) Stats() IfMapStats {
 		return IfMapStats{}
 	}
 	return IfMapStats{
-		Entries:         len(m.byIndex),
-		Overridden:      m.overridden,
-		Conflicts:       m.conflicts,
-		UnmappedLookups: m.unmapped.Load(),
+		Entries:                  len(m.byIndex),
+		Overridden:               m.overridden,
+		Conflicts:                m.conflicts,
+		StatedIndexDisagreements: m.disagreements,
+		UnlistedDevices:          m.unlisted,
+		UnmappedLookups:          m.counters.unmapped.Load(),
 	}
+}
+
+// Entries renders the whole resolved map, sorted by index, for the operator
+// console. It allocates, so it is a page-render path and never a lookup path.
+func (m *IfMap) Entries() []IfaceEntry {
+	if m == nil {
+		return nil
+	}
+	out := make([]IfaceEntry, 0, len(m.byIndex))
+	for idx, iface := range m.byIndex {
+		e := IfaceEntry{
+			Index:      idx,
+			Device:     iface.Device,
+			Name:       iface.Name,
+			Overridden: m.overriddenIdx[idx],
+		}
+		if stated, ok := m.stated[iface.Device]; ok && stated != 0 {
+			e.Stated = stated
+			e.Disagrees = stated != idx
+		}
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
+	return out
+}
+
+// BuiltAt reports when the map's underlying data was fetched. Zero for an
+// unstamped map.
+func (m *IfMap) BuiltAt() time.Time {
+	if m == nil {
+		return time.Time{}
+	}
+	return m.built
 }

@@ -231,6 +231,7 @@ type flowCollector struct {
 	ifIndexConflicts *prometheus.Desc
 	ifIndexAge       *prometheus.Desc
 	ifIndexUnmapped  *prometheus.Desc
+	ifIndexGuard     *prometheus.Desc
 
 	corrEntries *prometheus.Desc
 	corrEmitted *prometheus.Desc
@@ -537,6 +538,16 @@ func (c *flowCollector) registerNetflow() {
 			"that stops being refreshed is therefore a correctness problem, not a staleness nuisance.",
 		nil,
 	)
+	c.ifIndexGuard = buildPrometheusDesc(c.subsystem, "ifindex_source_disagreements",
+		"Cross-checks that failed on the derived ifIndex enumeration. "+
+			"reason=\"stated_index\" counts devices where the ifIndex the API states differs from the "+
+			"position the enumeration put them at, which means an interface was destroyed and "+
+			"recreated and every index above it may have moved. reason=\"unlisted_device\" counts "+
+			"interfaces the box reports that the enumeration does not contain at all, so they can "+
+			"never be resolved from an ifIndex. Either one non-zero means the labels on every NetFlow "+
+			"series are suspect - the derivation was measurably wrong this way for months (#361).",
+		reasonLabel,
+	)
 	c.ifIndexUnmapped = buildPrometheusDesc(c.subsystem, "ifindex_unmapped_total",
 		"ifIndex lookups that resolved to no interface. These records are still counted, with an "+
 			"EMPTY interface label - a wrong interface name is worse than a missing one. A rising rate "+
@@ -573,6 +584,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ifIndexConflicts
 	ch <- c.ifIndexAge
 	ch <- c.ifIndexUnmapped
+	ch <- c.ifIndexGuard
 	ch <- c.corrEntries
 	ch <- c.corrEmitted
 	ch <- c.corrMatched
@@ -715,4 +727,6 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	gauge(c.ifIndexConflicts, float64(nf.IfMap.Conflicts))
 	gauge(c.ifIndexAge, nf.IfMapAge.Seconds())
 	counter(c.ifIndexUnmapped, nf.IfMap.UnmappedLookups)
+	gauge(c.ifIndexGuard, float64(nf.IfMap.StatedIndexDisagreements), "stated_index")
+	gauge(c.ifIndexGuard, float64(nf.IfMap.UnlistedDevices), "unlisted_device")
 }

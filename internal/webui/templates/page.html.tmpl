@@ -64,6 +64,11 @@
   th.sortable{cursor:pointer;user-select:none}
   tr:last-child td{border-bottom:0}
   tr.bad>td{background:rgba(248,81,73,.07)}
+  /* ifIndex rows: a contradicted mapping is the one thing an operator must not
+     scan past, so it gets the same red tint as a failure; an operator override
+     is merely notable, so it gets a neutral accent tint. */
+  tr.ifx-disagrees>td{background:rgba(248,81,73,.10)}
+  tr.ifx-override>td{background:rgba(68,147,248,.07)}
   tr.err-row td{color:var(--err);font-family:var(--mono);font-size:12px}
   .mono{font-family:var(--mono);font-size:12px;overflow-wrap:anywhere}
   .muted{color:var(--muted)} .empty{color:var(--muted);text-align:center;padding:16px}
@@ -127,6 +132,7 @@
   <button class="tab-btn" data-target="api">API</button>
   <button class="tab-btn" data-target="cardinality">Cardinality</button>
   {{if not .DisableDevices}}<button class="tab-btn" data-target="devices">Devices</button>{{end}}
+  <button class="tab-btn" data-target="ifindex">ifIndex</button>
   {{if not .DisableConfig}}<button class="tab-btn" data-target="config">Config</button>{{end}}
 </nav>
 <main>
@@ -282,6 +288,25 @@
   {{end}}
 {{end}}
 
+  <!-- ═══ IFINDEX ═══ -->
+  <section data-tab="ifindex">
+    <p class="note" style="color:var(--muted)">A NetFlow <code>ifIndex</code> is a <strong>1-based position over <code>/usr/local/sbin/ifinfo</code> output</strong>, which OPNsense turns into the netgraph hook name <code>ifaceN</code>. It is not an OS or SNMP index and nothing pins it: adding or removing <em>any</em> interface renumbers every interface after it. Compare this table straight down against <code>ifinfo</code> on the firewall after any interface change — the exporter can only derive this mapping, so a silent divergence here mislabels every flow. Loads on demand — not on the auto-refresh poll. <a href="#" id="ifxReload">reload</a></p>
+    <div id="ifxError" class="reasons" style="display:none;border:0;padding:0;margin-bottom:8px"></div>
+    <div class="cards" style="margin-bottom:12px">
+      <div class="card"><div class="k">Entries</div><div class="v" id="ifxEntries">—</div><div class="sub">resolved ifIndex rows</div></div>
+      <div class="card"><div class="k">Overridden</div><div class="v" id="ifxOverridden">—</div><div class="sub">from the operator override</div></div>
+      <div class="card"><div class="k">Conflicts</div><div class="v" id="ifxConflicts">—</div><div class="sub">overrides that contradicted the derivation</div></div>
+      <div class="card"><div class="k">Disagreements</div><div class="v" id="ifxDisagreements">—</div><div class="sub">rows the API states a different index for</div></div>
+      <div class="card"><div class="k">Unmapped lookups</div><div class="v" id="ifxUnmapped">—</div><div class="sub">flows whose ifIndex resolved to nothing</div></div>
+      <div class="card"><div class="k">Built</div><div class="v" id="ifxBuilt">—</div><div class="sub">when the map was last resolved</div></div>
+    </div>
+    <input class="filter" type="text" placeholder="Filter interfaces…" oninput="filterTable(this,'ifxTable')">
+    <div class="scroll"><table id="ifxTable">
+      <thead><tr><th class="num">ifIndex</th><th>Device</th><th>Description</th><th>Source</th><th class="num">API states</th><th>Notes</th></tr></thead>
+      <tbody id="ifxBody"><tr><td colspan="6" class="empty">Open this tab to load the resolved ifIndex map.</td></tr></tbody>
+    </table></div>
+  </section>
+
   <!-- ═══ CONFIG ═══ -->
   {{if not .DisableConfig}}
   <section data-tab="config">
@@ -313,7 +338,7 @@
 </footer>
 <script>
 var SVGNS='http://www.w3.org/2000/svg';
-var lastOkMs=Date.now(), pollTimer=null, paused=false, lastData=null, devicesLoaded=false;
+var lastOkMs=Date.now(), pollTimer=null, paused=false, lastData=null, devicesLoaded=false, ifIndexLoaded=false;
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
 function showTab(id){
@@ -323,6 +348,7 @@ function showTab(id){
   for(var j=0;j<btns.length;j++){ btns[j].classList.toggle('active', btns[j].getAttribute('data-target')===id); }
   if(found && location.hash!=='#'+id){ history.replaceState(null,'','#'+id); }
   if(id==='devices' && !devicesLoaded){ loadDevices(); }
+  if(id==='ifindex' && !ifIndexLoaded){ loadIfIndex(); }
   redrawCharts();
 }
 function initTabs(){
@@ -475,6 +501,46 @@ function loadDevices(){
   }).catch(function(e){ devicesLoaded=false; tb.textContent=''; tb.appendChild(el('tr')).appendChild(el('td',{'colspan':'7','class':'empty'},'Failed to load: '+e.message)); });
 }
 
+// ── ifIndex map (lazy) ─────────────────────────────────────────────────────
+// The endpoint 404s when the NetFlow flow lane is off. That is a statement about
+// configuration, not a failure, so it gets its own message — "failed to load"
+// would send an operator hunting a fault that isn't there.
+function ifxEmpty(msg){ var tb=document.getElementById('ifxBody'); if(!tb) return; tb.textContent=''; tb.appendChild(el('tr')).appendChild(el('td',{'colspan':'6','class':'empty'},msg)); }
+function loadIfIndex(){
+  var tb=document.getElementById('ifxBody'); if(!tb) return;
+  ifxEmpty('Loading…');
+  fetch('/api/ifindex.json',{cache:'no-store'}).then(function(r){
+    if(r.status===404){ ifIndexLoaded=true; return null; }
+    if(!r.ok) throw new Error('status '+r.status);
+    return r.json();
+  }).then(function(v){
+    var err=document.getElementById('ifxError');
+    if(v===null){ if(err) err.style.display='none'; ifxEmpty('NetFlow is not enabled, so there is no ifIndex map to resolve.'); return; }
+    ifIndexLoaded=true;
+    if(err) err.style.display='none';
+    setText('ifxEntries', v.Entries); setText('ifxOverridden', v.Overridden);
+    setText('ifxConflicts', v.Conflicts); setText('ifxDisagreements', v.Disagreements);
+    setText('ifxUnmapped', v.Unmapped);
+    var b=v.Built?new Date(v.Built):null; setText('ifxBuilt', (b && !isNaN(b))?b.toLocaleTimeString():'—');
+    if(v.Disagreements>0 && err){ err.style.display=''; err.textContent='⚠ '+v.Disagreements+' interface(s) resolve to an index the firewall states differently — check the highlighted rows against ifinfo before trusting any per-interface flow series.'; }
+    var rows=v.Rows||[];
+    tb.textContent='';
+    if(!rows.length){ ifxEmpty('No ifIndex entries resolved yet.'); return; }
+    rows.forEach(function(x){
+      var tr=el('tr');
+      if(x.Disagrees) tr.className='ifx-disagrees';
+      else if(x.Source==='override') tr.className='ifx-override';
+      tr.appendChild(el('td',{'class':'num'},String(x.Index)));
+      tr.appendChild(el('td',{'class':'mono'},x.Device||'—'));
+      tr.appendChild(el('td',null,x.Name||'—'));
+      var sTd=el('td'); sTd.appendChild(el('span',{'class':'badge'+(x.Source==='override'?' badge-warn':'')},x.Source||'—')); tr.appendChild(sTd);
+      tr.appendChild(el('td',{'class':'num'}, x.Stated?String(x.Stated):'—'));
+      var nTd=el('td'); if(x.Disagrees){ nTd.appendChild(el('span',{'class':'badge badge-bad'},'disagrees')); } else { nTd.appendChild(el('span',{'class':'muted'},'—')); } tr.appendChild(nTd);
+      tb.appendChild(tr);
+    });
+  }).catch(function(e){ ifIndexLoaded=false; ifxEmpty('Failed to load: '+e.message); });
+}
+
 // ── Poll + patch ──────────────────────────────────────────────────────────
 function refresh(){
   fetch('/api/status.json',{cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('status '+r.status); return r.json(); }).then(function(d){
@@ -505,6 +571,7 @@ function tickFreshness(){ setText('updatedAgo', relMs(lastOkMs)); var b=document
   var p=document.getElementById('pauseBtn'); if(p) p.addEventListener('click',togglePause);
   var rn=document.getElementById('refreshNow'); if(rn) rn.addEventListener('click',function(ev){ ev.preventDefault(); refresh(); });
   var dr=document.getElementById('devReload'); if(dr) dr.addEventListener('click',function(ev){ ev.preventDefault(); devicesLoaded=false; loadDevices(); });
+  var ir=document.getElementById('ifxReload'); if(ir) ir.addEventListener('click',function(ev){ ev.preventDefault(); ifIndexLoaded=false; loadIfIndex(); });
   window.addEventListener('resize', redrawCharts);
   refresh(); startPolling(); setInterval(tickFreshness,1000);
 })();

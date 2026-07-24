@@ -2,6 +2,7 @@ package enrich
 
 import (
 	"net/netip"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -232,5 +233,52 @@ func TestScopeSaysNothingWithoutTopology(t *testing.T) {
 	// With topology, it answers normally.
 	if got := testSnapshot().Scope("8.8.8.8"); got != "remote" {
 		t.Errorf("warm snapshot Scope(8.8.8.8) = %q, want remote", got)
+	}
+}
+
+// clone() copies fields by hand, so a field added to Snapshot and forgotten here
+// does not fail to compile — it reverts to zero the next time any OTHER table
+// refreshes. That is minutes later and in a different code path, so the table
+// that owns the field passes its own tests and the loss only shows up in
+// production. IfaceOrder was added and dropped exactly this way (#361).
+//
+// Every field is set to a distinguishable non-zero value by reflection, so this
+// covers fields that do not exist yet.
+func TestSnapshotCloneCarriesEveryField(t *testing.T) {
+	src := &Snapshot{}
+	v := reflect.ValueOf(src).Elem()
+	typ := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		f := v.Field(i)
+		if !f.CanSet() {
+			t.Fatalf("field %s is unexported; this test cannot cover it", typ.Field(i).Name)
+		}
+		switch f.Kind() {
+		case reflect.Map:
+			f.Set(reflect.MakeMapWithSize(f.Type(), 1))
+			key := reflect.New(f.Type().Key()).Elem()
+			val := reflect.New(f.Type().Elem()).Elem()
+			if key.Kind() == reflect.String {
+				key.SetString("probe")
+			}
+			f.SetMapIndex(key, val)
+		case reflect.Slice:
+			f.Set(reflect.MakeSlice(f.Type(), 1, 1))
+		default:
+			t.Fatalf("field %s has kind %s, which this test does not know how to fill",
+				typ.Field(i).Name, f.Kind())
+		}
+	}
+
+	got := reflect.ValueOf(src.clone()).Elem()
+	for i := 0; i < got.NumField(); i++ {
+		name := typ.Field(i).Name
+		if name == "LastRefresh" {
+			continue // deliberately rebuilt rather than shared
+		}
+		if got.Field(i).Len() == 0 {
+			t.Errorf("clone() dropped Snapshot.%s; add it to clone()", name)
+		}
 	}
 }

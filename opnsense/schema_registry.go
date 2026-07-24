@@ -77,6 +77,7 @@ var schemaRegistry = map[EndpointName]any{
 	"idsRulesets":                   idsRulesetsResponse{},
 	"idsSearchInstalledRules":       idsInstalledRulesResponse{},
 	"interfaces":                    interfaceResponse{},
+	"interfaceConfig":               interfaceConfigResponse{},
 	"interfacesOverview":            interfacesOverviewResponse{},
 	"lldpdNeighbors":                lldpdNeighborResponse{},
 	"ipsecPhase1":                   ipsecSearchResponse{},

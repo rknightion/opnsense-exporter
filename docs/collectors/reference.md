@@ -26,7 +26,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 10 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
-| Flow Volume | flow | 41 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
+| Flow Volume | flow | 42 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
 | HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |

@@ -1,0 +1,112 @@
+{
+  "endpoint": "interfaceConfig",
+  "method": "GET",
+  "path": "api/diagnostics/interface/get_interface_config",
+  "topLevelKind": "object",
+  "fields": [
+    {
+      "path": "*",
+      "kind": "object"
+    },
+    {
+      "path": "*.capabilities",
+      "kind": "array"
+    },
+    {
+      "path": "*.capabilities[]",
+      "kind": "string"
+    },
+    {
+      "path": "*.device",
+      "kind": "string"
+    },
+    {
+      "path": "*.flags",
+      "kind": "array"
+    },
+    {
+      "path": "*.flags[]",
+      "kind": "string"
+    },
+    {
+      "path": "*.ipv4",
+      "kind": "array"
+    },
+    {
+      "path": "*.ipv4[]",
+      "kind": "object"
+    },
+    {
+      "path": "*.ipv4[].ipaddr",
+      "kind": "string"
+    },
+    {
+      "path": "*.ipv6",
+      "kind": "array"
+    },
+    {
+      "path": "*.ipv6[]",
+      "kind": "object"
+    },
+    {
+      "path": "*.ipv6[].ipaddr",
+      "kind": "string"
+    },
+    {
+      "path": "*.is_physical",
+      "kind": "boolean"
+    },
+    {
+      "path": "*.macaddr",
+      "kind": "string"
+    },
+    {
+      "path": "*.macaddr_hw",
+      "kind": "string"
+    },
+    {
+      "path": "*.media",
+      "kind": "string"
+    },
+    {
+      "path": "*.media_raw",
+      "kind": "string"
+    },
+    {
+      "path": "*.mtu",
+      "kind": "numeric"
+    },
+    {
+      "path": "*.nd6",
+      "kind": "array"
+    },
+    {
+      "path": "*.nd6[]",
+      "kind": "string"
+    },
+    {
+      "path": "*.options",
+      "kind": "array"
+    },
+    {
+      "path": "*.options[]",
+      "kind": "string"
+    },
+    {
+      "path": "*.sfp",
+      "kind": "any"
+    },
+    {
+      "path": "*.status",
+      "kind": "string"
+    },
+    {
+      "path": "*.supported_media",
+      "kind": "array"
+    },
+    {
+      "path": "*.supported_media[]",
+      "kind": "string"
+    }
+  ]
+}
