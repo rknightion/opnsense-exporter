@@ -41,10 +41,12 @@ graph TD
     subgraph "internal/collector/"
         D
         D1[collector.go]
+        D6[scheduler.go]
+        D7[snapshot.go]
+        D8[interval_tiers.go]
         D2[arp_table.go]
         D3[gateways.go]
-        D4[firewall.go]
-        D5[... per-subsystem]
+        D4[... per-subsystem]
     end
 
     subgraph "internal/options/"
@@ -80,14 +82,15 @@ type CollectorInstance interface {
     Register(namespace, instance string, log *slog.Logger)
     Name() string
     Describe(ch chan<- *prometheus.Desc)
-    Update(client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError
+    Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError
 }
 ```
 
 **Key design decisions:**
 
 - **Auto-registration via `init()`** -- Each sub-collector file has an `init()` function that appends itself to the global `collectorInstances` slice. No central registry to maintain.
-- **Concurrent collection** -- On each scrape, `Collector.Collect()` launches all sub-collectors as goroutines via a `sync.WaitGroup`, collecting metrics in parallel.
+- **Poll/serve split (#336)** -- Sub-collectors do not run on the scrape. An internal poll scheduler (`scheduler.go`) runs each collector's `Update()` on its own timer into an in-memory snapshot (`snapshot.go`); serving `/metrics` replays that snapshot and makes no API call. See [Data flow](#data-flow).
+- **Per-collector poll tiers** -- Each collector's timer follows its data-volatility tier (`interval_tiers.go`): fast 15s, medium 60s (default), slow 5m, cold 15m. An operator overrides one with `--collector.poll-interval-override=<collector>=<dur>`.
 - **Option pattern** -- Sub-collectors are removed or configured via functional options (e.g., `WithoutArpTableCollector()`, `WithFirewallRulesDetails()`).
 
 ### `internal/options/` -- Configuration
@@ -102,55 +105,64 @@ All environment variables use the `OPNSENSE_EXPORTER_` prefix, except for `OPS_A
 
 ## Data flow
 
+Since #336 the API poll is decoupled from the Prometheus scrape. A background scheduler polls each subsystem on its own timer into an in-memory snapshot; a scrape reads that snapshot back. The two halves run independently.
+
 ```mermaid
 sequenceDiagram
-    participant P as Prometheus
-    participant H as HTTP Server
-    participant C as Collector
-    participant S as Sub-collectors
     participant A as OPNsense API
+    participant Sched as Poll scheduler
+    participant St as Snapshot store
+    participant C as Collector
+    participant H as HTTP Server
+    participant P as Prometheus
 
-    P->>H: GET /metrics
-    H->>C: Collect(ch)
-    C->>A: Health check
-    A-->>C: System status
-
-    par Concurrent collection
-        C->>S: Update(client, ch) [goroutine 1]
-        S->>A: FetchGateways()
-        A-->>S: JSON response
-        S-->>C: prometheus.Metric
-
-        C->>S: Update(client, ch) [goroutine 2]
-        S->>A: FetchInterfaces()
-        A-->>S: JSON response
-        S-->>C: prometheus.Metric
-
-        C->>S: Update(client, ch) [goroutine N]
-        S->>A: Fetch...()
-        A-->>S: JSON response
-        S-->>C: prometheus.Metric
+    rect rgb(240, 244, 255)
+        note over Sched,St: Poll loop (per-collector timers, background)
+        Sched->>A: Health check (global interval)
+        A-->>Sched: System status → health gauges
+        Sched->>A: FetchGateways() [gateways timer, 15s]
+        A-->>Sched: JSON → prometheus.Metric buffer
+        Sched->>St: put("gateways", metrics, duration, ok)
+        Sched->>A: FetchFirmware() [firmware timer, 15m]
+        A-->>Sched: JSON → prometheus.Metric buffer
+        Sched->>St: put("firmware", metrics, duration, ok)
     end
 
-    C->>C: WaitGroup.Wait()
-    C->>C: Increment scrape counter
-    C-->>H: All metrics collected
-    H-->>P: text/plain metrics
+    rect rgb(240, 255, 244)
+        note over C,P: Serve path (per scrape, no API call)
+        P->>H: GET /metrics
+        H->>C: Collect(ch)
+        C->>C: emitHealth() from last poll
+        C->>St: replay every enabled collector's buffered metrics
+        St-->>C: stored prometheus.Metric
+        C->>C: emit per-collector poll metadata + scrape counter
+        C-->>H: metrics
+        H-->>P: text/plain metrics
+    end
 ```
 
-### Scrape lifecycle
+### Poll lifecycle
 
-1. Prometheus sends `GET /metrics`.
-2. The `Collector.Collect()` method acquires a mutex and runs a health check against the OPNsense system status API.
-3. The health check populates `opnsense_up` (API reachability), `opnsense_system_status_code`, the per-subsystem `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the health-check payload reports, e.g. disk space, root lock, plugin overrides, and anything else beyond the two dedicated gauges). `opnsense_up` is 0 only when the API call itself fails; a reachable but degraded box stays `opnsense_up=1`.
-4. All enabled sub-collectors are launched concurrently as goroutines **regardless of the health-check outcome**. A failed health check sets `opnsense_up=0` but does not stop the sub-collectors.
-5. Each sub-collector calls its `Update()` method, which invokes one or more `Fetch*()` methods on the API client and emits metrics to the shared channel.
-6. The main collector waits for all goroutines to complete, then increments the scrape counter and emits endpoint error counters.
+`StartPolling` launches one goroutine per enabled collector plus a health goroutine, each on its own timer (its data-volatility tier, jittered at startup to spread the cold-start herd). A shared semaphore caps concurrent API calls at `min(GOMAXPROCS, 8)` so a box with many collectors is never dialled by dozens of pollers at once.
+
+1. A collector's timer fires. If the last health poll found the box unreachable, the poll is skipped and the previous snapshot entry is retained (#127).
+2. Otherwise the collector's `Update()` runs under the concurrency cap and the per-poll timeout (`--exporter.max-scrape-duration`, now a per-poll bound), invoking one or more `Fetch*()` methods and emitting metrics into a buffer.
+3. The buffer, its duration, and its success flag are stored under the collector's name (`snapshot.put`), replacing that collector's previous entry.
+4. The health goroutine polls the system status API on the global interval and sets the persistent health gauges: `opnsense_up` (API reachability), `opnsense_system_status_code`, the `opnsense_firewall_status` / `opnsense_crash_reporter_status` gauges, and `opnsense_system_subsystem_status_code` (one series per subsystem the payload reports — disk space, root lock, plugin overrides, and anything beyond the two dedicated gauges). A transport-level failure flags the box unreachable, which pauses the collector polls until it recovers.
+
+### Serve lifecycle
+
+1. Prometheus sends `GET /metrics`. The request path makes **no** API call.
+2. `Collect()` re-emits the health gauges from the last health poll. `opnsense_up` is 0 only when that poll's API call failed; a reachable but degraded box stays `opnsense_up=1`.
+3. For every enabled collector it replays the metrics buffered in the snapshot, plus per-collector poll metadata: the configured interval, and once a collector has polled at least once, its last scrape duration, success flag, and last/next poll timestamps.
+4. It increments the scrape counter and emits the always-on exporter-meta metrics (scrapes, endpoint errors, API request counts, cache hits/misses).
+
+A scrape taken during cold start replays only the collectors that have already polled; readiness gates on `SnapshotWarm` so an ordered startup waits for a complete first snapshot rather than serving a partial one. The OTLP bridge replays the same snapshot the same way.
 
 ### Error handling
 
-- **Health check failure:** Sets `opnsense_up=0` (the only condition that does so). Sub-collectors still run; each surfaces its own reachability via `opnsense_exporter_endpoint_errors_total`.
-- **Sub-collector failure:** Logs the error, increments `opnsense_exporter_endpoint_errors_total` for the failing endpoint. Other sub-collectors continue unaffected.
+- **Health poll failure:** Sets `opnsense_up=0` (the only condition that does so). A transport-level failure also pauses collector polls until the box is reachable again; the last-good snapshot keeps serving in the meantime.
+- **Collector poll failure:** Logs the error, increments `opnsense_exporter_endpoint_errors_total` for the failing endpoint, and records `scrape_collector_success=0` for that collector. Its previous snapshot entry is replaced with the (empty or partial) result of the failed poll; other collectors are unaffected.
 - **Partial failure tolerance:** Several collectors (system info, mbuf memory stats, firewall interface hits, network diagnostics pfsync) are partially failure tolerant -- if an optional supplementary API call fails, the collector still emits metrics from successful calls.
 
 ## Metric namespace
