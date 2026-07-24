@@ -145,6 +145,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"netflowIsEnabled":              "api/diagnostics/netflow/isEnabled",
 		"netflowStatus":                 "api/diagnostics/netflow/status",
 		"netflowCacheStats":             "api/diagnostics/netflow/cacheStats",
+		"netflowGetConfig":              "api/diagnostics/netflow/getconfig",
 		"pfStatsInfo":                   "api/diagnostics/firewall/pf_statistics/info",
 		"pfStatsMemory":                 "api/diagnostics/firewall/pf_statistics/memory",
 		"pfStatsTimeouts":               "api/diagnostics/firewall/pf_statistics/timeouts",

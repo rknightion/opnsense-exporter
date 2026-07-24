@@ -1,5 +1,5 @@
 """
-NetFlow tab — all 7 opnsense_netflow_* metrics.
+NetFlow tab — all opnsense_netflow_* metrics.
 
 Tab is gated on has_netflow (sentinel: label_values(opnsense_netflow_active, __name__)).
 
@@ -8,6 +8,8 @@ Rows:
                           collectors_count stat
   2. NetFlow Cache      — cache_packets_total rate ts, cache_source_ip_addresses ts,
                           cache_destination_ip_addresses ts
+  3. Capture Coverage   — capture_expected vs capture_last_record_seconds ts,
+                          the two configured timeouts as stats
 
 Coverage:
   opnsense_netflow_enabled
@@ -17,6 +19,10 @@ Coverage:
   opnsense_netflow_cache_packets_total
   opnsense_netflow_cache_source_ip_addresses
   opnsense_netflow_cache_destination_ip_addresses
+  opnsense_netflow_capture_expected
+  opnsense_netflow_capture_last_record_seconds
+  opnsense_netflow_capture_active_timeout_seconds
+  opnsense_netflow_capture_inactive_timeout_seconds
 """
 
 from builder import Builder, sel, RATE, ENABLED
@@ -110,9 +116,64 @@ def build(b: Builder):
     )
 
     # ======================================================================
+    # Row 3 – Capture Coverage (#366)
+    # ======================================================================
+    # UNLIKE the cache metrics above, the capture_* metrics label `interface` with
+    # the configured DESCRIPTION (AAISP, LAN) — they come from the netflow config
+    # model, whose option-dict values are the descriptions. So these filter on
+    # $interface, NOT $device. Getting this backwards yields an empty panel.
+    desc_iface = 'interface=~"$interface"'
+    nf_capture = b.ts(
+        "Capture Coverage: Expected vs Last Record",
+        [(sel("opnsense_netflow_capture_expected", desc_iface), "expected: {{interface}}"),
+         (sel("opnsense_netflow_capture_last_record_seconds", desc_iface),
+          "last record (s): {{interface}}")],
+        unit="short",
+        w=16, h=8,
+        desc="expected=1 means the firewall is configured to capture NetFlow on that interface; "
+             "the paired series is how long since this exporter last received a record naming it. "
+             "The fault this makes expressible is \"configured to capture, exporting nothing\": "
+             "expected=1 with an age well past capture_active_timeout_seconds. No verdict is baked "
+             "in and no alert ships with it, deliberately — a guest VLAN can be legitimately silent "
+             "for hours, so the threshold is yours. An interface with expected=1 and NO age series "
+             "at all has produced nothing since the exporter started, which is also the normal state "
+             "for the first minutes after a restart; \"never seen\" and \"seen, then stopped\" are "
+             "different states and are deliberately not rendered the same. "
+             "READ THIS BEFORE TRUSTING A FRESH AGE: ng_netflow stamps the capturing hook's index on "
+             "one side of a flow and fills the OTHER side from a FIB lookup, so records captured on "
+             "the LAN hook also name the egress WAN. A fresh age therefore proves the interface is "
+             "being NAMED, not that its own capture hook is alive. Measured on the reference box "
+             "2026-07-24: netflow_pppoe0 had processed zero packets while 11 GB was attributed to "
+             "that interface. For per-hook liveness use the Cache Packets panel above — a "
+             "netflow_<device> node stuck at zero is the box's own view of a dead hook.",
+    )
+    nf_active_to = b.stat(
+        "Active Flow Timeout",
+        sel("opnsense_netflow_capture_active_timeout_seconds"),
+        unit="s",
+        w=4, h=4,
+        graph="none",
+        instant=True,
+        desc="The box's configured active timeout — how long a long-running flow sits in the cache "
+             "before ng_netflow exports it anyway. An interface cannot be judged silent until well "
+             "past this; derive your threshold from it rather than guessing.",
+    )
+    nf_inactive_to = b.stat(
+        "Inactive Flow Timeout",
+        sel("opnsense_netflow_capture_inactive_timeout_seconds"),
+        unit="s",
+        w=4, h=4,
+        graph="none",
+        instant=True,
+        desc="The box's configured inactive timeout — how long an idle flow waits before export. "
+             "The floor on how quickly any interface can be observed to have stopped.",
+    )
+
+    # ======================================================================
     # Assemble tab (gated on has_netflow)
     # ======================================================================
     b.tab("NetFlow", [
         b.row("NetFlow Status", [nf_enabled, nf_local, nf_active, nf_collectors]),
         b.row("NetFlow Cache", [nf_packets_ts, nf_src_ips_ts, nf_dst_ips_ts]),
+        b.row("Capture Coverage", [nf_capture, nf_active_to, nf_inactive_to]),
     ], present="has_netflow")

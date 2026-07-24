@@ -101,6 +101,7 @@ var schemaRegistry = map[EndpointName]any{
 	"netbirdServiceStatus":          serviceStatusResponse{},
 	"netbirdStatus":                 netbirdStatusObject{},
 	"netflowCacheStats":             map[string]netflowCacheEntry{},
+	"netflowGetConfig":              netflowGetConfigResponse{},
 	"netflowIsEnabled":              netflowIsEnabledResponse{},
 	"netflowStatus":                 netflowStatusResponse{},
 	"netisrStatistics":              netisrResponse{},

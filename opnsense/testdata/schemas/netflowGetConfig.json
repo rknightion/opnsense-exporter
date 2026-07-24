@@ -1,0 +1,43 @@
+{
+  "endpoint": "netflowGetConfig",
+  "method": "GET",
+  "path": "api/diagnostics/netflow/getconfig",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "netflow"
+  ],
+  "fields": [
+    {
+      "path": "netflow",
+      "kind": "object"
+    },
+    {
+      "path": "netflow.activeTimeout",
+      "kind": "any"
+    },
+    {
+      "path": "netflow.capture",
+      "kind": "object"
+    },
+    {
+      "path": "netflow.capture.interfaces",
+      "kind": "object"
+    },
+    {
+      "path": "netflow.capture.interfaces.*",
+      "kind": "object"
+    },
+    {
+      "path": "netflow.capture.interfaces.*.selected",
+      "kind": "any"
+    },
+    {
+      "path": "netflow.capture.interfaces.*.value",
+      "kind": "string"
+    },
+    {
+      "path": "netflow.inactiveTimeout",
+      "kind": "any"
+    }
+  ]
+}

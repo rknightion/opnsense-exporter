@@ -45,7 +45,11 @@ type FlowStore struct {
 	// opt-in per-host byte ranking (#353). Both are fed from every observed record, so
 	// they live beside the rollup; topTalkers is inert until Configure turns it on.
 	uniqueDests *flow.DistinctDests
-	topTalkers  *flow.TopTalkers
+	// lastSeen is when a NetFlow record was last attributed to each interface. It
+	// backs the "configured to capture, exporting nothing" signal (#366), which the
+	// netflow collector crosses with the box's own capture config.
+	lastSeen   *flow.LastSeen
+	topTalkers *flow.TopTalkers
 	// delta is §9's NF-vs-Zen byte-ratio histogram (#353). It is fed only from merged
 	// records at correlator-emit time (via ObserveDelta), never from the raw arrival
 	// path, so it stays empty — and the metric absent — unless both lanes correlate.
@@ -119,6 +123,7 @@ func newFlowStore(topN, maxKeys int) *FlowStore {
 	return &FlowStore{
 		rollup:      flow.NewRollup(topN, maxKeys),
 		uniqueDests: flow.NewDistinctDests(),
+		lastSeen:    flow.NewLastSeen(),
 		topTalkers:  flow.NewTopTalkers(),
 		delta:       flow.NewDeltaRatio(),
 	}
@@ -163,7 +168,12 @@ func (s *FlowStore) Observe(r flow.Record) {
 	s.rollup.Observe(r)
 	s.uniqueDests.Observe(r)
 	s.topTalkers.Observe(r)
+	s.lastSeen.Observe(r, time.Now())
 }
+
+// netflowLastSeen reports when a NetFlow record was last attributed to each
+// interface. Interfaces that have never produced one are absent, not zero.
+func (s *FlowStore) netflowLastSeen() map[string]time.Time { return s.lastSeen.Snapshot() }
 
 // ObserveDelta folds one merged record's source disagreement into the byte-ratio
 // histogram. main calls it from the correlator's emit path, NOT from Observe: the

@@ -272,6 +272,66 @@ therefore visible for internal traffic only, and the two lanes describe the same
 differently - Zenarmor keeps naming the VLAN child. This is a second reason, on top of
 the double-counting below, to pin `source` in every query.
 
+### Detecting an interface that is configured to export but exporting nothing
+
+A netflow capture hook can die while everything around it keeps reporting healthy. Observed
+on the reference box: a PPPoE WAN was bounced, the `ng_netflow` node for it survived but lost
+its `ifaceN` hook, and the box captured nothing on its primary WAN for the best part of an
+hour. The service read `running`, the export socket stayed connected, and
+`api/diagnostics/netflow/getconfig` still listed the interface as selected. From the
+exporter's side that is indistinguishable from an idle link - there is simply an **absence**,
+and absence is what a counter cannot speak about.
+
+The missing half is the **expected set**: which interfaces the firewall has been told to
+capture on. `opnsense_netflow_capture_expected{interface}` is that set, straight from the
+box's own netflow config - `1` for selected, `0` for listed-but-not-selected. The set is
+closed and small, so this adds no cardinality risk.
+
+Paired with it, `opnsense_netflow_capture_last_record_seconds{interface}` is how long since
+this exporter last received a record naming that interface. **It is a raw age, not a
+verdict.** No threshold is baked in and no alert ships with it, for two reasons the issue
+that drove this insisted on:
+
+- a genuinely idle interface is not a fault. A guest VLAN with nothing on it is legitimately
+  silent for hours, so the threshold has to be yours. Derive it from
+  `opnsense_netflow_capture_active_timeout_seconds`, which is the box's own configured active
+  flow timeout (1800s by default) - an interface cannot be judged silent until well past it;
+- **"never seen since start" and "seen, then stopped" are different states.** An interface
+  that has produced no record since the exporter started has **no age series at all**, rather
+  than a large number. Every interface is silent before its first record arrives, and
+  rendering that as a number would make a fresh boot look like a box-wide outage.
+
+So the fault reads as: `capture_expected == 1`, an age series **present**, and that age well
+past the active timeout.
+
+Both metrics come from the **netflow collector**, which is opt-in - without
+`--exporter.enable-netflow` neither is published, regardless of whether the receiver is running.
+
+#### What a fresh age does *not* prove
+
+`ng_netflow` stamps the capturing hook's index on **one** side of a flow and fills the other
+side from a **FIB lookup**. So a record captured on the LAN hook also names the egress WAN,
+and an interface can be named continuously while its own capture hook is producing nothing.
+
+This was measured directly on the reference box on 2026-07-24: `ngctl msg netflow_pppoe0:
+info` returned only its two timeouts - no packet or byte counters at all, meaning that node
+had processed nothing - while the exporter attributed 11 GB, 92% of all volume, to that
+interface over the same window. Every one of those records was captured by `netflow_ixl0` and
+the VLAN nodes, which named the WAN from a route lookup.
+
+A fresh age therefore proves the interface is being **named**, not that its hook is alive. It
+still catches the cases where nothing names it at all: the receiver losing its feed, the
+export target going wrong, netflow being stopped box-wide, or an interface dropping out of
+the capture set.
+
+For **per-hook** liveness, use the box's own view instead:
+`opnsense_netflow_cache_packets_total{interface="<device>"}`, one series per `ng_netflow`
+node. A node pinned at zero while its peers climb is the firewall itself saying that hook is
+dead. Note the label spaces differ and cannot be joined directly - the cache metrics are keyed
+by kernel **device** (`pppoe0`, `ixl0_vlan25`), the capture metrics by the configured
+**description** (`AAISP`, `CAM`). The operator console's **ifIndex** tab prints the
+correspondence.
+
 ## The label set, and why each dimension is on it
 
 Every flow metric carries exactly these, and nothing else:

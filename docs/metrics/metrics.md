@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 813
-- **Gauges:** 544
+- **Total metrics:** 817
+- **Gauges:** 548
 - **Counters:** 269
 
 ## General
@@ -764,6 +764,10 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_netflow_cache_packets_total | Counter | interface | Total packets observed in netflow cache by interface | --exporter.enable-netflow |
 | opnsense_netflow_cache_source_ip_addresses | Gauge | interface | Number of unique source IP addresses in netflow cache by interface | --exporter.enable-netflow |
 | opnsense_netflow_cache_destination_ip_addresses | Gauge | interface | Number of unique destination IP addresses in netflow cache by interface | --exporter.enable-netflow |
+| opnsense_netflow_capture_expected | Gauge | interface | Whether the box is configured to capture NetFlow on this interface (1 = selected, 0 = listed in the config but not selected). This is the half no counter can supply: an interface producing nothing is indistinguishable from an idle one unless you know it was supposed to be producing something. The set is closed - it comes from the firewall's own netflow config - so cardinality is bounded by the number of interfaces. An interface with records but capture_expected=0 is NOT a fault: ng_netflow names the far side of a flow from a FIB lookup, so an interface can be labelled without being captured on. | --exporter.enable-netflow |
+| opnsense_netflow_capture_last_record_seconds | Gauge | interface | Seconds since this exporter last received a NetFlow record attributed to this interface. A RAW AGE, not a verdict: a guest VLAN can be legitimately silent for hours, so the threshold is the operator's to choose - compare against capture_active_timeout_seconds. Interfaces that have produced NO record since the exporter started are ABSENT here rather than reported as a large age, because every interface is silent at startup and a number there would make a fresh boot look like a box-wide outage; \"never seen\" and \"seen, then stopped\" are different states. IMPORTANT: a fresh age proves the interface is being NAMED, not that its own capture hook is alive - ng_netflow fills one side of each flow from a FIB lookup, so records captured elsewhere name it too. For per-hook liveness use opnsense_netflow_cache_packets_total, which is the box's own per-node view. | --exporter.enable-netflow |
+| opnsense_netflow_capture_active_timeout_seconds | Gauge | --- | The box's configured ACTIVE flow timeout: how long a long-running flow sits in the cache before ng_netflow exports it anyway. Exported so a \"this interface has gone quiet\" threshold is derived from what the firewall actually applies rather than guessed - an interface cannot be judged silent until well past this. | --exporter.enable-netflow |
+| opnsense_netflow_capture_inactive_timeout_seconds | Gauge | --- | The box's configured INACTIVE flow timeout: how long an idle flow waits before export. The floor on how quickly any interface can be observed to have stopped. | --exporter.enable-netflow |
 
 ## Network Diagnostics
 

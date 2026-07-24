@@ -3,6 +3,7 @@ package opnsense
 import (
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestFetchNetflowIsEnabled_Enabled(t *testing.T) {
@@ -188,5 +189,115 @@ func TestFetchNetflowCacheStats_ServerError(t *testing.T) {
 	}
 	if err.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
+
+// liveGetconfigPayload is the reference box's real api/diagnostics/netflow/getconfig
+// response, captured 2026-07-24 (1,002 bytes, HTTP 200). Trimmed of nothing: the
+// asymmetry is the point. InterfaceField/OptionField members serialize as
+// {value,selected} option dicts while collect.enable - a BooleanField - serializes
+// as a BARE STRING, and the two timeouts are strings rather than numbers. A struct
+// that assumes one shape throughout does not decode this.
+const liveGetconfigPayload = `{"netflow": {"capture": {"interfaces": {"opt7": {"value": "AAISP", "selected": 1}, ` +
+	`"opt4": {"value": "CAM", "selected": 1}, "opt2": {"value": "IOT", "selected": 1}, ` +
+	`"lan": {"value": "LAN", "selected": 1}, "opt3": {"value": "MGMT", "selected": 1}, ` +
+	`"opt1": {"value": "tailscale", "selected": 0}, "opt6": {"value": "VIRGIN", "selected": 1}, ` +
+	`"opt5": {"value": "zenoverlay", "selected": 0}}, "egress_only": {"opt7": {"value": "AAISP", "selected": 1}, ` +
+	`"opt4": {"value": "CAM", "selected": 0}, "opt2": {"value": "IOT", "selected": 0}, ` +
+	`"lan": {"value": "LAN", "selected": 0}, "opt3": {"value": "MGMT", "selected": 0}, ` +
+	`"opt1": {"value": "tailscale", "selected": 0}, "opt6": {"value": "VIRGIN", "selected": 1}, ` +
+	`"opt5": {"value": "zenoverlay", "selected": 0}}, "version": {"v5": {"value": "v5", "selected": 0}, ` +
+	`"v9": {"value": "v9", "selected": 1}}, "targets": {"10.0.0.5:9995": {"value": "10.0.0.5:9995", "selected": 1}, ` +
+	`"162.159.65.1:2055": {"value": "162.159.65.1:2055", "selected": 1}, ` +
+	`"10.0.0.5:2055": {"value": "10.0.0.5:2055", "selected": 1}}}, "collect": {"enable": "0"}, ` +
+	`"activeTimeout": "1800", "inactiveTimeout": "15"}}`
+
+func TestFetchNetflowCaptureConfig_LivePayload(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		_, _ = w.Write([]byte(liveGetconfigPayload))
+	})
+	defer server.Close()
+
+	cfg, err := client.FetchNetflowCaptureConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The KEY is the OPNsense ident (opt7) and the VALUE is the descriptive name
+	// (AAISP). The descriptive name is what every flow metric carries as its
+	// interface label, so that is what has to come back - joining on the ident
+	// would produce a metric that can never be lined up against the volume series.
+	want := map[string]bool{
+		"AAISP": true, "CAM": true, "IOT": true, "LAN": true, "MGMT": true, "VIRGIN": true,
+		"tailscale": false, "zenoverlay": false,
+	}
+	if len(cfg.Interfaces) != len(want) {
+		t.Fatalf("got %d interfaces, want %d: %+v", len(cfg.Interfaces), len(want), cfg.Interfaces)
+	}
+	for name, selected := range want {
+		got, ok := cfg.Interfaces[name]
+		if !ok {
+			t.Errorf("interface %q missing", name)
+			continue
+		}
+		if got != selected {
+			t.Errorf("interface %q selected = %v, want %v", name, got, selected)
+		}
+	}
+
+	if cfg.ActiveTimeout != 1800*time.Second {
+		t.Errorf("ActiveTimeout = %v, want 30m", cfg.ActiveTimeout)
+	}
+	if cfg.InactiveTimeout != 15*time.Second {
+		t.Errorf("InactiveTimeout = %v, want 15s", cfg.InactiveTimeout)
+	}
+}
+
+// A box with netflow never configured still answers 200: the InterfaceField
+// enumerates every interface regardless, all with selected=0. That must read as
+// "nothing is expected to export", NOT as an error and NOT as an empty config that
+// silently disables the check.
+func TestFetchNetflowCaptureConfig_UnconfiguredBoxIsNotAnError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"netflow":{"capture":{"interfaces":{` +
+			`"lan":{"value":"LAN","selected":0},"opt1":{"value":"WAN","selected":0}},` +
+			`"targets":{}},"collect":{"enable":"0"},"activeTimeout":"1800","inactiveTimeout":"15"}}`))
+	})
+	defer server.Close()
+
+	cfg, err := client.FetchNetflowCaptureConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Interfaces) != 2 {
+		t.Fatalf("got %d interfaces, want 2", len(cfg.Interfaces))
+	}
+	for name, selected := range cfg.Interfaces {
+		if selected {
+			t.Errorf("interface %q reads selected on an unconfigured box", name)
+		}
+	}
+}
+
+// An empty response must yield no interfaces rather than a phantom entry — the
+// collector emits one series per entry, so a fabricated one is a fabricated metric.
+func TestFetchNetflowCaptureConfig_EmptyResponse(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	})
+	defer server.Close()
+
+	cfg, err := client.FetchNetflowCaptureConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Interfaces) != 0 {
+		t.Errorf("got %d interfaces from an empty response, want 0", len(cfg.Interfaces))
+	}
+	if cfg.ActiveTimeout != 0 || cfg.InactiveTimeout != 0 {
+		t.Errorf("timeouts = %v/%v from an empty response, want 0/0", cfg.ActiveTimeout, cfg.InactiveTimeout)
 	}
 }
