@@ -541,8 +541,8 @@ func (c *flowCollector) registerNetflow() {
 	c.ifIndexGuard = buildPrometheusDesc(c.subsystem, "ifindex_source_disagreements",
 		"Cross-checks that failed on the derived ifIndex enumeration. "+
 			"reason=\"stated_index\" counts devices where the ifIndex the API states differs from the "+
-			"position the enumeration put them at, which means an interface was destroyed and "+
-			"recreated and every index above it may have moved. reason=\"unlisted_device\" counts "+
+			"position the enumeration put them at, which means an interface was removed and every "+
+			"index above it shifted down. reason=\"unlisted_device\" counts "+
 			"interfaces the box reports that the enumeration does not contain at all, so they can "+
 			"never be resolved from an ifIndex. Either one non-zero means the labels on every NetFlow "+
 			"series are suspect - the derivation was measurably wrong this way for months (#361).",

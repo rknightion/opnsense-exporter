@@ -65,16 +65,20 @@ type Interface struct {
 	// Index is the interface index the kernel states for this device (the
 	// "index" key of api/diagnostics/traffic/interface). It is a per-interface
 	// property assigned at creation, NOT the positional hook number NetFlow
-	// uses — and the two diverge in normal operation: a destroyed-and-recreated
-	// interface (pppoe0 on every PPPoE reconnect is the routine case) keeps its
-	// old stated index but is re-appended to the END of the device list, so its
-	// position changes while this number does not.
+	// uses. The two are equal only while the index space has no gaps: remove an
+	// interface permanently and every device above it shifts down a position
+	// while this number stays put.
 	//
-	// So this is a CROSS-CHECK for the positional enumeration derived by
+	// A destroy-and-recreate does NOT diverge — verified live on 2026-07-24 by
+	// bouncing a PPPoE WAN, which reclaimed the lowest free index (its own) and
+	// returned to its old slot. That is what makes this field dangerous: it
+	// agrees through the routine case and disagrees only in the one that
+	// actually renumbers.
+	//
+	// So it is a CROSS-CHECK for the positional enumeration derived by
 	// FetchInterfaceEnumeration, never a replacement for it (#361). Do not
-	// "simplify" the ifIndex derivation to read this field: on a box that has
-	// so much as reconnected PPPoE once, it will label flow records with the
-	// wrong interface. 0 when the box reports no index or an unparseable one.
+	// "simplify" the ifIndex derivation to read this field. 0 when the box
+	// reports no index or an unparseable one.
 	Index int
 
 	MTU                   int64

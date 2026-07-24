@@ -179,10 +179,20 @@ type IfMapInput struct {
 	Ifaces []enrich.IfaceInfo
 	// Stated is device -> the ifIndex the API states for it. A cross-check only:
 	// it is a per-interface property the kernel assigns, while the netflow hook
-	// number is a POSITION in a list, and the two diverge once an interface is
-	// destroyed and recreated (pppoe0, on every PPPoE reconnect, keeps its index
-	// but is re-appended to the end of the list). rc.d/netflow follows the
-	// position, so the position wins and this only ever raises the alarm.
+	// number is a POSITION in a list, and the two are equal ONLY while the index
+	// space has no gaps.
+	//
+	// Remove an interface permanently and every device above it shifts down a
+	// position while its kernel index stays put, so the position rc.d/netflow
+	// counts stops matching the number the kernel reports. The position is what
+	// names the hook and therefore what arrives in the records, so the position
+	// wins and this only ever raises the alarm.
+	//
+	// A destroy-and-recreate does NOT do this, verified live on 2026-07-24 by
+	// bouncing a PPPoE WAN: the interface reclaims the lowest free index, which
+	// is its own while nothing else has taken it, and lands back in its old
+	// slot. Do not "simplify" the derivation to read Stated instead — it agrees
+	// right up until the one case that matters.
 	Stated map[string]uint32
 	// Override is the operator's --flow.netflow.ifindex-map, which wins outright.
 	Override map[uint32]string

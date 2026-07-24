@@ -182,11 +182,12 @@ So the guards matter more here than the mechanism:
   increments `opnsense_flow_ifindex_unmapped_total` - a wrong interface name is worse
   than a missing one;
 - `opnsense_flow_ifindex_source_disagreements` cross-checks the enumeration two ways.
-  `reason="stated_index"` counts devices where the ifIndex the API states differs from
-  the position we derived, which is what a destroyed-and-recreated interface looks like
-  (`pppoe0` on every PPPoE reconnect keeps its stated index but is re-appended to the end
-  of the list). `reason="unlisted_device"` counts interfaces the box reports that the
-  enumeration does not contain at all. Either one non-zero means every label is suspect;
+  `reason="stated_index"` counts devices where the ifIndex the API states differs from the
+  position we derived. The two are equal only while the index space has no gaps: **remove an
+  interface permanently** and every device above it shifts down a position while its kernel
+  index stays put, so the position `rc.d/netflow` counts stops matching the number the kernel
+  reports. `reason="unlisted_device"` counts interfaces the box reports that the enumeration
+  does not contain at all. Either one non-zero means every label is suspect;
 - `--flow.netflow.ifindex-map` pins any index outright, and
   `opnsense_flow_ifindex_conflicts` reports how many of your pins disagree with the
   derivation. Non-zero means the indices you did *not* pin are suspect. Unlisted indices
@@ -206,6 +207,12 @@ interface appearing that the enumeration does not contain, or an ifIndex arrivin
 the map cannot resolve. The second is rate-limited, because the NetFlow socket is
 unauthenticated and an unbounded trigger there would let any sender drive the firewall's
 API load.
+
+A **reconnect does not renumber anything**, which is worth knowing before treating the
+triggers as urgent. Bouncing a PPPoE WAN was tested live: the interface was genuinely
+destroyed and recreated, reclaimed the lowest free index — its own, because nothing else
+had taken it — and returned to its old slot. Only a permanent removal leaves the gap that
+shifts everything above it.
 
 The resolved map is rendered on the operator console's **ifIndex** tab, so
 `index → device → name` can be read straight down against `ifinfo` output without

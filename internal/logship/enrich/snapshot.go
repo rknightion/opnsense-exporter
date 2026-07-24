@@ -54,8 +54,10 @@ type Snapshot struct {
 	// api/diagnostics/traffic/interface. It is a CROSS-CHECK on IfaceOrder and
 	// never a substitute: the stated value is a per-interface property the kernel
 	// assigns, while the netflow hook number is a position in a list, and the two
-	// diverge once an interface is destroyed and recreated. A disagreement is the
-	// signal that the enumeration has moved.
+	// are equal only while the index space has no gaps. A permanent removal
+	// shifts every position above it while the stated indices stay put; a
+	// destroy-and-recreate does not (verified live 2026-07-24). A disagreement
+	// is therefore the signal that the enumeration has really moved.
 	IfaceStatedIndex map[string]uint32
 
 	// Tunnels maps an IPsec connection UUID to its description. charon logs the
