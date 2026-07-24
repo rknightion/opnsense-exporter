@@ -79,7 +79,7 @@ var capturedKinds = map[string][]string{
 }
 
 // dropReasons is the closed reason set for the dropped counter.
-var dropReasons = []string{"buffer_full", "cap_reached", "write_error"}
+var dropReasons = []string{"buffer_full", "cap_reached", "write_error", "duplicate_shape"}
 
 // receivers is the closed set the dropped counter is pre-initialised across.
 var receivers = []string{ReceiverZenarmor, ReceiverSyslog, ReceiverNetflow}
@@ -125,6 +125,13 @@ type Capturer struct {
 
 	m *metrics
 
+	// shapes dedupes the CaptureShape path (#362). It lives here, on the process-wide
+	// Capturer, rather than on ReceiverSink: For() mints a sink on demand (the NetFlow
+	// lane calls it inline), so per-sink state would reset the window on every call and
+	// silently dedupe nothing. Keys are (receiver, kind, shape), so two receivers
+	// reporting the same text never suppress each other.
+	shapes *ShapeLimiter
+
 	// closeOnce guards Close so a double Close (defer + explicit) cannot double-close
 	// the channel.
 	closeOnce sync.Once
@@ -149,7 +156,9 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Namespace: ns, Name: "logs_debug_capture_dropped_total",
 			Help: "Total debug-capture entries dropped rather than written, by receiver and reason: " +
 				"buffer_full (disk could not keep up), cap_reached (--logs.debug-capture.max-bytes hit; " +
-				"capture stops keeping the oldest samples), write_error (the file write failed).",
+				"capture stops keeping the oldest samples), write_error (the file write failed), " +
+				"duplicate_shape (a repeat of a message shape already captured this window; one example " +
+				"is on disk, so this rate — not the file size — is what says how busy the lane is).",
 		}, []string{"receiver", "reason"}),
 	}
 	if reg != nil {
@@ -197,6 +206,7 @@ func New(cfg Config, reg prometheus.Registerer, log *slog.Logger) (*Capturer, er
 		ch:           make(chan entry, buf),
 		done:         make(chan struct{}),
 		m:            newMetrics(reg),
+		shapes:       NewShapeLimiter(DefaultShapeWindow, DefaultMaxShapeKeys),
 	}
 	go c.run()
 	return c, nil
@@ -222,6 +232,31 @@ func (c *Capturer) Capture(receiver, kind string, fields map[string]any) {
 	}
 }
 
+// CaptureShape enqueues one captured signal only if this shape has not been captured
+// in the current window; a suppressed repeat is counted as duplicate_shape and is
+// NOT written (#362). Same contract as Capture otherwise: never blocks, copies what
+// it needs, nil-safe.
+//
+// It is for a lane whose "unmodelled" is a CLASS of line rather than an event — the
+// syslog unparsed capture, where most of a firewall's traffic is a program with no
+// parser. One example of a shape is what an operator needs to decide whether to
+// model it; the 11,484 repeats behind it only fill the shared byte cap and starve
+// every other lane. Lanes that are already bounded must keep using Capture.
+//
+// Suppression happens HERE, on the caller's goroutine and before the channel, so the
+// duplicate_shape counter is exact even when the writer is behind or has stopped at
+// the cap.
+func (c *Capturer) CaptureShape(receiver, kind, shape string, fields map[string]any) {
+	if c == nil {
+		return
+	}
+	if !c.shapes.Allow(receiver+"\x00"+kind+"\x00"+shape, time.Now()) {
+		c.m.dropped.WithLabelValues(receiver, "duplicate_shape").Inc()
+		return
+	}
+	c.Capture(receiver, kind, fields)
+}
+
 // ReceiverSink binds one receiver's name to a Capturer, so a receiver that captures
 // need not know — or be able to get wrong — which name its entries are filed under.
 // A nil *ReceiverSink is a no-op, exactly like a nil *Capturer.
@@ -243,6 +278,16 @@ func (s *ReceiverSink) Capture(kind string, fields map[string]any) {
 		return
 	}
 	s.c.Capture(s.receiver, kind, fields)
+}
+
+// CaptureShape captures like Capture, but writes only the first occurrence of each
+// shape per window; suppressed repeats are counted as duplicate_shape. See
+// Capturer.CaptureShape for when a lane should want this and when it must not.
+func (s *ReceiverSink) CaptureShape(kind, shape string, fields map[string]any) {
+	if s == nil {
+		return
+	}
+	s.c.CaptureShape(s.receiver, kind, shape, fields)
 }
 
 // copyFields returns a shallow copy of fields with every []byte / json.RawMessage

@@ -441,7 +441,28 @@ The pipeline exposes its own health metrics (visible at `/metrics` and on the
 - `opnsense_exporter_logs_debug_capture_dropped_total{receiver,reason}` - capture
   entries dropped rather than written: `reason=buffer_full` (disk could not keep up),
   `reason=cap_reached` (`--logs.debug-capture.max-bytes` hit; capture paused),
-  `reason=write_error`.
+  `reason=write_error`, `reason=duplicate_shape` (a repeat of a message shape already
+  captured this window - see below).
+
+### Why the syslog capture keeps one example per shape
+
+The syslog lane captures any line whose program has no parser, and on a real firewall
+that is most lines: one reference box produced 60,073 entries and 31 MB in a day, 70%
+of it three repeated shapes (`arpresolve` failures, a chatty cron job, `unbound`
+blocklist updates). The byte cap governs the whole directory and **stops** when
+reached, so that one lane would fill it and permanently starve the NetFlow and
+Zenarmor captures sharing it - and a starved capture looks exactly like a quiet one.
+
+So the syslog lane keeps the **first example of each message shape per 15-minute
+window** and counts the rest as `reason=duplicate_shape`. A shape is the message with
+its varying parts collapsed, so `arpresolve: ... for 86.31.203.106` and the same line
+for another address are one shape. A shape never seen before is always captured
+immediately, and the suppressed count is what tells you the difference between a quiet
+lane and a busy one - a small capture file no longer means silence.
+
+The NetFlow and Zenarmor lanes are **not** deduplicated. Both are bounded by design -
+a couple of datagrams at startup and nothing after - so a window would throw away
+samples they need to be complete.
 
 ## See also
 

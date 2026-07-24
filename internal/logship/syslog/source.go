@@ -18,6 +18,12 @@ import (
 // value on every record the receiver ships.
 const sourceName = "syslog"
 
+// envelopeShapeKey stands in for the program in a debug-capture shape key when the
+// ENVELOPE itself would not parse, so there is no program to key on. It is bracketed
+// because angle brackets delimit the syslog PRI and therefore cannot appear in a
+// program token — a malformed frame can never share a shape slot with a real program.
+const envelopeShapeKey = "<envelope>"
+
 // RejectReasons and ParseStages are this receiver's CLOSED label vocabulary, used
 // to pre-initialise logs_rejected_total / logs_parse_errors_total to zero at
 // startup (#280) so a healthy receiver reports a flat 0 instead of nothing.
@@ -198,10 +204,18 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 		// useless — it looks healthy while losing data.
 		s.m.ParseError("envelope")
 		if s.cap != nil {
-			s.cap.Capture(sourceName, capture.KindUnparsed, map[string]any{
-				"parse_error": "envelope",
-				"raw":         string(line),
-			})
+			// Deduped by shape for the same reason the unparsed capture below is: a device
+			// spamming malformed frames floods the SHARED byte cap and starves every other
+			// lane (#362). There is no program to key on — the parse that would have found
+			// one is what failed — so the raw line is the whole key, behind a prefix that a
+			// program name cannot collide with (angle brackets delimit the PRI, so no
+			// program token can be "<envelope>").
+			s.cap.CaptureShape(sourceName, capture.KindUnparsed,
+				envelopeShapeKey+"|"+capture.NormaliseShape(string(line)),
+				map[string]any{
+					"parse_error": "envelope",
+					"raw":         string(line),
+				})
 		}
 		emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
 		return
@@ -225,13 +239,24 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 		// A line whose program has no parser, or whose parser could not match it: exactly
 		// the "signal we do not model" the debug capture exists to surface. Captured
 		// BEFORE any sample drop so nothing an operator might want to model is lost.
-		s.cap.Capture(sourceName, capture.KindUnparsed, map[string]any{
-			"program":   env.Program,
-			"subsystem": subsystemFor(env.Program),
-			"severity":  env.Severity,
-			"message":   env.Message,
-			"raw":       string(line),
-		})
+		//
+		// Deduped by SHAPE, not captured per line (#362). On a real firewall this branch
+		// is the majority of all traffic — most programs have no dedicated parser — which
+		// made it 31 MB/day of overwhelmingly repeated text, and because the byte cap
+		// governs the whole capture dir and STOPS when reached, it permanently starved the
+		// NetFlow and Zenarmor captures that share it. One example per (program, shape)
+		// per window is what an operator needs to decide whether to model the line; the
+		// repeats behind it are counted as duplicate_shape, so the real rate is still
+		// visible even though the file holds one of each. The line itself still ships —
+		// dedupe governs the debug capture and nothing else.
+		s.cap.CaptureShape(sourceName, capture.KindUnparsed,
+			env.Program+"|"+capture.NormaliseShape(env.Message), map[string]any{
+				"program":   env.Program,
+				"subsystem": subsystemFor(env.Program),
+				"severity":  env.Severity,
+				"message":   env.Message,
+				"raw":       string(line),
+			})
 	}
 
 	// Derive Prometheus counters from the parsed record (#258). counted reports

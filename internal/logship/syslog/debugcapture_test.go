@@ -3,6 +3,7 @@ package syslog
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -90,6 +91,107 @@ func TestUnparsedLineCaptured(t *testing.T) {
 	}
 	if shipped != 1 {
 		t.Fatalf("unparsed line must still ship; shipped = %d", shipped)
+	}
+}
+
+// TestRepeatedUnparsedLinesCapturedOnce pins the whole point of #362: a firewall's
+// syslog is overwhelmingly programs with no parser, so the capture fired on the
+// majority of all lines and filled the SHARED byte cap — starving the NetFlow and
+// Zenarmor captures, which are bounded by design. The repeat is captured once per
+// shape; it is still SHIPPED every time, because dedupe governs the debug capture
+// and never what leaves the exporter.
+func TestRepeatedUnparsedLinesCapturedOnce(t *testing.T) {
+	dir := t.TempDir()
+	cap, err := capture.New(capture.Config{Dir: dir, MaxBytes: 8 << 20}, prometheus.NewRegistry(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newCaptureSource(t, cap)
+	shipped := 0
+	s.emit = func(logship.Record) { shipped++ }
+
+	// The real thing: same shape, different counter and address every time.
+	for i := range 3 {
+		line := fmt.Appendf(nil,
+			`<7>1 2026-07-14T19:50:0%d+01:00 opnsense kernel 42 - - [36765%d] arpresolve: can't allocate llinfo for 86.31.203.%d`,
+			i, i, 100+i)
+		s.handle(line, netip.MustParseAddr("10.0.0.1"))
+	}
+	if err := cap.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recs := readSyslogCaptures(t, dir)
+	if len(recs) != 1 {
+		t.Fatalf("capture entries = %d, want 1 (one per shape): %+v", len(recs), recs)
+	}
+	if recs[0]["program"] != "kernel" {
+		t.Fatalf("program not captured: %+v", recs[0])
+	}
+	if shipped != 3 {
+		t.Fatalf("shipped = %d, want 3 - dedupe must never drop a shipped record", shipped)
+	}
+}
+
+// A genuinely novel program is what the capture exists for, so it writes at once
+// even while a noisy neighbour is being suppressed.
+func TestNovelUnparsedShapeCapturedImmediately(t *testing.T) {
+	dir := t.TempDir()
+	cap, err := capture.New(capture.Config{Dir: dir, MaxBytes: 8 << 20}, prometheus.NewRegistry(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newCaptureSource(t, cap)
+	s.emit = func(logship.Record) {}
+
+	for range 5 {
+		s.handle([]byte(`<7>1 2026-07-14T19:50:01+01:00 opnsense kernel 42 - - [367655] arpresolve: can't allocate llinfo for 86.31.203.106`),
+			netip.MustParseAddr("10.0.0.1"))
+	}
+	s.handle([]byte(`<134>1 2026-07-14T19:50:01+01:00 opnsense mystery-plugin 42 - - something entirely new`),
+		netip.MustParseAddr("10.0.0.1"))
+	if err := cap.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recs := readSyslogCaptures(t, dir)
+	if len(recs) != 2 {
+		t.Fatalf("capture entries = %d, want 2 (kernel once, the novel program once): %+v", len(recs), recs)
+	}
+	if recs[1]["program"] != "mystery-plugin" {
+		t.Fatalf("the novel program was not captured on its first occurrence: %+v", recs)
+	}
+}
+
+// The envelope-parse-failure capture is deduped for the same reason: a device
+// spamming malformed frames floods the shared cap exactly as the unparsed lane did.
+// The line still ships with its raw body — that invariant is older than this one.
+func TestRepeatedEnvelopeFailuresCapturedOnce(t *testing.T) {
+	dir := t.TempDir()
+	cap, err := capture.New(capture.Config{Dir: dir, MaxBytes: 8 << 20}, prometheus.NewRegistry(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newCaptureSource(t, cap)
+	shipped := 0
+	s.emit = func(logship.Record) { shipped++ }
+
+	for i := range 4 {
+		s.handle(fmt.Appendf(nil, "this is not a syslog frame at all %d", i), netip.MustParseAddr("10.0.0.1"))
+	}
+	if err := cap.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	recs := readSyslogCaptures(t, dir)
+	if len(recs) != 1 {
+		t.Fatalf("capture entries = %d, want 1: %+v", len(recs), recs)
+	}
+	if recs[0]["parse_error"] != "envelope" {
+		t.Fatalf("wrong entry captured: %+v", recs[0])
+	}
+	if shipped != 4 {
+		t.Fatalf("shipped = %d, want 4 - an unparseable line must always ship", shipped)
 	}
 }
 
