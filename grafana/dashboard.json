@@ -70173,7 +70173,7 @@
         "spec": {
           "id": 640,
           "title": "NetFlow ifIndex Map",
-          "description": "ng_netflow numbers interfaces POSITIONALLY over ifinfo output, so adding or removing any interface renumbers everything and silently remaps historical series. conflicts > 0 means the operator's --flow.netflow.ifindex-map disagrees with the map derived from the API: the override wins so pinned indices are right, but every index NOT pinned is suspect. Rising unmapped lookups after a network change means the enumeration shifted \u2014 those records still count, with an empty interface label, because a wrong interface name is worse than a missing one. The guard series cross-check the enumeration against the index the API states per device and against the set of interfaces the box reports; either one non-zero means every NetFlow interface label is suspect. This map was measurably wrong for months and read entirely clean while it was (#361), so treat a flat zero here as 'checked', not as 'nothing to check'.",
+          "description": "Two unmapped series, and they are NOT the same number. \"unmapped lookups\" counts ifIndex lookups that missed against a map that EXISTS; \"unmapped records\" counts whole records that ended up with an empty interface label, and it is the only one of the two that fires while the map is still nil \u2014 the cold-start window between the receiver starting and the first interface fetch landing. A burst of unmapped records right after a restart with no matching lookups is that window; both rising together means the enumeration shifted. Those records still counted in the volume totals, with an empty label. ng_netflow numbers interfaces POSITIONALLY over ifinfo output, so adding or removing any interface renumbers everything and silently remaps historical series. conflicts > 0 means the operator's --flow.netflow.ifindex-map disagrees with the map derived from the API: the override wins so pinned indices are right, but every index NOT pinned is suspect. Rising unmapped lookups after a network change means the enumeration shifted \u2014 those records still count, with an empty interface label, because a wrong interface name is worse than a missing one. The guard series cross-check the enumeration against the index the API states per device and against the set of interfaces the box reports; either one non-zero means every NetFlow interface label is suspect. This map was measurably wrong for months and read entirely clean while it was (#361), so treat a flat zero here as 'checked', not as 'nothing to check'.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -70300,8 +70300,34 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_ifindex_source_disagreements{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_netflow_records_unmapped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "E",
+                        "legendFormat": "unmapped records/sec",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "F",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_ifindex_source_disagreements{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "F",
                         "legendFormat": "guard: {{reason}}",
                         "instant": false,
                         "range": true

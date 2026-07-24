@@ -216,6 +216,7 @@ type flowCollector struct {
 	nfDecoded    *prometheus.Desc
 	nfEmitted    *prometheus.Desc
 	nfDropped    *prometheus.Desc
+	nfUnmapped   *prometheus.Desc
 	nfTemplates  *prometheus.Desc
 	nfUnexpected *prometheus.Desc
 
@@ -455,6 +456,19 @@ func (c *flowCollector) registerNetflow() {
 			"with unusable endpoints.",
 		reasonLabel,
 	)
+	c.nfUnmapped = buildPrometheusDesc(c.subsystem, "netflow_records_unmapped_total",
+		"Records whose ifIndexes resolved to NO interface, so they carry an empty interface label. "+
+			"They are still emitted and still counted in the volume totals - this is not a drop, and it "+
+			"is deliberately not a reason on records_dropped_total. Distinct from "+
+			"opnsense_flow_ifindex_unmapped_total, which counts failed LOOKUPS against a map that "+
+			"exists: this counts RECORDS, and it is the only counter that fires at all while the map is "+
+			"still nil, which is the cold-start window between the receiver starting and the first "+
+			"interface fetch landing. A burst right after a restart is that window and is expected to "+
+			"stop; a sustained rate means the enumeration shifted and --flow.netflow.ifindex-map needs "+
+			"setting. Before #365 this window was completely silent, which put gigabytes into the "+
+			"empty-label bucket with every health metric reading clean.",
+		nil,
+	)
 	c.nfTemplates = buildPrometheusDesc(c.subsystem, "netflow_templates_total",
 		"NetFlow v9 template events. \"learned\" is a template id seen for the first time; "+
 			"\"replaced\" is a known id re-sent with a DIFFERENT field shape, which invalidates the "+
@@ -572,6 +586,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.nfDecoded
 	ch <- c.nfEmitted
 	ch <- c.nfDropped
+	ch <- c.nfUnmapped
 	ch <- c.nfTemplates
 	ch <- c.nfUnexpected
 	ch <- c.nfUnidentified
@@ -707,6 +722,10 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	counter(c.nfDropped, nf.Decoder.NoTemplate, "no_template")
 	counter(c.nfDropped, nf.Pipeline.RecordsDropped, "vlan_duplicate")
 	counter(c.nfDropped, nf.Pipeline.RecordsNoAddr, "no_address")
+	// Not a drop reason: an unmapped record emits with an empty interface label, so
+	// folding it into records_dropped_total would break decoded = emitted + dropped
+	// AND claim data was discarded when it was counted (#367).
+	counter(c.nfUnmapped, nf.Pipeline.RecordsUnmapped)
 
 	counter(c.nfTemplates, nf.Decoder.TemplatesLearned, "learned")
 	counter(c.nfTemplates, nf.Decoder.TemplatesReplaced, "replaced")

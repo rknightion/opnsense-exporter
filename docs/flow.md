@@ -203,6 +203,17 @@ So the guards matter more here than the mechanism:
 - an index that resolves to nothing yields an **empty** `interface` label and
   increments `opnsense_flow_ifindex_unmapped_total` - a wrong interface name is worse
   than a missing one;
+- `opnsense_flow_netflow_records_unmapped_total` counts the **records** that came out of
+  that with no interface at all. It is not the same number as the lookup counter above and
+  cannot be swapped for it: that one counts failed lookups against a map that exists, and
+  is attached to the map object, so it stays at zero for the whole cold-start window
+  between the receiver starting and the first interface fetch landing. This one is the only
+  thing counting during that window. Those records are still **emitted** and still counted
+  in the volume totals - an empty label is honest, and dropping them would lose data - so
+  this is deliberately not a `reason` on `opnsense_flow_netflow_records_dropped_total` and
+  the funnel identity `decoded = emitted + dropped` is unaffected by it. A burst right after
+  a restart is the cold window and should stop; a sustained rate means the enumeration
+  moved;
 - `opnsense_flow_ifindex_source_disagreements` cross-checks the enumeration two ways.
   `reason="stated_index"` counts devices where the ifIndex the API states differs from the
   position we derived. The two are equal only while the index space has no gaps: **remove an

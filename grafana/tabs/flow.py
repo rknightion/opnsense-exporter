@@ -244,9 +244,19 @@ def build(b: Builder):
          (f'{sel("opnsense_flow_ifindex_conflicts")}', "override conflicts"),
          (f'{sel("opnsense_flow_ifindex_map_age_seconds")}', "map age (s)"),
          (f'rate({sel("opnsense_flow_ifindex_unmapped_total")}[{RATE}])', "unmapped lookups/sec"),
+         (f'rate({sel("opnsense_flow_netflow_records_unmapped_total")}[{RATE}])',
+          "unmapped records/sec"),
          (f'{sel("opnsense_flow_ifindex_source_disagreements")}', "guard: {{reason}}")],
         unit="short",
-        desc="ng_netflow numbers interfaces POSITIONALLY over ifinfo output, so adding or removing any "
+        desc="Two unmapped series, and they are NOT the same number. \"unmapped lookups\" counts "
+             "ifIndex lookups that missed against a map that EXISTS; \"unmapped records\" counts whole "
+             "records that ended up with an empty interface label, and it is the only one of the two "
+             "that fires while the map is still nil — the cold-start window between the receiver "
+             "starting and the first interface fetch landing. A burst of unmapped records right after "
+             "a restart with no matching lookups is that window; both rising together means the "
+             "enumeration shifted. Those records still counted in the volume totals, with an empty "
+             "label. "
+             "ng_netflow numbers interfaces POSITIONALLY over ifinfo output, so adding or removing any "
              "interface renumbers everything and silently remaps historical series. conflicts > 0 "
              "means the operator's --flow.netflow.ifindex-map disagrees with the map derived from the "
              "API: the override wins so pinned indices are right, but every index NOT pinned is "

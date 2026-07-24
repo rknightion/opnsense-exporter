@@ -264,6 +264,57 @@ func TestFlowCollector_PublishesSaturationSelfMetricsFromZero(t *testing.T) {
 	}
 }
 
+// RecordsUnmapped is the counter #365 added so the cold-start window — the one
+// period where the ifIndex map does not exist yet and NOTHING can be labelled —
+// stops being silent. It was populated by the processor and consumed by nobody
+// (#367), which for an observability counter is the same as not counting it.
+//
+// It is published from zero for the usual reason: a self-metric that only appears
+// once it fires is invisible in exactly the window it exists for.
+func TestFlowCollector_PublishesRecordsUnmapped(t *testing.T) {
+	store := newFlowStore(10, 100)
+	store.SetNetflowStats(func() NetflowStats {
+		return NetflowStats{Pipeline: flow.ProcessorStats{
+			RecordsIn: 10, RecordsEmitted: 10, RecordsUnmapped: 7,
+		}}
+	})
+
+	got := collect(t, newFlowTestCollector(t, store))
+	v, ok := got["opnsense_flow_netflow_records_unmapped_total"]
+	if !ok {
+		t.Fatalf("opnsense_flow_netflow_records_unmapped_total not published; " +
+			"the processor counts unlabellable records and nothing exposes them")
+	}
+	if v != 7 {
+		t.Errorf("records_unmapped_total = %v, want 7", v)
+	}
+}
+
+// An unmapped record still EMITS, with an empty interface label — it is not a drop.
+// Folding it into records_dropped_total would break the funnel arithmetic the
+// panel promises (decoded = emitted + dropped) and would claim data was discarded
+// when it was not. See the accounting identity at processor.go:68.
+func TestFlowCollector_UnmappedIsNotADropReason(t *testing.T) {
+	store := newFlowStore(10, 100)
+	store.SetNetflowStats(func() NetflowStats {
+		return NetflowStats{Pipeline: flow.ProcessorStats{
+			RecordsIn: 10, RecordsEmitted: 10, RecordsUnmapped: 7,
+		}}
+	})
+
+	for k, v := range collect(t, newFlowTestCollector(t, store)) {
+		if !strings.HasPrefix(k, "opnsense_flow_netflow_records_dropped_total") {
+			continue
+		}
+		if strings.Contains(k, "unmapped") {
+			t.Errorf("%s exists; unmapped records are emitted, not dropped", k)
+		}
+		if v != 0 {
+			t.Errorf("%s = %v, want 0; nothing was dropped in this fixture", k, v)
+		}
+	}
+}
+
 func TestFlowCollector_CountsThePayloadByteFallback(t *testing.T) {
 	store := newFlowStore(10, 100)
 	r := flowRec("LAN", "Network Management", 74, 1)
