@@ -102,22 +102,47 @@ func runReplayPipeline(t *testing.T) ([]Record, RepairStats, ProcessorStats) {
 	t.Helper()
 	dgs := readReplayDatagrams(t)
 	sink := &captureSink{}
-	rep := NewRepairer(0)
+	rep := NewRepairer(0, 1000)
 	p := NewProcessor(sink, rep, nil)
 	p.SetIfMap(replayIfMap())
 	now := time.Unix(1700000000, 0)
 	for _, dg := range dgs {
 		p.ObserveDatagram(dg, now)
 	}
+	// Every datagram is fed at the SAME instant, so nothing ages out of the hold buffer
+	// during the run and the whole fixture is resolved by topology rather than by the
+	// clock — which is what makes this deterministic. The closing flush is the
+	// shutdown path (main.go stopNetflow), and without it a held record would read as a
+	// dropped one.
+	p.Flush(now)
 	return sink.recs, rep.Stats(), p.Stats()
 }
 
-// dedupKey is the instance identity the repair keys on: canonical tuple + the flow's
-// own First/Last. Two records with this key on a parent and its VLAN child are the
-// duplicate pair ng_netflow exports for every tagged packet.
+// dedupKey is the instance identity the repair keys on: the DIRECTIONAL tuple, the
+// flow's own First/Last, and its volume (repair.go instanceKey). Two records with this
+// key on a parent and its VLAN child are the duplicate pair ng_netflow exports for
+// every tagged packet.
+//
+// The direction and the volume are what stop the two HALVES of one conversation — same
+// canonical tuple, same timestamps, different bytes — from being mistaken for two
+// copies of one export (#357).
 type dedupKey struct {
-	tuple       Tuple
-	first, last int64
+	proto        uint8
+	src, dst     netip.Addr
+	sport, dport uint16
+	first, last  int64
+	bytes, pkts  uint64
+}
+
+func replayKey(r Record) dedupKey {
+	bytes, pkts := volumeOf(r)
+	return dedupKey{
+		proto: r.Proto,
+		src:   r.SrcAddr.Unmap(), dst: r.DstAddr.Unmap(),
+		sport: r.SrcPort, dport: r.DstPort,
+		first: r.Start.UnixNano(), last: r.End.UnixNano(),
+		bytes: bytes, pkts: pkts,
+	}
 }
 
 // The fixture retains a real VLAN-duplicate pair: one 5-tuple exported with identical
@@ -141,8 +166,8 @@ func TestReplayRepair_VLANParentDuplicateSuppressed(t *testing.T) {
 			if !ok {
 				continue
 			}
-			rec.In = m.Iface(nr.InIfIndex)
-			k := dedupKey{rec.CanonicalTuple(), rec.Start.UnixNano(), rec.End.UnixNano()}
+			rec.In, rec.Out = m.Iface(nr.InIfIndex), m.Iface(nr.OutIfIndex)
+			k := replayKey(rec)
 			if byKey[k] == nil {
 				byKey[k] = map[string]int{}
 			}
@@ -151,21 +176,16 @@ func TestReplayRepair_VLANParentDuplicateSuppressed(t *testing.T) {
 	}
 
 	// The case this test models is an instance exported EXACTLY TWICE: once on the
-	// trunk and once on one of its VLAN children, and nowhere else. Restricting to
-	// that shape is what makes "exactly one survivor" a sound assertion, and the
-	// fixture holds 9 such instances.
+	// trunk and once on one of its VLAN children, and nowhere else. Restricting to that
+	// shape is what makes "exactly one survivor" a sound assertion.
 	//
 	// Selecting any instance merely *seen* on ixl0 and some child — as this test did
-	// until #350's follow-up — also admits three shapes whose survivor count is
-	// legitimately greater than one, so the assertion held for only 9 of 13
-	// candidates and the test failed ~40% of runs on Go's randomized map iteration:
-	//   - an instance with several copies on the trunk itself (two in this fixture):
-	//     same-device copies are not a parent/child pair, so the de-dup rule does not
-	//     touch them and all of them correctly survive;
-	//   - an instance ALSO exported on an unrelated interface (pppoe0, two here):
-	//     that third copy is not proven a duplicate and is correctly kept.
-	// Both are correct pipeline behaviour, so the fix is to assert the modelled shape
-	// rather than to loosen the count.
+	// until #350's follow-up — also admitted shapes whose survivor count is legitimately
+	// greater than one, so the assertion held for only some candidates and the test
+	// failed ~40% of runs on Go's randomized map iteration. Under the #357 key those
+	// shapes largely stop colliding in the first place (the two halves of a conversation
+	// no longer share a key), but the restriction stays: it is what the assertion below
+	// is sound for.
 	var pairs []dedupKey
 	for k, devs := range byKey {
 		if len(devs) != 2 || devs["ixl0"] != 1 {
@@ -184,26 +204,45 @@ func TestReplayRepair_VLANParentDuplicateSuppressed(t *testing.T) {
 		t.Fatal("fixture no longer retains a VLAN parent/child duplicate pair — the case was lost")
 	}
 
-	// Repaired pass: EVERY such instance must survive exactly once. Asserting over all
-	// of them rather than one arbitrary pick is both deterministic and strictly
-	// stronger than the single random assertion it replaces.
+	// Repaired pass: EVERY such instance must survive exactly once, ON THE VLAN CHILD.
+	//
+	// Which copy survives is the whole of #357. Asserting only the COUNT — as this test
+	// did until then — passes just as happily with the trunk copy kept, which is what
+	// let the attribution be wrong for as long as it was. On this fixture the trunk copy
+	// arrives first in every one of these pairs (the trunk hook and the child hook flush
+	// in separate consecutive datagrams), so a first-seen-wins rule fails this outright.
 	recs, rstats, pstats := runReplayPipeline(t)
-	survivors := map[dedupKey]int{}
+	survivors := map[dedupKey][]Record{}
 	for _, r := range recs {
-		survivors[dedupKey{r.CanonicalTuple(), r.Start.UnixNano(), r.End.UnixNano()}]++
+		k := replayKey(r)
+		survivors[k] = append(survivors[k], r)
 	}
 	for _, pair := range pairs {
-		if n := survivors[pair]; n != 1 {
+		got := survivors[pair]
+		if len(got) != 1 {
 			t.Errorf("VLAN-duplicated instance survived %d times, want exactly 1 (one copy must be dropped); "+
-				"instance first=%d last=%d", n, pair.first, pair.last)
+				"instance first=%d last=%d", len(got), pair.first, pair.last)
+			continue
+		}
+		if parent, ok := m.ParentOf(got[0].In.Device); !ok || parent != "ixl0" {
+			t.Errorf("VLAN-duplicated instance survived on %q, want the ixl0 VLAN child: keeping the "+
+				"trunk copy attributes the VLAN's traffic to the trunk (#357); instance first=%d last=%d",
+				got[0].In.Device, pair.first, pair.last)
 		}
 	}
 	if rstats.VLANDuplicatesDropped == 0 {
 		t.Fatal("VLANDuplicatesDropped = 0, want > 0")
 	}
+	if rstats.VLANChildPreferred == 0 {
+		t.Fatal("VLANChildPreferred = 0: every pair in this fixture arrives parent-first, so the " +
+			"child copy must have replaced a held parent copy at least once")
+	}
 	if pstats.RecordsDropped != rstats.VLANDuplicatesDropped {
 		t.Fatalf("processor dropped %d but repair counted %d VLAN duplicates; they must agree",
 			pstats.RecordsDropped, rstats.VLANDuplicatesDropped)
+	}
+	if pstats.RecordsHeld != 0 {
+		t.Fatalf("RecordsHeld = %d after the closing flush, want 0", pstats.RecordsHeld)
 	}
 }
 
@@ -274,9 +313,117 @@ func TestReplayRepair_EveryRecordAccountedFor(t *testing.T) {
 	if pstats.RecordsIn < 100 {
 		t.Fatalf("RecordsIn = %d, want the fixture's full record volume (>100)", pstats.RecordsIn)
 	}
-	sum := pstats.RecordsEmitted + pstats.RecordsDropped + pstats.RecordsNoAddr
+	//nolint:gosec // RecordsHeld is zero here (the pipeline flushed); the identity needs one type
+	sum := pstats.RecordsEmitted + pstats.RecordsDropped + pstats.RecordsNoAddr + uint64(pstats.RecordsHeld)
 	if sum != pstats.RecordsIn {
-		t.Fatalf("emitted(%d)+dropped(%d)+noaddr(%d) = %d, want RecordsIn = %d — every record must land in one bucket",
-			pstats.RecordsEmitted, pstats.RecordsDropped, pstats.RecordsNoAddr, sum, pstats.RecordsIn)
+		t.Fatalf("emitted(%d)+dropped(%d)+noaddr(%d)+held(%d) = %d, want RecordsIn = %d — every record must land in one bucket",
+			pstats.RecordsEmitted, pstats.RecordsDropped, pstats.RecordsNoAddr, pstats.RecordsHeld, sum, pstats.RecordsIn)
+	}
+}
+
+// The volume the fixture emits, pinned exactly.
+//
+// #357 changed it, and the acceptance criterion it was filed with ("byte totals
+// unchanged") was wrong — the de-duplication was inaccurate in BOTH directions, so
+// correcting it moves the total. Every byte of the move is accounted for here, and the
+// point of pinning the number is that any FUTURE change to the de-dup rule has to
+// explain itself the same way rather than quietly shifting what the exporter reports.
+//
+// Against the pre-#357 pipeline (118 records, 1,898,159 bytes, 2,123 packets):
+//
+//	+558 B, +7 pkt   10.0.0.16:8080 -> 10.0.0.15:52231 on ixl0 -> ixl0_vlan50.
+//	                 A REAL record, destroyed as a "VLAN duplicate" because the old
+//	                 canonical-tuple key folded it onto the 4,907-byte reverse-direction
+//	                 record of the same conversation.
+//	 -69 B, -1 pkt   10.0.0.5:41302 -> 10.0.0.19:161, and
+//	-142 B, -2 pkt   10.0.0.5:50767 -> 10.0.0.20:161.
+//	                 Each exported twice with IDENTICAL in/out ifIndex (an inter-VLAN
+//	                 flow, where both hooks report trunk -> child), so the old rule
+//	                 could not see them as a pair and counted both.
+//
+// Net +347 B, +4 pkt, and one record fewer.
+func TestReplayRepair_EmittedVolumeIsPinned(t *testing.T) {
+	const (
+		wantRecords = 117
+		wantBytes   = 1898506
+		wantPackets = 2127
+	)
+
+	recs, _, _ := runReplayPipeline(t)
+	var bytes, packets uint64
+	for _, r := range recs {
+		b, p := volumeOf(r)
+		bytes += b
+		packets += p
+	}
+
+	if len(recs) != wantRecords {
+		t.Errorf("emitted %d records, want %d", len(recs), wantRecords)
+	}
+	if bytes != wantBytes {
+		t.Errorf("emitted %d bytes, want %d (delta %+d) — the de-dup rule changed what this "+
+			"exporter reports; account for every byte before re-pinning this",
+			bytes, wantBytes, int64(bytes)-int64(wantBytes))
+	}
+	if packets != wantPackets {
+		t.Errorf("emitted %d packets, want %d (delta %+d)", packets, wantPackets, int64(packets)-int64(wantPackets))
+	}
+}
+
+// The record the old key destroyed, asserted by identity rather than by a total.
+//
+// It is the 558-byte half of a conversation whose other half (4,907 bytes, the opposite
+// direction, identical First/Last) sits on the VLAN child. Folding the two onto one
+// canonical-tuple key made the second one look like the trunk copy of the first, and
+// the de-dup dropped it. A NetFlow record is unidirectional: these are two exports, not
+// two copies of one.
+func TestReplayRepair_OppositeDirectionsAreNotDuplicates(t *testing.T) {
+	recs, _, _ := runReplayPipeline(t)
+
+	var forward, reverse int
+	for _, r := range recs {
+		switch {
+		case r.SrcAddr.String() == "10.0.0.15" && r.DstAddr.String() == "10.0.0.16":
+			forward++
+			if got, _ := volumeOf(r); got != 4907 {
+				t.Errorf("forward half = %d bytes, want 4907", got)
+			}
+		case r.SrcAddr.String() == "10.0.0.16" && r.DstAddr.String() == "10.0.0.15":
+			reverse++
+			if got, _ := volumeOf(r); got != 558 {
+				t.Errorf("reverse half = %d bytes, want 558", got)
+			}
+		}
+	}
+	if forward != 1 || reverse != 1 {
+		t.Errorf("emitted %d forward and %d reverse records for 10.0.0.15 <-> 10.0.0.16, want 1 of each: "+
+			"the two directions of one conversation are two exports, not a duplicate pair", forward, reverse)
+	}
+}
+
+// The other half of the de-dup's inaccuracy: an inter-VLAN flow whose two copies name
+// the SAME ingress and egress ifIndex, because both hooks saw it cross trunk -> child.
+// They are indistinguishable by interface, so a rule that requires a trunk/child pair
+// cannot see them and counts the bytes twice.
+func TestReplayRepair_IdenticalCopiesOnOneInterfacePairCollapse(t *testing.T) {
+	recs, _, _ := runReplayPipeline(t)
+
+	counts := map[string]int{}
+	for _, r := range recs {
+		if r.SrcAddr.String() != "10.0.0.5" {
+			continue
+		}
+		if r.In.Device == "ixl0" && r.Out.Device == "ixl0_vlan100" {
+			counts[r.DstAddr.String()]++
+		}
+	}
+	if len(counts) == 0 {
+		t.Fatal("fixture no longer retains an inter-VLAN flow exported twice on one interface pair")
+	}
+	for dst, n := range counts {
+		if n != 1 {
+			t.Errorf("10.0.0.5 -> %s survived %d times on ixl0 -> ixl0_vlan100, want 1: "+
+				"two records identical in tuple, timestamps, volume AND both ifIndexes are one export twice", dst, n)
+		}
 	}
 }

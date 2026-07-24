@@ -69954,7 +69954,7 @@
         "spec": {
           "id": 639,
           "title": "Flow Repairs & De-duplication",
-          "description": "egress_corrected counts flows whose egress was corrected from the WAN the FIB lookup named to the WAN the traffic actually left by \u2014 OPNsense policy routing happens in pf, which ng_netflow never sees, and on the reference capture this mislabelled 3.36 GB of WAN2 traffic as WAN1. On a policy-routed multi-WAN box a flat zero means the correction is NOT firing and per-WAN volume is wrong. dedupe dropped reason=\"ttl\" is the healthy path; \"capacity\" means the table filled and later duplicates are no longer suppressed.",
+          "description": "egress_corrected counts flows whose egress was corrected from the WAN the FIB lookup named to the WAN the traffic actually left by \u2014 OPNsense policy routing happens in pf, which ng_netflow never sees, and on the reference capture this mislabelled 3.36 GB of WAN2 traffic as WAN1. On a policy-routed multi-WAN box a flat zero means the correction is NOT firing and per-WAN volume is wrong. vlan_child_preferred counts duplicates resolved in favour of the VLAN child rather than the trunk: ng_netflow flushes the trunk hook's copy FIRST, so on a box with VLAN interfaces a flat zero means every VLAN's traffic is being attributed to the trunk. records held is the short queue that makes that possible \u2014 it should hover near the per-window record rate and never grow without bound. dedupe dropped reason=\"ttl\" is the healthy path; \"capacity\" means the table filled and later duplicates are no longer suppressed; \"hold_overflow\" means the hold buffer filled and those records fell back to whichever copy arrived first.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -70003,9 +70003,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_dedupe_entries{opnsense_instance=~\"$opnsense_instance\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_vlan_child_preferred_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "B",
-                        "legendFormat": "dedupe table entries",
+                        "legendFormat": "vlan child preferred/sec",
                         "instant": false,
                         "range": true
                       }
@@ -70029,8 +70029,60 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (reason) (rate(opnsense_flow_dedupe_entries_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_dedupe_entries{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "C",
+                        "legendFormat": "dedupe table entries",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "D",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_repair_held_records{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "D",
+                        "legendFormat": "records held",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "E",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (reason) (rate(opnsense_flow_dedupe_entries_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "refId": "E",
                         "legendFormat": "dedupe dropped: {{reason}}",
                         "instant": false,
                         "range": true

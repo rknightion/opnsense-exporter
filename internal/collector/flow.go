@@ -219,9 +219,11 @@ type flowCollector struct {
 	nfTemplates  *prometheus.Desc
 	nfUnexpected *prometheus.Desc
 
-	egressCorrected *prometheus.Desc
-	dedupeEntries   *prometheus.Desc
-	dedupeDropped   *prometheus.Desc
+	egressCorrected    *prometheus.Desc
+	dedupeEntries      *prometheus.Desc
+	dedupeDropped      *prometheus.Desc
+	vlanChildPreferred *prometheus.Desc
+	repairHeld         *prometheus.Desc
 
 	ifIndexEntries   *prometheus.Desc
 	ifIndexConflicts *prometheus.Desc
@@ -479,6 +481,21 @@ func (c *flowCollector) registerNetflow() {
 		"Flow instances currently held in the VLAN de-duplication table.",
 		nil,
 	)
+	c.vlanChildPreferred = buildPrometheusDesc(c.subsystem, "vlan_child_preferred_total",
+		"VLAN duplicates resolved in favour of the VLAN CHILD copy after the trunk copy had already "+
+			"been held. ng_netflow exports the trunk hook's flows and the child hook's flows in "+
+			"separate datagrams, trunk first, so without this the surviving copy attributes every "+
+			"VLAN's traffic to the trunk interface. A zero rate on a box with VLAN interfaces means "+
+			"the attribution fix is not firing and per-VLAN volume is collapsed onto the trunk.",
+		nil,
+	)
+	c.repairHeld = buildPrometheusDesc(c.subsystem, "repair_held_records",
+		"Flow records parked in the repair stage waiting to see whether a copy on a VLAN child beats "+
+			"them. They are neither emitted nor dropped yet, so this is the term that closes "+
+			"records_in = emitted + dropped + no_address + held. A value that grows without bound "+
+			"means records are not being released.",
+		nil,
+	)
 	c.dedupeDropped = buildPrometheusDesc(c.subsystem, "dedupe_entries_dropped_total",
 		"Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path - the "+
 			"instance aged out having done its job. reason=\"capacity\" means the table was full and an "+
@@ -534,6 +551,8 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.egressCorrected
 	ch <- c.dedupeEntries
 	ch <- c.dedupeDropped
+	ch <- c.vlanChildPreferred
+	ch <- c.repairHeld
 	ch <- c.ifIndexEntries
 	ch <- c.ifIndexConflicts
 	ch <- c.ifIndexAge
@@ -669,6 +688,9 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	gauge(c.dedupeEntries, float64(nf.Repair.DedupeEntries))
 	counter(c.dedupeDropped, nf.Repair.DedupeEvicted, "ttl")
 	counter(c.dedupeDropped, nf.Repair.DedupeCapped, "capacity")
+	counter(c.dedupeDropped, nf.Repair.HoldOverflow, "hold_overflow")
+	counter(c.vlanChildPreferred, nf.Repair.VLANChildPreferred)
+	gauge(c.repairHeld, float64(nf.Pipeline.RecordsHeld))
 
 	gauge(c.ifIndexEntries, float64(nf.IfMap.Entries))
 	gauge(c.ifIndexConflicts, float64(nf.IfMap.Conflicts))

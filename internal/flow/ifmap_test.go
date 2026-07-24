@@ -292,6 +292,31 @@ func TestIfMap_ParentOf(t *testing.T) {
 	}
 }
 
+// HasVLANChildren is what decides whether a record can still be beaten by a more
+// specific copy (#357). It must answer for the TRUNK, which is exactly the device
+// ParentOf misses on, and it must never claim a device the interface list did not
+// contain.
+func TestIfMap_HasVLANChildren(t *testing.T) {
+	m := BuildIfMap(liveIfaces(), nil, time.Time{})
+
+	tests := []struct {
+		device string
+		want   bool
+	}{
+		{"ixl0", true},          // the trunk: three VLAN children hang off it
+		{"ixl0_vlan50", false},  // a child is not itself a trunk
+		{"ixl0_vlan100", false}, // ditto
+		{"pppoe0", false},       // a real interface with no children
+		{"nosuchdev", false},
+		{"", false},
+	}
+	for _, tc := range tests {
+		if got := m.HasVLANChildren(tc.device); got != tc.want {
+			t.Errorf("HasVLANChildren(%q) = %v, want %v", tc.device, got, tc.want)
+		}
+	}
+}
+
 func TestIfMap_Age(t *testing.T) {
 	built := time.Unix(1700000000, 0)
 	m := BuildIfMap(liveIfaces(), nil, built)
@@ -319,6 +344,9 @@ func TestIfMap_NilIsSafe(t *testing.T) {
 	}
 	if _, ok := m.ParentOf("ixl0_vlan50"); ok {
 		t.Error("nil.ParentOf must miss")
+	}
+	if m.HasVLANChildren("ixl0") {
+		t.Error("nil.HasVLANChildren must miss")
 	}
 	if got := m.Age(time.Now()); got != 0 {
 		t.Errorf("nil.Age = %v, want 0", got)

@@ -62,6 +62,24 @@ const httpShutdownTimeout = 10 * time.Second
 // oldest entry goes and a later duplicate is no longer suppressed.
 const flowDedupeEntries = 20000
 
+// flowHoldEntries bounds the VLAN hold buffer — records parked for up to two seconds
+// while a more specific copy on a VLAN child could still arrive (#357).
+//
+// It is deliberately smaller than flowDedupeEntries and is a different KIND of bound:
+// the de-dup table holds keys remembering decisions already taken, while this holds
+// whole Records nobody downstream has seen yet. Sized for two seconds of a sustained
+// 5,000 records/second burst on a box where every record touches the trunk, which is
+// several times the reference box's peak. At capacity the oldest held record is
+// released early rather than dropped, so overrunning it costs attribution on that
+// record, never the record itself.
+const flowHoldEntries = 10000
+
+// flowHoldReleaseInterval drives the hold buffer's release on a lane that has gone
+// quiet. Every datagram arrival already drains what is due, so this only matters when
+// the exporter stops sending — and then it bounds how long the last records of a burst
+// sit unreported.
+const flowHoldReleaseInterval = time.Second
+
 // ifIndexRefreshInterval rebuilds the NetFlow ifIndex map. Frequent because the
 // mapping is positional: an interface added or removed renumbers everything.
 const ifIndexRefreshInterval = 60 * time.Second
@@ -951,7 +969,7 @@ func main() {
 	// standalone with Zenarmor absent" requirement.
 	if collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.NetflowEnabled {
 		cache := ensureEnrich()
-		repairer := flow.NewRepairer(flowDedupeEntries)
+		repairer := flow.NewRepairer(flowDedupeEntries, flowHoldEntries)
 		proc := flow.NewProcessor(flowSink, repairer, cache)
 		// Read dst.domain from the same answer cache the Zenarmor dns family fills (#353),
 		// so a bare NetFlow flow to an IP recovers the domain a client looked up.
@@ -990,6 +1008,22 @@ func main() {
 			}
 		}()
 
+		// Release the VLAN hold buffer on a ticker. ObserveDatagram already drains what
+		// is due on every datagram, so this covers only the lane that has gone quiet —
+		// and the shutdown Flush covers the records still parked when it does.
+		go func() {
+			ticker := time.NewTicker(flowHoldReleaseInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-nfCtx.Done():
+					return
+				case <-ticker.C:
+					proc.ReleaseDue(time.Now())
+				}
+			}
+		}()
+
 		collector.Flow.SetNetflowStats(func() collector.NetflowStats {
 			var mapStats flow.IfMapStats
 			var age time.Duration
@@ -1010,6 +1044,10 @@ func main() {
 		stopNetflow = func() {
 			cancelNetflow()
 			_ = listener.Close()
+			// Flushed synchronously, and AFTER the socket is closed, so the records
+			// still parked in the hold buffer are reported rather than abandoned —
+			// the same contract as Correlator.Flush.
+			proc.Flush(time.Now())
 		}
 		// An empty allowlist is legitimate but it is a decision, not a default to
 		// drift into: NetFlow has no authentication, so anything that can reach this

@@ -163,7 +163,7 @@ func TestInterfaceLabel_NamesTheWANFacingSide(t *testing.T) {
 
 func TestProcessor_EmitsRecordsAndCountsThem(t *testing.T) {
 	sink := &captureSink{}
-	p := NewProcessor(sink, NewRepairer(100), nil)
+	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
 	p.SetIfMap(BuildIfMap(testIfaces(), nil, time.Now()))
 
 	p.ObserveDatagram(&netflow.Datagram{
@@ -179,12 +179,28 @@ func TestProcessor_EmitsRecordsAndCountsThem(t *testing.T) {
 		},
 	}, time.Unix(1784652010, 0))
 
+	// The record entered on ixl0, which is a trunk with a VLAN child, so the repair
+	// stage HOLDS it: a copy on ixl0_vlan50 could still arrive and beat it (#357). It
+	// is accounted for the whole time — held is the fourth term of the identity, not a
+	// gap in it.
+	if len(sink.recs) != 0 {
+		t.Fatalf("sink saw %d records before the hold window elapsed, want 0", len(sink.recs))
+	}
+	if st := p.Stats(); st.RecordsHeld != 1 || st.RecordsEmitted != 0 {
+		t.Fatalf("stats = %+v, want the record held and nothing emitted yet", st)
+	}
+
+	p.ReleaseDue(time.Unix(1784652010, 0).Add(vlanHoldWindow))
+
 	if len(sink.recs) != 1 {
-		t.Fatalf("sink saw %d records, want 1", len(sink.recs))
+		t.Fatalf("sink saw %d records after the hold window, want 1", len(sink.recs))
 	}
 	st := p.Stats()
 	if st.Datagrams != 1 || st.RecordsIn != 1 || st.RecordsEmitted != 1 {
 		t.Errorf("stats = %+v, want 1/1/1", st)
+	}
+	if st.RecordsHeld != 0 {
+		t.Errorf("RecordsHeld = %d after the release, want 0", st.RecordsHeld)
 	}
 	got := sink.recs[0]
 	if got.In.Device != "ixl0" || got.Out.Device != "igb0" {
@@ -193,12 +209,41 @@ func TestProcessor_EmitsRecordsAndCountsThem(t *testing.T) {
 	}
 }
 
+// A record naming no trunk cannot be beaten by a more specific copy, so it must not
+// pay the hold window at all: this is what keeps the added latency confined to the
+// interfaces that actually have VLAN children.
+func TestProcessor_RecordOnNoTrunkEmitsImmediately(t *testing.T) {
+	sink := &captureSink{}
+	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
+	p.SetIfMap(BuildIfMap(testIfaces(), nil, time.Now()))
+
+	p.ObserveDatagram(&netflow.Datagram{
+		Version: netflow.V9,
+		Records: []netflow.Record{
+			{
+				Proto: 6, Bytes: 1000, Packets: 10,
+				SrcAddr: mustAddr(t, "93.184.216.34"), DstAddr: mustAddr(t, "10.0.0.5"),
+				SrcPort: 443, DstPort: 40000,
+				InIfIndex: 5, OutIfIndex: 13, // igb0 -> ixl0_vlan50: neither is a trunk
+				First: time.Unix(1784652000, 0), Last: time.Unix(1784652005, 0),
+			},
+		},
+	}, time.Unix(1784652010, 0))
+
+	if len(sink.recs) != 1 {
+		t.Fatalf("sink saw %d records, want 1 emitted straight away", len(sink.recs))
+	}
+	if st := p.Stats(); st.RecordsHeld != 0 || st.RecordsEmitted != 1 {
+		t.Errorf("stats = %+v, want nothing held and one emitted", st)
+	}
+}
+
 // The pipeline must not emit a record the repair stage discarded: a VLAN/parent
 // duplicate that reaches the sink is counted twice, which is the ~4%-of-bytes bug
 // the repair exists to remove.
 func TestProcessor_DoesNotEmitWhatTheRepairStageDrops(t *testing.T) {
 	sink := &captureSink{}
-	p := NewProcessor(sink, NewRepairer(100), nil)
+	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
 	p.SetIfMap(BuildIfMap(testIfaces(), nil, time.Now()))
 
 	// A record tagged VLAN 50 but sitting on the PARENT device (ifIndex 1 = ixl0) is
@@ -224,7 +269,7 @@ func TestProcessor_DoesNotEmitWhatTheRepairStageDrops(t *testing.T) {
 
 func TestProcessor_CountsRecordsWithNoUsableEndpoints(t *testing.T) {
 	sink := &captureSink{}
-	p := NewProcessor(sink, NewRepairer(100), nil)
+	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
 	p.ObserveDatagram(&netflow.Datagram{Records: []netflow.Record{{Proto: 6}}}, time.Now())
 	if st := p.Stats(); st.RecordsNoAddr != 1 || st.RecordsEmitted != 0 {
 		t.Errorf("stats = %+v, want 1 no-address / 0 emitted", st)
@@ -240,7 +285,7 @@ func TestProcessor_CountsRecordsWithNoUsableEndpoints(t *testing.T) {
 // made someone look.
 func TestProcessor_SurvivesAColdIfMapAndSnapshot(t *testing.T) {
 	sink := &captureSink{}
-	p := NewProcessor(sink, NewRepairer(100), nil)
+	p := NewProcessor(sink, NewRepairer(100, 1000), nil)
 	p.ObserveDatagram(&netflow.Datagram{
 		Records: []netflow.Record{{
 			Proto: 17, Bytes: 100, Packets: 1,

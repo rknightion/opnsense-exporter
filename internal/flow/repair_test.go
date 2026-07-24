@@ -66,6 +66,18 @@ func (f *rpIfMap) ParentOf(device string) (string, bool) {
 	return p, ok
 }
 
+func (f *rpIfMap) HasVLANChildren(device string) bool {
+	if device == "" {
+		return false
+	}
+	for _, parent := range f.parents {
+		if parent == device {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *rpIfMap) IsWAN(device string) bool { return f.wanDevs[device] }
 
 // rpBlindBox is the same topology with IsWAN withheld, which is the shape of the
@@ -74,8 +86,9 @@ func (f *rpIfMap) IsWAN(device string) bool { return f.wanDevs[device] }
 // assertion.
 type rpBlindBox struct{ inner *rpIfMap }
 
-func (f rpBlindBox) WANFor(a netip.Addr) (Iface, bool) { return f.inner.WANFor(a) }
-func (f rpBlindBox) ParentOf(d string) (string, bool)  { return f.inner.ParentOf(d) }
+func (f rpBlindBox) WANFor(a netip.Addr) (Iface, bool)  { return f.inner.WANFor(a) }
+func (f rpBlindBox) ParentOf(d string) (string, bool)   { return f.inner.ParentOf(d) }
+func (f rpBlindBox) HasVLANChildren(device string) bool { return f.inner.HasVLANChildren(device) }
 
 func rpSnapshot() *enrich.Snapshot {
 	return &enrich.Snapshot{
@@ -119,14 +132,44 @@ func rpVLANPair() (parent, child Record) {
 }
 
 // rpRun feeds records through the repairer in order and returns the ones kept.
+//
+// It runs the lane to COMPLETION: records the stage parks are collected from the
+// closing Flush, exactly as the processor's shutdown path does. Without that, a test
+// asserting "one record survives" could not tell a held record from a dropped one.
 func rpRun(r *Repairer, m ifTopology, snap *enrich.Snapshot, now time.Time, recs ...Record) []Record {
 	kept := make([]Record, 0, len(recs))
 	for _, rec := range recs {
-		if r.repairWith(&rec, m, snap, now) {
+		if r.repairWith(&rec, m, snap, now) == RepairEmit {
 			kept = append(kept, rec)
 		}
 	}
-	return kept
+	return append(kept, r.Flush()...)
+}
+
+// rpOne feeds ONE record through the repairer and returns it as it LEAVES the stage,
+// whether that was immediately or from the hold buffer.
+//
+// Repairs 2 and 3 are deferred for a held record, so a test that read the record it
+// passed in would see an unrepaired one and prove nothing. Reading what came out is
+// also the honest model of the pipeline: the processor never ships the record it
+// handed to Repair either.
+func rpOne(t *testing.T, r *Repairer, m ifTopology, snap *enrich.Snapshot, now time.Time, rec Record) Record {
+	t.Helper()
+	out := rpRun(r, m, snap, now, rec)
+	if len(out) != 1 {
+		t.Fatalf("record did not survive the repair stage (%d emitted, want 1)", len(out))
+	}
+	return out[0]
+}
+
+// rpFeed feeds one record and drains the hold buffer, so the instance ends up in the
+// DE-DUP TABLE rather than parked in front of it. The table's own tests — expiry,
+// bounds, eviction — are about that table, and a record still sitting in the hold
+// buffer has not reached it yet.
+func rpFeed(r *Repairer, m ifTopology, snap *enrich.Snapshot, now time.Time, rec Record) RepairVerdict {
+	v := r.repairWith(&rec, m, snap, now)
+	r.Flush()
+	return v
 }
 
 // The control for repair 1. The two copies arrive in different datagrams and
@@ -145,7 +188,7 @@ func TestRepairer_VLANDuplicateCollapsesToTheVLANCopyInBothArrivalOrders(t *test
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := NewRepairer(1000)
+			r := NewRepairer(1000, 1000)
 			kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, tc.in...)
 
 			if len(kept) != 1 {
@@ -168,33 +211,93 @@ func TestRepairer_VLANDuplicateCollapsesToTheVLANCopyInBothArrivalOrders(t *test
 	}
 }
 
-// Without the 802.1Q tag on the parent copy the two are distinguishable only by
-// having been seen before, so the instance table is what guarantees exactly one
-// survives. It cannot un-emit, so in parent-first order the parent copy is the one
-// that survives — the byte total is right, the interface attribution is not. That
-// residual is the reason the tag matters and is called out in repair.go.
-func TestRepairer_UntaggedParentCopyStillCollapsesToOneRecord(t *testing.T) {
+// The tag is what this box never sends: 0 of the 131 records in the golden capture
+// carry SRC_VLAN/DST_VLAN, so mechanism A never fires on it and the untagged pair is
+// the ONLY shape that occurs in production. The copies are then distinguishable only
+// by topology, and the parent copy is the one that arrives first — every time, because
+// the trunk hook and the child hook flush in separate consecutive datagrams of one
+// expiry sweep.
+//
+// So this is the case #357 is about, and holding the parent copy is what fixes it:
+// BOTH orders must collapse to the VLAN child, not merely to one record.
+func TestRepairer_UntaggedVLANDuplicateStillResolvesToTheChildInBothOrders(t *testing.T) {
 	parent, child := rpVLANPair()
 	parent.VLANID, child.VLANID = "", ""
 
 	tests := []struct {
-		name       string
-		in         []Record
-		wantDevice string
+		name               string
+		in                 []Record
+		wantChildPreferred uint64
 	}{
-		{"vlan copy first", []Record{child, parent}, "ixl0_vlan50"},
-		{"parent copy first", []Record{parent, child}, "ixl0"},
+		// The child arrives first, so it is admitted on its own merits and the parent
+		// copy loses to the table. Nothing had to be replaced.
+		{"vlan copy first", []Record{child, parent}, 0},
+		// The parent copy arrives first — the production order. It is HELD rather than
+		// emitted, because ixl0 is a trunk with VLAN children and a better copy could
+		// still exist; the child then takes its place.
+		{"parent copy first", []Record{parent, child}, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := NewRepairer(1000)
+			r := NewRepairer(1000, 1000)
 			kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, tc.in...)
 
 			if len(kept) != 1 {
 				t.Fatalf("kept %d records, want exactly 1", len(kept))
 			}
-			if kept[0].In.Device != tc.wantDevice {
-				t.Errorf("survivor In.Device = %q, want %q", kept[0].In.Device, tc.wantDevice)
+			if kept[0].In.Device != "ixl0_vlan50" {
+				t.Errorf("survivor In.Device = %q, want ixl0_vlan50 — keeping the trunk copy "+
+					"attributes IOT traffic to LAN, which is the defect in #357", kept[0].In.Device)
+			}
+			if got := kept[0].NF.Bytes(); got != 24935 {
+				t.Errorf("survivor bytes = %d, want 24935", got)
+			}
+			st := r.Stats()
+			if st.VLANDuplicatesDropped != 1 {
+				t.Errorf("VLANDuplicatesDropped = %d, want 1", st.VLANDuplicatesDropped)
+			}
+			if st.VLANChildPreferred != tc.wantChildPreferred {
+				t.Errorf("VLANChildPreferred = %d, want %d", st.VLANChildPreferred, tc.wantChildPreferred)
+			}
+			if st.HeldEntries != 0 {
+				t.Errorf("HeldEntries = %d after the flush, want 0", st.HeldEntries)
+			}
+		})
+	}
+}
+
+// The de-dup keyed on the INGRESS device alone until #357, which left the inbound half
+// of every VLAN conversation undeduplicated: for traffic arriving from the WAN and
+// leaving on a VLAN, the two copies agree on the ingress (pppoe0) and differ on the
+// EGRESS. Nothing about a duplicate pair says which side the hooks disagree about.
+func TestRepairer_EgressSideVLANDuplicateIsResolvedToTheChild(t *testing.T) {
+	base := Record{
+		Source: SourceNetflow, Proto: 6,
+		SrcAddr: netip.MustParseAddr("93.184.216.34"), SrcPort: 443,
+		DstAddr: netip.MustParseAddr("10.0.50.4"), DstPort: 51234,
+		Start: rpT0, End: rpT0.Add(time.Second),
+		NF: Counters{TxBytes: 8192, TxPackets: 12, Present: true},
+	}
+	parent, child := base, base
+	parent.In, parent.Out = rpIfWAN1, rpIfLAN
+	child.In, child.Out = rpIfWAN1, rpIfIOT
+
+	for _, tc := range []struct {
+		name string
+		in   []Record
+	}{
+		{"parent copy first", []Record{parent, child}},
+		{"vlan copy first", []Record{child, parent}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewRepairer(1000, 1000)
+			kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, tc.in...)
+
+			if len(kept) != 1 {
+				t.Fatalf("kept %d records, want exactly 1 — the same 8,192 bytes twice", len(kept))
+			}
+			if kept[0].Out.Device != "ixl0_vlan50" {
+				t.Errorf("survivor Out.Device = %q, want ixl0_vlan50", kept[0].Out.Device)
 			}
 			if st := r.Stats(); st.VLANDuplicatesDropped != 1 {
 				t.Errorf("VLANDuplicatesDropped = %d, want 1", st.VLANDuplicatesDropped)
@@ -203,17 +306,160 @@ func TestRepairer_UntaggedParentCopyStillCollapsesToOneRecord(t *testing.T) {
 	}
 }
 
-// The instance key is (canonical 5-tuple, First, Last). A long-lived conversation is
-// exported repeatedly with the SAME tuple and different timestamps, so keying on the
-// tuple alone would silently discard every export after the first — turning a busy
-// flow into a single record.
+// An inter-VLAN flow is seen by BOTH hooks with the same ingress and egress ifIndex —
+// trunk in, child out — so the two copies are byte-for-byte identical and no
+// trunk/child pair distinguishes them. Requiring such a pair let both through and
+// double-counted the bytes; on the golden fixture that was two flows and 211 bytes.
+//
+// Everything else about the key has already established these are one export: same
+// direction, same timestamps, same volume. Two of those cannot be two flows.
+func TestRepairer_IdenticalCopiesOnOneInterfacePairCollapse(t *testing.T) {
+	rec := Record{
+		Source: SourceNetflow, Proto: 17,
+		SrcAddr: netip.MustParseAddr("10.0.0.5"), SrcPort: 41302,
+		DstAddr: netip.MustParseAddr("10.0.50.19"), DstPort: 161,
+		Start: rpT0, End: rpT0,
+		In: rpIfLAN, Out: rpIfIOT,
+		NF: Counters{TxBytes: 69, TxPackets: 1, Present: true},
+	}
+
+	r := NewRepairer(1000, 1000)
+	kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, rec, rec)
+
+	if len(kept) != 1 {
+		t.Fatalf("kept %d records, want exactly 1 — 69 bytes counted twice is 69 bytes of invented traffic", len(kept))
+	}
+	if st := r.Stats(); st.VLANDuplicatesDropped != 1 {
+		t.Errorf("VLANDuplicatesDropped = %d, want 1", st.VLANDuplicatesDropped)
+	}
+}
+
+// The two DIRECTIONS of one conversation are two exports, not two copies of one. They
+// share a canonical tuple and, when both halves close in the same sweep, their First
+// and Last as well — which is exactly how the pre-#357 key folded them together and
+// destroyed the smaller one as a "VLAN duplicate".
+//
+// Their volumes differ, because they carried different traffic. That is what the key
+// now keys on, and this is the case it exists for.
+func TestRepairer_OppositeDirectionsWithOneTimestampAreBothKept(t *testing.T) {
+	forward := Record{
+		Source: SourceNetflow, Proto: 6,
+		SrcAddr: netip.MustParseAddr("10.0.50.15"), SrcPort: 52231,
+		DstAddr: netip.MustParseAddr("10.0.0.16"), DstPort: 8080,
+		Start: rpT0, End: rpT0,
+		In: rpIfIOT, Out: rpIfLAN,
+		NF: Counters{TxBytes: 4907, TxPackets: 8, Present: true},
+	}
+	reverse := Record{
+		Source: SourceNetflow, Proto: 6,
+		SrcAddr: forward.DstAddr, SrcPort: forward.DstPort,
+		DstAddr: forward.SrcAddr, DstPort: forward.SrcPort,
+		Start: rpT0, End: rpT0,
+		In: rpIfLAN, Out: rpIfIOT,
+		NF: Counters{TxBytes: 558, TxPackets: 7, Present: true},
+	}
+
+	r := NewRepairer(1000, 1000)
+	kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, forward, reverse)
+
+	if len(kept) != 2 {
+		t.Fatalf("kept %d records, want 2 — a NetFlow record is unidirectional, so the "+
+			"two halves of a conversation are separate exports and neither is the other's duplicate", len(kept))
+	}
+	if st := r.Stats(); st.VLANDuplicatesDropped != 0 {
+		t.Errorf("VLANDuplicatesDropped = %d, want 0 — nothing here was proven a duplicate", st.VLANDuplicatesDropped)
+	}
+}
+
+// The hold window is what makes the outcome independent of arrival order, and it must
+// end on its own: a record whose partner never arrives is emitted, not stranded. Its
+// repairs run at release, so this also proves the deferral does not lose them.
+func TestRepairer_HeldRecordIsReleasedWhenItsWindowElapses(t *testing.T) {
+	rec := Record{
+		Source: SourceNetflow, Proto: 6,
+		SrcAddr: netip.MustParseAddr(rpWAN2Addr), SrcPort: 51234,
+		DstAddr: netip.MustParseAddr("93.184.216.34"), DstPort: 443,
+		Start: rpT0, End: rpT0.Add(time.Second),
+		In: rpIfLAN, Out: rpIfWAN1, // the FIB's claim; repair 2 must still correct it
+		NF: Counters{TxBytes: 4096, TxPackets: 8, Present: true},
+	}
+
+	r := NewRepairer(1000, 1000)
+	if v := r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0); v != RepairHold {
+		t.Fatalf("verdict = %v, want RepairHold — ixl0 is a trunk, so a better copy could still arrive", v)
+	}
+	if st := r.Stats(); st.HeldEntries != 1 {
+		t.Fatalf("HeldEntries = %d, want 1", st.HeldEntries)
+	}
+	if got := r.Release(rpT0.Add(vlanHoldWindow - time.Millisecond)); len(got) != 0 {
+		t.Fatalf("released %d records before the window elapsed, want 0", len(got))
+	}
+
+	got := r.Release(rpT0.Add(vlanHoldWindow))
+	if len(got) != 1 {
+		t.Fatalf("released %d records at the deadline, want 1", len(got))
+	}
+	if !got[0].Out.Corrected || got[0].Out.Device != "igb0" {
+		t.Errorf("released record Out = %+v, want the corrected igb0 — repair 2 is deferred, not skipped", got[0].Out)
+	}
+	if got[0].Direction != DirectionOutbound {
+		t.Errorf("released record Direction = %v, want outbound — repair 3 is deferred, not skipped", got[0].Direction)
+	}
+	if st := r.Stats(); st.HeldEntries != 0 || st.DedupeEntries != 1 {
+		t.Errorf("Stats() = %+v, want the record out of the hold buffer and remembered by the table", st)
+	}
+}
+
+// The hold buffer holds records nobody downstream has seen, so overrunning its bound
+// must never DROP one. The oldest is released early instead — degrading that record to
+// the first-seen-wins behaviour that predates #357 — and the pressure is counted apart
+// from everything else, because it is the one number that says attribution is being
+// decided by arrival order again.
+func TestRepairer_HoldBufferOverflowReleasesRatherThanDrops(t *testing.T) {
+	r := NewRepairer(1000, 2)
+	_, child := rpVLANPair()
+	child.VLANID = "" // this box sends no tag; mechanism A must not pre-empt the hold
+
+	var held []Record
+	for i := range 5 {
+		rec := child
+		rec.In = rpIfLAN // a trunk, so every one of these is a hold candidate
+		rec.SrcPort = uint16(5432 + i)
+		if v := r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0); v != RepairHold {
+			t.Fatalf("record %d verdict = %v, want RepairHold", i, v)
+		}
+		held = append(held, r.Release(rpT0)...)
+	}
+
+	st := r.Stats()
+	if st.HeldEntries != 2 {
+		t.Errorf("HeldEntries = %d, want 2 — the bound is not being enforced", st.HeldEntries)
+	}
+	if st.HoldOverflow != 3 {
+		t.Errorf("HoldOverflow = %d, want 3", st.HoldOverflow)
+	}
+	if len(held) != 3 {
+		t.Errorf("released %d records early, want 3 — an overflowing buffer must emit, never drop", len(held))
+	}
+	if st.VLANDuplicatesDropped != 0 {
+		t.Errorf("VLANDuplicatesDropped = %d, want 0 — nothing here was a duplicate", st.VLANDuplicatesDropped)
+	}
+	if total := len(held) + st.HeldEntries; total != 5 {
+		t.Errorf("%d of 5 records accounted for; the rest were lost", total)
+	}
+}
+
+// The instance key is (directional 5-tuple, First, Last, volume). A long-lived
+// conversation is exported repeatedly with the SAME tuple and different timestamps, so
+// keying on the tuple alone would silently discard every export after the first —
+// turning a busy flow into a single record.
 func TestRepairer_SameTupleDifferentInstanceIsKept(t *testing.T) {
 	_, child := rpVLANPair()
 	second := child
 	second.Start = child.End
 	second.End = child.End.Add(3 * time.Second)
 
-	r := NewRepairer(1000)
+	r := NewRepairer(1000, 1000)
 	kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, child, second)
 
 	if len(kept) != 2 {
@@ -240,9 +486,9 @@ func TestRepairer_DroppedRecordIsNeverCorrectedOrDirected(t *testing.T) {
 	parent.SrcAddr = netip.MustParseAddr(rpWAN2Addr)
 	parent.Out = rpIfWAN1 // what the FIB lookup claimed
 
-	r := NewRepairer(1000)
-	if r.repairWith(&parent, rpBox(), rpSnapshot(), rpT0) {
-		t.Fatal("parent copy was kept; it is a VLAN duplicate")
+	r := NewRepairer(1000, 1000)
+	if r.repairWith(&parent, rpBox(), rpSnapshot(), rpT0) != RepairDrop {
+		t.Fatal("parent copy was not dropped; it is a tagged VLAN duplicate")
 	}
 	if parent.Out.Corrected {
 		t.Error("dropped record was egress-corrected")
@@ -321,10 +567,8 @@ func TestRepairer_EgressCorrectedOnlyWhenTheObservedInterfaceDiffers(t *testing.
 				Out: tc.observedOut,
 				NF:  Counters{TxBytes: 4096, TxPackets: 8, Present: true},
 			}
-			r := NewRepairer(1000)
-			if !r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0) {
-				t.Fatal("record was dropped; it is not a duplicate")
-			}
+			r := NewRepairer(1000, 1000)
+			rec = rpOne(t, r, rpBox(), rpSnapshot(), rpT0, rec)
 			if rec.Out.Device != tc.wantDevice {
 				t.Errorf("Out.Device = %q, want %q", rec.Out.Device, tc.wantDevice)
 			}
@@ -349,8 +593,8 @@ func TestRepairer_CorrectedEgressCarriesTheDeducedWANIdentity(t *testing.T) {
 		Start: rpT0, End: rpT0.Add(time.Second),
 		In: rpIfLAN, Out: rpIfWAN1,
 	}
-	r := NewRepairer(1000)
-	r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0)
+	r := NewRepairer(1000, 1000)
+	rec = rpOne(t, r, rpBox(), rpSnapshot(), rpT0, rec)
 
 	if rec.Out.Name != "WAN2" || rec.Out.Index != 5 {
 		t.Errorf("Out = %+v, want WAN2 at ifIndex 5", rec.Out)
@@ -465,10 +709,8 @@ func TestRepairer_DirectionRules(t *testing.T) {
 				Start: rpT0, End: rpT0,
 				In: tc.in, Out: tc.out,
 			}
-			r := NewRepairer(1000)
-			if !r.repairWith(&rec, rpBox(), tc.snap, rpT0) {
-				t.Fatal("record was dropped; it is not a duplicate")
-			}
+			r := NewRepairer(1000, 1000)
+			rec = rpOne(t, r, rpBox(), tc.snap, rpT0, rec)
 			if rec.Direction != tc.want {
 				t.Errorf("Direction = %v, want %v (scopes src=%q dst=%q)",
 					rec.Direction, tc.want, rec.Enrich.SrcScope, rec.Enrich.DstScope)
@@ -491,8 +733,8 @@ func TestRepairer_DirectionWithoutAnIsWANPredicate(t *testing.T) {
 		DstAddr: netip.MustParseAddr("93.184.216.34"), DstPort: 443,
 		Start: rpT0, End: rpT0, In: rpIfLAN, Out: rpIfWAN1,
 	}
-	r := NewRepairer(1000)
-	r.repairWith(&outbound, blind, rpSnapshot(), rpT0)
+	r := NewRepairer(1000, 1000)
+	outbound = rpOne(t, r, blind, rpSnapshot(), rpT0, outbound)
 	if outbound.Direction != DirectionOutbound {
 		t.Errorf("Direction = %v, want outbound", outbound.Direction)
 	}
@@ -503,8 +745,8 @@ func TestRepairer_DirectionWithoutAnIsWANPredicate(t *testing.T) {
 		DstAddr: netip.MustParseAddr(rpWAN1Addr), DstPort: 51234,
 		Start: rpT0, End: rpT0, In: rpIfWAN1, Out: rpIfLAN,
 	}
-	r2 := NewRepairer(1000)
-	r2.repairWith(&inbound, blind, rpSnapshot(), rpT0)
+	r2 := NewRepairer(1000, 1000)
+	inbound = rpOne(t, r2, blind, rpSnapshot(), rpT0, inbound)
 	if inbound.Direction != DirectionInbound {
 		t.Errorf("Direction = %v, want inbound", inbound.Direction)
 	}
@@ -520,8 +762,8 @@ func TestRepairer_ResolvesScopesForTheRecord(t *testing.T) {
 		DstAddr: netip.MustParseAddr(rpLANAddr), DstPort: 53,
 		Start: rpT0, End: rpT0, In: rpIfLAN,
 	}
-	r := NewRepairer(1000)
-	r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0)
+	r := NewRepairer(1000, 1000)
+	rec = rpOne(t, r, rpBox(), rpSnapshot(), rpT0, rec)
 
 	if rec.Enrich.SrcScope != "local" {
 		t.Errorf("SrcScope = %q, want local", rec.Enrich.SrcScope)
@@ -539,8 +781,8 @@ func TestRepairer_DedupeExpiresAgedEntries(t *testing.T) {
 	later := child
 	later.SrcPort = 5433
 
-	r := NewRepairer(1000)
-	if !r.repairWith(&child, rpBox(), rpSnapshot(), rpT0) {
+	r := NewRepairer(1000, 1000)
+	if rpFeed(r, rpBox(), rpSnapshot(), rpT0, child) == RepairDrop {
 		t.Fatal("first record dropped")
 	}
 	if st := r.Stats(); st.DedupeEntries != 1 || st.DedupeEvicted != 0 {
@@ -549,7 +791,7 @@ func TestRepairer_DedupeExpiresAgedEntries(t *testing.T) {
 
 	// One TTL later, plus a margin: the first instance can no longer be part of a
 	// duplicate pair, so it must not still be occupying the table.
-	r.repairWith(&later, rpBox(), rpSnapshot(), rpT0.Add(dedupeTTL+time.Second))
+	rpFeed(r, rpBox(), rpSnapshot(), rpT0.Add(dedupeTTL+time.Second), later)
 
 	st := r.Stats()
 	if st.DedupeEvicted != 1 {
@@ -568,13 +810,13 @@ func TestRepairer_DedupeExpiresAgedEntries(t *testing.T) {
 // have a duplicate in flight — and the pressure is counted, because a table running
 // permanently at its bound is silently deduping less than the operator thinks.
 func TestRepairer_DedupeIsBoundedAndCountsThePressure(t *testing.T) {
-	r := NewRepairer(2)
+	r := NewRepairer(2, 1000)
 	_, child := rpVLANPair()
 
 	for i := 0; i < 5; i++ {
 		rec := child
 		rec.SrcPort = uint16(5432 + i)
-		if !r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0) {
+		if rpFeed(r, rpBox(), rpSnapshot(), rpT0, rec) == RepairDrop {
 			t.Fatalf("record %d dropped; these are five distinct instances", i)
 		}
 	}
@@ -598,16 +840,16 @@ func TestRepairer_EvictedInstanceNoLongerDedupes(t *testing.T) {
 	parent, child := rpVLANPair()
 	parent.VLANID, child.VLANID = "", "" // force the table path, not the tag path
 
-	r := NewRepairer(1)
-	if !r.repairWith(&child, rpBox(), rpSnapshot(), rpT0) {
+	r := NewRepairer(1, 1000)
+	if rpFeed(r, rpBox(), rpSnapshot(), rpT0, child) == RepairDrop {
 		t.Fatal("vlan copy dropped")
 	}
 	// A second instance evicts the first.
 	other := child
 	other.SrcPort = 5433
-	r.repairWith(&other, rpBox(), rpSnapshot(), rpT0)
+	rpFeed(r, rpBox(), rpSnapshot(), rpT0, other)
 
-	if !r.repairWith(&parent, rpBox(), rpSnapshot(), rpT0) {
+	if rpFeed(r, rpBox(), rpSnapshot(), rpT0, parent) == RepairDrop {
 		t.Error("parent copy was still deduped after its instance was evicted; " +
 			"the table cannot suppress what it no longer remembers")
 	}
@@ -619,12 +861,12 @@ func TestRepairer_EvictedInstanceNoLongerDedupes(t *testing.T) {
 // A maxDedupeEntries of zero means unbounded, matching NewRollup's convention for
 // its own caps. Silently clamping to zero entries would disable de-dup entirely.
 func TestRepairer_ZeroMaxEntriesIsUnbounded(t *testing.T) {
-	r := NewRepairer(0)
+	r := NewRepairer(0, 1000)
 	_, child := rpVLANPair()
 	for i := 0; i < 200; i++ {
 		rec := child
 		rec.SrcPort = uint16(1000 + i)
-		r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0)
+		rpFeed(r, rpBox(), rpSnapshot(), rpT0, rec)
 	}
 	st := r.Stats()
 	if st.DedupeEntries != 200 {
@@ -640,11 +882,11 @@ func TestRepairer_ZeroMaxEntriesIsUnbounded(t *testing.T) {
 // record to be dropped: without topology we cannot prove anything is a duplicate.
 func TestRepairer_NilInputsKeepRecordsAndDoNotPanic(t *testing.T) {
 	parent, child := rpVLANPair()
-	r := NewRepairer(1000)
+	r := NewRepairer(1000, 1000)
 
 	kept := 0
 	for _, rec := range []Record{parent, child} {
-		if r.Repair(&rec, nil, nil, rpT0) {
+		if r.Repair(&rec, nil, nil, rpT0) == RepairEmit {
 			kept++
 		}
 	}
@@ -656,15 +898,20 @@ func TestRepairer_NilInputsKeepRecordsAndDoNotPanic(t *testing.T) {
 	}
 }
 
-// Repair runs on a UDP worker POOL, so the table is shared mutable state. Run under
-// -race. The assertions are deterministic by construction: every parent copy is
-// dropped by the tag rule on sight, which does not depend on what any other
-// goroutine did first.
+// Repair runs on a UDP worker POOL, so the table and the hold buffer are shared
+// mutable state. Run under -race. The assertions are deterministic by construction:
+// every parent copy is dropped by the tag rule on sight, which does not depend on what
+// any other goroutine did first.
+//
+// Each worker owns a DISJOINT port range. Two workers emitting the identical record
+// would not be a concurrency artefact to tolerate — with the #357 key it is a genuine
+// duplicate and the stage would rightly suppress it, which would make this test assert
+// the de-dup rule rather than the locking.
 func TestRepairer_ConcurrentRepairIsRaceFree(t *testing.T) {
 	const workers = 8
 	const iterations = 250
 
-	r := NewRepairer(4096)
+	r := NewRepairer(4096, 1000)
 	m := rpBox()
 	snap := rpSnapshot()
 
@@ -676,13 +923,15 @@ func TestRepairer_ConcurrentRepairIsRaceFree(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < iterations; i++ {
 				parent, child := rpVLANPair()
-				child.SrcPort = uint16(1024 + i)
+				child.SrcPort = uint16(1024 + w*iterations + i)
 				parent.SrcPort = child.SrcPort
 				now := rpT0.Add(time.Duration(i) * time.Millisecond)
-				if r.repairWith(&parent, m, snap, now) {
+				// Not-dropped rather than emitted: the child copy names the trunk on its
+				// egress, so it is HELD and reaches the sink from the release path.
+				if r.repairWith(&parent, m, snap, now) != RepairDrop {
 					kept[w]++
 				}
-				if r.repairWith(&child, m, snap, now) {
+				if r.repairWith(&child, m, snap, now) != RepairDrop {
 					kept[w]++
 				}
 			}
@@ -729,10 +978,8 @@ func TestRepairer_ProductionShapeOutboundIsNotUnknown(t *testing.T) {
 		In:  m.Iface(1),  // ixl0, LAN
 		Out: m.Iface(14), // pppoe0, WAN1
 	}
-	r := NewRepairer(1000)
-	if !r.Repair(&outbound, m, snap, rpT0) {
-		t.Fatal("record was dropped")
-	}
+	r := NewRepairer(1000, 1000)
+	outbound = rpOne(t, r, m, snap, rpT0, outbound)
 	if outbound.Direction != DirectionOutbound {
 		t.Errorf("Direction = %v, want outbound (scopes %q/%q)",
 			outbound.Direction, outbound.Enrich.SrcScope, outbound.Enrich.DstScope)
@@ -746,9 +993,7 @@ func TestRepairer_ProductionShapeOutboundIsNotUnknown(t *testing.T) {
 		In:  m.Iface(14),
 		Out: m.Iface(1),
 	}
-	if !r.Repair(&inbound, m, snap, rpT0) {
-		t.Fatal("record was dropped")
-	}
+	inbound = rpOne(t, r, m, snap, rpT0, inbound)
 	if inbound.Direction != DirectionInbound {
 		t.Errorf("Direction = %v, want inbound", inbound.Direction)
 	}
@@ -764,20 +1009,19 @@ func TestRepairer_VLANDedupeAgainstTheRealIfMap(t *testing.T) {
 	parent.In, parent.Out = m.Iface(1), m.Iface(1)
 	child.In, child.Out = m.Iface(13), m.Iface(1)
 
-	r := NewRepairer(1000)
-	kept := 0
-	var survivor Record
+	r := NewRepairer(1000, 1000)
+	var kept []Record
 	for _, rec := range []Record{parent, child} {
-		if r.Repair(&rec, m, rpSnapshot(), rpT0) {
-			kept++
-			survivor = rec
+		if r.Repair(&rec, m, rpSnapshot(), rpT0) == RepairEmit {
+			kept = append(kept, rec)
 		}
 	}
-	if kept != 1 {
-		t.Fatalf("kept %d records, want 1", kept)
+	kept = append(kept, r.Flush()...)
+	if len(kept) != 1 {
+		t.Fatalf("kept %d records, want 1", len(kept))
 	}
-	if survivor.In.Name != "IOT" {
-		t.Errorf("survivor In.Name = %q, want IOT", survivor.In.Name)
+	if kept[0].In.Name != "IOT" {
+		t.Errorf("survivor In.Name = %q, want IOT", kept[0].In.Name)
 	}
 }
 
@@ -787,9 +1031,10 @@ func TestRepairer_VLANDedupeAgainstTheRealIfMap(t *testing.T) {
 func TestRepairer_ExportedRepairMatchesTheSeam(t *testing.T) {
 	var m *IfMap // the pre-refresh state processor.go can pass
 	_, child := rpVLANPair()
-	r := NewRepairer(1000)
-	if !r.Repair(&child, m, rpSnapshot(), rpT0) {
-		t.Fatal("Repair dropped a record with a nil IfMap")
+	r := NewRepairer(1000, 1000)
+	if r.Repair(&child, m, rpSnapshot(), rpT0) != RepairEmit {
+		t.Fatal("Repair dropped or held a record with a nil IfMap; with no topology " +
+			"nothing is provably a duplicate and nothing can be beaten")
 	}
 	if child.Enrich.DstScope != "local" {
 		t.Errorf("DstScope = %q, want local — Repair must still resolve scope", child.Enrich.DstScope)

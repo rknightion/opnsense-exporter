@@ -75,6 +75,20 @@ drops the parent, counting each as
 `records_dropped_total{reason="vlan_duplicate"}`. A flat zero there on a VLAN'd
 network means the de-dup is not firing and your volume is double-counted.
 
+Which copy survives is not a detail. The box flushes the trunk hook's records and
+the child hook's records in separate consecutive datagrams, trunk first, so keeping
+whichever arrived first keeps the trunk copy every time and collapses every VLAN
+onto the parent interface. A record that could still be beaten by a copy on one of
+its trunk's children is therefore held for up to two seconds before it is emitted,
+and a better copy arriving inside that window takes its place. Only records naming a
+trunk that actually has VLAN children wait; a box without VLANs holds nothing.
+`opnsense_flow_vlan_child_preferred_total` counts the swaps and is the number that
+says the attribution is right - a flat zero on a box with VLAN interfaces means it is
+not. `opnsense_flow_repair_held_records` is the queue itself: it should track the
+record rate and never grow without bound, and
+`records_dropped_total{reason="hold_overflow"}` means the buffer filled and those
+records fell back to first-arrival.
+
 **Policy-routed egress is mislabelled - the big one.** ng_netflow derives the egress
 interface from a FIB route lookup, but OPNsense multi-WAN policy routing happens in
 pf, which ng_netflow never sees. On the reference capture this reported 3.36 GB of

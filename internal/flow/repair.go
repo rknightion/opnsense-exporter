@@ -18,7 +18,9 @@ import (
 //  1. VLAN/parent de-duplication. ng_netflow captures on a trunk AND on its VLAN
 //     children, so every tagged packet is exported twice — 9,657 of 80,275 flow
 //     instances, about 4% of bytes — and the parent copy additionally attributes
-//     VLAN traffic to the parent's interface name.
+//     VLAN traffic to the parent's interface name. WHICH copy survives is as much
+//     of the repair as how many do: the box flushes the trunk copy first, so
+//     keeping the earlier arrival keeps the wrong one every time (#357).
 //  2. Egress correction. OUTPUT_SNMP comes from a FIB route lookup, but OPNsense's
 //     multi-WAN policy routing happens in pf, which ng_netflow never sees. It
 //     mislabelled 3.36 GB of WAN2 traffic as WAN1 in a single window, leaving WAN2
@@ -38,12 +40,29 @@ import (
 // bound that actually matters (maxDedupeEntries) is already exposed.
 const dedupeTTL = 2 * time.Minute
 
+// vlanHoldWindow is how long a record that could still be beaten by a more specific
+// copy waits before it is emitted (#357).
+//
+// It exists because the winner cannot always be decided from the copy in hand. On the
+// reference box the trunk hook's flows and the child hook's flows leave in SEPARATE
+// CONSECUTIVE DATAGRAMS of one expiry sweep — measured on the golden fixture, the
+// parent copy arrives first in 12 of 12 genuine pairs — so a first-seen-wins rule does
+// not merely risk keeping the trunk copy, it keeps it every time. Waiting out the rest
+// of the sweep is what makes the outcome independent of datagram scheduling.
+//
+// Two seconds is roughly three orders of magnitude beyond the observed sub-second gap
+// between the two datagrams, and sits well inside the correlator's own window, so a
+// held record costs no flow-log latency that was not already there. It is deliberately
+// not a flag, matching dedupeTTL and the de-dup bound: the value that would actually
+// want tuning is the memory bound, and that is already a constant an operator can see.
+const vlanHoldWindow = 2 * time.Second
+
 // RepairStats is the repair stage's own accounting. Every field is published as a
 // self-metric: a repair nobody can observe is a repair nobody will trust, which is
 // the same reasoning that put Corrected on Iface (record.go:112-124).
 //
-// All five are scalar counters. Nothing address-, port- or flow-identifying may ever
-// be attached to them.
+// Every field is a scalar counter or gauge. Nothing address-, port- or
+// flow-identifying may ever be attached to them.
 type RepairStats struct {
 	// VLANDuplicatesDropped counts records suppressed as the second copy of an
 	// instance ng_netflow exported twice.
@@ -51,6 +70,23 @@ type RepairStats struct {
 	// EgressCorrected counts records whose egress interface was replaced by the WAN
 	// deduced from their source address.
 	EgressCorrected uint64
+	// VLANChildPreferred counts the duplicates resolved IN FAVOUR OF THE VLAN CHILD
+	// after the parent copy had already been held — the repair #357 added. It is kept
+	// apart from VLANDuplicatesDropped (which counts both copies' worth of drops
+	// regardless of which won) because it is the only number that answers "is the
+	// attribution fix doing anything on this box"; a de-dup that drops the right
+	// COUNT while keeping the wrong COPY is exactly the failure that went unnoticed.
+	VLANChildPreferred uint64
+
+	// HeldEntries is how many records are parked in the hold buffer right now,
+	// waiting out vlanHoldWindow. It is a gauge of the latency this repair costs and
+	// of the memory it holds.
+	HeldEntries int
+	// HoldOverflow counts records RELEASED EARLY because the hold buffer was full.
+	// They are emitted, never dropped — early release degrades to first-seen-wins for
+	// that record, which is the behaviour that predates #357, rather than losing it.
+	// A non-zero rate means the bound wants raising.
+	HoldOverflow uint64
 
 	// DedupeEntries is the live size of the instance table.
 	DedupeEntries int
@@ -77,6 +113,9 @@ type ifTopology interface {
 	WANFor(addr netip.Addr) (Iface, bool)
 	// ParentOf maps a VLAN child device to its parent device.
 	ParentOf(device string) (string, bool)
+	// HasVLANChildren reports whether a device is a trunk, i.e. whether a more
+	// specific copy of a record naming it could still exist.
+	HasVLANChildren(device string) bool
 }
 
 // wanKnower answers the one topology question rule 3 needs and WANFor cannot: is
@@ -91,25 +130,85 @@ type wanKnower interface {
 	IsWAN(device string) bool
 }
 
-// instanceKey identifies ONE export of one conversation: the canonical 5-tuple plus
-// the flow's own First/Last timestamps.
+// instanceKey identifies ONE export of one flow: the DIRECTIONAL 5-tuple, the flow's
+// own First/Last timestamps, and its volume. Everything an ng_netflow record states
+// except the interfaces it crossed — which is precisely what the two copies differ in.
 //
-// The timestamps are not optional. A long-lived conversation is exported repeatedly
-// with an identical tuple, so keying on the tuple alone would discard every export
-// after the first and collapse a busy flow to a single record. Tuple is comparable
-// (netip.Addr is), so this is a map key with no allocation and no string formatting.
+// Every component is load-bearing, and two of them were added by #357 after the
+// original key destroyed real traffic:
+//
+//   - DIRECTIONAL, not canonical. A NetFlow record is strictly unidirectional, so the
+//     two halves of a conversation are two separate exports. Canonicalising them
+//     folded both halves onto one key, and on the golden fixture that is exactly what
+//     happened: a 4,907-byte record on a VLAN child and the 558-byte reverse record on
+//     its trunk collided, the reverse record was declared a "VLAN duplicate", and 558
+//     bytes of real traffic was destroyed.
+//   - The timestamps. A long-lived conversation is exported repeatedly with an
+//     identical tuple, so without them a busy flow would collapse to a single record.
+//   - The VOLUME. Two copies of one export are byte-identical — measured across every
+//     duplicate pair in the fixture (1008/1008, 716/716, 149/149, 64/64, 1471/1471) —
+//     while two different exports that happen to share a tuple and a timestamp pair do
+//     not. This is the file's own rule applied to the key itself: never drop what is
+//     not PROVEN a duplicate. If some exporter ever counted the 802.1Q header on the
+//     trunk but not on the child, the two copies would stop matching and the de-dup
+//     would stop firing — an over-count, which is visible, rather than a silent loss,
+//     which is not. That is the direction to fail in.
+//
+// netip.Addr is comparable, so this is a map key with no allocation and no string
+// formatting.
 type instanceKey struct {
-	tuple Tuple
-	first int64 // UnixNano of Record.Start
-	last  int64 // UnixNano of Record.End
+	proto        uint8
+	src, dst     netip.Addr
+	sport, dport uint16
+	first, last  int64 // UnixNano of Record.Start / Record.End
+	bytes        uint64
+	packets      uint64
 }
 
-// dedupeEntry remembers which interface an instance was ADMITTED on, so a later copy
-// on a related interface can be recognised as the duplicate it is.
-type dedupeEntry struct {
-	device string
-	seen   time.Time
+func keyOf(rec *Record) instanceKey {
+	bytes, packets := volumeOf(*rec)
+	return instanceKey{
+		proto:   rec.Proto,
+		src:     rec.SrcAddr.Unmap(),
+		dst:     rec.DstAddr.Unmap(),
+		sport:   rec.SrcPort,
+		dport:   rec.DstPort,
+		first:   rec.Start.UnixNano(),
+		last:    rec.End.UnixNano(),
+		bytes:   bytes,
+		packets: packets,
+	}
 }
+
+// dedupeEntry remembers which interfaces an instance was ADMITTED on, so a later copy
+// on related interfaces can be recognised as the duplicate it is. Both sides are
+// remembered: the ingress-side pair is what a trunk-captured OUTBOUND duplicate
+// differs in, and the egress-side pair is what its INBOUND half differs in — keying on
+// the ingress alone left every inbound VLAN duplicate undetected.
+type dedupeEntry struct {
+	in, out string
+	seen    time.Time
+}
+
+// heldRecord is a record parked in the hold buffer: a copy that is admissible but
+// could still be beaten by a more specific one within vlanHoldWindow.
+//
+// It carries the topology and enrichment snapshot CURRENT WHEN IT ARRIVED, because
+// repairs 2 and 3 are deferred to release (a copy that loses must never be corrected
+// or counted) and must still resolve against the view the record arrived under. Both
+// are immutable and atomically published, so this is two pointers, not a copy.
+type heldRecord struct {
+	rec  Record
+	m    ifTopology
+	snap *enrich.Snapshot
+	// arrived is when the FIRST copy of this instance landed, not when the copy
+	// currently stored did. It sets both the release deadline and, once released, the
+	// instance's age in the de-dup table — the pair's window opens when the pair is
+	// first seen, and the TTL must not be inflated by however long we held it.
+	arrived time.Time
+}
+
+func (h *heldRecord) deadline() time.Time { return h.arrived.Add(vlanHoldWindow) }
 
 // Repairer applies the three repairs. One instance is shared by the whole UDP worker
 // pool, so every field is guarded by mu.
@@ -129,36 +228,79 @@ type Repairer struct {
 	order []instanceKey
 	head  int
 
+	// held is the hold buffer, kept DELIBERATELY SEPARATE from seen: the two have
+	// different lifetimes (vlanHoldWindow against dedupeTTL, three orders of magnitude
+	// apart) and only one of them owns a record that has not been emitted yet. Sharing
+	// one table would put the TTL sweep in a position to delete a record nobody has
+	// seen — a silent loss — for no gain.
+	held      map[instanceKey]*heldRecord
+	holdOrder []instanceKey
+	holdHead  int
+	// dueEarly holds records forced out of the buffer before their deadline because it
+	// was full. The next Release emits them.
+	dueEarly []*heldRecord
+
 	maxEntries int
+	maxHeld    int
 
 	vlanDropped     uint64
 	egressCorrected uint64
 	evicted         uint64
 	capped          uint64
+	childPreferred  uint64
+	holdOverflow    uint64
 }
 
+// RepairVerdict is what the repair stage decided about one record. It is NOT
+// Verdict, which is the firewall's own disposition on a flow (record.go:68-77) and
+// says nothing about the pipeline.
+type RepairVerdict int
+
+const (
+	// RepairEmit means the record is the copy to keep and is fully repaired. The
+	// caller enriches and ships it.
+	RepairEmit RepairVerdict = iota
+	// RepairDrop means the record is a duplicate of one the stage already holds or
+	// has emitted. The caller discards it and does no further work on it.
+	//
+	// It is ALSO what a copy that WINS a contest against a held record reports: the
+	// winner takes the loser's place in the hold buffer rather than being emitted
+	// now, so from the caller's side exactly one record leaves the pair either way and
+	// the accounting is identical. Which copy that is shows up in VLANChildPreferred.
+	RepairDrop
+	// RepairHold means the record is admissible but a more specific copy could still
+	// arrive, so the stage has parked it. The caller does nothing; the record comes
+	// back from Release once its window elapses.
+	RepairHold
+)
+
 // NewRepairer returns a Repairer whose de-dup table holds at most maxDedupeEntries
-// instances. Zero means unbounded, matching NewRollup's convention for its own caps.
+// instances and whose hold buffer holds at most maxHeld records. Zero means unbounded
+// for either, matching NewRollup's convention for its own caps.
 //
-// The table is fed by an unauthenticated UDP listener — NetFlow has no auth — so on
-// any exposed deployment this bound is the memory guard, not a tuning knob.
-func NewRepairer(maxDedupeEntries int) *Repairer {
+// Both tables are fed by an unauthenticated UDP listener — NetFlow has no auth — so on
+// any exposed deployment these bounds are the memory guard, not tuning knobs. The hold
+// buffer's bound is the tighter concern of the two: it holds whole Records rather than
+// keys, and it holds them on behalf of records nobody downstream has seen yet.
+func NewRepairer(maxDedupeEntries, maxHeld int) *Repairer {
 	return &Repairer{
 		seen:       make(map[instanceKey]dedupeEntry),
+		held:       make(map[instanceKey]*heldRecord),
 		maxEntries: maxDedupeEntries,
+		maxHeld:    maxHeld,
 	}
 }
 
-// Repair mutates rec in place and reports whether the caller should KEEP it.
-//
-// A false return means the record is a VLAN/parent duplicate and must be dropped
-// before it is enriched, counted or correlated.
+// Repair mutates rec in place and reports what the caller should do with it: emit it,
+// drop it as a duplicate, or nothing at all because the stage is holding it (see
+// RepairVerdict). A held record comes back from Release, fully repaired.
 //
 // m may be nil (the state before the first interface refresh) and snap may be nil (a
-// lane running with enrichment off). Neither panics, and neither causes a drop:
-// without topology nothing can be PROVEN a duplicate, and dropping on suspicion
-// would lose real traffic.
-func (r *Repairer) Repair(rec *Record, m *IfMap, snap *enrich.Snapshot, now time.Time) bool {
+// lane running with enrichment off). Neither panics, and neither causes a drop OR a
+// hold: without topology nothing can be PROVEN a duplicate, nothing can be known to
+// have a more specific copy, and dropping or delaying on suspicion would lose or stall
+// real traffic.
+func (r *Repairer) Repair(rec *Record, m *IfMap, snap *enrich.Snapshot, now time.Time) RepairVerdict {
 	if m == nil {
 		// Boxing a nil *IfMap yields a NON-nil interface, so the nil test has to happen
 		// here rather than inside. (IfMap's own methods are nil-receiver safe, but
@@ -166,6 +308,69 @@ func (r *Repairer) Repair(rec *Record, m *IfMap, snap *enrich.Snapshot, now time
 		return r.repairWith(rec, nil, snap, now)
 	}
 	return r.repairWith(rec, m, snap, now)
+}
+
+// Release returns every held record whose window has elapsed, plus anything the hold
+// buffer had to let go early, each with repairs 2 and 3 applied. The caller enriches
+// and ships them exactly as it would a RepairEmit record.
+//
+// It is cheap to call and safe to call often: the common case is a bounded scan that
+// stops at the first record not yet due. The caller should drive it from both the
+// receive path (so a busy lane needs no timer at all) and a ticker (so a lane that has
+// gone quiet still flushes what it is holding).
+func (r *Repairer) Release(now time.Time) []Record {
+	return r.release(now, false)
+}
+
+// Flush returns every held record regardless of its deadline, for a clean shutdown.
+// After it returns the hold buffer is empty. Its counterpart is Correlator.Flush, and
+// it exists for the same reason: a record parked in a buffer at exit is a record the
+// process was told about and never reported.
+func (r *Repairer) Flush() []Record {
+	return r.release(time.Time{}, true)
+}
+
+// release pops the due (or, when all is set, every) held record and finishes it.
+//
+// The two repairs run OUTSIDE the lock, both because correctEgress takes it itself and
+// because there is no reason to hold the hot path's mutex across work that touches
+// nothing shared.
+func (r *Repairer) release(now time.Time, all bool) []Record {
+	r.mu.Lock()
+	due := r.dueEarly
+	r.dueEarly = nil
+	for r.holdHead < len(r.holdOrder) {
+		k := r.holdOrder[r.holdHead]
+		h, ok := r.held[k]
+		if ok && !all && now.Before(h.deadline()) {
+			// Deadlines are assigned from a constant window at insertion, so hold order
+			// IS deadline order and the first record not yet due ends the scan.
+			break
+		}
+		r.holdHead++
+		if !ok {
+			continue
+		}
+		delete(r.held, k)
+		// The instance moves into the de-dup table as it leaves the buffer: a later copy
+		// must still be recognised as a duplicate even though nothing is holding a
+		// record for it any more.
+		r.insert(k, h.rec.In.Device, h.rec.Out.Device, h.arrived)
+		due = append(due, h)
+	}
+	r.compactHold()
+	r.mu.Unlock()
+
+	if len(due) == 0 {
+		return nil
+	}
+	out := make([]Record, 0, len(due))
+	for _, h := range due {
+		r.correctEgress(&h.rec, h.m)
+		r.setDirection(&h.rec, h.m, h.snap)
+		out = append(out, h.rec)
+	}
+	return out
 }
 
 // repairWith is the real entry point, resolving against the narrow seam so the
@@ -176,16 +381,20 @@ func (r *Repairer) Repair(rec *Record, m *IfMap, snap *enrich.Snapshot, now time
 // direction; then the egress correction; then direction, which READS the corrected
 // egress — a policy-routed flow is only recognisable as outbound after repair 2 has
 // named the WAN it actually left by.
-func (r *Repairer) repairWith(rec *Record, m ifTopology, snap *enrich.Snapshot, now time.Time) bool {
+func (r *Repairer) repairWith(rec *Record, m ifTopology, snap *enrich.Snapshot, now time.Time) RepairVerdict {
 	if rec == nil {
-		return false
+		return RepairDrop
 	}
-	if !r.admit(rec, m, now) {
-		return false
+	switch v := r.admit(rec, m, snap, now); v {
+	case RepairDrop, RepairHold:
+		// A held record's repairs are deferred to Release for the same reason a dropped
+		// record gets none at all: it may yet lose to a more specific copy, and work
+		// spent on a copy that loses is at best wasted and at worst reaches a counter.
+		return v
 	}
 	r.correctEgress(rec, m)
 	r.setDirection(rec, m, snap)
-	return true
+	return RepairEmit
 }
 
 // Stats reports the repair stage's own accounting.
@@ -195,21 +404,28 @@ func (r *Repairer) Stats() RepairStats {
 	return RepairStats{
 		VLANDuplicatesDropped: r.vlanDropped,
 		EgressCorrected:       r.egressCorrected,
-		DedupeEntries:         len(r.seen),
-		DedupeEvicted:         r.evicted,
-		DedupeCapped:          r.capped,
+		VLANChildPreferred:    r.childPreferred,
+		// dueEarly counts as held: those records have left the buffer but not yet the
+		// stage, and a gauge that dropped them would make the accounting look short for
+		// as long as they sat there.
+		HeldEntries:   len(r.held) + len(r.dueEarly),
+		HoldOverflow:  r.holdOverflow,
+		DedupeEntries: len(r.seen),
+		DedupeEvicted: r.evicted,
+		DedupeCapped:  r.capped,
 	}
 }
 
-// admit is repair 1. It reports whether this copy of the instance is the one to keep.
+// admit is repair 1. It decides which copy of an instance is the one to keep.
 //
 // THE ARRIVAL-ORDER PROBLEM. The two copies of a duplicated instance arrive in
-// DIFFERENT datagrams and nothing says which lands first. Repair answers keep/drop
-// synchronously, so a copy that has been kept cannot later be un-emitted; buffering
-// to wait for a possible partner would mean holding EVERY record for a window, on
-// the receiver goroutine, for the ~88% of instances that have no duplicate at all.
-// So the winner has to be decided from the copy in hand, by topology, not by which
-// datagram the network happened to deliver first. Two mechanisms, in order:
+// DIFFERENT datagrams and nothing on the wire says which lands first, so a rule that
+// keeps whichever copy arrived first does not keep the copy we want — it keeps
+// whichever one the exporter happened to flush first. On the reference box that is
+// always the trunk copy: the trunk hook's flows and the child hook's flows leave in
+// separate consecutive datagrams of one expiry sweep, so first-seen-wins kept the
+// parent copy in 12 of 12 genuine pairs and attributed every VLAN's traffic to the
+// trunk (#357). Three mechanisms, in order:
 //
 // A. THE TAG. On the trunk the frame is still 802.1Q-tagged — that is what a trunk
 // is — while on the child interface the tag has been stripped. So a record that
@@ -220,24 +436,33 @@ func (r *Repairer) Stats() RepairStats {
 // (ParentOf on the synthesised child name) rather than by string shape alone, so a
 // tag naming an interface the firewall does not have never costs us a record.
 //
-// B. THE INSTANCE TABLE. When the export carries no usable tag, the copies are
-// distinguishable only by having been seen before, so the table suppresses the
-// second one and the pair is resolved by topology: the two devices are a duplicate
-// pair only if one is the VLAN child of the other. Records that merely share an
-// instance key on unrelated interfaces are KEPT — never drop what cannot be proven
-// duplicate.
+// A IS DEAD AGAINST THE REFERENCE BOX and is kept anyway: 0 of the 131 records in the
+// golden capture carry SRC_VLAN/DST_VLAN, so this branch never fires there. It is
+// still correct for an exporter that does send field 58, and it is the only mechanism
+// that costs nothing at all, so removing it would trade real coverage for tidiness.
 //
-// The residual, stated plainly: B cannot un-emit, so if the untagged parent copy
-// lands first it is the one that survives. The byte total is still right (the
-// double-count is gone) but the interface attribution is not. A is what fixes that,
-// and A needs Record.VLANID populated from the decoded SRC_VLAN/DST_VLAN field.
-func (r *Repairer) admit(rec *Record, m ifTopology, now time.Time) bool {
+// B. THE HOLD. When the export carries no usable tag, the copies are distinguishable
+// only by having been seen — which is the arrival-order trap above. So a record that
+// COULD still be beaten (one of its interfaces is a trunk with VLAN children, so a
+// more specific copy may exist) is parked for vlanHoldWindow instead of being emitted.
+// A better copy arriving inside that window takes its place. Nothing else is delayed:
+// a box with no VLANs, or a record naming no trunk, holds nothing.
+//
+// C. THE INSTANCE TABLE. Whatever the hold did not resolve, the table still catches:
+// a second copy of an instance already decided is suppressed, and the pair is resolved
+// by topology on BOTH interfaces — ingress and egress, because the ingress-side pair
+// is what an outbound duplicate differs in and the egress-side pair is what its
+// inbound half differs in. Records that merely share an instance key on unrelated
+// interfaces are KEPT: never drop what cannot be proven duplicate.
+//
+// The residual, stated plainly: a copy whose partner arrives more than vlanHoldWindow
+// later, or after the hold buffer had to release it early, is resolved by C alone and
+// therefore by arrival order. HoldOverflow counts the second case; the first cannot
+// happen for two copies of one expiry sweep.
+func (r *Repairer) admit(rec *Record, m ifTopology, snap *enrich.Snapshot, now time.Time) RepairVerdict {
 	parentCopy := isVLANParentCopy(rec, m)
-	key := instanceKey{
-		tuple: rec.CanonicalTuple(),
-		first: rec.Start.UnixNano(),
-		last:  rec.End.UnixNano(),
-	}
+	key := keyOf(rec)
+	in, out := rec.In.Device, rec.Out.Device
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -245,22 +470,112 @@ func (r *Repairer) admit(rec *Record, m ifTopology, now time.Time) bool {
 
 	if parentCopy {
 		r.vlanDropped++
-		return false
+		return RepairDrop
 	}
+
+	// Mechanism B's contest. A held copy has not been emitted, so unlike everything
+	// below it can still be replaced rather than merely defended.
+	if h, ok := r.held[key]; ok {
+		if !isDuplicateOf(h.rec.In.Device, h.rec.Out.Device, in, out, m) {
+			// Same instance key on unrelated interfaces: not proven a duplicate.
+			return RepairEmit
+		}
+		r.vlanDropped++
+		if moreSpecific(in, out, h.rec.In.Device, h.rec.Out.Device, m) {
+			// The incoming copy names a VLAN child where the held one names that child's
+			// parent. It takes the held record's place, keeping its deadline and its slot
+			// in hold order: the pair's window opened when the FIRST copy arrived, and
+			// restarting it would let a stream of copies hold a record indefinitely.
+			h.rec, h.m, h.snap = *rec, m, snap
+			r.childPreferred++
+		}
+		return RepairDrop
+	}
+
 	if prev, ok := r.seen[key]; ok {
-		if isVLANPair(prev.device, rec.In.Device, m) {
+		if isDuplicateOf(prev.in, prev.out, in, out, m) {
 			r.vlanDropped++
-			return false
+			return RepairDrop
 		}
 		// Same instance, unrelated interfaces: not proven a duplicate. Keep it, and
-		// leave the admitted device alone — the first copy stays the reference.
-		return true
+		// leave the admitted devices alone — the first copy stays the reference.
+		return RepairEmit
 	}
-	r.insert(key, rec.In.Device, now)
-	return true
+
+	if canBeBeaten(m, in, out) {
+		r.hold(key, rec, m, snap, now)
+		return RepairHold
+	}
+	r.insert(key, in, out, now)
+	return RepairEmit
+}
+
+// canBeBeaten reports whether a more specific copy of this record could still exist —
+// i.e. whether either interface it names is a trunk with VLAN children.
+//
+// This is what keeps the hold buffer small and the added latency narrow: on a box with
+// no VLANs it is false for every record, and on one with VLANs it is false for
+// everything that never touched the trunk.
+func canBeBeaten(m ifTopology, in, out string) bool {
+	if m == nil {
+		return false
+	}
+	return m.HasVLANChildren(in) || m.HasVLANChildren(out)
+}
+
+// isDuplicateOf reports whether two records under the same instance key are two copies
+// of ONE export rather than two different exports that happen to collide.
+//
+// They are, iff each side names either the same device or a trunk/child pair. The
+// interfaces are all that ng_netflow's two hooks disagree about; the key has already
+// established that everything else — tuple, direction, timestamps, volume — is
+// identical, so anything that also agrees on topology is the same packets twice.
+//
+// The both-sides-identical case is a real one and is deliberately included: when the
+// ingress and egress ifIndex are the same on both hooks (an inter-VLAN flow, where the
+// pair reads in=trunk out=child for both copies) the two are indistinguishable by
+// interface, and refusing to call that a duplicate double-counted it.
+func isDuplicateOf(aIn, aOut, bIn, bOut string, m ifTopology) bool {
+	return sideMatches(aIn, bIn, m) && sideMatches(aOut, bOut, m)
+}
+
+// sideMatches reports whether one side of two copies names the same device or a
+// trunk/child pair.
+func sideMatches(a, b string, m ifTopology) bool {
+	return a == b || isVLANPair(a, b, m)
+}
+
+// moreSpecific reports whether the copy naming (aIn, aOut) attributes the flow better
+// than the one naming (bIn, bOut): it names a VLAN CHILD on at least one side where
+// the other names that child's parent, and names a parent on no side.
+//
+// The one-sided requirement is what makes this a strict improvement rather than a
+// swap. A copy that is more specific on the ingress and less specific on the egress
+// states no clear preference, and in that case the incumbent stands — arbitrary, but
+// arbitrary in favour of doing nothing, and the shape does not occur on a box whose
+// two hooks report one ifIndex pair.
+func moreSpecific(aIn, aOut, bIn, bOut string, m ifTopology) bool {
+	better := isChildOf(aIn, bIn, m) || isChildOf(aOut, bOut, m)
+	worse := isChildOf(bIn, aIn, m) || isChildOf(bOut, aOut, m)
+	return better && !worse
+}
+
+// isChildOf reports whether child is a VLAN child of parent, per the interface table.
+func isChildOf(child, parent string, m ifTopology) bool {
+	if m == nil || child == "" || parent == "" || child == parent {
+		return false
+	}
+	p, ok := m.ParentOf(child)
+	return ok && p == parent
 }
 
 // isVLANParentCopy implements mechanism A above.
+//
+// It tests the INGRESS side only. The egress-side equivalent — a tagged record whose
+// egress names the tag's parent — is left unwritten deliberately: no export we can
+// observe sends field 58 at all (see the note on A in admit), so the shape it would
+// have to match is unverifiable, and mechanisms B and C already cover that side by
+// topology. Mechanism C's isDuplicateOf is where the egress side IS handled.
 func isVLANParentCopy(rec *Record, m ifTopology) bool {
 	if m == nil {
 		return false
@@ -301,6 +616,14 @@ func isVLANPair(a, b string, m ifTopology) bool {
 //
 // order is in insertion order and entries are never refreshed, so ages are monotone
 // along it and the scan stops at the first live entry.
+//
+// ALMOST monotone, since #357: a released record enters the table stamped with when it
+// ARRIVED, not when it was released, so it can land behind an entry inserted while it
+// was still held. The disorder is bounded by vlanHoldWindow — two seconds against a
+// two-minute TTL — so the worst case is an entry lingering a couple of seconds past its
+// TTL, and paying for a full scan to avoid that would be the wrong trade. Stamping the
+// release time instead is NOT the fix: Flush releases with no clock at all, so the
+// arrival time is the only one always available.
 func (r *Repairer) expire(now time.Time) {
 	cutoff := now.Add(-dedupeTTL)
 	for r.head < len(r.order) {
@@ -327,13 +650,63 @@ func (r *Repairer) expire(now time.Time) {
 // where duplicates are still arriving. The pressure is counted as DedupeCapped
 // rather than DedupeEvicted, because a capped instance can no longer be deduped and
 // that is an operator problem, not housekeeping.
-func (r *Repairer) insert(k instanceKey, device string, now time.Time) {
+func (r *Repairer) insert(k instanceKey, in, out string, now time.Time) {
 	if r.maxEntries > 0 && len(r.seen) >= r.maxEntries {
 		r.dropOldest()
 		r.capped++
 	}
-	r.seen[k] = dedupeEntry{device: device, seen: now}
+	r.seen[k] = dedupeEntry{in: in, out: out, seen: now}
 	r.order = append(r.order, k)
+}
+
+// hold parks a record that could still be beaten by a more specific copy. Callers
+// hold mu.
+//
+// At capacity the OLDEST held record is RELEASED EARLY, never dropped. That is the
+// whole difference between this bound and the de-dup table's: an entry in that table
+// is a memory of a decision already taken, while a record in here has not been emitted
+// yet, so discarding it would be silent data loss. Early release degrades that one
+// record to first-seen-wins — the behaviour that predates #357 — and is counted apart
+// from everything else so the pressure is visible for what it is.
+func (r *Repairer) hold(k instanceKey, rec *Record, m ifTopology, snap *enrich.Snapshot, now time.Time) {
+	if r.maxHeld > 0 && len(r.held) >= r.maxHeld {
+		r.releaseOldestHeld()
+	}
+	r.held[k] = &heldRecord{rec: *rec, m: m, snap: snap, arrived: now}
+	r.holdOrder = append(r.holdOrder, k)
+}
+
+// releaseOldestHeld moves the oldest held record onto the early-release list, so the
+// next Release emits it. Callers hold mu.
+func (r *Repairer) releaseOldestHeld() {
+	for r.holdHead < len(r.holdOrder) {
+		k := r.holdOrder[r.holdHead]
+		r.holdHead++
+		h, ok := r.held[k]
+		if !ok {
+			continue
+		}
+		delete(r.held, k)
+		r.insert(k, h.rec.In.Device, h.rec.Out.Device, h.arrived)
+		r.dueEarly = append(r.dueEarly, h)
+		r.holdOverflow++
+		return
+	}
+}
+
+// compactHold reclaims the consumed prefix of holdOrder, on the same terms and for the
+// same interned-pointer reason as compact.
+func (r *Repairer) compactHold() {
+	if r.holdHead == 0 {
+		return
+	}
+	if r.holdHead < len(r.holdOrder)/2 && r.holdHead < 1024 {
+		return
+	}
+	n := copy(r.holdOrder, r.holdOrder[r.holdHead:])
+	clear(r.holdOrder[n:])
+	r.holdOrder = r.holdOrder[:n]
+	r.holdHead = 0
 }
 
 // dropOldest removes the head entry. Callers hold mu.

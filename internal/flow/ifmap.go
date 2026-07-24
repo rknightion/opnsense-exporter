@@ -58,6 +58,10 @@ type IfMap struct {
 	wanAddr map[netip.Addr]Iface
 	wanDev  map[string]bool
 	parents map[string]string
+	// trunks is the inverse of parents: every device that at least one VLAN child
+	// names as its parent. Derived rather than stored per row, because a child may
+	// name a parent the interface list itself never contained.
+	trunks map[string]bool
 
 	built      time.Time
 	overridden int
@@ -100,6 +104,7 @@ func BuildIfMap(ifaces []enrich.IfaceInfo, override map[uint32]string, built tim
 		wanAddr: make(map[netip.Addr]Iface),
 		wanDev:  make(map[string]bool),
 		parents: make(map[string]string),
+		trunks:  make(map[string]bool),
 		built:   built,
 	}
 
@@ -118,6 +123,7 @@ func BuildIfMap(ifaces []enrich.IfaceInfo, override map[uint32]string, built tim
 
 		if parent := parentOfIface(info); parent != "" {
 			m.parents[info.Device] = parent
+			m.trunks[parent] = true
 		}
 		if info.Device == "" {
 			continue
@@ -265,6 +271,21 @@ func (m *IfMap) ParentOf(device string) (string, bool) {
 	}
 	p, ok := m.parents[device]
 	return p, ok && p != ""
+}
+
+// HasVLANChildren reports whether device is a trunk — a device at least one VLAN
+// child names as its parent.
+//
+// This is the question ParentOf cannot answer, because a trunk is precisely the
+// device that is nobody's child. The VLAN/parent de-duplication needs it to decide
+// whether a record naming this device could still be beaten by a more specific copy
+// on one of its children (#357): if it could not, the record emits immediately and
+// is never held.
+func (m *IfMap) HasVLANChildren(device string) bool {
+	if m == nil || device == "" {
+		return false
+	}
+	return m.trunks[device]
 }
 
 // Age reports how stale the map is. It returns 0 for an unstamped map and clamps a

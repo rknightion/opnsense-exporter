@@ -209,7 +209,9 @@ def build(b: Builder):
     repairs = b.ts(
         "Flow Repairs & De-duplication",
         [(f'rate({sel("opnsense_flow_egress_corrected_total")}[{RATE}])', "egress corrections/sec"),
+         (f'rate({sel("opnsense_flow_vlan_child_preferred_total")}[{RATE}])', "vlan child preferred/sec"),
          (f'{sel("opnsense_flow_dedupe_entries")}', "dedupe table entries"),
+         (f'{sel("opnsense_flow_repair_held_records")}', "records held"),
          (f'sum by (reason) (rate({sel("opnsense_flow_dedupe_entries_dropped_total")}[{RATE}]))',
           "dedupe dropped: {{reason}}")],
         unit="short",
@@ -217,8 +219,14 @@ def build(b: Builder):
              "named to the WAN the traffic actually left by — OPNsense policy routing happens in pf, "
              "which ng_netflow never sees, and on the reference capture this mislabelled 3.36 GB of "
              "WAN2 traffic as WAN1. On a policy-routed multi-WAN box a flat zero means the correction "
-             "is NOT firing and per-WAN volume is wrong. dedupe dropped reason=\"ttl\" is the healthy "
-             "path; \"capacity\" means the table filled and later duplicates are no longer suppressed.",
+             "is NOT firing and per-WAN volume is wrong. vlan_child_preferred counts duplicates "
+             "resolved in favour of the VLAN child rather than the trunk: ng_netflow flushes the trunk "
+             "hook's copy FIRST, so on a box with VLAN interfaces a flat zero means every VLAN's "
+             "traffic is being attributed to the trunk. records held is the short queue that makes "
+             "that possible — it should hover near the per-window record rate and never grow without "
+             "bound. dedupe dropped reason=\"ttl\" is the healthy path; \"capacity\" means the table "
+             "filled and later duplicates are no longer suppressed; \"hold_overflow\" means the hold "
+             "buffer filled and those records fell back to whichever copy arrived first.",
     )
 
     ifindex = b.ts(

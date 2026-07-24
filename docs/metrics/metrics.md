@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 808
-- **Gauges:** 542
-- **Counters:** 266
+- **Total metrics:** 810
+- **Gauges:** 543
+- **Counters:** 267
 
 ## General
 
@@ -374,6 +374,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_netflow_unexpected_field_total | Counter | field | Records carrying a field the decoder asserts is always empty on this export. Today only field=\"out_bytes\": OUT_BYTES/OUT_PKTS are declared in the template but were zero across all 84,513 records of the reference capture, so they are ignored rather than added to the volume. A non-zero rate here means that assumption has expired and the decoder needs revisiting - it does NOT mean volume is currently wrong. | --exporter.disable-flow |
 | opnsense_flow_egress_corrected_total | Counter | --- | Flow records whose egress interface was corrected from the WAN the FIB lookup named to the WAN the traffic actually left by. ng_netflow derives OUTPUT_SNMP from a route lookup, but OPNsense multi-WAN policy routing happens in pf, which ng_netflow never sees: on the reference capture this mislabelled 3.36 GB of WAN2 traffic as WAN1, a 99% under-report of WAN2. A zero rate on a single-WAN box is expected; a zero rate on a policy-routed multi-WAN box means the correction is not firing and per-WAN volume is wrong. | --exporter.disable-flow |
 | opnsense_flow_dedupe_entries | Gauge | --- | Flow instances currently held in the VLAN de-duplication table. | --exporter.disable-flow |
+| opnsense_flow_vlan_child_preferred_total | Counter | --- | VLAN duplicates resolved in favour of the VLAN CHILD copy after the trunk copy had already been held. ng_netflow exports the trunk hook's flows and the child hook's flows in separate datagrams, trunk first, so without this the surviving copy attributes every VLAN's traffic to the trunk interface. A zero rate on a box with VLAN interfaces means the attribution fix is not firing and per-VLAN volume is collapsed onto the trunk. | --exporter.disable-flow |
+| opnsense_flow_repair_held_records | Gauge | --- | Flow records parked in the repair stage waiting to see whether a copy on a VLAN child beats them. They are neither emitted nor dropped yet, so this is the term that closes records_in = emitted + dropped + no_address + held. A value that grows without bound means records are not being released. | --exporter.disable-flow |
 | opnsense_flow_dedupe_entries_dropped_total | Counter | reason | Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path - the instance aged out having done its job. reason=\"capacity\" means the table was full and an entry was evicted early, so a duplicate arriving afterwards is NO LONGER SUPPRESSED and reaches the rollup twice; a non-zero rate is the signal to raise the bound. | --exporter.disable-flow |
 | opnsense_flow_ifindex_entries | Gauge | --- | Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 (traffic originated by the firewall itself). | --exporter.disable-flow |
 | opnsense_flow_ifindex_conflicts | Gauge | --- | Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's own ifinfo ordering - the override is winning, so labels are right, but every index the operator did not pin is suspect. | --exporter.disable-flow |

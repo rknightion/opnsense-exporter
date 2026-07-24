@@ -46,6 +46,10 @@ type Processor struct {
 	dropped    atomic.Uint64
 	noAddress  atomic.Uint64
 	noIfaceMap atomic.Uint64
+	// held is a GAUGE, not a counter: it goes up on a hold and back down on the
+	// release, so it is the term that closes the accounting identity while records are
+	// still in flight (see ProcessorStats.RecordsHeld).
+	held atomic.Int64
 }
 
 // ProcessorStats is a snapshot of the pipeline counters. Every one is published as
@@ -58,6 +62,15 @@ type ProcessorStats struct {
 	RecordsDropped  uint64 // VLAN/parent duplicates suppressed by the repair stage
 	RecordsNoAddr   uint64 // unparseable or missing endpoints
 	RecordsUnmapped uint64 // neither ifIndex resolved to a device
+	// RecordsHeld is how many records are parked in the repair stage's hold buffer
+	// right now, waiting to see whether a copy on a VLAN child beats them (#357). It
+	// is the fourth term of the accounting identity:
+	//
+	//	RecordsIn = RecordsEmitted + RecordsDropped + RecordsNoAddr + RecordsHeld
+	//
+	// Without it a held record reads as a lost one, which is the exact failure this
+	// pipeline's counters exist to make impossible.
+	RecordsHeld int64
 }
 
 // NewProcessor builds the NetFlow pipeline. sink and rep must be non-nil; cache may
@@ -108,19 +121,75 @@ func (p *Processor) ObserveDatagram(dg *netflow.Datagram, now time.Time) {
 			}
 		}
 
-		// Repair mutates in place and reports whether to keep the record. A false
-		// return is a VLAN/parent duplicate: the same packets already counted on the
-		// child interface, which is ~4% of bytes on the reference capture.
-		if p.rep != nil && !p.rep.Repair(&rec, m, snap, now) {
-			p.dropped.Add(1)
-			continue
+		// Repair mutates in place and reports what to do with the record. A drop is a
+		// VLAN/parent duplicate: the same packets already counted on the child
+		// interface, which is ~4% of bytes on the reference capture. A hold means the
+		// repair stage has parked the record because a copy on a VLAN child could still
+		// arrive and beat it (#357); it comes back from the release path below.
+		if p.rep != nil {
+			switch p.rep.Repair(&rec, m, snap, now) {
+			case RepairDrop:
+				p.dropped.Add(1)
+				continue
+			case RepairHold:
+				p.held.Add(1)
+				continue
+			}
 		}
+		p.emit(rec, snap, now)
+	}
 
-		enrichRecord(&rec, snap, p.dnsCache, now)
-		p.emitted.Add(1)
-		if p.sink != nil {
-			p.sink.Observe(rec)
-		}
+	// Draining here is what lets a busy lane need no timer at all: every datagram
+	// arrival releases whatever the previous ones were holding.
+	p.releaseDue(now)
+}
+
+// ReleaseDue emits every held record whose window has elapsed. It exists for the
+// ticker that covers a lane which has gone quiet — ObserveDatagram already drains on
+// every datagram, so on a busy lane this finds nothing to do.
+func (p *Processor) ReleaseDue(now time.Time) { p.releaseDue(now) }
+
+// Flush emits every held record regardless of its window, for a clean shutdown. A
+// record parked in a buffer at exit is a record the process was told about and never
+// reported.
+func (p *Processor) Flush(now time.Time) {
+	if p.rep == nil {
+		return
+	}
+	p.emitReleased(p.rep.Flush(), now)
+}
+
+func (p *Processor) releaseDue(now time.Time) {
+	if p.rep == nil {
+		return
+	}
+	p.emitReleased(p.rep.Release(now), now)
+}
+
+// emitReleased ships records that came back from the hold buffer. They arrive already
+// repaired, so only enrichment is left — and it uses the CURRENT snapshot rather than
+// the one stored with the record, exactly as the immediate path does: the repairs
+// needed the view the record arrived under, while a name or a hostname is better for
+// being fresher.
+func (p *Processor) emitReleased(recs []Record, now time.Time) {
+	if len(recs) == 0 {
+		return
+	}
+	var snap *enrich.Snapshot
+	if p.cache != nil {
+		snap = p.cache.Load()
+	}
+	for _, rec := range recs {
+		p.held.Add(-1)
+		p.emit(rec, snap, now)
+	}
+}
+
+func (p *Processor) emit(rec Record, snap *enrich.Snapshot, now time.Time) {
+	enrichRecord(&rec, snap, p.dnsCache, now)
+	p.emitted.Add(1)
+	if p.sink != nil {
+		p.sink.Observe(rec)
 	}
 }
 
@@ -133,6 +202,7 @@ func (p *Processor) Stats() ProcessorStats {
 		RecordsDropped:  p.dropped.Load(),
 		RecordsNoAddr:   p.noAddress.Load(),
 		RecordsUnmapped: p.noIfaceMap.Load(),
+		RecordsHeld:     p.held.Load(),
 	}
 }
 
