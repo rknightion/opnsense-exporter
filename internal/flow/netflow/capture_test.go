@@ -336,3 +336,25 @@ func TestParseCaptureMode(t *testing.T) {
 		t.Fatal("an unknown mode must be a configuration error, not a silent off")
 	}
 }
+
+// Telling an operator who is already capturing to turn on capture reads as the
+// message not knowing what the exporter is doing. Observed live on the reference box
+// the first time this shipped, with capture already running in "all" mode.
+func TestListener_LogDoesNotSuggestACaptureThatIsAlreadyRunning(t *testing.T) {
+	h := &countingHandler{}
+	dec := &noticingDecoder{notices: []Unidentified{{Kind: UnidentifiedField, Detail: 61}}}
+	l := NewListener(ListenerConfig{Addr: "127.0.0.1:0", Capture: &fakeSink{}, CaptureMode: CaptureAll},
+		dec, nil, slog.New(h))
+	if err := l.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go l.Serve()
+
+	send(t, l.Addr(), []byte{0, 9, 1, 2})
+	waitFor(t, "the log line", func() bool { return h.count() == 1 })
+
+	if got := h.lastAttrs()["capture"]; got != "all" {
+		t.Fatalf("capture attr = %q, want the running mode %q", got, "all")
+	}
+}

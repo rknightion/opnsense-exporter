@@ -245,11 +245,22 @@ func (l *Listener) logUnidentified(peer netip.Addr, recv time.Time, notices []Un
 	if len(loggable) == 0 {
 		return
 	}
-	l.log.Warn("netflow export carried something this decoder does not model; "+
-		"the records behind it still decoded, the unmodelled part was stepped over",
+	attrs := []any{
 		"exporter", peer.String(),
 		"unidentified", formatNotices(loggable),
-		"capture", "enable --flow.netflow.debug-capture=unidentified to keep the datagrams")
+	}
+	// Only suggest the capture when there ISN'T one. Telling an operator who is
+	// already capturing to turn on capture reads as the message not knowing what the
+	// exporter is doing, which is the fastest way to make a diagnostic line ignored.
+	if l.cfg.CaptureMode == CaptureOff {
+		attrs = append(attrs,
+			"capture", "enable --flow.netflow.debug-capture=unidentified to keep the datagrams")
+	} else {
+		attrs = append(attrs, "capture", l.cfg.CaptureMode.String())
+	}
+	l.log.Warn("netflow export carried something this decoder does not model; "+
+		"the records behind it still decoded, the unmodelled part was stepped over",
+		attrs...)
 }
 
 // formatNotices renders notices for the log line as "kind:detail" pairs. The detail
