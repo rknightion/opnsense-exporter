@@ -8,13 +8,14 @@ Covers:
   - Mbuf subsystem (14 metrics)
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
   - SMART subsystem (4 metrics) — gated by has_smart sentinel
-  - Firmware subsystem (6 metrics)
+  - Firmware subsystem (15 metrics) — including update-check health (#373) and
+    pending download size (#380)
   - Backup subsystem (3 metrics) — config backup freshness
   - Snapshots subsystem (3 metrics) — ZFS boot environment inventory
   - Auth subsystem (6 metrics) — local user/group/API-key security posture (aggregate counts only)
 """
 
-from builder import Builder, sel, epoch_ms, RATE, YESNO, UPDOWN
+from builder import Builder, sel, epoch_ms, RATE, YESNO, UPDOWN, OKERR
 
 # opnsense_system_subsystem_status_code value -> (display text, colour). OPNsense's
 # SystemStatusCode enum: 2=OK, 1=NOTICE, 0=WARNING, -1=ERROR. OK is included for
@@ -374,9 +375,75 @@ def build(b: Builder):
         desc="opnsense_firmware_reinstall_packages_count: count of packages available to reinstall.",
     )
 
+    fw_remove_pkgs = b.stat(
+        "Remove Packages",
+        sel("opnsense_firmware_remove_packages_count"),
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 1}],
+        color_mode="background",
+        w=3,
+        h=4,
+        desc="opnsense_firmware_remove_packages_count: count of packages the pending update would remove.",
+    )
+
+    fw_upgrade_sets = b.stat(
+        "Upgrade Sets",
+        sel("opnsense_firmware_upgrade_sets_count"),
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 1}],
+        color_mode="background",
+        w=3,
+        h=4,
+        desc="opnsense_firmware_upgrade_sets_count: count of pending upgrade sets (the synthetic base/kernel entries of a major or point upgrade, not ordinary packages).",
+    )
+
+    # #373: did the box's stored update check actually SUCCEED. Absent (No data)
+    # until the box has stored a check — the exporter deliberately does not
+    # fabricate a verdict, because a green "OK" on a firewall whose update path
+    # has never been exercised is the exact false-safe signal this fixes.
+    fw_check_success = b.stat(
+        "Update Check",
+        sel("opnsense_firmware_update_check_success"),
+        mappings=OKERR,
+        color_mode="background",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        w=3,
+        h=4,
+        desc="opnsense_firmware_update_check_success: 1 when the firewall's stored update check reached, authenticated and verified its repository. 0 means the check RAN AND FAILED (DNS, subscription, fingerprint, unavailable release train) — which without this metric is indistinguishable from a healthy check with no pending updates. No data means no check has been stored yet. Reflects the stored result of the box's own check as seen through the exporter's firmware response cache, so a change can take up to --exporter.firmware-cache-ttl (default 12h) to show up.",
+    )
+
+    fw_pending_download = b.stat(
+        "Pending Download",
+        sel("opnsense_firmware_pending_download_bytes"),
+        unit="bytes",
+        color_mode="value",
+        w=3,
+        h=4,
+        desc="opnsense_firmware_pending_download_bytes: total download size of the pending update, parsed from the stored check's mixed-unit download_size list (base-2). No data means either no stored check or a value that could not be parsed unambiguously — never a fabricated 0.",
+    )
+
+    # Bounded state pair: exactly one series per component, so this table is
+    # always two rows. The state values come from OPNsense's own closed
+    # vocabularies; anything unrecognized reads "unknown".
+    fw_check_state = b.table(
+        "Update Check Components",
+        [sel("opnsense_firmware_update_check_state")],
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "component": "Component",
+            "state": "State",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="Component",
+        sort_desc=False,
+        w=12,
+        h=5,
+        desc="opnsense_firmware_update_check_state: current state of each update-check component. connection: error/unauthenticated/misconfigured/unresolved/ok. repository: error/untrusted/unsigned/revoked/incomplete/forbidden/ok. Anything else, including a future upstream state, collapses to unknown.",
+    )
+
     row_firmware = b.row("Firmware", [
-        fw_info, fw_needs_reboot, fw_upgrade_reboot, fw_last_check, fw_new_pkgs, fw_upgrade_pkgs,
-        fw_downgrade_pkgs, fw_reinstall_pkgs,
+        fw_info, fw_needs_reboot, fw_upgrade_reboot, fw_last_check, fw_check_success,
+        fw_pending_download, fw_new_pkgs, fw_upgrade_pkgs,
+        fw_downgrade_pkgs, fw_reinstall_pkgs, fw_remove_pkgs, fw_upgrade_sets,
+        fw_check_state,
     ])
 
     # =========================================================================

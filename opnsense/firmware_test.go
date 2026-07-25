@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -159,6 +160,20 @@ func TestNewFirmwareStatus(t *testing.T) {
 	if fs.LastCheckTimestamp != 0 {
 		t.Errorf("expected LastCheckTimestamp=0, got %v", fs.LastCheckTimestamp)
 	}
+	// #373/#380: the update-check fields must stay zero-valued in the default,
+	// so a box that has never run a check emits no check-health series at all.
+	if fs.CheckPresent {
+		t.Errorf("expected CheckPresent=false, got %v", fs.CheckPresent)
+	}
+	if fs.Connection != "" || fs.Repository != "" {
+		t.Errorf("expected empty Connection/Repository, got %q/%q", fs.Connection, fs.Repository)
+	}
+	if fs.RemovePackages != 0 || fs.UpgradeSets != 0 {
+		t.Errorf("expected zero RemovePackages/UpgradeSets, got %d/%d", fs.RemovePackages, fs.UpgradeSets)
+	}
+	if fs.PendingDownloadBytes != 0 || fs.PendingDownloadBytesValid {
+		t.Errorf("expected zero/invalid pending download bytes, got %v/%v", fs.PendingDownloadBytes, fs.PendingDownloadBytesValid)
+	}
 }
 
 func TestParseLastCheckTimestamp(t *testing.T) {
@@ -297,6 +312,371 @@ func TestFetchFirmwareStatus_DowngradeReinstallAbsent(t *testing.T) {
 	}
 	if firmware.DowngradePackages != 0 || firmware.ReinstallPackages != 0 {
 		t.Errorf("expected zero downgrade/reinstall counts, got %d/%d", firmware.DowngradePackages, firmware.ReinstallPackages)
+	}
+}
+
+// TestFetchFirmwareStatus_UpdateCheckHealth covers #373: the stored check's own
+// verdict. Upstream writes last_check BEFORE it attempts the package operation
+// and then persists fixed connection/repository state strings even on failure,
+// so a non-empty last_check alone does not mean the check succeeded.
+func TestFetchFirmwareStatus_UpdateCheckHealth(t *testing.T) {
+	tests := []struct {
+		name           string
+		body           string
+		wantPresent    bool
+		wantConnection string
+		wantRepository string
+	}{
+		{
+			name: "successful stored check",
+			body: `{
+				"last_check": "2026-07-25T10:00:00",
+				"connection": "ok",
+				"repository": "ok",
+				"status": "update"
+			}`,
+			wantPresent:    true,
+			wantConnection: "ok",
+			wantRepository: "ok",
+		},
+		{
+			name: "connection failure",
+			body: `{
+				"last_check": "2026-07-25T10:00:00",
+				"connection": "unresolved",
+				"repository": "ok",
+				"status": "error",
+				"status_msg": "Cannot resolve host mirror.example.invalid"
+			}`,
+			wantPresent:    true,
+			wantConnection: "unresolved",
+			wantRepository: "ok",
+		},
+		{
+			name: "repository failure",
+			body: `{
+				"last_check": "2026-07-25T10:00:00",
+				"connection": "ok",
+				"repository": "revoked",
+				"status": "error"
+			}`,
+			wantPresent:    true,
+			wantConnection: "ok",
+			wantRepository: "revoked",
+		},
+		{
+			name: "connection error state",
+			body: `{
+				"last_check": "2026-07-25T10:00:00",
+				"connection": "error",
+				"repository": "error"
+			}`,
+			wantPresent:    true,
+			wantConnection: "error",
+			wantRepository: "error",
+		},
+		{
+			name: "unknown future states collapse",
+			body: `{
+				"last_check": "2026-07-25T10:00:00",
+				"connection": "quantum-entangled",
+				"repository": "https://pkg.opnsense.org/FreeBSD:14:amd64/26.7"
+			}`,
+			wantPresent:    true,
+			wantConnection: "unknown",
+			wantRepository: "unknown",
+		},
+		{
+			name: "stored check without state fields",
+			body: `{
+				"last_check": "2026-07-25T10:00:00"
+			}`,
+			wantPresent:    true,
+			wantConnection: "unknown",
+			wantRepository: "unknown",
+		},
+		{
+			name:           "minimal pre-check envelope",
+			body:           `{"status": "none"}`,
+			wantPresent:    false,
+			wantConnection: "",
+			wantRepository: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.body))
+			})
+			defer server.Close()
+
+			firmware, err := client.FetchFirmwareStatus()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if firmware.CheckPresent != tc.wantPresent {
+				t.Errorf("CheckPresent = %v, want %v", firmware.CheckPresent, tc.wantPresent)
+			}
+			if firmware.Connection != tc.wantConnection {
+				t.Errorf("Connection = %q, want %q", firmware.Connection, tc.wantConnection)
+			}
+			if firmware.Repository != tc.wantRepository {
+				t.Errorf("Repository = %q, want %q", firmware.Repository, tc.wantRepository)
+			}
+		})
+	}
+}
+
+// TestCanonicalizeFirmwareCheckState pins the two CLOSED state vocabularies from
+// the header comment of the installed 26.7
+// /usr/local/opnsense/scripts/firmware/check.sh (lines 30-31). Note that the
+// upstream lists include "error", which #373's body omitted.
+func TestCanonicalizeFirmwareCheckState(t *testing.T) {
+	connection := []string{"error", "unauthenticated", "misconfigured", "unresolved", "ok"}
+	repository := []string{"error", "untrusted", "unsigned", "revoked", "incomplete", "forbidden", "ok"}
+
+	for _, s := range connection {
+		if got := canonicalizeConnectionState(s); got != s {
+			t.Errorf("canonicalizeConnectionState(%q) = %q, want %q", s, got, s)
+		}
+		if got := canonicalizeConnectionState(strings.ToUpper(s)); got != s {
+			t.Errorf("canonicalizeConnectionState(%q) = %q, want %q (case-insensitive)", strings.ToUpper(s), got, s)
+		}
+	}
+	for _, s := range repository {
+		if got := canonicalizeRepositoryState(s); got != s {
+			t.Errorf("canonicalizeRepositoryState(%q) = %q, want %q", s, got, s)
+		}
+	}
+	// Cross-vocabulary leakage: a repository-only state is not a connection state.
+	if got := canonicalizeConnectionState("revoked"); got != "unknown" {
+		t.Errorf("canonicalizeConnectionState(%q) = %q, want unknown", "revoked", got)
+	}
+	if got := canonicalizeRepositoryState("unresolved"); got != "unknown" {
+		t.Errorf("canonicalizeRepositoryState(%q) = %q, want unknown", "unresolved", got)
+	}
+	for _, s := range []string{"", "  ", "future-state", "Cannot resolve host"} {
+		if got := canonicalizeConnectionState(s); got != "unknown" {
+			t.Errorf("canonicalizeConnectionState(%q) = %q, want unknown", s, got)
+		}
+		if got := canonicalizeRepositoryState(s); got != "unknown" {
+			t.Errorf("canonicalizeRepositoryState(%q) = %q, want unknown", s, got)
+		}
+	}
+}
+
+// TestFetchFirmwareStatus_RemoveUpgradeSetsCounts covers the two count gauges
+// #373 adds. Both arrays were EMPTY on the 26.7.r_35 dev box, so their inner
+// shapes are derived from the installed check.sh (remove_packages at lines
+// 256/262, upgrade_sets at 374/385/397) rather than from a live capture.
+func TestFetchFirmwareStatus_RemoveUpgradeSetsCounts(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check": "2026-07-25T10:00:00",
+			"connection": "ok",
+			"repository": "ok",
+			"remove_packages": [
+				{"name": "pkg-gone", "repository": "OPNsense", "version": "1.0"}
+			],
+			"upgrade_sets": [
+				{"name": "base", "size": "180MiB", "current_version": "26.1.11", "new_version": "26.7", "repository": "OPNsense"},
+				{"name": "kernel", "size": "40MiB", "current_version": "26.1.11", "new_version": "26.7", "repository": "OPNsense"}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.RemovePackages != 1 {
+		t.Errorf("expected RemovePackages=1, got %d", firmware.RemovePackages)
+	}
+	if firmware.UpgradeSets != 2 {
+		t.Errorf("expected UpgradeSets=2, got %d", firmware.UpgradeSets)
+	}
+}
+
+// TestFetchFirmwareStatus_RemoveUpgradeSetsAbsent is the live dev-box shape:
+// both arrays empty/absent, so both counts read 0 without error.
+func TestFetchFirmwareStatus_RemoveUpgradeSetsAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check": "2026-07-25T10:00:00",
+			"connection": "ok",
+			"repository": "ok",
+			"remove_packages": [],
+			"upgrade_packages": []
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if firmware.RemovePackages != 0 || firmware.UpgradeSets != 0 {
+		t.Errorf("expected zero remove/upgrade-set counts, got %d/%d", firmware.RemovePackages, firmware.UpgradeSets)
+	}
+}
+
+// TestFetchFirmwareStatus_AllPackagesNotDecoded guards the #373 acceptance
+// criterion that the composite inventories are NOT turned into per-package data:
+// all_packages/all_sets are upstream's own recombination of the five action
+// arrays, so decoding them would duplicate every entry.
+func TestFetchFirmwareStatus_AllPackagesNotDecoded(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"last_check": "2026-07-25T10:00:00",
+			"connection": "ok",
+			"repository": "ok",
+			"upgrade_packages": [
+				{"name": "curl", "repository": "OPNsense", "current_version": "8.8.0", "new_version": "8.9.1"}
+			],
+			"all_packages": [
+				{"name": "curl", "repository": "OPNsense", "current_version": "8.8.0", "new_version": "8.9.1", "action": "upgrade"},
+				{"name": "openssl", "repository": "OPNsense", "current_version": "3.0.13", "new_version": "3.0.14", "action": "upgrade"}
+			],
+			"all_sets": [
+				{"name": "base", "current_version": "26.1.11", "new_version": "26.7", "action": "upgrade"}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	firmware, err := client.FetchFirmwareStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(firmware.UpgradePackageDetails) != 1 {
+		t.Fatalf("all_packages must not contribute package details: got %d, want 1 (from upgrade_packages only)",
+			len(firmware.UpgradePackageDetails))
+	}
+	if firmware.UpgradePackages != 1 {
+		t.Errorf("expected UpgradePackages=1 (upgrade_packages only), got %d", firmware.UpgradePackages)
+	}
+	if firmware.UpgradeSets != 0 {
+		t.Errorf("all_sets must not be counted as upgrade_sets: got %d", firmware.UpgradeSets)
+	}
+}
+
+// TestParseFirmwareDownloadSize covers #380. The wire field is a
+// comma-separated list of mixed-unit sizes; the unit is the first alphabetic
+// character after the number (base-2). Upstream's own regex is (\d+) and
+// therefore truncates a fractional size; we deliberately accept the decimal.
+func TestParseFirmwareDownloadSize(t *testing.T) {
+	const (
+		ki = 1024.0
+		mi = ki * 1024
+		gi = mi * 1024
+		ti = gi * 1024
+		pi = ti * 1024
+	)
+	tests := []struct {
+		name      string
+		raw       string
+		want      float64
+		wantValid bool
+	}{
+		{"empty means nothing to download", "", 0, true},
+		{"whitespace only", "   ", 0, true},
+		{"explicit zero", "0", 0, true},
+		{"bare bytes", "512", 512, true},
+		{"byte unit letter", "512B", 512, true},
+		{"kibibytes", "4KiB", 4 * ki, true},
+		{"kibibytes lowercase", "4kb", 4 * ki, true},
+		{"mebibytes live dev-box value", "37MiB", 37 * mi, true},
+		{"gibibytes", "2GiB", 2 * gi, true},
+		{"tebibytes", "3TiB", 3 * ti, true},
+		{"pebibytes", "1PiB", 1 * pi, true},
+		{"decimal accepted, not truncated like upstream", "1.5GiB", 1.5 * gi, true},
+		{"csv sum", "37MiB,4KiB", 37*mi + 4*ki, true},
+		{"csv sum with spaces", " 180MiB , 40MiB , 512 ", 180*mi + 40*mi + 512, true},
+		{"space between number and unit", "37 MiB", 37 * mi, true},
+		{"malformed emits nothing", "garbage", 0, false},
+		{"unit without number", "MiB", 0, false},
+		{"one bad csv item poisons the whole value", "37MiB,garbage", 0, false},
+		{"unknown unit letter", "37XiB", 0, false},
+		{"negative", "-5MiB", 0, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := parseFirmwareDownloadSize(tc.raw)
+			if ok != tc.wantValid {
+				t.Fatalf("parseFirmwareDownloadSize(%q) valid = %v, want %v", tc.raw, ok, tc.wantValid)
+			}
+			if ok && got != tc.want {
+				t.Errorf("parseFirmwareDownloadSize(%q) = %v, want %v", tc.raw, got, tc.want)
+			}
+			if !ok && got != 0 {
+				t.Errorf("parseFirmwareDownloadSize(%q) returned %v on failure, want 0", tc.raw, got)
+			}
+		})
+	}
+}
+
+// TestFetchFirmwareStatus_PendingDownloadSizeGating covers #380's emission
+// gating: nothing at all before a stored check exists, an unambiguous 0 when
+// the field is empty/absent, and NO value (never a fabricated 0) when the
+// field cannot be parsed.
+func TestFetchFirmwareStatus_PendingDownloadSizeGating(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantValid bool
+		wantBytes float64
+	}{
+		{
+			name:      "no stored check",
+			body:      `{"status": "none", "download_size": "37MiB"}`,
+			wantValid: false,
+		},
+		{
+			name:      "stored check, field absent",
+			body:      `{"last_check": "2026-07-25T10:00:00", "connection": "ok", "repository": "ok"}`,
+			wantValid: true,
+			wantBytes: 0,
+		},
+		{
+			name:      "stored check, field empty",
+			body:      `{"last_check": "2026-07-25T10:00:00", "download_size": ""}`,
+			wantValid: true,
+			wantBytes: 0,
+		},
+		{
+			name:      "stored check, live dev-box value",
+			body:      `{"last_check": "2026-07-25T10:00:00", "download_size": "37MiB"}`,
+			wantValid: true,
+			wantBytes: 37 * 1024 * 1024,
+		},
+		{
+			name:      "stored check, malformed value",
+			body:      `{"last_check": "2026-07-25T10:00:00", "download_size": "quite big"}`,
+			wantValid: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.body))
+			})
+			defer server.Close()
+
+			firmware, err := client.FetchFirmwareStatus()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if firmware.PendingDownloadBytesValid != tc.wantValid {
+				t.Fatalf("PendingDownloadBytesValid = %v, want %v", firmware.PendingDownloadBytesValid, tc.wantValid)
+			}
+			if firmware.PendingDownloadBytes != tc.wantBytes {
+				t.Errorf("PendingDownloadBytes = %v, want %v", firmware.PendingDownloadBytes, tc.wantBytes)
+			}
+		})
 	}
 }
 

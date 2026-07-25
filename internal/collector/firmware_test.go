@@ -3,8 +3,10 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -40,7 +42,10 @@ func TestFirmwareCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 8
+	// 10 unconditional metrics (8 + the #373 remove_packages/upgrade_sets
+	// counts) + the 3 stored-check series (#373 success + 2 states) + the #380
+	// pending download gauge (download_size absent = unambiguously 0).
+	expectedCount := 14
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -101,7 +106,10 @@ func TestFirmwareCollector_Update_StatusNone(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 8
+	// No stored check: only the 10 unconditional metrics. The #373/#380
+	// check-health series are deliberately absent — see
+	// TestFirmwareCollector_NoStoredCheckEmitsNoCheckSeries.
+	expectedCount := 10
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -135,7 +143,7 @@ func TestFirmwareCollector_Update_NeedsReboot(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 8
+	expectedCount := 14
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -148,6 +156,273 @@ func TestFirmwareCollector_Update_NeedsReboot(t *testing.T) {
 	// upgrade_needs_reboot should be 1
 	if v := getMetricValue(metrics[2]); v != 1 {
 		t.Errorf("expected upgrade_needs_reboot=1, got %v", v)
+	}
+}
+
+// firmwareMetricsByName groups the collected metrics by fqName so the
+// #373/#380 assertions do not depend on emission order.
+func firmwareMetricsByName(metrics []prometheus.Metric, name string) []prometheus.Metric {
+	var out []prometheus.Metric
+	for _, m := range metrics {
+		if hasFqName(m, name) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// firmwareCheckMetrics collects the firmware collector against a canned
+// core/firmware/status body.
+func firmwareCheckMetrics(t *testing.T, body string) []prometheus.Metric {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &firmwareCollector{subsystem: FirmwareSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	return collectMetrics(t, c, client)
+}
+
+// TestFirmwareCollector_UpdateCheckHealthy covers #373's happy path: a stored
+// check that succeeded emits success=1 plus exactly one bounded state series
+// per component, and both new count gauges.
+func TestFirmwareCollector_UpdateCheckHealthy(t *testing.T) {
+	metrics := firmwareCheckMetrics(t, `{
+		"last_check": "2026-07-25T10:00:00Z",
+		"connection": "ok",
+		"repository": "ok",
+		"status": "update",
+		"remove_packages": [{"name": "pkg-gone", "repository": "OPNsense", "version": "1.0"}],
+		"upgrade_sets": [
+			{"name": "base", "size": "180MiB", "current_version": "26.1.11", "new_version": "26.7", "repository": "OPNsense"}
+		]
+	}`)
+
+	success := firmwareMetricsByName(metrics, "opnsense_firmware_update_check_success")
+	if len(success) != 1 {
+		t.Fatalf("expected exactly 1 update_check_success series, got %d", len(success))
+	}
+	if v := getMetricValue(success[0]); v != 1 {
+		t.Errorf("expected update_check_success=1, got %v", v)
+	}
+	if labels := getMetricLabels(success[0]); len(labels) != 1 {
+		t.Errorf("update_check_success must carry only the instance label, got %v", labels)
+	}
+
+	states := firmwareMetricsByName(metrics, "opnsense_firmware_update_check_state")
+	if len(states) != 2 {
+		t.Fatalf("expected exactly 2 update_check_state series (one per component), got %d", len(states))
+	}
+	got := map[string]string{}
+	for _, m := range states {
+		labels := getMetricLabels(m)
+		got[labels["component"]] = labels["state"]
+		if v := getMetricValue(m); v != 1 {
+			t.Errorf("update_check_state must always be 1, got %v", v)
+		}
+	}
+	if got["connection"] != "ok" || got["repository"] != "ok" {
+		t.Errorf("unexpected state series: %v", got)
+	}
+
+	removeCount := firmwareMetricsByName(metrics, "opnsense_firmware_remove_packages_count")
+	if len(removeCount) != 1 || getMetricValue(removeCount[0]) != 1 {
+		t.Errorf("expected remove_packages_count=1, got %v", removeCount)
+	}
+	setsCount := firmwareMetricsByName(metrics, "opnsense_firmware_upgrade_sets_count")
+	if len(setsCount) != 1 || getMetricValue(setsCount[0]) != 1 {
+		t.Errorf("expected upgrade_sets_count=1, got %v", setsCount)
+	}
+
+	assertNoDuplicateSeries(t, metrics)
+}
+
+// TestFirmwareCollector_UpdateCheckFailures covers the false-safe failure mode
+// #373 exists to fix: a check that ran but could not resolve, authenticate or
+// verify the repository must read success=0, not "no updates pending".
+func TestFirmwareCollector_UpdateCheckFailures(t *testing.T) {
+	tests := []struct {
+		name           string
+		body           string
+		wantConnection string
+		wantRepository string
+	}{
+		{
+			name: "dns failure",
+			body: `{
+				"last_check": "2026-07-25T10:00:00Z",
+				"connection": "unresolved",
+				"repository": "ok",
+				"status": "error",
+				"status_msg": "Cannot resolve host pkg.opnsense.example.invalid"
+			}`,
+			wantConnection: "unresolved",
+			wantRepository: "ok",
+		},
+		{
+			name: "expired subscription",
+			body: `{
+				"last_check": "2026-07-25T10:00:00Z",
+				"connection": "unauthenticated",
+				"repository": "forbidden",
+				"status": "error"
+			}`,
+			wantConnection: "unauthenticated",
+			wantRepository: "forbidden",
+		},
+		{
+			name: "revoked fingerprint",
+			body: `{
+				"last_check": "2026-07-25T10:00:00Z",
+				"connection": "ok",
+				"repository": "revoked",
+				"status": "error"
+			}`,
+			wantConnection: "ok",
+			wantRepository: "revoked",
+		},
+		{
+			name: "future upstream state collapses to unknown",
+			body: `{
+				"last_check": "2026-07-25T10:00:00Z",
+				"connection": "brand-new-failure-mode",
+				"repository": "https://pkg.opnsense.org/FreeBSD:14:amd64/26.7"
+			}`,
+			wantConnection: "unknown",
+			wantRepository: "unknown",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics := firmwareCheckMetrics(t, tc.body)
+
+			success := firmwareMetricsByName(metrics, "opnsense_firmware_update_check_success")
+			if len(success) != 1 {
+				t.Fatalf("expected 1 update_check_success series, got %d", len(success))
+			}
+			if v := getMetricValue(success[0]); v != 0 {
+				t.Errorf("expected update_check_success=0, got %v", v)
+			}
+
+			states := firmwareMetricsByName(metrics, "opnsense_firmware_update_check_state")
+			if len(states) != 2 {
+				t.Fatalf("expected 2 update_check_state series, got %d", len(states))
+			}
+			got := map[string]string{}
+			for _, m := range states {
+				labels := getMetricLabels(m)
+				got[labels["component"]] = labels["state"]
+			}
+			if got["connection"] != tc.wantConnection || got["repository"] != tc.wantRepository {
+				t.Errorf("state series = %v, want connection=%q repository=%q", got, tc.wantConnection, tc.wantRepository)
+			}
+
+			// No free-form message, mirror URL or repository identifier may
+			// reach a label — that is what keeps this family bounded.
+			for _, m := range metrics {
+				for name, value := range getMetricLabels(m) {
+					for _, forbidden := range []string{"Cannot resolve", "http", "://", "opnsense.example", "pkg.opnsense", "brand-new-failure-mode", "OPNsense"} {
+						if strings.Contains(value, forbidden) {
+							t.Errorf("label %s=%q leaks free-form upstream text (%q)", name, value, forbidden)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestFirmwareCollector_NoStoredCheckEmitsNoCheckSeries is the anti-fabrication
+// guard: before the box has ever run an update check there is no verdict, so
+// the #373/#380 series must be ABSENT rather than reporting a healthy-looking 0
+// (or, worse, success=1).
+func TestFirmwareCollector_NoStoredCheckEmitsNoCheckSeries(t *testing.T) {
+	metrics := firmwareCheckMetrics(t, `{"status": "none"}`)
+
+	for _, name := range []string{
+		"opnsense_firmware_update_check_success",
+		"opnsense_firmware_update_check_state",
+		"opnsense_firmware_pending_download_bytes",
+	} {
+		if got := firmwareMetricsByName(metrics, name); len(got) != 0 {
+			t.Errorf("%s must not be emitted without a stored check, got %d series", name, len(got))
+		}
+	}
+
+	// The count gauges are unconditional siblings of the existing package
+	// counts, so they stay at 0 (same convention as new/upgrade/downgrade).
+	for _, name := range []string{
+		"opnsense_firmware_remove_packages_count",
+		"opnsense_firmware_upgrade_sets_count",
+	} {
+		got := firmwareMetricsByName(metrics, name)
+		if len(got) != 1 {
+			t.Fatalf("expected %s to always be emitted, got %d series", name, len(got))
+		}
+		if v := getMetricValue(got[0]); v != 0 {
+			t.Errorf("expected %s=0, got %v", name, v)
+		}
+	}
+}
+
+// TestFirmwareCollector_PendingDownloadBytes covers #380 end to end, including
+// the malformed case, which must emit NOTHING rather than a fabricated 0.
+func TestFirmwareCollector_PendingDownloadBytes(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantSerie bool
+		wantValue float64
+	}{
+		{
+			name:      "live dev-box value",
+			body:      `{"last_check": "2026-07-25T10:00:00Z", "download_size": "37MiB"}`,
+			wantSerie: true,
+			wantValue: 37 * 1024 * 1024,
+		},
+		{
+			name:      "base upgrade csv sum",
+			body:      `{"last_check": "2026-07-25T10:00:00Z", "download_size": "180MiB,40MiB"}`,
+			wantSerie: true,
+			wantValue: 220 * 1024 * 1024,
+		},
+		{
+			name:      "nothing to download",
+			body:      `{"last_check": "2026-07-25T10:00:00Z", "download_size": ""}`,
+			wantSerie: true,
+			wantValue: 0,
+		},
+		{
+			name:      "malformed never fabricates zero",
+			body:      `{"last_check": "2026-07-25T10:00:00Z", "download_size": "a few hundred megs"}`,
+			wantSerie: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics := firmwareCheckMetrics(t, tc.body)
+			got := firmwareMetricsByName(metrics, "opnsense_firmware_pending_download_bytes")
+			if !tc.wantSerie {
+				if len(got) != 0 {
+					t.Fatalf("expected no pending_download_bytes series, got %d (value %v)", len(got), getMetricValue(got[0]))
+				}
+				return
+			}
+			if len(got) != 1 {
+				t.Fatalf("expected 1 pending_download_bytes series, got %d", len(got))
+			}
+			if v := getMetricValue(got[0]); v != tc.wantValue {
+				t.Errorf("pending_download_bytes = %v, want %v", v, tc.wantValue)
+			}
+			if labels := getMetricLabels(got[0]); len(labels) != 1 {
+				t.Errorf("pending_download_bytes must carry only the instance label, got %v", labels)
+			}
+		})
 	}
 }
 
@@ -205,24 +480,34 @@ func TestFirmwareCollector_Update_DetailsEnabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 8 base metrics (#237 adds downgrade/reinstall package counts) + 1
-	// package_update_available + 1 plugin_installed = 10
-	expectedCount := 10
+	// 14 non-detail metrics (8 base + #237 downgrade/reinstall counts + #373
+	// remove/upgrade-set counts + #373 success/2 states + #380 download bytes)
+	// + 1 package_update_available + 1 plugin_installed = 16.
+	expectedCount := 16
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics with details enabled, got %d", expectedCount, len(metrics))
 	}
 
-	// metrics[8] = package_update_available for curl
-	pkgLabels := getMetricLabels(metrics[8])
+	// Looked up by name rather than index: the detail metrics are appended last,
+	// so a new unconditional metric must not silently shift these assertions.
+	pkgMetrics := firmwareMetricsByName(metrics, "opnsense_firmware_package_update_available")
+	if len(pkgMetrics) != 1 {
+		t.Fatalf("expected 1 package_update_available series, got %d", len(pkgMetrics))
+	}
+	pkgLabels := getMetricLabels(pkgMetrics[0])
 	if pkgLabels["name"] != "curl" || pkgLabels["installed_version"] != "8.8.0" || pkgLabels["new_version"] != "8.9.1" {
 		t.Errorf("unexpected package_update_available labels: %v", pkgLabels)
 	}
-	if v := getMetricValue(metrics[8]); v != 1 {
+	if v := getMetricValue(pkgMetrics[0]); v != 1 {
 		t.Errorf("expected package_update_available=1, got %v", v)
 	}
 
-	// metrics[9] = plugin_installed for os-ddclient (os-acme-client is not installed)
-	plgLabels := getMetricLabels(metrics[9])
+	// plugin_installed for os-ddclient (os-acme-client is not installed)
+	plgMetrics := firmwareMetricsByName(metrics, "opnsense_firmware_plugin_installed")
+	if len(plgMetrics) != 1 {
+		t.Fatalf("expected 1 plugin_installed series, got %d", len(plgMetrics))
+	}
+	plgLabels := getMetricLabels(plgMetrics[0])
 	if plgLabels["name"] != "os-ddclient" || plgLabels["version"] != "1.31" {
 		t.Errorf("unexpected plugin_installed labels: %v", plgLabels)
 	}
@@ -246,7 +531,7 @@ func TestFirmwareCollector_Update_DetailsDisabledByDefault(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 8
+	expectedCount := 14
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics with details disabled, got %d", expectedCount, len(metrics))
 	}

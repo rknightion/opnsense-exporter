@@ -4,7 +4,9 @@
   "path": "api/core/firmware/status",
   "topLevelKind": "object",
   "knownTopLevelKeys": [
+    "connection",
     "downgrade_packages",
+    "download_size",
     "last_check",
     "needs_reboot",
     "new_packages",
@@ -14,10 +16,17 @@
     "product_id",
     "product_version",
     "reinstall_packages",
+    "remove_packages",
+    "repository",
     "status",
-    "upgrade_packages"
+    "upgrade_packages",
+    "upgrade_sets"
   ],
   "fields": [
+    {
+      "path": "connection",
+      "kind": "string"
+    },
     {
       "path": "downgrade_packages",
       "kind": "array"
@@ -40,6 +49,10 @@
     },
     {
       "path": "downgrade_packages[].repository",
+      "kind": "string"
+    },
+    {
+      "path": "download_size",
       "kind": "string"
     },
     {
@@ -119,6 +132,30 @@
       "kind": "string"
     },
     {
+      "path": "remove_packages",
+      "kind": "array"
+    },
+    {
+      "path": "remove_packages[]",
+      "kind": "object"
+    },
+    {
+      "path": "remove_packages[].name",
+      "kind": "string"
+    },
+    {
+      "path": "remove_packages[].repository",
+      "kind": "string"
+    },
+    {
+      "path": "remove_packages[].version",
+      "kind": "string"
+    },
+    {
+      "path": "repository",
+      "kind": "string"
+    },
+    {
       "path": "status",
       "kind": "string"
     },
@@ -148,6 +185,34 @@
     },
     {
       "path": "upgrade_packages[].size",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_sets",
+      "kind": "array"
+    },
+    {
+      "path": "upgrade_sets[]",
+      "kind": "object"
+    },
+    {
+      "path": "upgrade_sets[].current_version",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_sets[].name",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_sets[].new_version",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_sets[].repository",
+      "kind": "string"
+    },
+    {
+      "path": "upgrade_sets[].size",
       "kind": "string"
     }
   ]

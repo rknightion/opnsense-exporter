@@ -124,6 +124,26 @@ RULES = [
          A="opnsense_firmware_needs_reboot", op="gt", params=[0, 0], for_min=30, severity="warning",
          summary="OPNsense needs a reboot ({{ $labels.opnsense_instance }})",
          description="A firmware update flagged that OPNsense needs a reboot."),
+    # #373: the stored update check RAN AND FAILED (mirror unreachable, expired
+    # subscription, revoked fingerprint, unavailable release train). The series
+    # exists only once a check has been stored, so a box that has never checked
+    # produces NoData and stays at the default "Ok" state instead of firing —
+    # that presence gate is the guard, exactly like opnsense-disk-space-low.
+    dict(name="opnsense-update-check-failing", title="OPNsenseUpdateCheckFailing",
+         A="opnsense_firmware_update_check_success", op="lt", params=[1, 0],
+         for_min=60, severity="warning",
+         summary="OPNsense update check failing ({{ $labels.opnsense_instance }})",
+         description="opnsense_firmware_update_check_success is 0: the firewall's stored update "
+                     "check RAN AND FAILED, so the box cannot currently see security updates. "
+                     "opnsense_firmware_update_check_state says which half broke - component "
+                     "connection (DNS/proxy/credentials) or component repository "
+                     "(fingerprint/subscription/release train). This is NOT real-time mirror "
+                     "monitoring: it is the STORED result of a check OPNsense runs roughly daily, "
+                     "read through the exporter's firmware response cache, so a failure can take "
+                     "up to --exporter.firmware-cache-ttl (default 12h) to appear here and just "
+                     "as long to clear after it is fixed. The value is therefore constant across "
+                     "that window, so the 1h pending period filters scrape gaps and restarts, "
+                     "not mirror flapping."),
     dict(name="opnsense-cert-expiring", title="OPNsenseCertificateExpiringSoon",
          A="(opnsense_certificate_valid_to_seconds - time()) / 86400",
          op="within_range", params=[0, 14], for_min=0, severity="warning",

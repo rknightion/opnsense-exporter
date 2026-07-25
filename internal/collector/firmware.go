@@ -19,6 +19,11 @@ type firmwareCollector struct {
 	upgradePackagesCount   *prometheus.Desc
 	downgradePackagesCount *prometheus.Desc
 	reinstallPackagesCount *prometheus.Desc
+	removePackagesCount    *prometheus.Desc
+	upgradeSetsCount       *prometheus.Desc
+	updateCheckSuccess     *prometheus.Desc
+	updateCheckState       *prometheus.Desc
+	pendingDownloadBytes   *prometheus.Desc
 	packageUpdateAvailable *prometheus.Desc
 	pluginInstalled        *prometheus.Desc
 
@@ -67,6 +72,21 @@ func (c *firmwareCollector) Register(namespace, instanceLabel string, log *slog.
 	c.reinstallPackagesCount = buildPrometheusDesc(c.subsystem, "reinstall_packages_count",
 		"Number of packages available to reinstall", nil)
 
+	c.removePackagesCount = buildPrometheusDesc(c.subsystem, "remove_packages_count",
+		"Number of packages the pending update would remove", nil)
+
+	c.upgradeSetsCount = buildPrometheusDesc(c.subsystem, "upgrade_sets_count",
+		"Number of pending upgrade sets (the synthetic base/kernel entries of a major or point upgrade, not ordinary packages)", nil)
+
+	c.updateCheckSuccess = buildPrometheusDesc(c.subsystem, "update_check_success",
+		"Whether the firewall's stored update check actually succeeded (1 = the repository was reachable, authenticated and verified; 0 = it was not). Only emitted once a check has been stored. This is NOT the same as \"no updates pending\": before this metric existed, a DNS failure, expired subscription, revoked fingerprint or unavailable release train looked exactly like a healthy check with zero updates. Reflects the STORED result of the box's own check (refreshed roughly daily) as seen through the exporter's firmware response cache, so a state change can take up to --exporter.firmware-cache-ttl (default 12h) to appear.", nil)
+
+	c.updateCheckState = buildPrometheusDesc(c.subsystem, "update_check_state",
+		"Current state of one component of the firewall's stored update check (always 1; exactly one series per component). component is connection or repository. state is drawn from OPNsense's closed vocabularies - connection: error/unauthenticated/misconfigured/unresolved/ok, repository: error/untrusted/unsigned/revoked/incomplete/forbidden/ok - and anything else, including a future upstream state, collapses to unknown. Only emitted once a check has been stored.", []string{"component", "state"})
+
+	c.pendingDownloadBytes = buildPrometheusDesc(c.subsystem, "pending_download_bytes",
+		"Total size in bytes the pending update would download, parsed from the stored check's mixed-unit download_size list (base-2 units). Only emitted once a check has been stored AND the field parsed unambiguously - a value that cannot be parsed emits no series rather than a fabricated 0. Unlike the OPNsense GUI, which truncates a fractional size, fractions are kept, so this can read slightly higher than the number the GUI displays.", nil)
+
 	c.packageUpdateAvailable = buildPrometheusDesc(c.subsystem, "package_update_available",
 		"Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set.",
 		[]string{"name", "installed_version", "new_version"})
@@ -91,6 +111,11 @@ func (c *firmwareCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.upgradePackagesCount
 	ch <- c.downgradePackagesCount
 	ch <- c.reinstallPackagesCount
+	ch <- c.removePackagesCount
+	ch <- c.upgradeSetsCount
+	ch <- c.updateCheckSuccess
+	ch <- c.updateCheckState
+	ch <- c.pendingDownloadBytes
 	ch <- c.packageUpdateAvailable
 	ch <- c.pluginInstalled
 }
@@ -125,6 +150,35 @@ func (c *firmwareCollector) Update(ctx context.Context, client *opnsense.Client,
 	ch <- prometheus.MustNewConstMetric(c.downgradePackagesCount, prometheus.GaugeValue, float64(data.DowngradePackages), c.instance)
 
 	ch <- prometheus.MustNewConstMetric(c.reinstallPackagesCount, prometheus.GaugeValue, float64(data.ReinstallPackages), c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.removePackagesCount, prometheus.GaugeValue, float64(data.RemovePackages), c.instance)
+
+	ch <- prometheus.MustNewConstMetric(c.upgradeSetsCount, prometheus.GaugeValue, float64(data.UpgradeSets), c.instance)
+
+	// #373: the check-health family is gated on a stored check existing. Before
+	// the box's first check there is no verdict, and emitting one would
+	// fabricate health data — success=1 on a firewall whose update path has
+	// never been exercised is exactly the false-safe signal this fixes.
+	if data.CheckPresent {
+		var successVal float64
+		if data.Connection == "ok" && data.Repository == "ok" {
+			successVal = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(c.updateCheckSuccess, prometheus.GaugeValue, successVal, c.instance)
+
+		// Exactly one series per component: the CURRENT state only, so the
+		// label set stays bounded and a state change does not leave a stale
+		// series behind.
+		ch <- prometheus.MustNewConstMetric(c.updateCheckState, prometheus.GaugeValue, 1,
+			"connection", data.Connection, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.updateCheckState, prometheus.GaugeValue, 1,
+			"repository", data.Repository, c.instance)
+	}
+
+	// #380: absent unless a stored check exists AND download_size parsed.
+	if data.PendingDownloadBytesValid {
+		ch <- prometheus.MustNewConstMetric(c.pendingDownloadBytes, prometheus.GaugeValue, data.PendingDownloadBytes, c.instance)
+	}
 
 	if c.detailsEnabled {
 		for _, p := range data.UpgradePackageDetails {
