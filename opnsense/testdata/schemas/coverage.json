@@ -1,0 +1,204 @@
+{
+  "dechwPowerStatus": {
+    "stateOptional": [
+      {
+        "path": "pwr1",
+        "opaque": true,
+        "reason": "Deciso appliance PSU rail. Real hardware only: api/dechw/info/power_status answers {\"status\":\"failed\"} on anything that is not a DEC box with power sensors, so the canary VM can never populate it. The ABSENT branch is already suppressed by the dechwPowerStatus missingOK entry in exemptions.json; this entry classifies the null/empty branch, which lands in Unverified instead of Missing.",
+        "pruneTrigger": "delete when a canary box with DEC power sensors exists, or when the dechwPowerStatus missingOK entry is pruned for the same reason"
+      },
+      {
+        "path": "pwr2",
+        "opaque": true,
+        "reason": "Second Deciso PSU rail; same hardware gate as pwr1.",
+        "pruneTrigger": "delete together with the pwr1 entry"
+      }
+    ],
+    "note": "Hardware-only endpoint. Nothing here backs a metric on a VM, so no required class."
+  },
+  "interfacesOverview": {
+    "stateOptional": [
+      {
+        "path": "rows[].sfp.*",
+        "reason": "SFP transceiver diagnostics (DOM). Only a row that is a physical port with a populated SFP cage carries an sfp block; the canary VM is virtio-only. The block-absent branch is already suppressed by the interfacesOverview missingOK entry in exemptions.json; this entry classifies the served-but-empty branch ({} for sfp), which puts the sfp.* subtree in Unverified rather than Missing.",
+        "pruneTrigger": "delete when a canary box with a real SFP cage exists (same trigger as the interfacesOverview missingOK sfp entries)"
+      }
+    ]
+  },
+  "keaLeases6": {
+    "required": [
+      {
+        "path": "rows[].address",
+        "metrics": [
+          "opnsense_kea_dhcp6_lease_info",
+          "opnsense_kea_dhcp6_leases_total"
+        ],
+        "exercise": "Bring up a DHCPv6 client on a Kea-served VLAN of the testbed and let it take an IA_NA lease, so leases6/search returns at least one row.",
+        "verified": "LIVE-VERIFIED 2026-07-25: a Debian VM on the isolated testbed bridge took DHCPv6 addresses via Kea, and leases6/search returned total=2 with rows[] populated. The client renews (delegated prefix re-solicited each cycle), so the rows persist while that VM runs."
+      },
+      {
+        "path": "rows[].type",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp6_leases_by_type"
+        ],
+        "exercise": "Hold BOTH an IA_NA and an IA_PD lease on the testbed, then read the per-row type values out of the runner-local capture (never committed) to confirm the \"IA_NA\"/\"IA_PD\" spelling the label mapping assumes.",
+        "verified": "VALUES HUMAN-READ 2026-07-25: both enum values observed live on real rows - \"IA_NA\" and \"IA_PD\" - which is exactly the pair keaLeaseTypeLabel was tolerating blind. Still flagged opaque because the field is a flex type (KindAny), so the canary can only ever prove the key exists; the VALUE check is this note, not a machine assertion."
+      }
+    ],
+    "note": "DHCPv6 lease rows were the last source-derived Kea surface; closed 2026-07-25. ROOT CAUSE of the long-standing gap, recorded so it is not re-investigated: the Proxmox host kernel is booted with ipv6.disable=1, so /proc/sys/net/ipv6 does not exist in ANY namespace on that host and NO LXC on it can ever run a DHCPv6 client. This is a host-kernel property, not container privilege - the earlier #227 conclusion. Only a VM (own kernel) can hold a v6 lease; bridge-level L2 forwarding is unaffected. REGRESSION TRIGGER: these rows expire within the lease lifetime (~4000s) if that VM is stopped. Also note keaLeases4 is currently EMPTY (no DHCPv4 client on the test VLAN) despite a 2026-07-13 capture, so a v4 lease row is now the weaker side."
+  },
+  "keaPdPools6": {
+    "required": [
+      {
+        "path": "rows[].prefix",
+        "metrics": [
+          "opnsense_kea_dhcp6_pd_pool_size"
+        ],
+        "exercise": "Configure one DHCPv6 prefix-delegation pool on the testbed (Services > Kea DHCP > DHCPv6 > PD pools) so api/kea/dhcpv6/searchPdPool returns a non-empty rows array. Configuration only: no client needs to take a delegation.",
+        "verified": "LIVE-VERIFIED 2026-07-25: searchPdPool returns total=1 with rows[] populated. The PD pool turned out to be already configured on the testbed - the missing ingredient was a client, not config."
+      },
+      {
+        "path": "rows[].subnet",
+        "metrics": [
+          "opnsense_kea_dhcp6_pd_pool_size"
+        ],
+        "exercise": "Same as rows[].prefix. This field carries the subnet UUID that pdPoolSubnetLabel joins against keaSubnets6, so an empty rows array also leaves that join path unexercised.",
+        "verified": "LIVE-VERIFIED 2026-07-25: populated, and the pdPoolSubnetLabel join against keaSubnets6 (total=1) is now exercised."
+      },
+      {
+        "path": "rows[].prefix_len",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp6_pd_pool_size"
+        ],
+        "exercise": "Same as rows[].prefix, then confirm from the runner-local capture that prefix_len arrives as a number or numeric string, since the pool capacity is computed as 2^(delegated_len-prefix_len).",
+        "verified": "VALUES HUMAN-READ 2026-07-25: both capacity operands present on the live PD-pool row. Remains opaque (flexInt -> KindAny), so this note is the type evidence, not a canary assertion."
+      },
+      {
+        "path": "rows[].delegated_len",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp6_pd_pool_size"
+        ],
+        "exercise": "Same as rows[].prefix_len; both operands of the capacity computation need one human read of a real capture.",
+        "verified": "VALUES HUMAN-READ 2026-07-25: see rows[].prefix_len."
+      }
+    ]
+  },
+  "netbirdStatus": {
+    "required": [
+      {
+        "path": "peers.details[].fqdn",
+        "metrics": [
+          "opnsense_netbird_peer_connected",
+          "opnsense_netbird_peer_direct",
+          "opnsense_netbird_peer_received_bytes_total",
+          "opnsense_netbird_peer_transmitted_bytes_total",
+          "opnsense_netbird_peer_last_handshake_timestamp_seconds",
+          "opnsense_netbird_peer_latency_seconds"
+        ],
+        "exercise": "Requires the dev box enrolled into a NetBird tenant AND at least one OTHER peer visible to it \u2014 a peer never lists itself, so a single-peer tenant yields peers.total 0 and an empty details[]. A second netstack-mode peer runs on the dev box for this purpose (NB_USE_NETSTACK_MODE=true, state dir /var/db/netbird-canary2, its own daemon socket), which creates no host interface or routes. It is started BY HAND and does NOT survive a reboot: if these paths regress to unverified, restart that second peer before treating it as drift.",
+        "verified": "2026-07-25, live on the dev box in both the Connected and lazy-connection Idle states. The peer label on every netbird_peer_* series comes from this field. NOT REBOOT-DURABLE: the second peer that makes details[] non-empty is hand-started, so if these paths regress to unverified, restart it before treating it as drift - see the exercise recipe."
+      },
+      {
+        "path": "peers.details[].status",
+        "metrics": [
+          "opnsense_netbird_peer_connected"
+        ],
+        "exercise": "Same enrolled + second-peer state as fqdn.",
+        "verified": "2026-07-25, live in both Connected and Idle states; the value spelling matches the \"Connected\" comparison in netbird.go."
+      },
+      {
+        "path": "peers.details[].connectionType",
+        "metrics": [
+          "opnsense_netbird_peer_direct"
+        ],
+        "exercise": "Same enrolled + second-peer state as fqdn. Both a relayed and a direct peer are needed to observe both branches of the direct/relayed mapping.",
+        "verified": "2026-07-25, live in both Connected and Idle states."
+      },
+      {
+        "path": "peers.details[].lastWireguardHandshake",
+        "metrics": [
+          "opnsense_netbird_peer_last_handshake_timestamp_seconds"
+        ],
+        "exercise": "Same enrolled + second-peer state as fqdn.",
+        "verified": "2026-07-25, live in both Connected and Idle states. The RFC3339Nano parse plus the !t.IsZero() guard in netbird.go both behaved as the source-derived reading predicted."
+      },
+      {
+        "path": "peers.details[].transferReceived",
+        "metrics": [
+          "opnsense_netbird_peer_received_bytes_total"
+        ],
+        "exercise": "Same enrolled + second-peer state as fqdn, with traffic over the tunnel so the counter is non-zero.",
+        "verified": "2026-07-25, live in both Connected and Idle states."
+      },
+      {
+        "path": "peers.details[].transferSent",
+        "metrics": [
+          "opnsense_netbird_peer_transmitted_bytes_total"
+        ],
+        "exercise": "As for transferReceived.",
+        "verified": "2026-07-25, live in both Connected and Idle states."
+      },
+      {
+        "path": "peers.details[].latency",
+        "metrics": [
+          "opnsense_netbird_peer_latency_seconds"
+        ],
+        "exercise": "Same enrolled + second-peer state as fqdn.",
+        "verified": "2026-07-25, live in both Connected and Idle states; the wire value is a plain integer nanosecond count, as netbird's uninstrumented time.Duration implied."
+      }
+    ],
+    "note": "RESOLVED 2026-07-25. Every field of netbirdPeerDetail was source-derived from netbirdio/netbird client/status/status.go and unobserved (#211); the dev box is now enrolled and all 22 paths in the netbirdStatus golden validated live (22 verified, 0 mismatch, 0 unverified) in both the Connected and Idle states, so every source-derived guess proved correct. The entries stay in the ledger as required BECAUSE the enrollment is not reboot-durable \u2014 a regression to unverified must read as \"restart the second canary peer\", not as drift. Never record the setup key, API token, tenant name, peer FQDNs, netbird IPs or public keys here: the recipe describes the required STATE only."
+  },
+  "ntpGPS": {
+    "stateOptional": [
+      {
+        "path": "gps",
+        "opaque": true,
+        "reason": "GPS/PPS receiver state. api/ntpd/service/gps only reports a fix when a GNSS receiver is attached to a serial or USB port; the canary VM has none, so the block is empty or null.",
+        "pruneTrigger": "delete when a canary box has a GNSS receiver attached"
+      }
+    ]
+  },
+  "quaggaOspfv3Interface": {
+    "required": [
+      {
+        "path": "response",
+        "opaque": true,
+        "metrics": [
+          "opnsense_frr_ospfv3_interface_up",
+          "opnsense_frr_ospfv3_interface_cost",
+          "opnsense_frr_ospfv3_interface_state",
+          "opnsense_frr_ospfv3_interface_pending_lsa"
+        ],
+        "exercise": "Bring up an OSPFv3 adjacency on a box with a working IPv6 stack (two os-frr peers over a v6 transit link), capture api/quagga/diagnostics/ospfv3interface, and check the field names against opnsense/frr.go's ospf6 structs by hand.",
+        "verified": "LIVE STATE ACHIEVED 2026-07-25, BUT STILL STRUCTURALLY OPAQUE - see #459. OSPFv3 was enabled on the testbed and a Full adjacency brought up across the isolated bridge; all four v3 endpoints now return real objects instead of {\"response\":[]}, and all 13 source-derived field names in opnsense/frr.go were confirmed present in the live payload by hand. The canary still cannot verify any of them: schema_registry.go registers the ENVELOPE type, whose sole field is Response json.RawMessage -> KindAny. This is therefore a CODE gap, not a testbed gap - the distinction was rediscovered twice during #447. PRUNE TRIGGER: #459 unwraps the envelope; then drop the opaque flag and this becomes an ordinary required path a live run resolves."
+      }
+    ],
+    "note": "The only path OSPFv3 exposes to the canary is the response envelope. Recorded as required-but-opaque so the gap is a NAMED blind spot instead of vanishing into the unverified count; see the OSPFv3 exception in the VERIFICATION comment at the top of opnsense/frr.go. UPDATE 2026-07-25: the lab gap is closed (real v3 adjacency, live payload confirmed field-by-field); what remains is purely the envelope reflection limit tracked in #459. Do not re-provision the lab chasing this - provisioning cannot fix it."
+  },
+  "quaggaOspfv3Overview": {
+    "required": [
+      {
+        "path": "response",
+        "opaque": true,
+        "metrics": [
+          "opnsense_frr_ospfv3_area_lsa_count"
+        ],
+        "exercise": "Same OSPFv3 lab as quaggaOspfv3Interface; capture api/quagga/diagnostics/ospfv3overview with at least one area carrying LSAs and check the area key structure by hand.",
+        "verified": "LIVE STATE ACHIEVED 2026-07-25, BUT STILL STRUCTURALLY OPAQUE - see #459. OSPFv3 was enabled on the testbed and a Full adjacency brought up across the isolated bridge; all four v3 endpoints now return real objects instead of {\"response\":[]}, and all 13 source-derived field names in opnsense/frr.go were confirmed present in the live payload by hand. The canary still cannot verify any of them: schema_registry.go registers the ENVELOPE type, whose sole field is Response json.RawMessage -> KindAny. This is therefore a CODE gap, not a testbed gap - the distinction was rediscovered twice during #447. PRUNE TRIGGER: #459 unwraps the envelope; then drop the opaque flag and this becomes an ordinary required path a live run resolves."
+      }
+    ]
+  },
+  "systemTemperature": {
+    "stateOptional": [
+      {
+        "path": "[].*",
+        "reason": "Thermal sensors. api/diagnostics/system/systemTemperature returns [] on a box with no coretemp/amdtemp/acpi_thermal source, which is every virtualised canary; the whole element subtree is therefore unverified.",
+        "pruneTrigger": "delete when the canary runs on real hardware, or when the hypervisor passes a thermal zone through to the guest"
+      }
+    ]
+  }
+}

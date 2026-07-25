@@ -25,7 +25,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Firewall | firewall | 24 | Enabled | --exporter.disable-firewall | OPNSENSE_EXPORTER_DISABLE_FIREWALL |
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
-| Firmware | firmware | 10 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
+| Firmware | firmware | 15 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
 | Flow Volume | flow | 44 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
@@ -36,7 +36,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | IPsec | ipsec | 26 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
-| Interfaces | interfaces | 30 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
+| Interfaces | interfaces | 32 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
 | Kea DHCP | kea | 19 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
 | Local Auth | auth | 6 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
@@ -52,7 +52,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Nginx | nginx | 33 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
 | OpenVPN | openvpn | 9 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
-| Protocol Statistics | protocol | 63 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
+| Protocol Statistics | protocol | 64 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
 | Relayd Load Balancer | relayd | 4 | Enabled | --exporter.disable-relayd | OPNSENSE_EXPORTER_DISABLE_RELAYD |
 | SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |

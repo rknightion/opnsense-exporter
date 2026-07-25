@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 818
-- **Gauges:** 549
-- **Counters:** 269
+- **Total metrics:** 826
+- **Gauges:** 555
+- **Counters:** 271
 
 ## General
 
@@ -334,6 +334,11 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_firmware_upgrade_packages_count | Gauge | --- | Number of packages with available upgrades | --exporter.disable-firmware |
 | opnsense_firmware_downgrade_packages_count | Gauge | --- | Number of packages available to downgrade | --exporter.disable-firmware |
 | opnsense_firmware_reinstall_packages_count | Gauge | --- | Number of packages available to reinstall | --exporter.disable-firmware |
+| opnsense_firmware_remove_packages_count | Gauge | --- | Number of packages the pending update would remove | --exporter.disable-firmware |
+| opnsense_firmware_upgrade_sets_count | Gauge | --- | Number of pending upgrade sets (the synthetic base/kernel entries of a major or point upgrade, not ordinary packages) | --exporter.disable-firmware |
+| opnsense_firmware_update_check_success | Gauge | --- | Whether the firewall's stored update check actually succeeded (1 = the repository was reachable, authenticated and verified; 0 = it was not). Only emitted once a check has been stored. This is NOT the same as \"no updates pending\": before this metric existed, a DNS failure, expired subscription, revoked fingerprint or unavailable release train looked exactly like a healthy check with zero updates. Reflects the STORED result of the box's own check (refreshed roughly daily) as seen through the exporter's firmware response cache, so a state change can take up to --exporter.firmware-cache-ttl (default 12h) to appear. | --exporter.disable-firmware |
+| opnsense_firmware_update_check_state | Gauge | component, state | Current state of one component of the firewall's stored update check (always 1; exactly one series per component). component is connection or repository. state is drawn from OPNsense's closed vocabularies - connection: error/unauthenticated/misconfigured/unresolved/ok, repository: error/untrusted/unsigned/revoked/incomplete/forbidden/ok - and anything else, including a future upstream state, collapses to unknown. Only emitted once a check has been stored. | --exporter.disable-firmware |
+| opnsense_firmware_pending_download_bytes | Gauge | --- | Total size in bytes the pending update would download, parsed from the stored check's mixed-unit download_size list (base-2 units). Only emitted once a check has been stored AND the field parsed unambiguously - a value that cannot be parsed emits no series rather than a fabricated 0. Unlike the OPNsense GUI, which truncates a fractional size, fractions are kept, so this can read slightly higher than the number the GUI displays. | --exporter.disable-firmware |
 | opnsense_firmware_package_update_available | Gauge | name, installed_version, new_version | Pending package update (1 = update available). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 | opnsense_firmware_plugin_installed | Gauge | name, version | Installed OPNsense plugin (1 = installed). Only emitted when --exporter.enable-firmware-package-details is set. | --exporter.disable-firmware |
 
@@ -580,6 +585,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_interfaces_input_queue_drops_total | Counter | interface, device, type | Input queue drops on this interface by interface name and device | --exporter.disable-interfaces |
 | opnsense_interfaces_link_state | Gauge | interface, device, type | Link state of this interface (1=up, 0=down, 2=unknown) by interface name and device. 2 (unknown) is reported by the kernel for carrier-less pseudo-devices such as PPPoE and tun/tailscale interfaces, which have no carrier-sense concept and are not actually down; alert on link_state==0, not link_state!=1. | --exporter.disable-interfaces |
 | opnsense_interfaces_line_rate_bits | Gauge | interface, device, type | Line rate in bits per second on this interface by interface name and device | --exporter.disable-interfaces |
+| opnsense_interfaces_unknown_protocol_packets_total | Counter | interface, device, type | Packets delivered to this interface that the network stack could not classify (kernel \"packets for unknown protocol\" counter) by interface name and device. | --exporter.disable-interfaces |
+| opnsense_interfaces_attach_or_statistics_reset_uptime_seconds | Gauge | interface, device, type | System-uptime reading at which this interface was attached OR its statistics were explicitly reset (the kernel does not distinguish the two cases) by interface name and device. Only emitted when the box reports this marker. Compute age since attach/reset with opnsense_system_uptime_seconds - opnsense_interfaces_attach_or_statistics_reset_uptime_seconds. | --exporter.disable-interfaces |
 | opnsense_interfaces_admin_up | Gauge | interface, device | Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices. | --exporter.disable-interfaces |
 | opnsense_interfaces_info | Gauge | interface, device, identifier, media, link_type, vlan_tag, vlan_parent, physical | Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series. | --exporter.disable-interfaces |
 | opnsense_interfaces_lagg_info | Gauge | device, protocol, hash | LAGG (link aggregation) interface protocol/hash configuration. Value is always 1. Only emitted for interfaces that are themselves a lagg device. Join on the device label. | --exporter.disable-interfaces |
@@ -896,6 +903,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_protocol_tcp_connections_established_total | Counter | --- | Number of TCP connections established | --exporter.disable-protocol |
 | opnsense_protocol_tcp_connections_closed_total | Counter | --- | Number of TCP connections closed | --exporter.disable-protocol |
 | opnsense_protocol_tcp_connection_drops_total | Counter | --- | Number of TCP connection drops | --exporter.disable-protocol |
+| opnsense_protocol_tcp_connection_drops_by_reason_total | Counter | reason | Cumulative TCP connections dropped by reason (retransmit_timeout, persist_timeout, finwait2_timeout, keepalive). These are kernel-lifetime counters that reset on reboot, like the other protocol counters. A reason is only emitted when the box reports that wire field; an older box that omits a reason omits its series rather than reporting a fabricated zero (#374). | --exporter.disable-protocol |
 | opnsense_protocol_tcp_retransmit_timeouts_total | Counter | --- | Number of TCP retransmit timeouts | --exporter.disable-protocol |
 | opnsense_protocol_tcp_keepalive_timeouts_total | Counter | --- | Number of TCP keepalive timeouts | --exporter.disable-protocol |
 | opnsense_protocol_tcp_listen_queue_overflows_total | Counter | --- | Number of TCP listen queue overflows | --exporter.disable-protocol |

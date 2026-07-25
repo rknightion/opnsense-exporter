@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-update-check-failing",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseUpdateCheckFailing",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "60m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense update check failing ({{ $labels.opnsense_instance }})",
+      "description": "opnsense_firmware_update_check_success is 0: the firewall's stored update check RAN AND FAILED, so the box cannot currently see security updates. opnsense_firmware_update_check_state says which half broke - component connection (DNS/proxy/credentials) or component repository (fingerprint/subscription/release train). This is NOT real-time mirror monitoring: it is the STORED result of a check OPNsense runs roughly daily, read through the exporter's firmware response cache, so a failure can take up to --exporter.firmware-cache-ttl (default 12h) to appear here and just as long to clear after it is fixed. The value is therefore constant across that window, so the 1h pending period filters scrape gaps and restarts, not mirror flapping.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "opnsense_firmware_update_check_success",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  1,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

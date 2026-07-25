@@ -35,10 +35,24 @@ type netbirdRelayState struct {
 // iceCandidateType/iceCandidateEndpoint/relayAddress/quantumResistance/
 // networks are deliberately not modeled.
 //
-// SOURCE-DERIVED, never observed live: no netbird enrollment was available to
-// capture a real peer (#211). Verified only against netbirdio/netbird's
-// client/status/status.go at the plugin's pinned CLI version (0.72.2, per the
-// dev-box capture's cliVersion/daemonVersion).
+// LIVE-VERIFIED 2026-07-25 (#377), superseding the previous "source-derived,
+// never observed live" note from #211: the dev box was enrolled into a real
+// tenant on netbird 0.74.4 and every path in the committed netbirdStatus golden
+// was validated against live captures — 22 verified, 0 mismatched, 0 unverified
+// — in both the Connected and the lazy-connection Idle state. The field guesses
+// below all proved correct, including the RFC3339Nano + !IsZero() handling of
+// lastWireguardHandshake, which arrives as a local-offset timestamp when set and
+// as "0001-01-01T00:00:00Z" when the peer has never handshaken.
+//
+// Two zero-value traps live in this payload. lastWireguardHandshake's zero is
+// the ordinary Go zero time, so IsZero() catches it. lastStatusUpdate's zero
+// renders as "0000-12-31T23:58:45-00:01" (pre-Gregorian, local offset), which
+// IsZero() does NOT catch — it is not consumed here, and anyone adding it must
+// not assume a sane zero.
+//
+// Reproducing this state needs a second peer: a peer never lists itself, so a
+// single-peer tenant reports peers.total 0 and an empty details[]. See the
+// exercise recipe in opnsense/testdata/schemas/coverage.json.
 type netbirdPeerDetail struct {
 	FQDN                   string `json:"fqdn"`
 	Status                 string `json:"status"`

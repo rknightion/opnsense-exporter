@@ -50,6 +50,9 @@
   },
   "firmware": {
     "missingOK": [
+      "connection",
+      "downgrade_packages",
+      "download_size",
       "last_check",
       "needs_reboot",
       "new_packages",
@@ -57,26 +60,27 @@
       "product_abi",
       "product_id",
       "product_version",
+      "reinstall_packages",
+      "remove_packages",
+      "remove_packages[].*",
+      "repository",
       "upgrade_packages",
-      "upgrade_packages[].size"
+      "upgrade_packages[].size",
+      "upgrade_sets",
+      "upgrade_sets[].*"
     ],
     "knownExtraTopKeys": [
       "all_packages",
       "all_sets",
       "api_version",
-      "connection",
-      "download_size",
       "product_target",
-      "remove_packages",
-      "repository",
       "status_msg",
       "status_reboot",
       "upgrade_major_message",
       "upgrade_major_version",
-      "upgrade_needs_reboot",
-      "upgrade_sets"
+      "upgrade_needs_reboot"
     ],
-    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 12); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. downgrade_packages/reinstall_packages are now modelled as count gauges (#237). The 26.7 full-inventory keys (all_packages/all_sets) remain a #227 opportunity. upgrade_packages[].size is BOX STATE, not drift: core's check.sh builds an ordinary package-upgrade entry as name/repository/current_version/new_version with no size key at all (check.sh:271-281), and emits size only on the synthetic base and kernel entries, each guarded on opnsense-update reporting a non-empty size (check.sh:328-337, 350-359). FirmwareController.php:133 reads it back behind !empty()+is_numeric(), so upstream itself treats it as optional. The field therefore appears only while a BASE OR KERNEL upgrade is pending; a box with only ordinary package upgrades legitimately omits it. Exempting rather than fixing the testbed is safe here because size backs no exported metric - it is parsed into firmware.go's UpgradePackages struct but never copied into FirmwarePackageUpgrade, so the canary blinds us to nothing consumed. PRUNE TRIGGER: if size is ever consumed by a metric, delete this entry and instead hold a pending base/kernel upgrade on the testbed so the path is genuinely covered"
+    "note": "firmware/status serves a minimal envelope until a check has run since boot, then a state-dependent superset (~26 top-level keys, we model 12); the unmodelled remainder is exempted wholesale so canary results do not depend on when the box last ran a check. downgrade_packages/reinstall_packages are now modelled as count gauges (#237). The 26.7 full-inventory keys (all_packages/all_sets) remain a #227 opportunity - deliberately NOT decoded, so raw composite inventories never become per-package metrics (#373 scope). connection/repository/remove_packages/upgrade_sets/download_size were REMOVED from this list on 2026-07-25: #373 models connection/repository as bounded update-check state and remove_packages/upgrade_sets as count gauges, and #380 models download_size as a byte gauge, so they are no longer unmodelled. upgrade_packages[].size is BOX STATE, not drift: core's check.sh builds an ordinary package-upgrade entry as name/repository/current_version/new_version with no size key at all (check.sh:271-281), and emits size only on the synthetic base and kernel entries, each guarded on opnsense-update reporting a non-empty size (check.sh:328-337, 350-359). FirmwareController.php:133 reads it back behind !empty()+is_numeric(), so upstream itself treats it as optional. The field therefore appears only while a BASE OR KERNEL upgrade is pending; a box with only ordinary package upgrades legitimately omits it. Exempting rather than fixing the testbed is safe here because size backs no exported metric - it is parsed into firmware.go's UpgradePackages struct but never copied into FirmwarePackageUpgrade, so the canary blinds us to nothing consumed. PRUNE TRIGGER: if size is ever consumed by a metric, delete this entry and instead hold a pending base/kernel upgrade on the testbed so the path is genuinely covered MINIMAL-ENVELOPE ADDITIONS 2026-07-25 (#373/#380): connection, repository, download_size, remove_packages, upgrade_sets, downgrade_packages and reinstall_packages are ALL state-dependent top-level keys that exist only AFTER a check has been stored. Verified live the same day: the dev box served the full 26-key superset at 18:33, then reverted to the bare 3-key envelope (product/status/status_msg, status=none) after a package operation cleared the stored check - and the canary flagged all seven as Missing. This is BOX STATE, not drift, exactly like the pre-existing entries above. downgrade_packages/reinstall_packages were a latent gap from #237 that only became visible once a run caught the box pre-check. The remove_packages[].* and upgrade_sets[].* prefixes cover the element paths for the same reason. PRUNE TRIGGER: none - this is permanent box state, since a box that has never run a check since boot is a legitimate and reachable state. The exporter handles it by presence-gating on CheckPresent, so no success/state series is fabricated; that gating was live-confirmed by this very reversion."
   },
   "firmwareInfo": {
     "knownExtraTopKeys": [
@@ -129,13 +133,19 @@
       "metadata.System.status",
       "subsystems"
     ],
-    "note": "Two unrelated things. (1) The CrashReporter/Firewall/System entries are the legacy pre-25.1 health shape, killed by upstream refactor 1fc5a6335 (2024-12-12). They are ALREADY outside the current+previous support window (26.1 + 25.7), so the trigger has fired — but pruning them is not a ledger edit: the exemptions only exist because the structs do, and deleting the structs drops support for pre-25.1 boxes, which is a product decision rather than canary hygiene. Left in place deliberately; raise an issue if that support should end (#284). (2) 'subsystems' is BOX STATE, not a version prune: SystemController::statusAction() only assigns $response['subsystems'] inside `if ($statuses)`, so a box with no subsystem reporting anything omits the key entirely. Verified 2026-07-17 against upstream source (blob ea83f28a is IDENTICAL on master, stable/26.1 and stable/25.7, unchanged since 2025-01-21) and against a live healthy box. It reappears the moment any subsystem reports, which is why #235 flagged it and #243 did not. metadata.subsystems is NOT populated on any release and is no longer modelled — see #284"
+    "note": "Two unrelated things. (1) The CrashReporter/Firewall/System entries are the legacy pre-25.1 health shape, killed by upstream refactor 1fc5a6335 (2024-12-12). They are ALREADY outside the current+previous support window (26.1 + 25.7), so the trigger has fired \u2014 but pruning them is not a ledger edit: the exemptions only exist because the structs do, and deleting the structs drops support for pre-25.1 boxes, which is a product decision rather than canary hygiene. Left in place deliberately; raise an issue if that support should end (#284). (2) 'subsystems' is BOX STATE, not a version prune: SystemController::statusAction() only assigns $response['subsystems'] inside `if ($statuses)`, so a box with no subsystem reporting anything omits the key entirely. Verified 2026-07-17 against upstream source (blob ea83f28a is IDENTICAL on master, stable/26.1 and stable/25.7, unchanged since 2025-01-21) and against a live healthy box. It reappears the moment any subsystem reports, which is why #235 flagged it and #243 did not. metadata.subsystems is NOT populated on any release and is no longer modelled \u2014 see #284. knownExtraPaths (#376): the 26.1+ metadata block carries four keys we deliberately do not model. metadata.subsystems is the phantom generation from #284 - upstream never populates it on any release and it was removed from the structs; PRUNE TRIGGER: only if upstream ever populates it with data worth exporting. metadata.translations is GUI i18n text. metadata.System.message/.title are free-form GUI strings; only metadata.System.status is consumed. PRUNE TRIGGER for those three: if a metric ever needs them. Paths are spelled in the STRUCT's casing (System) even though 26.1 serves lowercase 'system' - the validator canonicalizes to the schema spelling on purpose, so the exemption matches every release's casing",
+    "knownExtraPaths": [
+      "metadata.subsystems",
+      "metadata.translations",
+      "metadata.System.message",
+      "metadata.System.title"
+    ]
   },
   "interfaceConfig": {
     "missingOK": [
       "*.sfp"
     ],
-    "note": "The transceiver block is emitted only for a row ifconfig prints a \"plugged:\" line for, i.e. a physical port with an SFP cage — legacy_interfaces_details() creates $result[$dev]['sfp'] in that branch alone. The canary box is a virtio-only VM, so NO row carries it and *.sfp is absent wholesale; the prod box's three populated cages serve it and validate normally (verified live 2026-07-25 on both). Box/hardware state, not a version prune — same field, same reason and same prune trigger as the interfacesOverview rows[].sfp entry below: it goes when a canary box with a real SFP cage exists. Note the sfp subtree needs no .* companion here, unlike interfacesOverview: this struct types the block as flexStringMap, a custom unmarshaler, so the schema walker stops at the parent (#371)"
+    "note": "The transceiver block is emitted only for a row ifconfig prints a \"plugged:\" line for, i.e. a physical port with an SFP cage \u2014 legacy_interfaces_details() creates $result[$dev]['sfp'] in that branch alone. The canary box is a virtio-only VM, so NO row carries it and *.sfp is absent wholesale; the prod box's three populated cages serve it and validate normally (verified live 2026-07-25 on both). Box/hardware state, not a version prune \u2014 same field, same reason and same prune trigger as the interfacesOverview rows[].sfp entry below: it goes when a canary box with a real SFP cage exists. Note the sfp subtree needs no .* companion here, unlike interfacesOverview: this struct types the block as flexStringMap, a custom unmarshaler, so the schema walker stops at the parent (#371)"
   },
   "interfaces": {
     "knownExtraTopKeys": [
@@ -229,7 +239,18 @@
       "usesKernelInterface",
       "wireguardPort"
     ],
-    "note": "netbird CLI status --json (client/status.OutputOverview, github.com/netbirdio/netbird) node identity/config/session fields the exporter does not model \u2014 an #211 opportunity if a future metric needs them. Separately (not expressible as an exemption here): the daemon-down state serves a bare `[]` instead of this object (verified live 2026-07-13); a canary run that catches the box in that state will report a top-level Mismatch for this endpoint \u2014 that is the documented daemon-down fallback (see opnsense/netbird.go), not drift"
+    "note": "netbird CLI status --json (client/status.OutputOverview, github.com/netbirdio/netbird) node identity/config/session fields the exporter does not model \u2014 an #211 opportunity if a future metric needs them. Separately (not expressible as an exemption here): the daemon-down state serves a bare `[]` instead of this object (verified live 2026-07-13); a canary run that catches the box in that state will report a top-level Mismatch for this endpoint \u2014 that is the documented daemon-down fallback (see opnsense/netbird.go), not drift. knownExtraPaths (#376): the nine per-peer fields netbirdPeerDetail deliberately does not model, confirmed against a live enrolled capture 2026-07-25 (16 keys served, 7 modelled). Several are peer identities/addresses and must stay unmodelled unless a metric genuinely needs them - an #211 opportunity, not drift. PRUNE TRIGGER: delete an entry when its field is modelled. Do NOT model lastStatusUpdate casually: its zero value renders as 0000-12-31T23:58:45-00:01, which time.Time.IsZero() does not catch. SEPARATELY, sessionExpiresAt in knownExtraTopKeys above is PROSPECTIVE, NEVER OBSERVED: the packaged netbird (0.74.4, the current OPNsense ceiling) does not emit it - the field first appears in netbird v0.75.0, and even then only for SSO-enrolled peers, which the os-netbird plugin cannot create (it enrols by setup key only). #379 was closed won't-do on that basis 2026-07-25. The entry is harmless (an exemption only suppresses a key that is actually present) and is kept so a future 0.75.0+ package does not trip the canary. PRUNE TRIGGER: delete if the field is ever modelled",
+    "knownExtraPaths": [
+      "peers.details[].iceCandidateEndpoint",
+      "peers.details[].iceCandidateType",
+      "peers.details[].lastStatusUpdate",
+      "peers.details[].netbirdIp",
+      "peers.details[].netbirdIpv6",
+      "peers.details[].networks",
+      "peers.details[].publicKey",
+      "peers.details[].quantumResistance",
+      "peers.details[].relayAddress"
+    ]
   },
   "nginxServiceStatus": {
     "knownExtraTopKeys": [
@@ -253,7 +274,7 @@
       "nginxVersion",
       "nowMsec"
     ],
-    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list. cacheZones is BOX STATE: nginx-module-vts writes the key, calls display_set_cache(), then rewinds the buffer wholesale if nothing was written (display_json.c `s = buf; ...; if (s == buf) { buf = o; }`), so the key vanishes when the vts shared memory holds no cache node — and that shm resets on every nginx reload. The testbed HAS a cache configured (settings/get shows cache_path /var/nginx/cache/heavy) but has served nothing through it. Verified live 2026-07-17 on the 26.7-devel VM; the upstream #define for \"cacheZones\" is still present on vozlt/nginx-module-vts master. Prune once the testbed serves traffic through a proxy_cache location (#271)"
+    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list. cacheZones is BOX STATE: nginx-module-vts writes the key, calls display_set_cache(), then rewinds the buffer wholesale if nothing was written (display_json.c `s = buf; ...; if (s == buf) { buf = o; }`), so the key vanishes when the vts shared memory holds no cache node \u2014 and that shm resets on every nginx reload. The testbed HAS a cache configured (settings/get shows cache_path /var/nginx/cache/heavy) but has served nothing through it. Verified live 2026-07-17 on the 26.7-devel VM; the upstream #define for \"cacheZones\" is still present on vozlt/nginx-module-vts master. Prune once the testbed serves traffic through a proxy_cache location (#271)"
   },
   "nutServiceStatus": {
     "knownExtraTopKeys": [
@@ -291,7 +312,7 @@
       "rows[].priority",
       "rows[].state"
     ],
-    "note": "legacy pre-rename FRR ospf-neighbor field names. New FRR (verified live 2026-07-15 on 26.7-devel: a real Full/Backup adjacency) emits nbrState/nbrPriority/ifaceAddress instead; the collector already coalesces new-wins-else-legacy in frr.go (state, address; priority is decoded-only, no metric). Legacy names kept for <= 26.1's older FRR — prune when 26.1 leaves the support window (#243)"
+    "note": "legacy pre-rename FRR ospf-neighbor field names. New FRR (verified live 2026-07-15 on 26.7-devel: a real Full/Backup adjacency) emits nbrState/nbrPriority/ifaceAddress instead; the collector already coalesces new-wins-else-legacy in frr.go (state, address; priority is decoded-only, no metric). Legacy names kept for <= 26.1's older FRR \u2014 prune when 26.1 leaves the support window (#243)"
   },
   "quaggaServiceStatus": {
     "knownExtraTopKeys": [
@@ -387,7 +408,7 @@
     "knownExtraTopKeys": [
       "status"
     ],
-    "note": "api/vnstat/service/get_json_data returns {\"status\":\"failed\"} — no interfaces array — when vnstat has no monitored-interface data. Verified live 2026-07-15 on the 26.7-devel VM, whose vnstat DB is empty. Box state: clears (and the exemption should be pruned) once the testbed's vnstat monitors an interface and produces data (#243)"
+    "note": "api/vnstat/service/get_json_data returns {\"status\":\"failed\"} \u2014 no interfaces array \u2014 when vnstat has no monitored-interface data. Verified live 2026-07-15 on the 26.7-devel VM, whose vnstat DB is empty. Box state: clears (and the exemption should be pruned) once the testbed's vnstat monitors an interface and produces data (#243)"
   },
   "wireguardServiceStatus": {
     "knownExtraTopKeys": [
