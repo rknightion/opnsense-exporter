@@ -17,7 +17,7 @@ export PATH := $(TOOLS_DIR):$(PATH)
 # .goreleaser.yml. A future Go that removes the experiment fails the build loudly.
 GOEXPERIMENT ?= goroutineleakprofile
 
-.PHONY: default docgen docs docs-check dashboard rules grafana-check install-hooks capture \
+.PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
         schemas coverage notices sbom tools-licensing tools-sbom
 default:
 	GOEXPERIMENT=$(GOEXPERIMENT) go build \
@@ -115,12 +115,19 @@ rules:
 # staleness + manifest validity. Fails if any catalogue metric is off the dashboard,
 # if dashboard.json / dashboard-stats.json / the grafana-managed manifests are stale
 # relative to their builders, or if a manifest is malformed.
-grafana-check:
+grafana-check: grafana-test
 	cd grafana && python3 build_dashboard.py --check
 	cd grafana && python3 build_dashboard.py
 	cd grafana/alerts && python3 build_rules.py
 	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/alerts/grafana-managed/
 	python3 grafana/alerts/validate_manifests.py
+
+# The grafana/ builders' own unit tests (stdlib unittest, no deps). A prerequisite
+# of grafana-check rather than a separate CI job so it cannot be forgotten: these
+# existed for weeks with nothing running them and three had rotted into failure,
+# which is the same as not having them.
+grafana-test:
+	cd grafana && python3 -m unittest discover -s tests -t . -q
 
 # Regenerate the committed structure-only golden schemas (opnsense/testdata/schemas/)
 # from the response structs (cmd/apischema). Run after changing any response

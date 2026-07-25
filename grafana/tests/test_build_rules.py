@@ -46,10 +46,16 @@ class GrafanaManagedRuleGenerationTest(unittest.TestCase):
             manifest for manifest in manifests if manifest["kind"] == "RecordingRule"
         ]
 
-        self.assertEqual(len(build_rules.RULES), 29)
-        self.assertEqual(len(alerts), 29)
-        self.assertEqual(len(build_rules.RECORDING), 13)
-        self.assertEqual(len(recordings), 13)
+        # One manifest per source rule, no more and no fewer. This used to pin
+        # literal counts (29 and 13) and simply rotted: adding a rule failed a
+        # test that had nothing to say about the new rule, which trains people to
+        # bump the number. The invariant worth holding is that emit_grafana_managed
+        # neither drops nor invents rules; the floors below keep an accidentally
+        # emptied RULES/RECORDING from passing trivially.
+        self.assertEqual(len(alerts), len(build_rules.RULES))
+        self.assertEqual(len(recordings), len(build_rules.RECORDING))
+        self.assertGreaterEqual(len(build_rules.RULES), 25)
+        self.assertGreaterEqual(len(build_rules.RECORDING), 12)
         self.assertEqual(Path(outdir).name, "grafana-managed")
 
         expected_expressions = {

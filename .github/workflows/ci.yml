@@ -86,6 +86,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # The builders' own unit tests, run first and named separately so a failure
+      # here is not read as a staleness failure. Wired into CI 2026-07-25: they had
+      # never run anywhere, and three of sixteen had rotted into failure unnoticed.
+      - name: Run the grafana builder unit tests
+        run: make grafana-test
+
       # Coverage gate (every catalogue metric on the dashboard) + regeneration
       # staleness (dashboard.json / dashboard-stats.json / grafana-managed manifests)
       # + manifest validity. Pure-stdlib Python, no deps to install (#84).

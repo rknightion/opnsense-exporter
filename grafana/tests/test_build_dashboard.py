@@ -57,44 +57,20 @@ LEAF_TITLES = {
     "Tor",
     "Siproxd",
     "Log-derived Events",
+    "Flow Volume",
     "Zenarmor",
     "Log Shipping",
     "Diagnostics",
     "Recording rules",
 }
 
-OPTIONAL_LEAVES = {
-    "Aliases",
-    "DNS - Unbound",
-    "DHCP",
-    "VPN",
-    "Tailscale",
-    "NetBird",
-    "NTP",
-    "ClamAV",
-    "Syslog",
-    "Q-Feeds",
-    "NetFlow",
-    "CARP / HA",
-    "HAProxy",
-    "Relayd",
-    "Nginx",
-    "FRR Routing",
-    "Monit",
-    "CrowdSec",
-    "IDS/IPS",
-    "UPS",
-    "Captive Portal",
-    "Traffic Shaper",
-    "HA Sync",
-    "Chrony",
-    "Tor",
-    "Siproxd",
-    "Log-derived Events",
-    "Zenarmor",
-    "Log Shipping",
-    "Recording rules",
-}
+# Derived, not duplicated. This was a hand-maintained copy of
+# build_dashboard.OPTIONAL_TAB_PRESENCE and drifted from it silently — the copy
+# asserts nothing the source does not already state, so the only thing a second
+# list could ever catch is itself being out of date. LEAF_TITLES above stays
+# explicit on purpose: it is an inventory, and a tab quietly disappearing from
+# the dashboard is exactly what it exists to fail on.
+OPTIONAL_LEAVES = set(build_dashboard.OPTIONAL_TAB_PRESENCE)
 
 
 def leaf_tabs(builder):

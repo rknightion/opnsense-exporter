@@ -36,6 +36,10 @@ def build(b: Builder):
         "has_recording_ids",
         "label_values(instance:opnsense_ids_alerts:active, __name__)",
     )
+    b.sentinel(
+        "has_recording_flow",
+        "label_values(instance:opnsense_flow_bytes:rate5m, __name__)",
+    )
 
     memory = b.gauge(
         "Memory Utilization",
@@ -212,6 +216,23 @@ def build(b: Builder):
         ],
     )
 
+    flow_bytes = b.ts(
+        "Flow Volume (5m rate)",
+        [
+            (
+                sel("instance:opnsense_flow_bytes:rate5m"),
+                "{{interface}} {{direction}}",
+            )
+        ],
+        unit="Bps",
+        desc="Per-interface flow throughput by direction, precomputed over five minutes. The rule "
+        'pins source="netflow" deliberately: the flow family carries two independent measurements '
+        "of the same traffic (Zenarmor and NetFlow) and #346 decision 3 forbids summing them, so "
+        "this series is safe to build on without every query having to remember the source filter.",
+        w=24,
+        h=8,
+    )
+
     b.tab(
         "Recording rules",
         [
@@ -247,6 +268,11 @@ def build(b: Builder):
                 "IDS / IPS",
                 [ids_alerts],
                 present="has_recording_ids",
+            ),
+            b.row(
+                "Flow Volume",
+                [flow_bytes],
+                present="has_recording_flow",
             ),
         ],
         present="has_recording_rules",
