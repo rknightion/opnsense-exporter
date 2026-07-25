@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 827
-- **Gauges:** 556
+- **Total metrics:** 829
+- **Gauges:** 558
 - **Counters:** 271
 
 ## General
@@ -20,8 +20,10 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_exporter_scrape_collector_duration_seconds | Gauge | collector | Duration of a sub-collector scrape in seconds |
 | opnsense_exporter_scrape_collector_success | Gauge | collector | Whether a sub-collector scrape succeeded (1 = ok, 0 = error or panic) |
 | opnsense_exporter_collector_poll_interval_seconds | Gauge | collector | Configured poll interval of a collector in seconds (the internal poll scheduler runs each collector on its own interval; #336) |
-| opnsense_exporter_collector_last_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's last completed poll; absent until the collector has polled at least once (#336) |
-| opnsense_exporter_collector_next_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's next scheduled poll, estimated as last poll + interval; absent until the first poll (#336) |
+| opnsense_exporter_collector_last_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's last poll ATTEMPT, successful or not; scheduler liveness, not data freshness — a collector failing every poll keeps advancing this while replaying old data. Use collector_snapshot_timestamp_seconds for data age. Absent until the collector has polled at least once (#336, #382) |
+| opnsense_exporter_collector_next_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline (not derived from last poll + interval); absent when no poller is running for the collector (#336, #385) |
+| opnsense_exporter_collector_snapshot_timestamp_seconds | Gauge | collector | Unix timestamp at which a collector's stored metric buffer was last REPLACED — the true age of the data a scrape replays. Advances on a successful poll and on a partial-error poll that still emitted data; does NOT advance when a failed poll emitted nothing and the last-good buffer was retained. Absent until the collector has stored data at least once (#382) |
+| opnsense_exporter_collector_last_success_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's last fully successful poll. Unlike collector_snapshot_timestamp_seconds this does NOT advance on a partial-error poll, so the two together distinguish 'refreshed but degraded' from 'fully healthy'. Absent until the collector has succeeded at least once (#382) |
 | opnsense_up | Gauge | --- | Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics. |
 | opnsense_firewall_status | Gauge | --- | Status of the firewall reported by the system health check (1 = ok, 0 = errors) |
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |

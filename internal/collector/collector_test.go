@@ -344,6 +344,7 @@ type fakeCollectorInstance struct {
 	err        *opnsense.APICallError
 	panics     bool
 	blockOnCtx bool                // if set, Update blocks until the context is done (models a stalled API call)
+	delay      time.Duration       // if set, Update sleeps this long (models a slow but completing API call)
 	emit       []prometheus.Metric // metrics Update sends, so a poll can capture them into the snapshot
 	mu         sync.Mutex          // guards calls/gotCtx (Update runs in a poll goroutine under StartPolling)
 	calls      int
@@ -363,6 +364,12 @@ func (f *fakeCollectorInstance) Update(ctx context.Context, _ *opnsense.Client, 
 	}
 	if f.blockOnCtx {
 		<-ctx.Done()
+	}
+	if f.delay > 0 {
+		select {
+		case <-time.After(f.delay):
+		case <-ctx.Done():
+		}
 	}
 	for _, m := range f.emit {
 		ch <- m
@@ -427,6 +434,14 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 	)
 	c.nextPollTs = prometheus.NewDesc(
 		"opnsense_exporter_collector_next_poll_timestamp_seconds", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.snapshotTs = prometheus.NewDesc(
+		"opnsense_exporter_collector_snapshot_timestamp_seconds", "help",
+		[]string{"collector", instanceLabelName}, nil,
+	)
+	c.lastSuccessTs = prometheus.NewDesc(
+		"opnsense_exporter_collector_last_success_timestamp_seconds", "help",
 		[]string{"collector", instanceLabelName}, nil,
 	)
 	c.isUp = prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_up_test", Help: "h"})
@@ -506,6 +521,9 @@ func TestCollectReplaysSnapshot(t *testing.T) {
 	c := newScrapeTestCollector(t, client, fake)
 	c.pollHealth(context.Background()) // seed health so up=1 and the gauges are present
 	c.pollOnce(context.Background(), fake)
+	// Since #385 the next-poll deadline is scheduler state, not arithmetic on the
+	// last poll, so a direct pollOnce leaves it unset. Seed it as StartPolling would.
+	c.store.setDeadline("fake", time.Now().Add(IntervalMedium))
 
 	ch := make(chan prometheus.Metric, 64)
 	c.collect(context.Background(), ch, nil)
@@ -987,4 +1005,93 @@ func TestCacheSelfMetricsRecorded(t *testing.T) {
 	if misses != 1 {
 		t.Errorf("expected 1 miss (the cold fetch), got %v", misses)
 	}
+}
+
+// TestCollectEmitsDistinctPollClocks pins the exported side of #382/#385: collect()
+// must expose the attempt clock, the retained-content clock, the last-success clock
+// and the scheduler's real next deadline as four distinct series — and must OMIT the
+// content/success clocks entirely for a collector that has never produced either,
+// rather than emitting a misleading epoch-zero.
+func TestCollectEmitsDistinctPollClocks(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	fake := &fakeCollectorInstance{name: "fake", emit: []prometheus.Metric{testMetric("opnsense_fake_series", 42)}}
+	c := newScrapeTestCollector(t, client, fake)
+
+	// A poll that has only ever failed emptily: attempt clock only. Note emit must
+	// be cleared too — an error WITH data is a partial poll, which legitimately does
+	// advance the content clock.
+	fake.err = &opnsense.APICallError{Endpoint: "ep", Message: "boom"}
+	emit := fake.emit
+	fake.emit = nil
+	c.pollOnce(context.Background(), fake)
+	got := collectPollClocks(t, c)
+	if _, ok := got["collector_last_poll_timestamp_seconds"]; !ok {
+		t.Error("a failed poll must still publish the attempt clock")
+	}
+	if _, ok := got["collector_snapshot_timestamp_seconds"]; ok {
+		t.Error("a collector with no stored data must NOT publish a content clock")
+	}
+	if _, ok := got["collector_last_success_timestamp_seconds"]; ok {
+		t.Error("a collector that has never succeeded must NOT publish a success clock")
+	}
+	if _, ok := got["collector_next_poll_timestamp_seconds"]; ok {
+		t.Error("with no poller running there is no scheduled poll, so no deadline may be published")
+	}
+
+	// Now a clean success plus a scheduler deadline: all four present.
+	fake.err = nil
+	fake.emit = emit
+	c.pollOnce(context.Background(), fake)
+	want := time.Now().Add(90 * time.Second).Truncate(time.Second)
+	c.store.setDeadline("fake", want)
+
+	got = collectPollClocks(t, c)
+	for _, name := range []string{
+		"collector_last_poll_timestamp_seconds",
+		"collector_snapshot_timestamp_seconds",
+		"collector_last_success_timestamp_seconds",
+		"collector_next_poll_timestamp_seconds",
+	} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("after a clean success with a live poller, %s must be published", name)
+		}
+	}
+	if got["collector_next_poll_timestamp_seconds"] != float64(want.Unix()) {
+		t.Errorf("the next-poll metric must report the scheduler's real deadline %v, got %v",
+			want.Unix(), got["collector_next_poll_timestamp_seconds"])
+	}
+	// The derived value the metric used to publish (lastPoll+interval) is ~60s out
+	// from the deadline we set, so this also proves it is no longer self-derived.
+	if got["collector_next_poll_timestamp_seconds"] == got["collector_last_poll_timestamp_seconds"]+IntervalMedium.Seconds() {
+		t.Error("the next-poll metric must not be re-derived from lastPoll + interval")
+	}
+}
+
+// collectPollClocks runs collect() and returns the value of each per-collector poll
+// timestamp metric that was emitted, keyed by its metric name suffix.
+func collectPollClocks(t *testing.T, c *Collector) map[string]float64 {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 128)
+	c.collect(context.Background(), ch, nil)
+	close(ch)
+	out := map[string]float64{}
+	for m := range ch {
+		desc := m.Desc().String()
+		for _, name := range []string{
+			"collector_last_poll_timestamp_seconds",
+			"collector_snapshot_timestamp_seconds",
+			"collector_last_success_timestamp_seconds",
+			"collector_next_poll_timestamp_seconds",
+		} {
+			if !strings.Contains(desc, name) {
+				continue
+			}
+			d := &dto.Metric{}
+			if err := m.Write(d); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
+			out[name] = d.GetGauge().GetValue()
+		}
+	}
+	return out
 }

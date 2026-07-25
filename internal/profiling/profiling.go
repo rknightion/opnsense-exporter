@@ -123,8 +123,23 @@ type limitedBodyHTTPClient struct {
 
 // newLimitedBodyHTTPClient builds a limitedBodyHTTPClient with the given per-request
 // timeout. Production code always passes uploadTimeout; tests may pass a shorter one.
+//
+// CheckRedirect restores the vendored SDK's own no-redirect policy (vendor/github.com/
+// grafana/pyroscope-go/upstream/remote/remote.go), which this custom client would
+// otherwise silently drop by replacing pyroscope.Config.HTTPClient wholesale (#381).
+// Returning http.ErrUseLastResponse tells net/http to stop at the first response
+// instead of following the redirect — net/http then returns that response as-is
+// (not an error) — so a compromised or misconfigured Pyroscope backend can't redirect
+// an authenticated upload to another host and have Go forward the Authorization header
+// and replay the profile body to it, mirroring the fix applied to the OPNsense API
+// client in #306.
 func newLimitedBodyHTTPClient(timeout time.Duration) *limitedBodyHTTPClient {
-	return &limitedBodyHTTPClient{inner: &http.Client{Timeout: timeout}}
+	return &limitedBodyHTTPClient{inner: &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}}
 }
 
 // Do performs the request via the inner client and, on success, replaces the

@@ -27,7 +27,7 @@ all four telemetry paths off the firewall, plus a local console:
 | **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so you can answer "how much traffic, which interface, which direction, which application category" from Prometheus for years, instead of scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense-exporter/flow/) |
 | **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense-exporter/architecture/) |
 
-Underneath that: 827 metrics across 62 collectors covering firewall and PF statistics,
+Underneath that: 829 metrics across 62 collectors covering firewall and PF statistics,
 interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq, ISC), Unbound DNS,
 certificates and ACME, hardware temperatures, SMART disk health, system resources and more.
 Collection is decoupled from scraping: each collector polls on its own volatility tier and

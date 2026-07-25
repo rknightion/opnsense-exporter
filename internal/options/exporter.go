@@ -49,6 +49,11 @@ var (
 		"Default interval at which each collector polls the OPNsense API into the in-memory snapshot that /metrics and the OTLP bridge replay (#336). A collector may declare its own faster/slower tier; every interval is clamped to [5s, 15m].",
 	).Envar("OPNSENSE_EXPORTER_COLLECTOR_POLL_INTERVAL").Default("60s").Duration()
 
+	CollectorHealthPollInterval = kingpin.Flag(
+		"collector.health-poll-interval",
+		"Interval at which the exporter polls the OPNsense health endpoint (#386). This is the circuit-breaker cadence: the health poll sets and clears the process-wide 'firewall unreachable' flag, so it bounds how quickly collectors resume after the box recovers. Independent of --collector.poll-interval since #386, which previously controlled it by accident. Clamped to [5s, 15m].",
+	).Envar("OPNSENSE_EXPORTER_COLLECTOR_HEALTH_POLL_INTERVAL").Default("60s").Duration()
+
 	CollectorPollIntervalOverrides = kingpin.Flag(
 		"collector.poll-interval-override",
 		"Override a specific collector's poll interval as <collector>=<duration> (repeatable; clamped to [5s, 15m]). Wins over the collector's built-in tier. Example: --collector.poll-interval-override=gateways=10s --collector.poll-interval-override=smart=1h.",

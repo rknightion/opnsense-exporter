@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -219,9 +220,17 @@ type Collector struct {
 	// pollInterval / lastPollTs / nextPollTs surface the poll scheduler's per-collector
 	// timing (#336): the configured interval and the last/next poll timestamps, so
 	// dashboards and the operator console can show freshness and a next-run countdown.
-	pollInterval *prometheus.Desc
-	lastPollTs   *prometheus.Desc
-	nextPollTs   *prometheus.Desc
+	//
+	// snapshotTs / lastSuccessTs are the two data clocks added by #382. lastPollTs is
+	// scheduler liveness and says NOTHING about how old the replayed values are: a
+	// collector failing every minute for six hours keeps refreshing it while serving
+	// 10:00 data. Anything asking "how stale is this data?" must read snapshotTs (or
+	// lastSuccessTs), never lastPollTs.
+	pollInterval  *prometheus.Desc
+	lastPollTs    *prometheus.Desc
+	nextPollTs    *prometheus.Desc
+	snapshotTs    *prometheus.Desc
+	lastSuccessTs *prometheus.Desc
 
 	// maxScrapeDuration bounds a collection whose caller supplied no deadline (a
 	// header-less /metrics scrape or a registry gather), so a stalled firewall can't
@@ -244,6 +253,13 @@ type Collector struct {
 	// pollGlobal is the default poll interval for collectors that declare no tier;
 	// zero means IntervalMedium. Set via WithPollInterval.
 	pollGlobal time.Duration
+	// healthPollGlobal is the health poller's own interval; zero means IntervalMedium.
+	// It is deliberately NOT pollGlobal (#386): the health poll owns the process-wide
+	// unreachable circuit, so tying it to the untiered-collector default made
+	// --collector.poll-interval secretly control recovery latency — raising it to 15m
+	// for firewall load also bought up to 15m of every-collector-paused after the box
+	// came back. Set via WithHealthPollInterval.
+	healthPollGlobal time.Duration
 	// pollOverrides maps a collector name to an operator-supplied interval that wins
 	// over both its code tier and the global default. Set via WithPollIntervalOverrides.
 	pollOverrides map[string]time.Duration
@@ -264,6 +280,95 @@ type Collector struct {
 	// regardless of outcome. Unlike healthOK it never goes back to false, and it is
 	// the health half of SnapshotWarm. Guarded by mutex.
 	healthPolled bool
+	// healthCheckedAt / healthLastError complete the passive upstream-health seam the
+	// operator console reads (#384). healthLastError is a bounded reason string, never
+	// a label. Guarded by mutex.
+	healthCheckedAt time.Time
+	healthLastError string
+}
+
+// HealthSnapshot is a passive copy of the scheduler's upstream-health state, taken
+// without an API call or a registry gather (#384).
+//
+// The console's top-level badge used to be derived purely from collector run
+// history, which is silent during exactly the outage it most needs to report: when
+// the box is unreachable the scheduler SKIPS collector polls, so no failed run is
+// ever recorded and the last successful runs keep the badge green while opnsense_up
+// is zero and readiness is failing.
+//
+// CheckOK and Unreachable are separate on purpose. CheckOK is false for any failed
+// health poll; Unreachable is true only for a transport-level failure (nothing
+// answered). A box that is reachable but returning HTTP 500 must degrade the verdict
+// without being described as unreachable.
+type HealthSnapshot struct {
+	Polled      bool      // a health poll has completed at least once
+	CheckOK     bool      // the last health poll reached AND parsed the box
+	Unreachable bool      // the last failure was transport-level (nothing answered)
+	CheckedAt   time.Time // when the last health poll completed; zero if never
+	LastError   string    // bounded reason; empty when CheckOK
+}
+
+// HealthSnapshot returns the current upstream-health state. It is passive: it makes
+// no API call and never gathers the registry, so the console can call it per page
+// render without scraping the firewall.
+func (c *Collector) HealthSnapshot() HealthSnapshot {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	return HealthSnapshot{
+		Polled:      c.healthPolled,
+		CheckOK:     c.healthOK,
+		Unreachable: c.unreachable.Load(),
+		CheckedAt:   c.healthCheckedAt,
+		LastError:   c.healthLastError,
+	}
+}
+
+// AllRegisteredCollectorNames returns the sorted subsystem names of every collector
+// compiled into the binary, regardless of enable/disable switches. It is the
+// validation domain for operator-supplied collector names (#387): a name must be
+// checked against the FULL set, not the enabled set, so one declarative config can
+// be reused across deployments whose feature flags differ.
+func AllRegisteredCollectorNames() []string {
+	names := make([]string, 0, len(collectorInstances))
+	for _, coll := range collectorInstances {
+		names = append(names, coll.Name())
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ValidatePollOverrideNames checks --collector.poll-interval-override keys against
+// every registered collector and fails closed on any unknown name (#387).
+//
+// Before this, only the duration half was validated: a typo'd collector name was
+// accepted at startup and then silently ignored forever, because the scheduler
+// consults the map by exact current collector name and unmatched entries simply
+// never match. The operator got no warning that the rate/cost control they
+// configured was doing nothing. Unknown names are now a startup failure, matching
+// the existing fail-fast treatment of a malformed duration.
+func ValidatePollOverrideNames(names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	valid := AllRegisteredCollectorNames()
+	known := make(map[string]bool, len(valid))
+	for _, n := range valid {
+		known[n] = true
+	}
+	var unknown []string
+	for _, n := range names {
+		if !known[n] {
+			unknown = append(unknown, n)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	return fmt.Errorf(
+		"unknown collector name(s) in --collector.poll-interval-override: %s; valid names are: %s",
+		strings.Join(unknown, ", "), strings.Join(valid, ", "),
+	)
 }
 
 // defaultMaxScrapeDuration is the fallback bound applied to a no-deadline collection
@@ -293,9 +398,26 @@ func WithStatusTracker(t *StatusTracker) Option {
 // WithPollInterval sets the global default poll interval used by the internal poll
 // scheduler for collectors that declare no tier of their own (#336). Zero leaves the
 // built-in IntervalMedium default. The value is clamped to [IntervalFloor, IntervalCeil].
+//
+// Since #386 this no longer affects the health poller — see WithHealthPollInterval.
 func WithPollInterval(d time.Duration) Option {
 	return func(o *Collector) error {
 		o.pollGlobal = d
+		return nil
+	}
+}
+
+// WithHealthPollInterval sets the health poller's own interval (#386), independent of
+// the collector default. Zero leaves the built-in IntervalMedium (60s) default, which
+// is exactly the previous effective behaviour, so this is backward compatible. The
+// value is clamped to [IntervalFloor, IntervalCeil].
+//
+// This is the circuit-breaker cadence: the health poll is what sets and clears the
+// process-wide unreachable flag, so it bounds how quickly every collector resumes
+// after the firewall comes back.
+func WithHealthPollInterval(d time.Duration) Option {
+	return func(o *Collector) error {
+		o.healthPollGlobal = d
 		return nil
 	}
 }
@@ -1041,14 +1163,28 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	c.lastPollTs = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "collector_last_poll_timestamp_seconds"),
-		"Unix timestamp of a collector's last completed poll; absent until the collector has polled at least once (#336)",
+		"Unix timestamp of a collector's last poll ATTEMPT, successful or not; scheduler liveness, not data freshness — a collector failing every poll keeps advancing this while replaying old data. Use collector_snapshot_timestamp_seconds for data age. Absent until the collector has polled at least once (#336, #382)",
 		[]string{"collector", instanceLabelName},
 		nil,
 	)
 
 	c.nextPollTs = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "collector_next_poll_timestamp_seconds"),
-		"Unix timestamp of a collector's next scheduled poll, estimated as last poll + interval; absent until the first poll (#336)",
+		"Unix timestamp of a collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline (not derived from last poll + interval); absent when no poller is running for the collector (#336, #385)",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.snapshotTs = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "collector_snapshot_timestamp_seconds"),
+		"Unix timestamp at which a collector's stored metric buffer was last REPLACED — the true age of the data a scrape replays. Advances on a successful poll and on a partial-error poll that still emitted data; does NOT advance when a failed poll emitted nothing and the last-good buffer was retained. Absent until the collector has stored data at least once (#382)",
+		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.lastSuccessTs = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "collector_last_success_timestamp_seconds"),
+		"Unix timestamp of a collector's last fully successful poll. Unlike collector_snapshot_timestamp_seconds this does NOT advance on a partial-error poll, so the two together distinguish 'refreshed but degraded' from 'fully healthy'. Absent until the collector has succeeded at least once (#382)",
 		[]string{"collector", instanceLabelName},
 		nil,
 	)
@@ -1216,6 +1352,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.pollInterval
 	ch <- c.lastPollTs
 	ch <- c.nextPollTs
+	ch <- c.snapshotTs
+	ch <- c.lastSuccessTs
 
 	for _, collector := range c.collectors {
 		collector.Describe(ch)
@@ -1328,9 +1466,31 @@ func (c *Collector) collect(_ context.Context, ch chan<- prometheus.Metric, incl
 				c.lastPollTs, prometheus.GaugeValue,
 				float64(e.lastPoll.Unix()), name, c.instanceLabel,
 			)
+			// The data clocks are emitted only once they mean something (#382). A
+			// collector that has never stored data, or never succeeded, gets NO
+			// series rather than a zero — epoch 0 would render as "56 years stale"
+			// on every freshness panel and poison any age aggregation.
+			if !e.snapshotAt.IsZero() {
+				ch <- prometheus.MustNewConstMetric(
+					c.snapshotTs, prometheus.GaugeValue,
+					float64(e.snapshotAt.Unix()), name, c.instanceLabel,
+				)
+			}
+			if !e.lastSuccess.IsZero() {
+				ch <- prometheus.MustNewConstMetric(
+					c.lastSuccessTs, prometheus.GaugeValue,
+					float64(e.lastSuccess.Unix()), name, c.instanceLabel,
+				)
+			}
+		}
+		// The next-poll deadline comes from the scheduler, not from arithmetic on
+		// the last poll (#385). It is therefore absent whenever no poller is running
+		// for this collector — during shutdown, or in a test that polls directly —
+		// which is honest: there is no next poll to report.
+		if !e.nextDeadline.IsZero() {
 			ch <- prometheus.MustNewConstMetric(
 				c.nextPollTs, prometheus.GaugeValue,
-				float64(e.lastPoll.Add(interval).Unix()), name, c.instanceLabel,
+				float64(e.nextDeadline.Unix()), name, c.instanceLabel,
 			)
 		}
 	}

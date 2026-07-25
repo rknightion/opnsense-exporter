@@ -716,6 +716,22 @@ func main() {
 	// OTLP gather uses the smaller of the export interval and max-scrape-duration.
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithMaxScrapeDuration(*options.MaxScrapeDuration))
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollInterval(*options.CollectorPollInterval))
+	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithHealthPollInterval(*options.CollectorHealthPollInterval))
+	// Validate the collector-name half of every override BEFORE parsing durations
+	// (#387). A typo used to be accepted and then silently ignored forever, because
+	// the scheduler matches the map by exact collector name and an unmatched entry
+	// simply never fires — so the operator's rate/cost control did nothing and
+	// nothing said so. Names are checked against every REGISTERED collector, not the
+	// enabled ones, so a config that names a currently-disabled collector still
+	// starts and keeps working when that feature flag is flipped on.
+	overrideNames := make([]string, 0, len(*options.CollectorPollIntervalOverrides))
+	for name := range *options.CollectorPollIntervalOverrides {
+		overrideNames = append(overrideNames, name)
+	}
+	if verr := collector.ValidatePollOverrideNames(overrideNames); verr != nil {
+		logger.Error("invalid --collector.poll-interval-override", "err", verr)
+		os.Exit(1)
+	}
 	pollOverrides := make(map[string]time.Duration)
 	for name, v := range *options.CollectorPollIntervalOverrides {
 		d, perr := time.ParseDuration(v)
@@ -767,24 +783,34 @@ func main() {
 	// the export interval could bound the OTLP-bridge gather.)
 	var stopOTLP func()
 	if otlpEnabled {
-		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.Tee(collectorRegistry)}, otlpCfg, version, instanceLabel, logger)
+		// selfMetricsRegistry also receives the OTLP delivery-health series (#388):
+		// exports_total, consecutive_failures and last_success_timestamp. Those are
+		// the only local evidence that push is actually reaching the backend — Start
+		// performs no network I/O, so a successful Start proves nothing at all.
+		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.Tee(collectorRegistry)}, otlpCfg, version, instanceLabel, selfMetricsRegistry, logger)
 		if terr != nil {
-			logger.Error("failed to start otlp metrics export", "err", terr)
-		} else {
-			stopOTLP = func() {
-				ctx, cancel := context.WithTimeout(context.Background(), otlpShutdownTimeout)
-				defer cancel()
-				if err := shutdown(ctx); err != nil {
-					logger.Error("failed to flush final otlp export", "err", err)
-				}
-			}
-			logger.Info(
-				"otlp metrics export enabled",
-				"endpoint", otlpCfg.Endpoint,
-				"protocol", otlpCfg.Protocol,
-				"interval", otlpCfg.ExportInterval.String(),
-			)
+			// Fatal, not logged-and-continued (#388). The operator explicitly asked
+			// for OTLP; starting anyway would leave a permanently dead push pipeline
+			// behind a log line that scrolls away, which is precisely the silent
+			// zero-delivery failure this issue exists to end. This is construction
+			// failure only — EXPORT failure stays non-fatal and is now counted, so
+			// the pull exporter is never taken down by a flaky backend.
+			logger.Error("otlp metrics export requested but could not be started", "err", terr)
+			os.Exit(1)
 		}
+		stopOTLP = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), otlpShutdownTimeout)
+			defer cancel()
+			if err := shutdown(ctx); err != nil {
+				logger.Error("failed to flush final otlp export", "err", err)
+			}
+		}
+		logger.Info(
+			"otlp metrics export enabled (lazy connect: delivery is proven by opnsense_exporter_otlp_* , not by this line)",
+			"endpoint", otlpCfg.Endpoint,
+			"protocol", otlpCfg.Protocol,
+			"interval", otlpCfg.ExportInterval.String(),
+		)
 	}
 
 	// Log shipping is opt-in (--logs.enabled) and fully independent of OTLP metrics

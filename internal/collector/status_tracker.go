@@ -24,6 +24,20 @@ type CollectorStat struct {
 	Interval                  time.Duration // configured poll interval; 0 if unknown
 	DurationMs                []float64     // ring, oldest→newest, ≤ StatusRingSize
 	Outcomes                  []bool        // ring, oldest→newest, ≤ StatusRingSize
+
+	// SnapshotAt / LastSuccessAt / NextDeadline mirror the scheduler's real clocks
+	// (#382, #385) so the console can show DATA age and a true next-run countdown
+	// without gathering the registry. They are carried here rather than read back
+	// out of the metric families on purpose: on a console-only deployment with OTLP
+	// disabled and nothing scraping /metrics, a metricsnap capture may never exist.
+	//
+	// LastFinished is the last ATTEMPT and is NOT data freshness — a collector that
+	// has failed every poll for six hours keeps refreshing it while replaying
+	// six-hour-old values. Anything user-facing that says "fresh" must read
+	// SnapshotAt. Zero means never.
+	SnapshotAt    time.Time
+	LastSuccessAt time.Time
+	NextDeadline  time.Time
 }
 
 // statEntry is the mutable per-collector accumulator held under the tracker mutex.
@@ -39,6 +53,9 @@ type statEntry struct {
 	interval         time.Duration
 	durationMs       []float64
 	outcomes         []bool
+	snapshotAt       time.Time
+	lastSuccessAt    time.Time
+	nextDeadline     time.Time
 }
 
 // StatusTracker passively retains per-collector run history for the operator
@@ -60,11 +77,7 @@ func NewStatusTracker() *StatusTracker {
 func (t *StatusTracker) Record(name string, start time.Time, durationMs float64, ok bool, errStr string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	e := t.stats[name]
-	if e == nil {
-		e = &statEntry{name: name}
-		t.stats[name] = e
-	}
+	e := t.entry(name)
 	e.runs++
 	if ok {
 		e.consecutiveFails = 0
@@ -81,18 +94,48 @@ func (t *StatusTracker) Record(name string, start time.Time, durationMs float64,
 	e.outcomes = appendRingBool(e.outcomes, ok)
 }
 
+// RecordClocks publishes a collector's data clocks — when its stored metric buffer
+// was last replaced, and when it last fully succeeded (#382). Called by the poll
+// scheduler straight after the snapshot store is written, so the console and the
+// exported timestamps cannot drift apart. Zero times are stored as-is and mean
+// "never".
+func (t *StatusTracker) RecordClocks(name string, snapshotAt, lastSuccessAt time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	e := t.entry(name)
+	e.snapshotAt = snapshotAt
+	e.lastSuccessAt = lastSuccessAt
+}
+
+// SetNextDeadline publishes the scheduler's ACTUAL next poll time for a collector
+// (#385). The console reads this instead of computing LastFinished + Interval, which
+// runs late by exactly the poll duration and is wrong by a whole cadence after a poll
+// that overran its interval. The zero time means no poll is scheduled — the poller
+// has stopped — and must render as such rather than as a countdown.
+func (t *StatusTracker) SetNextDeadline(name string, at time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.entry(name).nextDeadline = at
+}
+
+// entry returns the accumulator for name, creating it if absent. Callers hold the
+// write lock.
+func (t *StatusTracker) entry(name string) *statEntry {
+	e := t.stats[name]
+	if e == nil {
+		e = &statEntry{name: name}
+		t.stats[name] = e
+	}
+	return e
+}
+
 // SetInterval records a collector's configured poll interval so Snapshot can expose
 // it (the console derives the next-run countdown from LastFinished + Interval). It is
 // called once per collector at StartPolling, before any run is recorded.
 func (t *StatusTracker) SetInterval(name string, d time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	e := t.stats[name]
-	if e == nil {
-		e = &statEntry{name: name}
-		t.stats[name] = e
-	}
-	e.interval = d
+	t.entry(name).interval = d
 }
 
 // Snapshot returns a deep copy of every tracked collector's stats, sorted by
@@ -121,6 +164,9 @@ func (t *StatusTracker) Snapshot() []CollectorStat {
 			Interval:         e.interval,
 			DurationMs:       append([]float64(nil), e.durationMs...),
 			Outcomes:         append([]bool(nil), e.outcomes...),
+			SnapshotAt:       e.snapshotAt,
+			LastSuccessAt:    e.lastSuccessAt,
+			NextDeadline:     e.nextDeadline,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Display < out[j].Display })

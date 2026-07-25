@@ -30,17 +30,35 @@ const errorLogInterval = 30 * time.Second
 // releases resources; callers invoke it during graceful shutdown. Start performs no
 // network I/O: the OTLP exporter connects lazily on the first export tick, so a
 // transient endpoint outage does not block startup.
+//
+// reg is the exporter's self-metrics registry. When non-nil, the OTLP delivery-health
+// series (opnsense_exporter_otlp_*, see delivery.go) are registered on it and every
+// export call is booked there — which is the only local evidence that push is
+// actually reaching the backend, since a successful Start proves nothing. reg may be
+// nil, in which case nothing is registered and delivery accounting is skipped.
+//
+// A non-nil error means nothing is running: callers treat construction failure while
+// OTLP is requested as fatal rather than starting a silently dead push pipeline.
 func Start(
 	ctx context.Context,
 	gatherers []prometheus.Gatherer,
 	cfg *options.OTLPConfig,
 	version, instance string,
+	reg prometheus.Registerer,
 	log *slog.Logger,
 ) (func(context.Context) error, error) {
-	exporter, err := newExporter(ctx, cfg)
+	rawExporter, err := newExporter(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("build otlp exporter: %w", err)
 	}
+
+	// Wrap the exporter BEFORE the reader owns it, so every export call the SDK
+	// makes is booked in the self-metrics registry (#388). The decorator observes
+	// only: it returns the exporter's error unchanged, so the rate-limited
+	// slogErrorHandler installed below still logs it. A nil reg yields nil metrics
+	// and the raw exporter is used undecorated.
+	delivery := newDeliveryMetrics(reg)
+	exporter := observeExports(rawExporter, delivery)
 
 	// Append a synthetic `up = 1` gatherer scoped to the OTLP stream only. It
 	// reinstates the target-up series that a Prometheus scraper would generate for
@@ -87,6 +105,12 @@ func Start(
 	)
 	otel.SetMeterProvider(mp)
 	otel.SetErrorHandler(&slogErrorHandler{log: log, interval: errorLogInterval})
+
+	// Construction failure is fatal at the call site, so a returned Start is always
+	// an actually-running pipeline: there is no configured-but-inactive state to
+	// model. This says "export is running", NOT "export is working" — that is what
+	// otlp_last_success_timestamp_seconds and otlp_consecutive_failures are for.
+	delivery.markEnabled()
 
 	return mp.Shutdown, nil
 }

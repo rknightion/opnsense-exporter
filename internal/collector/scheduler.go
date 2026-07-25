@@ -42,6 +42,16 @@ func (c *Collector) pollGlobalInterval() time.Duration {
 	return IntervalMedium
 }
 
+// healthPollInterval is the interval at which the health poller runs, resolved
+// independently of the collector default (#386). Zero means IntervalMedium (60s),
+// which preserves the previous default behaviour exactly. Always clamped.
+func (c *Collector) healthPollInterval() time.Duration {
+	if c.healthPollGlobal > 0 {
+		return clampInterval(c.healthPollGlobal)
+	}
+	return IntervalMedium
+}
+
 // resolveInterval returns the effective poll interval for a collector: an operator
 // override (--collector.poll-interval-override) wins, else its code tier / the global
 // default via resolvePollInterval. Always clamped.
@@ -62,7 +72,7 @@ func (c *Collector) StartPolling(ctx context.Context) {
 	c.pollSem = make(chan struct{}, pollConcurrency())
 
 	c.pollWG.Add(1)
-	go c.runHealthPoller(ctx, c.pollGlobalInterval())
+	go c.runHealthPoller(ctx, c.healthPollInterval())
 
 	for _, coll := range c.collectors {
 		interval := c.resolveInterval(coll)
@@ -76,6 +86,7 @@ func (c *Collector) StartPolling(ctx context.Context) {
 		"component", "collector",
 		"collectors", len(c.collectors),
 		"default_interval", c.pollGlobalInterval().String(),
+		"health_interval", c.healthPollInterval().String(),
 		"concurrency", pollConcurrency(),
 	)
 }
@@ -116,22 +127,50 @@ func (c *Collector) SnapshotWarm() bool {
 	return c.store.allPolled(names)
 }
 
-// runCollectorPoller polls one collector immediately (jittered) then on a ticker.
+// runCollectorPoller polls one collector immediately (jittered) then on a ticker,
+// publishing the ticker's ACTUAL next fire as the collector's next-poll deadline
+// (#385) so the exported metric and the console read the real schedule instead of
+// each re-deriving lastPoll + interval, which drifts from the ticker the moment a
+// poll takes any appreciable time.
+//
+// The ticker is started BEFORE the first poll, so the published deadline is correct
+// from the outset rather than only after the first tick. On exit the deadline is
+// cleared: a stopped poller has no next poll, and leaving the last value in place
+// would let it age into a permanent, misleading "due".
 func (c *Collector) runCollectorPoller(ctx context.Context, coll CollectorInstance, interval time.Duration) {
 	defer c.pollWG.Done()
 	if !sleepJitter(ctx, coll.Name(), interval) {
 		return
 	}
-	c.pollCollector(ctx, coll)
+	name := coll.Name()
+	defer c.publishDeadline(name, time.Time{})
+
 	t := time.NewTicker(interval)
 	defer t.Stop()
+	next := time.Now().Add(interval)
+	c.publishDeadline(name, next)
+	c.pollCollector(ctx, coll)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			next = advanceDeadline(next, interval, time.Now())
+			c.publishDeadline(name, next)
 			c.pollCollector(ctx, coll)
 		}
+	}
+}
+
+// publishDeadline records one collector's next scheduled poll in both places that
+// report it — the snapshot store (which backs the exported metric) and the status
+// tracker (which backs the console) — so the two can never disagree about when the
+// next poll is due. The zero time clears it, meaning "no poll scheduled".
+func (c *Collector) publishDeadline(name string, at time.Time) {
+	c.store.setDeadline(name, at)
+	if c.statusTracker != nil {
+		c.statusTracker.SetNextDeadline(name, at)
 	}
 }
 
@@ -170,6 +209,22 @@ func (c *Collector) pollCollector(ctx context.Context, coll CollectorInstance) {
 		return
 	}
 	defer func() { <-c.pollSem }()
+
+	// Re-check after admission (#383). The check above is not enough: with ~60
+	// collectors sharing 8 slots, a caller can pass it, queue behind the cap, and
+	// only then be admitted — after the health poller has already tripped the
+	// circuit. The poll timeout starts only after admission, so queued work never
+	// expires while waiting; without this second check every queued collector
+	// drains as a doomed dial, several waves deep, for minutes. That is the exact
+	// dial storm #127 exists to prevent.
+	//
+	// In-flight polls are deliberately left alone — they finish under their own
+	// context. A tiny race remains between this check and the request itself;
+	// closing it entirely would need a client-level circuit breaker, which is not
+	// warranted for the failure mode being fixed here.
+	if c.unreachable.Load() {
+		return
+	}
 
 	pollCtx := ctx
 	if d := c.pollTimeout(); d > 0 {
@@ -240,6 +295,12 @@ func (c *Collector) pollOnce(ctx context.Context, coll CollectorInstance) {
 	c.store.put(coll.Name(), buf, dur, success)
 	if c.statusTracker != nil {
 		c.statusTracker.Record(coll.Name(), begin, dur.Seconds()*1000, success, lastErr)
+		// Mirror the store's data clocks into the tracker so the console reports the
+		// same data age the metrics do (#382). Read them back from the store rather
+		// than recomputing here — put() owns the retain/replace decision, and a
+		// second copy of that logic is exactly how the two would drift apart.
+		e := c.store.entry(coll.Name())
+		c.statusTracker.RecordClocks(coll.Name(), e.snapshotAt, e.lastSuccess)
 	}
 }
 
@@ -256,16 +317,22 @@ func (c *Collector) pollHealth(ctx context.Context) {
 	// Set regardless of outcome: an unreachable box must not hold the warm-up
 	// signal open, since readiness already fails on its own health probe.
 	c.healthPolled = true
+	c.healthCheckedAt = time.Now()
 
 	if err != nil {
 		c.isUp.Set(0)
 		c.healthOK = false
+		c.healthLastError = err.Error()
 		var apiErr *opnsense.APICallError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == 0 {
 			c.unreachable.Store(true)
 			c.log.Warn("firewall unreachable (transport-level health-check failure)",
 				"component", "collector", "err", err)
 		} else {
+			// Reachable but erroring: the box answered, so the circuit stays closed
+			// and collectors keep polling. Only a transport failure means "nothing
+			// is listening", and only that should pause the fleet (#384).
+			c.unreachable.Store(false)
 			c.log.Error("failed to fetch system health status", "component", "collector", "err", err)
 		}
 		return
@@ -273,6 +340,7 @@ func (c *Collector) pollHealth(ctx context.Context) {
 
 	c.unreachable.Store(false)
 	c.healthOK = true
+	c.healthLastError = ""
 	c.isUp.Set(1)
 	c.systemStatusCode.Set(float64(systemStatus.GetMetadataSystemStatus()))
 	c.crashReporterStatus.Set(boolToGauge(systemStatus.CrashReporterIsHealthy()))
@@ -309,6 +377,33 @@ func (c *Collector) emitHealth(ch chan<- prometheus.Metric) {
 	c.crashReporterStatus.Collect(ch)
 	c.systemStatusCode.Collect(ch)
 	c.subsystemStatusCode.Collect(ch)
+}
+
+// advanceDeadline returns the next poll deadline on the FIXED cadence anchored at
+// next, given that we have just observed the tick and it is now `now` (#385).
+//
+// This is the whole schedule contract in one function. The scheduler drives every
+// collector from a time.Ticker, which fires on a fixed cadence and DROPS ticks that
+// a slow receiver missed rather than sliding the schedule. So:
+//
+//   - A poll shorter than one interval leaves the cadence untouched: the answer is
+//     simply the next multiple. Deriving completion + interval instead — what the
+//     metric and console did before #385 — is late by exactly the poll duration.
+//   - A poll that overran one or more intervals means the ticker already dropped
+//     the fires we missed, so stepping once would hand back a deadline in the PAST.
+//     Step until the result is strictly in the future, which is the fire the ticker
+//     will actually deliver next.
+//
+// A non-positive interval cannot be stepped, so it is returned unchanged rather
+// than looping forever.
+func advanceDeadline(next time.Time, interval time.Duration, now time.Time) time.Time {
+	if interval <= 0 {
+		return next
+	}
+	for !next.After(now) {
+		next = next.Add(interval)
+	}
+	return next
 }
 
 // sleepJitter waits a deterministic per-name offset in [0, min(interval, cap))

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -188,6 +189,64 @@ func TestLimitedBodyHTTPClient_CapsResponseBody(t *testing.T) {
 	}
 	if maxUploadResponseBytes != oneMiB {
 		t.Fatalf("sanity check: maxUploadResponseBytes = %d, expected %d (1 MiB)", maxUploadResponseBytes, oneMiB)
+	}
+}
+
+// TestLimitedBodyHTTPClient_DoesNotFollowRedirects reproduces #381: setting HTTPClient
+// on pyroscope.Config replaces the SDK's own default client wholesale, and the
+// vendored default (vendor/github.com/grafana/pyroscope-go/upstream/remote/remote.go)
+// sets CheckRedirect to refuse redirects (returns http.ErrUseLastResponse). Without
+// that same policy on limitedBodyHTTPClient's inner client, an authenticated profile
+// upload that gets redirected would have its Authorization header and body forwarded
+// to whatever the redirect target is — reopening the credential/body-forwarding class
+// fixed for the OPNsense API client in #306. This test proves the second server is
+// never contacted at all: the client must stop at the first (redirecting) response.
+func TestLimitedBodyHTTPClient_DoesNotFollowRedirects(t *testing.T) {
+	var secondServerHits atomic.Int32
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondServerHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer second.Close()
+
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, second.URL, http.StatusTemporaryRedirect)
+	}))
+	defer first.Close()
+
+	client := newLimitedBodyHTTPClient(5 * time.Second)
+	body := "sensitive profile bytes"
+	req, err := http.NewRequest(http.MethodPost, first.URL, strings.NewReader(body)) //nolint:noctx
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer super-secret-token")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// The client must never have followed the redirect: the second server was never
+	// contacted, so neither the Authorization header nor the upload body could have
+	// leaked to it.
+	if got := secondServerHits.Load(); got != 0 {
+		t.Fatalf("expected the redirect target to never be contacted, but it was hit %d time(s)", got)
+	}
+
+	// The caller (the SDK's uploader) must see the redirect itself, as a non-success
+	// response, so it can treat the upload as failed rather than silently succeeding
+	// against the wrong server.
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		t.Fatalf("expected the caller to observe the redirect response (%d), got %d",
+			http.StatusTemporaryRedirect, resp.StatusCode)
+	}
+
+	// The redirect response's body must still be wrapped by the same cap as any other
+	// response — Do must not special-case redirects when installing limitedReadCloser.
+	if _, ok := resp.Body.(*limitedReadCloser); !ok {
+		t.Fatalf("expected the redirect response body to be wrapped in *limitedReadCloser, got %T", resp.Body)
 	}
 }
 

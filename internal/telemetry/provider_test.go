@@ -267,7 +267,7 @@ func TestStart_BuildsProviderAndShutdown(t *testing.T) {
 		ExportInterval: time.Hour,
 		ServiceName:    "opnsense-exporter",
 	}
-	shutdown, err := Start(context.Background(), []prometheus.Gatherer{reg}, cfg, "v-test", "inst", discardLogger())
+	shutdown, err := Start(context.Background(), []prometheus.Gatherer{reg}, cfg, "v-test", "inst", nil, discardLogger())
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -277,6 +277,57 @@ func TestStart_BuildsProviderAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	_ = shutdown(ctx) // final flush to a dead endpoint may error; not asserted
+}
+
+// TestStart_RegistersDeliveryMetrics covers the second half of #388: a successful
+// Start must publish the delivery-health series on the self-metrics registry, with
+// otlp_enabled at 1. Construction failure is fatal at the call site, so there is no
+// configured-but-inactive state to model.
+func TestStart_RegistersDeliveryMetrics(t *testing.T) {
+	selfReg := prometheus.NewRegistry()
+	cfg := &options.OTLPConfig{
+		Protocol:       "http/protobuf",
+		Endpoint:       "http://127.0.0.1:4318",
+		Insecure:       true,
+		ExportInterval: time.Hour,
+		ServiceName:    "opnsense-exporter",
+	}
+	shutdown, err := Start(
+		context.Background(), []prometheus.Gatherer{prometheus.NewRegistry()},
+		cfg, "v-test", "inst", selfReg, discardLogger(),
+	)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	defer func() { _ = shutdown(ctx) }()
+
+	if got := gaugeValue(t, selfReg, mEnabled); got != 1 {
+		t.Errorf("%s = %v after a successful Start, want 1", mEnabled, got)
+	}
+	for _, name := range []string{mExports, mLastSuccess, mConsecutive, mEnabled} {
+		if gatherFamily(t, selfReg, name) == nil {
+			t.Errorf("%s not registered on the self-metrics registry", name)
+		}
+	}
+}
+
+// TestStart_UnsupportedProtocolStillErrors: construction failure must remain a
+// non-nil error return (main.go turns it into a fatal exit), and must not register
+// otlp_enabled=1 on the way out.
+func TestStart_UnsupportedProtocolStillErrors(t *testing.T) {
+	selfReg := prometheus.NewRegistry()
+	cfg := &options.OTLPConfig{Protocol: "bogus", ExportInterval: time.Hour}
+	if _, err := Start(
+		context.Background(), []prometheus.Gatherer{prometheus.NewRegistry()},
+		cfg, "v-test", "inst", selfReg, discardLogger(),
+	); err == nil {
+		t.Fatal("Start with an unsupported protocol returned nil error")
+	}
+	if mf := gatherFamily(t, selfReg, mEnabled); mf != nil && mf.GetMetric()[0].GetGauge().GetValue() != 0 {
+		t.Errorf("%s must not be 1 when Start failed", mEnabled)
+	}
 }
 
 func TestSlogErrorHandler_RateLimits(t *testing.T) {

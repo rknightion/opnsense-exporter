@@ -66,7 +66,15 @@ func assertMetricsAreCounters(t *testing.T, metrics []prometheus.Metric, nameSub
 
 func newCollectorTestClient(t *testing.T, server *httptest.Server) *opnsense.Client {
 	t.Helper()
-	u, _ := url.Parse(server.URL)
+	return newCollectorTestClientForURL(t, server.URL)
+}
+
+// newCollectorTestClientForURL builds a client against a bare URL, so a test can
+// point one at a server it has deliberately closed (modelling a transport-level
+// failure) rather than only at a live *httptest.Server.
+func newCollectorTestClientForURL(t *testing.T, rawURL string) *opnsense.Client {
+	t.Helper()
+	u, _ := url.Parse(rawURL)
 	cfg := options.OPNSenseConfig{
 		Protocol:  "http",
 		Host:      u.Host,

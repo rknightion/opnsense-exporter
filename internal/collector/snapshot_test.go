@@ -104,3 +104,98 @@ func TestSnapshotStore_ConcurrentReadWrite(t *testing.T) {
 	}
 	wg.Wait() // -race must stay clean
 }
+
+// TestPutClocksDistinguishAttemptContentAndSuccess pins the #382 three-clock
+// contract exactly. Each row is one poll outcome; the assertions are about which
+// clocks moved, which is the whole point — a single timestamp cannot express
+// "the buffer is new but the poll was not clean".
+func TestPutClocksDistinguishAttemptContentAndSuccess(t *testing.T) {
+	s := newSnapshotStore()
+	m := []prometheus.Metric{testMetric("opnsense_x", 1)}
+
+	// 1. Clean success: all three clocks advance.
+	s.put("c", m, time.Millisecond, true)
+	first := s.entry("c")
+	if first.lastPoll.IsZero() || first.snapshotAt.IsZero() || first.lastSuccess.IsZero() {
+		t.Fatalf("a clean success must set all three clocks, got %+v", first)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+
+	// 2. Partial error (error + non-empty emit): the buffer IS replaced with real
+	//    new data, so attempt and content advance — but the poll was not clean, so
+	//    the success clock must not move.
+	s.put("c", []prometheus.Metric{testMetric("opnsense_x", 2)}, time.Millisecond, false)
+	partial := s.entry("c")
+	if !partial.lastPoll.After(first.lastPoll) {
+		t.Error("partial-error poll must advance the attempt clock")
+	}
+	if !partial.snapshotAt.After(first.snapshotAt) {
+		t.Error("partial-error poll replaces the buffer, so the content clock must advance")
+	}
+	if !partial.lastSuccess.Equal(first.lastSuccess) {
+		t.Error("partial-error poll must NOT advance the last-success clock")
+	}
+
+	time.Sleep(2 * time.Millisecond)
+
+	// 3. Empty error: last-good buffer retained, so BOTH content and success clocks
+	//    must stay pinned while the attempt clock moves. This is the exact case that
+	//    let six hours of stale data read as one minute old.
+	s.put("c", nil, time.Millisecond, false)
+	empty := s.entry("c")
+	if !empty.lastPoll.After(partial.lastPoll) {
+		t.Error("failed poll must still advance the attempt clock")
+	}
+	if !empty.snapshotAt.Equal(partial.snapshotAt) {
+		t.Error("empty-error poll retains the buffer, so the content clock must NOT advance")
+	}
+	if !empty.lastSuccess.Equal(first.lastSuccess) {
+		t.Error("empty-error poll must NOT advance the last-success clock")
+	}
+	if len(empty.metrics) != 1 {
+		t.Errorf("empty-error poll must retain the last-good buffer, got %d metrics", len(empty.metrics))
+	}
+
+	// 4. Clean EMPTY success is genuine absence, not failure: the buffer is replaced
+	//    with nothing and both content and success clocks advance.
+	time.Sleep(2 * time.Millisecond)
+	s.put("c", nil, time.Millisecond, true)
+	clean := s.entry("c")
+	if len(clean.metrics) != 0 {
+		t.Error("clean empty success must drop the buffer (data is genuinely gone)")
+	}
+	if !clean.snapshotAt.After(empty.snapshotAt) || !clean.lastSuccess.After(empty.lastSuccess) {
+		t.Error("clean empty success must advance both the content and success clocks")
+	}
+}
+
+// TestRetainedDataAgeGrowsWhileAttemptStaysRecent reproduces the scenario in #382:
+// a collector succeeds once, then fails emptily on every subsequent poll. Its
+// retained values get steadily older, but every failed retry used to refresh the
+// only exported timestamp — so the dashboard's "freshness" panel and the console
+// both reported sub-minute age for data that was hours old.
+func TestRetainedDataAgeGrowsWhileAttemptStaysRecent(t *testing.T) {
+	s := newSnapshotStore()
+	s.put("c", []prometheus.Metric{testMetric("opnsense_x", 1)}, time.Millisecond, true)
+	good := s.entry("c")
+
+	for range 6 {
+		time.Sleep(time.Millisecond)
+		s.put("c", nil, time.Millisecond, false)
+	}
+	after := s.entry("c")
+
+	if !after.lastPoll.After(good.lastPoll) {
+		t.Error("the attempt clock must stay recent — the scheduler IS still running")
+	}
+	if !after.snapshotAt.Equal(good.snapshotAt) {
+		t.Errorf("the content clock must stay pinned to the last good data: %v != %v", after.snapshotAt, good.snapshotAt)
+	}
+	if !after.lastSuccess.Equal(good.lastSuccess) {
+		t.Error("the success clock must stay pinned to the last clean poll")
+	}
+	if len(after.metrics) != 1 {
+		t.Error("retention itself must be unchanged — this issue changes observability, not retention")
+	}
+}
