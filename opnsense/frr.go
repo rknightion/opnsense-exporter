@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -15,20 +16,36 @@ import (
 // OSPFv2 Full/DR adjacency, both bounced at least once. The BGP/OSPFv2/BFD shapes
 // and field names below match the live captures.
 //
-// The OSPFv3 (ospf6) structs added for #198 are the ONE exception: the dev-box
-// lab LXC has no IPv6 stack at all (unprivileged container, /proc/sys/net/ipv6
-// absent), so no live v3 adjacency could be brought up. Only the
-// disabled/empty `{"response":[]}` shape was captured for ospfv3overview and
-// ospfv3interface. Their field names are instead grounded in FRR's own ospf6d
-// C source (ospf6_top.c ospf6_show/ospf6_area_show, ospf6_interface.c
-// ospf6_interface_show) rather than a live payload — re-verify against a real
-// v3 adjacency when one becomes available and update this note.
+// The OSPFv3 (ospf6) structs added for #198 were source-derived for a long time
+// because no live v3 adjacency could be brought up. That gap is CLOSED as of
+// 2026-07-25 (#377): OSPFv3 was enabled on the dev box and a Full adjacency
+// established across the isolated testbed bridge, and all 13 ospf6 field names
+// below were confirmed present in the live payload — routerId,
+// numberOfAsScopedLsa, areas and areas.*.numberOfAreaScopedLsa on the overview;
+// status, type, areaId, cost, priority, ospf6InterfaceState,
+// numberOfInterfaceScopedLsa, pendingLsaLsUpdateCount and pendingLsaLsAckCount
+// per interface. ospf6InterfaceState returns a real non-Down value (BDR) on the
+// adjacency-bearing interface.
+//
+// Why the earlier attempts failed, recorded so it is not re-investigated: the
+// Proxmox HOST kernel is booted with ipv6.disable=1, so /proc/sys/net/ipv6 is
+// absent in every namespace on that host and no LXC there can ever run an IPv6
+// stack. That is a host-kernel property, not the container-privilege issue #227
+// concluded. A VM (own kernel) works fine on the same bridge.
+//
+// These two endpoints remain INVISIBLE TO THE CANARY regardless, and that is a
+// code limit rather than a lab gap: schema_registry.go registers the envelope
+// types, whose sole field is `Response json.RawMessage` → KindAny, so the
+// derived golden carries one path and accepts any payload. Tracked in #459;
+// until it lands, coverage.json marks them required-but-opaque so the blind spot
+// is named rather than silently counted. Do not re-provision the lab chasing
+// this — provisioning cannot fix it.
 //
 //   - bgpsummary: per-AF field set, numeric types (remoteAs may exceed int32) — verified
 //   - bgpneighbors: per-peer flap/message/AF-prefix detail — verified (#197)
 //   - ospfoverview: areas key structure, nbrFullAdjacencyCount vs nbrFullAdjacentCounter — verified
 //   - ospfinterface: per-interface detail — verified ("interfaces"-wrapped shape, FRR>=8, this box's FRR 10.3); older flat top-level shape is decoded tolerantly but unverified live
-//   - ospfv3overview/ospfv3interface: UNVERIFIED against a live v3 adjacency — source-derived only (#198)
+//   - ospfv3overview/ospfv3interface: field names VERIFIED against a live v3 adjacency 2026-07-25 (#377); still opaque to the canary via the RawMessage envelope (#459)
 //   - searchOspfneighbor: old vs new field names (state/nbrState, address/ifaceAddress) — verified
 //   - bfdneighbors/bfdcounters: peer-keyed map structure, uptime field presence
 
@@ -207,9 +224,34 @@ type frrOSPFAreaData struct {
 	SpfExecutedCounter    float64 `json:"spfExecutedCounter"`
 }
 
+// frrOSPFAreaMap is the ospfoverview `areas` map. It tolerates the OPNsense PHP
+// quirk where an empty map is serialized as a JSON array ([]) rather than an
+// object (the same quirk flexStringMap exists for): the quagga controller
+// json_decodes FRR's output into a PHP assoc array and the framework re-encodes
+// it, so an OSPF instance running with zero areas legitimately arrives as
+// "areas":[]. Absorbing that here keeps the decode-failure error in
+// FetchFRROSPF (#378) aimed at genuine corruption rather than an idle box.
+type frrOSPFAreaMap map[string]frrOSPFAreaData
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (m *frrOSPFAreaMap) UnmarshalJSON(data []byte) error {
+	// Null or any JSON array (the PHP empty-map quirk) → empty map.
+	if string(data) == "null" || (len(data) > 0 && data[0] == '[') {
+		*m = make(frrOSPFAreaMap)
+		return nil
+	}
+
+	areas := make(map[string]frrOSPFAreaData)
+	if err := json.Unmarshal(data, &areas); err != nil {
+		return fmt.Errorf("ospf areas: %w", err)
+	}
+	*m = areas
+	return nil
+}
+
 // frrOSPFOverviewBody holds the parsed ospfoverview `response` object.
 type frrOSPFOverviewBody struct {
-	Areas map[string]frrOSPFAreaData `json:"areas"`
+	Areas frrOSPFAreaMap `json:"areas"`
 }
 
 // frrOSPFOverviewEnvelope wraps the API `{"response": ...}`.
@@ -271,20 +313,31 @@ func (c *Client) FetchFRROSPF() (FRROSPF, *APICallError) {
 	// Tolerate array fallback.
 	if len(overviewEnv.Response) > 0 && overviewEnv.Response[0] != '[' {
 		var overview frrOSPFOverviewBody
-		if jsonErr := json.Unmarshal(overviewEnv.Response, &overview); jsonErr == nil {
-			for areaID, areaData := range overview.Areas {
-				fullAdj := areaData.NbrFullAdjacentCounter
-				if fullAdj == 0 {
-					fullAdj = areaData.NbrFullAdjacencyCount
-				}
-				data.Areas = append(data.Areas, FRROSPFArea{
-					Area:                  areaID,
-					InterfacesActive:      areaData.AreaIfActiveCounter,
-					NeighborsFullAdjacent: fullAdj,
-					LSACount:              areaData.LsaNumber,
-					SPFExecuted:           areaData.SpfExecutedCounter,
-				})
+		if jsonErr := json.Unmarshal(overviewEnv.Response, &overview); jsonErr != nil {
+			// The payload claims to be an object, so the daemon-disabled `[]`
+			// fallback does not apply, and the PHP empty-map-as-[] quirk on
+			// `areas` is already absorbed by frrOSPFAreaMap. A failure here is
+			// genuine corruption or upstream drift, so surface it instead of
+			// reporting partial success: Present stays false, no OSPF series are
+			// emitted, and the collector records the failed poll (#378).
+			return data, &APICallError{
+				Endpoint:   "quaggaOspfOverview",
+				Message:    "failed to decode ospf overview response: " + jsonErr.Error(),
+				StatusCode: 0,
 			}
+		}
+		for areaID, areaData := range overview.Areas {
+			fullAdj := areaData.NbrFullAdjacentCounter
+			if fullAdj == 0 {
+				fullAdj = areaData.NbrFullAdjacencyCount
+			}
+			data.Areas = append(data.Areas, FRROSPFArea{
+				Area:                  areaID,
+				InterfacesActive:      areaData.AreaIfActiveCounter,
+				NeighborsFullAdjacent: fullAdj,
+				LSACount:              areaData.LsaNumber,
+				SPFExecuted:           areaData.SpfExecutedCounter,
+			})
 		}
 	}
 

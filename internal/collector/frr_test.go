@@ -1,11 +1,13 @@
 package collector
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -574,5 +576,59 @@ func TestFRRCollector_Update_RoutesEnabled(t *testing.T) {
 	}
 	if !sawOSPFLSA {
 		t.Error("expected frr_ospf_lsa_count series when routes enabled")
+	}
+}
+
+// TestFRRCollector_Update_MalformedOSPFOverviewFailsScrape pins the externally
+// visible failure contract for #378. Before that fix, a corrupt embedded OSPF
+// overview was swallowed and the collector reported partial success: the OSPF
+// series were silently missing while the scrape looked healthy. The client now
+// surfaces a contextual decode error, so the collector must propagate it and
+// emit NOTHING rather than half a subsystem.
+//
+// The mux serves ONLY a malformed ospfoverview; every other quagga endpoint
+// 404s, which FetchFRRBGP correctly reads as "plugin absent" and passes over.
+// That isolates the overview decode as the sole failure. The payload starts
+// with '{' on purpose — the daemon-disabled '[' fallback and the PHP
+// empty-map-as-[] quirk on `areas` are both legitimate shapes that must NOT
+// error, and each is covered in opnsense/frr_test.go.
+func TestFRRCollector_Update_MalformedOSPFOverviewFailsScrape(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+		// `areas` typed as a string: an object payload that cannot decode.
+		w.Write([]byte(`{"response": {"areas": "not-an-object"}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	// Deliberately not collectMetrics(): that helper t.Fatalf's on any Update
+	// error, and the error is precisely what this test asserts.
+	ch := make(chan prometheus.Metric, 500)
+	err := c.Update(context.Background(), client, ch)
+	close(ch)
+
+	if err == nil {
+		t.Fatal("expected an APICallError from a malformed OSPF overview, got nil (the #378 partial-success bug)")
+	}
+	if err.Endpoint != "quaggaOspfOverview" {
+		t.Errorf("expected the error to name the quaggaOspfOverview endpoint, got %q", err.Endpoint)
+	}
+	if !strings.Contains(err.Message, "decode") {
+		t.Errorf("expected a contextual decode message, got %q", err.Message)
+	}
+
+	var emitted []prometheus.Metric
+	for m := range ch {
+		emitted = append(emitted, m)
+	}
+	if len(emitted) != 0 {
+		t.Errorf("expected 0 metrics on a failed OSPF overview decode, got %d", len(emitted))
+		for _, m := range emitted {
+			t.Logf("  unexpectedly emitted: %s", m.Desc().String())
+		}
 	}
 }

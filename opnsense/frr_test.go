@@ -3,6 +3,7 @@ package opnsense
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -178,6 +179,25 @@ const ospfOverviewFixture = `{
     }
   }
 }`
+
+// ospfOverviewMalformedFixture claims to be an object — so the daemon-disabled
+// `[` fallback does not apply — but types `areas` as a string, which cannot be
+// decoded into the per-area map. That is genuine corruption or drift, not an
+// idle box, and must surface as an error rather than partial success (#378).
+const ospfOverviewMalformedFixture = `{"response":{"routerId":"10.0.0.1","areas":"0.0.0.0"}}`
+
+// ospfOverviewEmptyAreasArrayFixture is the PHP empty-map quirk applied to
+// `areas`: the quagga controller json_decodes FRR's output into a PHP assoc
+// array and the framework re-encodes it, so an OSPF instance with zero areas
+// arrives as [] rather than {} (same quirk flexStringMap exists for). A
+// legitimate wire shape, so it must stay error-free.
+const ospfOverviewEmptyAreasArrayFixture = `{"response":{"routerId":"10.0.0.1","areas":[]}}`
+
+// ospfOverviewArrayResponse is the daemon-disabled configd fallback: `[]`.
+const ospfOverviewArrayResponse = `{"response":[]}`
+
+// ospfNeighborsEmptyFixture is an empty bootgrid result set.
+const ospfNeighborsEmptyFixture = `{"total":0,"rowCount":0,"current":1,"rows":[]}`
 
 // ospfNeighborsFixture is a bootgrid response with both old-style and
 // new-style FRR field names to test coalescing.
@@ -453,6 +473,108 @@ func TestFetchFRROSPF_PluginAbsent404(t *testing.T) {
 	}
 	if data.Present {
 		t.Error("expected Present=false on plugin absent 404")
+	}
+}
+
+// TestFetchFRROSPF_MalformedOverviewSurfacesDecodeError guards #378: the second
+// decode stage of the ospfoverview payload used to swallow its error, so a
+// corrupted or drifted overview produced partial-success metrics (Present=true,
+// zero areas) while the collector looked healthy.
+func TestFetchFRROSPF_MalformedOverviewSurfacesDecodeError(t *testing.T) {
+	cases := []struct {
+		name         string
+		overview     string
+		wantContains []string
+	}{
+		{"areas_wrong_type", ospfOverviewMalformedFixture, []string{"decode", "areas"}},
+		{"area_value_wrong_type", `{"response":{"areas":{"0.0.0.0":"broken"}}}`, []string{"decode", "areas"}},
+		{"response_not_an_object", `{"response":"quagga is not running"}`, []string{"decode"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			neighborsCalled := false
+
+			server, mux, client := newTestClientWithMux(t)
+			defer server.Close()
+
+			mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.overview))
+			})
+			mux.HandleFunc("/api/quagga/diagnostics/searchOspfneighbor", func(w http.ResponseWriter, r *http.Request) {
+				neighborsCalled = true
+				w.Write([]byte(ospfNeighborsEmptyFixture))
+			})
+
+			data, err := client.FetchFRROSPF()
+			if err == nil {
+				t.Fatal("expected an error for a malformed overview object, got nil")
+			}
+			if err.Endpoint != "quaggaOspfOverview" {
+				t.Errorf("error Endpoint: want quaggaOspfOverview, got %q", err.Endpoint)
+			}
+			for _, want := range tc.wantContains {
+				if !strings.Contains(err.Message, want) {
+					t.Errorf("error Message should mention %q, got %q", want, err.Message)
+				}
+			}
+			if data.Present {
+				t.Error("Present must stay false when the overview cannot be decoded")
+			}
+			if len(data.Areas) != 0 {
+				t.Errorf("expected no areas from a malformed overview, got %d", len(data.Areas))
+			}
+			if len(data.Neighbors) != 0 {
+				t.Errorf("expected no neighbors when the overview decode failed, got %d", len(data.Neighbors))
+			}
+			if neighborsCalled {
+				t.Error("neighbors POST must not run after an overview decode failure (no partial data)")
+			}
+		})
+	}
+}
+
+// TestFetchFRROSPF_BenignOverviewShapesRetainBehaviour pins the shapes that must
+// keep their pre-#378 behaviour: a valid object, the daemon-disabled `[]`
+// fallback, the PHP empty-map-as-[] quirk on `areas`, and empty/absent/null
+// payloads. All are error-free with Present=true.
+func TestFetchFRROSPF_BenignOverviewShapesRetainBehaviour(t *testing.T) {
+	cases := []struct {
+		name      string
+		overview  string
+		wantAreas int
+	}{
+		{"valid_object", ospfOverviewFixture, 1},
+		{"daemon_disabled_array", ospfOverviewArrayResponse, 0},
+		{"empty_areas_array", ospfOverviewEmptyAreasArrayFixture, 0},
+		{"empty_response_object", `{"response":{}}`, 0},
+		{"absent_response_key", `{}`, 0},
+		{"null_response", `{"response":null}`, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, mux, client := newTestClientWithMux(t)
+			defer server.Close()
+
+			mux.HandleFunc("/api/quagga/diagnostics/ospfoverview", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.overview))
+			})
+			mux.HandleFunc("/api/quagga/diagnostics/searchOspfneighbor", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(ospfNeighborsEmptyFixture))
+			})
+
+			data, err := client.FetchFRROSPF()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !data.Present {
+				t.Error("expected Present=true")
+			}
+			if len(data.Areas) != tc.wantAreas {
+				t.Errorf("areas: want %d, got %d", tc.wantAreas, len(data.Areas))
+			}
+		})
 	}
 }
 
