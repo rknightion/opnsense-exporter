@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 817
-- **Gauges:** 548
+- **Total metrics:** 818
+- **Gauges:** 549
 - **Counters:** 269
 
 ## General
@@ -379,6 +379,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_flow_vlan_child_preferred_total | Counter | --- | VLAN duplicates resolved in favour of the VLAN CHILD copy after the trunk copy had already been held. ng_netflow exports the trunk hook's flows and the child hook's flows in separate datagrams, trunk first, so without this the surviving copy attributes every VLAN's traffic to the trunk interface. A zero rate on a box with VLAN interfaces means the attribution fix is not firing and per-VLAN volume is collapsed onto the trunk. | --exporter.disable-flow |
 | opnsense_flow_repair_held_records | Gauge | --- | Flow records parked in the repair stage waiting to see whether a copy on a VLAN child beats them. They are neither emitted nor dropped yet, so this is the term that closes records_in = emitted + dropped + no_address + held. A value that grows without bound means records are not being released. | --exporter.disable-flow |
 | opnsense_flow_dedupe_entries_dropped_total | Counter | reason | Entries removed from the de-duplication table. reason=\"ttl\" is the healthy path - the instance aged out having done its job. reason=\"capacity\" means the table was full and an entry was evicted early, so a duplicate arriving afterwards is NO LONGER SUPPRESSED and reaches the rollup twice; a non-zero rate is the signal to raise the bound. | --exporter.disable-flow |
+| opnsense_flow_interface_info | Gauge | device, interface, ifindex | The resolved NetFlow ifIndex map as an info metric, one series per index, always 1 - the data is in the labels. It exists to make two label spaces joinable: the box's own per-hook counters (opnsense_netflow_cache_*) are keyed by kernel DEVICE, while every flow and capture metric is keyed by the configured DESCRIPTION, and the single most valuable NetFlow health statement spans both - \"this interface is configured for capture and its OWN ng_netflow node has been frozen at zero\". Join through it with group_left: a dead hook is otherwise a two-panel eyeball correlation, because a fresh record age proves only that the interface was NAMED (ng_netflow fills the far side of each flow from a FIB lookup), never that its own hook is alive. ifindex is a POSITION in the box's ifinfo output, so it renumbers when any interface is added or removed - treat a changed value as the map having moved, not as a relabel. device is empty for index 0, which is traffic the firewall itself originated; interface is empty for a port with no OPNsense assignment, which still holds a slot in the enumeration. | --exporter.disable-flow |
 | opnsense_flow_ifindex_entries | Gauge | --- | Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 (traffic originated by the firewall itself). | --exporter.disable-flow |
 | opnsense_flow_ifindex_conflicts | Gauge | --- | Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's own ifinfo ordering - the override is winning, so labels are right, but every index the operator did not pin is suspect. | --exporter.disable-flow |
 | opnsense_flow_ifindex_map_age_seconds | Gauge | --- | Age of the ifIndex map. ng_netflow's indices are positional over ifinfo output, so adding or removing ANY interface renumbers everything and silently remaps historical series. A map that stops being refreshed is therefore a correctness problem, not a staleness nuisance. | --exporter.disable-flow |

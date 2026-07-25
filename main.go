@@ -1114,17 +1114,23 @@ func main() {
 		collector.Flow.SetNetflowStats(func() collector.NetflowStats {
 			var mapStats flow.IfMapStats
 			var age time.Duration
+			var entries []flow.IfaceEntry
 			if m := proc.IfMap(); m != nil {
 				mapStats = m.Stats()
 				age = m.Age(time.Now())
+				// Entries allocates and sorts, so it is a render path, never a
+				// lookup path. This closure runs once per poll of the flow
+				// collector over ~17 interfaces, which is that, not a hot path.
+				entries = m.Entries()
 			}
 			return collector.NetflowStats{
-				Listener: listener.Stats(),
-				Decoder:  decoder.Stats(),
-				Pipeline: proc.Stats(),
-				Repair:   repairer.Stats(),
-				IfMap:    mapStats,
-				IfMapAge: age,
+				Listener:     listener.Stats(),
+				Decoder:      decoder.Stats(),
+				Pipeline:     proc.Stats(),
+				Repair:       repairer.Stats(),
+				IfMap:        mapStats,
+				IfMapAge:     age,
+				IfMapEntries: entries,
 			}
 		})
 

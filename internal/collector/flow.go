@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -138,6 +139,11 @@ type NetflowStats struct {
 	Repair   flow.RepairStats
 	IfMap    flow.IfMapStats
 	IfMapAge time.Duration
+	// IfMapEntries is the resolved map itself, rendered as one entry per ifIndex.
+	// It backs the device-to-description info metric (#368) and is the only
+	// NetflowStats field that is a list rather than a counter, because it is the
+	// only one whose VALUE is a set of label combinations.
+	IfMapEntries []flow.IfaceEntry
 }
 
 // SetNetflowStats installs the source of the NetFlow self-metrics. main calls it
@@ -238,6 +244,7 @@ type flowCollector struct {
 	vlanChildPreferred *prometheus.Desc
 	repairHeld         *prometheus.Desc
 
+	interfaceInfo    *prometheus.Desc
 	ifIndexEntries   *prometheus.Desc
 	ifIndexConflicts *prometheus.Desc
 	ifIndexAge       *prometheus.Desc
@@ -544,6 +551,22 @@ func (c *flowCollector) registerNetflow() {
 		reasonLabel,
 	)
 
+	c.interfaceInfo = buildPrometheusDesc(c.subsystem, "interface_info",
+		"The resolved NetFlow ifIndex map as an info metric, one series per index, always 1 - the "+
+			"data is in the labels. It exists to make two label spaces joinable: the box's own "+
+			"per-hook counters (opnsense_netflow_cache_*) are keyed by kernel DEVICE, while every "+
+			"flow and capture metric is keyed by the configured DESCRIPTION, and the single most "+
+			"valuable NetFlow health statement spans both - \"this interface is configured for "+
+			"capture and its OWN ng_netflow node has been frozen at zero\". Join through it with "+
+			"group_left: a dead hook is otherwise a two-panel eyeball correlation, because a fresh "+
+			"record age proves only that the interface was NAMED (ng_netflow fills the far side of "+
+			"each flow from a FIB lookup), never that its own hook is alive. ifindex is a POSITION "+
+			"in the box's ifinfo output, so it renumbers when any interface is added or removed - "+
+			"treat a changed value as the map having moved, not as a relabel. device is empty for "+
+			"index 0, which is traffic the firewall itself originated; interface is empty for a "+
+			"port with no OPNsense assignment, which still holds a slot in the enumeration.",
+		[]string{"device", "interface", "ifindex"},
+	)
 	c.ifIndexEntries = buildPrometheusDesc(c.subsystem, "ifindex_entries",
 		"Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 "+
 			"(traffic originated by the firewall itself).",
@@ -605,6 +628,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dedupeDropped
 	ch <- c.vlanChildPreferred
 	ch <- c.repairHeld
+	ch <- c.interfaceInfo
 	ch <- c.ifIndexEntries
 	ch <- c.ifIndexConflicts
 	ch <- c.ifIndexAge
@@ -751,6 +775,14 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	counter(c.dedupeDropped, nf.Repair.HoldOverflow, "hold_overflow")
 	counter(c.vlanChildPreferred, nf.Repair.VLANChildPreferred)
 	gauge(c.repairHeld, float64(nf.Pipeline.RecordsHeld))
+
+	// One series per resolved index, value always 1: the payload is the label
+	// triple. Every entry is published, including the ones with an empty label —
+	// an index whose device or description we do not know is exactly the case an
+	// operator needs to SEE, and dropping it would make the map look complete.
+	for _, e := range nf.IfMapEntries {
+		gauge(c.interfaceInfo, 1, e.Device, e.Name, strconv.FormatUint(uint64(e.Index), 10))
+	}
 
 	gauge(c.ifIndexEntries, float64(nf.IfMap.Entries))
 	gauge(c.ifIndexConflicts, float64(nf.IfMap.Conflicts))

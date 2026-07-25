@@ -327,10 +327,71 @@ the capture set.
 For **per-hook** liveness, use the box's own view instead:
 `opnsense_netflow_cache_packets_total{interface="<device>"}`, one series per `ng_netflow`
 node. A node pinned at zero while its peers climb is the firewall itself saying that hook is
-dead. Note the label spaces differ and cannot be joined directly - the cache metrics are keyed
-by kernel **device** (`pppoe0`, `ixl0_vlan25`), the capture metrics by the configured
-**description** (`AAISP`, `CAM`). The operator console's **ifIndex** tab prints the
-correspondence.
+dead.
+
+#### Joining the two label spaces
+
+Three metric families describe the same interface under two different meanings of the
+`interface` label:
+
+| Family | `interface` holds | Source |
+|---|---|---|
+| `opnsense_netflow_cache_*` | kernel **device** - `pppoe0`, `ixl0_vlan25` | `flowctl` node names |
+| `opnsense_netflow_capture_*` | configured **description** - `AAISP`, `CAM` | the netflow config model |
+| `opnsense_flow_*` | configured **description** | the ifIndex map's `Name` |
+
+`opnsense_flow_interface_info{device,interface,ifindex}` carries the correspondence on one
+series - value always 1, bounded by the interface count - so the spaces join through it with
+`group_left`. It is published by the flow collector whenever the NetFlow lane is running, and
+it is the same map the operator console's **ifIndex** tab prints.
+
+Two things to know before joining on it. The `interface` label is only unique across
+**assigned** interfaces: OPNsense hands every unassigned device the same placeholder
+description (`Unassigned Interface`), so several series can share that value and a `group_left`
+whose left side carried it would fail the many-to-one uniqueness rule. Nothing worth joining
+does - the capture config lists assigned interfaces only - and a query error there is a better
+outcome than a plausible wrong device. Second, for the first seconds after a restart the
+series exist with an empty `interface`: the enumeration and the interface metadata are separate
+fetches, and the map is published as soon as the enumeration lands rather than waiting.
+
+That makes the highest-value NetFlow health statement a single expression: **configured to
+capture, real traffic passing on the device, and its own `ng_netflow` node counting nothing for
+longer than the box's active timeout.**
+
+```promql
+max by (opnsense_instance, interface, device) (
+  (opnsense_netflow_capture_expected == 1)
+    * on (opnsense_instance, interface) group_left (device) opnsense_flow_interface_info
+)
+and on (opnsense_instance, device) max by (opnsense_instance, device) (
+  label_join(increase(opnsense_netflow_cache_packets_total[45m]), "device", "", "interface") == 0
+)
+and on (opnsense_instance, device) max by (opnsense_instance, device) (
+  label_join(increase(opnsense_firewall_in_ipv4_pass_bytes_total[45m]), "device", "", "interface") > 0
+)
+and on (opnsense_instance) (opnsense_netflow_capture_active_timeout_seconds < 2700)
+```
+
+Every clause is load-bearing:
+
+- **Clause 2** is the only signal a dead hook cannot hide from, for the FIB-lookup reason above.
+- **Clause 3** separates a dead hook from an idle interface. A quiet guest VLAN's node is
+  legitimately flat, and without pf confirming that bytes actually crossed the device the two
+  read identically. `label_join` rather than `label_replace` because both the cache and pf
+  families put a device in their `interface` label, and a `$1` capture reference would be
+  eaten by Grafana's variable interpolation.
+- **Clause 4** is the honesty check on the window: "exported nothing" means nothing until the
+  active timeout has passed, so the query withdraws itself if the box's configured timeout is
+  45m or more instead of letting `[45m]` quietly become a lie. 45m clears OPNsense's 1800s
+  default.
+
+An interface with **no** `cache_packets_total` series at all - a hook that was never created -
+is deliberately absent rather than reported; read it off the ifIndex map instead. Both the map
+and this query are on the dashboard's **NetFlow → Hook Liveness** row.
+
+Run against the reference box on 2026-07-25 the expression returned exactly one row,
+`{interface="AAISP", device="pppoe0"}` - the hook whose death took a packet capture to find in
+July.
 
 ## The label set, and why each dimension is on it
 

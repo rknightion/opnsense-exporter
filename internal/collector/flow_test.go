@@ -353,6 +353,63 @@ func TestConfigureFlow_RetunesWithoutLosingTotals(t *testing.T) {
 	}
 }
 
+// TestFlowCollector_PublishesTheIfIndexJoinMetric pins the join #368 exists for.
+//
+// Three metric families describe the same interface in two different label
+// spaces: opnsense_netflow_cache_* is keyed by kernel DEVICE (pppoe0), while
+// opnsense_netflow_capture_* and opnsense_flow_* are keyed by the configured
+// DESCRIPTION (AAISP). The single highest-value NetFlow health question —
+// "configured to capture on AAISP, and the pppoe0 node has been frozen at zero
+// for an hour" — spans both, and no PromQL could express it because nothing
+// carried the correspondence, even though the exporter has always resolved it
+// internally for the ifIndex map. This info metric is that correspondence, and
+// it is the only reason the metric exists, so the test asserts the exact label
+// triple rather than just presence.
+func TestFlowCollector_PublishesTheIfIndexJoinMetric(t *testing.T) {
+	store := newFlowStore(10, 100)
+	store.SetNetflowStats(func() NetflowStats {
+		return NetflowStats{IfMapEntries: []flow.IfaceEntry{
+			{Index: 0, Name: flow.LocalOriginName},
+			{Index: 1, Device: "ixl0", Name: "LAN"},
+			{Index: 15, Device: "pppoe0", Name: "AAISP"},
+			{Index: 4, Device: "igb1"}, // an unassigned port: device, no description
+		}}
+	})
+
+	got := collect(t, newFlowTestCollector(t, store))
+	for _, want := range []string{
+		"opnsense_flow_interface_info|device=ixl0|ifindex=1|interface=LAN",
+		"opnsense_flow_interface_info|device=pppoe0|ifindex=15|interface=AAISP",
+		// An unassigned port still gets a series: it holds a slot in the
+		// enumeration, so a record CAN arrive naming it, and the join has to be
+		// able to say what device that was.
+		"opnsense_flow_interface_info|device=igb1|ifindex=4|interface=",
+		// ifIndex 0 is the firewall's own traffic, which has no device at all.
+		// It is published so the map renders completely - every other index in
+		// the series is a real interface, and a gap at 0 reads as a missing
+		// entry rather than as "this one is the box itself".
+		"opnsense_flow_interface_info|device=|ifindex=0|interface=locally-originated",
+	} {
+		if v, ok := got[want]; !ok {
+			t.Errorf("%s not published", want)
+		} else if v != 1 {
+			t.Errorf("%s = %v, want 1 (an info metric carries its data in labels)", want, v)
+		}
+	}
+}
+
+// The netflow lane's self-metrics are absent, not zero, when the lane was never
+// built (see SetNetflowStats). The info metric has to follow that rule too: a
+// device/description correspondence for a box that is not running NetFlow is not
+// "empty", it is unknown.
+func TestFlowCollector_NoIfIndexJoinMetricWithoutTheLane(t *testing.T) {
+	for k := range collect(t, newFlowTestCollector(t, newFlowStore(10, 100))) {
+		if strings.HasPrefix(k, "opnsense_flow_interface_info") {
+			t.Errorf("%s published with no NetFlow lane", k)
+		}
+	}
+}
+
 // The package-level singleton is the seam the receiver lanes are handed, so it must
 // actually satisfy the sink interface.
 func TestFlowStoreSatisfiesTheSinkInterface(t *testing.T) {

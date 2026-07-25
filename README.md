@@ -27,7 +27,7 @@ all four telemetry paths off the firewall, plus a local console:
 | **NetFlow and flow volume** | A NetFlow v5/v9 receiver and Zenarmor connection records feed one bounded rollup, so you can answer "how much traffic, which interface, which direction, which application category" from Prometheus for years, instead of scanning GB/day of logs. | [Flow volume](https://m7kni.io/opnsense-exporter/flow/) |
 | **Operator console** | A built-in web UI at `/` showing collector health, cardinality, effective config and discovered devices, without scraping the firewall to render it. | [Architecture](https://m7kni.io/opnsense-exporter/architecture/) |
 
-Underneath that: 817 metrics across 62 collectors covering firewall and PF statistics,
+Underneath that: 818 metrics across 62 collectors covering firewall and PF statistics,
 interfaces, gateways, VPN (WireGuard, OpenVPN, IPsec), DHCP (Kea, Dnsmasq, ISC), Unbound DNS,
 certificates and ACME, hardware temperatures, SMART disk health, system resources and more.
 Collection is decoupled from scraping: each collector polls on its own volatility tier and
@@ -121,7 +121,7 @@ The generated flag and collector reference lives in the
 > **Minimum Grafana version: 13+** - the dashboard uses the v2 dynamic schema
 > (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
 
-A single dynamic dashboard covers all 817 metrics across 41 tabs, auto-hiding tabs and rows for
+A single dynamic dashboard covers all 818 metrics across 41 tabs, auto-hiding tabs and rows for
 collectors and OPNsense plugins you don't run. Import
 [`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or GitOps. Alert
 and recording rules ship alongside it in [`grafana/alerts/`](./grafana/alerts/). See

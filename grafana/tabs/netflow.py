@@ -10,6 +10,7 @@ Rows:
                           cache_destination_ip_addresses ts
   3. Capture Coverage   — capture_expected vs capture_last_record_seconds ts,
                           the two configured timeouts as stats
+  4. Hook Liveness      — flow_interface_info map table, dead-hook join table (#368)
 
 Coverage:
   opnsense_netflow_enabled
@@ -23,6 +24,7 @@ Coverage:
   opnsense_netflow_capture_last_record_seconds
   opnsense_netflow_capture_active_timeout_seconds
   opnsense_netflow_capture_inactive_timeout_seconds
+  opnsense_flow_interface_info   (owned by the Flow tab's family, joined here)
 """
 
 from builder import Builder, sel, RATE, ENABLED
@@ -170,10 +172,90 @@ def build(b: Builder):
     )
 
     # ======================================================================
+    # Row 4 – Hook Liveness (#368)
+    # ======================================================================
+    # This row is the join between the two label spaces the rows above cannot
+    # cross. opnsense_flow_interface_info carries device + description + ifIndex
+    # on one series, which is what makes `group_left` possible at all.
+    nf_ifindex_map = b.table(
+        "ifIndex / Device / Interface",
+        [sel("opnsense_flow_interface_info")],
+        w=10, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "ifindex": "ifIndex",
+            "device": "Device",
+            "interface": "Interface",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="ifIndex", sort_desc=False,
+        desc="The resolved NetFlow ifIndex map. Read it straight down against the firewall's own "
+             "ifinfo output: ifIndex is a POSITION in that list, not an identifier, so adding or "
+             "removing any interface renumbers everything below it. An empty Device on ifIndex 0 is "
+             "correct - that is traffic the firewall itself originated. An empty Interface is a port "
+             "with no OPNsense assignment, which still holds its slot. This table is also the key to "
+             "every other panel here: the cache metrics are keyed by Device, the capture and flow "
+             "metrics by Interface.",
+    )
+    nf_dead_hooks = b.table(
+        "Dead Capture Hooks (configured, own node frozen)",
+        [
+            "max by (opnsense_instance, interface, device) ("
+            f'({sel("opnsense_netflow_capture_expected", desc_iface)} == 1)'
+            " * on (opnsense_instance, interface) group_left (device) "
+            f'{sel("opnsense_flow_interface_info")}'
+            ")"
+            # label_join, not label_replace: the cache and pf metrics both put a
+            # DEVICE in their `interface` label, so it has to be copied into a
+            # `device` label to join on. label_replace would need a "$1" capture
+            # reference, and Grafana interpolates anything matching $\w+ before the
+            # query is sent.
+            " and on (opnsense_instance, device) max by (opnsense_instance, device) ("
+            f'label_join(increase({sel("opnsense_netflow_cache_packets_total")}[45m]),'
+            ' "device", "", "interface") == 0'
+            ")"
+            " and on (opnsense_instance, device) max by (opnsense_instance, device) ("
+            f'label_join(increase({sel("opnsense_firewall_in_ipv4_pass_bytes_total")}[45m]),'
+            ' "device", "", "interface") > 0'
+            ")"
+            " and on (opnsense_instance) ("
+            f'{sel("opnsense_netflow_capture_active_timeout_seconds")} < 2700'
+            ")"
+        ],
+        w=14, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "interface": "Interface",
+            "device": "Device",
+            "opnsense_instance": "Instance",
+        },
+        desc="A ROW HERE IS A FAULT: the firewall is configured to capture NetFlow on that "
+             "interface, real traffic is passing on its device, and its own ng_netflow node has "
+             "counted nothing for 45 minutes. Four clauses, and each one is load-bearing. "
+             "(1) capture_expected==1, joined through the ifIndex map because the configured set is "
+             "in DESCRIPTION space and everything per-hook is in DEVICE space. (2) The box's own "
+             "per-node counter flat - this is the only signal a dead hook cannot hide from: a fresh "
+             "record age proves the interface was NAMED, not that its hook is alive, because "
+             "ng_netflow fills the far side of every flow from a FIB lookup. Measured on the "
+             "reference box 2026-07-24: netflow_pppoe0 had processed zero packets while 11 GB, 92% "
+             "of all volume, was attributed to that interface. (3) pf says bytes actually passed on "
+             "the device, which is what separates a dead hook from an interface that is simply idle - "
+             "a quiet guest VLAN's node is legitimately flat and is NOT a fault, and without this "
+             "clause it would read identically. (4) The window must exceed the box's own active "
+             "timeout or 'nothing exported' means nothing; 45m clears the 30m default, and the clause "
+             "drops the whole query if the configured timeout is 45m or more rather than letting the "
+             "window quietly become a lie. Absent from this table, deliberately: an interface with no "
+             "cache_packets_total series at all (a hook that was never created) - check the map on "
+             "the left. Needs the firewall collector for clause 3; with it disabled this panel is "
+             "empty rather than wrong.",
+    )
+
+    # ======================================================================
     # Assemble tab (gated on has_netflow)
     # ======================================================================
     b.tab("NetFlow", [
         b.row("NetFlow Status", [nf_enabled, nf_local, nf_active, nf_collectors]),
         b.row("NetFlow Cache", [nf_packets_ts, nf_src_ips_ts, nf_dst_ips_ts]),
         b.row("Capture Coverage", [nf_capture, nf_active_to, nf_inactive_to]),
+        b.row("Hook Liveness", [nf_ifindex_map, nf_dead_hooks]),
     ], present="has_netflow")
