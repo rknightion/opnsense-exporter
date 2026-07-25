@@ -33,7 +33,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	valid := map[string]bool{"exemptions.json": true}
+	// Committed non-golden files in the same directory: the compat ledger and
+	// the live-coverage ledger (#377). They are hand-maintained, so the orphan
+	// sweep below must never delete them.
+	valid := map[string]bool{"exemptions.json": true, "coverage.json": true}
 	for _, s := range schemas {
 		name := s.Endpoint + ".json"
 		valid[name] = true

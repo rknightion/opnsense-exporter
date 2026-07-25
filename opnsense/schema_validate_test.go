@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -271,6 +272,225 @@ func TestValidateResponseSchemaDynamicTopLevel(t *testing.T) {
 	want := []Mismatch{{Path: "*.status", Expected: KindString, Got: "number"}}
 	if !reflect.DeepEqual(res.Mismatches, want) {
 		t.Errorf("Mismatches = %v, want %v", res.Mismatches, want)
+	}
+}
+
+// nestedFixtureSchema exercises the reverse traversal (#376): a static
+// sub-object, an object inside an array, a dynamic-key map, a KindAny subtree
+// and a childless object node (a struct the exporter models as an opaque
+// container).
+func nestedFixtureSchema() EndpointSchema {
+	return EndpointSchema{
+		Endpoint:          "nested",
+		TopLevelKind:      KindObject,
+		KnownTopLevelKeys: []string{"byName", "details", "opaque", "rows", "sealed"},
+		Fields: []SchemaField{
+			{Path: "byName", Kind: KindObject},
+			{Path: "byName.*", Kind: KindObject},
+			{Path: "byName.*.state", Kind: KindString},
+			{Path: "details", Kind: KindObject},
+			{Path: "details.uptime", Kind: KindNumber},
+			{Path: "opaque", Kind: KindAny},
+			{Path: "rows", Kind: KindArray},
+			{Path: "rows[]", Kind: KindObject},
+			{Path: "rows[].name", Kind: KindString},
+			{Path: "sealed", Kind: KindObject},
+		},
+	}
+}
+
+// Unexpected keys BELOW the root are reported as normalized paths. Array
+// elements collapse to "[]" and dynamic map identities to "*", so the report
+// can never echo a hostname, peer identity or interface name.
+func TestValidateResponseSchemaUnknownNestedPaths(t *testing.T) {
+	cases := []struct {
+		name      string
+		raw       string
+		exemption SchemaExemption
+		wantPaths []string
+		wantTop   []string
+	}{
+		{
+			name: "clean nested payload",
+			raw:  `{"details":{"uptime":1},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":{"anything":1},"sealed":{}}`,
+		},
+		{
+			name:      "extra key in a nested object",
+			raw:       `{"details":{"uptime":1,"newkey":2},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			wantPaths: []string{"details.newkey"},
+		},
+		{
+			name:      "extra key inside an object in an array",
+			raw:       `{"details":{"uptime":1},"rows":[{"name":"a","new_health":"ok"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			wantPaths: []string{"rows[].new_health"},
+		},
+		{
+			// Two elements carrying the same new key are ONE finding.
+			name:      "duplicate extra keys across array elements collapse",
+			raw:       `{"details":{"uptime":1},"rows":[{"name":"a","new_health":1},{"name":"b","new_health":2}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			wantPaths: []string{"rows[].new_health"},
+		},
+		{
+			// Arbitrary map identities are accepted; a new static field inside a
+			// map value is reported under "*", never under the real identity.
+			name:      "extra static field inside a dynamic map value",
+			raw:       `{"details":{"uptime":1},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up","newfield":1},"peer.example.internal":{"state":"up","newfield":2}},"opaque":1,"sealed":{}}`,
+			wantPaths: []string{"byName.*.newfield"},
+		},
+		{
+			// KindAny covers interface{}, custom json.Unmarshalers and
+			// json.RawMessage: the exporter decodes them leniently, so anything
+			// underneath is by definition not drift.
+			name: "KindAny subtree makes no noise",
+			raw:  `{"details":{"uptime":1},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":{"deep":{"deeper":1}},"sealed":{}}`,
+		},
+		{
+			// A modeled object with no modeled children is an opaque container,
+			// not a schema that knows every key.
+			name: "childless object node makes no noise",
+			raw:  `{"details":{"uptime":1},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{"whatever":1}}`,
+		},
+		{
+			name: "case-insensitive match like encoding/json",
+			raw:  `{"Details":{"Uptime":1},"Rows":[{"Name":"a"}],"ByName":{"wg0":{"State":"up"}},"opaque":1,"sealed":{}}`,
+		},
+		{
+			// Root extras keep going to UnknownTopKeys alone — the existing
+			// bootgrid-envelope handling and knownExtraTopKeys ledger own depth 0.
+			name:      "root extras stay top-level only",
+			raw:       `{"details":{"uptime":1},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{},"brandnew":{"inner":1}}`,
+			wantTop:   []string{"brandnew"},
+			wantPaths: nil,
+		},
+		{
+			name:      "knownExtraPaths exempts an exact path",
+			raw:       `{"details":{"uptime":1,"newkey":2},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			exemption: SchemaExemption{KnownExtraPaths: []string{"details.newkey"}},
+		},
+		{
+			name:      "knownExtraPaths subtree form exempts a whole branch",
+			raw:       `{"details":{"uptime":1,"a":1,"b":2},"rows":[{"name":"a"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			exemption: SchemaExemption{KnownExtraPaths: []string{"details.*"}},
+		},
+		{
+			name:      "subtree exemption does not swallow a sibling section",
+			raw:       `{"details":{"uptime":1,"a":1},"rows":[{"name":"a","extra":1}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			exemption: SchemaExemption{KnownExtraPaths: []string{"details.*"}},
+			wantPaths: []string{"rows[].extra"},
+		},
+		{
+			name:      "several findings are sorted",
+			raw:       `{"details":{"uptime":1,"zz":1},"rows":[{"name":"a","aa":1}],"byName":{"wg0":{"state":"up","mm":1}},"opaque":1,"sealed":{}}`,
+			wantPaths: []string{"byName.*.mm", "details.zz", "rows[].aa"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := ValidateResponseSchema(nestedFixtureSchema(), []byte(tc.raw), tc.exemption)
+			if err != nil {
+				t.Fatalf("ValidateResponseSchema: %v", err)
+			}
+			if !reflect.DeepEqual(res.UnknownPaths, tc.wantPaths) {
+				t.Errorf("UnknownPaths = %v, want %v", res.UnknownPaths, tc.wantPaths)
+			}
+			if !reflect.DeepEqual(res.UnknownTopKeys, tc.wantTop) {
+				t.Errorf("UnknownTopKeys = %v, want %v", res.UnknownTopKeys, tc.wantTop)
+			}
+			for _, p := range res.UnknownPaths {
+				if strings.Contains(p, "wg0") || strings.Contains(p, "example.internal") {
+					t.Errorf("UnknownPaths leaked a dynamic-map identity: %q", p)
+				}
+			}
+		})
+	}
+}
+
+// A reported path must be CANONICAL — spelled the way the schema spells its
+// known segments — even when the box serves a different case. encoding/json (and
+// therefore this validator) matches keys case-insensitively, so OPNsense's real
+// healthCheck payload reaches the struct's `metadata.System` block through a
+// lowercase `system` key. Reporting the live casing would give the same drift two
+// different spellings, and a knownExtraPaths entry only ever matches one of them.
+func TestValidateResponseSchemaUnknownNestedPathsCanonicalCasing(t *testing.T) {
+	s := EndpointSchema{
+		Endpoint:          "health",
+		TopLevelKind:      KindObject,
+		KnownTopLevelKeys: []string{"metadata"},
+		Fields: []SchemaField{
+			{Path: "metadata", Kind: KindObject},
+			{Path: "metadata.System", Kind: KindObject},
+			{Path: "metadata.System.status", Kind: KindAny},
+		},
+	}
+	res, err := ValidateResponseSchema(s, []byte(`{"metadata":{"system":{"status":2,"title":"x","message":"y"}}}`), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	want := []string{"metadata.System.message", "metadata.System.title"}
+	if !reflect.DeepEqual(res.UnknownPaths, want) {
+		t.Errorf("UnknownPaths = %v, want %v", res.UnknownPaths, want)
+	}
+	// And the exemption written in the schema's casing must suppress it.
+	res, err = ValidateResponseSchema(s, []byte(`{"metadata":{"system":{"status":2,"title":"x","message":"y"}}}`),
+		SchemaExemption{KnownExtraPaths: []string{"metadata.System.*"}})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	if len(res.UnknownPaths) != 0 {
+		t.Errorf("UnknownPaths = %v, want none", res.UnknownPaths)
+	}
+}
+
+// A nested extra key is drift signal, so it must make the result unclean.
+func TestValidationResultCleanIncludesUnknownPaths(t *testing.T) {
+	if (ValidationResult{UnknownPaths: []string{"rows[].x"}}).Clean() {
+		t.Error("a result with UnknownPaths must not be Clean")
+	}
+	if !(ValidationResult{Unverified: []string{"rows[].x"}}).Clean() {
+		t.Error("Unverified alone must stay Clean (box state, not drift)")
+	}
+}
+
+// A top-level ARRAY response still gets nested extras: the root is "[]".
+func TestValidateResponseSchemaUnknownNestedPathsArrayRoot(t *testing.T) {
+	s := EndpointSchema{
+		Endpoint:     "arr",
+		TopLevelKind: KindArray,
+		Fields: []SchemaField{
+			{Path: "[]", Kind: KindObject},
+			{Path: "[].device", Kind: KindString},
+		},
+	}
+	res, err := ValidateResponseSchema(s, []byte(`[{"device":"cpu0","new_reading":1}]`), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	if want := []string{"[].new_reading"}; !reflect.DeepEqual(res.UnknownPaths, want) {
+		t.Errorf("UnknownPaths = %v, want %v", res.UnknownPaths, want)
+	}
+}
+
+// A dynamic top-level map has no fixed key set, so every root key is an
+// identity: extras can only be reported one level down, normalized to "*".
+func TestValidateResponseSchemaUnknownNestedPathsDynamicRoot(t *testing.T) {
+	s := EndpointSchema{
+		Endpoint:     "dyn",
+		TopLevelKind: KindObject,
+		Fields: []SchemaField{
+			{Path: "*", Kind: KindObject},
+			{Path: "*.status", Kind: KindString},
+		},
+	}
+	res, err := ValidateResponseSchema(s, []byte(`{"wg0":{"status":"up","newfield":1}}`), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	if want := []string{"*.newfield"}; !reflect.DeepEqual(res.UnknownPaths, want) {
+		t.Errorf("UnknownPaths = %v, want %v", res.UnknownPaths, want)
+	}
+	if len(res.UnknownTopKeys) != 0 {
+		t.Errorf("UnknownTopKeys = %v, want none on a dynamic root", res.UnknownTopKeys)
 	}
 }
 

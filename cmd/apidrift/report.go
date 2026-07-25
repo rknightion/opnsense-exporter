@@ -23,23 +23,48 @@ func pluginGatedSet() map[string]bool {
 
 // aggregate derives the two severity signals the workflow consumes: drift
 // (breaking — a type conflict the exporter would decode wrongly) and warnings
-// (missing paths, unexpected keys, a vanished CORE endpoint, probe problems). A
-// plugin-gated endpoint answering 404 is expected (plugin not installed) and is
-// NOT a warning — otherwise a box that simply doesn't run every optional plugin
-// would keep the drift issue open forever.
+// (missing paths, unexpected keys, an unresolved required coverage path, a
+// vanished CORE endpoint, probe problems). A plugin-gated endpoint answering 404
+// is expected (plugin not installed) and is NOT a warning — otherwise a box that
+// simply doesn't run every optional plugin would keep the drift issue open
+// forever.
+//
+// Unverified paths are the same story one level down: only a path the coverage
+// ledger marks required-and-verifiable warns (#377). State-optional, unledgered
+// and structurally-opaque paths stay informational, because a warning no live
+// run could ever clear is permanent noise, not a signal.
 func aggregate(results []probeResult) (drift, warnings bool) {
 	gated := pluginGatedSet()
+	if len(reviewCoverage(results, loadCoverageIndex()).RequiredUnresolved) > 0 {
+		warnings = true
+	}
 	for _, r := range results {
 		if len(r.Res.Mismatches) > 0 {
 			drift = true
 		}
 		unexpectedAbsent := r.Absent && !gated[r.Endpoint]
+		// UnknownPaths is deliberately NOT a warning yet — see the report-only
+		// note in renderReport. The first live baseline (2026-07-25) surfaced
+		// 1003 unmodelled nested paths across 62 endpoints, so warning on them
+		// now would pin the drift issue open permanently and train everyone to
+		// ignore it, which is the exact risk #376 names. They still render in
+		// full, so discovery is unaffected. #457 triages the baseline into
+		// knownExtraPaths, and flipping this back is that issue's final step.
 		if len(r.Res.Missing) > 0 || len(r.Res.UnknownTopKeys) > 0 ||
 			unexpectedAbsent || r.ProbeErr != "" || r.SkippedParam {
 			warnings = true
 		}
 	}
 	return drift, warnings
+}
+
+// codeList renders metric family names as an inline backticked list.
+func codeList(names []string) string {
+	quoted := make([]string, 0, len(names))
+	for _, n := range names {
+		quoted = append(quoted, "`"+n+"`")
+	}
+	return strings.Join(quoted, ", ")
 }
 
 // renderReport builds the markdown drift report. It prints endpoint names,
@@ -49,7 +74,7 @@ func renderReport(results []probeResult, exempt map[string]string) string {
 	var b strings.Builder
 	b.WriteString("## OPNsense live-box schema canary\n\n")
 
-	var mismatched, missing, unknown, absentUnexpected, absentGated, errored, skipped, unverified, clean int
+	var mismatched, missing, unknown, unknownNested, absentUnexpected, absentGated, errored, skipped, unverified, clean int
 	gated := pluginGatedSet()
 	for _, r := range results {
 		switch {
@@ -65,7 +90,7 @@ func renderReport(results []probeResult, exempt map[string]string) string {
 			skipped++
 		case len(r.Res.Mismatches) > 0:
 			mismatched++
-		case len(r.Res.Missing) > 0 || len(r.Res.UnknownTopKeys) > 0:
+		case len(r.Res.Missing) > 0 || len(r.Res.UnknownTopKeys) > 0 || len(r.Res.UnknownPaths) > 0:
 			// counted below per category
 		default:
 			clean++
@@ -76,12 +101,15 @@ func renderReport(results []probeResult, exempt map[string]string) string {
 		if len(r.Res.UnknownTopKeys) > 0 {
 			unknown++
 		}
+		if len(r.Res.UnknownPaths) > 0 {
+			unknownNested++
+		}
 		if len(r.Res.Unverified) > 0 {
 			unverified++
 		}
 	}
-	fmt.Fprintf(&b, "Probed **%d** endpoints: %d clean, %d with breaking type drift, %d with missing paths, %d with unexpected top-level keys, %d absent 404 (%d unexpected, %d plugin-gated/expected), %d probe errors, %d skipped (no live parameter).\n\n",
-		len(results), clean, mismatched, missing, unknown, absentUnexpected+absentGated, absentUnexpected, absentGated, errored, skipped)
+	fmt.Fprintf(&b, "Probed **%d** endpoints: %d clean, %d with breaking type drift, %d with missing paths, %d with unexpected top-level keys, %d with unexpected nested keys, %d absent 404 (%d unexpected, %d plugin-gated/expected), %d probe errors, %d skipped (no live parameter).\n\n",
+		len(results), clean, mismatched, missing, unknown, unknownNested, absentUnexpected+absentGated, absentUnexpected, absentGated, errored, skipped)
 
 	section := func(title string, body func()) {
 		start := b.Len()
@@ -126,6 +154,17 @@ func renderReport(results []probeResult, exempt map[string]string) string {
 		}
 	})
 
+	// Nested extras (#376). Paths are normalized by the validator: array
+	// elements are "[]" and dynamic map identities are "*", so a hostname, peer
+	// identity or interface name can never reach this public report.
+	section("ℹ️ Unexpected nested keys — REPORT-ONLY baseline, not a warning (data we do not model; exempt in `opnsense/testdata/schemas/exemptions.json` under `knownExtraPaths` once triaged — see #457)", func() {
+		for _, r := range results {
+			for _, p := range r.Res.UnknownPaths {
+				fmt.Fprintf(&b, "- `%s` `%s`\n", r.Endpoint, p)
+			}
+		}
+	})
+
 	section("🟡 Core endpoints absent on the box (404 — route renamed or removed upstream?)", func() {
 		for _, r := range results {
 			if r.Absent && !gated[r.Endpoint] {
@@ -158,8 +197,47 @@ func renderReport(results []probeResult, exempt map[string]string) string {
 		}
 	})
 
+	// Live coverage (#377): every unverified endpoint/path pair is named, split
+	// by its class in the committed coverage ledger. Paths only — the validator
+	// has already normalized array elements to "[]" and dynamic map identities
+	// to "*", and no value ever enters a ValidationResult.
+	review := reviewCoverage(results, loadCoverageIndex())
+
+	section("🟡 Unverified paths that back metrics (required coverage — exercise the testbed)", func() {
+		for _, f := range review.RequiredUnresolved {
+			fmt.Fprintf(&b, "- `%s` `%s` — backs %s\n", f.Endpoint, f.Path, codeList(f.Entry.Metrics))
+			if f.Entry.Blocker != "" {
+				fmt.Fprintf(&b, "  - blocker: %s\n", f.Entry.Blocker)
+			}
+			if f.Entry.Exercise != "" {
+				fmt.Fprintf(&b, "  - exercise: %s\n", f.Entry.Exercise)
+			}
+		}
+	})
+
+	section("ℹ️ Standing blind spots (required coverage the schema models as `any` — no live run can clear these)", func() {
+		for _, f := range review.Opaque {
+			fmt.Fprintf(&b, "- `%s` `%s` — backs %s\n", f.Endpoint, f.Path, codeList(f.Entry.Metrics))
+			if f.Entry.Blocker != "" {
+				fmt.Fprintf(&b, "  - %s\n", f.Entry.Blocker)
+			}
+		}
+	})
+
+	section("ℹ️ Unverified paths (ledgered box/hardware state)", func() {
+		for _, f := range review.StateOptional {
+			fmt.Fprintf(&b, "- `%s` `%s` — %s\n", f.Endpoint, f.Path, f.Entry.Reason)
+		}
+	})
+
+	section("ℹ️ Unverified paths (not in `opnsense/testdata/schemas/coverage.json` — classify if one backs a metric)", func() {
+		for _, f := range review.Unledgered {
+			fmt.Fprintf(&b, "- `%s` `%s`\n", f.Endpoint, f.Path)
+		}
+	})
+
 	if unverified > 0 {
-		fmt.Fprintf(&b, "%d endpoints have paths that could not be verified (empty lists/maps on the box) — increase box activity to cover them.\n\n", unverified)
+		fmt.Fprintf(&b, "%d endpoints have paths that could not be verified (empty lists/maps or nulls on the box) — see the per-path sections above.\n\n", unverified)
 	}
 	if len(exempt) > 0 {
 		fmt.Fprintf(&b, "%d endpoints have no schema (see `schemaExemptEndpoints` in `opnsense/schema_registry.go`).\n", len(exempt))
