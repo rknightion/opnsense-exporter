@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-endpoint-errors",
+    "name": "opnsense-collector-data-stale",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,10 +11,10 @@
     }
   },
   "spec": {
-    "title": "OPNsenseEndpointErrors",
+    "title": "OPNsenseCollectorDataStale",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "15m0s",
+    "for": "5m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -22,8 +22,8 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-      "description": "The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m (at least one error in every rolling 2m window for the full 15m). A brief router reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. One alert per endpoint. SCOPE (#382): this rule is the FAST/MEDIUM-tier signal and the one that names the failing endpoint. It structurally cannot fire for a collector on the slow (5m) or cold (15m) poll tier, because such a collector increments the counter only once per tier and the 2m window is empty in between, resetting the 15m pending clock every eval. Widening the window to cover those tiers would reintroduce the #94 false page (a window as long as `for` keeps the condition true for a full window after recovery), so the window is deliberately left at 2m and every tier is covered instead by OPNsenseCollectorDataStale, which is driven by the data clock and scales its tolerance with each collector's own interval.",
+      "summary": "OPNsense collector {{ $labels.collector }} is serving stale data",
+      "description": "Collector {{ $labels.collector }} has not replaced its stored metric buffer for more than 3 of its own poll intervals ({{ $values.A.Value | printf \"%.1f\" }} missed intervals and counting), so every scrape and every OTLP export is replaying retained last-good values of that age. Tolerance is expressed in MISSED INTERVALS, so it scales with the collector's tier (fast 15s / medium 60s / slow 5m / cold 15m, or a --collector.poll-interval-override): 3 missed intervals plus a 120s scrape-lag allowance plus the 5m pending period, which is ~8m on the fast tier and ~52m on the cold tier. One failed poll followed by recovery peaks at ~2 missed intervals and cannot fire. The data is NOT blanked \u2014 retention is deliberate (#336 D8) \u2014 so the dashboard still shows values; they are just old. Check opnsense_exporter_scrape_collector_success and the endpoint-error panels for the cause. NOTE the last-poll clock is useless here: it advances on every failed attempt too (#382).",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[2m]))",
+          "expr": "(time() - opnsense_exporter_collector_snapshot_timestamp_seconds - 120) / opnsense_exporter_collector_poll_interval_seconds",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,7 +63,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  0,
+                  3,
                   0
                 ]
               },

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -413,5 +414,119 @@ func TestDeliveryMetrics_ZeroSeeded(t *testing.T) {
 
 	if got := gaugeValue(t, reg, mEnabled); got != 0 {
 		t.Errorf("otlp_enabled before Start = %v, want 0", got)
+	}
+}
+
+// TestStart_FastLaneExportsOnItsOwnCadence pins the #390 acceptance criterion that
+// fast-tier metrics export at the fast interval while everything else does not.
+//
+// The base lane is parked at a 1-hour interval, so it cannot tick during the test —
+// every request the server sees before shutdown therefore came from the fast reader.
+// That is the whole claim: a second, faster stream exists and carries only its own
+// gatherer set, without the base lane's series riding along four times a minute.
+func TestStart_FastLaneExportsOnItsOwnCadence(t *testing.T) {
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	selfReg := prometheus.NewRegistry()
+
+	baseReg := prometheus.NewRegistry()
+	baseGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_base_lane_gauge", Help: "base"})
+	baseReg.MustRegister(baseGauge)
+	baseGauge.Set(1)
+
+	fastReg := prometheus.NewRegistry()
+	fastGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_fast_lane_gauge", Help: "fast"})
+	fastReg.MustRegister(fastGauge)
+	fastGauge.Set(1)
+
+	cfg := &options.OTLPConfig{
+		Protocol:           "http/protobuf",
+		Endpoint:           srv.URL,
+		Insecure:           true,
+		ExportInterval:     time.Hour, // parked: cannot tick during the test
+		FastExportInterval: 150 * time.Millisecond,
+		ServiceName:        "opnsense-exporter",
+	}
+	shutdown, err := Start(
+		context.Background(), []prometheus.Gatherer{baseReg},
+		cfg, "v-test", "inst", selfReg, discardLogger(),
+		fastReg,
+	)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) && requests.Load() < 3 {
+		time.Sleep(25 * time.Millisecond)
+	}
+	duringRun := requests.Load()
+	if duringRun < 3 {
+		t.Fatalf("fast lane exported %d times in 4s at a 150ms interval, want >= 3 "+
+			"(the base lane is parked at 1h, so these can only be the fast reader)", duringRun)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	// The single Shutdown must flush and stop BOTH readers within the bounded
+	// contract — including the base lane, which has not exported at all yet.
+	if after := requests.Load(); after <= duringRun {
+		t.Errorf("shutdown must flush the base lane too: requests %d -> %d", duringRun, after)
+	}
+
+	// Every export from both lanes is booked exactly once in the shared counters.
+	if got := counterValue(t, selfReg, mExports, resultSuccess); got < float64(duringRun) {
+		t.Errorf("%s{result=success} = %v, want >= the %d observed fast-lane exports",
+			mExports, got, duringRun)
+	}
+}
+
+// TestStart_NoFastIntervalKeepsSingleLane pins backward compatibility: with the fast
+// interval unset, supplying fast gatherers must NOT create a second reader.
+func TestStart_NoFastIntervalKeepsSingleLane(t *testing.T) {
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	fastReg := prometheus.NewRegistry()
+	g := prometheus.NewGauge(prometheus.GaugeOpts{Name: "opnsense_unused_fast_gauge", Help: "x"})
+	fastReg.MustRegister(g)
+	g.Set(1)
+
+	cfg := &options.OTLPConfig{
+		Protocol:       "http/protobuf",
+		Endpoint:       srv.URL,
+		Insecure:       true,
+		ExportInterval: time.Hour,
+		ServiceName:    "opnsense-exporter",
+		// FastExportInterval deliberately zero.
+	}
+	shutdown, err := Start(
+		context.Background(), []prometheus.Gatherer{prometheus.NewRegistry()},
+		cfg, "v-test", "inst", prometheus.NewRegistry(), discardLogger(),
+		fastReg,
+	)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	if n := requests.Load(); n != 0 {
+		t.Errorf("with no fast interval nothing may export before shutdown, got %d requests", n)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		t.Fatalf("shutdown: %v", err)
 	}
 }

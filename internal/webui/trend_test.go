@@ -6,6 +6,8 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
+
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 )
 
@@ -192,8 +194,8 @@ func TestServer_TrendSample_ReadsPassiveDeps(t *testing.T) {
 
 	d := testDeps()
 	d.Tracker = tracker
-	d.Metrics = func() ([]*dto.MetricFamily, time.Time) {
-		return []*dto.MetricFamily{famWith("m", 12)}, time.Now()
+	d.Capture = func() metricsnap.Capture {
+		return metricsnap.Capture{Families: []*dto.MetricFamily{famWith("m", 12)}, At: time.Now()}
 	}
 	d.LogThroughput = func() (uint64, uint64) { return 700, 7 }
 
@@ -233,8 +235,8 @@ func TestSnapshotCarriesTrend(t *testing.T) {
 
 	d := testDeps()
 	d.Tracker = tracker
-	d.Metrics = func() ([]*dto.MetricFamily, time.Time) {
-		return []*dto.MetricFamily{famWith("m", 9)}, time.Now()
+	d.Capture = func() metricsnap.Capture {
+		return metricsnap.Capture{Families: []*dto.MetricFamily{famWith("m", 9)}, At: time.Now()}
 	}
 	srv := NewServer(d)
 	srv.trend.sample(srv.trendSample())

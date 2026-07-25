@@ -1095,3 +1095,138 @@ func collectPollClocks(t *testing.T, c *Collector) map[string]float64 {
 	}
 	return out
 }
+
+// TestOTLPLanePartitionIsDisjointAndComplete pins the #390 partition contract. The
+// whole risk of a second OTLP reader is emitting the same series identity twice, so
+// this asserts the two lanes are disjoint AND together cover exactly what the single
+// lane covers today.
+func TestOTLPLanePartitionIsDisjointAndComplete(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	gw := &fakeCollectorInstance{name: GatewaysSubsystem, emit: []prometheus.Metric{testMetric("opnsense_gw_series", 1)}}  // fast tier
+	fw := &fakeCollectorInstance{name: FirmwareSubsystem, emit: []prometheus.Metric{testMetric("opnsense_fw_series", 2)}}  // cold tier
+	plain := &fakeCollectorInstance{name: "no_tier_plain", emit: []prometheus.Metric{testMetric("opnsense_pl_series", 3)}} // medium
+	c := newScrapeTestCollector(t, client, gw, fw, plain)
+	c.pollHealth(context.Background())
+	for _, f := range []*fakeCollectorInstance{gw, fw, plain} {
+		c.pollOnce(context.Background(), f)
+	}
+
+	fast := c.FastCollectorNames()
+	if len(fast) != 1 || fast[0] != GatewaysSubsystem {
+		t.Fatalf("fast lane membership = %v, want just [%s]", fast, GatewaysSubsystem)
+	}
+
+	// Compare SERIES IDENTITY (name + labels), not bare family name: two lanes may
+	// legitimately both emit opnsense_exporter_collector_poll_interval_seconds, one
+	// per collector they own. What must never collide is a full label tuple.
+	single, singleNames := describeLane(t, c.ScrapeView(context.Background(), nil))
+	baseL, baseNames := describeLane(t, c.OTLPBaseView())
+	fastL, fastNames := describeLane(t, c.OTLPFastView())
+
+	// Disjoint: not one shared series identity between the lanes.
+	for k := range fastL {
+		if baseL[k] {
+			t.Errorf("series %q is emitted by BOTH lanes — duplicate identity", k)
+		}
+	}
+	// Complete: the union is exactly what one lane emits today.
+	union := map[string]bool{}
+	for k := range baseL {
+		union[k] = true
+	}
+	for k := range fastL {
+		union[k] = true
+	}
+	for k := range single {
+		if !union[k] {
+			t.Errorf("series %q is emitted by the single lane but by NEITHER split lane", k)
+		}
+	}
+	for k := range union {
+		if !single[k] {
+			t.Errorf("series %q is emitted by a split lane but not by the single lane", k)
+		}
+	}
+
+	// The fast lane carries the fast collector's own series and none of the
+	// always-on/health block — those belong to the base lane alone.
+	if !fastNames["opnsense_gw_series"] {
+		t.Error("fast lane must carry the fast collector's metrics")
+	}
+	if fastNames["opnsense_up_test"] {
+		t.Error("health gauges must be base-lane only")
+	}
+	if !baseNames["opnsense_up_test"] {
+		t.Error("base lane must carry the health gauges")
+	}
+	if !baseNames["opnsense_fw_series"] || !baseNames["opnsense_pl_series"] {
+		t.Error("base lane must carry every non-fast collector's metrics")
+	}
+	if fastNames["opnsense_fw_series"] || fastNames["opnsense_pl_series"] {
+		t.Error("fast lane must not carry non-fast collectors")
+	}
+	if !singleNames["opnsense_gw_series"] {
+		t.Error("sanity: the single lane must carry everything")
+	}
+}
+
+// TestOTLPLaneMembershipFollowsOverrides pins that lane membership follows the
+// EFFECTIVE interval, so an operator override moves a collector between lanes — both
+// directions.
+func TestOTLPLaneMembershipFollowsOverrides(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	gw := &fakeCollectorInstance{name: GatewaysSubsystem}
+	fw := &fakeCollectorInstance{name: FirmwareSubsystem}
+	c := newScrapeTestCollector(t, client, gw, fw)
+
+	// Slow the fast collector down and speed the cold one up: they swap lanes.
+	c.pollOverrides = map[string]time.Duration{
+		GatewaysSubsystem: IntervalMedium,
+		FirmwareSubsystem: IntervalFast,
+	}
+	fast := c.FastCollectorNames()
+	if len(fast) != 1 || fast[0] != FirmwareSubsystem {
+		t.Errorf("lane membership must follow operator overrides, got %v", fast)
+	}
+}
+
+// describeLane collects a lane view and returns two sets: full series identities
+// (name plus every label pair, which is what must never be duplicated across
+// lanes) and bare family names (convenient for presence assertions).
+func describeLane(t *testing.T, view prometheus.Collector) (series, names map[string]bool) {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 512)
+	view.Collect(ch)
+	close(ch)
+	series, names = map[string]bool{}, map[string]bool{}
+	for m := range ch {
+		d := &dto.Metric{}
+		if err := m.Write(d); err != nil {
+			t.Fatalf("write metric: %v", err)
+		}
+		name := metricNameOf(m)
+		key := name
+		for _, l := range d.GetLabel() {
+			key += "|" + l.GetName() + "=" + l.GetValue()
+		}
+		series[key] = true
+		names[name] = true
+	}
+	return series, names
+}
+
+// metricNameOf extracts the fqName out of a Desc's string form.
+func metricNameOf(m prometheus.Metric) string {
+	s := m.Desc().String()
+	const marker = `fqName: "`
+	i := strings.Index(s, marker)
+	if i < 0 {
+		return s
+	}
+	rest := s[i+len(marker):]
+	j := strings.Index(rest, `"`)
+	if j < 0 {
+		return s
+	}
+	return rest[:j]
+}

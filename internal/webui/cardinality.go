@@ -160,11 +160,7 @@ func (s *Server) registerCardinality(mux *http.ServeMux) {
 // never gathers. (The console page builds its own copy inside snapshot(); these
 // endpoints keep an independent build so they work even if that changes.)
 func (s *Server) cardinalitySnapshot() CardinalityReport {
-	var families []*dto.MetricFamily
-	if s.deps.Metrics != nil {
-		families, _ = s.deps.Metrics()
-	}
-	rep := buildCardinality(families, warnCardinality, critCardinality)
+	rep := buildCardinality(s.families(), warnCardinality, critCardinality)
 	rep.Generated = time.Now()
 	if s.growth != nil {
 		rep.Growth = s.growth.rows()

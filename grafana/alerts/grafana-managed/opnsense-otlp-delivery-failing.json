@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-endpoint-errors",
+    "name": "opnsense-otlp-delivery-failing",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,7 +11,7 @@
     }
   },
   "spec": {
-    "title": "OPNsenseEndpointErrors",
+    "title": "OPNsenseOTLPDeliveryFailing",
     "noDataState": "Ok",
     "execErrState": "Error",
     "for": "15m0s",
@@ -22,8 +22,8 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-      "description": "The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m (at least one error in every rolling 2m window for the full 15m). A brief router reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. One alert per endpoint. SCOPE (#382): this rule is the FAST/MEDIUM-tier signal and the one that names the failing endpoint. It structurally cannot fire for a collector on the slow (5m) or cold (15m) poll tier, because such a collector increments the counter only once per tier and the 2m window is empty in between, resetting the 15m pending clock every eval. Widening the window to cover those tiers would reintroduce the #94 false page (a window as long as `for` keeps the condition true for a full window after recovery), so the window is deliberately left at 2m and every tier is covered instead by OPNsenseCollectorDataStale, which is driven by the data clock and scales its tolerance with each collector's own interval.",
+      "summary": "OPNsense exporter OTLP metric delivery failing",
+      "description": "Every OTLP metric export has failed back-to-back for 15m ({{ $values.A.Value | printf \"%.0f\" }} consecutive failures) \u2014 no metrics are reaching the OTLP backend. READ THIS BEFORE RELYING ON IT: an exporter cannot ship its own failure metric through the path that is failing, so this signal CANNOT REACH A PURE-OTLP BACKEND DURING THE OUTAGE. It is for /metrics scrapers, for the operator console (which reads it passively), and as post-recovery forensics once delivery resumes and the backfilled series shows how long it was broken. On a pure-OTLP backend the in-band signal for this failure mode is staleness of the exporter's data itself, not this rule. opnsense_exporter_otlp_last_success_timestamp_seconds gives the recovery timeline; 0 there means no export has EVER succeeded since startup, which points at a wrong endpoint or a bad credential rather than a backend outage \u2014 the exporter connects lazily, so a clean start proves nothing about delivery (#388).",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[2m]))",
+          "expr": "opnsense_exporter_otlp_consecutive_failures",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

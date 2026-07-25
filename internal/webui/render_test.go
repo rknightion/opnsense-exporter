@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	dto "github.com/prometheus/client_model/go"
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -89,7 +89,7 @@ func testDeps() Deps {
 		Host:              "fw.example",
 		StartTime:         time.Now().Add(-time.Minute),
 		Tracker:           collector.NewStatusTracker(),
-		Metrics:           func() ([]*dto.MetricFamily, time.Time) { return nil, time.Time{} },
+		Capture:           func() metricsnap.Capture { return metricsnap.Capture{} },
 		Cache:             func() []opnsense.CacheEntryView { return nil },
 		EffectiveConfig:   func() []options.ConfigSection { return nil },
 		AllCollectorNames: []string{"gateways"},

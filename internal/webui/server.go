@@ -6,7 +6,7 @@
 // and a disconnect banner.
 //
 // No console request ever triggers a firewall scrape. The status snapshot is
-// built only from Deps.Metrics (a metricsnap snapshot), the StatusTracker, and
+// built only from Deps.Capture (a metricsnap capture), the StatusTracker, and
 // the API-client cache view — never a live Gather(). Two exceptions load
 // off the auto-refresh poll: the effective Config is rendered server-side once
 // per full page load (EffectiveConfig reads secret files from disk), and the
@@ -36,6 +36,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -48,10 +49,22 @@ type Deps struct {
 	Version, GoVersion, Host, InstanceLabel string
 	StartTime                               time.Time
 	Tracker                                 *collector.StatusTracker
-	Metrics                                 func() ([]*dto.MetricFamily, time.Time) // metricsnap.Recorder.Snapshot
-	Cache                                   func() []opnsense.CacheEntryView
-	EffectiveConfig                         func() []options.ConfigSection
-	Devices                                 func(ctx context.Context) (DeviceReport, error)
+	// Capture returns the passive metric capture the whole console renders from
+	// (metricsnap.Recorder.Capture). It carries the families, their capture time,
+	// and whether that capture arrived WITH a gather error — the console must say
+	// so rather than presenting partial data as a clean snapshot (#389). May be
+	// nil; the console then renders a never-captured state.
+	Capture func() metricsnap.Capture
+	// Health returns the scheduler's passive upstream-health snapshot
+	// (collector.Collector.HealthSnapshot). It makes no API call and never gathers
+	// the registry. It is what lets the top-level badge report an unreachable box
+	// during an outage in which the scheduler skips collector polls entirely, so
+	// collector history alone stays deceptively green (#384). May be nil, in which
+	// case the console says nothing about the box rather than claiming it is fine.
+	Health          func() collector.HealthSnapshot
+	Cache           func() []opnsense.CacheEntryView
+	EffectiveConfig func() []options.ConfigSection
+	Devices         func(ctx context.Context) (DeviceReport, error)
 	// LogThroughput returns the log-shipping pipeline's process-lifetime totals of
 	// records confirmed exported and records lost (logship.Throughput). It is nil
 	// when --logs.enabled is off, which is how the console knows there is no emit
@@ -113,7 +126,7 @@ func NewServer(d Deps) *Server {
 // sampler and the series/throughput/fleet trend sampler — all on the same
 // cadence. Call once after NewServer; pair with Close on shutdown.
 func (s *Server) StartBackground() {
-	s.growth.start(s.deps.Metrics, growthSampleInterval)
+	s.growth.start(s.families, growthSampleInterval)
 	s.runtime.start(growthSampleInterval)
 	s.trend.start(s.trendSample, growthSampleInterval)
 }
@@ -131,10 +144,7 @@ func (s *Server) Close() {
 // It never gathers and never touches the firewall.
 func (s *Server) trendSample() trendSample {
 	smp := trendSample{at: time.Now()}
-	if s.deps.Metrics != nil {
-		families, _ := s.deps.Metrics()
-		smp.series = countSeries(families)
-	}
+	smp.series = countSeries(s.families())
 	if s.deps.Tracker != nil {
 		smp.active, smp.failing, smp.meanMs = aggregateFleet(s.deps.Tracker.Snapshot())
 	}
@@ -142,6 +152,30 @@ func (s *Server) trendSample() trendSample {
 		smp.shipped, smp.dropped = s.deps.LogThroughput()
 	}
 	return smp
+}
+
+// capture returns the latest passive metric capture, or a zero Capture when no
+// recorder is wired. Every console read of the metric families goes through here
+// so the partial/never-captured metadata travels with them.
+func (s *Server) capture() metricsnap.Capture {
+	if s.deps.Capture == nil {
+		return metricsnap.Capture{}
+	}
+	return s.deps.Capture()
+}
+
+// families is the families-only view of capture(), for the samplers that need
+// nothing else.
+func (s *Server) families() []*dto.MetricFamily { return s.capture().Families }
+
+// health returns the scheduler's upstream-health snapshot, or nil when no health
+// seam is wired. Nil means "we cannot say", never "the box is fine".
+func (s *Server) health() *collector.HealthSnapshot {
+	if s.deps.Health == nil {
+		return nil
+	}
+	h := s.deps.Health()
+	return &h
 }
 
 // routeRegistrars is the set of per-area route registration functions. Each
@@ -202,23 +236,21 @@ func (s *Server) serviceInfo() ServiceInfo {
 	return info
 }
 
-// snapshot builds the full Status model from the passive tracker, the
-// last-scrape metric families, and the cache view. It never gathers.
+// snapshot builds the full Status model from the passive tracker, the passive
+// metric capture, the scheduler's upstream-health snapshot and the cache view. It
+// never gathers and never calls the OPNsense API.
 func (s *Server) snapshot() Status {
 	var stats []collector.CollectorStat
 	if s.deps.Tracker != nil {
 		stats = s.deps.Tracker.Snapshot()
 	}
-	var families []*dto.MetricFamily
-	var at time.Time
-	if s.deps.Metrics != nil {
-		families, at = s.deps.Metrics()
-	}
+	capt := s.capture()
+	families := capt.Families
 	var cache []opnsense.CacheEntryView
 	if s.deps.Cache != nil {
 		cache = s.deps.Cache()
 	}
-	st := buildStatus(stats, families, cache, s.serviceInfo(), s.deps.AllCollectorNames)
+	st := buildStatus(stats, capt, cache, s.serviceInfo(), s.deps.AllCollectorNames, s.health())
 	st.Runtime = s.runtime.stats()
 	st.Trend = s.trend.stats()
 	// Fold the cardinality report from the SAME already-fetched families (single
@@ -231,10 +263,5 @@ func (s *Server) snapshot() Status {
 	card.Growth = s.growth.rows()
 	st.Cardinality = card
 	st.Generated = time.Now()
-	if at.IsZero() {
-		st.ScrapeAge = "never"
-	} else {
-		st.ScrapeAge = shortDur(time.Since(at)) + " ago"
-	}
 	return st
 }

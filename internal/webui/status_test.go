@@ -6,6 +6,8 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
+
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 )
 
@@ -14,6 +16,9 @@ func TestCollectorRow_NextRunAndFreshness(t *testing.T) {
 	s := collector.CollectorStat{
 		Name: "gateways", Display: "Gateways", Runs: 10, Failures: 1, LastOK: true,
 		Interval: 60 * time.Second, LastFinished: now.Add(-15 * time.Second),
+		// Data stored on that same poll, and the scheduler's real next tick 45s out.
+		SnapshotAt: now.Add(-15 * time.Second), LastSuccessAt: now.Add(-15 * time.Second),
+		NextDeadline: now.Add(45 * time.Second),
 	}
 	r := collectorRow(s)
 	if r.IntervalSec != 60 {
@@ -36,10 +41,11 @@ func TestCollectorRow_NextRunAndFreshness(t *testing.T) {
 
 func TestCollectorRow_StaleAndNeverRun(t *testing.T) {
 	now := time.Now()
-	// stale: age > 2× interval
+	// stale: DATA age > 2× interval, with the scheduler deadline already passed.
 	stale := collectorRow(collector.CollectorStat{
 		Name: "pf", Display: "PF", Runs: 3, LastOK: true,
 		Interval: 15 * time.Second, LastFinished: now.Add(-40 * time.Second),
+		SnapshotAt: now.Add(-40 * time.Second), NextDeadline: now.Add(-25 * time.Second),
 	})
 	if stale.FreshnessState != "stale" {
 		t.Errorf("FreshnessState=%q want stale", stale.FreshnessState)
@@ -88,7 +94,7 @@ func TestDeriveHealth_Healthy(t *testing.T) {
 		{Name: "gateways", Display: "Gateways", Runs: 3, LastOK: true},
 		{Name: "unbound", Display: "Unbound", Runs: 5, LastOK: true},
 	}
-	h, reasons := deriveHealth(stats)
+	h, reasons := deriveHealth(stats, nil)
 	if h != "healthy" {
 		t.Fatalf("want healthy, got %q (%v)", h, reasons)
 	}
@@ -102,7 +108,7 @@ func TestDeriveHealth_DegradedOnLastFail(t *testing.T) {
 		{Name: "gateways", Display: "Gateways", Runs: 3, LastOK: true},
 		{Name: "unbound", Display: "Unbound", Runs: 5, Failures: 1, LastOK: false, LastError: "boom"},
 	}
-	h, reasons := deriveHealth(stats)
+	h, reasons := deriveHealth(stats, nil)
 	if h != "degraded" {
 		t.Fatalf("want degraded, got %q", h)
 	}
@@ -116,14 +122,14 @@ func TestDeriveHealth_StartingWhenAnyUnrun(t *testing.T) {
 		{Name: "gateways", Display: "Gateways", Runs: 3, LastOK: true},
 		{Name: "unbound", Display: "Unbound", Runs: 0},
 	}
-	h, _ := deriveHealth(stats)
+	h, _ := deriveHealth(stats, nil)
 	if h != "starting" {
 		t.Fatalf("want starting, got %q", h)
 	}
 }
 
 func TestDeriveHealth_EmptyIsStarting(t *testing.T) {
-	h, reasons := deriveHealth(nil)
+	h, reasons := deriveHealth(nil, nil)
 	if h != "starting" || len(reasons) == 0 {
 		t.Fatalf("empty want starting+reason, got %q/%v", h, reasons)
 	}
@@ -165,7 +171,7 @@ func TestBuildStatus(t *testing.T) {
 	svc := ServiceInfo{Name: "opnsense-exporter", Version: "test"}
 	allNames := []string{"gateways", "unbound", "extra"}
 
-	st := buildStatus(stats, families, nil, svc, allNames)
+	st := buildStatus(stats, metricsnap.Capture{Families: families}, nil, svc, allNames, nil)
 
 	if st.Stats.MetricFamilies != 4 {
 		t.Fatalf("MetricFamilies want 4, got %d", st.Stats.MetricFamilies)

@@ -37,6 +37,23 @@ type fakeGatherer struct {
 
 func (f fakeGatherer) Gather() ([]*dto.MetricFamily, error) { return f.mfs, f.err }
 
+// family builds a minimal named MetricFamily for the lane-merge tests.
+func family(name string) *dto.MetricFamily {
+	n := name
+	return &dto.MetricFamily{Name: &n}
+}
+
+// gathererOf returns a clean gatherer over the given families.
+func gathererOf(mfs ...*dto.MetricFamily) prometheus.Gatherer {
+	return fakeGatherer{mfs: mfs}
+}
+
+// errGathererOf returns a gatherer that yields families AND an error, the
+// continue-on-error shape the real scrape and OTLP paths produce.
+func errGathererOf(mfs ...*dto.MetricFamily) prometheus.Gatherer {
+	return fakeGatherer{mfs: mfs, err: errors.New("boom")}
+}
+
 // TestRecorder_PartialErrorReplacesSnapshot covers the core bug fix: a
 // gather that returns non-empty families ALONGSIDE an error (the real
 // promhttp.ContinueOnError / OTLP continue-on-error shape) must still
@@ -244,3 +261,101 @@ func TestRecorder_ConcurrentGatherAndCapture(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// TestRecorder_MergesDisjointLanes pins the console-facing half of the optional
+// two-lane OTLP split (#390): with the metric set produced by two disjoint readers,
+// neither lane alone is the whole picture, so Capture must return the UNION. Without
+// this the console would silently under-report families, series and cardinality by
+// whatever the fast tier happens to hold.
+func TestRecorder_MergesDisjointLanes(t *testing.T) {
+	r := New()
+	base := r.TeeLane("base", gathererOf(family("opnsense_base_one"), family("opnsense_base_two")))
+	fast := r.TeeLane("fast", gathererOf(family("opnsense_fast_one")))
+
+	if _, err := base.Gather(); err != nil {
+		t.Fatalf("base gather: %v", err)
+	}
+	c := r.Capture()
+	if len(c.Families) != 2 {
+		t.Fatalf("with only the base lane captured, want 2 families, got %d", len(c.Families))
+	}
+
+	if _, err := fast.Gather(); err != nil {
+		t.Fatalf("fast gather: %v", err)
+	}
+	c = r.Capture()
+	names := map[string]bool{}
+	for _, mf := range c.Families {
+		names[mf.GetName()] = true
+	}
+	if len(c.Families) != 3 {
+		t.Errorf("both lanes captured: want the 3-family union, got %d (%v)", len(c.Families), names)
+	}
+	for _, want := range []string{"opnsense_base_one", "opnsense_base_two", "opnsense_fast_one"} {
+		if !names[want] {
+			t.Errorf("merged capture is missing %q", want)
+		}
+	}
+	// Families come back name-sorted, matching what a single Gather would produce.
+	for i := 1; i < len(c.Families); i++ {
+		if c.Families[i-1].GetName() > c.Families[i].GetName() {
+			t.Errorf("merged families must be name-sorted, got %v", names)
+			break
+		}
+	}
+}
+
+// TestRecorder_MergedAgeIsTheStalestLane pins that a merged capture reports the age
+// of its OLDEST contributing lane. The merged set is only as fresh as its stalest
+// part, and claiming otherwise is the same class of quiet lie #382 removes.
+func TestRecorder_MergedAgeIsTheStalestLane(t *testing.T) {
+	r := New()
+	old := r.TeeLane("base", gathererOf(family("opnsense_old")))
+	if _, err := old.Gather(); err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	oldAt := r.Capture().At
+
+	time.Sleep(10 * time.Millisecond)
+	fresh := r.TeeLane("fast", gathererOf(family("opnsense_fresh")))
+	if _, err := fresh.Gather(); err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+
+	c := r.Capture()
+	if !c.At.Equal(oldAt) {
+		t.Errorf("merged capture time = %v, want the stalest lane's %v", c.At, oldAt)
+	}
+}
+
+// TestRecorder_PartialLanePoisonsTheMerge: if ANY contributing lane was partial, the
+// merged capture must be marked partial — the console must not present a union that
+// contains a degraded half as if it were clean.
+func TestRecorder_PartialLanePoisonsTheMerge(t *testing.T) {
+	r := New()
+	clean := r.TeeLane("base", gathererOf(family("opnsense_clean")))
+	broken := r.TeeLane("fast", errGathererOf(family("opnsense_partial")))
+	if _, err := clean.Gather(); err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	if _, err := broken.Gather(); err == nil {
+		t.Fatal("the partial lane must still surface its error to its caller")
+	}
+	if c := r.Capture(); !c.Partial {
+		t.Error("a merge containing a partial lane must be marked partial")
+	}
+}
+
+// TestRecorder_SingleLaneUnchanged pins backward compatibility: plain Tee (the
+// /metrics handler and single-lane OTLP) behaves exactly as before.
+func TestRecorder_SingleLaneUnchanged(t *testing.T) {
+	r := New()
+	g := r.Tee(gathererOf(family("opnsense_a"), family("opnsense_b")))
+	if _, err := g.Gather(); err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	mfs, at := r.Snapshot()
+	if len(mfs) != 2 || at.IsZero() {
+		t.Errorf("single-lane Tee must record both families with a capture time, got %d at %v", len(mfs), at)
+	}
+}

@@ -75,7 +75,120 @@ RULES = [
          description="The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m "
                      "(at least one error in every rolling 2m window for the full 15m). A brief router "
                      "reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. "
-                     "One alert per endpoint."),
+                     "One alert per endpoint. SCOPE (#382): this rule is the FAST/MEDIUM-tier signal and "
+                     "the one that names the failing endpoint. It structurally cannot fire for a collector "
+                     "on the slow (5m) or cold (15m) poll tier, because such a collector increments the "
+                     "counter only once per tier and the 2m window is empty in between, resetting the 15m "
+                     "pending clock every eval. Widening the window to cover those tiers would reintroduce "
+                     "the #94 false page (a window as long as `for` keeps the condition true for a full "
+                     "window after recovery), so the window is deliberately left at 2m and every tier is "
+                     "covered instead by OPNsenseCollectorDataStale, which is driven by the data clock and "
+                     "scales its tolerance with each collector's own interval."),
+    # ---- tier-aware collector staleness (#382) -------------------------------------
+    # Error-aware retention (#336 D8) keeps a collector's last-good metrics when a poll
+    # fails with nothing to emit. That is deliberate and stays. What was missing was any
+    # alertable expression of how OLD the retained data is: last_poll_timestamp advances
+    # on every failed attempt, so it can never express staleness.
+    #
+    # Shape, shared by the two rules below:
+    #
+    #   (time() - <data clock> - 120) / opnsense_exporter_collector_poll_interval_seconds
+    #
+    # i.e. staleness measured in MISSED POLL INTERVALS, not a fixed window — the whole
+    # point, since the tiers span 15s to 15m. Vector matching is left at the default
+    # (all labels bar __name__): both series are emitted from the same collector with an
+    # identical {collector, opnsense_instance} label set, so the pairing is exactly 1:1
+    # and stays correct with several exporters scraped for one opnsense_instance, which
+    # an explicit on(...) would turn into a many-to-many error.
+    #
+    # The 120s subtracted is SCRAPE-LAG ALLOWANCE and is load-bearing on the fast tier.
+    # The gauge is read from the most recent scrape sample, so at eval time the computed
+    # age already includes up to one scrape interval of sample staleness on top of one
+    # poll interval. Without the allowance a perfectly healthy 15s-tier collector reads
+    # (15 + 60) / 15 = 5 missed intervals on a 60s scrape and would fire constantly.
+    #
+    # Worked tolerance at threshold 3, with a 60s scrape:
+    #
+    #   tier          healthy peak   one transient failure   persistent failure fires at
+    #   fast   15s    ~0.0           ~0.0                    age 165s   (+5m for → ~8m)
+    #   medium 60s    0.0            1.0                     age 300s   (+5m for → ~10m)
+    #   slow    5m    0.8            1.8                     age 1020s  (+5m for → ~22m)
+    #   cold   15m    0.9            1.9                     age 2820s  (+5m for → ~52m)
+    #
+    # So a persistent slow-tier AND a persistent cold-tier failure both fire (which
+    # OPNsenseEndpointErrors cannot do), while a single failed poll followed by recovery
+    # peaks at ~2 missed intervals on every tier and never reaches the threshold.
+    # Unlike an increase()-window rule this expression is monotone while the fault
+    # persists, so the pending clock never resets between two once-per-tier attempts.
+    dict(name="opnsense-collector-data-stale", title="OPNsenseCollectorDataStale",
+         A="(time() - opnsense_exporter_collector_snapshot_timestamp_seconds - 120) "
+           "/ opnsense_exporter_collector_poll_interval_seconds",
+         op="gt", params=[3, 0], for_min=5, severity="warning",
+         summary="OPNsense collector {{ $labels.collector }} is serving stale data",
+         description="Collector {{ $labels.collector }} has not replaced its stored metric buffer for more "
+                     "than 3 of its own poll intervals ({{ $values.A.Value | printf \"%.1f\" }} missed "
+                     "intervals and counting), so every scrape and every OTLP export is replaying retained "
+                     "last-good values of that age. Tolerance is expressed in MISSED INTERVALS, so it "
+                     "scales with the collector's tier (fast 15s / medium 60s / slow 5m / cold 15m, or a "
+                     "--collector.poll-interval-override): 3 missed intervals plus a 120s scrape-lag "
+                     "allowance plus the 5m pending period, which is ~8m on the fast tier and ~52m on the "
+                     "cold tier. One failed poll followed by recovery peaks at ~2 missed intervals and "
+                     "cannot fire. The data is NOT blanked — retention is deliberate (#336 D8) — so the "
+                     "dashboard still shows values; they are just old. Check "
+                     "opnsense_exporter_scrape_collector_success and the endpoint-error panels for the "
+                     "cause. NOTE the last-poll clock is useless here: it advances on every failed attempt "
+                     "too (#382)."),
+    # Second clock: fully-clean success. A collector whose primary endpoint works and
+    # whose secondary endpoint errors every time keeps REPLACING its buffer with partial
+    # data, so snapshot age stays low and the rule above correctly stays silent — but
+    # part of its metric set has been silently missing the whole time. The `unless`
+    # suppresses this rule for anything already alerting as fully stale, so a total
+    # outage pages once rather than twice; set-operator matching is pinned explicitly to
+    # (opnsense_instance, collector) since both sides are arithmetic results.
+    # Tolerance is looser (6 missed intervals) and severity lower: data IS still
+    # refreshing, so this is a degradation, not a freeze.
+    dict(name="opnsense-collector-degraded", title="OPNsenseCollectorDegraded",
+         A="((time() - opnsense_exporter_collector_last_success_timestamp_seconds - 120) "
+           "/ opnsense_exporter_collector_poll_interval_seconds) "
+           "unless on(opnsense_instance, collector) "
+           "(((time() - opnsense_exporter_collector_snapshot_timestamp_seconds - 120) "
+           "/ opnsense_exporter_collector_poll_interval_seconds) > 3)",
+         op="gt", params=[6, 0], for_min=10, severity="info",
+         summary="OPNsense collector {{ $labels.collector }} has not fully succeeded",
+         description="Collector {{ $labels.collector }} is still refreshing its stored metrics, but no "
+                     "poll has completed CLEANLY for more than 6 of its own poll intervals "
+                     "({{ $values.A.Value | printf \"%.1f\" }} missed intervals). That is the "
+                     "persistent-partial-failure signature: one endpoint of a multi-endpoint collector "
+                     "erroring every poll while the rest keep updating, so part of its metric set is "
+                     "silently absent or frozen while everything looks fresh. Tolerance is in MISSED "
+                     "INTERVALS so it scales with the collector's tier, and the rule deliberately excludes "
+                     "collectors already covered by OPNsenseCollectorDataStale (fully frozen data), which "
+                     "would otherwise fire both. Severity is info, not warning: data is still flowing, and "
+                     "the endpoint-error panels name the failing endpoint (#382)."),
+    # The two rules above are absent-tolerant by construction — both new gauges are
+    # absent until first set, so a collector that has NEVER stored data produces no
+    # series and cannot alert on staleness. That is the one blind spot they leave and
+    # this rule closes it: a collector that has completed at least one attempt (the
+    # last-poll clock exists) but has never once stored a buffer has failed every poll
+    # since the exporter started, which is the wrong-credential / plugin-missing /
+    # broken-endpoint-from-boot case. The scheduler polls each collector immediately at
+    # startup (after up to 5s jitter), so last_poll appears within seconds on every
+    # tier, making a fixed 30m pending period safe here rather than tier-scaled.
+    dict(name="opnsense-collector-never-stored", title="OPNsenseCollectorNeverStoredData",
+         A="opnsense_exporter_collector_last_poll_timestamp_seconds "
+           "unless on(opnsense_instance, collector) "
+           "opnsense_exporter_collector_snapshot_timestamp_seconds",
+         op="gt", params=[0, 0], for_min=30, severity="warning",
+         summary="OPNsense collector {{ $labels.collector }} has never returned data",
+         description="Collector {{ $labels.collector }} has been polling for 30m and has never once stored "
+                     "a metric buffer — every poll since the exporter started has failed with nothing to "
+                     "emit, so it exports no domain metrics at all. A clean poll that legitimately finds "
+                     "nothing still counts as stored, so this is a real failure, not an empty subsystem. "
+                     "OPNsenseCollectorDataStale cannot cover this: the snapshot-timestamp gauge is absent "
+                     "until the first successful store (deliberately, so it never renders as a 1970 "
+                     "epoch), leaving no series to measure staleness against. Usual causes are a missing "
+                     "plugin, an API key without permission for that endpoint, or a collector enabled "
+                     "against a firewall that does not run the subsystem (#382)."),
     # Split primary vs failover: the default (primary) WAN reconverges in <1m after a reboot, so it
     # keeps a tight for=5m + critical/page. A secondary/failover WAN can take ~7-10m to re-establish
     # (DHCP + dpinger convergence) after a reboot, so it gets for=15m + warning (no page) to avoid
@@ -206,6 +319,31 @@ RULES = [
          description="Push source {{ $labels.source }} has shipped no events for 15m despite being "
                      "continuously active. Scoped to syslog|zenarmor only, so a quiet or unconfigured "
                      "source cannot false-fire."),
+    # OTLP metric delivery (#388). consecutive_failures is the right signal rather than
+    # a rate() on otlp_exports_total{result="error"}: it resets to 0 on the next success,
+    # so ">0 sustained" means an ONGOING outage, and it counts from the very first
+    # attempt — which covers the never-worked-since-boot case (wrong endpoint, expired
+    # credential) that a last-success-staleness rule cannot see, because
+    # otlp_last_success_timestamp_seconds is 0 until something lands and time()-0 is a
+    # meaningless 56-year age. At the default --otlp.export-interval=60s the 15m pending
+    # period is ~15 consecutive failed exports, so a single backend blip or a rolling
+    # restart of the collector endpoint does not fire.
+    dict(name="opnsense-otlp-delivery-failing", title="OPNsenseOTLPDeliveryFailing",
+         A="opnsense_exporter_otlp_consecutive_failures", op="gt", params=[0, 0],
+         for_min=15, severity="warning",
+         summary="OPNsense exporter OTLP metric delivery failing",
+         description="Every OTLP metric export has failed back-to-back for 15m "
+                     "({{ $values.A.Value | printf \"%.0f\" }} consecutive failures) — no metrics are "
+                     "reaching the OTLP backend. READ THIS BEFORE RELYING ON IT: an exporter cannot ship "
+                     "its own failure metric through the path that is failing, so this signal CANNOT REACH "
+                     "A PURE-OTLP BACKEND DURING THE OUTAGE. It is for /metrics scrapers, for the operator "
+                     "console (which reads it passively), and as post-recovery forensics once delivery "
+                     "resumes and the backfilled series shows how long it was broken. On a pure-OTLP "
+                     "backend the in-band signal for this failure mode is staleness of the exporter's data "
+                     "itself, not this rule. opnsense_exporter_otlp_last_success_timestamp_seconds gives "
+                     "the recovery timeline; 0 there means no export has EVER succeeded since startup, "
+                     "which points at a wrong endpoint or a bad credential rather than a backend outage — "
+                     "the exporter connects lazily, so a clean start proves nothing about delivery (#388)."),
     dict(name="opnsense-ipsec-tunnel-down", title="OPNsenseIPsecTunnelDown",
          A="opnsense_ipsec_phase1_status", op="lt", params=[1, 0], for_min=10, severity="warning",
          summary="OPNsense IPsec tunnel {{ $labels.name }} down",

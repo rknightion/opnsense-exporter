@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -787,7 +788,39 @@ func main() {
 		// exports_total, consecutive_failures and last_success_timestamp. Those are
 		// the only local evidence that push is actually reaching the backend — Start
 		// performs no network I/O, so a successful Start proves nothing at all.
-		shutdown, terr := telemetry.Start(context.Background(), []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.Tee(collectorRegistry)}, otlpCfg, version, instanceLabel, selfMetricsRegistry, logger)
+		// Default: one gatherer set, one reader, exactly as before.
+		otlpGatherers := []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.Tee(collectorRegistry)}
+		var fastGatherers []prometheus.Gatherer
+
+		// Optional two-lane split (#390). Polling already runs the fast tier at 15s,
+		// but OTLP re-exported the WHOLE snapshot on one interval — so buying 15s
+		// resolution for gateways/interfaces/pf meant re-sending every cold and medium
+		// series four times a minute too. Measured live on the deployment box: 494 of
+		// 7,226 series (6.8%) are fast-tier, so 15s-everything is 4.00x the 60s
+		// baseline DPM while a 15s fast lane over a 60s base is 1.21x.
+		//
+		// The two lane views are disjoint by construction: the base lane carries every
+		// non-fast collector plus the health/self/always-on block, the fast lane
+		// carries fast-tier collectors only. Each is teed into the recorder under its
+		// own lane key so the console still sees the UNION and its family/series and
+		// cardinality figures stay complete.
+		if otlpCfg.FastExportInterval > 0 {
+			baseRegistry := prometheus.NewRegistry()
+			baseRegistry.MustRegister(collectorInstance.OTLPBaseView())
+			fastRegistry := prometheus.NewRegistry()
+			fastRegistry.MustRegister(collectorInstance.OTLPFastView())
+
+			otlpGatherers = []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.TeeLane("otlp-base", baseRegistry)}
+			fastGatherers = []prometheus.Gatherer{metricsRecorder.TeeLane("otlp-fast", fastRegistry)}
+
+			logger.Info("otlp fast export lane enabled",
+				"fast_interval", otlpCfg.FastExportInterval.String(),
+				"base_interval", otlpCfg.ExportInterval.String(),
+				"fast_collectors", strings.Join(collectorInstance.FastCollectorNames(), ","),
+			)
+		}
+
+		shutdown, terr := telemetry.Start(context.Background(), otlpGatherers, otlpCfg, version, instanceLabel, selfMetricsRegistry, logger, fastGatherers...)
 		if terr != nil {
 			// Fatal, not logged-and-continued (#388). The operator explicitly asked
 			// for OTLP; starting anyway would leave a permanently dead push pipeline
@@ -1250,13 +1283,19 @@ func main() {
 	if *options.MetricsPath != "/" && *options.MetricsPath != "" {
 		if *options.WebUIEnabled {
 			webSrv := webui.NewServer(webui.Deps{
-				Version:         version,
-				GoVersion:       runtime.Version(),
-				Host:            opnsConfig.Host,
-				InstanceLabel:   instanceLabel,
-				StartTime:       startTime,
-				Tracker:         statusTracker,
-				Metrics:         metricsRecorder.Snapshot,
+				Version:       version,
+				GoVersion:     runtime.Version(),
+				Host:          opnsConfig.Host,
+				InstanceLabel: instanceLabel,
+				StartTime:     startTime,
+				Tracker:       statusTracker,
+				Capture:       metricsRecorder.Capture,
+				// Passive upstream health (#384). Without this the console's badge is
+				// derived from collector run history alone, which is silent during
+				// exactly the outage it most needs to report: an unreachable box makes
+				// the scheduler SKIP collector polls, so no failed run is ever recorded
+				// and the last successes keep the badge green while opnsense_up is 0.
+				Health:          collectorInstance.HealthSnapshot,
 				Cache:           opnsenseClient.CacheSnapshot,
 				EffectiveConfig: options.EffectiveConfig,
 				Devices: func(ctx context.Context) (webui.DeviceReport, error) {

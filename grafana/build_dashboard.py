@@ -15,7 +15,7 @@ import os
 import re
 import sys
 
-from builder import Builder, sel, RATE, UPDOWN, OKERR, YESNO, GW_STATUS
+from builder import Builder, sel, RATE, ENABLED, UPDOWN, OKERR, YESNO, GW_STATUS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -286,23 +286,107 @@ def build_diagnostics(b: Builder):
 
     # Poll scheduler observability (#336): each collector polls the OPNsense API on its
     # own tier (fast/medium/slow/cold), decoupled from the Prometheus scrape. These
-    # panels expose the configured interval, freshness (age since last poll), and the
-    # estimated countdown to the next poll — the same data the operator console shows.
+    # panels expose the configured interval, the age of the last poll ATTEMPT, and the
+    # countdown to the next poll — the same data the operator console shows.
     poll_interval = b.table("Collector Poll Interval",
                             [sel("opnsense_exporter_collector_poll_interval_seconds")],
                             renames={"Value": "Interval (s)", "collector": "Collector"},
                             excludes=["opnsense_instance", "__name__", "job", "instance"], w=8, h=8,
                             desc="Configured poll interval per collector (#336): fast 15s / medium 60s / "
                                  "slow 5m / cold 15m, overridable via --collector.poll-interval-override.")
-    poll_age = b.ts("Collector Poll Age (freshness)",
+    # #382: this panel used to be titled "Collector Poll Age (freshness)" and told the
+    # operator that age past the interval meant polls were failing. That was backwards.
+    # last_poll_timestamp advances on EVERY attempt including a failed one, so a
+    # collector failing every single poll keeps this clock at sub-interval values
+    # forever while the snapshot it replays ages indefinitely. It is scheduler
+    # liveness only; data age lives on the two panels in the row below.
+    poll_age = b.ts("Collector Last Attempt Age (scheduler liveness)",
                     [(f'time() - {sel("opnsense_exporter_collector_last_poll_timestamp_seconds")}', "{{collector}}")],
                     unit="s", w=8, h=8,
-                    desc="Seconds since each collector last completed a poll. A value climbing past the "
-                         "collector's interval means its polls are failing or stalled.")
+                    desc="Seconds since each collector's last poll ATTEMPT completed — successful or not. "
+                         "This is SCHEDULER LIVENESS, NOT data freshness: a failed poll advances this clock "
+                         "just like a successful one, so a collector that has been failing for six hours "
+                         "still reads under one interval here while replaying six-hour-old retained data. "
+                         "A value climbing past the collector's interval means the poller itself is stalled "
+                         "or starved of a concurrency slot. For how old the served data actually is, read "
+                         "'Collector Retained Data Age' below (#382).")
     next_poll = b.ts("Collector Next Poll (in)",
                      [(f'{sel("opnsense_exporter_collector_next_poll_timestamp_seconds")} - time()', "{{collector}}")],
                      unit="s", w=8, h=8,
-                     desc="Estimated seconds until each collector's next scheduled poll (last poll + interval).")
+                     desc="Seconds until each collector's next scheduled poll, read from the scheduler's "
+                          "actual fixed-cadence deadline rather than derived from last poll + interval (#385).")
+
+    # #382: the two honest data clocks. Error-aware retention (#336 D8) deliberately
+    # keeps a collector's last-good metrics when a later poll fails with nothing to
+    # show, so the exported domain metrics can be arbitrarily old. These two panels are
+    # the only place that age is visible.
+    snapshot_age = b.ts("Collector Retained Data Age (true data age)",
+                        [(f'time() - {sel("opnsense_exporter_collector_snapshot_timestamp_seconds")}',
+                          "{{collector}}")],
+                        unit="s", w=12, h=8,
+                        desc="Seconds since each collector's stored metric buffer was last REPLACED — the "
+                             "true age of the data every scrape and every OTLP export replays. It advances "
+                             "on a successful poll and on a partial-error poll that still emitted data, and "
+                             "deliberately does NOT advance when a failed poll emitted nothing and the "
+                             "last-good buffer was retained. This is the freshness number: a line climbing "
+                             "past ~3x that collector's poll interval means it is serving stale retained "
+                             "data, which is what OPNsenseCollectorDataStale alerts on. A collector that "
+                             "has never stored data has no line at all (the gauge is absent rather than 0, "
+                             "so it cannot render as a 1970 epoch) — OPNsenseCollectorNeverStoredData "
+                             "covers that case.")
+    success_age = b.ts("Collector Time Since Last Full Success",
+                       [(f'time() - {sel("opnsense_exporter_collector_last_success_timestamp_seconds")}',
+                         "{{collector}}")],
+                       unit="s", w=12, h=8,
+                       desc="Seconds since each collector's last FULLY CLEAN poll. Unlike retained data age "
+                            "this does not advance on a partial-error poll, so the two together separate "
+                            "'refreshed but degraded' from 'fully healthy': if this climbs while retained "
+                            "data age stays low, the collector is still refreshing part of its data but one "
+                            "of its endpoints has been erroring the whole time — see the Endpoint Errors "
+                            "panels above for which one. OPNsenseCollectorDegraded alerts on this.")
+
+    # OTLP delivery health (#388). The exporter connects lazily, so "otlp metrics export
+    # enabled" is logged before any network I/O: a wrong endpoint or expired credential
+    # delivers nothing indefinitely. KNOWN LIMITATION — these series cannot reach a
+    # pure-OTLP backend while the OTLP path is down; read them at /metrics or on the
+    # operator console during an outage, and as historical evidence after recovery.
+    # NOTE: the otlp_* family is registered on the exporter self-metrics registry with
+    # NO opnsense_instance label, so it uses sel_pipeline() (bare selector), never sel()
+    # — sel() would render every panel here permanently empty.
+    b.sentinel("has_otlp", "label_values(opnsense_exporter_otlp_enabled, __name__)")
+    otlp_on = b.stat("OTLP Export Enabled", b.sel_pipeline("opnsense_exporter_otlp_enabled"),
+                     mappings=ENABLED, color_mode="background", graph="none", w=4, h=7,
+                     thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+                     desc="1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery is "
+                          "working: the exporter connects lazily, so this reads 1 from startup even with a "
+                          "wrong endpoint or an expired credential. Judge delivery by the two panels to the "
+                          "right. Construction failure is fatal at startup, so there is no "
+                          "configured-but-inactive state — the metric is either 1 or absent.")
+    otlp_fails = b.stat("OTLP Consecutive Failures",
+                        b.sel_pipeline("opnsense_exporter_otlp_consecutive_failures"),
+                        w=5, h=7, color_mode="background",
+                        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+                        desc="Exports that have failed back-to-back. Reset to 0 by the next success, so any "
+                             "sustained non-zero value is an ongoing delivery outage rather than a blip. "
+                             "OPNsenseOTLPDeliveryFailing alerts on this.")
+    otlp_age = b.stat("Time Since Last Successful OTLP Export",
+                      f'time() - ({b.sel_pipeline("opnsense_exporter_otlp_last_success_timestamp_seconds")} > 0)',
+                      unit="s", w=5, h=7, graph="none", color_mode="background",
+                      thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 300},
+                                  {"color": "red", "value": 900}],
+                      desc="Seconds since the last export the backend accepted. NO DATA here means no "
+                           "export has EVER succeeded since this exporter started — the gauge is 0 in that "
+                           "state and the `> 0` guard suppresses it deliberately, because subtracting 0 "
+                           "from time() would render a 56-year age as though a real export had once "
+                           "landed. No-data plus a rising consecutive-failure count is the "
+                           "never-worked-since-boot case (wrong endpoint / bad credential).")
+    otlp_rate = b.ts("OTLP Export Rate (by result)",
+                     [(f'sum by (result) (rate({b.sel_pipeline("opnsense_exporter_otlp_exports_total")}[{RATE}]))',
+                       "{{result}}")],
+                     unit="reqps", w=10, h=7,
+                     desc="Export calls per second by outcome, counted once per export call and never per "
+                          "metric. Both result values are seeded to 0 at startup, so a healthy exporter "
+                          "shows a flat zero error line rather than an absent series.")
 
     go_goro = b.ts("Exporter Goroutines", [(f"go_goroutines{{{JOB}}}", "goroutines")],
                    w=8, h=6)
@@ -361,6 +445,9 @@ def build_diagnostics(b: Builder):
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
         b.row("Per-Collector Poll Schedule", [poll_interval, poll_age, next_poll]),
+        b.row("Per-Collector Data Freshness", [snapshot_age, success_age]),
+        b.row("OTLP Delivery Health", [otlp_on, otlp_fails, otlp_age, otlp_rate],
+              present="has_otlp"),
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
         b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
         b.row("Exporter Build & Collectors", [build, cov]),

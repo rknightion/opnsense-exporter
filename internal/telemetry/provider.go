@@ -46,6 +46,7 @@ func Start(
 	version, instance string,
 	reg prometheus.Registerer,
 	log *slog.Logger,
+	fastGatherers ...prometheus.Gatherer,
 ) (func(context.Context) error, error) {
 	rawExporter, err := newExporter(ctx, cfg)
 	if err != nil {
@@ -85,6 +86,39 @@ func Start(
 		sdkmetric.WithInterval(cfg.ExportInterval),
 		sdkmetric.WithProducer(producer),
 	)
+	readers := []sdkmetric.Reader{reader}
+
+	// Optional second lane (#390): fast-tier collectors export at their own, shorter
+	// interval while everything else stays on the base interval. Off unless BOTH a
+	// fast interval and a disjoint fast gatherer set are supplied, so the default
+	// configuration builds exactly one reader as before.
+	//
+	// Disjointness is the caller's contract and is enforced upstream by the collector
+	// lane views: the base lane carries every non-fast collector plus the health/self
+	// block, the fast lane carries fast collectors only. Two readers emitting the same
+	// series identity would double-report it to the backend.
+	//
+	// A SECOND exporter is constructed rather than sharing one: the MeterProvider
+	// shuts down each reader, and each reader shuts down its exporter, so sharing one
+	// would Shutdown it twice. Both are wrapped by the same delivery metrics, so
+	// exports_total counts real export calls across both lanes.
+	if cfg.FastExportInterval > 0 && len(fastGatherers) > 0 {
+		fastRawExporter, ferr := newExporter(ctx, cfg)
+		if ferr != nil {
+			_ = reader.Shutdown(context.Background())
+			return nil, fmt.Errorf("build fast-lane otlp exporter: %w", ferr)
+		}
+		fastOpts := make([]prometheusbridge.Option, 0, len(fastGatherers))
+		for _, g := range fastGatherers {
+			fastOpts = append(fastOpts, prometheusbridge.WithGatherer(
+				&continueOnErrorGatherer{inner: g, log: log, interval: errorLogInterval}))
+		}
+		readers = append(readers, sdkmetric.NewPeriodicReader(
+			observeExports(fastRawExporter, delivery),
+			sdkmetric.WithInterval(cfg.FastExportInterval),
+			sdkmetric.WithProducer(prometheusbridge.NewMetricProducer(fastOpts...)),
+		))
+	}
 
 	res, rerr := buildResource(ctx, cfg, version, instance)
 	if rerr != nil {
@@ -93,16 +127,22 @@ func Start(
 		// reader has already started its background goroutine, so shut it down
 		// before bailing to avoid leaking it.
 		if res == nil {
-			_ = reader.Shutdown(context.Background())
+			for _, r := range readers {
+				_ = r.Shutdown(context.Background())
+			}
 			return nil, fmt.Errorf("build otlp resource: %w", rerr)
 		}
 		log.Warn("otlp resource built with warnings", "err", rerr)
 	}
 
-	mp := sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(reader),
-		sdkmetric.WithResource(res),
-	)
+	// Both readers hang off ONE MeterProvider, so the single Shutdown returned below
+	// flushes and stops both within the caller's existing bounded shutdown contract.
+	mpOpts := make([]sdkmetric.Option, 0, len(readers)+1)
+	for _, r := range readers {
+		mpOpts = append(mpOpts, sdkmetric.WithReader(r))
+	}
+	mpOpts = append(mpOpts, sdkmetric.WithResource(res))
+	mp := sdkmetric.NewMeterProvider(mpOpts...)
 	otel.SetMeterProvider(mp)
 	otel.SetErrorHandler(&slogErrorHandler{log: log, interval: errorLogInterval})
 

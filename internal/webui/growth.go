@@ -11,7 +11,7 @@ import (
 
 // growthSampler keeps a bounded ring of per-family series counts sampled on a
 // background ticker, so the cardinality page can show a per-minute series
-// growth rate. It samples the passive metricsnap snapshot (Deps.Metrics), so it
+// growth rate. It samples the passive metricsnap capture (Deps.Capture), so it
 // never triggers a scrape of its own.
 type growthSampler struct {
 	mu   sync.Mutex
@@ -84,7 +84,7 @@ func (g *growthSampler) rows() []GrowthRow {
 // start begins background sampling every interval until stop is called. It
 // takes one sample immediately so a freshly-loaded page isn't blank. Safe to
 // call once; a nil getter or non-positive interval is a no-op.
-func (g *growthSampler) start(getter func() ([]*dto.MetricFamily, time.Time), interval time.Duration) {
+func (g *growthSampler) start(getter func() []*dto.MetricFamily, interval time.Duration) {
 	if getter == nil || interval <= 0 || g.stop != nil {
 		return
 	}
@@ -93,8 +93,7 @@ func (g *growthSampler) start(getter func() ([]*dto.MetricFamily, time.Time), in
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
-			fams, _ := getter()
-			g.sample(fams)
+			g.sample(getter())
 			select {
 			case <-g.stop:
 				return

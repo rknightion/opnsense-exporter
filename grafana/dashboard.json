@@ -3213,6 +3213,38 @@
           "skipUrlSync": true,
           "sort": "disabled"
         }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_otlp",
+          "label": "has_otlp",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_exporter_otlp_enabled, __name__)",
+              "refId": "has_otlp"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
       }
     ],
     "elements": {
@@ -77317,8 +77349,8 @@
         "kind": "Panel",
         "spec": {
           "id": 711,
-          "title": "Collector Poll Age (freshness)",
-          "description": "Seconds since each collector last completed a poll. A value climbing past the collector's interval means its polls are failing or stalled.",
+          "title": "Collector Last Attempt Age (scheduler liveness)",
+          "description": "Seconds since each collector's last poll ATTEMPT completed \u2014 successful or not. This is SCHEDULER LIVENESS, NOT data freshness: a failed poll advances this clock just like a successful one, so a collector that has been failing for six hours still reads under one interval here while replaying six-hour-old retained data. A value climbing past the collector's interval means the poller itself is stalled or starved of a concurrency slot. For how old the served data actually is, read 'Collector Retained Data Age' below (#382).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77407,7 +77439,7 @@
         "spec": {
           "id": 712,
           "title": "Collector Next Poll (in)",
-          "description": "Estimated seconds until each collector's next scheduled poll (last poll + interval).",
+          "description": "Seconds until each collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline rather than derived from last poll + interval (#385).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77495,6 +77527,563 @@
         "kind": "Panel",
         "spec": {
           "id": 713,
+          "title": "Collector Retained Data Age (true data age)",
+          "description": "Seconds since each collector's stored metric buffer was last REPLACED \u2014 the true age of the data every scrape and every OTLP export replays. It advances on a successful poll and on a partial-error poll that still emitted data, and deliberately does NOT advance when a failed poll emitted nothing and the last-good buffer was retained. This is the freshness number: a line climbing past ~3x that collector's poll interval means it is serving stale retained data, which is what OPNsenseCollectorDataStale alerts on. A collector that has never stored data has no line at all (the gauge is absent rather than 0, so it cannot render as a 1970 epoch) \u2014 OPNsenseCollectorNeverStoredData covers that case.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (time() - opnsense_exporter_collector_snapshot_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-714": {
+        "kind": "Panel",
+        "spec": {
+          "id": 714,
+          "title": "Collector Time Since Last Full Success",
+          "description": "Seconds since each collector's last FULLY CLEAN poll. Unlike retained data age this does not advance on a partial-error poll, so the two together separate 'refreshed but degraded' from 'fully healthy': if this climbs while retained data age stays low, the collector is still refreshing part of its data but one of its endpoints has been erroring the whole time \u2014 see the Endpoint Errors panels above for which one. OPNsenseCollectorDegraded alerts on this.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (time() - opnsense_exporter_collector_last_success_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "A",
+                        "legendFormat": "{{collector}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-715": {
+        "kind": "Panel",
+        "spec": {
+          "id": 715,
+          "title": "OTLP Export Enabled",
+          "description": "1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery is working: the exporter connects lazily, so this reads 1 from startup even with a wrong endpoint or an expired credential. Judge delivery by the two panels to the right. Construction failure is fatal at startup, so there is no configured-but-inactive state \u2014 the metric is either 1 or absent.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_otlp_enabled)",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "red",
+                        "value": null
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Disabled",
+                          "color": "red",
+                          "index": 0
+                        },
+                        "1": {
+                          "text": "Enabled",
+                          "color": "green",
+                          "index": 1
+                        }
+                      }
+                    }
+                  ]
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-716": {
+        "kind": "Panel",
+        "spec": {
+          "id": 716,
+          "title": "OTLP Consecutive Failures",
+          "description": "Exports that have failed back-to-back. Reset to 0 by the next success, so any sustained non-zero value is an ongoing delivery outage rather than a blip. OPNsenseOTLPDeliveryFailing alerts on this.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_otlp_consecutive_failures)",
+                        "refId": "A",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "red",
+                        "value": 1
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-717": {
+        "kind": "Panel",
+        "spec": {
+          "id": 717,
+          "title": "Time Since Last Successful OTLP Export",
+          "description": "Seconds since the last export the backend accepted. NO DATA here means no export has EVER succeeded since this exporter started \u2014 the gauge is 0 in that state and the `> 0` guard suppresses it deliberately, because subtracting 0 from time() would render a 56-year age as though a real export had once landed. No-data plus a rising consecutive-failure count is the never-worked-since-boot case (wrong endpoint / bad credential).",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (time() - (opnsense_exporter_otlp_last_success_timestamp_seconds > 0))",
+                        "refId": "A",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": null
+                      },
+                      {
+                        "color": "yellow",
+                        "value": 300
+                      },
+                      {
+                        "color": "red",
+                        "value": 900
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-718": {
+        "kind": "Panel",
+        "spec": {
+          "id": 718,
+          "title": "OTLP Export Rate (by result)",
+          "description": "Export calls per second by outcome, counted once per export call and never per metric. Both result values are seeded to 0 at startup, so a healthy exporter shows a flat zero error line rather than an absent series.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (result) (rate(opnsense_exporter_otlp_exports_total[$__rate_interval])))",
+                        "refId": "A",
+                        "legendFormat": "{{result}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-719": {
+        "kind": "Panel",
+        "spec": {
+          "id": 719,
           "title": "Exporter Goroutines",
           "description": "",
           "links": [],
@@ -77580,10 +78169,10 @@
           }
         }
       },
-      "panel-714": {
+      "panel-720": {
         "kind": "Panel",
         "spec": {
-          "id": 714,
+          "id": 720,
           "title": "Exporter Memory",
           "description": "",
           "links": [],
@@ -77695,10 +78284,10 @@
           }
         }
       },
-      "panel-715": {
+      "panel-721": {
         "kind": "Panel",
         "spec": {
-          "id": 715,
+          "id": 721,
           "title": "Exporter CPU",
           "description": "",
           "links": [],
@@ -77784,10 +78373,10 @@
           }
         }
       },
-      "panel-716": {
+      "panel-722": {
         "kind": "Panel",
         "spec": {
-          "id": 716,
+          "id": 722,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -77873,10 +78462,10 @@
           }
         }
       },
-      "panel-717": {
+      "panel-723": {
         "kind": "Panel",
         "spec": {
-          "id": 717,
+          "id": 723,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -77962,10 +78551,10 @@
           }
         }
       },
-      "panel-718": {
+      "panel-724": {
         "kind": "Panel",
         "spec": {
-          "id": 718,
+          "id": 724,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -78047,10 +78636,10 @@
           }
         }
       },
-      "panel-719": {
+      "panel-725": {
         "kind": "Panel",
         "spec": {
-          "id": 719,
+          "id": 725,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
           "links": [],
@@ -78136,10 +78725,10 @@
           }
         }
       },
-      "panel-720": {
+      "panel-726": {
         "kind": "Panel",
         "spec": {
-          "id": 720,
+          "id": 726,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -94164,6 +94753,129 @@
                               {
                                 "kind": "RowsLayoutRow",
                                 "spec": {
+                                  "title": "Per-Collector Data Freshness",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-713"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 12,
+                                            "y": 0,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-714"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "OTLP Delivery Health",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 4,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-715"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 4,
+                                            "y": 0,
+                                            "width": 5,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-716"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 9,
+                                            "y": 0,
+                                            "width": 5,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-717"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 14,
+                                            "y": 0,
+                                            "width": 10,
+                                            "height": 7,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-718"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_otlp",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
                                   "title": "API Requests (per endpoint)",
                                   "collapse": false,
                                   "layout": {
@@ -94179,7 +94891,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-716"
+                                              "name": "panel-722"
                                             }
                                           }
                                         },
@@ -94192,7 +94904,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-717"
+                                              "name": "panel-723"
                                             }
                                           }
                                         }
@@ -94219,7 +94931,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-718"
+                                              "name": "panel-724"
                                             }
                                           }
                                         },
@@ -94232,7 +94944,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-719"
+                                              "name": "panel-725"
                                             }
                                           }
                                         },
@@ -94245,7 +94957,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-720"
+                                              "name": "panel-726"
                                             }
                                           }
                                         }
@@ -94312,7 +95024,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-713"
+                                              "name": "panel-719"
                                             }
                                           }
                                         },
@@ -94325,7 +95037,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-714"
+                                              "name": "panel-720"
                                             }
                                           }
                                         },
@@ -94338,7 +95050,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-715"
+                                              "name": "panel-721"
                                             }
                                           }
                                         }

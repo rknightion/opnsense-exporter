@@ -121,6 +121,8 @@
   <span class="spacer"></span>
   <button class="ctl" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">◐</button>
   <span class="badge badge-{{healthClass .Health}}" id="healthBadge" title="{{range .Reasons}}{{.}}&#10;{{end}}">{{.Health}}</span>
+  <span class="badge badge-{{upstreamClass .Upstream.State}}" id="upstreamBadge" title="{{if .Upstream.Reason}}{{.Upstream.Reason}}{{else}}OPNsense API health check{{end}} · last checked {{.Upstream.CheckedAgo}}">box: {{.Upstream.State}}</span>
+  <span class="badge badge-{{captureClass .Capture.State}}" id="captureBadge" title="Passive metric capture: {{.Capture.State}}{{if .Capture.ErrorCount}} · {{.Capture.ErrorCount}} erroring gathers, last {{.Capture.LastErrorAgo}}{{end}}">capture: {{.Capture.State}}</span>
   <span class="ver" id="scrapeAge" data-scrape-age>as of {{.ScrapeAge}}</span>
 </header>
 <div class="reasons" id="healthReasons"{{if not .Reasons}} style="display:none"{{end}}>{{range .Reasons}}{{.}} · {{end}}</div>
@@ -149,6 +151,8 @@
     </div>
     <div class="cards">
       <div class="card"><div class="k">Uptime</div><div class="v" id="uptime">{{.Service.Uptime}}</div><div class="sub">since {{.Service.Start}}</div></div>
+      <div class="card" title="The OPNsense box itself, from the scheduler's health poll. Independent of collector run history — during a transport outage collector polls are skipped entirely, so the collector table stays green."><div class="k">OPNsense API</div><div class="v" id="ovUpstream">{{.Upstream.State}}</div><div class="sub" id="ovUpstreamSub">checked {{.Upstream.CheckedAgo}}</div></div>
+      <div class="card" title="Whether the metric capture this page is rendered from came from a clean gather or one that also returned an error. A partial capture is CURRENT data, not stale data."><div class="k">Metric capture</div><div class="v" id="ovCapture">{{.Capture.State}}</div><div class="sub" id="ovCaptureSub">{{if .Capture.ErrorCount}}{{.Capture.ErrorCount}} erroring gathers{{else}}no gather errors{{end}}</div></div>
       <div class="card"><div class="k">Active collectors</div><div class="v" id="ovCollectors">{{.Stats.ActiveCollectors}}</div></div>
       <div class="card"><div class="k">Metric families</div><div class="v" id="ovFamilies">{{.Stats.MetricFamilies}}</div></div>
       <div class="card"><div class="k">Series</div><div class="v" id="ovSeries">{{.Stats.Series}}</div></div>
@@ -184,7 +188,9 @@
     <table id="collTable">
       <thead><tr>
         <th>Collector</th><th>State</th><th class="num">Interval</th><th class="num">Success</th>
-        <th>Freshness</th><th class="num">Runs</th><th class="num">Fails</th><th class="num">Next run</th>
+        <th title="Age of the metric buffer actually being served — NOT the age of the last poll attempt">Data age</th>
+        <th title="When the last poll attempt finished, successful or not">Last attempt</th>
+        <th class="num">Runs</th><th class="num">Fails</th><th class="num">Next run</th>
         <th class="num">Last (ms)</th><th>Trend</th><th>Recent</th><th>Last error</th>
       </tr></thead>
       <tbody id="collBody">
@@ -194,17 +200,18 @@
           <td><span class="dot dot-{{stateClass .State}}"></span>{{.State}}</td>
           <td class="num">{{if .IntervalSec}}{{.IntervalSec}}s{{else}}<span class="muted">—</span>{{end}}</td>
           <td class="num">{{pct .SuccessRate}}</td>
-          <td>{{if eq .FreshnessState "none"}}<span class="badge badge-pending">never</span>{{else}}<span class="badge badge-{{freshClass .FreshnessState}}">{{.Freshness}}</span>{{end}}</td>
+          <td>{{if eq .FreshnessState "none"}}<span class="badge badge-pending">no data</span>{{else}}<span class="badge badge-{{freshClass .FreshnessState}}" title="{{if .LastSuccessAgo}}last clean poll {{.LastSuccessAgo}}{{else}}never fully succeeded{{end}}">{{.Freshness}}</span>{{end}}</td>
+          <td class="mono">{{if .AttemptAge}}{{.AttemptAge}}{{else}}<span class="muted">—</span>{{end}}</td>
           <td class="num">{{.Runs}}</td>
           <td class="num">{{.Failures}}{{if gt .Consecutive 0}} <span class="muted">({{.Consecutive}}×)</span>{{end}}</td>
-          <td class="num">{{if .HasRun}}{{.NextRunIn}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td class="num">{{if .Scheduled}}{{.NextRunIn}}{{else}}<span class="muted">{{.NextRunIn}}</span>{{end}}</td>
           <td class="num">{{printf "%.1f" .LastDurationMs}}</td>
           <td>{{.Sparkline}}</td>
           <td>{{.Outcomes}}</td>
           <td class="mono">{{if .LastError}}{{.LastError}}{{else}}<span class="muted">—</span>{{end}}</td>
         </tr>
       {{else}}
-        <tr><td colspan="12" class="empty">No collector has run yet — waiting for the first poll.</td></tr>
+        <tr><td colspan="13" class="empty">No collector has run yet — waiting for the first poll.</td></tr>
       {{end}}
       </tbody>
     </table>
@@ -408,17 +415,29 @@ function drawChart(svgId,series,fmt){
 function rebuildCollectors(rows){
   var tb=document.getElementById('collBody'); if(!tb) return;
   tb.textContent='';
-  if(!rows || !rows.length){ var tr0=el('tr'); tr0.appendChild(el('td',{'colspan':'12','class':'empty'},'No collector has run yet — waiting for the first poll.')); tb.appendChild(tr0); return; }
+  if(!rows || !rows.length){ var tr0=el('tr'); tr0.appendChild(el('td',{'colspan':'13','class':'empty'},'No collector has run yet — waiting for the first poll.')); tb.appendChild(tr0); return; }
   rows.forEach(function(c){
     var tr=el('tr',{'data-name':c.Name}); if(c.HasRun && !c.LastSuccess) tr.className='bad';
     tr.appendChild(el('td',null,c.Display));
     var stTd=el('td'); stTd.appendChild(el('span',{'class':'dot dot-'+stateClass(c.State)})); stTd.appendChild(document.createTextNode(c.State)); tr.appendChild(stTd);
     tr.appendChild(el('td',{'class':'num'}, c.IntervalSec?c.IntervalSec+'s':'—'));
     tr.appendChild(el('td',{'class':'num'}, pct(c.SuccessRate)));
-    var frTd=el('td'); if(c.FreshnessState==='none'){ frTd.appendChild(el('span',{'class':'badge badge-pending'},'never')); } else { frTd.appendChild(el('span',{'class':'badge badge-'+freshClass(c.FreshnessState)}, c.Freshness||'—')); } tr.appendChild(frTd);
+    // Data age — the age of the metric buffer actually being served. NOT the
+    // attempt clock, which keeps refreshing while a failing collector replays
+    // hours-old values.
+    var frTd=el('td');
+    if(c.FreshnessState==='none'){ frTd.appendChild(el('span',{'class':'badge badge-pending'},'no data')); }
+    else { var fb=el('span',{'class':'badge badge-'+freshClass(c.FreshnessState)}, c.Freshness||'—'); fb.title=c.LastSuccessAgo?('last clean poll '+c.LastSuccessAgo):'never fully succeeded'; frTd.appendChild(fb); }
+    tr.appendChild(frTd);
+    // Last attempt — the scheduler clock, deliberately its own column.
+    var atTd=el('td',{'class':'mono'}); if(c.AttemptAge){ atTd.textContent=c.AttemptAge; } else { atTd.appendChild(el('span',{'class':'muted'},'—')); } tr.appendChild(atTd);
     tr.appendChild(el('td',{'class':'num'}, String(c.Runs)));
     tr.appendChild(el('td',{'class':'num'}, String(c.Failures)+(c.Consecutive>0?' ('+c.Consecutive+'×)':'')));
-    tr.appendChild(el('td',{'class':'num'}, c.HasRun?(c.NextRunIn||'—'):'—'));
+    // Next run comes from the scheduler's real deadline; an unscheduled poller
+    // says so rather than showing a countdown or claiming a run is due.
+    var nrTd=el('td',{'class':'num'});
+    if(c.Scheduled){ nrTd.textContent=c.NextRunIn||'—'; } else { nrTd.appendChild(el('span',{'class':'muted'}, c.NextRunIn||'not scheduled')); }
+    tr.appendChild(nrTd);
     tr.appendChild(el('td',{'class':'num'}, Number(c.LastDurationMs).toFixed(1)));
     var spTd=el('td'); spTd.innerHTML=c.Sparkline||''; tr.appendChild(spTd);
     var ocTd=el('td'); ocTd.innerHTML=c.Outcomes||''; tr.appendChild(ocTd);
@@ -480,10 +499,27 @@ function updateTrend(d){
   setText('flActive', t.ActiveCollectors); setText('flFailing', t.FailingCollectors);
   setText('flMeanMs', (t.MeanDurationMs||0).toFixed(1)+' ms');
 }
+function upstreamClass(s){ if(s==='ok') return 'ok'; if(s==='unreachable'||s==='error') return 'bad'; return 'pending'; }
+function captureClass(s){ if(s==='full') return 'ok'; if(s==='partial') return 'warn'; return 'pending'; }
 function setHealth(d){
   var b=document.getElementById('healthBadge'); if(b){ b.textContent=d.Health; b.className='badge badge-'+healthClass(d.Health); b.title=(d.Reasons||[]).join('\n'); }
   var rb=document.getElementById('healthReasons'); if(rb){ if(d.Reasons && d.Reasons.length){ rb.textContent=d.Reasons.join(' · '); rb.style.display=''; } else { rb.style.display='none'; } }
   var age=document.getElementById('scrapeAge'); if(age && d.ScrapeAge) age.textContent='as of '+d.ScrapeAge;
+  // Upstream reachability is a separate signal from collector history: during a
+  // transport outage the scheduler skips collector polls entirely, so the
+  // collector table stays green through exactly the outage that matters.
+  var u=d.Upstream; var ub=document.getElementById('upstreamBadge');
+  if(ub && u){ ub.textContent='box: '+u.State; ub.className='badge badge-'+upstreamClass(u.State);
+    ub.title=(u.Reason||'OPNsense API health check')+' · last checked '+(u.CheckedAgo||'never'); }
+  // The capture badge says whether the numbers on this page came from a clean
+  // gather or a partial one. Counts and timestamps only — never an error string.
+  var c=d.Capture; var cb=document.getElementById('captureBadge');
+  if(cb && c){ cb.textContent='capture: '+c.State; cb.className='badge badge-'+captureClass(c.State);
+    cb.title='Passive metric capture: '+c.State+(c.ErrorCount?(' · '+c.ErrorCount+' erroring gathers, last '+(c.LastErrorAgo||'?')):''); }
+  var uv=document.getElementById('ovUpstream'); if(uv && u){ uv.textContent=u.State; }
+  var uvs=document.getElementById('ovUpstreamSub'); if(uvs && u){ uvs.textContent='checked '+(u.CheckedAgo||'never'); }
+  var cv=document.getElementById('ovCapture'); if(cv && c){ cv.textContent=c.State; }
+  var cvs=document.getElementById('ovCaptureSub'); if(cvs && c){ cvs.textContent=c.ErrorCount?(c.ErrorCount+' erroring gathers'):'no gather errors'; }
 }
 function setStale(on){ var b=document.getElementById('staleBanner'); if(!b) return; if(on){ b.className='show'; b.textContent='⚠ disconnected — last successful update '+relMs(lastOkMs); } else { b.className=''; } }
 

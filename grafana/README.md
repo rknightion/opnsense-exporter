@@ -99,7 +99,7 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 
 ## Alerts & recording rules
 
-`alerts/` contains **32 alert rules** and **14 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **36 alert rules** and **14 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format - it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
@@ -128,7 +128,11 @@ target a specific Grafana folder.
 | OPNsenseExporterDown | critical | `opnsense_up` 0 (API unreachable / scrape failed) or NoData for 15m |
 | OPNsenseFirewallUnhealthy | warning | firewall health check reports errors for 10m |
 | OPNsenseCrashReports | warning | crash reports present |
-| OPNsenseEndpointErrors | warning | an API endpoint returned errors in 15m |
+| OPNsenseEndpointErrors | warning | an API endpoint returned errors in 15m (fast/medium tiers - see below) |
+| OPNsenseCollectorDataStale | warning | a collector's retained data is older than 3 of its own poll intervals |
+| OPNsenseCollectorDegraded | info | a collector keeps refreshing partial data but has not fully succeeded for 6 intervals |
+| OPNsenseCollectorNeverStoredData | warning | a collector has polled for 30m and never once stored data |
+| OPNsenseOTLPDeliveryFailing | warning | every OTLP metric export has failed for 15m |
 | OPNsenseGatewayDown | critical | the primary gateway is offline for 5m |
 | OPNsenseGatewayDownFailover | warning | a failover/secondary gateway is offline for 15m |
 | OPNsenseGatewayHighLoss | warning | gateway loss > 20% for 10m |
@@ -147,6 +151,34 @@ target a specific Grafana folder.
 
 Thresholds are conservative defaults - tune them in `build_rules.py` for your environment.
 Note: `OPNsenseEndpointErrors` and `OPNsenseServiceDown` emit one alert per endpoint/service.
+
+**Stale-data alerting is tier-aware, and attempt age is not freshness.** Each collector polls on
+its own tier (fast 15s / medium 60s / slow 5m / cold 15m, overridable with
+`--collector.poll-interval-override`), and a failed poll that produced nothing deliberately
+retains the last-good values rather than blanking the dashboard. Two consequences the rules above
+encode:
+
+- `opnsense_exporter_collector_last_poll_timestamp_seconds` advances on **every attempt**,
+  successful or not, so it measures scheduler liveness and never data age. The dashboard panel is
+  titled *Collector Last Attempt Age* for that reason. True data age is
+  `opnsense_exporter_collector_snapshot_timestamp_seconds` (buffer last replaced) and
+  `opnsense_exporter_collector_last_success_timestamp_seconds` (last fully clean poll).
+- `OPNsenseCollectorDataStale` / `OPNsenseCollectorDegraded` express tolerance in **missed poll
+  intervals**, dividing the age by `opnsense_exporter_collector_poll_interval_seconds` (plus a
+  120s scrape-lag allowance), so one rule covers every tier: a persistent failure fires ~8m into
+  the fast tier and ~52m into the cold tier, while a single failed poll followed by recovery peaks
+  at ~2 missed intervals on all four tiers and cannot fire. `OPNsenseEndpointErrors` keeps its 2m
+  window and stays the fast/medium-tier signal that names the failing *endpoint*; it cannot fire
+  for a slow/cold-tier collector (the window is empty between two once-per-tier attempts), and
+  widening it would reintroduce the fire-after-recovery bug those windows were tightened to fix.
+
+**`OPNsenseOTLPDeliveryFailing` cannot page a pure-OTLP backend.** The exporter cannot ship its own
+failure metric through the path that is failing, so `opnsense_exporter_otlp_*` is a signal for
+`/metrics` scrapers, for the passive operator console, and for post-recovery forensics - not an
+in-band outage page. On a pure-OTLP backend, the in-band symptom of this failure mode is staleness
+of the exporter's data at the backend. `opnsense_exporter_otlp_enabled=1` means the push pipeline
+is *running*, not that delivery *works*: the OTLP exporter connects lazily, so it reads 1 from
+startup even against a wrong endpoint.
 
 **Gateway coverage.** `opnsense_gateways_status` is emitted for every *enabled* gateway using the
 API-reported status, including gateways with OPNsense monitoring disabled (a common PPPoE/DHCPv6-PD

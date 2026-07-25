@@ -16,12 +16,14 @@ var templatesFS embed.FS
 // funcMap is used by the single-page console template for first-paint rendering
 // (the JS mirrors these helpers for its live-refresh rebuild).
 var funcMap = template.FuncMap{
-	"sparkline":    sparkline,
-	"outcomeStrip": outcomeStrip,
-	"healthClass":  healthClass,
-	"stateClass":   stateClass,
-	"freshClass":   freshClass,
-	"pct":          pct,
+	"sparkline":     sparkline,
+	"outcomeStrip":  outcomeStrip,
+	"healthClass":   healthClass,
+	"stateClass":    stateClass,
+	"freshClass":    freshClass,
+	"upstreamClass": upstreamClass,
+	"captureClass":  captureClass,
+	"pct":           pct,
 }
 
 // pageTmpl is the one console template, parsed once at init. A malformed
@@ -55,6 +57,35 @@ func freshClass(state string) string {
 	case "stale":
 		return "warn"
 	default:
+		return "pending"
+	}
+}
+
+// upstreamClass maps an UpstreamHealth.State to a badge modifier class. Both
+// failure states are "bad": a box that answers with an error is no more usable
+// than one that does not answer at all, even though the two are worded
+// differently.
+func upstreamClass(state string) string {
+	switch state {
+	case "ok":
+		return "ok"
+	case "unreachable", "error":
+		return "bad"
+	default: // pending, unknown
+		return "pending"
+	}
+}
+
+// captureClass maps a CaptureInfo.State to a badge modifier class. A partial
+// capture is a warning, not a failure: the data shown IS current, it just arrived
+// with a gather error alongside it.
+func captureClass(state string) string {
+	switch state {
+	case "full":
+		return "ok"
+	case "partial":
+		return "warn"
+	default: // never
 		return "pending"
 	}
 }

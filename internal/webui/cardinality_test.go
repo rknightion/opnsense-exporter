@@ -9,6 +9,8 @@ import (
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
+
+	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 )
 
 // fakeFamilies builds a []*dto.MetricFamily where each named family carries the
@@ -110,13 +112,13 @@ func TestBuildCardinality_LabelDistinctValues(t *testing.T) {
 
 // --- handler / render tests ---
 
-func cardinalityDeps(metrics func() ([]*dto.MetricFamily, time.Time)) Deps {
+func cardinalityDeps(capture func() metricsnap.Capture) Deps {
 	d := testDeps()
-	d.Metrics = metrics
+	d.Capture = capture
 	return d
 }
 
-func populatedMetrics() func() ([]*dto.MetricFamily, time.Time) {
+func populatedMetrics() func() metricsnap.Capture {
 	fams := []*dto.MetricFamily{
 		{Name: sp("opnsense_up"), Metric: []*dto.Metric{
 			counterMetric(1, "instance", "a"),
@@ -131,7 +133,7 @@ func populatedMetrics() func() ([]*dto.MetricFamily, time.Time) {
 		}()},
 	}
 	at := time.Now()
-	return func() ([]*dto.MetricFamily, time.Time) { return fams, at }
+	return func() metricsnap.Capture { return metricsnap.Capture{Families: fams, At: at} }
 }
 
 // TestHandler_CardinalityFoldedIntoPage asserts the cardinality data is folded

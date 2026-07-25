@@ -1429,7 +1429,28 @@ func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 // The ctx parameter is retained for the scrapeView/OTLP call sites but is unused now
 // that serving performs no cancellable work.
 func (c *Collector) collect(_ context.Context, ch chan<- prometheus.Metric, include map[string]bool) {
-	c.emitHealth(ch)
+	c.collectLane(ch, include, true)
+}
+
+// collectLane is collect() with explicit control over the always-on block, so the
+// optional two-lane OTLP split (#390) can guarantee no series identity is emitted
+// twice.
+//
+// alwaysOn covers the health gauges, the scrape counter and collectAlwaysOn. Those
+// are emitted regardless of the include filter, which is correct for a /metrics
+// scrape (a filtered scrape still wants to know the box is up) but would DUPLICATE
+// every one of them across two concurrently-exporting OTLP readers. The fast lane
+// therefore passes false and carries only its collectors' own series.
+//
+// Per-collector scheduler metrics (interval, the poll clocks, scrape meta) travel
+// with their collector into whichever lane owns it, rather than being pinned to one
+// lane. They are per-collector by definition, so following the collector keeps them
+// at the same resolution as the data they describe, and each is still emitted
+// exactly once across the two lanes.
+func (c *Collector) collectLane(ch chan<- prometheus.Metric, include map[string]bool, alwaysOn bool) {
+	if alwaysOn {
+		c.emitHealth(ch)
+	}
 
 	for _, coll := range c.collectors {
 		name := coll.Name()
@@ -1495,8 +1516,71 @@ func (c *Collector) collect(_ context.Context, ch chan<- prometheus.Metric, incl
 		}
 	}
 
-	c.scrapes.WithLabelValues(c.instanceLabel).Inc()
-	c.collectAlwaysOn(ch)
+	if alwaysOn {
+		c.scrapes.WithLabelValues(c.instanceLabel).Inc()
+		c.collectAlwaysOn(ch)
+	}
+}
+
+// FastCollectorNames returns the sorted names of the enabled collectors whose
+// EFFECTIVE poll interval is at most IntervalFast — the membership of the optional
+// fast OTLP lane (#390). It resolves through resolveInterval, so an operator
+// override moves a collector between lanes in either direction; membership is never
+// read off the static tier table.
+func (c *Collector) FastCollectorNames() []string {
+	names := make([]string, 0, len(c.collectors))
+	for _, coll := range c.collectors {
+		if c.resolveInterval(coll) <= IntervalFast {
+			names = append(names, coll.Name())
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// laneView is a prometheus.Collector over a fixed subset of sub-collectors, used to
+// build the two disjoint OTLP lanes. Unlike scrapeView it is long-lived (one per
+// reader, not one per request) and controls the always-on block explicitly.
+type laneView struct {
+	c        *Collector
+	include  map[string]bool
+	alwaysOn bool
+}
+
+func (v *laneView) Describe(ch chan<- *prometheus.Desc) { v.c.Describe(ch) }
+func (v *laneView) Collect(ch chan<- prometheus.Metric) {
+	v.c.collectLane(ch, v.include, v.alwaysOn)
+}
+
+// OTLPFastView returns the fast OTLP lane: ONLY the fast-tier collectors, with the
+// always-on and health block suppressed so it cannot collide with the base lane
+// (#390). Membership is resolved once, at construction, so the two lanes cannot
+// disagree mid-flight if the map were ever mutated.
+func (c *Collector) OTLPFastView() prometheus.Collector {
+	include := make(map[string]bool)
+	for _, n := range c.FastCollectorNames() {
+		include[n] = true
+	}
+	// alwaysOn is false: the health/self/always-on block belongs to the base lane
+	// alone, or both readers would export the same series identity.
+	return &laneView{c: c, include: include, alwaysOn: false}
+}
+
+// OTLPBaseView returns the base OTLP lane: every NON-fast collector plus the
+// always-on, health and self metrics. It is the complement of OTLPFastView, so the
+// two together emit exactly what the single unfiltered view emits today (#390).
+func (c *Collector) OTLPBaseView() prometheus.Collector {
+	fast := make(map[string]bool)
+	for _, n := range c.FastCollectorNames() {
+		fast[n] = true
+	}
+	include := make(map[string]bool)
+	for _, coll := range c.collectors {
+		if !fast[coll.Name()] {
+			include[coll.Name()] = true
+		}
+	}
+	return &laneView{c: c, include: include, alwaysOn: true}
 }
 
 // EnabledCollectorNames returns the sorted subsystem names of the

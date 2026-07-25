@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-endpoint-errors",
+    "name": "opnsense-collector-degraded",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,19 +11,19 @@
     }
   },
   "spec": {
-    "title": "OPNsenseEndpointErrors",
+    "title": "OPNsenseCollectorDegraded",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "15m0s",
+    "for": "10m0s",
     "trigger": {
       "interval": "1m"
     },
     "labels": {
-      "severity": "warning"
+      "severity": "info"
     },
     "annotations": {
-      "summary": "OPNsense exporter endpoint errors ({{ $labels.endpoint }})",
-      "description": "The {{ $labels.endpoint }} API endpoint has produced errors sustained for 15m (at least one error in every rolling 2m window for the full 15m). A brief router reboot / WAN blip empties the 2m window well before 15m elapses, so it does not fire. One alert per endpoint. SCOPE (#382): this rule is the FAST/MEDIUM-tier signal and the one that names the failing endpoint. It structurally cannot fire for a collector on the slow (5m) or cold (15m) poll tier, because such a collector increments the counter only once per tier and the 2m window is empty in between, resetting the 15m pending clock every eval. Widening the window to cover those tiers would reintroduce the #94 false page (a window as long as `for` keeps the condition true for a full window after recovery), so the window is deliberately left at 2m and every tier is covered instead by OPNsenseCollectorDataStale, which is driven by the data clock and scales its tolerance with each collector's own interval.",
+      "summary": "OPNsense collector {{ $labels.collector }} has not fully succeeded",
+      "description": "Collector {{ $labels.collector }} is still refreshing its stored metrics, but no poll has completed CLEANLY for more than 6 of its own poll intervals ({{ $values.A.Value | printf \"%.1f\" }} missed intervals). That is the persistent-partial-failure signature: one endpoint of a multi-endpoint collector erroring every poll while the rest keep updating, so part of its metric set is silently absent or frozen while everything looks fresh. Tolerance is in MISSED INTERVALS so it scales with the collector's tier, and the rule deliberately excludes collectors already covered by OPNsenseCollectorDataStale (fully frozen data), which would otherwise fire both. Severity is info, not warning: data is still flowing, and the endpoint-error panels name the failing endpoint (#382).",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[2m]))",
+          "expr": "((time() - opnsense_exporter_collector_last_success_timestamp_seconds - 120) / opnsense_exporter_collector_poll_interval_seconds) unless on(opnsense_instance, collector) (((time() - opnsense_exporter_collector_snapshot_timestamp_seconds - 120) / opnsense_exporter_collector_poll_interval_seconds) > 3)",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,7 +63,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  0,
+                  6,
                   0
                 ]
               },

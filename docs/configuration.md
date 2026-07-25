@@ -229,6 +229,7 @@ and those two env vars never apply - set the flags instead.
 | `--otlp.enabled` | `OPNSENSE_EXPORTER_OTLP_ENABLED` | `false` | Enable pushing metrics to an OTLP endpoint (in addition to the /metrics pull endpoint). Off by default. |
 | `--otlp.endpoint` | `OPNSENSE_EXPORTER_OTLP_ENDPOINT` | -- | OTLP endpoint URL. When empty, the standard OTEL_EXPORTER_OTLP_ENDPOINT env var is used. |
 | `--otlp.export-interval` | `OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL` | `60s` | Interval between OTLP metric exports (independent of Prometheus scrapes). |
+| `--otlp.fast-export-interval` | `OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL` | `0s` | Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the default) keeps the single-stream behaviour exactly. When set, fast-tier collectors (gateways, interfaces, protocol, pf_stats, activity, netflow, carp — or whatever --collector.poll-interval-override makes fast) export at this interval while everything else stays on --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier series are a small fraction of the total, so 15s here costs far less than setting --otlp.export-interval=15s for everything. |
 | `--otlp.grafana-cloud-endpoint` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT` | -- | Grafana Cloud OTLP gateway base URL (required when using the Grafana Cloud shortcut). |
 | `--otlp.grafana-cloud-instance-id` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID` | -- | Grafana Cloud OTLP instance ID. With --otlp.grafana-cloud-token, synthesizes basic-auth. This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set. |
 | `--otlp.grafana-cloud-token` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN` | -- | Grafana Cloud Access Policy token. This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set. |
@@ -244,6 +245,67 @@ and those two env vars never apply - set the flags instead.
 The metric set exported over OTLP is the same as the Prometheus
 catalogue (see the [metrics reference](metrics/metrics.md)), with one addition
 described below: a synthetic `up` series.
+
+### Delivery health
+
+`--otlp.enabled` starting cleanly proves nothing about delivery: the OTLP exporter
+connects lazily, so the "otlp metrics export enabled" log line is written before any
+network I/O happens. A wrong endpoint, an expired credential or a backend outage can
+therefore deliver zero metrics indefinitely.
+
+Four self-metrics make that visible on `/metrics` and on the operator console:
+`opnsense_exporter_otlp_exports_total{result="success"|"error"}`,
+`opnsense_exporter_otlp_consecutive_failures`,
+`opnsense_exporter_otlp_last_success_timestamp_seconds` and
+`opnsense_exporter_otlp_enabled`. Note that `otlp_enabled = 1` means the pipeline is
+**running**, not that it is **working** - the outage signal is a rising
+`consecutive_failures`.
+
+These cannot reach a pure-OTLP backend during an outage, because an exporter cannot
+ship its own failure through the path that is failing. On a pure-push deployment they
+are for the local console and for post-recovery forensics; the in-band symptom at the
+backend is data staleness. Where `/metrics` is also scraped, they alert normally.
+
+Construction failure is **fatal**. If `--otlp.enabled` is set and the exporter cannot
+be built, the process exits rather than serving `/metrics` behind a permanently dead
+push pipeline. Export failures after startup are not fatal - they are counted, logged
+(rate-limited) and retried, so a flaky backend never takes down the pull endpoint.
+
+### Two-speed export (`--otlp.fast-export-interval`)
+
+Collectors already poll on data-volatility tiers, but OTLP exports the whole snapshot
+on one interval. Setting `--otlp.export-interval=15s` to get responsive gateway and
+interface graphs therefore re-sends every cold and medium series four times a minute
+as well, even though almost none of them changed.
+
+`--otlp.fast-export-interval` adds an optional second export lane carrying **only**
+the fast-tier collectors, while everything else stays on `--otlp.export-interval`. It
+is **off by default (`0s`)**, and the default configuration builds exactly one reader,
+byte-for-byte as before. It must be shorter than `--otlp.export-interval`; a fast lane
+that is not faster is rejected at startup rather than silently doubling export calls.
+
+Measured on a live deployment (7,226 total series, of which 494 are fast-tier):
+
+| Configuration | Data points per minute | vs 60s baseline |
+|---|---|---|
+| `--otlp.export-interval=60s` (default) | 7,226 | 1.00x |
+| `--otlp.export-interval=15s` (everything fast) | 28,904 | 4.00x |
+| `--otlp.export-interval=60s` + `--otlp.fast-export-interval=15s` | 8,708 | **1.21x** |
+
+Fast-tier membership follows each collector's **effective** poll interval, so a
+`--collector.poll-interval-override` moves a collector between lanes in either
+direction. The two lanes are disjoint by construction - the base lane carries every
+non-fast collector plus the health, `up` and exporter self-metrics, the fast lane
+carries fast-tier collectors only - so no series is ever exported twice. Per-collector
+scheduler metrics travel with their collector, keeping them at the same resolution as
+the data they describe.
+
+The trade-off to understand is **backend staleness**: non-fast series now arrive only
+once per `--otlp.export-interval`, exactly as before, so a dashboard mixing a fast
+series with a cold one will show the cold one stepping at the base interval. That is
+already true of the underlying poll tiers - a 15m-tier collector cannot be fresher
+than 15m no matter how often it is exported - so exporting it more often only inflates
+cost, never resolution.
 
 ### Liveness (`up`) in push mode
 
@@ -614,6 +676,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--otlp.enabled` | `OPNSENSE_EXPORTER_OTLP_ENABLED` | `false` | Enable pushing metrics to an OTLP endpoint (in addition to the /metrics pull endpoint). Off by default. |
 | `--otlp.endpoint` | `OPNSENSE_EXPORTER_OTLP_ENDPOINT` | -- | OTLP endpoint URL. When empty, the standard OTEL_EXPORTER_OTLP_ENDPOINT env var is used. |
 | `--otlp.export-interval` | `OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL` | `60s` | Interval between OTLP metric exports (independent of Prometheus scrapes). |
+| `--otlp.fast-export-interval` | `OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL` | `0s` | Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the default) keeps the single-stream behaviour exactly. When set, fast-tier collectors (gateways, interfaces, protocol, pf_stats, activity, netflow, carp — or whatever --collector.poll-interval-override makes fast) export at this interval while everything else stays on --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier series are a small fraction of the total, so 15s here costs far less than setting --otlp.export-interval=15s for everything. |
 | `--otlp.grafana-cloud-endpoint` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_ENDPOINT` | -- | Grafana Cloud OTLP gateway base URL (required when using the Grafana Cloud shortcut). |
 | `--otlp.grafana-cloud-instance-id` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID` | -- | Grafana Cloud OTLP instance ID. With --otlp.grafana-cloud-token, synthesizes basic-auth. This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_INSTANCE_ID_FILE may be set. |
 | `--otlp.grafana-cloud-token` | `OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN` | -- | Grafana Cloud Access Policy token. This flag/ENV or OPNSENSE_EXPORTER_OTLP_GRAFANA_CLOUD_TOKEN_FILE may be set. |

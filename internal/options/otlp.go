@@ -37,6 +37,10 @@ var (
 		"otlp.export-interval",
 		"Interval between OTLP metric exports (independent of Prometheus scrapes).",
 	).Envar("OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL").Default("60s").Duration()
+	otlpFastExportInterval = kingpin.Flag(
+		"otlp.fast-export-interval",
+		"Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the default) keeps the single-stream behaviour exactly. When set, fast-tier collectors (gateways, interfaces, protocol, pf_stats, activity, netflow, carp — or whatever --collector.poll-interval-override makes fast) export at this interval while everything else stays on --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier series are a small fraction of the total, so 15s here costs far less than setting --otlp.export-interval=15s for everything.",
+	).Envar("OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL").Default("0s").Duration()
 	otlpTLSCAFile = kingpin.Flag(
 		"otlp.tls-ca-file",
 		"Path to a CA certificate file used to verify the OTLP server.",
@@ -82,10 +86,14 @@ type OTLPConfig struct {
 	Insecure       bool
 	Headers        map[string]string
 	ExportInterval time.Duration
-	TLSCAFile      string
-	TLSCertFile    string
-	TLSKeyFile     string
-	ServiceName    string
+	// FastExportInterval, when > 0, enables the optional second export lane
+	// carrying only fast-tier collectors (#390). Zero means one lane, exactly as
+	// before.
+	FastExportInterval time.Duration
+	TLSCAFile          string
+	TLSCertFile        string
+	TLSKeyFile         string
+	ServiceName        string
 }
 
 // Validate checks an enabled OTLP configuration for internal consistency.
@@ -100,6 +108,16 @@ func (c *OTLPConfig) Validate() error {
 	}
 	if c.ExportInterval <= 0 {
 		return fmt.Errorf("otlp export-interval must be positive, got %s", c.ExportInterval)
+	}
+	// A fast lane no faster than the base lane buys nothing and doubles the export
+	// calls, so reject it rather than silently accepting a pointless split.
+	if c.FastExportInterval < 0 {
+		return fmt.Errorf("otlp fast-export-interval must not be negative, got %s", c.FastExportInterval)
+	}
+	if c.FastExportInterval > 0 && c.FastExportInterval >= c.ExportInterval {
+		return fmt.Errorf(
+			"otlp fast-export-interval (%s) must be shorter than otlp export-interval (%s); a fast lane that is not faster only doubles export calls",
+			c.FastExportInterval, c.ExportInterval)
 	}
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
 		return fmt.Errorf("otlp mutual TLS requires both --otlp.tls-cert-file and --otlp.tls-key-file")
@@ -136,6 +154,7 @@ type otlpRawInputs struct {
 	insecure     bool
 	headers      string
 	interval     time.Duration
+	fastInterval time.Duration
 	tlsCAFile    string
 	tlsCertFile  string
 	tlsKeyFile   string
@@ -229,15 +248,16 @@ func assembleOTLP(in otlpRawInputs) (*OTLPConfig, bool, error) {
 	}
 
 	cfg := &OTLPConfig{
-		Endpoint:       endpoint,
-		Protocol:       strings.TrimSpace(in.protocol),
-		Insecure:       in.insecure,
-		Headers:        headers,
-		ExportInterval: in.interval,
-		TLSCAFile:      strings.TrimSpace(in.tlsCAFile),
-		TLSCertFile:    strings.TrimSpace(in.tlsCertFile),
-		TLSKeyFile:     strings.TrimSpace(in.tlsKeyFile),
-		ServiceName:    strings.TrimSpace(in.serviceName),
+		Endpoint:           endpoint,
+		Protocol:           strings.TrimSpace(in.protocol),
+		Insecure:           in.insecure,
+		Headers:            headers,
+		ExportInterval:     in.interval,
+		FastExportInterval: in.fastInterval,
+		TLSCAFile:          strings.TrimSpace(in.tlsCAFile),
+		TLSCertFile:        strings.TrimSpace(in.tlsCertFile),
+		TLSKeyFile:         strings.TrimSpace(in.tlsKeyFile),
+		ServiceName:        strings.TrimSpace(in.serviceName),
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, false, err
@@ -293,6 +313,7 @@ func resolveOTLPTransport() (*OTLPConfig, bool, error) {
 		insecure:     *otlpInsecure,
 		headers:      *otlpHeaders,
 		interval:     *otlpExportInterval,
+		fastInterval: *otlpFastExportInterval,
 		tlsCAFile:    *otlpTLSCAFile,
 		tlsCertFile:  *otlpTLSCertFile,
 		tlsKeyFile:   *otlpTLSKeyFile,
