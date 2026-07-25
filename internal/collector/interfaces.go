@@ -28,6 +28,9 @@ type interfacesCollector struct {
 	linkState             *prometheus.Desc
 	lineRate              *prometheus.Desc
 
+	unknownProtocolPackets  *prometheus.Desc
+	attachOrStatResetUptime *prometheus.Desc
+
 	adminUp *prometheus.Desc
 	info    *prometheus.Desc
 
@@ -129,6 +132,14 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		"Line rate in bits per second on this interface by interface name and device",
 		[]string{"interface", "device", "type"},
 	)
+	c.unknownProtocolPackets = buildPrometheusDesc(c.subsystem, "unknown_protocol_packets_total",
+		"Packets delivered to this interface that the network stack could not classify (kernel \"packets for unknown protocol\" counter) by interface name and device.",
+		[]string{"interface", "device", "type"},
+	)
+	c.attachOrStatResetUptime = buildPrometheusDesc(c.subsystem, "attach_or_statistics_reset_uptime_seconds",
+		"System-uptime reading at which this interface was attached OR its statistics were explicitly reset (the kernel does not distinguish the two cases) by interface name and device. Only emitted when the box reports this marker. Compute age since attach/reset with opnsense_system_uptime_seconds - opnsense_interfaces_attach_or_statistics_reset_uptime_seconds.",
+		[]string{"interface", "device", "type"},
+	)
 	c.adminUp = buildPrometheusDesc(c.subsystem, "admin_up",
 		"Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices.",
 		[]string{"interface", "device"},
@@ -205,6 +216,8 @@ func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.inputQueueDrops
 	ch <- c.linkState
 	ch <- c.lineRate
+	ch <- c.unknownProtocolPackets
+	ch <- c.attachOrStatResetUptime
 	ch <- c.adminUp
 	ch <- c.info
 	ch <- c.laggInfo
@@ -250,6 +263,14 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.update(ch, c.inputQueueDrops, prometheus.CounterValue, float64(iface.InputQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.linkState, prometheus.GaugeValue, float64(iface.LinkState), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.lineRate, prometheus.GaugeValue, float64(iface.LineRate), iface.Name, iface.Device, iface.Type, c.instance)
+		c.update(ch, c.unknownProtocolPackets, prometheus.CounterValue, float64(iface.UnknownProtocolPackets), iface.Name, iface.Device, iface.Type, c.instance)
+		if iface.AttachOrStatResetValid {
+			// Presence-gated: the marker is a point-in-time uptime reading, not a
+			// counter, so an absent/malformed wire value must emit no series at
+			// all rather than a fabricated boot-time zero. A genuine wire "0" IS
+			// emitted here (Valid=true, Uptime=0) — see Interface.AttachOrStatResetValid (#375).
+			c.update(ch, c.attachOrStatResetUptime, prometheus.GaugeValue, float64(iface.AttachOrStatResetUptime), iface.Name, iface.Device, iface.Type, c.instance)
+		}
 	}
 
 	overview, oerr := client.FetchInterfacesOverview()

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -60,11 +61,13 @@ func TestInterfacesCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 16 metrics per interface (mtu, bytesReceived, bytesTransmitted, multicastsReceived,
+	// 17 metrics per interface (mtu, bytesReceived, bytesTransmitted, multicastsReceived,
 	// multicastsTransmitted, inputErrors, outputErrors, collisions, receivedPackets,
 	// transmittedPackets, sendQueueLength, sendQueueMaxLength, sendQueueDrops,
-	// inputQueueDrops, linkState, lineRate)
-	expectedCount := 16
+	// inputQueueDrops, linkState, lineRate, unknownProtocolPackets). The attach/reset
+	// marker gauge is NOT counted here: this fixture's marker is "" (invalid), so it is
+	// presence-gated out (#375).
+	expectedCount := 17
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -152,8 +155,10 @@ func TestInterfacesCollector_Update_MultipleInterfaces(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 16 metrics per interface * 2 interfaces = 32
-	expectedCount := 32
+	// 17 metrics per interface * 2 interfaces = 34 (see TestInterfacesCollector_Update
+	// for the per-interface breakdown; both fixtures' marker is "" so neither emits
+	// the attach/reset gauge).
+	expectedCount := 34
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -197,6 +202,94 @@ func TestInterfacesCollector_LinkStateUnknownNotDown(t *testing.T) {
 			}
 			if !found {
 				t.Fatal("no link_state series emitted")
+			}
+		})
+	}
+}
+
+// TestInterfacesCollector_UnknownProtocolPackets covers #375: the
+// unknown-protocol-packets counter is always emitted (CounterValue), following
+// the tolerant safeAtoi convention (0 on missing/malformed), unlike the
+// presence-gated attach/reset marker covered separately below.
+func TestInterfacesCollector_UnknownProtocolPackets(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"interfaces":{"igb0":{"device":"igb0","name":"LAN","type":"Ethernet","link state":"2","mtu":"1500","packets for unknown protocol":"13852362"}}}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &interfacesCollector{subsystem: InterfacesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	assertMetricsAreCounters(t, metrics, "opnsense_interfaces_unknown_protocol_packets_total")
+
+	found := false
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_interfaces_unknown_protocol_packets_total") {
+			continue
+		}
+		found = true
+		if got := getMetricValue(m); got != 13852362 {
+			t.Errorf("expected unknown_protocol_packets_total=13852362, got %v", got)
+		}
+		labels := getMetricLabels(m)
+		if labels["interface"] != "LAN" || labels["device"] != "igb0" || labels["type"] != "Ethernet" {
+			t.Errorf("unexpected labels: %+v", labels)
+		}
+	}
+	if !found {
+		t.Fatal("expected an opnsense_interfaces_unknown_protocol_packets_total series")
+	}
+}
+
+// TestInterfacesCollector_AttachOrStatResetMarker covers #375's presence-gated
+// gauge: emitted (GaugeValue) only when the wire marker parsed, and a genuine
+// "0" must still be emitted with value 0 — never dropped as if it were absent.
+func TestInterfacesCollector_AttachOrStatResetMarker(t *testing.T) {
+	cases := []struct {
+		name       string
+		markerJSON string // raw JSON fragment for the field, including trailing comma, or "" to omit
+		wantSeries bool
+		wantValue  float64
+	}{
+		{"non-zero marker emits gauge", `"uptime at attach or stat reset":"18",`, true, 18},
+		{"genuine zero marker still emits gauge", `"uptime at attach or stat reset":"0",`, true, 0},
+		{"missing marker emits nothing", ``, false, 0},
+		{"malformed marker emits nothing", `"uptime at attach or stat reset":"not-a-number",`, false, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"interfaces":{"igb0":{"device":"igb0","name":"LAN","type":"Ethernet","link state":"2","mtu":"1500",` + tc.markerJSON + `"packets for unknown protocol":"0"}}}`))
+			}))
+			defer server.Close()
+
+			client := newCollectorTestClient(t, server)
+			c := &interfacesCollector{subsystem: InterfacesSubsystem}
+			c.Register(namespace, "test", promslog.NewNopLogger())
+			metrics := collectMetrics(t, c, client)
+
+			var series []prometheus.Metric
+			for _, m := range metrics {
+				if hasFqName(m, "opnsense_interfaces_attach_or_statistics_reset_uptime_seconds") {
+					series = append(series, m)
+				}
+			}
+			if tc.wantSeries {
+				if len(series) != 1 {
+					t.Fatalf("expected exactly 1 attach/reset series, got %d", len(series))
+				}
+				d := &dto.Metric{}
+				_ = series[0].Write(d)
+				if d.Gauge == nil {
+					t.Error("expected attach/reset marker to be emitted as GaugeValue")
+				}
+				if got := getMetricValue(series[0]); got != tc.wantValue {
+					t.Errorf("expected value %v, got %v", tc.wantValue, got)
+				}
+			} else if len(series) != 0 {
+				t.Errorf("expected no attach/reset series, got %d", len(series))
 			}
 		})
 	}
@@ -327,8 +420,9 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 	metrics := collectMetrics(t, c, client)
 
-	// 16 traffic metrics for ixl0 + (admin_up + info) × 2 overview rows = 20
-	if expected := 20; len(metrics) != expected {
+	// 17 traffic metrics for ixl0 (marker is "" so no attach/reset gauge) +
+	// (admin_up + info) × 2 overview rows = 21
+	if expected := 21; len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 	}
 

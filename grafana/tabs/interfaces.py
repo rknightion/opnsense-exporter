@@ -15,7 +15,12 @@ Rows:
      voltage, per-lane RX power/TX bias. DOM panels are hardware-dependent — a copper RJ45
      SFP reports identity only, never DOM, so those panels legitimately show "No data" on
      such interfaces (absent series, not zero) (#214)
-  9. Vnstat Traffic Accounting — persistent (survives-reboot) day/month/total byte
+  9. Diagnostics — unknown-protocol packet rate, and the attach/statistics-reset
+     marker expressed as an age (system uptime minus the marker). The age panel
+     explains simultaneous resets across every per-interface counter: it distinguishes
+     an interface recreation/explicit stats reset from a real traffic drop or an
+     exporter bug. No default alert on either metric (#375).
+  10. Vnstat Traffic Accounting — persistent (survives-reboot) day/month/total byte
      counts per interface, sourced from vnstat's own on-disk DB rather than the live
      interface counters above. Opt-in collector (--exporter.enable-vnstat); row is
      gated on a presence sentinel so it disappears entirely when disabled/absent (#215).
@@ -301,7 +306,34 @@ def build(b: Builder):
              "rising trend at constant output power is a classic laser end-of-life signal.",
     )
 
-    # ---- Row 9: Vnstat traffic accounting (#215) ---------------------------
+    # ---- Row 9: Diagnostics (#375) ------------------------------------------
+    # Both panels are diagnostic, not alerting: no default alert rule for either
+    # metric (there is no live non-zero baseline yet to threshold against).
+    unknown_protocol_packets = b.ts(
+        "Unknown Protocol Packets",
+        [(f'rate({sel("opnsense_interfaces_unknown_protocol_packets_total", iface)}[{RATE}])',
+          "{{interface}}")],
+        unit="pps", w=12, h=8,
+        desc="opnsense_interfaces_unknown_protocol_packets_total: rate of packets delivered "
+             "to this interface that the network stack could not classify (kernel "
+             "\"packets for unknown protocol\" counter). Sustained non-zero traffic here is "
+             "worth investigating - it never reaches a normal protocol handler.",
+    )
+    attach_or_reset_age = b.ts(
+        "Interface Attach / Stats Reset Age",
+        [(f'{sel("opnsense_system_uptime_seconds")} - on(opnsense_instance) group_right() '
+          f'{sel("opnsense_interfaces_attach_or_statistics_reset_uptime_seconds", iface)}',
+          "{{interface}} ({{device}})")],
+        unit="s", w=12, h=8,
+        desc="opnsense_system_uptime_seconds - opnsense_interfaces_attach_or_statistics_reset_uptime_seconds: "
+             "how long ago this interface was attached OR had its statistics explicitly reset - the "
+             "kernel marker cannot distinguish the two. Only emitted when the box reports the marker. "
+             "A sudden drop toward 0 across every counter on one interface, paired with this age "
+             "resetting too, means the interface was recreated or its stats were reset - not a real "
+             "traffic drop or an exporter bug.",
+    )
+
+    # ---- Row 10: Vnstat traffic accounting (#215) ---------------------------
     # total_bytes is a genuine counter (cumulative since vnstat's DB was created,
     # resets only on `vnstat --resetdb`), but it is intentionally NOT rate()'d here:
     # the point of vnstat's figures is the accumulated total itself (ISP data-cap
@@ -355,6 +387,7 @@ def build(b: Builder):
         b.row("SFP / Optics (DOM)",
               [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power, sfp_tx_bias],
               present="has_sfp"),
+        b.row("Diagnostics", [unknown_protocol_packets, attach_or_reset_age]),
         b.row("Vnstat Traffic Accounting", [vnstat_day, vnstat_month, vnstat_total],
               present="has_vnstat"),
     ])

@@ -824,6 +824,121 @@ func TestFetchInterfacesOverview_Addresses(t *testing.T) {
 	}
 }
 
+// TestFetchInterfaces_UnknownProtocolPackets guards #375: "packets for unknown
+// protocol" is a plain tolerant counter (safeAtoi, 0 on missing/malformed),
+// consistent with every other counter on this struct (#102).
+func TestFetchInterfaces_UnknownProtocolPackets(t *testing.T) {
+	cases := []struct {
+		name  string
+		field string
+		want  int64
+	}{
+		{"non-zero", `"packets for unknown protocol":"13852362",`, 13852362},
+		{"zero", `"packets for unknown protocol":"0",`, 0},
+		{"missing", ``, 0},
+		{"malformed", `"packets for unknown protocol":"not-a-number",`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet","link state":"2",` + tc.field + `"mtu":"1500"}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfaces()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			if got := data.Interfaces[0].UnknownProtocolPackets; got != tc.want {
+				t.Errorf("unknown protocol packets %q: got %d, want %d", tc.field, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFetchInterfaces_AttachOrStatResetMarker guards #375's deliberate parsing
+// asymmetry against every other counter on this struct: the "uptime at attach
+// or stat reset" marker is a system-uptime *reading*, not a counter, so
+// missing/malformed data must never be reported as a fabricated boot-time
+// zero. A genuine wire "0" must stay representable as valid-with-value-0.
+func TestFetchInterfaces_AttachOrStatResetMarker(t *testing.T) {
+	cases := []struct {
+		name      string
+		field     string
+		wantValid bool
+		wantValue int64
+	}{
+		{"non-zero", `"uptime at attach or stat reset":"18",`, true, 18},
+		{"genuine zero", `"uptime at attach or stat reset":"0",`, true, 0},
+		{"missing", ``, false, 0},
+		{"malformed", `"uptime at attach or stat reset":"not-a-number",`, false, 0},
+		{"empty string", `"uptime at attach or stat reset":"",`, false, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet","link state":"2",` + tc.field + `"mtu":"1500"}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfaces()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			iface := data.Interfaces[0]
+			if iface.AttachOrStatResetValid != tc.wantValid {
+				t.Errorf("marker %q: got valid=%v, want %v", tc.field, iface.AttachOrStatResetValid, tc.wantValid)
+			}
+			if iface.AttachOrStatResetUptime != tc.wantValue {
+				t.Errorf("marker %q: got value=%d, want %d", tc.field, iface.AttachOrStatResetUptime, tc.wantValue)
+			}
+		})
+	}
+}
+
+// TestFetchInterfaces_AttachOrStatResetMarkerChange guards the interface-
+// recreation case that motivated this issue (#361): a marker that jumps
+// between fetches (e.g. after a PPPoE bounce) must be reflected verbatim on
+// the next fetch, not carried over or smoothed from a previous snapshot.
+// FetchInterfaces rebuilds the slice from scratch on every call, so this also
+// guards against accidentally introducing cross-call state.
+func TestFetchInterfaces_AttachOrStatResetMarkerChange(t *testing.T) {
+	marker := `"1"`
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet","link state":"2","uptime at attach or stat reset":` + marker + `,"mtu":"1500"}}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfaces()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := data.Interfaces[0].AttachOrStatResetUptime; got != 1 {
+		t.Fatalf("expected initial marker=1, got %d", got)
+	}
+
+	// Simulate the box recreating the interface: the marker jumps to the new
+	// system uptime at recreation time (#361's live pppoe0 evidence: marker
+	// 200603 against a system uptime around 200640).
+	marker = `"200603"`
+	data, err = client.FetchInterfaces()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.Interfaces[0].AttachOrStatResetValid {
+		t.Fatal("expected marker still valid after recreation")
+	}
+	if got := data.Interfaces[0].AttachOrStatResetUptime; got != 200603 {
+		t.Errorf("expected marker to reflect recreation value 200603, got %d", got)
+	}
+}
+
 // TestFetchInterfaces_StatedIndex covers the kernel's own per-interface index
 // (the "index" key of api/diagnostics/traffic/interface). It is a cross-check
 // for the positional NetFlow enumeration, never a substitute for it (#361), so

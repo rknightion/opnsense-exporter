@@ -3,6 +3,7 @@ package opnsense
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -97,10 +98,48 @@ type Interface struct {
 	InputQueueDrops       int64
 	LinkState             int   // 0=down, 1=up, 2=unknown — derived enum, cannot overflow; stays int
 	LineRate              int64 // bits per second (10 Gbit > int32)
+
+	// UnknownProtocolPackets is the kernel's "packets for unknown protocol"
+	// counter: traffic delivered to this interface that the network stack
+	// could not classify. Parsed with the same tolerant safeAtoi convention as
+	// every other counter above (0 on missing/malformed) — there is nothing
+	// ambiguous about "0 unknown-protocol packets" (#375).
+	UnknownProtocolPackets int64
+
+	// AttachOrStatResetUptime/AttachOrStatResetValid decode the "uptime at
+	// attach or stat reset" marker: the system-uptime reading at which this
+	// interface was attached OR its statistics were explicitly reset (the box
+	// does not distinguish the two cases). Deliberately asymmetric with every
+	// other field on this struct: this is a point-in-time reading, not a
+	// counter, so a missing/malformed value must never be reported as a
+	// fabricated "boot-time zero" (interface attached at uptime 0) — it must
+	// be presence-gated instead. A genuine wire "0" IS representable: it means
+	// valid=true, value=0. Callers must check Valid before reading/emitting
+	// Uptime (#375).
+	AttachOrStatResetUptime int64
+	AttachOrStatResetValid  bool
 }
 
 type Interfaces struct {
 	Interfaces []Interface
+}
+
+// parseAttachOrStatResetUptime parses the "uptime at attach or stat reset"
+// marker with presence-gating rather than the safeAtoi 0-on-error convention
+// every other field on InterfaceDetails uses. This value is a system-uptime
+// reading, not a counter: a missing or unparseable string must yield
+// ok=false (no series emitted), never a fabricated 0, because 0 would read
+// as "attached at boot" — but a genuine wire value "0" must still parse to
+// (0, true), since that is a real, meaningful reading, not an absence (#375).
+func parseAttachOrStatResetUptime(s string) (int64, bool) {
+	if s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
@@ -144,27 +183,32 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			linkState = LinkStateUnknown
 		}
 
+		attachOrResetUptime, attachOrResetValid := parseAttachOrStatResetUptime(v.UptimeAtAttachOrStatReset)
+
 		data.Interfaces = append(data.Interfaces, Interface{
-			Name:                  v.Name,
-			Device:                v.Device,
-			Type:                  v.Type,
-			Index:                 int(safeAtoi(v.Index)),
-			MTU:                   safeAtoi(v.MTU),
-			BytesReceived:         safeAtoi(v.BytesReceived),
-			BytesTransmitted:      safeAtoi(v.BytesTransmitted),
-			PacketsReceived:       safeAtoi(v.PacketsReceived),
-			PacketsTransmitted:    safeAtoi(v.PacketsTransmitted),
-			MulticastsReceived:    safeAtoi(v.MulticastsReceived),
-			MulticastsTransmitted: safeAtoi(v.MulticastsTransmitted),
-			InputErrors:           safeAtoi(v.InputErrors),
-			OutputErrors:          safeAtoi(v.OutputErrors),
-			Collisions:            safeAtoi(v.Collisions),
-			SendQueueLength:       safeAtoi(v.SendQueueLength),
-			SendQueueMaxLength:    safeAtoi(v.SendQueueMaxLength),
-			SendQueueDrops:        safeAtoi(v.SendQueueDrops),
-			InputQueueDrops:       safeAtoi(v.InputQueueDrops),
-			LinkState:             linkState,
-			LineRate:              parseLineRateBits(v.LineRate),
+			Name:                    v.Name,
+			Device:                  v.Device,
+			Type:                    v.Type,
+			Index:                   int(safeAtoi(v.Index)),
+			MTU:                     safeAtoi(v.MTU),
+			BytesReceived:           safeAtoi(v.BytesReceived),
+			BytesTransmitted:        safeAtoi(v.BytesTransmitted),
+			PacketsReceived:         safeAtoi(v.PacketsReceived),
+			PacketsTransmitted:      safeAtoi(v.PacketsTransmitted),
+			MulticastsReceived:      safeAtoi(v.MulticastsReceived),
+			MulticastsTransmitted:   safeAtoi(v.MulticastsTransmitted),
+			InputErrors:             safeAtoi(v.InputErrors),
+			OutputErrors:            safeAtoi(v.OutputErrors),
+			Collisions:              safeAtoi(v.Collisions),
+			SendQueueLength:         safeAtoi(v.SendQueueLength),
+			SendQueueMaxLength:      safeAtoi(v.SendQueueMaxLength),
+			SendQueueDrops:          safeAtoi(v.SendQueueDrops),
+			InputQueueDrops:         safeAtoi(v.InputQueueDrops),
+			LinkState:               linkState,
+			LineRate:                parseLineRateBits(v.LineRate),
+			UnknownProtocolPackets:  safeAtoi(v.PacketsForUnknownProtocol),
+			AttachOrStatResetUptime: attachOrResetUptime,
+			AttachOrStatResetValid:  attachOrResetValid,
 		})
 	}
 
