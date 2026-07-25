@@ -4,7 +4,8 @@ Protocol Stats tab — covers all opnsense_protocol_* metrics plus BPF statistic
 Rows:
   TCP Traffic         — sent/received packets rate ts
   TCP Connection Lifecycle — request/accept/established/closed/drop/bad-attempt rate ts
-  TCP Retransmit & Queue — retransmit/keepalive/syncache/listen-queue rate ts
+  TCP Retransmit & Queue — retransmit/keepalive/syncache/listen-queue rate ts;
+                         connection drops by reason (stacked rate, #374)
   TCP Bytes           — sent/retransmit/in-seq/dup bytes (Bps) rate ts + RTT segments
   TCP ECN & SYN Cookies (26.1.11+/26.7+) — ECN packets by direction/mark, AccECN
                          handshakes, SYN cookies by result, acks-for-data by reason (#237)
@@ -84,6 +85,29 @@ def build(b: Builder):
         unit="short",
         w=12, h=8,
         desc="Rate of TCP retransmits, keepalive events, syncache activity, and listen queue overflows.",
+    )
+
+    # TCP — Connection drops split by reason (#374). These are kernel-lifetime
+    # counters that reset on reboot, like the aggregate drops/timeouts above.
+    # A reason is only present in the API response when the box reports it, so
+    # a bar simply does not appear for an unreported reason rather than
+    # flat-lining at zero.
+    tcp_drops_by_reason = b.ts(
+        "TCP Connection Drops by Reason (rate)",
+        [
+            (f'rate({sel("opnsense_protocol_tcp_connection_drops_by_reason_total")}[{RATE}])',
+             "{{reason}}"),
+        ],
+        unit="connps",
+        w=12, h=8,
+        stack=True,
+        desc="opnsense_protocol_tcp_connection_drops_by_reason_total: cumulative TCP "
+             "connections dropped by reason (retransmit_timeout, persist_timeout, "
+             "finwait2_timeout, keepalive) — kernel-lifetime counters that reset on reboot. "
+             "A reason series only appears when the box reports that wire field, so an "
+             "older box simply omits reasons it does not send rather than reporting zero. "
+             "Distinguishes WAN loss, stalled applications, state-lifetime cleanup, and "
+             "keepalive failure without a packet capture.",
     )
 
     # TCP — Bytes throughput
@@ -501,7 +525,7 @@ def build(b: Builder):
     # -------------------------------------------------------------------------
     b.tab("Protocol Stats", [
         b.row("TCP Traffic", [tcp_traffic, tcp_lifecycle]),
-        b.row("TCP Retransmit & Queue", [tcp_retransmit, tcp_bytes]),
+        b.row("TCP Retransmit & Queue", [tcp_retransmit, tcp_drops_by_reason, tcp_bytes]),
         b.row("TCP Bytes & RTT", [tcp_rtt, tcp_state_pie]),
         b.row("TCP ECN & SYN Cookies (26.1.11+/26.7+)",
               [tcp_ecn, tcp_accecn, tcp_syncookies, tcp_acks_for_data]),

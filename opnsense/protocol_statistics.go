@@ -451,15 +451,26 @@ type ProtocolStatistics struct {
 	TCPKeepaliveProbes               int64
 	TCPConnectionsDroppedByKeepalive int64
 	TCPListenQueueOverflows          int64
-	TCPSyncacheEntriesAdded          int64
-	TCPSyncacheDropped               int64
-	TCPSentDataBytes                 int64
-	TCPRetransmittedPackets          int64
-	TCPRetransmittedBytes            int64
-	TCPReceivedInSequenceBytes       int64
-	TCPReceivedDuplicateBytes        int64
-	TCPSegmentsUpdatedRtt            int64
-	TCPBadConnectionAttempts         int64
+
+	// TCPConnectionDropsByReason (#374) splits the aggregate TCPConnectionDrops
+	// above into the four kernel-lifetime reasons FreeBSD's netstat --libxo
+	// reports: retransmit_timeout, persist_timeout, finwait2_timeout, keepalive.
+	// Each reason is presence-gated INDEPENDENTLY of the others (see
+	// tcpConnectionDropReasons below) — a reason whose wire field the box does
+	// not send is left out of the map entirely rather than reported as a
+	// fabricated zero, so an operator can trust an absent series to mean "not
+	// reported by this box", not "zero this scrape". A nil/empty map means none
+	// of the four wire fields were present.
+	TCPConnectionDropsByReason map[string]int64
+	TCPSyncacheEntriesAdded    int64
+	TCPSyncacheDropped         int64
+	TCPSentDataBytes           int64
+	TCPRetransmittedPackets    int64
+	TCPRetransmittedBytes      int64
+	TCPReceivedInSequenceBytes int64
+	TCPReceivedDuplicateBytes  int64
+	TCPSegmentsUpdatedRtt      int64
+	TCPBadConnectionAttempts   int64
 
 	// TCP ECN (statistics.tcp.ecn). Resolved across the 26.1.11 key rename
 	// (ce-packets -> received-ce-packets, ect0/ect1 likewise), so these carry the
@@ -508,6 +519,35 @@ type ProtocolStatistics struct {
 	ARPDroppedNoEntry          int64
 	ARPEntriesTimeout          int64
 	ARPDroppedDuplicateAddress int64
+}
+
+// tcpConnectionDropReasons builds the presence-gated reason map for #374.
+// Each of the four fixed reasons maps from its own wire field independently:
+// a field the box did not send (json.Number zero value, "") is left out of
+// the map entirely, while a field the box sent as a literal "0" is kept as a
+// present zero. This mirrors the presence-gating convention used elsewhere in
+// this file (see TCPEcnSentPresent / TCPEcnAccEcnPresent above), except gated
+// per-reason rather than per-group, because presence here is the entire point
+// of the metric: an older box that omits one of these fields must omit that
+// series, not report a manufactured zero.
+func tcpConnectionDropReasons(retransmitTimeout, persistTimeout, finwait2Timeout, keepalives json.Number) map[string]int64 {
+	m := make(map[string]int64, 4)
+	if retransmitTimeout != "" {
+		m["retransmit_timeout"] = numToInt(retransmitTimeout)
+	}
+	if persistTimeout != "" {
+		m["persist_timeout"] = numToInt(persistTimeout)
+	}
+	if finwait2Timeout != "" {
+		m["finwait2_timeout"] = numToInt(finwait2Timeout)
+	}
+	if keepalives != "" {
+		m["keepalive"] = numToInt(keepalives)
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
@@ -662,15 +702,21 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		TCPKeepaliveProbes:               numToInt(resp.Statistics.TCP.KeepaliveProbes),
 		TCPConnectionsDroppedByKeepalive: numToInt(resp.Statistics.TCP.ConnectionsDroppedByKeepalives),
 		TCPListenQueueOverflows:          numToInt(resp.Statistics.TCP.ListenQueueOverflows),
-		TCPSyncacheEntriesAdded:          numToInt(resp.Statistics.TCP.Syncache.EntriesAdded),
-		TCPSyncacheDropped:               numToInt(resp.Statistics.TCP.Syncache.Dropped),
-		TCPSentDataBytes:                 numToInt(resp.Statistics.TCP.SentDataBytes),
-		TCPRetransmittedPackets:          numToInt(resp.Statistics.TCP.SentRetransmittedPackets),
-		TCPRetransmittedBytes:            numToInt(resp.Statistics.TCP.SentRetransmittedBytes),
-		TCPReceivedInSequenceBytes:       numToInt(resp.Statistics.TCP.ReceivedInSequenceBytes),
-		TCPReceivedDuplicateBytes:        numToInt(resp.Statistics.TCP.ReceivedCompletelyDuplicateBytes),
-		TCPSegmentsUpdatedRtt:            numToInt(resp.Statistics.TCP.SegmentsUpdatedRtt),
-		TCPBadConnectionAttempts:         numToInt(resp.Statistics.TCP.BadConnectionAttempts),
+		TCPConnectionDropsByReason: tcpConnectionDropReasons(
+			resp.Statistics.TCP.ConnectionsDroppedByRetransmitTimeout,
+			resp.Statistics.TCP.ConnectionsDroppedByPersistTimeout,
+			resp.Statistics.TCP.ConnectionsDroppedByFinwait2Timeout,
+			resp.Statistics.TCP.ConnectionsDroppedByKeepalives,
+		),
+		TCPSyncacheEntriesAdded:    numToInt(resp.Statistics.TCP.Syncache.EntriesAdded),
+		TCPSyncacheDropped:         numToInt(resp.Statistics.TCP.Syncache.Dropped),
+		TCPSentDataBytes:           numToInt(resp.Statistics.TCP.SentDataBytes),
+		TCPRetransmittedPackets:    numToInt(resp.Statistics.TCP.SentRetransmittedPackets),
+		TCPRetransmittedBytes:      numToInt(resp.Statistics.TCP.SentRetransmittedBytes),
+		TCPReceivedInSequenceBytes: numToInt(resp.Statistics.TCP.ReceivedInSequenceBytes),
+		TCPReceivedDuplicateBytes:  numToInt(resp.Statistics.TCP.ReceivedCompletelyDuplicateBytes),
+		TCPSegmentsUpdatedRtt:      numToInt(resp.Statistics.TCP.SegmentsUpdatedRtt),
+		TCPBadConnectionAttempts:   numToInt(resp.Statistics.TCP.BadConnectionAttempts),
 
 		// TCP ECN — accessors resolve the 26.1.11 rename (new key wins, legacy is the fallback).
 		TCPEcnCePackets:   numToInt(resp.Statistics.TCP.Ecn.ReceivedCe()),

@@ -57,15 +57,16 @@ type protocolCollector struct {
 	icmp6DroppedByReason  *prometheus.Desc
 
 	// Detailed TCP
-	tcpConnectionRequests     *prometheus.Desc
-	tcpConnectionAccepts      *prometheus.Desc
-	tcpConnectionsEstablished *prometheus.Desc
-	tcpConnectionsClosed      *prometheus.Desc
-	tcpConnectionDrops        *prometheus.Desc
-	tcpRetransmitTimeouts     *prometheus.Desc
-	tcpKeepaliveTimeouts      *prometheus.Desc
-	tcpListenQueueOverflows   *prometheus.Desc
-	tcpSyncacheEntries        *prometheus.Desc
+	tcpConnectionRequests      *prometheus.Desc
+	tcpConnectionAccepts       *prometheus.Desc
+	tcpConnectionsEstablished  *prometheus.Desc
+	tcpConnectionsClosed       *prometheus.Desc
+	tcpConnectionDrops         *prometheus.Desc
+	tcpConnectionDropsByReason *prometheus.Desc
+	tcpRetransmitTimeouts      *prometheus.Desc
+	tcpKeepaliveTimeouts       *prometheus.Desc
+	tcpListenQueueOverflows    *prometheus.Desc
+	tcpSyncacheEntries         *prometheus.Desc
 
 	// ARP detailed
 	arpSentFailures    *prometheus.Desc
@@ -274,6 +275,14 @@ func (c *protocolCollector) Register(namespace, instanceLabel string, log *slog.
 		"Number of TCP connection drops",
 		nil,
 	)
+	c.tcpConnectionDropsByReason = buildPrometheusDesc(c.subsystem, "tcp_connection_drops_by_reason_total",
+		"Cumulative TCP connections dropped by reason (retransmit_timeout, persist_timeout, "+
+			"finwait2_timeout, keepalive). These are kernel-lifetime counters that reset on "+
+			"reboot, like the other protocol counters. A reason is only emitted when the box "+
+			"reports that wire field; an older box that omits a reason omits its series rather "+
+			"than reporting a fabricated zero (#374).",
+		[]string{"reason"},
+	)
 	c.tcpRetransmitTimeouts = buildPrometheusDesc(c.subsystem, "tcp_retransmit_timeouts_total",
 		"Number of TCP retransmit timeouts",
 		nil,
@@ -443,6 +452,7 @@ func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.tcpConnectionsEstablished
 	ch <- c.tcpConnectionsClosed
 	ch <- c.tcpConnectionDrops
+	ch <- c.tcpConnectionDropsByReason
 	ch <- c.tcpRetransmitTimeouts
 	ch <- c.tcpKeepaliveTimeouts
 	ch <- c.tcpListenQueueOverflows
@@ -646,6 +656,14 @@ func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client,
 	ch <- prometheus.MustNewConstMetric(
 		c.tcpConnectionDrops, prometheus.CounterValue, float64(data.TCPConnectionDrops), c.instance,
 	)
+	// TCP connection drops by reason (#374) — presence-gated per reason at the
+	// client layer, so ranging over the map naturally emits a series only for
+	// the reasons the box actually reported.
+	for reason, count := range data.TCPConnectionDropsByReason {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpConnectionDropsByReason, prometheus.CounterValue, float64(count), reason, c.instance,
+		)
+	}
 	ch <- prometheus.MustNewConstMetric(
 		c.tcpRetransmitTimeouts, prometheus.CounterValue, float64(data.TCPRetransmitTimeouts), c.instance,
 	)

@@ -261,8 +261,12 @@ func TestProtocolCollector_Update(t *testing.T) {
 	//   the 26.1.11 rename. The sent/AccECN/syncookies/acks-for-data groups are
 	//   presence-gated and this fixture sends none of those keys, so they
 	//   contribute 0.
-	// Total: 105 + 21 + 3 = 129
-	expectedCount := 129
+	// TCP connection drops by reason (#374): 4 (retransmit_timeout, persist_timeout,
+	//   finwait2_timeout, keepalive) — this fixture sends all four
+	//   connections-dropped-by-* fields as explicit literal 0s, which counts as
+	//   present under presence-gating, so all four reasons get a series.
+	// Total: 105 + 21 + 3 + 4 = 133
+	expectedCount := 133
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -272,6 +276,78 @@ func TestProtocolCollector_Update(t *testing.T) {
 		"opnsense_protocol_icmp_dropped_by_reason_total",
 		"opnsense_protocol_udp_dropped_by_reason_total",
 	)
+}
+
+// TestProtocolCollector_TCPConnectionDropsByReason covers #374: only reasons
+// whose wire field the box sent get a series, the existing aggregate
+// tcp_connection_drops_total metric is unaffected by the split, and the new
+// series is emitted as a CounterValue.
+func TestProtocolCollector_TCPConnectionDropsByReason(t *testing.T) {
+	t.Run("only present reasons get series, aggregate metric unchanged", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {
+				"sent-packets": 1,
+				"connection-drops": 99,
+				"connections-dropped-by-retransmit-timeout": 7,
+				"connections-dropped-by-persist-timeout": 8
+			}}}`))
+		}))
+		defer server.Close()
+
+		client := newCollectorTestClient(t, server)
+		c := &protocolCollector{subsystem: ProtocolSubsystem}
+		c.Register(namespace, "test", promslog.NewNopLogger())
+		metrics := collectMetrics(t, c, client)
+
+		byName := metricsByName(t, metrics)
+		reasonMetrics := byName["opnsense_protocol_tcp_connection_drops_by_reason_total"]
+		if len(reasonMetrics) != 2 {
+			t.Fatalf("expected exactly 2 reason series (only the ones the box sent), got %d: %v", len(reasonMetrics), reasonMetrics)
+		}
+		seen := map[string]float64{}
+		haveReason := map[string]bool{}
+		for _, m := range reasonMetrics {
+			labels := getMetricLabels(m)
+			seen[labels["reason"]] = getMetricValue(m)
+			haveReason[labels["reason"]] = true
+		}
+		if seen["retransmit_timeout"] != 7 {
+			t.Errorf("retransmit_timeout = %v, want 7", seen["retransmit_timeout"])
+		}
+		if seen["persist_timeout"] != 8 {
+			t.Errorf("persist_timeout = %v, want 8", seen["persist_timeout"])
+		}
+		if haveReason["finwait2_timeout"] {
+			t.Error("finwait2_timeout must NOT be emitted when its wire field is absent")
+		}
+		if haveReason["keepalive"] {
+			t.Error("keepalive must NOT be emitted when its wire field is absent")
+		}
+		assertMetricsAreCounters(t, metrics, "opnsense_protocol_tcp_connection_drops_by_reason_total")
+
+		// The existing aggregate drop metric must be untouched by the new split.
+		dropsAgg := byName["opnsense_protocol_tcp_connection_drops_total"]
+		if len(dropsAgg) != 1 || getMetricValue(dropsAgg[0]) != 99 {
+			t.Errorf("expected unchanged tcp_connection_drops_total=99, got %v", dropsAgg)
+		}
+	})
+
+	t.Run("no reasons present emits no series at all", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {"sent-packets": 1}}}`))
+		}))
+		defer server.Close()
+
+		client := newCollectorTestClient(t, server)
+		c := &protocolCollector{subsystem: ProtocolSubsystem}
+		c.Register(namespace, "test", promslog.NewNopLogger())
+		metrics := collectMetrics(t, c, client)
+
+		byName := metricsByName(t, metrics)
+		if n := len(byName["opnsense_protocol_tcp_connection_drops_by_reason_total"]); n != 0 {
+			t.Errorf("expected zero reason series when all four wire fields are absent, got %d", n)
+		}
+	})
 }
 
 func TestProtocolCollector_Name(t *testing.T) {

@@ -1,6 +1,7 @@
 package opnsense
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -823,6 +824,125 @@ func TestFetchProtocolStatistics_ScientificNotationCounters(t *testing.T) {
 	if data.UDPOutputPackets != 99 {
 		t.Errorf("expected UDPOutputPackets=99, got %d", data.UDPOutputPackets)
 	}
+}
+
+// TestFetchProtocolStatistics_TCPConnectionDropsByReason covers #374: the four
+// TCP connection-drop reasons (retransmit_timeout, persist_timeout,
+// finwait2_timeout, keepalive) each map from their own wire field
+// independently, and a reason absent from the payload is omitted from the
+// map entirely rather than reported as a fabricated zero — that presence
+// gating is the entire point of the metric.
+func TestFetchProtocolStatistics_TCPConnectionDropsByReason(t *testing.T) {
+	t.Run("all four reasons present with distinct values", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {
+				"sent-packets": 1,
+				"connections-dropped-by-retransmit-timeout": 11,
+				"connections-dropped-by-persist-timeout": 22,
+				"connections-dropped-by-finwait2-timeout": 33,
+				"connections-dropped-by-keepalives": 44
+			}}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := map[string]int64{
+			"retransmit_timeout": 11,
+			"persist_timeout":    22,
+			"finwait2_timeout":   33,
+			"keepalive":          44,
+		}
+		if len(data.TCPConnectionDropsByReason) != len(want) {
+			t.Fatalf("expected %d reasons, got %d: %v", len(want), len(data.TCPConnectionDropsByReason), data.TCPConnectionDropsByReason)
+		}
+		// Assert each reason independently against a distinct expected value — a
+		// test that would still pass with two reasons swapped is not sufficient.
+		for reason, val := range want {
+			if got := data.TCPConnectionDropsByReason[reason]; got != val {
+				t.Errorf("reason %q = %d, want %d", reason, got, val)
+			}
+		}
+	})
+
+	t.Run("some reasons absent are omitted, not zeroed", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {
+				"sent-packets": 1,
+				"connections-dropped-by-retransmit-timeout": 5,
+				"connections-dropped-by-finwait2-timeout": 0
+			}}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got, ok := data.TCPConnectionDropsByReason["retransmit_timeout"]; !ok || got != 5 {
+			t.Errorf("expected retransmit_timeout=5 present, got %d ok=%v", got, ok)
+		}
+		if got, ok := data.TCPConnectionDropsByReason["finwait2_timeout"]; !ok || got != 0 {
+			t.Errorf("expected finwait2_timeout=0 present (box sent a literal 0), got %d ok=%v", got, ok)
+		}
+		if _, ok := data.TCPConnectionDropsByReason["persist_timeout"]; ok {
+			t.Error("expected persist_timeout to be OMITTED (absent wire field), not present as a fabricated zero")
+		}
+		if _, ok := data.TCPConnectionDropsByReason["keepalive"]; ok {
+			t.Error("expected keepalive to be OMITTED (absent wire field), not present as a fabricated zero")
+		}
+	})
+
+	t.Run("all four absent yields an empty map", func(t *testing.T) {
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"statistics": {"tcp": {"sent-packets": 1}}}`))
+		})
+		defer server.Close()
+
+		data, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data.TCPConnectionDropsByReason) != 0 {
+			t.Errorf("expected no reasons when all four wire fields are absent, got %v", data.TCPConnectionDropsByReason)
+		}
+	})
+
+	t.Run("monotonic across repeated scrapes", func(t *testing.T) {
+		// The reader is a straight pass-through of the box's cumulative kernel
+		// counter (reset only on reboot), so successive scrapes of an increasing
+		// counter must read back increasing values.
+		values := []int64{10, 25}
+		call := 0
+		server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			v := values[call]
+			if call < len(values)-1 {
+				call++
+			}
+			fmt.Fprintf(w, `{"statistics": {"tcp": {"sent-packets": 1, "connections-dropped-by-retransmit-timeout": %d}}}`, v)
+		})
+		defer server.Close()
+
+		first, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error on first scrape: %v", err)
+		}
+		second, err := client.FetchProtocolStatistics()
+		if err != nil {
+			t.Fatalf("unexpected error on second scrape: %v", err)
+		}
+		if first.TCPConnectionDropsByReason["retransmit_timeout"] != 10 {
+			t.Fatalf("first scrape retransmit_timeout = %d, want 10", first.TCPConnectionDropsByReason["retransmit_timeout"])
+		}
+		if second.TCPConnectionDropsByReason["retransmit_timeout"] != 25 {
+			t.Fatalf("second scrape retransmit_timeout = %d, want 25", second.TCPConnectionDropsByReason["retransmit_timeout"])
+		}
+		if second.TCPConnectionDropsByReason["retransmit_timeout"] <= first.TCPConnectionDropsByReason["retransmit_timeout"] {
+			t.Error("expected the counter to be monotonically non-decreasing across scrapes")
+		}
+	})
 }
 
 func TestFetchProtocolStatistics_ServerError(t *testing.T) {
