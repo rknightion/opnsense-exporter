@@ -245,3 +245,113 @@ func TestFetchInterfaceEnumeration_HTTPError(t *testing.T) {
 		t.Fatal("expected an error on HTTP 500")
 	}
 }
+
+// capturedInterfaceConfigBody is a two-row capture of
+// api/diagnostics/interface/get_interface_config taken from a live box on
+// 2026-07-25, with addresses, MACs and the transceiver's serial sanitised and
+// nothing else touched — every key, and every key's JSON type, is as the box
+// served it.
+//
+// The two rows are chosen to cover both halves of the row shape, because this
+// endpoint's payload is per-DEVICE and no single device exercises it:
+//
+//   - ixl0 is a physical port with an SFP+ cage and an nd6 options line, so it
+//     carries the two blocks that only some rows have.
+//   - pflog0 is a pseudo-device: ifconfig prints neither an nd6 options line nor
+//     a "plugged:" line for it, so the row legitimately omits both keys. It is
+//     here to pin that partial absence is not drift — the schema validator kind-
+//     checks a wildcard path against every row that HAS it and only reports
+//     missing when no row does.
+const capturedInterfaceConfigBody = `{
+	"ixl0": {
+		"flags": ["up", "broadcast", "running", "promisc", "simplex", "multicast", "lower_up"],
+		"capabilities": ["rxcsum", "txcsum", "vlan_mtu", "netmap", "hwstats"],
+		"options": ["vlan_mtu", "jumbo_mtu", "netmap", "hwstats"],
+		"macaddr": "00:00:5e:00:53:01",
+		"ipv4": [{"ipaddr": "192.0.2.1", "subnetbits": 24, "tunnel": false}],
+		"ipv6": [{"autoconf": false, "deprecated": false, "detached": false,
+			"ipaddr": "2001:db8::1", "link-local": false, "pltime": "0",
+			"tentative": false, "tunnel": false, "vltime": "0", "subnetbits": 64}],
+		"supported_media": ["autoselect", "10Gbase-SR"],
+		"is_physical": true,
+		"device": "ixl0",
+		"mtu": "1500",
+		"macaddr_hw": "00:00:5e:00:53:01",
+		"media": "10Gbase-SR <full-duplex>",
+		"media_raw": "Ethernet autoselect (10Gbase-SR <full-duplex>)",
+		"status": "active",
+		"nd6": {"flags": ["performnud", "auto_linklocal"]},
+		"sfp": {
+			"plugged": "SFP/SFP+/SFP28 10G Base-SR (LC)",
+			"vendor": "OEM",
+			"part_number": " SFP-10G-SR",
+			"serial_number": "X00000000001",
+			"manufacturing_date": "2023-11-07",
+			"temperature": "50.54 C",
+			"voltage": "3.29 ",
+			"lane_1_rx_power": "0.48 mW (-3.22 dBm)",
+			"lane_1_tx_bias": "6.34 mA"
+		}
+	},
+	"pflog0": {
+		"flags": [],
+		"capabilities": ["capabilities="],
+		"options": ["options="],
+		"macaddr": "00:00:00:00:00:00",
+		"ipv4": [],
+		"ipv6": [],
+		"supported_media": [],
+		"is_physical": false,
+		"device": "pflog0",
+		"mtu": "33152",
+		"groups": ["pflog"]
+	}
+}`
+
+// TestInterfaceConfigSchemaMatchesCapturedPayload validates the captured payload
+// against the schema the interfaceConfig structs derive — the same comparison
+// the live-box canary runs, but offline and at build time.
+//
+// It exists because the canary caught a shape this repo asserted and no OPNsense
+// release has ever served: nd6 was modelled as a list of flag strings, while
+// legacy_interfaces_details() has always built it as ["flags" => [...]] — an
+// OBJECT wrapping the list — on master, stable/26.7, stable/26.1 and stable/25.7
+// alike (#371). The structs here are decoded by nothing in production (the fetch
+// reads key order only), so a wrong field type cost no metric and produced no
+// error; the only thing that could notice was a schema comparison, and the only
+// one that existed ran daily against a live box. This is that comparison,
+// pinned to a capture, so the next divergence fails a unit test instead of
+// filing an issue.
+func TestInterfaceConfigSchemaMatchesCapturedPayload(t *testing.T) {
+	schemas, err := AllEndpointSchemas()
+	if err != nil {
+		t.Fatalf("AllEndpointSchemas: %v", err)
+	}
+	var schema EndpointSchema
+	for _, s := range schemas {
+		if s.Endpoint == "interfaceConfig" {
+			schema = s
+			break
+		}
+	}
+	if schema.Endpoint == "" {
+		t.Fatal("no schema derived for interfaceConfig")
+	}
+
+	// No exemptions: the capture carries every modelled path, so anything the
+	// validator reports here is a genuine struct-vs-wire disagreement rather
+	// than the box-state absence the committed ledger covers.
+	res, err := ValidateResponseSchema(schema, []byte(capturedInterfaceConfigBody), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	for _, m := range res.Mismatches {
+		t.Errorf("type mismatch at %q: schema expects %s, the box serves %s", m.Path, m.Expected, m.Got)
+	}
+	if len(res.Missing) > 0 {
+		t.Errorf("schema paths absent from the captured payload: %v", res.Missing)
+	}
+	if len(res.UnknownTopKeys) > 0 {
+		t.Errorf("unmodelled top-level keys: %v", res.UnknownTopKeys)
+	}
+}

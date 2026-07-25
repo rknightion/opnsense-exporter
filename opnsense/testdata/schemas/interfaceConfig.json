@@ -78,10 +78,14 @@
     },
     {
       "path": "*.nd6",
+      "kind": "object"
+    },
+    {
+      "path": "*.nd6.flags",
       "kind": "array"
     },
     {
-      "path": "*.nd6[]",
+      "path": "*.nd6.flags[]",
       "kind": "string"
     },
     {

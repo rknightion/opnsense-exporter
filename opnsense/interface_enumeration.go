@@ -23,7 +23,14 @@ type interfaceConfigEntry struct {
 	Flags        []string `json:"flags"`
 	Capabilities []string `json:"capabilities"`
 	Options      []string `json:"options"`
-	ND6          []string `json:"nd6"`
+
+	// ND6 is the nd6 options block, and it is an OBJECT wrapping the flag list,
+	// not the bare list this originally modelled: legacy_interfaces_details()
+	// builds it as ["flags" => explode(",", ...)] — identical on master,
+	// stable/26.7, stable/26.1 and stable/25.7, so no release has ever served
+	// the flat shape (#371). Absent entirely on rows ifconfig prints no "nd6
+	// options=" line for (pflog0, pfsync0).
+	ND6 interfaceND6 `json:"nd6"`
 
 	MACAddr   string `json:"macaddr"`
 	MACAddrHW string `json:"macaddr_hw"`
@@ -51,6 +58,12 @@ type interfaceConfigEntry struct {
 	// identity keys; flexStringMap additionally tolerates the PHP-side empty
 	// map serialized as [].
 	SFP flexStringMap `json:"sfp"`
+}
+
+// interfaceND6 is one device's nd6(4) options, as ifconfig prints them and
+// legacy_interfaces_details() wraps them.
+type interfaceND6 struct {
+	Flags []string `json:"flags"`
 }
 
 // interfaceConfigResponse is the top-level shape of get_interface_config: an
