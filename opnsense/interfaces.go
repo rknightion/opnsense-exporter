@@ -368,13 +368,20 @@ type BridgeMember struct {
 // SFPLane is one Digital Optical Monitoring (DOM) lane reading. Only lanes
 // actually reported by the box are included — never synthesized for lanes
 // the transceiver doesn't have.
+//
+// rx_power arrives as a single combined string (see parseSFPRXPower) that
+// carries both a linear (mW) and a logarithmic (dBm) reading of the same
+// measurement; RXPowerMW* and RXPowerDBM* are populated independently so a
+// malformed/absent half of the pair never blocks the other (#456).
 type SFPLane struct {
 	Lane string // lane identifier as reported, e.g. "1"
 
-	RXPowerPresent bool
-	RXPowerDBM     float64
-	TXBiasPresent  bool
-	TXBiasMA       float64
+	RXPowerMWPresent bool
+	RXPowerMW        float64
+	RXPowerPresent   bool
+	RXPowerDBM       float64
+	TXBiasPresent    bool
+	TXBiasMA         float64
 }
 
 // SFPModule is the transceiver identity/diagnostics for one interface's SFP
@@ -431,6 +438,36 @@ func leadingFloat(s string) (float64, bool) {
 		return 0, false
 	}
 	return safeParseFloatOK(m)
+}
+
+// sfpRXPowerMWRegexp and sfpRXPowerDBMRegexp locate the milliwatt and dBm
+// components of an SFP DOM rx_power reading by their own unit label rather
+// than by position. FreeBSD's ifconfig(8) (sbin/ifconfig/sfp.c, function
+// sfp_print_diag) formats the combined reading as
+// "RX power: %.2f mW (%.2f dBm)" — mW leading, dBm parenthesized — which
+// OPNsense's interfaces.lib.inc captures verbatim into lane_<n>_rx_power
+// (verified against upstream ifconfig source and a live capture 2026-07-25:
+// "0.48 mW (-3.16 dBm)" on ixl0, #456). Matching by label rather than
+// position means a reversed or reordered string still parses, and one
+// component can be independently malformed without affecting the other.
+var (
+	sfpRXPowerMWRegexp  = regexp.MustCompile(`(-?\d+(?:\.\d+)?)\s*mW`)
+	sfpRXPowerDBMRegexp = regexp.MustCompile(`(-?\d+(?:\.\d+)?)\s*dBm`)
+)
+
+// parseSFPRXPower parses an SFP DOM rx_power combined-string reading into its
+// mW and dBm components. Each component is reported with its own ok flag —
+// per #456, an absent or malformed component must yield an absent series,
+// never a substituted zero, and never block the other component from being
+// read.
+func parseSFPRXPower(s string) (mw float64, mwOK bool, dbm float64, dbmOK bool) {
+	if m := sfpRXPowerMWRegexp.FindStringSubmatch(s); m != nil {
+		mw, mwOK = safeParseFloatOK(m[1])
+	}
+	if m := sfpRXPowerDBMRegexp.FindStringSubmatch(s); m != nil {
+		dbm, dbmOK = safeParseFloatOK(m[1])
+	}
+	return mw, mwOK, dbm, dbmOK
 }
 
 // parseInterfaceAddresses flattens an interfaces_info address array into CIDR
@@ -555,12 +592,21 @@ func parseSFPModule(row interfaceOverviewRow) (SFPModule, bool) {
 			lanes[lane] = l
 			laneOrder = append(laneOrder, lane)
 		}
-		f, fok := leadingFloat(v)
 		switch kind {
 		case "rx_power":
-			l.RXPowerDBM = f
-			l.RXPowerPresent = fok
+			// Combined "NN mW (NN dBm)" string (#456) — parse both units
+			// independently rather than reusing the generic leading-float
+			// helper, which would only ever recover the leading (mW) value
+			// under the wrong (_dbm) name.
+			mw, mwOK, dbm, dbmOK := parseSFPRXPower(v)
+			l.RXPowerMW = mw
+			l.RXPowerMWPresent = mwOK
+			l.RXPowerDBM = dbm
+			l.RXPowerPresent = dbmOK
 		case "tx_bias":
+			// Single plain value ("6.02 mA") — the generic leading-float
+			// helper is correct and unchanged here.
+			f, fok := leadingFloat(v)
 			l.TXBiasMA = f
 			l.TXBiasPresent = fok
 		}

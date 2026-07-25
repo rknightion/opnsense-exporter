@@ -42,11 +42,12 @@ type interfacesCollector struct {
 	laggPortDistributing *prometheus.Desc
 	bridgeMember         *prometheus.Desc
 
-	sfpInfo        *prometheus.Desc
-	sfpTemperature *prometheus.Desc
-	sfpVoltage     *prometheus.Desc
-	sfpLaneRXPower *prometheus.Desc
-	sfpLaneTXBias  *prometheus.Desc
+	sfpInfo          *prometheus.Desc
+	sfpTemperature   *prometheus.Desc
+	sfpVoltage       *prometheus.Desc
+	sfpLaneRXPowerMW *prometheus.Desc
+	sfpLaneRXPower   *prometheus.Desc
+	sfpLaneTXBias    *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -189,8 +190,12 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		"SFP module supply voltage in volts (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM voltage reading; copper RJ45 SFPs never report DOM and emit no series here.",
 		[]string{"device"},
 	)
+	c.sfpLaneRXPowerMW = buildPrometheusDesc(c.subsystem, "sfp_lane_rx_power_milliwatts",
+		"SFP per-lane received optical power in milliwatts, linear scale (Digital Optical Monitoring). See also sfp_lane_rx_power_dbm for the logarithmic (dBm) reading of the same measurement. Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here.",
+		[]string{"device", "lane"},
+	)
 	c.sfpLaneRXPower = buildPrometheusDesc(c.subsystem, "sfp_lane_rx_power_dbm",
-		"SFP per-lane received optical power in dBm (Digital Optical Monitoring). Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here.",
+		"SFP per-lane received optical power in dBm, logarithmic scale (Digital Optical Monitoring). See also sfp_lane_rx_power_milliwatts for the linear (mW) reading of the same measurement. Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here. NOTE (#456): before this release this series erroneously published the mW reading under the _dbm name — values will step-change to the correct (and much smaller-magnitude, often negative) dBm figure.",
 		[]string{"device", "lane"},
 	)
 	c.sfpLaneTXBias = buildPrometheusDesc(c.subsystem, "sfp_lane_tx_bias_milliamps",
@@ -230,6 +235,7 @@ func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.sfpInfo
 	ch <- c.sfpTemperature
 	ch <- c.sfpVoltage
+	ch <- c.sfpLaneRXPowerMW
 	ch <- c.sfpLaneRXPower
 	ch <- c.sfpLaneTXBias
 }
@@ -344,6 +350,12 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 			c.update(ch, c.sfpVoltage, prometheus.GaugeValue, sfp.VoltageV, sfp.Device, c.instance)
 		}
 		for _, lane := range sfp.Lanes {
+			// rx_power's mW and dBm halves are presence-gated independently
+			// (#456): a malformed/absent half must never suppress or
+			// zero-substitute the other.
+			if lane.RXPowerMWPresent {
+				c.update(ch, c.sfpLaneRXPowerMW, prometheus.GaugeValue, lane.RXPowerMW, sfp.Device, lane.Lane, c.instance)
+			}
 			if lane.RXPowerPresent {
 				c.update(ch, c.sfpLaneRXPower, prometheus.GaugeValue, lane.RXPowerDBM, sfp.Device, lane.Lane, c.instance)
 			}

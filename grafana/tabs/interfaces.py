@@ -12,9 +12,11 @@ Rows:
   6. LAGG (Link Aggregation) — protocol/hash + active ports/flapping + per-port active/LACP state (#214)
   7. Bridge Membership — member table (#214)
   8. SFP / Optics (DOM) — transceiver identity + Digital Optical Monitoring: temperature,
-     voltage, per-lane RX power/TX bias. DOM panels are hardware-dependent — a copper RJ45
-     SFP reports identity only, never DOM, so those panels legitimately show "No data" on
-     such interfaces (absent series, not zero) (#214)
+     voltage, per-lane RX power (dBm AND mW, #456 — corrected/added the two units for the
+     same reading; the old single dBm panel had been showing the mW value) /TX bias. DOM
+     panels are hardware-dependent — a copper RJ45 SFP reports identity only, never DOM,
+     so those panels legitimately show "No data" on such interfaces (absent series, not
+     zero) (#214)
   9. Diagnostics — unknown-protocol packet rate, and the attach/statistics-reset
      marker expressed as an age (system uptime minus the marker). The age panel
      explains simultaneous resets across every per-interface counter: it distinguishes
@@ -291,12 +293,25 @@ def build(b: Builder):
         desc="Digital Optical Monitoring module supply voltage. Only present for DOM-capable "
              "transceivers.",
     )
-    sfp_rx_power = b.ts(
-        "SFP Lane RX Power",
+    sfp_rx_power_dbm = b.ts(
+        "SFP Lane RX Power (dBm)",
         [(sel("opnsense_interfaces_sfp_lane_rx_power_dbm"), "{{device}} lane {{lane}}")],
         unit="dBm", w=12, h=8,
-        desc="Per-lane received optical power. Only present for DOM-capable transceivers; "
-             "a falling trend indicates a degrading link or fiber.",
+        desc="opnsense_interfaces_sfp_lane_rx_power_dbm: per-lane received optical power, "
+             "logarithmic (dBm) scale. Only present for DOM-capable transceivers; a falling "
+             "trend indicates a degrading link or fiber. See also the milliwatts panel for "
+             "the linear reading of the same measurement. NOTE (#456): before this release "
+             "this series erroneously published the milliwatt reading under this dBm-named "
+             "metric — expect a one-time step change to the correct (and much "
+             "smaller-magnitude, often negative) dBm figure after upgrading.",
+    )
+    sfp_rx_power_mw = b.ts(
+        "SFP Lane RX Power (mW)",
+        [(sel("opnsense_interfaces_sfp_lane_rx_power_milliwatts"), "{{device}} lane {{lane}}")],
+        unit="mwatt", w=12, h=8,
+        desc="opnsense_interfaces_sfp_lane_rx_power_milliwatts: per-lane received optical "
+             "power, linear (mW) scale — added in #456 alongside the corrected dBm series. "
+             "Only present for DOM-capable transceivers.",
     )
     sfp_tx_bias = b.ts(
         "SFP Lane TX Bias Current",
@@ -385,7 +400,7 @@ def build(b: Builder):
               present="has_lagg"),
         b.row("Bridge Membership", [bridge_members], present="has_bridge"),
         b.row("SFP / Optics (DOM)",
-              [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power, sfp_tx_bias],
+              [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power_dbm, sfp_rx_power_mw, sfp_tx_bias],
               present="has_sfp"),
         b.row("Diagnostics", [unknown_protocol_packets, attach_or_reset_age]),
         b.row("Vnstat Traffic Accounting", [vnstat_day, vnstat_month, vnstat_total],

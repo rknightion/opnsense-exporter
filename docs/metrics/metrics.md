@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 826
-- **Gauges:** 555
+- **Total metrics:** 827
+- **Gauges:** 556
 - **Counters:** 271
 
 ## General
@@ -599,7 +599,8 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_interfaces_sfp_info | Gauge | device, vendor, part_number, serial_number | SFP/SFP+ transceiver identity for this interface's optical cage. Value is always 1. Emitted for any plugged module, optical or copper. Join on the device label. | --exporter.disable-interfaces |
 | opnsense_interfaces_sfp_temperature_celsius | Gauge | device | SFP module temperature in degrees Celsius (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM temperature reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
 | opnsense_interfaces_sfp_voltage_volts | Gauge | device | SFP module supply voltage in volts (Digital Optical Monitoring). Only emitted when the transceiver reports a DOM voltage reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
-| opnsense_interfaces_sfp_lane_rx_power_dbm | Gauge | device, lane | SFP per-lane received optical power in dBm (Digital Optical Monitoring). Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_lane_rx_power_milliwatts | Gauge | device, lane | SFP per-lane received optical power in milliwatts, linear scale (Digital Optical Monitoring). See also sfp_lane_rx_power_dbm for the logarithmic (dBm) reading of the same measurement. Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
+| opnsense_interfaces_sfp_lane_rx_power_dbm | Gauge | device, lane | SFP per-lane received optical power in dBm, logarithmic scale (Digital Optical Monitoring). See also sfp_lane_rx_power_milliwatts for the linear (mW) reading of the same measurement. Only emitted for lanes with a DOM RX power reading; copper RJ45 SFPs never report DOM and emit no series here. NOTE (#456): before this release this series erroneously published the mW reading under the _dbm name — values will step-change to the correct (and much smaller-magnitude, often negative) dBm figure. | --exporter.disable-interfaces |
 | opnsense_interfaces_sfp_lane_tx_bias_milliamps | Gauge | device, lane | SFP per-lane laser bias current in milliamps (Digital Optical Monitoring). Only emitted for lanes with a DOM TX bias reading; copper RJ45 SFPs never report DOM and emit no series here. | --exporter.disable-interfaces |
 
 ## Kea DHCP

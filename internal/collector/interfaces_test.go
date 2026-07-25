@@ -524,7 +524,7 @@ func TestInterfacesCollector_Update_LaggBridgeSFP(t *testing.T) {
 						"part_number": "SFP-10GSR-85", "serial_number": "G2129012345",
 						"manufacturing_date": "2021-01-01",
 						"temperature": "32.79 C", "voltage": "3.30 ",
-						"lane_1_rx_power": "-2.32 dBm (0.59 mW)", "lane_1_tx_bias": "6.02 mA"
+						"lane_1_rx_power": "0.59 mW (-2.32 dBm)", "lane_1_tx_bias": "6.02 mA"
 					}
 				}
 			]
@@ -547,7 +547,8 @@ func TestInterfacesCollector_Update_LaggBridgeSFP(t *testing.T) {
 			"opnsense_interfaces_lagg_port_collecting", "opnsense_interfaces_lagg_port_distributing",
 			"opnsense_interfaces_bridge_member", "opnsense_interfaces_sfp_info",
 			"opnsense_interfaces_sfp_temperature_celsius", "opnsense_interfaces_sfp_voltage_volts",
-			"opnsense_interfaces_sfp_lane_rx_power_dbm", "opnsense_interfaces_sfp_lane_tx_bias_milliamps",
+			"opnsense_interfaces_sfp_lane_rx_power_milliwatts", "opnsense_interfaces_sfp_lane_rx_power_dbm",
+			"opnsense_interfaces_sfp_lane_tx_bias_milliamps",
 		} {
 			if strings.Contains(desc, `fqName: "`+name+`"`) {
 				byName[name] = append(byName[name], m)
@@ -606,6 +607,7 @@ func TestInterfacesCollector_Update_LaggBridgeSFP(t *testing.T) {
 	for _, name := range []string{
 		"opnsense_interfaces_sfp_temperature_celsius",
 		"opnsense_interfaces_sfp_voltage_volts",
+		"opnsense_interfaces_sfp_lane_rx_power_milliwatts",
 		"opnsense_interfaces_sfp_lane_rx_power_dbm",
 		"opnsense_interfaces_sfp_lane_tx_bias_milliamps",
 	} {
@@ -625,9 +627,80 @@ func TestInterfacesCollector_Update_LaggBridgeSFP(t *testing.T) {
 		t.Errorf("expected voltage 3.30, got %v", v)
 	}
 	if v := getMetricValue(byName["opnsense_interfaces_sfp_lane_rx_power_dbm"][0]); v != -2.32 {
-		t.Errorf("expected lane rx power -2.32, got %v", v)
+		t.Errorf("expected lane rx power -2.32 dBm, got %v", v)
+	}
+	if v := getMetricValue(byName["opnsense_interfaces_sfp_lane_rx_power_milliwatts"][0]); v != 0.59 {
+		t.Errorf("expected lane rx power 0.59 mW, got %v", v)
 	}
 	if v := getMetricValue(byName["opnsense_interfaces_sfp_lane_tx_bias_milliamps"][0]); v != 6.02 {
 		t.Errorf("expected lane tx bias 6.02, got %v", v)
+	}
+}
+
+// TestInterfacesCollector_Update_SFPRXPowerPartial covers #456's per-series
+// presence gating at the collector layer: when only one half of a lane's
+// rx_power reading parses, exactly that series is emitted — the other metric
+// name gets no series at all (never a zero-substituted one) for that lane.
+func TestInterfacesCollector_Update_SFPRXPowerPartial(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/traffic/interface", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"interfaces": {}}`))
+	})
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "ix0", "identifier": "opt1", "description": "SFP1",
+					"status": "up", "flags": ["up"], "media": "10Gbase-SR <full-duplex>",
+					"link_type": "static", "vlan_tag": null, "is_physical": true,
+					"sfp": {
+						"plugged": "SFP+ 10GBASE-SR", "vendor": "FS",
+						"part_number": "SFP-10GSR-85", "serial_number": "G2129012345",
+						"manufacturing_date": "2021-01-01",
+						"lane_1_rx_power": "0.48 mW (N/A)",
+						"lane_2_rx_power": "N/A (-3.16 dBm)"
+					}
+				}
+			]
+		}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &interfacesCollector{subsystem: InterfacesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, client)
+
+	var mwSeries, dbmSeries []prometheus.Metric
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, `fqName: "opnsense_interfaces_sfp_lane_rx_power_milliwatts"`) {
+			mwSeries = append(mwSeries, m)
+		}
+		if strings.Contains(desc, `fqName: "opnsense_interfaces_sfp_lane_rx_power_dbm"`) {
+			dbmSeries = append(dbmSeries, m)
+		}
+	}
+
+	if len(mwSeries) != 1 {
+		t.Fatalf("expected exactly 1 rx_power_milliwatts series (lane 1 only), got %d", len(mwSeries))
+	}
+	if labels := getMetricLabels(mwSeries[0]); labels["lane"] != "1" {
+		t.Errorf("expected mW series for lane 1, got %+v", labels)
+	}
+	if v := getMetricValue(mwSeries[0]); v != 0.48 {
+		t.Errorf("expected mW=0.48, got %v", v)
+	}
+
+	if len(dbmSeries) != 1 {
+		t.Fatalf("expected exactly 1 rx_power_dbm series (lane 2 only), got %d", len(dbmSeries))
+	}
+	if labels := getMetricLabels(dbmSeries[0]); labels["lane"] != "2" {
+		t.Errorf("expected dBm series for lane 2, got %+v", labels)
+	}
+	if v := getMetricValue(dbmSeries[0]); v != -3.16 {
+		t.Errorf("expected dBm=-3.16, got %v", v)
 	}
 }

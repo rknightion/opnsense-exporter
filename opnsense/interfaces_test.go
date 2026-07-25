@@ -5,6 +5,101 @@ import (
 	"testing"
 )
 
+// TestParseSFPRXPower covers the combined-string DOM rx_power reading.
+// FreeBSD's ifconfig(8) (sbin/ifconfig/sfp.c) formats it as
+// "RX power: %.2f mW (%.2f dBm)" — mW leading, dBm parenthesized — verified
+// against upstream source 2026-07-25 and against a live OPNsense box
+// (sfp.lane_1_rx_power = "0.48 mW (-3.16 dBm)" on ixl0). Each unit is located
+// by its own label rather than by position, so order variation and a
+// malformed component in either half are tolerated independently.
+func TestParseSFPRXPower(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     string
+		wantMW    float64
+		wantMWOK  bool
+		wantDBM   float64
+		wantDBMOK bool
+	}{
+		{
+			name:      "live capture (issue #456, ixl0)",
+			value:     "0.48 mW (-3.16 dBm)",
+			wantMW:    0.48,
+			wantMWOK:  true,
+			wantDBM:   -3.16,
+			wantDBMOK: true,
+		},
+		{
+			name:      "whitespace variation (extra spaces and tabs)",
+			value:     "  0.48\tmW\t(  -3.16\tdBm  )",
+			wantMW:    0.48,
+			wantMWOK:  true,
+			wantDBM:   -3.16,
+			wantDBMOK: true,
+		},
+		{
+			name:      "reversed order still parses (dBm leading, mW parenthesized)",
+			value:     "-2.32 dBm (0.59 mW)",
+			wantMW:    0.59,
+			wantMWOK:  true,
+			wantDBM:   -2.32,
+			wantDBMOK: true,
+		},
+		{
+			name:      "positive dBm",
+			value:     "1.2 mW (0.79 dBm)",
+			wantMW:    1.2,
+			wantMWOK:  true,
+			wantDBM:   0.79,
+			wantDBMOK: true,
+		},
+		{
+			name:      "dBm component malformed, mW still parses",
+			value:     "0.48 mW (bogus dBm)",
+			wantMW:    0.48,
+			wantMWOK:  true,
+			wantDBMOK: false,
+		},
+		{
+			name:      "mW component malformed, dBm still parses",
+			value:     "bogus mW (-3.16 dBm)",
+			wantMWOK:  false,
+			wantDBM:   -3.16,
+			wantDBMOK: true,
+		},
+		{
+			name:      "completely malformed value",
+			value:     "not available",
+			wantMWOK:  false,
+			wantDBMOK: false,
+		},
+		{
+			name:      "empty string",
+			value:     "",
+			wantMWOK:  false,
+			wantDBMOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mw, mwOK, dbm, dbmOK := parseSFPRXPower(tt.value)
+			if mwOK != tt.wantMWOK {
+				t.Errorf("mwOK = %v, want %v", mwOK, tt.wantMWOK)
+			}
+			if mwOK && mw != tt.wantMW {
+				t.Errorf("mw = %v, want %v", mw, tt.wantMW)
+			}
+			if dbmOK != tt.wantDBMOK {
+				t.Errorf("dbmOK = %v, want %v", dbmOK, tt.wantDBMOK)
+			}
+			if dbmOK && dbm != tt.wantDBM {
+				t.Errorf("dbm = %v, want %v", dbm, tt.wantDBM)
+			}
+		})
+	}
+}
+
 func TestFetchInterfaces_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -459,6 +554,8 @@ func TestFetchInterfacesOverview_SFPCopperNoDOM(t *testing.T) {
 	if len(sfp.Lanes) != 0 {
 		t.Errorf("expected no DOM lanes for a copper SFP, got %+v", sfp.Lanes)
 	}
+	// #456: neither rx_power series (mW or dBm) exists for a copper module,
+	// since there are no lanes at all to carry RXPowerMWPresent/RXPowerPresent.
 }
 
 // TestFetchInterfacesOverview_SFPOpticalWithDOM is source-derived: OPNsense
@@ -467,6 +564,19 @@ func TestFetchInterfacesOverview_SFPCopperNoDOM(t *testing.T) {
 // "lane N: RX power: A TX bias: B" lines verbatim, including their unit
 // suffixes, into the sfp map. This models a DOM-capable optical transceiver
 // (e.g. an Intel ixl/ix or Chelsio NIC) with two lanes.
+//
+// CORRECTED 2026-07-25 (#456): the rx_power fixture below previously read
+// "-2.32 dBm (0.59 mW)" — dBm leading, mW parenthesized. That ordering was
+// WRONG; it was never captured from a real box. FreeBSD's ifconfig(8)
+// (sbin/ifconfig/sfp.c) formats it "RX power: %.2f mW (%.2f dBm)" — mW
+// always leads, dBm is always parenthesized — confirmed against upstream
+// ifconfig source and a live OPNsense box (sfp.lane_1_rx_power =
+// "0.48 mW (-3.16 dBm)" on ixl0). The wrong order let the old leading-float
+// parser accidentally read the right number for the wrong reason: it always
+// took the first token, which happened to be dBm in this fixture but is mW
+// on every real box, so the shipped exporter published the mW value under
+// the "_dbm" metric name. See parseSFPRXPower, which now locates each unit
+// by its own label instead of by position.
 func TestFetchInterfacesOverview_SFPOpticalWithDOM(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
@@ -490,9 +600,9 @@ func TestFetchInterfacesOverview_SFPOpticalWithDOM(t *testing.T) {
 						"manufacturing_date": "2021-01-01",
 						"temperature": "32.79 C",
 						"voltage": "3.30 ",
-						"lane_1_rx_power": "-2.32 dBm (0.59 mW)",
+						"lane_1_rx_power": "0.59 mW (-2.32 dBm)",
 						"lane_1_tx_bias": "6.02 mA",
-						"lane_2_rx_power": "-2.55 dBm (0.56 mW)",
+						"lane_2_rx_power": "0.56 mW (-2.55 dBm)",
 						"lane_2_tx_bias": "6.10 mA"
 					}
 				}
@@ -535,7 +645,10 @@ func TestFetchInterfacesOverview_SFPOpticalWithDOM(t *testing.T) {
 		t.Fatalf("expected lane 1, got %+v", sfp.Lanes)
 	}
 	if !l1.RXPowerPresent || l1.RXPowerDBM != -2.32 {
-		t.Errorf("expected lane 1 rx power -2.32 (present), got %+v", l1)
+		t.Errorf("expected lane 1 rx power -2.32 dBm (present), got %+v", l1)
+	}
+	if !l1.RXPowerMWPresent || l1.RXPowerMW != 0.59 {
+		t.Errorf("expected lane 1 rx power 0.59 mW (present), got %+v", l1)
 	}
 	if !l1.TXBiasPresent || l1.TXBiasMA != 6.02 {
 		t.Errorf("expected lane 1 tx bias 6.02 (present), got %+v", l1)
@@ -545,10 +658,92 @@ func TestFetchInterfacesOverview_SFPOpticalWithDOM(t *testing.T) {
 		t.Fatalf("expected lane 2, got %+v", sfp.Lanes)
 	}
 	if !l2.RXPowerPresent || l2.RXPowerDBM != -2.55 {
-		t.Errorf("expected lane 2 rx power -2.55 (present), got %+v", l2)
+		t.Errorf("expected lane 2 rx power -2.55 dBm (present), got %+v", l2)
+	}
+	if !l2.RXPowerMWPresent || l2.RXPowerMW != 0.56 {
+		t.Errorf("expected lane 2 rx power 0.56 mW (present), got %+v", l2)
 	}
 	if !l2.TXBiasPresent || l2.TXBiasMA != 6.10 {
 		t.Errorf("expected lane 2 tx bias 6.10 (present), got %+v", l2)
+	}
+}
+
+// TestFetchInterfacesOverview_SFPRXPowerPartial covers #456's tolerance
+// requirement at the fetch layer (not just the parser unit test): when one
+// component of a lane's rx_power reading is malformed, exactly the
+// independently-parseable component's Present flag is set — never a
+// zero-substitution on the broken half, and never suppressing the good half.
+func TestFetchInterfacesOverview_SFPRXPowerPartial(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "ix0",
+					"identifier": "opt1",
+					"description": "SFP1",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"media": "10Gbase-SR <full-duplex>",
+					"link_type": "static",
+					"vlan_tag": null,
+					"is_physical": true,
+					"sfp": {
+						"plugged": "SFP+ 10GBASE-SR",
+						"vendor": "FS",
+						"part_number": "SFP-10GSR-85",
+						"serial_number": "G2129012345",
+						"manufacturing_date": "2021-01-01",
+						"lane_1_rx_power": "0.48 mW (N/A)",
+						"lane_2_rx_power": "N/A (-3.16 dBm)",
+						"lane_3_rx_power": "totally unparseable"
+					}
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.SFPModules) != 1 {
+		t.Fatalf("expected 1 SFP module, got %d", len(data.SFPModules))
+	}
+	byLane := map[string]SFPLane{}
+	for _, l := range data.SFPModules[0].Lanes {
+		byLane[l.Lane] = l
+	}
+
+	l1, ok := byLane["1"]
+	if !ok {
+		t.Fatalf("expected lane 1, got %+v", data.SFPModules[0].Lanes)
+	}
+	if !l1.RXPowerMWPresent || l1.RXPowerMW != 0.48 {
+		t.Errorf("lane 1: expected mW=0.48 present, got %+v", l1)
+	}
+	if l1.RXPowerPresent {
+		t.Errorf("lane 1: expected dBm absent (malformed), got %+v", l1)
+	}
+
+	l2, ok := byLane["2"]
+	if !ok {
+		t.Fatalf("expected lane 2, got %+v", data.SFPModules[0].Lanes)
+	}
+	if l2.RXPowerMWPresent {
+		t.Errorf("lane 2: expected mW absent (malformed), got %+v", l2)
+	}
+	if !l2.RXPowerPresent || l2.RXPowerDBM != -3.16 {
+		t.Errorf("lane 2: expected dBm=-3.16 present, got %+v", l2)
+	}
+
+	l3, ok := byLane["3"]
+	if !ok {
+		t.Fatalf("expected lane 3, got %+v", data.SFPModules[0].Lanes)
+	}
+	if l3.RXPowerMWPresent || l3.RXPowerPresent {
+		t.Errorf("lane 3: expected both mW and dBm absent for a completely malformed reading, got %+v", l3)
 	}
 }
 
