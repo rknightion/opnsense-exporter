@@ -80,8 +80,8 @@ This is the plain-Compose form and works on a single Docker host with no Swarm.
 mkdir -p ./secrets
 printf '%s' "your-api-key" > ./secrets/api-key
 printf '%s' "your-api-secret" > ./secrets/api-secret
-sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret
 chmod 400 ./secrets/api-key ./secrets/api-secret
+sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret
 ```
 
 ### Compose file

@@ -5,17 +5,6 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 compose_doc="$root/docs/deployment/docker.md"
 
-grep -Fq 'sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret' "$compose_doc" ||
-  {
-    printf 'file-secret instructions must make UID 65532 the owner\n' >&2
-    exit 1
-  }
-grep -Fq 'chmod 400 ./secrets/api-key ./secrets/api-secret' "$compose_doc" ||
-  {
-    printf 'file-secret instructions must keep credentials owner-readable only\n' >&2
-    exit 1
-  }
-
 for command in docker python3; do
   command -v "$command" >/dev/null || {
     printf 'required command not found: %s\n' "$command" >&2
@@ -25,6 +14,21 @@ done
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+
+python3 - "$compose_doc" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text()
+chmod = "chmod 400 ./secrets/api-key ./secrets/api-secret"
+chown = "sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret"
+if source.count(chmod) != 1:
+    raise SystemExit("file-secret instructions must keep credentials owner-readable only")
+if source.count(chown) != 1:
+    raise SystemExit("file-secret instructions must make UID 65532 the owner")
+if source.index(chmod) > source.index(chown):
+    raise SystemExit("file-secret instructions must set mode before ownership")
+PY
 
 python3 - "$compose_doc" "$work/compose.yaml" <<'PY'
 from pathlib import Path
