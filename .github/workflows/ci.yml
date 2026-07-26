@@ -66,6 +66,49 @@ jobs:
       - name: Run tests with the race detector
         run: go test -race -timeout 15m ./...
 
+  fuzz-smoke:
+    name: Fuzz smoke (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: netflow
+            package: ./internal/flow/netflow
+            target: FuzzDecodePacketAndTemplate
+          - name: syslog-envelope
+            package: ./internal/logship/syslog
+            target: FuzzParseEnvelope
+          - name: syslog-tcp
+            package: ./internal/logship/syslog
+            target: FuzzTCPFrames
+          - name: zenarmor
+            package: ./internal/logship/zenarmor
+            target: FuzzParseDocument
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+
+      # This is a deterministic blocking smoke gate. Longer corpus-retaining runs
+      # live in fuzz.yml so normal CI neither restores nor publishes mutable corpus.
+      - name: Run bounded fuzz target
+        env:
+          FUZZ_PACKAGE: ${{ matrix.package }}
+          FUZZ_TARGET: ${{ matrix.target }}
+        run: >-
+          go test "$FUZZ_PACKAGE"
+          -run='^$'
+          -fuzz="^${FUZZ_TARGET}$"
+          -fuzztime=10s
+          -parallel=1
+          -timeout=45s
+
   docs:
     name: Generated docs up-to-date
     runs-on: ubuntu-24.04
@@ -314,7 +357,7 @@ jobs:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [repo-meta, tests, race, docs, deployment-contracts, grafana, docker-build-verify]
+    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}

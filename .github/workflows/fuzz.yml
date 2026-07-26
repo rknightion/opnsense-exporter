@@ -1,0 +1,84 @@
+name: Scheduled fuzzing
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: netflow
+            package: ./internal/flow/netflow
+            target: FuzzDecodePacketAndTemplate
+          - name: syslog-envelope
+            package: ./internal/logship/syslog
+            target: FuzzParseEnvelope
+          - name: syslog-tcp
+            package: ./internal/logship/syslog
+            target: FuzzTCPFrames
+          - name: zenarmor
+            package: ./internal/logship/zenarmor
+            target: FuzzParseDocument
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+
+      - name: Resolve fuzz cache path
+        id: fuzz-cache
+        run: echo "path=$(go env GOCACHE)/fuzz" >> "$GITHUB_OUTPUT"
+
+      # Each run gets a unique save key while the prefix restores the newest safe
+      # corpus for this exact target and dependency graph.
+      - name: Restore retained fuzz corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.fuzz-cache.outputs.path }}
+          key: fuzz-${{ runner.os }}-go1.26-${{ matrix.name }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            fuzz-${{ runner.os }}-go1.26-${{ matrix.name }}-${{ hashFiles('go.sum') }}-
+            fuzz-${{ runner.os }}-go1.26-${{ matrix.name }}-
+
+      - name: Run retained fuzz target
+        env:
+          FUZZ_PACKAGE: ${{ matrix.package }}
+          FUZZ_TARGET: ${{ matrix.target }}
+        run: >-
+          go test "$FUZZ_PACKAGE"
+          -run='^$'
+          -fuzz="^${FUZZ_TARGET}$"
+          -fuzztime=5m
+          -parallel=1
+          -timeout=7m
+
+      # Go writes minimized reproducers to testdata/fuzz when possible and keeps
+      # working corpus in GOCACHE/fuzz. Preserve both for human review; never
+      # auto-commit generated corpus.
+      - name: Upload minimized failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-failure-${{ matrix.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            **/testdata/fuzz/${{ matrix.target }}/**
+            ${{ steps.fuzz-cache.outputs.path }}/**
+          if-no-files-found: warn
+          retention-days: 30
