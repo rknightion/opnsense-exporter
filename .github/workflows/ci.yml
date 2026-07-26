@@ -158,6 +158,59 @@ jobs:
             exit 1
           fi
 
+      # Exercise the same plain-Compose seams published in docs/deployment/docker.md
+      # (#438): file-backed secrets readable by the distroless image's non-root user,
+      # exec-form native health probe, and the /-/healthy endpoint. The OPNsense
+      # address is deliberately unreachable; liveness must not depend on a poll.
+      - name: Verify documented Compose secrets and healthcheck
+        run: |
+          compose_dir="$(mktemp -d)"
+          trap 'docker compose -f "$compose_dir/compose.yaml" down --volumes --remove-orphans; rm -rf "$compose_dir"' EXIT
+          mkdir -p "$compose_dir/secrets"
+          printf '%s' 'ci-api-key' > "$compose_dir/secrets/api-key"
+          printf '%s' 'ci-api-secret' > "$compose_dir/secrets/api-secret"
+          chmod 600 "$compose_dir/secrets/api-key" "$compose_dir/secrets/api-secret"
+
+          tee "$compose_dir/compose.yaml" >/dev/null <<'YAML'
+          services:
+            opnsense-exporter:
+              image: opnsense-exporter:ci-test
+              command:
+                - --opnsense.protocol=https
+                - --opnsense.address=127.0.0.1
+                - --web.listen-address=:8080
+              environment:
+                OPS_API_KEY_FILE: /run/secrets/opnsense-api-key
+                OPS_API_SECRET_FILE: /run/secrets/opnsense-api-secret
+              secrets:
+                - opnsense-api-key
+                - opnsense-api-secret
+              healthcheck:
+                test: ["CMD", "/opnsense-exporter", "health"]
+                interval: 1s
+                timeout: 2s
+                retries: 10
+                start_period: 1s
+          secrets:
+            opnsense-api-key:
+              file: ./secrets/api-key
+            opnsense-api-secret:
+              file: ./secrets/api-secret
+          YAML
+
+          docker compose -f "$compose_dir/compose.yaml" config --quiet
+          docker compose -f "$compose_dir/compose.yaml" run --rm --no-deps \
+            opnsense-exporter --opnsense.protocol=https --opnsense.address=127.0.0.1 --config.check
+          docker compose -f "$compose_dir/compose.yaml" up -d --wait --wait-timeout 30
+
+          container_id="$(docker compose -f "$compose_dir/compose.yaml" ps -q opnsense-exporter)"
+          status="$(docker inspect --format '{{.State.Health.Status}}' "$container_id")"
+          if [ "$status" != "healthy" ]; then
+            docker compose -f "$compose_dir/compose.yaml" logs
+            echo "::error::documented native healthcheck reported '$status', want 'healthy'"
+            exit 1
+          fi
+
   # Test coverage -> Codacy. Deliberately NOT in ci-success's `needs`: coverage reporting is
   # informational, so a Codacy outage — or a fork PR with no secret — must never block merges or
   # Renovate automerge. Generates an atomic coverage profile and uploads via the pinned official

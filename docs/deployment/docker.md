@@ -70,13 +70,17 @@ services:
 
 ## Docker Compose with file-based secrets
 
-For production deployments, use Docker secrets to avoid storing credentials in environment variables or compose files.
+For production deployments, keep the API key and secret out of environment variables and out of the compose file. Compose reads each secret from a file on the host and mounts it at `/run/secrets/<name>`; the exporter reads the file paths named by `OPS_API_KEY_FILE` / `OPS_API_SECRET_FILE`.
 
-### Create the secrets
+This is the plain-Compose form and works on a single Docker host with no Swarm.
+
+### Create the secret files
 
 ```bash
-echo "your-api-key" | docker secret create opnsense-api-key -
-echo "your-api-secret" | docker secret create opnsense-api-secret -
+mkdir -p ./secrets
+printf '%s' "your-api-key" > ./secrets/api-key
+printf '%s' "your-api-secret" > ./secrets/api-secret
+chmod 600 ./secrets/api-key ./secrets/api-secret
 ```
 
 ### Compose file
@@ -103,41 +107,120 @@ services:
 
 secrets:
   opnsense-api-key:
+    file: ./secrets/api-key
+  opnsense-api-secret:
+    file: ./secrets/api-secret
+```
+
+Verify the file renders before deploying it:
+
+```bash
+docker compose config
+```
+
+The container runs as UID 65532, so both secret files must be readable by that UID. Compose file secrets are mounted `0444` by default, which satisfies that; a bind mount keeps the host file's own ownership and mode, which may not.
+
+### Alternative: Swarm external secrets
+
+Only on Docker Swarm. `external: true` means the secret already exists in the Swarm cluster and is not created from a local file:
+
+```bash
+echo "your-api-key" | docker secret create opnsense-api-key -
+echo "your-api-secret" | docker secret create opnsense-api-secret -
+```
+
+```yaml
+secrets:
+  opnsense-api-key:
     external: true
   opnsense-api-secret:
     external: true
 ```
 
-!!! tip "Local file secrets"
-    If you are not running Docker Swarm, you can use file-based secrets with bind mounts instead:
+The service block is otherwise identical. `docker secret create` fails outside Swarm, so do not mix this form into a plain-Compose file.
 
-    ```yaml
-    services:
-      opnsense-exporter:
-        # ...
-        volumes:
-          - ./secrets/api-key:/run/secrets/opnsense-api-key:ro
-          - ./secrets/api-secret:/run/secrets/opnsense-api-secret:ro
-        environment:
-          OPS_API_KEY_FILE: /run/secrets/opnsense-api-key
-          OPS_API_SECRET_FILE: /run/secrets/opnsense-api-secret
-    ```
+### Alternative: plain bind mounts
+
+No `secrets:` section at all — the files are ordinary read-only mounts. Simplest, but the credentials appear in `docker inspect` as mount paths and are subject to the host file's ownership:
+
+```yaml
+services:
+  opnsense-exporter:
+    # ...
+    volumes:
+      - ./secrets/api-key:/run/secrets/opnsense-api-key:ro
+      - ./secrets/api-secret:/run/secrets/opnsense-api-secret:ro
+    environment:
+      OPS_API_KEY_FILE: /run/secrets/opnsense-api-key
+      OPS_API_SECRET_FILE: /run/secrets/opnsense-api-secret
+```
 
 ## Health check configuration
 
-Add a health check to your compose file so the container gets restarted if the exporter becomes unresponsive:
+The runtime image is distroless: it contains the exporter binary and its licence files, and nothing else — no shell, no `curl`, no `wget`. A healthcheck that calls one of those can never run. The binary carries its own probe instead:
 
 ```yaml
 services:
   opnsense-exporter:
     # ...
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/"]
+      test: ["CMD", "/opnsense-exporter", "health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
 ```
+
+`CMD` (exec form) runs the binary directly. `CMD-SHELL`, and the bare-string form that implies it, would need `/bin/sh` and will not work in this image.
+
+`health` performs an HTTP GET of `/-/healthy` on `http://127.0.0.1:8080` and exits 0 or 1. It makes no OPNsense API call: it reports whether this process is serving, which is what a liveness check is for. Flags:
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--url` | `http://127.0.0.1:8080/-/healthy` | Probe target. Change it when `--web.listen-address` is not `:8080`. |
+| `--timeout` | `2s` | Bounds the whole probe. |
+| `--insecure` | off | Skip certificate verification, for a metrics port secured with a private cert via `--web.config.file`. |
+
+For a non-default listen address:
+
+```yaml
+    healthcheck:
+      test: ["CMD", "/opnsense-exporter", "health", "--url=http://127.0.0.1:9100/-/healthy"]
+```
+
+### What an unhealthy container does and does not do
+
+A failing healthcheck marks the container `unhealthy`. **It does not restart it.** Docker's `restart:` policy reacts to the container's main process *exiting*; a container that is running but unhealthy has not exited, so no restart policy — `always` included — will act on it.
+
+Health status is still worth having: `docker ps` shows it, `depends_on: condition: service_healthy` gates dependent services on it, and Docker emits `health_status` events you can alert on.
+
+Automatic remediation needs something outside plain Docker Compose:
+
+- **Docker Swarm** (`docker stack deploy`) — the orchestrator kills and reschedules a task whose healthcheck fails. This is the only first-party mechanism that acts on health status.
+- **Kubernetes** — a `livenessProbe` restarts the container. See [Kubernetes](kubernetes.md).
+- **A watchdog container** (for example `willfarrell/autoheal`) — subscribes to Docker health events and restarts unhealthy containers. Third-party, and it needs access to the Docker socket.
+
+## Preflight the configuration
+
+`--config.check` validates the effective configuration and exits: it binds no port, starts no poll scheduler, contacts no OPNsense API and exports no telemetry. It reads the files the configuration names (API key/secret, TLS keypairs) and exits 0 when the configuration is usable, 1 with every problem listed otherwise. Secrets are never printed.
+
+With an env-var-driven configuration:
+
+```bash
+docker compose run --rm --no-deps opnsense-exporter --config.check
+```
+
+!!! warning "`docker compose run` replaces `command:`"
+    Arguments passed to `docker compose run` do not extend the service's `command:` list, they replace it. If your flags live in `command:` rather than in `environment:`, the invocation above drops them and the check fails on missing required flags. Either repeat the flags:
+
+    ```bash
+    docker compose run --rm --no-deps opnsense-exporter \
+      --opnsense.protocol=https --opnsense.address=opnsense.example.com --config.check
+    ```
+
+    or configure the exporter through `OPNSENSE_EXPORTER_*` environment variables, which the check reads through the same parser a real start does.
+
+Deliberately not checked, because a configuration error and an unreachable firewall are different problems: OPNsense API reachability, port binding, and OTLP/Pyroscope endpoint reachability. Runtime reachability is reported by `/-/ready`.
 
 ## Multi-instance setup
 

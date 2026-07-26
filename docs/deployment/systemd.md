@@ -85,6 +85,7 @@ Type=simple
 User=opnsense-exporter
 Group=opnsense-exporter
 EnvironmentFile=/etc/opnsense-exporter/exporter.env
+ExecStartPre=/usr/local/bin/opnsense-exporter --config.check
 ExecStart=/usr/local/bin/opnsense-exporter \
     --web.listen-address=:8080 \
     --log.level=info \

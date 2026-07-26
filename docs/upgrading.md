@@ -25,6 +25,13 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   duration, and failure signals. Prometheus's own `scrape_timeout` still bounds the
   HTTP request.
 
+- **Container health uses the native `health` subcommand** - the distroless image
+  now runs `opnsense-exporter health`, which probes `/-/healthy` without requiring a
+  shell, `curl`, or `wget`. Custom images and Compose overrides that copied the old
+  `wget` healthcheck should switch to this command. Docker health status alone does
+  not trigger `restart:`; process exit or an external unhealthy-container
+  remediation mechanism is still required for automatic replacement.
+
 ## Upgrading to v2.0 from v1.x
 
 - **SMART collector is now opt-in** - the `opnsense_smart_*` metrics are no longer

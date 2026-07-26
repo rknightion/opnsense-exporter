@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -22,6 +23,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
+	"github.com/rknightion/opnsense-exporter/internal/healthprobe"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
@@ -159,7 +161,216 @@ func collectorNames() []string {
 	return names
 }
 
+// startupConfig is every configuration value main() needs, resolved and validated
+// in one place by resolveOptions.
+//
+// It exists so the --config.check preflight (#446) and a real start cannot drift:
+// main() has no other route to a configuration value, so anything it can act on
+// has already been through the preflight. TestConfigValidationCannotDriftFromStartup
+// enforces that structurally — an error-returning options accessor called directly
+// from main() fails the build's tests.
+type startupConfig struct {
+	OPNsense       *options.OPNSenseConfig
+	CacheTTLs      options.EndpointCacheTTLs
+	AbsentCacheTTL time.Duration
+	Collectors     options.CollectorsDisableSwitch
+	Flow           options.FlowConfig
+	NetflowCapture netflow.CaptureMode
+	PollOverrides  map[string]time.Duration
+	Pyroscope      *options.PyroscopeConfig
+	PyroscopeOn    bool
+	OTLP           *options.OTLPConfig
+	OTLPOn         bool
+	Logs           *options.LogsConfig
+	LogsOn         bool
+	// LogsOTLP is the OTLP transport the log pipeline ships over. Resolved
+	// independently of --otlp.enabled (logs may ship with metrics OTLP off) and
+	// nil unless the logs sink is "otlp".
+	LogsOTLP *options.OTLPConfig
+	Syslog   *options.SyslogConfig
+	SyslogOn bool
+}
+
+// resolveOptions parses nothing and starts nothing: it reads the already-parsed
+// flag/env values, reads the files they reference (API key/secret, TLS keypairs),
+// and returns either a usable configuration or every reason it is not.
+//
+// Every error is collected rather than returned at the first failure, because the
+// preflight's job is to let an operator fix a deployment in one pass instead of
+// one restart per mistake.
+//
+// Deliberately NOT done here, and therefore not covered by --config.check:
+//   - any OPNsense API call, including the hostname lookup that
+//     --exporter.instance-use-hostname needs and the /-/ready health check;
+//   - binding a listener (metrics port, syslog, Zenarmor HTTP, NetFlow UDP), so a
+//     port collision still surfaces only at a real start;
+//   - creating the --logs.debug-capture.dir capture directory, which is a write;
+//   - reaching the OTLP endpoint or the Pyroscope server.
+//
+// Reachability belongs to /-/ready at runtime; a preflight that dialled the
+// firewall would fail for reasons that have nothing to do with the configuration
+// it is being asked about.
+func resolveOptions() (*startupConfig, []error) {
+	var errs []error
+	cfg := &startupConfig{
+		CacheTTLs:      options.CacheTTLs(),
+		AbsentCacheTTL: options.AbsentCacheTTL(),
+		Collectors:     options.CollectorsSwitches(),
+	}
+
+	opns, err := options.OPNSense()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("opnsense connection (--opnsense.*): %w", err))
+	}
+	cfg.OPNsense = opns
+
+	// The metrics path is validated against the fixed routes the server package
+	// owns. They are passed in rather than imported by internal/options, which
+	// keeps that package free of an import edge into internal/server.
+	if err := options.ValidateMetricsPath(*options.MetricsPath, server.HealthyPath, server.ReadyPath); err != nil {
+		errs = append(errs, err)
+	}
+
+	// TLS/basic-auth material for the metrics port. web.Validate reads the config
+	// file and the certificates it names WITHOUT binding a listener, so a broken
+	// keypair is caught here rather than at ListenAndServe.
+	if options.WebConfig != nil && options.WebConfig.WebConfigFile != nil {
+		if err := web.Validate(*options.WebConfig.WebConfigFile); err != nil {
+			errs = append(errs, fmt.Errorf("--web.config.file: %w", err))
+		}
+	}
+
+	flowCfg, ferr := options.Flow()
+	if ferr != nil {
+		errs = append(errs, fmt.Errorf("invalid flow configuration: %w", ferr))
+	} else {
+		cfg.Flow = flowCfg
+		mode, cmErr := netflow.ParseCaptureMode(flowCfg.NetflowDebugCapture)
+		if cmErr != nil {
+			errs = append(errs, fmt.Errorf("invalid --flow.netflow.debug-capture: %w", cmErr))
+		}
+		cfg.NetflowCapture = mode
+	}
+
+	// Validate the collector-name half of every override BEFORE parsing durations
+	// (#387). A typo used to be accepted and then silently ignored forever, because
+	// the scheduler matches the map by exact collector name and an unmatched entry
+	// simply never fires — so the operator's rate/cost control did nothing and
+	// nothing said so. Names are checked against every REGISTERED collector, not the
+	// enabled ones, so a config that names a currently-disabled collector still
+	// starts and keeps working when that feature flag is flipped on.
+	overrideNames := make([]string, 0, len(*options.CollectorPollIntervalOverrides))
+	for name := range *options.CollectorPollIntervalOverrides {
+		overrideNames = append(overrideNames, name)
+	}
+	if verr := collector.ValidatePollOverrideNames(overrideNames); verr != nil {
+		errs = append(errs, fmt.Errorf("invalid --collector.poll-interval-override: %w", verr))
+	}
+	cfg.PollOverrides = make(map[string]time.Duration, len(*options.CollectorPollIntervalOverrides))
+	for name, v := range *options.CollectorPollIntervalOverrides {
+		d, perr := time.ParseDuration(v)
+		if perr != nil {
+			errs = append(errs, fmt.Errorf("invalid --collector.poll-interval-override for collector %q: %q: %w", name, v, perr))
+			continue
+		}
+		cfg.PollOverrides[name] = d
+	}
+
+	cfg.Pyroscope, cfg.PyroscopeOn, err = options.Pyroscope()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("invalid pyroscope configuration: %w", err))
+	}
+
+	cfg.OTLP, cfg.OTLPOn, err = options.OTLP()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("invalid otlp configuration: %w", err))
+	}
+
+	cfg.Logs, cfg.LogsOn, err = options.Logs()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("invalid logs configuration: %w", err))
+	}
+	if cfg.LogsOn && cfg.Logs.Sink == "otlp" {
+		// Resolved WITHOUT the --otlp.enabled gate so logs can ship even when metrics
+		// OTLP export is off. A resolution error names the offending --otlp.* flag.
+		cfg.LogsOTLP, err = options.OTLPTransport()
+		if err != nil {
+			errs = append(errs, fmt.Errorf("invalid otlp transport for the logs sink: %w", err))
+		}
+	}
+
+	cfg.Syslog, cfg.SyslogOn, err = options.LogsSyslog()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("invalid syslog receiver configuration: %w", err))
+	}
+	// Sampling drops raw lines only after their metrics are derived, so it is
+	// meaningless (pure data loss) with the log_events collector off.
+	if cfg.SyslogOn && cfg.Syslog.Sample && !cfg.Collectors.LogEvents {
+		errs = append(errs, errors.New(
+			"invalid syslog receiver configuration: --logs.syslog.sample requires the log_events collector; remove --exporter.disable-log-events"))
+	}
+
+	// The Zenarmor receiver resolves its own configuration inside logship at start,
+	// so without this the preflight would miss its TLS keypair and its
+	// transport/capture cross-checks entirely. Resolution is pure — the value is
+	// discarded here and re-resolved by the receiver.
+	if _, _, zerr := options.LogsZenarmor(); zerr != nil {
+		errs = append(errs, fmt.Errorf("invalid zenarmor receiver configuration: %w", zerr))
+	}
+
+	return cfg, errs
+}
+
+// runConfigCheck is the --config.check path: report the outcome and return the
+// process exit code. It never starts anything — everything it knows came from
+// resolveOptions, which does no I/O beyond reading the files the configuration
+// names.
+func runConfigCheck(cfg *startupConfig, errs []error, stdout, stderr io.Writer) int {
+	if len(errs) > 0 {
+		fmt.Fprintf(stderr, "config check FAILED: %d problem(s)\n", len(errs))
+		for _, err := range errs {
+			fmt.Fprintf(stderr, "  - %v\n", err)
+		}
+		return 1
+	}
+	fmt.Fprintln(stdout, "config check OK")
+	options.WriteEffectiveConfig(stdout)
+	fmt.Fprintln(stdout, "\nNot checked: OPNsense API reachability, listener binding, OTLP/Pyroscope "+
+		"endpoint reachability. Runtime reachability is reported by /-/ready.")
+	if cfg != nil && *options.InstanceLabel == "" && *options.InstanceUseHostname {
+		fmt.Fprintln(stdout, "Note: --exporter.instance-use-hostname resolves the instance label from the "+
+			"OPNsense API at startup; that lookup cannot be validated offline and will fail the start if the box is unreachable.")
+	}
+	return 0
+}
+
+// dispatchSubcommand handles the argv-selected subcommands the binary owns,
+// returning the process exit code and whether it handled the invocation at all.
+// It runs BEFORE kingpin sees anything, which is the point: the exporter's own
+// flag set has required flags (--opnsense.protocol, --opnsense.address), so a
+// probe expressed as a flag could never run from a container healthcheck or a
+// kubelet exec probe, where those are not supplied. Anything that is not a known
+// subcommand is left entirely alone for the normal flag parser.
+func dispatchSubcommand(args []string, stdout, stderr io.Writer) (code int, handled bool) {
+	if len(args) == 0 {
+		return 0, false
+	}
+	switch args[0] {
+	case healthprobe.Command:
+		return healthprobe.Run(args[1:], stdout, stderr), true
+	default:
+		return 0, false
+	}
+}
+
 func main() {
+	// The `health` subcommand (#438) is dispatched from argv first, before any
+	// flag parsing or env inspection, so the probe works in a container whose
+	// exporter configuration is broken or absent — which is exactly when a
+	// healthcheck is being consulted.
+	if code, handled := dispatchSubcommand(os.Args[1:], os.Stdout, os.Stderr); handled {
+		os.Exit(code)
+	}
 	// Register --version before flag parsing so `opnsense-exporter --version`
 	// prints the ldflags-embedded version and exits — used by the publish/CI
 	// smoke check to prove the built image embeds a real version (see #79).
@@ -172,15 +383,31 @@ func main() {
 		os.Exit(1)
 	}
 	options.Init()
+
+	// Resolve and validate the whole configuration in one pass, before anything is
+	// constructed or started. --config.check (#446) stops here and reports; a real
+	// start continues from the same values, so the preflight cannot pass a
+	// configuration the exporter would then reject.
+	cfg, cfgErrs := resolveOptions()
+	if *options.ConfigCheck {
+		os.Exit(runConfigCheck(cfg, cfgErrs, os.Stdout, os.Stderr))
+	}
+
 	logger := promslog.New(options.PromLogConfig)
 
 	logger.Info("starting opnsense-exporter", "version", version)
 
-	opnsConfig, err := options.OPNSense()
-	if err != nil {
-		logger.Error("failed to assemble OPNsense configuration", "err", err)
+	if len(cfgErrs) > 0 {
+		for _, cErr := range cfgErrs {
+			logger.Error("invalid configuration", "err", cErr)
+		}
+		logger.Error("refusing to start with an invalid configuration",
+			"problems", len(cfgErrs), "hint", "run with --config.check to validate without starting")
 		os.Exit(1)
 	}
+	opnsConfig := cfg.OPNsense
+	collectorsSwitches := cfg.Collectors
+	flowCfg := cfg.Flow
 
 	opnsenseClient, err := opnsense.NewClient(
 		*opnsConfig,
@@ -197,7 +424,7 @@ func main() {
 	// Slow-moving endpoints are served from an in-memory cache rather than re-fetched
 	// every scrape. Must happen before the client is cloned per scrape (WithContext):
 	// clones share the cache, but only one that already exists.
-	for endpoint, ttl := range options.CacheTTLs() {
+	for endpoint, ttl := range cfg.CacheTTLs {
 		opnsenseClient.SetEndpointCacheTTL(opnsense.EndpointName(endpoint), ttl)
 		logger.Debug("caching API endpoint responses", "endpoint", endpoint, "ttl", ttl)
 	}
@@ -205,7 +432,7 @@ func main() {
 	// Remember that a plugin-gated endpoint is absent (404) instead of re-asking on
 	// every scrape. Only the 404 is cached: where these endpoints do answer, their
 	// payload is live data and still fetched every scrape.
-	if absentTTL := options.AbsentCacheTTL(); absentTTL > 0 {
+	if absentTTL := cfg.AbsentCacheTTL; absentTTL > 0 {
 		for _, endpoint := range opnsense.PluginGatedEndpoints() {
 			opnsenseClient.SetEndpointAbsentTTL(endpoint, absentTTL)
 		}
@@ -229,7 +456,6 @@ func main() {
 	// for the web UI status page; it is also updated by on-demand Run Now triggers.
 	statusTracker := collector.NewStatusTracker()
 
-	collectorsSwitches := options.CollectorsSwitches()
 	collectorOptionFuncs := []collector.Option{
 		collector.WithBuildInfo(version),
 		collector.WithStatusTracker(statusTracker),
@@ -275,16 +501,11 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutLogEventsCollector())
 		logger.Info("log_events collector disabled")
 	}
-	// Flow rollups (#346). Resolved and SIZED HERE, before collector.New and
-	// therefore before StartPolling launches a poller per collector. ConfigureFlow
-	// is safe to call at any time — it retunes under the accumulator's own mutex
-	// rather than replacing it — but doing it before the pollers exist keeps the
-	// ordering obviously correct as well as actually correct.
-	flowCfg, ferr := options.Flow()
-	if ferr != nil {
-		logger.Error("invalid flow configuration", "err", ferr)
-		os.Exit(1)
-	}
+	// Flow rollups (#346). SIZED HERE, before collector.New and therefore before
+	// StartPolling launches a poller per collector. ConfigureFlow is safe to call at
+	// any time — it retunes under the accumulator's own mutex rather than replacing
+	// it — but doing it before the pollers exist keeps the ordering obviously correct
+	// as well as actually correct. (flowCfg itself came from resolveOptions.)
 	// flowSink is what the two receiver lanes feed. By default it is the metric rollup
 	// alone; when flow-log emission is on it becomes a tee that also feeds the correlator,
 	// so metrics and logs are derived from one Observe without either lane knowing about
@@ -678,11 +899,7 @@ func main() {
 	// start failure is logged but non-fatal so the exporter keeps serving
 	// metrics. A stopProfiling closure (rather than a *pyroscope.Profiler) keeps
 	// the SDK out of main's imports.
-	pyroCfg, pyroEnabled, err := options.Pyroscope()
-	if err != nil {
-		logger.Error("invalid pyroscope configuration", "err", err)
-		os.Exit(1)
-	}
+	pyroCfg, pyroEnabled := cfg.Pyroscope, cfg.PyroscopeOn
 	var stopProfiling func()
 	if pyroEnabled {
 		profiler, perr := profiling.Start(pyroCfg, instanceLabel, version, logger)
@@ -706,11 +923,7 @@ func main() {
 
 	// Assemble the OTLP config before building the collector so the OTLP export
 	// interval can bound the OTLP-bridge gather path. An invalid configuration is fatal.
-	otlpCfg, otlpEnabled, err := options.OTLP()
-	if err != nil {
-		logger.Error("invalid otlp configuration", "err", err)
-		os.Exit(1)
-	}
+	otlpCfg, otlpEnabled := cfg.OTLP, cfg.OTLPOn
 
 	// --exporter.max-scrape-duration is now the per-poll API deadline. The OTLP
 	// bridge separately uses the smaller of its export interval and that value to
@@ -718,31 +931,10 @@ func main() {
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithMaxScrapeDuration(*options.MaxScrapeDuration))
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollInterval(*options.CollectorPollInterval))
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithHealthPollInterval(*options.CollectorHealthPollInterval))
-	// Validate the collector-name half of every override BEFORE parsing durations
-	// (#387). A typo used to be accepted and then silently ignored forever, because
-	// the scheduler matches the map by exact collector name and an unmatched entry
-	// simply never fires — so the operator's rate/cost control did nothing and
-	// nothing said so. Names are checked against every REGISTERED collector, not the
-	// enabled ones, so a config that names a currently-disabled collector still
-	// starts and keeps working when that feature flag is flipped on.
-	overrideNames := make([]string, 0, len(*options.CollectorPollIntervalOverrides))
-	for name := range *options.CollectorPollIntervalOverrides {
-		overrideNames = append(overrideNames, name)
-	}
-	if verr := collector.ValidatePollOverrideNames(overrideNames); verr != nil {
-		logger.Error("invalid --collector.poll-interval-override", "err", verr)
-		os.Exit(1)
-	}
-	pollOverrides := make(map[string]time.Duration)
-	for name, v := range *options.CollectorPollIntervalOverrides {
-		d, perr := time.ParseDuration(v)
-		if perr != nil {
-			logger.Error("invalid --collector.poll-interval-override", "collector", name, "value", v, "err", perr)
-			os.Exit(1)
-		}
-		pollOverrides[name] = d
-	}
-	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollIntervalOverrides(pollOverrides))
+	// Poll-interval overrides were name-checked and duration-parsed by resolveOptions
+	// (#387/#446); an unknown collector name or an unparseable duration never reaches
+	// here.
+	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollIntervalOverrides(cfg.PollOverrides))
 	if otlpEnabled {
 		gatherTimeout := *options.MaxScrapeDuration
 		if otlpCfg.ExportInterval > 0 && otlpCfg.ExportInterval < gatherTimeout {
@@ -851,11 +1043,7 @@ func main() {
 	// loop and ship to Loki via OTLP logs (reusing the --otlp.* transport) or stdout.
 	// It is long-lived, never a scrape-time collector. An invalid configuration is
 	// fatal; a transient sink outage degrades to counted loss (never blocks /metrics).
-	logsCfg, logsEnabled, err := options.Logs()
-	if err != nil {
-		logger.Error("invalid logs configuration", "err", err)
-		os.Exit(1)
-	}
+	logsCfg, logsEnabled := cfg.Logs, cfg.LogsOn
 	// Bound the derived log_events label tuples before any receiver can start feeding
 	// them (#311/#326/#327). Both receivers are push-based and syslog over UDP has a
 	// spoofable source, so these values are sender-controlled: without a budget a
@@ -889,11 +1077,7 @@ func main() {
 	// programming fault — it is still fatal rather than silently off, because an
 	// operator who asked for a capture and got none finds out only when they go
 	// looking for the samples.
-	netflowCaptureMode, cmErr := netflow.ParseCaptureMode(flowCfg.NetflowDebugCapture)
-	if cmErr != nil {
-		logger.Error("invalid netflow debug-capture mode", "err", cmErr)
-		os.Exit(1)
-	}
+	netflowCaptureMode := cfg.NetflowCapture
 	netflowWantsCapture := collectorsSwitches.Flow && flowCfg.Enabled && flowCfg.NetflowEnabled &&
 		netflowCaptureMode != netflow.CaptureOff
 
@@ -946,17 +1130,9 @@ func main() {
 	}
 
 	if logsEnabled {
-		var logsTransport *options.OTLPConfig
-		if logsCfg.Sink == "otlp" {
-			// Resolve the OTLP transport WITHOUT the --otlp.enabled gate so logs can
-			// ship even when metrics OTLP export is off. A resolution error (e.g. a
-			// Grafana Cloud id without a token) names the offending --otlp.* flag.
-			logsTransport, err = options.OTLPTransport()
-			if err != nil {
-				logger.Error("invalid otlp transport for logs sink", "err", err)
-				os.Exit(1)
-			}
-		}
+		// The OTLP transport for the logs sink is resolved WITHOUT the --otlp.enabled
+		// gate (logs may ship with metrics OTLP off) and is nil unless the sink is otlp.
+		logsTransport := cfg.LogsOTLP
 		// Log enrichment: a lock-free snapshot of OPNsense API data (firewall rule
 		// descriptions, interface names, DHCP hostnames, MACs, local subnets) that the
 		// syslog receiver reads per log line. The refresher owns the network I/O on its
@@ -989,18 +1165,7 @@ func main() {
 		// needs it too and runs with log shipping off. nil when no dir is configured,
 		// which every receiver treats as capture-off.
 		deps.DebugCapture = debugCapturer
-		syslogCfg, syslogEnabled, serr := options.LogsSyslog()
-		if serr != nil {
-			logger.Error("invalid syslog receiver configuration", "err", serr)
-			os.Exit(1)
-		}
-		// Sampling drops raw lines only after their metrics are derived, so it is
-		// meaningless (pure data loss) with the log_events collector off.
-		if syslogEnabled && syslogCfg.Sample && !collectorsSwitches.LogEvents {
-			logger.Error("invalid syslog receiver configuration",
-				"err", "--logs.syslog.sample requires the log_events collector; remove --exporter.disable-log-events")
-			os.Exit(1)
-		}
+		syslogCfg, syslogEnabled := cfg.Syslog, cfg.SyslogOn
 		// Enrichment is shared by every receiver that wants it, so the gate must ask
 		// about all of them. It used to ask only about syslog — which meant a
 		// zenarmor-only box got a nil Cache, fell back to a cold one, and missed EVERY
@@ -1239,19 +1404,11 @@ func main() {
 		stopLogs = stopFlowLog
 	}
 
-	// Validate the metrics path before registering it: net/http.ServeMux panics on an
-	// empty/invalid pattern, and also on a duplicate pattern — so a templated-blank or a
-	// reserved (/-/healthy, /-/ready) --web.telemetry-path would crash the process with a
-	// raw stack trace. Fail through the normal logged config-error path instead.
-	if err := options.ValidateMetricsPath(*options.MetricsPath, server.HealthyPath, server.ReadyPath); err != nil {
-		logger.Error("invalid metrics path", "err", err)
-		os.Exit(1)
-	}
-
 	// Register on a private mux rather than http.DefaultServeMux: all exporter-owned
 	// routes are then explicit and self-contained, so a future fixed route can't collide
 	// with the global mux via some other package's init, and the collision surface stays
-	// exactly the reserved set validated above.
+	// exactly the reserved set resolveOptions validated --web.telemetry-path against
+	// (net/http.ServeMux panics on an empty, non-"/"-prefixed or duplicate pattern).
 	mux := http.NewServeMux()
 
 	metricsHandler := server.NewMetricsHandler(

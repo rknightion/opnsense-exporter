@@ -56,6 +56,44 @@ spec:
     spec:
       # The exporter never calls the Kubernetes API - don't mount a SA token.
       automountServiceAccountToken: false
+      # Validate flags, environment and mounted credential files without binding a
+      # listener or contacting OPNsense. A failed check blocks the rollout.
+      initContainers:
+        - name: config-check
+          image: ghcr.io/rknightion/opnsense-exporter:3.0.0 # x-release-please-version
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--config.check"
+          volumeMounts:
+            - name: api-key-vol
+              mountPath: /etc/opnsense-exporter/creds
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: OPNSENSE_EXPORTER_INSTANCE_LABEL
+              value: "opnsense"
+            - name: OPNSENSE_EXPORTER_OPS_API
+              valueFrom:
+                secretKeyRef:
+                  name: opnsense-exporter-cfg
+                  key: host
+            - name: OPNSENSE_EXPORTER_OPS_PROTOCOL
+              valueFrom:
+                secretKeyRef:
+                  name: opnsense-exporter-cfg
+                  key: protocol
+            - name: OPS_API_KEY_FILE
+              value: /etc/opnsense-exporter/creds/api-key
+            - name: OPS_API_SECRET_FILE
+              value: /etc/opnsense-exporter/creds/api-secret
       containers:
         - name: opnsense-exporter
           # Pin to an immutable release tag (not :latest) so a reschedule can't silently
