@@ -34,10 +34,12 @@ var (
 			"would make the label depend on startup timing and flip between restarts).",
 	).Envar("OPNSENSE_EXPORTER_INSTANCE_USE_HOSTNAME").Default("false").Bool()
 
-	ScrapeTimeoutOffset = kingpin.Flag(
-		"exporter.scrape-timeout-offset",
-		"Duration subtracted from Prometheus' X-Prometheus-Scrape-Timeout-Seconds header when deriving the scrape deadline, so the exporter finishes and responds before Prometheus gives up. If the offset would consume the whole budget, the raw header timeout is used.",
-	).Envar("OPNSENSE_EXPORTER_SCRAPE_TIMEOUT_OFFSET").Default("500ms").Duration()
+	// --exporter.scrape-timeout-offset was removed in #439. It subtracted a margin
+	// from Prometheus' X-Prometheus-Scrape-Timeout-Seconds header to derive a
+	// collection deadline, which stopped meaning anything at #336: serving /metrics
+	// replays an in-memory snapshot and makes no OPNsense API call, so the derived
+	// deadline bounded no work. Poll deadlines are set by --exporter.max-scrape-duration
+	// and the poll intervals; the client's own request budget is --opnsense.timeout.
 
 	MaxScrapeDuration = kingpin.Flag(
 		"exporter.max-scrape-duration",

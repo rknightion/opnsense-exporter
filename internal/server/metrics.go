@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,15 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 )
-
-// maxScrapeTimeoutSeconds bounds an accepted scrape-timeout header. Any real
-// Prometheus scrape budget is far below 24h; a larger (client-controlled) value is
-// rejected so it cannot overflow time.Duration or effectively disable the budget.
-const maxScrapeTimeoutSeconds = 86400
-
-// scrapeTimeoutHeader is set by Prometheus on every scrape to the configured
-// scrape timeout in (possibly fractional) seconds.
-const scrapeTimeoutHeader = "X-Prometheus-Scrape-Timeout-Seconds"
 
 // maxMetricsInFlight bounds concurrent /metrics scrapes; overflow is answered
 // 503 (the same degradation promhttp's own MaxRequestsInFlight applies). The
@@ -53,17 +42,18 @@ const maxMetricsInFlight = 40
 const metricsWriteDeadline = 2 * time.Minute
 
 // ScrapeViews is the slice of *collector.Collector the metrics handler needs:
-// per-request filtered, deadline-bound views plus the valid collector names.
+// per-request filtered views plus the valid collector names. The context is the
+// request's own — it carries no exporter-derived deadline (#439) and the replay
+// ignores it, but it keeps the standard cancellation seam at the boundary.
 type ScrapeViews interface {
 	ScrapeView(ctx context.Context, include map[string]bool) prometheus.Collector
 	EnabledCollectorNames() []string
 }
 
 type metricsHandler struct {
-	views         ScrapeViews
-	self          prometheus.Gatherer
-	timeoutOffset time.Duration
-	log           *slog.Logger
+	views ScrapeViews
+	self  prometheus.Gatherer
+	log   *slog.Logger
 	// recorder, when non-nil, passively captures the collector family set of each
 	// UNFILTERED scrape so the web UI can read a last-scrape snapshot without ever
 	// gathering (and thus re-scraping the firewall) itself. Filtered scrapes
@@ -73,7 +63,7 @@ type metricsHandler struct {
 	// maxMetricsInFlight. It lives on the handler rather than in the
 	// promhttp.HandlerOpts below because promhttp builds its semaphore inside
 	// HandlerFor, and HandlerFor is called once PER REQUEST here (each scrape
-	// needs its own filtered, deadline-bound registry). Setting
+	// needs its own filtered registry). Setting
 	// HandlerOpts.MaxRequestsInFlight would therefore hand every request a
 	// private semaphore that can never fill — a silent no-op. This one is
 	// created once in NewMetricsHandler and shared, so it actually bounds.
@@ -81,19 +71,26 @@ type metricsHandler struct {
 }
 
 // NewMetricsHandler returns the /metrics handler. Per request it parses
-// node_exporter-style collect[]/exclude[] filters and the Prometheus scrape
-// timeout header, registers a single-request ScrapeView into a fresh registry
-// (descriptors are never re-registered globally — the view subsets the shared
-// collector's fan-out), and serves it merged with the static self gatherer
-// (process_*/go_* metrics).
-func NewMetricsHandler(views ScrapeViews, self prometheus.Gatherer, timeoutOffset time.Duration, log *slog.Logger, recorder *metricsnap.Recorder) http.Handler {
+// node_exporter-style collect[]/exclude[] filters, registers a single-request
+// ScrapeView into a fresh registry (descriptors are never re-registered globally —
+// the view subsets the shared collector's fan-out), and serves it merged with the
+// static self gatherer (process_*/go_* metrics).
+//
+// #439: it deliberately does NOT read Prometheus' X-Prometheus-Scrape-Timeout-Seconds
+// header. That header used to derive a collection deadline, minus a configurable
+// offset. Since #336 a scrape replays the in-memory poll snapshot and makes no
+// OPNsense API call, so the derived deadline bounded no work and the collector
+// discarded it. Nothing a scraping client sends can reach or curtail OPNsense
+// polling; poll deadlines come from --exporter.max-scrape-duration and the poll
+// intervals. Response-side bounds that DO apply live here: maxMetricsInFlight and
+// metricsWriteDeadline.
+func NewMetricsHandler(views ScrapeViews, self prometheus.Gatherer, log *slog.Logger, recorder *metricsnap.Recorder) http.Handler {
 	return &metricsHandler{
-		views:         views,
-		self:          self,
-		timeoutOffset: timeoutOffset,
-		log:           log,
-		recorder:      recorder,
-		inFlight:      make(chan struct{}, maxMetricsInFlight),
+		views:    views,
+		self:     self,
+		log:      log,
+		recorder: recorder,
+		inFlight: make(chan struct{}, maxMetricsInFlight),
 	}
 }
 
@@ -131,14 +128,10 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The request context is the base, so an aborted scrape cancels in-flight
-	// API calls even without the timeout header.
+	// The request context is the whole story: an aborted scrape cancels the request,
+	// and nothing else bounds the replay. No client-supplied budget is layered on top
+	// (#439) — see NewMetricsHandler.
 	ctx := r.Context()
-	if timeout, ok := scrapeTimeout(r.Header.Get(scrapeTimeoutHeader), h.timeoutOffset); ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
 
 	reg := prometheus.NewRegistry()
 	if err := reg.Register(h.views.ScrapeView(ctx, include)); err != nil {
@@ -226,28 +219,4 @@ func parseCollectorFilters(collect, exclude, valid []string) (map[string]bool, e
 		}
 	}
 	return include, nil
-}
-
-// scrapeTimeout derives the collection budget from Prometheus' scrape-timeout
-// header. The offset is subtracted so the exporter serializes its response
-// before Prometheus gives up; if the offset would consume the entire budget,
-// the raw header value is used. Missing, malformed or non-positive headers
-// yield ok=false (no deadline beyond the request context).
-func scrapeTimeout(header string, offset time.Duration) (time.Duration, bool) {
-	if header == "" {
-		return 0, false
-	}
-	seconds, err := strconv.ParseFloat(header, 64)
-	// strconv.ParseFloat parses "NaN"/"±Inf"/"1e300" without error, and every NaN
-	// comparison is false (so NaN would slip past a bare `seconds <= 0`). Reject
-	// non-finite and absurdly large values explicitly: the header is client-controlled
-	// and real Prometheus never sends these (#124).
-	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 || seconds > maxScrapeTimeoutSeconds {
-		return 0, false
-	}
-	timeout := time.Duration(seconds * float64(time.Second))
-	if timeout > offset {
-		return timeout - offset, true
-	}
-	return timeout, true
 }

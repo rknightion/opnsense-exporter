@@ -253,13 +253,28 @@ def build_diagnostics(b: Builder):
     b.sentinel("has_go_runtime", f'label_values(go_goroutines{{{JOB}}}, __name__)')
     up = b.statushistory("Scrape Success (opnsense_up)", [(sel("opnsense_up"), "{{opnsense_instance}}")],
                          UPDOWN, w=12, h=6)
-    scrapes = b.ts("Scrape & Skip Rate",
-                   [(f'rate({sel("opnsense_exporter_scrapes_total")}[{RATE}])', "completed {{opnsense_instance}}"),
-                    (f'rate({sel("opnsense_exporter_scrape_skips_total")}[{RATE}])', "skipped {{opnsense_instance}}")],
+    # #439: this panel used to plot opnsense_exporter_scrapes_total against
+    # opnsense_exporter_scrape_skips_total and diagnose "mutex pile-up in front of a
+    # slow firewall". The skip counter had no increment site after #336 — serving is a
+    # lock-free replay of the poll snapshot, so no scrape can queue behind collection —
+    # and it was removed, taking the permanently-flat second series with it. The
+    # replacement pairs serving rate against the rate of OPNsense API calls the poll
+    # scheduler actually makes. Both move, and their independence IS the point: the
+    # scrape rate is set by Prometheus, the API rate by the poll tiers, and neither
+    # drives the other.
+    scrapes = b.ts("Scrape Rate vs OPNsense API Rate",
+                   [(f'rate({sel("opnsense_exporter_scrapes_total")}[{RATE}])',
+                     "/metrics scrapes served {{opnsense_instance}}"),
+                    (f'sum by (opnsense_instance) (rate({sel("opnsense_exporter_api_requests_total")}[{RATE}]))',
+                     "OPNsense API calls (background poll) {{opnsense_instance}}")],
                    unit="reqps", w=12, h=6,
-                   desc="Completed scrapes vs scrapes skipped because the deadline expired before the collector "
-                        "lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates "
-                        "mutex pile-up in front of a slow firewall — opnsense_up is absent for those scrapes.")
+                   desc="How often Prometheus scrapes this exporter, against how often the exporter actually "
+                        "calls the firewall. Since #336 the two are decoupled: a scrape replays an in-memory "
+                        "snapshot and makes no API call, so scraping harder costs the firewall nothing and the "
+                        "API line moves only when you change poll intervals, enable collectors, or the response "
+                        "cache stops serving hits. API rate climbing on its own is worth a look; scrape rate "
+                        "climbing on its own is not. Serving backpressure, if you are hunting it, shows up as "
+                        "HTTP 503s from the exporter's in-flight cap, not on this panel.")
     errs_ts = b.ts("Endpoint Errors (rate)", [(f'rate({sel("opnsense_exporter_endpoint_errors_total")}[{RATE}])',
                    "{{endpoint}}")], unit="errps", w=12, h=7)
     errs_tbl = b.table("Endpoint Errors (total)",
@@ -276,13 +291,16 @@ def build_diagnostics(b: Builder):
                           {"0": ("Disabled", "red"), "1": ("Enabled", "green")}, w=12, h=8,
                           desc="opnsense_exporter_collector_enabled: which collectors are on.")
 
-    scrape_dur = b.ts("Collector Scrape Duration",
+    scrape_dur = b.ts("Collector Poll Duration",
                       [(sel("opnsense_exporter_scrape_collector_duration_seconds"), "{{collector}}")],
-                      unit="s", w=12, h=8)
-    scrape_ok = b.statetimeline("Collector Scrape Success",
+                      unit="s", w=12, h=8,
+                      desc="Duration of the latest scheduled background poll. The metric keeps its "
+                           "historical node_exporter-compatible name; /metrics only replays this value.")
+    scrape_ok = b.statetimeline("Collector Poll Success",
                                 [(sel("opnsense_exporter_scrape_collector_success"), "{{collector}}")],
                                 OKERR, w=12, h=8,
-                                desc="1 = sub-collector scraped cleanly, 0 = error or panic.")
+                                desc="1 = the latest scheduled sub-collector poll completed cleanly; "
+                                     "0 = error or panic. The metric name is retained for compatibility.")
 
     # Poll scheduler observability (#336): each collector polls the OPNsense API on its
     # own tier (fast/medium/slow/cold), decoupled from the Prometheus scrape. These
@@ -399,7 +417,7 @@ def build_diagnostics(b: Builder):
     # Per-endpoint API request rate + p95 latency, sourced from the client choke-point
     # self-metrics (#126). api_requests_total gives the denominator for a per-endpoint
     # error rate; the duration histogram shows which endpoint regressed when a
-    # collector's scrape duration spikes.
+    # collector's background poll duration spikes.
     api_rate = b.ts("API Request Rate (by endpoint)",
                     [(f'sum by (endpoint) (rate({sel("opnsense_exporter_api_requests_total")}[{RATE}]))',
                       "{{endpoint}}")], unit="reqps", w=12, h=7)
@@ -431,7 +449,7 @@ def build_diagnostics(b: Builder):
         desc='kind="body": a replayed payload from a slow-moving endpoint (firmware status, '
              'certificate inventory, CPU/system identity). kind="absent": a replayed 404 from a '
              'plugin-gated endpoint — the plugin is not installed on this firewall, and the '
-             'exporter is no longer re-asking every scrape.')
+             'exporter is no longer re-asking on every scheduled poll.')
     cache_by_ep = b.table(
         "API Cache Hits (by endpoint)",
         [f'sort_desc(sum by (endpoint, kind) ({sel("opnsense_exporter_api_cache_hits_total")}))'],

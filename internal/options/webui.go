@@ -128,7 +128,7 @@ func buildEffectiveConfig(in configInputs) []ConfigSection {
 				plainItem("Metrics Path", in.metricsPath),
 				plainItem("Listen", in.listen),
 				plainItem("Instance", in.instance),
-				plainItem("Max Scrape Duration", in.maxScrape),
+				plainItem("Max Poll Duration", in.maxScrape),
 			},
 		},
 		{

@@ -18,7 +18,7 @@ func TestMetricsHandler_RecorderCapturesUnfilteredOnly(t *testing.T) {
 	f := &fakeViews{names: []string{"x"}}
 	self := prometheus.NewRegistry()
 	rec := metricsnap.New()
-	h := NewMetricsHandler(f, self, 500*time.Millisecond, promslog.NewNopLogger(), rec)
+	h := NewMetricsHandler(f, self, promslog.NewNopLogger(), rec)
 
 	// A filtered scrape must NOT populate the recorder (a partial view must never
 	// clobber the last full-scrape snapshot the web UI reads).
@@ -59,7 +59,7 @@ func newTestMetricsSetup(names ...string) (*fakeViews, http.Handler) {
 	selfGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "fake_self_metric", Help: "fake"})
 	selfGauge.Set(1)
 	self.MustRegister(selfGauge)
-	return f, NewMetricsHandler(f, self, 500*time.Millisecond, promslog.NewNopLogger(), nil)
+	return f, NewMetricsHandler(f, self, promslog.NewNopLogger(), nil)
 }
 
 func serve(h http.Handler, target string, headers map[string]string) *httptest.ResponseRecorder {
@@ -150,89 +150,45 @@ func TestMetricsHandlerUnknownCollectorIs400(t *testing.T) {
 	}
 }
 
-func TestMetricsHandlerScrapeTimeoutHeader(t *testing.T) {
-	f, h := newTestMetricsSetup("a")
-	before := time.Now()
-	rec := serve(h, "/metrics", map[string]string{"X-Prometheus-Scrape-Timeout-Seconds": "10"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	deadline, ok := f.gotCtx.Deadline()
-	if !ok {
-		t.Fatal("expected a deadline on the scrape context")
-	}
-	// 10s header minus 500ms offset => ~9.5s from request start.
-	remaining := time.Until(deadline) + time.Since(before)
-	if remaining < 9*time.Second || remaining > 10*time.Second {
-		t.Errorf("deadline budget = %s, want ~9.5s", remaining)
-	}
-}
-
-func TestMetricsHandlerTinyTimeoutFallsBackToRawHeader(t *testing.T) {
-	f, h := newTestMetricsSetup("a")
-	before := time.Now()
-	serve(h, "/metrics", map[string]string{"X-Prometheus-Scrape-Timeout-Seconds": "0.3"})
-	deadline, ok := f.gotCtx.Deadline()
-	if !ok {
-		t.Fatal("expected a deadline on the scrape context")
-	}
-	remaining := time.Until(deadline) + time.Since(before)
-	if remaining <= 0 || remaining > 400*time.Millisecond {
-		t.Errorf("deadline budget = %s, want ~0.3s (raw header, offset skipped)", remaining)
+// TestMetricsHandlerIgnoresPrometheusScrapeTimeoutHeader is the #439 regression
+// guard. Before #336 the handler parsed X-Prometheus-Scrape-Timeout-Seconds,
+// subtracted --exporter.scrape-timeout-offset and handed the result to the collector
+// fan-out as a collection deadline. Serving is now a pure replay of the in-memory
+// poll snapshot and makes no OPNsense API call, so that budget governed nothing —
+// the collector discarded the context outright. Both surfaces are gone: the handler
+// must hand the scrape view the bare request context, with no derived deadline, no
+// matter what the client sends in that header.
+func TestMetricsHandlerIgnoresPrometheusScrapeTimeoutHeader(t *testing.T) {
+	for _, header := range []string{"10", "0.3", "0", "-5", "bogus", "NaN", "+Inf", "1e300"} {
+		f, h := newTestMetricsSetup("a")
+		rec := serve(h, "/metrics", map[string]string{"X-Prometheus-Scrape-Timeout-Seconds": header})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("header %q: status = %d, want 200", header, rec.Code)
+		}
+		if f.calls != 1 {
+			t.Fatalf("header %q: ScrapeView calls = %d, want 1", header, f.calls)
+		}
+		if deadline, ok := f.gotCtx.Deadline(); ok {
+			t.Errorf("header %q: scrape context carries a deadline (%s); the timeout header must "+
+				"not derive one — it cannot bound OPNsense polling", header, time.Until(deadline))
+		}
 	}
 }
 
-func TestMetricsHandlerMalformedTimeoutHeaderIgnored(t *testing.T) {
+// TestMetricsHandlerScrapeContextIsTheRequestContext pins what the scrape context IS
+// after #439: the request's own context and nothing else, so an aborted HTTP scrape
+// still cancels cleanly while no client-supplied budget can reach the poll scheduler.
+func TestMetricsHandlerScrapeContextIsTheRequestContext(t *testing.T) {
 	f, h := newTestMetricsSetup("a")
-	rec := serve(h, "/metrics", map[string]string{"X-Prometheus-Scrape-Timeout-Seconds": "bogus"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (malformed header ignored)", rec.Code)
+	serve(h, "/metrics", nil)
+	if f.gotCtx == nil {
+		t.Fatal("ScrapeView received a nil context")
 	}
 	if _, ok := f.gotCtx.Deadline(); ok {
-		t.Error("expected no deadline for malformed header")
+		t.Error("scrape context must carry no deadline of the handler's own making")
 	}
-}
-
-func TestScrapeTimeoutTable(t *testing.T) {
-	cases := []struct {
-		header string
-		offset time.Duration
-		want   time.Duration
-		ok     bool
-	}{
-		{"", 500 * time.Millisecond, 0, false},
-		{"10", 500 * time.Millisecond, 9500 * time.Millisecond, true},
-		{"0.3", 500 * time.Millisecond, 300 * time.Millisecond, true},
-		{"10", 0, 10 * time.Second, true},
-		{"-5", 500 * time.Millisecond, 0, false},
-		{"0", 500 * time.Millisecond, 0, false},
-		{"abc", 500 * time.Millisecond, 0, false},
-		// Non-finite / absurd client-controlled values must be rejected, not accepted
-		// as a zero (immediately-expired) or ~292-year deadline (#124).
-		{"NaN", 500 * time.Millisecond, 0, false},
-		{"+Inf", 500 * time.Millisecond, 0, false},
-		{"-Inf", 500 * time.Millisecond, 0, false},
-		{"1e300", 500 * time.Millisecond, 0, false},
-	}
-	for _, tc := range cases {
-		got, ok := scrapeTimeout(tc.header, tc.offset)
-		if ok != tc.ok || got != tc.want {
-			t.Errorf("scrapeTimeout(%q, %s) = (%s, %v), want (%s, %v)",
-				tc.header, tc.offset, got, ok, tc.want, tc.ok)
-		}
-	}
-}
-
-// TestScrapeTimeoutRejectsNonFinite pins the #124 guard: NaN / ±Inf / absurdly large
-// client-controlled header values must yield ok=false (no deadline) rather than a
-// zero-duration "valid" timeout (immediately-expired, drops all OPNsense data) or an
-// effectively infinite one (defeats the budget). Supersedes the earlier assertion that
-// a NaN header produced (0, true).
-func TestScrapeTimeoutRejectsNonFinite(t *testing.T) {
-	for _, h := range []string{"NaN", "+Inf", "-Inf", "Inf", "1e300", "1e309"} {
-		if got, ok := scrapeTimeout(h, 500*time.Millisecond); ok || got != 0 {
-			t.Errorf("scrapeTimeout(%q) = (%s, %v), want (0s, false)", h, got, ok)
-		}
+	if err := f.gotCtx.Err(); err != nil {
+		t.Errorf("scrape context already cancelled: %v", err)
 	}
 }
 
@@ -274,7 +230,7 @@ func TestMetricsHandler_ConcurrencyLimitReturns503(t *testing.T) {
 		t.Fatalf("maxMetricsInFlight = %d, want a positive bound", maxMetricsInFlight)
 	}
 	b := &blockingViews{names: []string{"a"}, release: make(chan struct{})}
-	h := NewMetricsHandler(b, prometheus.NewRegistry(), 500*time.Millisecond, promslog.NewNopLogger(), nil)
+	h := NewMetricsHandler(b, prometheus.NewRegistry(), promslog.NewNopLogger(), nil)
 
 	var wg sync.WaitGroup
 	for range maxMetricsInFlight {

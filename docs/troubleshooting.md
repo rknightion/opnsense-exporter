@@ -44,26 +44,29 @@ Run with `--log.level=debug` to see each API call and its failure reason.
 - **Unbound statistics empty?** Enable *Unbound DNS > Advanced > Extended Statistics*
   on the firewall.
 
-## Scrapes are slow or time out
+## Data is stale or collector polls are slow
 
-Each scrape fans out to ~62 collectors in parallel; total scrape time is bounded by
-the slowest OPNsense API endpoint. If scrapes approach your Prometheus
-`scrape_timeout`:
+Prometheus scrapes replay an in-memory snapshot; they do not fan out to OPNsense.
+With ~62 collectors polling on independent schedules, use the per-collector clocks
+to isolate stale data or a background collector missing its schedule:
 
-- Check `opnsense_exporter_scrape_collector_duration_seconds` (per-collector,
-  labelled by `collector`) to see which collector is actually slow before
-  disabling anything.
-- The `activity` collector is usually the single slowest default-on collector: it
-  runs a `top(1)`-equivalent snapshot (load averages + a per-process array) on the
-  firewall every scrape - commonly ~2-2.5s on a modest box, vs tens of ms for most
-  other endpoints. Disable it with `--exporter.disable-activity` if you don't need
-  per-process/load metrics.
-- Disable other collectors you don't need (`--exporter.disable-*`).
-- The SMART collector performs one POST per disk per scrape (running `smartctl`
-  on the firewall); it is opt-in (`--exporter.enable-smart`) - leave it off if
-  your hardware is slow to answer or you use spun-down disks.
-- Raise `scrape_timeout`/`scrape_interval` in your Prometheus job (30s+ intervals are
-  fine for firewall metrics).
+- Check `opnsense_exporter_collector_snapshot_timestamp_seconds` and
+  `opnsense_exporter_collector_last_success_timestamp_seconds` for retained-data
+  age, then `opnsense_exporter_scrape_collector_duration_seconds` for the latest
+  scheduled poll duration. The `scrape_` prefix is retained for compatibility.
+- Check `opnsense_exporter_endpoint_errors_total` and per-endpoint request latency
+  to identify the slow or failing OPNsense call.
+- `--exporter.max-scrape-duration` is now the outer deadline for one background
+  collector poll. `--opnsense.timeout` × `--opnsense.max-retries` bounds an endpoint
+  attempt sequence inside it; keep that product below the poll deadline.
+- Lower `--opnsense.max-concurrent-requests` to protect a low-power appliance, or
+  raise it when independent polls are queuing behind the concurrency cap.
+- The `activity` collector runs a `top(1)`-equivalent snapshot and is commonly the
+  slowest default-on poll. SMART performs one `smartctl -a` POST per disk on each
+  scheduled poll and can wake spun-down disks; it remains opt-in.
+
+Prometheus `scrape_timeout` still bounds the `/metrics` HTTP request, but changing
+it cannot change OPNsense API polling.
 
 ## Too many time series
 

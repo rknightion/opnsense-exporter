@@ -1,6 +1,10 @@
 package options
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/alecthomas/kingpin/v2"
+)
 
 func TestValidateMetricsPath(t *testing.T) {
 	// reserved mirrors the fixed routes main.go registers alongside the metrics
@@ -26,5 +30,20 @@ func TestValidateMetricsPath(t *testing.T) {
 				t.Errorf("ValidateMetricsPath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestScrapeTimeoutOffsetFlagIsRemoved covers #439. --exporter.scrape-timeout-offset
+// was subtracted from Prometheus' X-Prometheus-Scrape-Timeout-Seconds header to derive
+// a collection deadline. After #336 serving /metrics replays an in-memory snapshot and
+// makes no OPNsense API call, so the derived deadline bounded nothing and the flag was
+// inert. It is removed outright rather than deprecated: keeping it would preserve a
+// knob whose own help text describes behaviour the exporter does not have.
+func TestScrapeTimeoutOffsetFlagIsRemoved(t *testing.T) {
+	RegisterAllFlags()
+	for _, f := range kingpin.CommandLine.Model().Flags {
+		if f.Name == "exporter.scrape-timeout-offset" {
+			t.Fatalf("--exporter.scrape-timeout-offset is still registered: %q", f.Help)
+		}
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -43,7 +42,7 @@ func TestMetricsHandler_DuplicateSeriesDegradesGracefully(t *testing.T) {
 	selfGauge.Set(1)
 	self.MustRegister(selfGauge)
 
-	h := NewMetricsHandler(dupViews{}, self, 500*time.Millisecond, logger, nil)
+	h := NewMetricsHandler(dupViews{}, self, logger, nil)
 	rec := serve(h, "/metrics", nil)
 
 	if rec.Code != http.StatusOK {

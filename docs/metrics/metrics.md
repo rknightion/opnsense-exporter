@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 829
+- **Total metrics:** 828
 - **Gauges:** 558
-- **Counters:** 271
+- **Counters:** 270
 
 ## General
 
@@ -17,8 +17,8 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|
 | opnsense_exporter_build_info | Gauge | version, goversion | Build information of the opnsense exporter (value is always 1; see labels) |
 | opnsense_exporter_collector_enabled | Gauge | collector | Whether a collector is enabled (1) or disabled (0) in this exporter instance, by subsystem |
-| opnsense_exporter_scrape_collector_duration_seconds | Gauge | collector | Duration of a sub-collector scrape in seconds |
-| opnsense_exporter_scrape_collector_success | Gauge | collector | Whether a sub-collector scrape succeeded (1 = ok, 0 = error or panic) |
+| opnsense_exporter_scrape_collector_duration_seconds | Gauge | collector | Duration of the latest scheduled sub-collector poll in seconds. The metric name retains its historical scrape_collector prefix for compatibility |
+| opnsense_exporter_scrape_collector_success | Gauge | collector | Whether the latest scheduled sub-collector poll succeeded (1 = ok, 0 = error or panic). The metric name retains its historical scrape_collector prefix for compatibility |
 | opnsense_exporter_collector_poll_interval_seconds | Gauge | collector | Configured poll interval of a collector in seconds (the internal poll scheduler runs each collector on its own interval; #336) |
 | opnsense_exporter_collector_last_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's last poll ATTEMPT, successful or not; scheduler liveness, not data freshness — a collector failing every poll keeps advancing this while replaying old data. Use collector_snapshot_timestamp_seconds for data age. Absent until the collector has polled at least once (#336, #382) |
 | opnsense_exporter_collector_next_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline (not derived from last poll + interval); absent when no poller is running for the collector (#336, #385) |
@@ -29,13 +29,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |
 | opnsense_system_status_code | Gauge | --- | Numeric OPNsense system status code from the health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1) |
 | opnsense_system_subsystem_status_code | Gauge | subsystem | Numeric OPNsense SystemStatusCode (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR) for every health-check subsystem present in the response, by subsystem short name (e.g. diskspace, rootlock, crashreporter, firewall, plus any plugin-contributed key). OPNsense omits healthy subsystems from the report, so a subsystem's series is present only while it is unhealthy; absence should be read as healthy, the same convention as opnsense_firewall_status and opnsense_crash_reporter_status. |
-| opnsense_exporter_scrapes_total | Counter | --- | Total number of times OPNsense was scraped for metrics (completed scrapes only; scrapes skipped because the deadline expired before the collector lock was acquired are counted by opnsense_exporter_scrape_skips_total instead). |
-| opnsense_exporter_scrape_skips_total | Counter | --- | Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics - opnsense_up and the per-collector series are absent - so this counter is the signal to distinguish a skipped scrape from a completed one. |
+| opnsense_exporter_scrapes_total | Counter | --- | Total number of times this exporter served a /metrics scrape. Since #336 a scrape replays the in-memory poll snapshot and makes no OPNsense API call, so this counts SERVING, not collection: it tracks how often Prometheus asked, never how often the firewall was polled. For polling use opnsense_exporter_collector_last_poll_timestamp_seconds and opnsense_exporter_api_requests_total. |
 | opnsense_exporter_endpoint_errors_total | Counter | endpoint | Total number of errors by endpoint returned by the OPNsense API during data fetching. The endpoint label is an api/* path for normal fetch errors; a recovered collector panic uses a 'panic:<collector>' sentinel value instead. |
 | opnsense_exporter_api_requests_total | Counter | endpoint, code | Total number of OPNsense API requests made, by endpoint (api/* path) and HTTP response code (0 = no response, e.g. network error or context cancellation). Provides the denominator for a per-endpoint error rate alongside opnsense_exporter_endpoint_errors_total. |
-| opnsense_exporter_api_request_duration_seconds | Histogram | endpoint | Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scrape duration spikes. |
+| opnsense_exporter_api_request_duration_seconds | Histogram | endpoint | Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scheduled poll duration spikes. |
 | opnsense_exporter_api_cache_hits_total | Counter | endpoint, kind | Total number of OPNsense API calls served from the response cache instead of the firewall, by endpoint (api/* path) and kind. kind=\"body\" is a replayed payload from a slow-moving endpoint (--exporter.cache-ttl / --exporter.firmware-cache-ttl); kind=\"absent\" is a replayed 404 from a plugin-gated endpoint, meaning the plugin is not installed. Only endpoints with a configured TTL are counted, so this and opnsense_exporter_api_cache_misses_total form a hit rate for the cache itself. |
-| opnsense_exporter_api_cache_misses_total | Counter | endpoint | Total number of OPNsense API calls that went to the firewall and populated the response cache - a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched every scrape by design (only its 404 would be cached). |
+| opnsense_exporter_api_cache_misses_total | Counter | endpoint | Total number of OPNsense API calls that went to the firewall and populated the response cache - a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched on every scheduled poll by design (only its 404 would be cached). |
 
 ## ACME Client
 

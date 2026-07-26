@@ -12,6 +12,19 @@ This page lists breaking changes by release, most recent first, plus notes for u
 migrating from the upstream AthennaMind exporter. Full details for every release:
 [Changelog](changelog.md).
 
+## Upgrading to v4.0 from v3.x
+
+- **Scrape deadline compatibility surfaces removed** -
+  the `exporter.scrape-timeout-offset` option (formerly passed with two leading
+  hyphens),
+  `opnsense_exporter_scrape_skips_total`, and the exporter's handling of
+  `X-Prometheus-Scrape-Timeout-Seconds` have been removed. They became inert when
+  collection moved to the background poll scheduler: `/metrics` now replays an
+  in-memory snapshot and does not make OPNsense API calls. Remove the flag from
+  deployment arguments and replace skip-counter alerts with scheduler freshness,
+  duration, and failure signals. Prometheus's own `scrape_timeout` still bounds the
+  HTTP request.
+
 ## Upgrading to v2.0 from v1.x
 
 - **SMART collector is now opt-in** - the `opnsense_smart_*` metrics are no longer

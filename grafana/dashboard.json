@@ -76523,8 +76523,8 @@
         "kind": "Panel",
         "spec": {
           "id": 703,
-          "title": "Scrape & Skip Rate",
-          "description": "Completed scrapes vs scrapes skipped because the deadline expired before the collector lock was acquired (opnsense_exporter_scrape_skips_total). A rising skip rate indicates mutex pile-up in front of a slow firewall \u2014 opnsense_up is absent for those scrapes.",
+          "title": "Scrape Rate vs OPNsense API Rate",
+          "description": "How often Prometheus scrapes this exporter, against how often the exporter actually calls the firewall. Since #336 the two are decoupled: a scrape replays an in-memory snapshot and makes no API call, so scraping harder costs the firewall nothing and the API line moves only when you change poll intervals, enable collectors, or the response cache stops serving hits. API rate climbing on its own is worth a look; scrape rate climbing on its own is not. Serving backpressure, if you are hunting it, shows up as HTTP 503s from the exporter's in-flight cap, not on this panel.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76549,7 +76549,7 @@
                       "spec": {
                         "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_exporter_scrapes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
-                        "legendFormat": "completed {{opnsense_instance}}",
+                        "legendFormat": "/metrics scrapes served {{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -76573,9 +76573,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_exporter_scrape_skips_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance) (rate(opnsense_exporter_api_requests_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "B",
-                        "legendFormat": "skipped {{opnsense_instance}}",
+                        "legendFormat": "OPNsense API calls (background poll) {{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -77046,8 +77046,8 @@
         "kind": "Panel",
         "spec": {
           "id": 708,
-          "title": "Collector Scrape Duration",
-          "description": "",
+          "title": "Collector Poll Duration",
+          "description": "Duration of the latest scheduled background poll. The metric keeps its historical node_exporter-compatible name; /metrics only replays this value.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77135,8 +77135,8 @@
         "kind": "Panel",
         "spec": {
           "id": 709,
-          "title": "Collector Scrape Success",
-          "description": "1 = sub-collector scraped cleanly, 0 = error or panic.",
+          "title": "Collector Poll Success",
+          "description": "1 = the latest scheduled sub-collector poll completed cleanly; 0 = error or panic. The metric name is retained for compatibility.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -78641,7 +78641,7 @@
         "spec": {
           "id": 725,
           "title": "API Cache Hits (by kind)",
-          "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking every scrape.",
+          "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking on every scheduled poll.",
           "links": [],
           "data": {
             "kind": "QueryGroup",

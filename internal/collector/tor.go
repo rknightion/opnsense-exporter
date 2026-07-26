@@ -9,7 +9,7 @@ import (
 )
 
 // torCollector collects circuit and stream telemetry from the os-tor plugin's
-// control port. Opt-in (--exporter.enable-tor, default off): each scrape
+// control port. Opt-in (--exporter.enable-tor, default off): each scheduled poll
 // costs two extra configd execs (a Ruby script dialing the Tor control port)
 // on top of the plugin/setup dependency, per #206.
 //

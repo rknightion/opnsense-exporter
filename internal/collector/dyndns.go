@@ -78,7 +78,7 @@ func (c *dyndnsCollector) Update(ctx context.Context, client *opnsense.Client, c
 
 	// os-ddclient absent → Present=false; stay silent so accounts_total=0 (plugin
 	// absent) is not confused with a present-but-unconfigured ddclient, and we do
-	// not probe the service-status endpoint (which would 404-warn every scrape) (#87).
+	// not probe the service-status endpoint (which would 404-warn every scheduled poll) (#87).
 	if !data.Present {
 		return nil
 	}

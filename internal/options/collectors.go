@@ -49,7 +49,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA").Default("false").Bool()
 	unboundQStatsEnabled = kingpin.Flag(
 		"exporter.enable-unbound-qstats",
-		"Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scrape) - skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scrape once it is on.",
+		"Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scheduled poll) - skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scheduled poll once it is on.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS").Default("false").Bool()
 	openVPNCollectorDisabled = kingpin.Flag(
 		"exporter.disable-openvpn",
@@ -63,14 +63,14 @@ var (
 		"exporter.disable-firewall",
 		"Disable the scraping of the firewall (pf) metrics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FIREWALL").Default("false").Bool()
-	// NAT rule inventory counts are opt-in (default-off, #221): each scrape does
+	// NAT rule inventory counts are opt-in (default-off, #221): each scheduled poll does
 	// four extra GETs (one per MVC-managed NAT rule type: source_nat, d_nat,
 	// one_to_one, npt) on top of the always-on pf/GeoIP calls, matching the
 	// CLAUDE.md convention that reserves enable-* for collectors with extra
-	// per-scrape API cost.
+	// per-poll API cost.
 	firewallNATCountsEnabled = kingpin.Flag(
 		"exporter.enable-firewall-nat-counts",
-		"Enable the NAT rule inventory count metric (opnsense_firewall_nat_rules), broken down by type (source_nat, d_nat, one_to_one, npt) and enabled state. Off by default: each scrape does four extra GETs, one per NAT rule type. Rules created before an admin migrated to the MVC-managed NAT backend are not counted; NAT rule pf hit/byte statistics do not exist upstream.",
+		"Enable the NAT rule inventory count metric (opnsense_firewall_nat_rules), broken down by type (source_nat, d_nat, one_to_one, npt) and enabled state. Off by default: each scheduled poll does four extra GETs, one per NAT rule type. Rules created before an admin migrated to the MVC-managed NAT backend are not counted; NAT rule pf hit/byte statistics do not exist upstream.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_NAT_COUNTS").Default("false").Bool()
 	firmwareCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firmware",
@@ -78,7 +78,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FIRMWARE").Default("false").Bool()
 	firmwarePackageDetailsEnabled = kingpin.Flag(
 		"exporter.enable-firmware-package-details",
-		"Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scrape)",
+		"Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scheduled poll)",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS").Default("false").Bool()
 	systemCollectorDisabled = kingpin.Flag(
 		"exporter.disable-system",
@@ -164,23 +164,23 @@ var (
 		"exporter.disable-acme",
 		"Disable the scraping of ACME client certificate renewal status and expiry metrics (silent when the os-acme-client plugin is absent)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ACME").Default("false").Bool()
-	// SMART is opt-in (default-off): each scrape does a per-disk POST fanout that makes
+	// SMART is opt-in (default-off): each scheduled poll does a per-disk POST fanout that makes
 	// OPNsense shell out `smartctl -a` per disk, with no standby guard — so a default-on
-	// collector would spin up power-saving disks every scrape interval. This matches the
-	// CLAUDE.md convention that reserves enable-* for collectors with extra per-scrape API
+	// collector would spin up power-saving disks every poll interval. This matches the
+	// CLAUDE.md convention that reserves enable-* for collectors with extra per-poll API
 	// cost (#139).
 	smartEnabled = kingpin.Flag(
 		"exporter.enable-smart",
-		"Enable the SMART disk health collector. Off by default: each scrape does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent.",
+		"Enable the SMART disk health collector. Off by default: each scheduled poll does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").Bool()
-	// Tor is opt-in (default-off, #206): each scrape costs two extra configd execs
+	// Tor is opt-in (default-off, #206): each scheduled poll costs two extra configd execs
 	// (a Ruby script dialing the Tor control port for circuit-status and
 	// stream-status) on top of the plugin/control-port setup dependency, matching
 	// the CLAUDE.md convention that reserves enable-* for collectors with extra
-	// per-scrape API cost.
+	// per-poll API cost.
 	torEnabled = kingpin.Flag(
 		"exporter.enable-tor",
-		"Enable the Tor circuit/stream telemetry collector (control-port GETINFO via the os-tor plugin). Off by default: each scrape does two extra configd execs to query the control port, and requires the plugin's control port + password to be configured. Silent when the os-tor plugin is absent.",
+		"Enable the Tor circuit/stream telemetry collector (control-port GETINFO via the os-tor plugin). Off by default: each scheduled poll does two extra configd execs to query the control port, and requires the plugin's control port + password to be configured. Silent when the os-tor plugin is absent.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_TOR").Default("false").Bool()
 	dyndnsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-dyndns",
@@ -231,7 +231,7 @@ var (
 		"Enable FRR routing-state volume gauges (zebra RIB / OSPF route table / LSDB counts by "+
 			"protocol, route type, area and LSA type - never per-prefix or per-LSA series). Off by "+
 			"default: the underlying bootgrid endpoints have no success-body caching and their "+
-			"payload size scales with route-table size (up to 6 extra vtysh execs per scrape).",
+			"payload size scales with route-table size (up to 6 extra vtysh execs per scheduled poll).",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES").Default("false").Bool()
 	monitCollectorDisabled = kingpin.Flag(
 		"exporter.disable-monit",
@@ -259,7 +259,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER").Default("false").Bool()
 	hasyncEnabled = kingpin.Flag(
 		"exporter.enable-hasync",
-		"Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scrape). Disabled by default.",
+		"Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scheduled poll). Disabled by default.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_HASYNC").Default("false").Bool()
 	chronyCollectorDisabled = kingpin.Flag(
 		"exporter.disable-chrony",
@@ -295,7 +295,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_DISABLE_IDS").Default("false").Bool()
 	idsAlertsEnabled = kingpin.Flag(
 		"exporter.enable-ids-alerts",
-		"Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action). Off by default: each scrape triggers a reverse read of eve.json on the box. Window set by --exporter.ids-alert-lookback.",
+		"Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action). Off by default: each scheduled poll triggers a reverse read of eve.json on the box. Window set by --exporter.ids-alert-lookback.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS").Default("false").Bool()
 	lldpdCollectorDisabled = kingpin.Flag(
 		"exporter.disable-lldpd",
@@ -305,14 +305,14 @@ var (
 		"exporter.disable-hardware",
 		"Disable the scraping of hardware identity/PSU metrics (DMI system info via os-dmidecode; Deciso DEC-series PSU status via os-dec-hw). Silent when neither plugin is installed.",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_HARDWARE").Default("false").Bool()
-	// Vnstat is opt-in (default-off): each scrape does one interface_list call plus one
+	// Vnstat is opt-in (default-off): each scheduled poll does one interface_list call plus one
 	// get_json_data call PER interface vnstat tracks (a configd `vnstat --json` exec each
-	// time), so it adds N extra API calls per scrape rather than one. This matches the
-	// CLAUDE.md convention that reserves enable-* for collectors with extra per-scrape
+	// time), so it adds N extra API calls per scheduled poll rather than one. This matches the
+	// CLAUDE.md convention that reserves enable-* for collectors with extra per-poll
 	// API cost (#215).
 	vnstatEnabled = kingpin.Flag(
 		"exporter.enable-vnstat",
-		"Enable the vnstat persistent traffic accounting collector (day/month/total bytes per interface, survives reboots). Off by default: each scrape does one interface_list call plus one get_json_data call per interface vnstat tracks. Silent when the os-vnstat plugin is absent.",
+		"Enable the vnstat persistent traffic accounting collector (day/month/total bytes per interface, survives reboots). Off by default: each scheduled poll does one interface_list call plus one get_json_data call per interface vnstat tracks. Silent when the os-vnstat plugin is absent.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_VNSTAT").Default("false").Bool()
 	netbirdCollectorDisabled = kingpin.Flag(
 		"exporter.disable-netbird",

@@ -1,6 +1,6 @@
 ---
 title: OPNsense Exporter
-description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 829 metrics across 62 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
+description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 828 metrics across 62 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Prometheus and OpenTelemetry metrics for OPNsense firewalls**
 
-A Prometheus exporter that polls OPNsense REST APIs and exposes 829 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 828 metrics across 62 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
 
 <div class="hero-badges" markdown>
 
@@ -45,7 +45,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 829 metrics acro
 
     ---
 
-    Browse all 829 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 828 Prometheus metrics with types, labels, and PromQL examples.
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 
@@ -82,7 +82,7 @@ OPNsense Exporter targets OPNsense specifically, covering the firewall, its plug
 Key highlights:
 
 - **62 collectors** covering every major OPNsense subsystem
-- **Concurrent collection** via goroutines for fast scrapes
+- **Independent background polling** with snapshot replay for fast, API-free scrapes
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail
 - **File-based secrets** for credentials outside plain environment variables

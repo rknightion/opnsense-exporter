@@ -84,7 +84,7 @@ func BodyCacheTTLs(cacheTTL, firmwareCacheTTL time.Duration) EndpointCacheTTLs {
 		// vendor/version/release date only change when the hardware itself changes, so
 		// this is a prime response-cache candidate. Deliberately NOT the dechw PSU status
 		// endpoint alongside it: that payload is live GPIO hardware state and must be
-		// fetched every scrape (#217).
+		// fetched on every scheduled poll (#217).
 		ttls["dmidecodeInfo"] = cacheTTL
 
 		// Certificate inventory: descriptions and validity windows. Expiry is alerted on
@@ -95,7 +95,7 @@ func BodyCacheTTLs(cacheTTL, firmwareCacheTTL time.Duration) EndpointCacheTTLs {
 		ttls["acmeCertificates"] = cacheTTL
 
 		// Unbound DNS blocklist (dnsbl) policy config: whether policies are
-		// enabled changes only on an admin config edit, not on scrape cadence.
+		// enabled changes only on an admin config edit, not on poll cadence.
 		ttls["unboundBlocklistPolicies"] = cacheTTL
 
 		// Unbound local-zone/local-data/insecure-domain diagnostics (#209): wholly
@@ -109,24 +109,24 @@ func BodyCacheTTLs(cacheTTL, firmwareCacheTTL time.Duration) EndpointCacheTTLs {
 		// Config backup history: BackupController globs /conf/backup/config-*.xml
 		// and simplexml-parses every retained file (default retention 60, observed
 		// as high as 100 live) on every call — not free, and the data only changes
-		// when a config write actually happens, not on scrape cadence (#220).
+		// when a config write actually happens, not on poll cadence (#220).
 		ttls["backupHistory"] = cacheTTL
 
 		// ZFS boot-environment inventory: bectl is a cheap exec, but boot
 		// environments are created only around upgrades/admin action, so
-		// re-running it every scrape buys nothing (#220).
+		// re-running it on every scheduled poll buys nothing (#220).
 		ttls["snapshotsSearch"] = cacheTTL
 		ttls["snapshotsIsSupported"] = cacheTTL
 		// ClamAV engine/signature-database version info: freshclam runs at most
-		// a few times a day, so re-fetching this on every scrape only costs
+		// a few times a day, so re-fetching this on every scheduled poll only costs
 		// firewall CPU (a configd shell-out + clamconf parse).
 		ttls["clamavVersion"] = cacheTTL
 		// CrowdSec engine version (raw cscli version text): changes only when
-		// the crowdsec package itself is upgraded, not on scrape cadence. The
+		// the crowdsec package itself is upgraded, not on poll cadence. The
 		// six hub-item search endpoints (collections/scenarios/parsers/
 		// postoverflows/appsecconfigs/appsecrules) are POST bootgrid searches,
 		// so only their 404 is ever cacheable (see PluginGatedEndpoints) — their
-		// successful bodies are re-fetched every scrape like their alerts/
+		// successful bodies are re-fetched on every scheduled poll like their alerts/
 		// decisions/bouncers/machines siblings.
 		ttls["crowdsecVersion"] = cacheTTL
 
@@ -138,20 +138,20 @@ func BodyCacheTTLs(cacheTTL, firmwareCacheTTL time.Duration) EndpointCacheTTLs {
 
 		// Local auth posture (#222): disabled/admin/expiry/OTP flags, API key
 		// count, and group count all change only on an admin config edit (user
-		// add/edit, key issue/revoke, group membership change) — not on scrape
-		// cadence, so re-fetching every scrape only costs firewall CPU.
+		// add/edit, key issue/revoke, group membership change) — not on poll
+		// cadence, so re-fetching on every scheduled poll only costs firewall CPU.
 		ttls["authUsers"] = cacheTTL
 		ttls["authAPIKeys"] = cacheTTL
 		ttls["authGroups"] = cacheTTL
 		// Firewall GeoIP alias-database freshness (#221): served from geoip.py's
 		// cached stats file (/usr/local/share/GeoIP/alias.stats), itself refreshed
-		// only by a daily filter_geoip cron/manual update — re-fetching every scrape
+		// only by a daily filter_geoip cron/manual update — re-fetching on every scheduled poll
 		// only re-reads the same cache file on the box.
 		ttls["firewallGeoIP"] = cacheTTL
 
 		// NAT rule inventory counts (#221): all four MVC-managed NAT rule types
 		// (source_nat, d_nat, one_to_one, npt) are pure config reads — rule counts
-		// change only on an admin edit, not on scrape cadence.
+		// change only on an admin edit, not on poll cadence.
 		ttls["natSourceNATRules"] = cacheTTL
 		ttls["natDNATRules"] = cacheTTL
 		ttls["natOneToOneRules"] = cacheTTL

@@ -11,12 +11,9 @@ metadata:
     release: "kube-prom"
 spec:
   scrapeInterval: 60s
-  # The exporter derives its internal per-scrape deadline as this value (sent as the
-  # X-Prometheus-Scrape-Timeout-Seconds header) MINUS --exporter.scrape-timeout-offset
-  # (default 500ms). A 30+ sub-collector fan-out, several chaining multiple sequential
-  # OPNsense API calls, needs well over the old 3s — at 3s the slowest collectors
-  # (e.g. activity, kea) are silently cancelled mid-scrape while the HTTP scrape still
-  # returns 200. 30s leaves ample headroom and stays comfortably under scrapeInterval.
+  # This bounds only the HTTP snapshot replay. OPNsense API polling runs in the
+  # background under its own poll intervals and request timeouts, so scrapeTimeout
+  # no longer controls collector fan-out.
   scrapeTimeout: 30s
   metricsPath: /metrics
   staticConfigs:

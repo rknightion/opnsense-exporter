@@ -8,26 +8,21 @@ tags:
 
 # Collectors
 
-The OPNsense Exporter runs 62 sub-collectors concurrently via goroutines, each targeting a specific OPNsense subsystem. On every Prometheus scrape, all enabled collectors fan out in parallel, query the OPNsense REST API, and emit their metrics.
+The OPNsense Exporter runs 62 sub-collectors on independent background schedules, each targeting a specific OPNsense subsystem. Poll results are stored in memory; Prometheus scrapes replay that snapshot and make no OPNsense API calls.
 
-## Scrape flow
+## Poll and replay flow
 
 ```mermaid
-graph LR
-    A[Prometheus scrape] --> B[Collector.Collect]
-    B --> C[Health check: emit opnsense_up + status gauges]
-    C --> E[Fan out to sub-collectors]
-    E --> G1[ARP table]
-    E --> G2[Gateways]
-    E --> G3[Interfaces]
-    E --> G4[...]
-    E --> G5[PF Stats]
-    G1 --> H[Merge metrics]
-    G2 --> H
-    G3 --> H
-    G4 --> H
-    G5 --> H
-    H --> I[Return to Prometheus]
+flowchart LR
+    T[Per-collector timers] --> P[Scheduled collector polls]
+    P --> A[OPNsense API]
+    P --> S[Atomic in-memory snapshots]
+    H[Independent health poll] --> A
+    H --> S
+    M[Prometheus /metrics request] --> R[Replay selected snapshots]
+    O[OTLP metrics bridge] --> R
+    S --> R
+    R --> E[Emit metrics without API calls]
 ```
 
 ## Auto-registration pattern
@@ -40,12 +35,12 @@ These metrics are always emitted regardless of which sub-collectors are enabled:
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `opnsense_up` | Gauge | Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable but degraded box stays 1; see `opnsense_system_status_code` |
-| `opnsense_firewall_status` | Gauge | Firewall health status from system health check (1 = ok, 0 = errors); absent when OPNsense is unreachable |
+| `opnsense_up` | Gauge | Whether the independent health poll last reached OPNsense (1 = reachable, 0 = unreachable). A reachable but degraded box stays 1; see `opnsense_system_status_code` |
+| `opnsense_firewall_status` | Gauge | Firewall health status from the stored health poll (1 = ok, 0 = errors); absent when OPNsense is unreachable |
 | `opnsense_crash_reporter_status` | Gauge | Crash reporter status (1 = ok/no crash reports, 0 = crash reports present); absent when OPNsense is unreachable |
 | `opnsense_system_status_code` | Gauge | Numeric OPNsense system status code from health check (2 = OK, 1 = NOTICE, 0 = WARNING, -1 = ERROR; OPNsense >= 25.1); absent when unreachable |
 | `opnsense_system_subsystem_status_code` | Gauge | Numeric SystemStatusCode for every health-check subsystem present in the response, by `subsystem` label (e.g. `diskspace`, `rootlock`, `crashreporter`, `firewall`, plugin overrides). OPNsense omits healthy subsystems, so a series is present only while unhealthy |
-| `opnsense_exporter_scrapes_total` | Counter | Total number of scrapes performed |
+| `opnsense_exporter_scrapes_total` | Counter | Total number of `/metrics` snapshot replays served |
 | `opnsense_exporter_endpoint_errors_total` | Counter | Total API errors by endpoint |
 
 ## Collector reference

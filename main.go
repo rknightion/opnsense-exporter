@@ -712,9 +712,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Bound no-deadline collections so a stalled firewall can't hold the shared collector
-	// lock unbounded and black out every concurrent deadline-bound scrape (#128). The
-	// OTLP gather uses the smaller of the export interval and max-scrape-duration.
+	// --exporter.max-scrape-duration is now the per-poll API deadline. The OTLP
+	// bridge separately uses the smaller of its export interval and that value to
+	// bound snapshot gathering; neither setting is derived from Prometheus.
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithMaxScrapeDuration(*options.MaxScrapeDuration))
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollInterval(*options.CollectorPollInterval))
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithHealthPollInterval(*options.CollectorHealthPollInterval))
@@ -1257,7 +1257,6 @@ func main() {
 	metricsHandler := server.NewMetricsHandler(
 		collectorInstance,
 		selfMetricsRegistry,
-		*options.ScrapeTimeoutOffset,
 		logger,
 		metricsRecorder,
 	)

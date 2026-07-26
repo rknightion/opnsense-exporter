@@ -154,7 +154,7 @@ sequenceDiagram
 
 1. Prometheus sends `GET /metrics`. The request path makes **no** API call.
 2. `Collect()` re-emits the health gauges from the last health poll. `opnsense_up` is 0 only when that poll's API call failed; a reachable but degraded box stays `opnsense_up=1`.
-3. For every enabled collector it replays the metrics buffered in the snapshot, plus per-collector poll metadata: the configured interval, and once a collector has polled at least once, its last scrape duration, success flag, and last/next poll timestamps.
+3. For every enabled collector it replays the metrics buffered in the snapshot, plus per-collector poll metadata: the configured interval, and once a collector has polled at least once, its latest scheduled poll duration, success flag, and last/next poll timestamps. The duration/success metric names retain their historical `scrape_collector` prefix for compatibility.
 4. It increments the scrape counter and emits the always-on exporter-meta metrics (scrapes, endpoint errors, API request counts, cache hits/misses).
 
 A scrape taken during cold start replays only the collectors that have already polled; readiness gates on `SnapshotWarm` so an ordered startup waits for a complete first snapshot rather than serving a partial one. The OTLP bridge replays the same snapshot the same way.

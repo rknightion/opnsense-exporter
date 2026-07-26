@@ -18,7 +18,7 @@ import (
 // The default-on part (service status, IPS/promiscuous mode, eve log inventory,
 // ruleset inventory, installed-rule count) is cheap. The alert-activity part
 // (recent_alerts) is opt-in via --exporter.enable-ids-alerts because it triggers
-// a reverse read of eve.json on the box each scrape; when enabled, alertLookback
+// a reverse read of eve.json on the box each scheduled poll; when enabled, alertLookback
 // bounds the window counted.
 //
 // All alert-derived series are GAUGES by design: query_alerts reads a windowed,

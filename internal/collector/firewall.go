@@ -45,7 +45,7 @@ type firewallCollector struct {
 	geoipLastUpdateTimestamp *prometheus.Desc
 
 	// NAT rule inventory counts (#221): opt-in (natCountsEnabled) since it costs
-	// four extra GETs per scrape on top of the always-on pf/GeoIP calls above.
+	// four extra GETs per scheduled poll on top of the always-on pf/GeoIP calls above.
 	natRules         *prometheus.Desc
 	natCountsEnabled bool
 
@@ -64,7 +64,7 @@ func (c *firewallCollector) Name() string {
 }
 
 // SetNATCountsEnabled enables the opt-in NAT rule inventory count metric,
-// which costs four extra GETs per scrape (#221).
+// which costs four extra GETs per scheduled poll (#221).
 func (c *firewallCollector) SetNATCountsEnabled(enabled bool) {
 	c.natCountsEnabled = enabled
 }

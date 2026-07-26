@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -451,10 +453,6 @@ func newScrapeTestCollector(t *testing.T, client *opnsense.Client, instances ...
 	c.subsystemStatusCode = prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "opnsense_system_subsystem_status_code_test", Help: "h"}, []string{"subsystem"})
 	c.scrapes = *prometheus.NewCounterVec(
 		prometheus.CounterOpts{Name: "opnsense_exporter_scrapes_total_test", Help: "h"},
-		[]string{"opnsense_instance"},
-	)
-	c.scrapeSkips = *prometheus.NewCounterVec(
-		prometheus.CounterOpts{Name: "opnsense_exporter_scrape_skips_total_test", Help: "h"},
 		[]string{"opnsense_instance"},
 	)
 	c.endpointErrors = *prometheus.NewCounterVec(
@@ -1229,4 +1227,97 @@ func metricNameOf(m prometheus.Metric) string {
 		return s
 	}
 	return rest[:j]
+}
+
+// TestScrapeSkipsCounterIsRetired covers #439. opnsense_exporter_scrape_skips_total
+// described "scrapes skipped because the scrape deadline expired before the collector
+// lock could be acquired". After #336 serving is a pure replay of the in-memory poll
+// snapshot: there is no collector lock to queue behind and no scrape deadline, so the
+// counter had no increment site anywhere in the tree and could only ever read 0. It is
+// removed rather than left at zero, and opnsense_exporter_scrapes_total must stop
+// pointing operators at it.
+func TestScrapeSkipsCounterIsRetired(t *testing.T) {
+	client, err := opnsense.NewClient(
+		options.OPNSenseConfig{Protocol: "https", Host: "h", APIKey: "k", APISecret: "s"},
+		"test", promslog.NewNopLogger())
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	c, err := New(&client, promslog.NewNopLogger(), "test")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	descs := make(chan *prometheus.Desc, 8192)
+	c.Describe(descs)
+	close(descs)
+	sawScrapes := false
+	for d := range descs {
+		s := d.String()
+		if strings.Contains(s, "exporter_scrape_skips_total") {
+			t.Errorf("retired metric still described: %s", s)
+		}
+		if strings.Contains(s, "opnsense_exporter_scrapes_total") {
+			sawScrapes = true
+			if strings.Contains(s, "skip") || strings.Contains(s, "deadline") ||
+				strings.Contains(s, "lock") {
+				t.Errorf("opnsense_exporter_scrapes_total help still describes the retired "+
+					"deadline/skip model: %s", s)
+			}
+		}
+	}
+	if !sawScrapes {
+		t.Fatal("opnsense_exporter_scrapes_total is not described at all")
+	}
+
+	metrics := make(chan prometheus.Metric, 8192)
+	c.ScrapeView(context.Background(), map[string]bool{}).Collect(metrics)
+	close(metrics)
+	for m := range metrics {
+		if strings.Contains(m.Desc().String(), "exporter_scrape_skips_total") {
+			t.Errorf("retired metric still exported: %s", m.Desc().String())
+		}
+	}
+}
+
+// TestScrapeViewIgnoresContextDeadline is the other half of the #439 guard, on the
+// collector side: an expired or cancelled request context must not change one byte of
+// what a scrape replays. Serving reads memory the poll scheduler filled on its own
+// clock, so nothing a Prometheus client can put on the wire — a scrape timeout header,
+// an aborted request — can reach or curtail OPNsense polling.
+func TestScrapeViewIgnoresContextDeadline(t *testing.T) {
+	client := newCollectorTestClient(t, healthOKServer(t))
+	a := &fakeCollectorInstance{name: "fake_a", emit: []prometheus.Metric{testMetric("opnsense_a", 1)}}
+	c := newScrapeTestCollector(t, client, a)
+	c.pollHealth(context.Background())
+	c.pollOnce(context.Background(), a)
+
+	collectNames := func(ctx context.Context) []string {
+		ch := make(chan prometheus.Metric, 256)
+		c.ScrapeView(ctx, nil).Collect(ch)
+		close(ch)
+		var out []string
+		for m := range ch {
+			out = append(out, m.Desc().String())
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	live := collectNames(context.Background())
+	if len(live) == 0 {
+		t.Fatal("baseline scrape replayed nothing")
+	}
+
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
+	defer cancel()
+	if got := collectNames(expired); !reflect.DeepEqual(got, live) {
+		t.Errorf("an already-expired context changed the replay:\n got %v\nwant %v", got, live)
+	}
+
+	cancelled, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	if got := collectNames(cancelled); !reflect.DeepEqual(got, live) {
+		t.Errorf("a cancelled context changed the replay:\n got %v\nwant %v", got, live)
+	}
 }

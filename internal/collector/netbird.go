@@ -125,7 +125,7 @@ func (c *netbirdCollector) Update(ctx context.Context, client *opnsense.Client, 
 	}
 	if !data.Present {
 		// Plugin not installed — stay completely silent (do not probe the
-		// service-status endpoint either; it would 404 every scrape).
+		// service-status endpoint either; it would 404 every scheduled poll).
 		return nil
 	}
 

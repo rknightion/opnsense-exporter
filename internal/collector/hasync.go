@@ -9,8 +9,8 @@ import (
 )
 
 // hasyncCollector collects HA sync status metrics by querying the two
-// api/core/hasync_status/* endpoints on every scrape. This involves a live
-// XML-RPC call to the configured HA peer — real per-scrape network cost — so
+// api/core/hasync_status/* endpoints on every scheduled poll. This involves a live
+// XML-RPC call to the configured HA peer — real per-poll network cost — so
 // the collector is opt-in (exporter.enable-hasync, default off, decision D6).
 //
 // When HA is unconfigured or the peer is unreachable the version endpoint

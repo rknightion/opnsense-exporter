@@ -196,7 +196,6 @@ type Collector struct {
 	systemStatusCode     prometheus.Gauge
 	subsystemStatusCode  *prometheus.GaugeVec
 	scrapes              prometheus.CounterVec
-	scrapeSkips          prometheus.CounterVec
 	endpointErrors       prometheus.CounterVec
 	apiRequests          prometheus.CounterVec
 	apiRequestDuration   prometheus.HistogramVec
@@ -212,8 +211,8 @@ type Collector struct {
 	collectorStates  map[string]bool
 	buildInfo        *prometheus.Desc
 	collectorEnabled *prometheus.Desc
-	// scrapeDuration / scrapeSuccess mirror node_exporter's per-collector
-	// scrape instrumentation (node_scrape_collector_*), emitted as const
+	// scrapeDuration / scrapeSuccess retain the historical node_exporter-compatible
+	// metric names, but describe scheduled collector polls. They are emitted as const
 	// metrics around every sub-collector Update.
 	scrapeDuration *prometheus.Desc
 	scrapeSuccess  *prometheus.Desc
@@ -232,13 +231,13 @@ type Collector struct {
 	snapshotTs    *prometheus.Desc
 	lastSuccessTs *prometheus.Desc
 
-	// maxScrapeDuration bounds a collection whose caller supplied no deadline (a
-	// header-less /metrics scrape or a registry gather), so a stalled firewall can't
-	// hold the shared mutex unbounded. Zero means use defaultMaxScrapeDuration (#128).
+	// maxScrapeDuration is the legacy field name for the per-poll timeout configured
+	// by --exporter.max-scrape-duration. Serving /metrics only replays snapshots and
+	// never uses this as an API deadline. Zero selects defaultMaxScrapeDuration.
 	maxScrapeDuration time.Duration
 	// otlpGatherTimeout, when > 0, is the deadline applied to the OTLP-bridge gather
-	// path (Collect), derived from the OTLP export interval. Zero means Collect falls
-	// back to the maxScrapeDuration default inside collect().
+	// path (Collect), derived from the OTLP export interval. It does not control
+	// background API polling.
 	otlpGatherTimeout time.Duration
 
 	// statusTracker, when non-nil, passively records per-collector run history for
@@ -371,14 +370,13 @@ func ValidatePollOverrideNames(names []string) error {
 	)
 }
 
-// defaultMaxScrapeDuration is the fallback bound applied to a no-deadline collection
-// when --exporter.max-scrape-duration is unset (e.g. tests that build a Collector
-// directly rather than via New with the flag wired in).
+// defaultMaxScrapeDuration retains the public flag's historical name but is the
+// fallback bound for one scheduled collector poll.
 const defaultMaxScrapeDuration = 50 * time.Second
 
 type Option func(*Collector) error
 
-// WithMaxScrapeDuration sets the bound applied to no-deadline collections (#128).
+// WithMaxScrapeDuration sets the bound applied to each scheduled collector poll.
 func WithMaxScrapeDuration(d time.Duration) Option {
 	return func(o *Collector) error {
 		o.maxScrapeDuration = d
@@ -1034,7 +1032,7 @@ func WithAliasDetails() Option {
 }
 
 // WithFirewallNATCounts enables the opt-in NAT rule inventory count metric on
-// the firewall collector (four extra GETs per scrape; #221).
+// the firewall collector (four extra GETs per scheduled poll; #221).
 func WithFirewallNATCounts() Option {
 	return func(o *Collector) error {
 		for _, c := range o.collectors {
@@ -1055,7 +1053,7 @@ func WithoutIDSCollector() Option {
 
 // WithIDSAlerts enables the opt-in Suricata recent-alerts series on the ids
 // collector, counting alerts within the given lookback window from query_alerts
-// (an extra reverse read of eve.json per scrape).
+// (an extra reverse read of eve.json per scheduled poll).
 func WithIDSAlerts(lookback time.Duration) Option {
 	return func(o *Collector) error {
 		for _, c := range o.collectors {
@@ -1142,14 +1140,14 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	c.scrapeDuration = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "scrape_collector_duration_seconds"),
-		"Duration of a sub-collector scrape in seconds",
+		"Duration of the latest scheduled sub-collector poll in seconds. The metric name retains its historical scrape_collector prefix for compatibility",
 		[]string{"collector", instanceLabelName},
 		nil,
 	)
 
 	c.scrapeSuccess = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "scrape_collector_success"),
-		"Whether a sub-collector scrape succeeded (1 = ok, 0 = error or panic)",
+		"Whether the latest scheduled sub-collector poll succeeded (1 = ok, 0 = error or panic). The metric name retains its historical scrape_collector prefix for compatibility",
 		[]string{"collector", instanceLabelName},
 		nil,
 	)
@@ -1241,13 +1239,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.scrapes = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_scrapes_total",
-		Help:      "Total number of times OPNsense was scraped for metrics (completed scrapes only; scrapes skipped because the deadline expired before the collector lock was acquired are counted by opnsense_exporter_scrape_skips_total instead).",
-	}, []string{"opnsense_instance"})
-
-	c.scrapeSkips = *prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: namespace,
-		Name:      "exporter_scrape_skips_total",
-		Help:      "Total number of scrapes skipped because the scrape deadline expired before the collector lock could be acquired (e.g. queued behind a slow scrape). These emit only exporter meta-metrics - opnsense_up and the per-collector series are absent - so this counter is the signal to distinguish a skipped scrape from a completed one.",
+		Help:      "Total number of times this exporter served a /metrics scrape. Since #336 a scrape replays the in-memory poll snapshot and makes no OPNsense API call, so this counts SERVING, not collection: it tracks how often Prometheus asked, never how often the firewall was polled. For polling use opnsense_exporter_collector_last_poll_timestamp_seconds and opnsense_exporter_api_requests_total.",
 	}, []string{"opnsense_instance"})
 
 	c.endpointErrors = *prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -1265,7 +1257,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.apiRequestDuration = *prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: namespace,
 		Name:      "exporter_api_request_duration_seconds",
-		Help:      "Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scrape duration spikes.",
+		Help:      "Duration of individual OPNsense API requests in seconds, by endpoint (api/* path). Lets operators see which underlying endpoint call regressed when a collector's scheduled poll duration spikes.",
 		Buckets:   []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15},
 	}, []string{"endpoint", "opnsense_instance"})
 
@@ -1278,7 +1270,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.apiCacheMisses = *prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "exporter_api_cache_misses_total",
-		Help:      "Total number of OPNsense API calls that went to the firewall and populated the response cache - a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched every scrape by design (only its 404 would be cached).",
+		Help:      "Total number of OPNsense API calls that went to the firewall and populated the response cache - a cold cache or an expired TTL. This is the denominator for a cache hit rate alongside opnsense_exporter_api_cache_hits_total. A call whose response was never cacheable is NOT counted: notably a 200 from a plugin-gated endpoint whose plugin IS installed, whose live payload is fetched on every scheduled poll by design (only its 404 would be cached).",
 	}, []string{"endpoint", "opnsense_instance"})
 
 	// isUp, scrapes and endpointErrors are exposed through this Collector's own
@@ -1288,7 +1280,6 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	// non-idempotent (a second New panicked on duplicate registration), which is
 	// why several tests previously avoided calling New.
 	c.scrapes.WithLabelValues(c.instanceLabel).Add(0)
-	c.scrapeSkips.WithLabelValues(c.instanceLabel).Add(0)
 
 	for _, path := range c.Client.Endpoints() {
 		c.endpointErrors.WithLabelValues(string(path), c.instanceLabel).Add(0)
@@ -1301,8 +1292,8 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	// Install this Collector as the client's per-request observer so api_requests_total
 	// / api_request_duration_seconds are recorded at the single request choke point.
-	// &c is the pointer returned below, and the client is shared across every scrape
-	// (WithContext clones copy the observer field), so the wiring outlives New (#126).
+	// &c is the pointer returned below, and the client is shared across every scheduled
+	// poll (WithContext clones copy the observer field), so the wiring outlives New (#126).
 	c.Client.SetRequestObserver(&c)
 
 	// Likewise for the response cache: a cache hit issues no request, so it is invisible
@@ -1338,7 +1329,6 @@ func (c *Collector) ObserveCacheMiss(endpoint string) {
 // Describe implements the prometheus.Collector interface.
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.scrapes.Describe(ch)
-	c.scrapeSkips.Describe(ch)
 	c.endpointErrors.Describe(ch)
 	c.apiRequests.Describe(ch)
 	c.apiRequestDuration.Describe(ch)
@@ -1389,11 +1379,10 @@ func boolToGauge(ok bool) float64 {
 }
 
 // Collect implements the prometheus.Collector interface. Registry-driven
-// callers with no HTTP request (e.g. the OTLP bridge) scrape everything with
-// no per-request deadline; /metrics goes through ScrapeView instead. A deadline
-// derived from the OTLP export interval (otlpGatherTimeout) is applied here so a
-// stalled firewall can't make the periodic gather hold the shared mutex unbounded;
-// if unset, collect() applies the maxScrapeDuration fallback (#128).
+// callers such as the OTLP bridge replay the full snapshot; /metrics goes through
+// ScrapeView instead. A deadline derived from the OTLP export interval remains a
+// bound on the bridge gather itself. It does not bound or trigger any OPNsense API
+// call.
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ctx := context.Background()
 	if c.otlpGatherTimeout > 0 {
@@ -1405,12 +1394,17 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 // collectAlwaysOn emits the cumulative exporter-meta metrics that every scrape path
-// (normal, deadline-skip, unreachable short-circuit) must surface so they stay present
-// at their current values. scrapes/scrapeSkips are incremented by the caller as
-// appropriate before this is called.
+// (normal replay, unreachable short-circuit) must surface so they stay present at
+// their current values. The scrapes counter is incremented by the caller before this
+// is called.
+//
+// #439 removed opnsense_exporter_scrape_skips_total from this set. It described
+// scrapes skipped because a collection deadline expired before the collector lock
+// could be acquired — a condition that stopped existing at #336, when serving became
+// a lock-free replay of the poll snapshot. It had no increment site and could only
+// ever read 0.
 func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 	c.scrapes.Collect(ch)
-	c.scrapeSkips.Collect(ch)
 	c.endpointErrors.Collect(ch)
 	c.apiRequests.Collect(ch)
 	c.apiRequestDuration.Collect(ch)
@@ -1596,11 +1590,10 @@ func (c *Collector) EnabledCollectorNames() []string {
 }
 
 // scrapeView is a per-request prometheus.Collector adapter over the shared
-// Collector. It carries the request-scoped context (scrape deadline) and the
-// collect[]/exclude[]-derived include set. Nothing is re-registered per
-// request: sub-collector descriptors were built once at startup (Register in
-// New); the view only subsets the fan-out. Storing ctx in the struct is the
-// http.Request.WithContext pattern — the view lives for exactly one request.
+// Collector. It carries the request-scoped context and the collect[]/exclude[]-
+// derived include set. Nothing is re-registered or polled per request:
+// sub-collector descriptors and snapshots already exist; the view only subsets
+// snapshot replay. The view lives for exactly one request.
 type scrapeView struct {
 	c       *Collector
 	ctx     context.Context

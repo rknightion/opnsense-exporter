@@ -30,7 +30,7 @@ interval starts a service, mutates config, or ships data off-box.
 | --- | --- | --- |
 | `api/iperf/instance/query` | GET | If the iperf-manager socket is absent, `send_command()` falls through to configd `iperf restart`/`start` (a GET request that starts a service and rewrites pf anchor rules). It also only ever returns manually-launched one-shot test results, purged after an hour, so there is no steady-state series to collect anyway. |
 | `api/redis/service/resetdb` | GET | Flushes the Redis database. |
-| `api/haproxy/maintenance/*` | POST | Every action in this controller looks like a status read but responds only to POST and fires `configdRun('template reload OPNsense/HAProxy')` on every single call: full config regeneration per scrape. The server-state data it exposes is redundant with `show stat` anyway. |
+| `api/haproxy/maintenance/*` | POST | Every action in this controller looks like a status read but responds only to POST and fires `configdRun('template reload OPNsense/HAProxy')` on every single call: full config regeneration per scheduled poll if used by a collector. The server-state data it exposes is redundant with `show stat` anyway. |
 | `api/hwprobe/service/report` | GET | Runs `hw-probe -all -upload`, which uploads the box's hardware profile to linux-hardware.org. An exporter must never cause outbound data exfiltration as a side effect of a scrape. |
 | `api/tailscale/status/net` | GET | Runs `tailscale netcheck`, an active multi-second network probe, and returns plain text rather than structured JSON. |
 | `api/diagnostics/carp_status` | POST | A setter despite the read-sounding name: it enables/disables CARP or flips maintenance mode. |
