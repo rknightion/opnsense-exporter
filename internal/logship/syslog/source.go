@@ -33,9 +33,26 @@ const envelopeShapeKey = "<envelope>"
 // build, and so does listing a value nothing rejects with. Never add a value that
 // comes off the wire — these must stay code-defined and closed.
 var (
-	// RejectReasons: peer/oversized are the listener's (listener.go), filtered is the
+	// RejectReasons: peer/oversized/conn_limit/tls_timeout/tls_auth_failed/
+	// tls_deadline_error are the listener's (listener.go), filtered is the
 	// program/severity filter and sampled is --logs.syslog.sample (source.go).
-	RejectReasons = []string{"peer", "oversized", "filtered", "sampled"}
+	//
+	// conn_limit covers BOTH the plaintext and TLS connection-cap refusal, exactly
+	// like peer is not split by transport either — the listener holds SEPARATE
+	// per-transport budgets, but which budget was full is not a distinction an
+	// operator alerting on capacity pressure needs (#399).
+	//
+	// tls_timeout/tls_auth_failed classify a failed pre-authentication TLS
+	// handshake: a timeout (the client stalled or never spoke) versus anything else
+	// (an invalid/missing client certificate, a protocol/cipher mismatch, or any
+	// other handshake-layer rejection) — never the raw error text or peer identity.
+	// tls_deadline_error covers the listener's OWN local SetDeadline calls around
+	// the handshake failing, which is a distinct (and previously invisible) failure
+	// mode from the handshake itself.
+	RejectReasons = []string{
+		"peer", "oversized", "filtered", "sampled",
+		"conn_limit", "tls_timeout", "tls_auth_failed", "tls_deadline_error",
+	}
 	// ParseStages: an unparseable line still ships with its raw bytes, so the only
 	// stage that can fail is the envelope. Body parsers never report a parse error —
 	// a program with no registered parser is normal, not an error.

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
 	"time"
 
@@ -30,6 +31,28 @@ const connIdleTimeout = 5 * time.Minute
 // a slot for five minutes by simply connecting and saying nothing (#328). Ten seconds
 // is far more than a handshake across any real link needs.
 const defaultTLSHandshakeTimeout = 10 * time.Second
+
+// refusalLogEvery bounds how often ONE class of refusal may write a log line. Every
+// refusal below is something an unauthenticated peer can produce at line rate — a
+// connection flood, a stalled handshake, a bad client certificate retried in a loop —
+// so a Warn per refusal makes the exporter's own log the amplification vector (#399).
+// The counter is the accurate record; the log is a breadcrumb, and one every 30s is
+// enough to tell an operator which class is firing.
+const refusalLogEvery = 30 * time.Second
+
+// refusalLogKey is a CLOSED, code-defined set of throttle keys. It is deliberately
+// NOT keyed by peer, certificate identity or error text: an attacker-controlled key
+// would make the throttle map itself the memory leak the throttle exists to prevent,
+// and the same rule that keeps those values out of metric labels keeps them out of
+// here. Four constants, four map entries, for the life of the process.
+type refusalLogKey string
+
+const (
+	refusalTCPConnLimit refusalLogKey = "tcp_conn_limit"
+	refusalTLSConnLimit refusalLogKey = "tls_conn_limit"
+	refusalTLSHandshake refusalLogKey = "tls_handshake"
+	refusalTLSDeadline  refusalLogKey = "tls_deadline"
+)
 
 // Config configures the receiver's sockets. An empty address disables that
 // transport. AllowedPeers, when non-empty, is an allowlist: anything else is
@@ -78,6 +101,24 @@ type Listener struct {
 	once    sync.Once
 	closeMu sync.Mutex
 	closeCh error
+
+	// refusalMu guards refusalLast, the last-logged time per refusal class. Accept
+	// loops for the two transports run concurrently and both write it.
+	refusalMu   sync.Mutex
+	refusalLast map[refusalLogKey]time.Time
+}
+
+// logRefusal reports whether this class of refusal may log now, recording the time
+// when it may. See refusalLogEvery for why refusals are throttled at all.
+func (l *Listener) logRefusal(k refusalLogKey) bool {
+	now := time.Now()
+	l.refusalMu.Lock()
+	defer l.refusalMu.Unlock()
+	if last, ok := l.refusalLast[k]; ok && now.Sub(last) < refusalLogEvery {
+		return false
+	}
+	l.refusalLast[k] = now
+	return true
 }
 
 // NewListener builds a listener. The handler is fixed at construction; there is no
@@ -100,6 +141,8 @@ func NewListener(cfg Config, handle func(line []byte, peer netip.Addr), m *logsh
 		tcpSem:  make(chan struct{}, cfg.MaxConns),
 		tlsSem:  make(chan struct{}, cfg.MaxConns),
 		closing: make(chan struct{}),
+
+		refusalLast: make(map[refusalLogKey]time.Time, 4),
 	}
 }
 
@@ -334,8 +377,15 @@ func (l *Listener) serveTCP() {
 		case l.tcpSem <- struct{}{}:
 		default:
 			// At the connection cap: refuse rather than fork an unbounded goroutine.
-			l.log.Warn("syslog: TCP connection limit reached, refusing peer",
-				"peer", peer.String(), "max_conns", l.cfg.MaxConns)
+			// Counted, not merely logged (#399) — a capacity attack is exactly the
+			// thing an operator needs to see on /metrics, and it was previously
+			// visible only to whoever happened to be reading the exporter's log.
+			l.m.Reject("conn_limit")
+			if l.logRefusal(refusalTCPConnLimit) {
+				l.log.Warn("syslog: TCP connection limit reached, refusing peer",
+					"peer", peer.String(), "max_conns", l.cfg.MaxConns,
+					"log_throttle", refusalLogEvery.String())
+			}
 			_ = conn.Close()
 			continue
 		}
@@ -382,8 +432,15 @@ func (l *Listener) serveTLS() {
 		case l.tlsSem <- struct{}{}:
 		default:
 			// At the connection cap: refuse rather than fork an unbounded goroutine.
-			l.log.Warn("syslog: TLS connection limit reached, refusing peer",
-				"peer", peer.String(), "max_conns", l.cfg.MaxConns)
+			// Counted under the SAME conn_limit reason as plaintext: the budgets are
+			// separate, but "we are refusing connections" is one operational signal
+			// and splitting it by transport would only fragment the alert (#399).
+			l.m.Reject("conn_limit")
+			if l.logRefusal(refusalTLSConnLimit) {
+				l.log.Warn("syslog: TLS connection limit reached, refusing peer",
+					"peer", peer.String(), "max_conns", l.cfg.MaxConns,
+					"log_throttle", refusalLogEvery.String())
+			}
 			_ = conn.Close()
 			continue
 		}
@@ -417,6 +474,11 @@ func (l *Listener) handshake(conn net.Conn, peer netip.Addr) bool {
 	// handshake when the listener closes, so shutdown is never held up for the length
 	// of the timeout by a peer that is deliberately stalling.
 	if err := conn.SetDeadline(time.Now().Add(l.cfg.TLSHandshakeTimeout)); err != nil {
+		// A LOCAL failure, not the peer's: without its deadline the handshake would
+		// be unbounded, so the connection is dropped. Counted separately because a
+		// listener failing its own syscalls is a different alert from a peer failing
+		// to authenticate, and it used to be completely invisible (#399).
+		l.rejectDeadline(err)
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), l.cfg.TLSHandshakeTimeout)
@@ -431,15 +493,68 @@ func (l *Listener) handshake(conn net.Conn, peer netip.Addr) bool {
 		}
 	}()
 	if err := tc.HandshakeContext(ctx); err != nil {
-		l.log.Debug("syslog: TLS handshake failed", "peer", peer.String(), "err", err)
+		// Our own shutdown cancelled the context. That is not a peer rejection and
+		// must not be counted as one, or every restart would show a spike of
+		// authentication failures that never happened.
+		if errors.Is(err, context.Canceled) && l.closed() {
+			return false
+		}
+		// Two reasons, both derived from the error's TYPE, never its text: a stalled
+		// or silent client (tls_timeout) versus every other handshake-layer refusal —
+		// missing/invalid/expired client certificate, unknown CA, protocol or cipher
+		// mismatch (tls_auth_failed). The distinction is what separates "a sender is
+		// misconfigured" from "a sender cannot reach us in time"; the specifics stay
+		// in the log, where unbounded strings are safe (#399).
+		//
+		// Both reasons are passed as LITERALS rather than through the reason variable:
+		// the vocabulary guard (TestReceiverVocabulariesMatchCallSites) reads the AST,
+		// so a variable argument reads to it as "no call site can produce this" and
+		// the pre-initialised zero series would quietly become a lie.
+		reason := "tls_auth_failed"
+		if isTimeoutErr(err) {
+			reason = "tls_timeout"
+			l.m.Reject("tls_timeout")
+		} else {
+			l.m.Reject("tls_auth_failed")
+		}
+		if l.logRefusal(refusalTLSHandshake) {
+			l.log.Warn("syslog: TLS handshake failed", "peer", peer.String(),
+				"reason", reason, "err", err, "log_throttle", refusalLogEvery.String())
+		}
 		return false
 	}
 	// Clear it again: serveConn drives its own per-frame idle deadline, and leaving the
 	// handshake's short one in place would cut a healthy stream off mid-flight.
 	if err := conn.SetDeadline(time.Time{}); err != nil {
+		// Same local-failure class as the deadline that was set above: proceeding
+		// would hand serveConn a connection still carrying the short handshake
+		// deadline, cutting a healthy stream off mid-stream.
+		l.rejectDeadline(err)
 		return false
 	}
 	return true
+}
+
+// rejectDeadline counts and (throttled) logs a failure of the listener's OWN
+// SetDeadline calls around the TLS handshake.
+func (l *Listener) rejectDeadline(err error) {
+	l.m.Reject("tls_deadline_error")
+	if l.logRefusal(refusalTLSDeadline) {
+		l.log.Warn("syslog: TLS handshake deadline could not be set",
+			"err", err, "log_throttle", refusalLogEvery.String())
+	}
+}
+
+// isTimeoutErr reports whether err is a deadline/timeout rather than a refusal. All
+// three forms occur here: the socket deadline surfaces as os.ErrDeadlineExceeded,
+// the handshake context as context.DeadlineExceeded, and anything wrapping a
+// net.Error reports it through Timeout().
+func isTimeoutErr(err error) bool {
+	if errors.Is(err, os.ErrDeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
 }
 
 // serveConn reads framed messages from one connection. The read deadline is

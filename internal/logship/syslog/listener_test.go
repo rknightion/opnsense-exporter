@@ -199,6 +199,43 @@ func TestListenerOversizedNewlineFrameCountedAndConnectionSurvives(t *testing.T)
 	}
 }
 
+// An unauthenticated ingress with unbounded goroutines is textbook slowloris: the
+// TCP connection-cap refusal must be COUNTED, not just logged, so a capacity attack
+// is visible on /metrics (#399).
+func TestListenerTCPConnLimitCounted(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
+	c := newCollector()
+	l := startListener(t, Config{TCPAddr: "127.0.0.1:0", MaxConns: 1}, c.handle, m)
+
+	first, err := net.Dial("tcp", l.TCPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = first.Close() }()
+	if _, err := first.Write([]byte("<134>one\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	c.await(t, 3*time.Second) // the first conn is established and served
+
+	second, err := net.Dial("tcp", l.TCPAddr())
+	if err != nil {
+		t.Fatalf("dial 2: %v", err)
+	}
+	defer func() { _ = second.Close() }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if counterValue(t, reg, "opnsense_exporter_logs_rejected_total", "reason", "conn_limit") == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := counterValue(t, reg, "opnsense_exporter_logs_rejected_total", "reason", "conn_limit"); got != 1 {
+		t.Fatalf("Rejected{conn_limit} = %v, want 1", got)
+	}
+}
+
 func TestListenerPeerAllowlistUDP(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
