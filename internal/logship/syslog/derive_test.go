@@ -52,6 +52,11 @@ func (f *fakeSink) ObserveGateway(event, gateway string) bool {
 	return true
 }
 
+func (f *fakeSink) ObserveRADIUS(event, result, clientScope string) bool {
+	f.calls = append(f.calls, fakeCall{"radius", []string{event, result, clientScope}})
+	return true
+}
+
 func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
 	return true
@@ -85,6 +90,7 @@ func TestDeriveFamily(t *testing.T) {
 		{"configd.py", familyAudit, true},
 		{"suricata", familyIDS, true},
 		{"dpinger", familyGateway, true},
+		{"radiusd", familyRADIUS, true},
 		{"unbound", familyUnknown, false},
 		{"", familyUnknown, false},
 	}
@@ -95,6 +101,76 @@ func TestDeriveFamily(t *testing.T) {
 				t.Errorf("deriveFamily(%q) = (%v, %v), want (%v, %v)", tt.program, got, ok, tt.want, tt.wantOK)
 			}
 		})
+	}
+}
+
+func TestObserveDerived_RADIUS(t *testing.T) {
+	tests := []struct {
+		name        string
+		attrs       map[string]string
+		wantCounted bool
+	}{
+		{
+			name: "accepted access request",
+			attrs: map[string]string{
+				"radius.event":        "access",
+				"radius.result":       "accepted",
+				"radius.client_scope": "configured",
+				"user.name":           "must-not-be-a-label",
+				"client.ip":           "192.0.2.10",
+			},
+			wantCounted: true,
+		},
+		{
+			name: "missing event",
+			attrs: map[string]string{
+				"radius.result":       "accepted",
+				"radius.client_scope": "configured",
+			},
+		},
+		{
+			name: "missing result",
+			attrs: map[string]string{
+				"radius.event":        "access",
+				"radius.client_scope": "configured",
+			},
+		},
+		{
+			name: "missing client scope",
+			attrs: map[string]string{
+				"radius.event":  "access",
+				"radius.result": "rejected",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sink := &fakeSink{}
+			counted := observeDerived(sink, "radiusd", tt.attrs)
+			if counted != tt.wantCounted {
+				t.Fatalf("counted = %v, want %v", counted, tt.wantCounted)
+			}
+			if !tt.wantCounted {
+				if len(sink.calls) != 0 {
+					t.Fatalf("calls = %+v, want none", sink.calls)
+				}
+				return
+			}
+			if len(sink.calls) != 1 || sink.calls[0].method != "radius" {
+				t.Fatalf("calls = %+v, want one radius call", sink.calls)
+			}
+			assertArgs(t, sink.calls[0].args, []string{"access", "accepted", "configured"})
+		})
+	}
+}
+
+func TestObserveDerived_RADIUSWithNopSink(t *testing.T) {
+	if !observeDerived(logship.NopMetricSink{}, "radiusd", map[string]string{
+		"radius.event":        "access",
+		"radius.result":       "accepted",
+		"radius.client_scope": "configured",
+	}) {
+		t.Fatal("NopMetricSink rejected a valid RADIUS observation")
 	}
 }
 

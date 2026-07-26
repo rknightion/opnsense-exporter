@@ -213,5 +213,30 @@ class GatewayOperationalEventSemanticsTest(unittest.TestCase):
         self.assertIn("alarm_cleared", alarms["spec"]["description"])
 
 
+class RadiusOperationalEventSemanticsTest(unittest.TestCase):
+    def test_radius_access_rate_uses_only_the_closed_non_pii_dimensions(self):
+        builder = build_dashboard.build_all()
+
+        panel = panel_for_metric(builder, "opnsense_log_events_radius_total")
+        self.assertEqual(panel["spec"]["title"], "RADIUS Access Events by Result (rate)")
+        self.assertIn(
+            'sum by (event, result, client_scope) '
+            '(rate(opnsense_log_events_radius_total{'
+            'opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
+            builder._exprs,
+        )
+        self.assertIn("event=access", panel["spec"]["description"])
+        self.assertIn("accepted", panel["spec"]["description"])
+        self.assertIn("rejected", panel["spec"]["description"])
+        self.assertIn("client_scope=configured", panel["spec"]["description"])
+        self.assertIn("Accounting", panel["spec"]["description"])
+        self.assertIn("not supported", panel["spec"]["description"])
+        expressions = [
+            query["spec"]["query"]["spec"]["expr"]
+            for query in panel["spec"]["data"]["spec"]["queries"]
+        ]
+        self.assertFalse(any("username" in expression.lower() for expression in expressions))
+
+
 if __name__ == "__main__":
     unittest.main()

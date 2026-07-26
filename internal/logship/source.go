@@ -98,9 +98,9 @@ type Deps struct {
 	Miss func(table string)
 	// Registerer is where a source registers its own self-metrics.
 	Registerer prometheus.Registerer
-	// MetricSink receives the derived-metric observations for the six parsed
-	// programs (#258). It is nil when metric derivation is disabled (the
-	// log_events collector is off); the receiver substitutes a NopMetricSink.
+	// MetricSink receives derived-metric observations from parsed programs
+	// (#258). It is nil when metric derivation is disabled (the log_events
+	// collector is off); the receiver substitutes a NopMetricSink.
 	MetricSink MetricSink
 	// FlowSink receives normalized flow records derived from a receiver's own
 	// documents (#346). It is nil when flow rollups are off (the flow collector is

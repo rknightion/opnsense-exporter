@@ -1,6 +1,6 @@
 package logship
 
-// MetricSink receives one call per parsed log record from the seven derived
+// MetricSink receives one call per parsed log record from the nine derived
 // metric families (#258). It is the seam between the
 // syslog receiver goroutine (which knows each program's attribute keys) and the
 // `log_events` collector (which owns the metric definitions and running totals).
@@ -54,6 +54,8 @@ type MetricSink interface {
 	// vocabulary; gateway is the configured monitor name and is bounded by the
 	// implementation's per-family key budget.
 	ObserveGateway(event, gateway string) bool
+	// ObserveRADIUS counts one FreeRADIUS access decision.
+	ObserveRADIUS(event, result, clientScope string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation) bool
 }
@@ -103,4 +105,5 @@ func (NopMetricSink) ObserveDHCP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveAudit(_, _ string) bool              { return true }
 func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveGateway(_, _ string) bool            { return true }
+func (NopMetricSink) ObserveRADIUS(_, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

@@ -229,6 +229,27 @@ func TestLogEventStore_ObserveGateway(t *testing.T) {
 	}
 }
 
+func TestLogEventStore_ObserveRADIUS(t *testing.T) {
+	s := newTestLogEventStore(t)
+	if !s.ObserveRADIUS("access", "accepted", "configured") {
+		t.Fatal("first accepted observation was refused")
+	}
+	if !s.ObserveRADIUS("access", "accepted", "configured") {
+		t.Fatal("second accepted observation was refused")
+	}
+	if !s.ObserveRADIUS("access", "rejected", "configured") {
+		t.Fatal("rejected observation was refused")
+	}
+	s.sync()
+
+	if got := s.radius.m[radiusKey{event: "access", result: "accepted", clientScope: "configured"}]; got != 2 {
+		t.Errorf("accepted count = %v, want 2", got)
+	}
+	if got := s.radius.m[radiusKey{event: "access", result: "rejected", clientScope: "configured"}]; got != 1 {
+		t.Errorf("rejected count = %v, want 1", got)
+	}
+}
+
 func TestLogEventStore_GatewayObservationReturnsImmediatelyWhenSnapshotIsStalled(t *testing.T) {
 	s, releaseSnapshot := newStalledSnapshotStore(t, 1)
 
@@ -244,6 +265,25 @@ func TestLogEventStore_GatewayObservationReturnsImmediatelyWhenSnapshotIsStalled
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("ObserveGateway blocked behind a stalled snapshot")
+	}
+	releaseSnapshot()
+}
+
+func TestLogEventStore_RADIUSObservationReturnsImmediatelyWhenSnapshotIsStalled(t *testing.T) {
+	s, releaseSnapshot := newStalledSnapshotStore(t, 1)
+
+	returned := make(chan bool, 1)
+	go func() {
+		returned <- s.ObserveRADIUS("access", "accepted", "configured")
+	}()
+
+	select {
+	case accepted := <-returned:
+		if !accepted {
+			t.Fatal("accepted = false with free handoff capacity")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("ObserveRADIUS blocked behind a stalled snapshot")
 	}
 	releaseSnapshot()
 }
@@ -266,6 +306,30 @@ func TestLogEventStore_GatewayKeysAreCappedWithoutLoss(t *testing.T) {
 	live, overflow := s.gateway.snapshot()
 	if got := live[gatewayKey{event: "alarm_started", gateway: "TEST_GATEWAY"}]; got != 2 {
 		t.Errorf("first gateway count = %v, want 2", got)
+	}
+	if overflow != 2 {
+		t.Errorf("overflow = %v, want 2", overflow)
+	}
+}
+
+func TestLogEventStore_RADIUSKeysAreCappedWithoutLoss(t *testing.T) {
+	s := newTestLogEventStore(t)
+	s.SetMaxKeys(1)
+	for _, result := range []string{"accepted", "rejected"} {
+		for range 2 {
+			if !s.ObserveRADIUS("access", result, "configured") {
+				t.Fatalf("observation for %s was refused", result)
+			}
+		}
+	}
+	s.sync()
+
+	if got := s.radius.len(); got != 1 {
+		t.Errorf("live keys = %d, want 1", got)
+	}
+	live, overflow := s.radius.snapshot()
+	if got := live[radiusKey{event: "access", result: "accepted", clientScope: "configured"}]; got != 2 {
+		t.Errorf("accepted count = %v, want 2", got)
 	}
 	if overflow != 2 {
 		t.Errorf("overflow = %v, want 2", overflow)
@@ -388,6 +452,7 @@ func TestLogEventStore_SetMaxKeysAppliesToEveryFamily(t *testing.T) {
 		s.ObserveAudit("config_change-"+n, "")
 		s.ObserveIDS("alert", "block", "cat-"+n, "")
 		s.ObserveGateway("alarm_started", "gateway-"+n)
+		s.ObserveRADIUS("access", []string{"accepted", "rejected", "rejected"}[i], "configured")
 		s.ObserveZenarmor(logship.ZenarmorObservation{Family: "flow", Category: "cat-" + n})
 	}
 	s.sync()
@@ -404,10 +469,11 @@ func TestLogEventStore_SetMaxKeysAppliesToEveryFamily(t *testing.T) {
 		logFamilyAudit:    {s.audit.len(), overflowOf(s.audit.snapshot())},
 		logFamilyIDS:      {s.ids.len(), overflowOf(s.ids.snapshot())},
 		logFamilyGateway:  {s.gateway.len(), overflowOf(s.gateway.snapshot())},
+		logFamilyRADIUS:   {s.radius.len(), overflowOf(s.radius.snapshot())},
 		logFamilyZenarmor: {s.zen.len(), overflowOf(s.zen.snapshot())},
 	}
-	if len(families) != 8 {
-		t.Fatalf("families asserted = %d, want all 8 (duplicate family constant?)", len(families))
+	if len(families) != 9 {
+		t.Fatalf("families asserted = %d, want all 9 (duplicate family constant?)", len(families))
 	}
 	for name, got := range families {
 		if got.keys != 1 {
@@ -446,11 +512,11 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	if len(capped) != 8 {
-		t.Errorf("capped families emitted = %d, want 8: %v", len(capped), capped)
+	if len(capped) != 9 {
+		t.Errorf("capped families emitted = %d, want 9: %v", len(capped), capped)
 	}
-	if len(keys) != 8 {
-		t.Errorf("keys families emitted = %d, want 8: %v", len(keys), keys)
+	if len(keys) != 9 {
+		t.Errorf("keys families emitted = %d, want 9: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])
@@ -463,6 +529,12 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 	}
 	if capped[logFamilyGateway] != 0 {
 		t.Errorf("gateway capped = %v, want 0 published from zero", capped[logFamilyGateway])
+	}
+	if capped[logFamilyRADIUS] != 0 {
+		t.Errorf("radius capped = %v, want 0 published from zero", capped[logFamilyRADIUS])
+	}
+	if keys[logFamilyRADIUS] != 0 {
+		t.Errorf("radius keys = %v, want 0 published from zero", keys[logFamilyRADIUS])
 	}
 	assertMetricsAreCounters(t, metrics, "opnsense_log_events_cardinality_capped_total")
 }
@@ -491,4 +563,33 @@ func TestLogEventsCollector_EmitsGatewayCounter(t *testing.T) {
 		return
 	}
 	t.Fatal("gateway_total was not emitted")
+}
+
+func TestLogEventsCollector_EmitsRADIUSCounter(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveRADIUS("access", "accepted", "configured")
+	c.store.ObserveRADIUS("access", "accepted", "configured")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_radius_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if len(labels) != 4 {
+			t.Fatalf("radius labels = %v, want only event, result, client_scope and opnsense_instance", labels)
+		}
+		if labels["event"] != "access" ||
+			labels["result"] != "accepted" ||
+			labels["client_scope"] != "configured" ||
+			labels["opnsense_instance"] != "opnsense.example.com" {
+			t.Fatalf("radius labels = %v, want access/accepted/configured/opnsense.example.com", labels)
+		}
+		if got := getMetricValue(m); got != 2 {
+			t.Errorf("radius counter = %v, want 2", got)
+		}
+		return
+	}
+	t.Fatal("radius_total was not emitted")
 }

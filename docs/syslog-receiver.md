@@ -125,9 +125,9 @@ you might change your mind about, since it needs no firewall config edit.
 
 ## Derived metrics and sampling
 
-The receiver counts what it parses. Every firewall, HAProxy, sshd, DHCP, audit and IDS
-line it recognises increments a Prometheus counter at `/metrics`, so you get rates and
-totals without querying Loki at all:
+The receiver counts what it parses. Every firewall, HAProxy, sshd, DHCP, audit, IDS,
+gateway and supported FreeRADIUS access line it recognises increments a Prometheus
+counter at `/metrics`, so you get rates and totals without querying Loki at all:
 
 | Metric | Labels |
 | --- | --- |
@@ -138,11 +138,13 @@ totals without querying Loki at all:
 | `opnsense_log_events_audit_total` | `event`, `result` |
 | `opnsense_log_events_ids_total` | `event_type`, `action`, `category`, `severity` |
 | `opnsense_log_events_gateway_total` | `event`, `gateway` |
+| `opnsense_log_events_radius_total` | `event`, `result`, `client_scope` |
 
-No IP, port, SID, hostname or signature text becomes a label. Configuration-scale
-values such as gateway, interface, rule, backend and server names are protected by
-the per-family `--logs.max-metric-keys` budget. This is on by default; turn it off
-with `--exporter.disable-log-events`.
+No IP, port, SID, hostname, username, MAC, NAS/client identity, reply text,
+credential or signature text becomes a label. Configuration-scale values such as
+gateway, interface, rule, backend and server names are protected by the per-family
+`--logs.max-metric-keys` budget. This is on by default; turn it off with
+`--exporter.disable-log-events`.
 
 ### Gateway monitor (`dpinger`) alarms
 
@@ -165,6 +167,49 @@ Matching lines are enriched with `gateway.event`, `gateway.name`, `gateway.addre
 this grammar still ships as a generic record; it is not counted as an inferred
 gateway transition.
 
+### FreeRADIUS access outcomes and credential handling
+
+OPNsense `27.1.a_40` with `os-freeradius 1.10.2` emits authentication outcomes
+under the RFC5424 APP-NAME `radiusd`. The captured normal-service forms are
+`Login OK` and `Login incorrect`. They become:
+
+| Attribute | Closed values |
+| --- | --- |
+| `radius.event` | `access` |
+| `radius.result` | `accepted`, `rejected` |
+| `radius.client_scope` | `configured` |
+
+The corresponding counter is
+`opnsense_log_events_radius_total{event,result,client_scope}` (plus the standard
+`opnsense_instance` label). Usernames and the configured RADIUS client name are
+not attributes or labels.
+
+FreeRADIUS is a stricter confidentiality boundary than the other syslog parsers.
+For every `radiusd` frame, the exporter replaces the original hostname, PID,
+structured data and message before parser dispatch, generic enrichment, debug
+capture, shape-key calculation, metric derivation, sampling or queue admission.
+Recognised access outcomes become fixed code-defined messages. Any other
+`radiusd` message becomes a fixed sanitized generic record and is not counted.
+A malformed RFC5424 or RFC3164 frame with a recognizable `radiusd` program token
+also fails closed to that safe generic record. This prevents an enabled
+FreeRADIUS password-log option from reaching the raw generic or debug-capture
+paths.
+
+Configure the plugin and target manually on OPNsense:
+
+1. In the FreeRADIUS general settings, select `syslog` as the log destination
+   and enable authentication-request logging.
+2. Leave both accepted-password (`auth_goodpass`) and rejected-password
+   (`auth_badpass`) logging disabled.
+3. Add an OPNsense syslog Target for program `radiusd` pointing at the exporter's
+   syslog listener.
+
+The exporter does not create that Target or write firewall rules.
+
+Normal Accounting Start, Interim-Update and Stop requests returned
+Accounting-Response in the capture but emitted no syslog records. Accounting
+therefore remains unsupported and is not inferred from request traffic.
+
 Because the counters already carry the totals, you can **stop shipping the raw lines
 they count** and keep only the ones worth reading. That is `--logs.syslog.sample` (off
 by default):
@@ -175,10 +220,11 @@ by default):
 
 With sampling on, the receiver keeps firewall `block`/`reject` lines and drops the
 passes, keeps HAProxy state changes and errors and drops per-connection noise, and
-keeps every low-volume program (sshd, DHCP, audit, IDS) in full. A line is only ever
-dropped **after** its metric has been counted, so the counters stay complete even
-though the log stream is not. Sampling requires the `log_events` collector to be on
-(the exporter refuses to start otherwise), because counting first is the whole point.
+keeps every low-volume program (sshd, DHCP, audit, IDS, gateway and RADIUS) in full.
+A line is only ever dropped **after** its metric has been counted, so the counters
+stay complete even though the log stream is not. Sampling requires the `log_events`
+collector to be on (the exporter refuses to start otherwise), because counting first
+is the whole point.
 
 Every shipped line then carries a `sampled="true"` attribute so a consumer knows the
 stream is incomplete and must use the counters for totals. Turn that stamp off with
@@ -219,6 +265,7 @@ record with its message body verbatim and its envelope as metadata.
 | `dhcpd`, `dnsmasq`, `kea-dhcp4`, `kea-dhcp6` | `dhcp.action`, `dhcp.ip`, `dhcp.mac`, `dhcp.hostname`, `dhcp.lease_seconds` - **normalised across all three backends**, so you can query DHCP activity without caring which one your box runs |
 | `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode. HTTP fields use OTel semconv names: `http.request.method`, `http.response.status_code`, `url.path`, `network.protocol.version`. |
 | `dpinger` | Gateway monitor transitions `none -> down` and `down -> none`, with the observed address, alarm state and probe values. Nonmatching `dpinger` lines remain generic records. |
+| `radiusd` | FreeRADIUS access accepted/rejected with closed non-PII attributes. Every unsupported or malformed recognizable `radiusd` form is sanitized before it becomes a generic record or debug capture. |
 
 **Every record**, structured or generic, also gets:
 

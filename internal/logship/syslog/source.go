@@ -214,28 +214,42 @@ func (s *source) handle(line []byte, peer netip.Addr) {
 	if emit == nil {
 		return // not running yet; drop rather than panic
 	}
-	env, err := ParseEnvelope(line, time.Now())
+	now := time.Now()
+	env, err := ParseEnvelope(line, now)
 	if err != nil {
-		// NEVER drop: an unparseable line still ships, with its raw bytes as the body.
-		// A receiver that silently discards what it cannot understand is worse than
-		// useless — it looks healthy while losing data.
-		s.m.ParseError("envelope")
-		if s.cap != nil {
-			// Deduped by shape for the same reason the unparsed capture below is: a device
-			// spamming malformed frames floods the SHARED byte cap and starves every other
-			// lane (#362). There is no program to key on — the parse that would have found
-			// one is what failed — so the raw line is the whole key, behind a prefix that a
-			// program name cannot collide with (angle brackets delimit the PRI, so no
-			// program token can be "<envelope>").
-			s.cap.CaptureShape(sourceName, capture.KindUnparsed,
-				envelopeShapeKey+"|"+capture.NormaliseShape(string(line)),
-				map[string]any{
-					"parse_error": "envelope",
-					"raw":         string(line),
-				})
+		if safeEnv, safeRaw, recognized := sanitizeMalformedFreeRADIUS(line, now); recognized {
+			// The original envelope was malformed, so retain the closed parse-error
+			// signal, but never let its identity-bearing bytes reach capture,
+			// generic shipping, shape keys, parsers, filters or processors.
+			s.m.ParseError("envelope")
+			env = safeEnv
+			line = safeRaw
+		} else {
+			// NEVER drop: an unparseable line still ships, with its raw bytes as the body.
+			// A receiver that silently discards what it cannot understand is worse than
+			// useless — it looks healthy while losing data.
+			s.m.ParseError("envelope")
+			if s.cap != nil {
+				// Deduped by shape for the same reason the unparsed capture below is: a device
+				// spamming malformed frames floods the SHARED byte cap and starves every other
+				// lane (#362). There is no program to key on — the parse that would have found
+				// one is what failed — so the raw line is the whole key, behind a prefix that a
+				// program name cannot collide with (angle brackets delimit the PRI, so no
+				// program token can be "<envelope>").
+				s.cap.CaptureShape(sourceName, capture.KindUnparsed,
+					envelopeShapeKey+"|"+capture.NormaliseShape(string(line)),
+					map[string]any{
+						"parse_error": "envelope",
+						"raw":         string(line),
+					})
+			}
+			emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
+			return
 		}
-		emit(logship.Record{Timestamp: time.Now(), Body: string(line)})
-		return
+	}
+	if safeEnv, safeRaw, recognized := sanitizeFreeRADIUS(env, line); recognized {
+		env = safeEnv
+		line = safeRaw
 	}
 	if s.proc != nil && s.proc.Handles(env.Program) {
 		if s.proc.Process(env, peer, s.ports, emit) {

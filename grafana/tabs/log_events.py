@@ -3,10 +3,10 @@ Log-derived Events tab — Prometheus counters derived from received syslog line
 (opnsense_log_events_*, the log_events collector, #258).
 
 These describe OPNsense activity (firewall blocks, HAProxy state changes, sshd
-auth outcomes, DHCP leases, config/audit events, IDS alerts) extracted from the
-syslog the receiver ingests — NOT the pipeline self-metrics on the Log Shipping
-tab. They exist so a busy box can graph rates cheaply and sample the raw lines
-away (--logs.syslog.sample) without losing the aggregate.
+and RADIUS auth outcomes, DHCP leases, config/audit events, IDS alerts) extracted
+from the syslog the receiver ingests — NOT the pipeline self-metrics on the Log
+Shipping tab. They exist so a busy box can graph rates cheaply and sample the raw
+lines away (--logs.syslog.sample) without losing the aggregate.
 
 All are true cumulative counters → rate(). IPs, ports, SIDs, MACs and free-text
 rule descriptions are never labels here (they stay as log-line metadata).
@@ -26,6 +26,7 @@ def build(b: Builder):
     b.sentinel("has_log_events_dhcp", "label_values(opnsense_log_events_dhcp_total, __name__)")
     b.sentinel("has_log_events_audit", "label_values(opnsense_log_events_audit_total, __name__)")
     b.sentinel("has_log_events_ids", "label_values(opnsense_log_events_ids_total, __name__)")
+    b.sentinel("has_log_events_radius", "label_values(opnsense_log_events_radius_total, __name__)")
 
     fw_action = b.ts(
         "Firewall Events by Action & Scope (rate)",
@@ -103,6 +104,19 @@ def build(b: Builder):
              "(shipped in full — IDS is never sampled) for per-alert detail.",
     )
 
+    radius = b.ts(
+        "RADIUS Access Events by Result (rate)",
+        [(f'sum by (event, result, client_scope) (rate({sel("opnsense_log_events_radius_total")}[{RATE}]))',
+          "{{event}} / {{result}} / {{client_scope}}")],
+        unit="short",
+        desc="opnsense_log_events_radius_total: FreeRADIUS access outcomes per second. The closed "
+             "vocabulary is event=access, result=accepted or rejected, and "
+             "client_scope=configured. Accounting is not supported because normal Start, "
+             "Interim-Update and Stop requests emitted no syslog records in the capture. "
+             "Usernames, client/NAS identities, station addresses, source addresses, reply text "
+             "and credentials are never labels.",
+    )
+
     cardinality_keys = b.ts(
         "Derived Metric Label Tuples in Use",
         [(f'sum by (family) ({sel("opnsense_log_events_cardinality_keys")})',
@@ -146,5 +160,6 @@ def build(b: Builder):
         b.row("DHCP", [dhcp], present="has_log_events_dhcp"),
         b.row("Config / Audit", [audit], present="has_log_events_audit"),
         b.row("IDS / IPS", [ids], present="has_log_events_ids"),
+        b.row("RADIUS Authentication", [radius], present="has_log_events_radius"),
         b.row("Collector Pressure", [cardinality_keys, cardinality_capped, observation_dropped]),
     ], present="has_log_events")

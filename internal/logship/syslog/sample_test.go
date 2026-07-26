@@ -91,6 +91,17 @@ func TestSampleKeep(t *testing.T) {
 			counted: true,
 			want:    true,
 		},
+		{
+			name:    "counted radius access event is retained by default",
+			program: "radiusd",
+			rec: logship.Record{Attributes: map[string]string{
+				"radius.event":        "access",
+				"radius.result":       "accepted",
+				"radius.client_scope": "configured",
+			}},
+			counted: true,
+			want:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

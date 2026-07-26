@@ -32,11 +32,13 @@ const (
 	familyAudit
 	familyIDS
 	familyGateway
+	familyRADIUS
 )
 
 // programFamily maps every program name a parser in this package registers
 // (see the RegisterParser calls in filterlog.go, haproxy.go, sshd.go, dhcp.go,
-// audit.go, suricata.go) onto its derived metric family. It is built from
+// audit.go, suricata.go, dpinger.go and freeradius.go) onto its derived metric
+// family. It is built from
 // explicit program lists mirroring those calls, on purpose, so it stays in
 // lockstep with the parsers: a program registered there without a matching
 // entry here — or in nonDerivedPrograms below — fails
@@ -65,11 +67,13 @@ var programFamily = map[string]family{
 	"suricata": familyIDS,
 
 	"dpinger": familyGateway,
+
+	"radiusd": familyRADIUS,
 }
 
 // nonDerivedPrograms is the explicit, test-pinned allowlist of programs this
 // package parses (each has a RegisterParser call of its own) that deliberately
-// do NOT belong to any of the seven derived metric families. A program earns a
+// do NOT belong to any of the eight derived metric families. A program earns a
 // place here, not by omission: cron/radvd/unbound lines are structured and
 // shipped as records, but there is no derived counter family for "a cron job
 // ran" or "a router advertisement went out", so observeDerived has nothing to
@@ -86,7 +90,7 @@ var nonDerivedPrograms = map[string]bool{
 }
 
 // deriveFamily reports the derived metric family for a syslog program name.
-// ok is false for anything outside the seven derived families.
+// ok is false for anything outside the eight derived families.
 func deriveFamily(program string) (family, bool) {
 	f, ok := programFamily[program]
 	return f, ok
@@ -178,6 +182,15 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 			return false
 		}
 		return sink.ObserveGateway(event, gateway)
+
+	case familyRADIUS:
+		event := attrs["radius.event"]
+		result := attrs["radius.result"]
+		clientScope := attrs["radius.client_scope"]
+		if event == "" || result == "" || clientScope == "" {
+			return false
+		}
+		return sink.ObserveRADIUS(event, result, clientScope)
 	}
 
 	return false

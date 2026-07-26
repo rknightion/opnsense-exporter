@@ -64,6 +64,7 @@ var subsystems = map[string]string{
 	"sshd-session":    "auth",
 	"su":              "auth",
 	"sudo":            "auth",
+	"radiusd":         "auth",
 	"unbound":         "dns",
 	"dnsmasq":         "dns",
 	"dnsmasq-dhcp":    "dhcp",
