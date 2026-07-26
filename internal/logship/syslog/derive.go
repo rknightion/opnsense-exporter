@@ -38,7 +38,11 @@ const (
 // audit.go, suricata.go) onto its derived metric family. It is built from
 // explicit program lists mirroring those calls, on purpose, so it stays in
 // lockstep with the parsers: a program registered there without a matching
-// entry here just falls through to familyUnknown, never a mis-derived metric.
+// entry here — or in nonDerivedPrograms below — fails
+// TestEveryParserProgramHasAFamilyDecision (derive_test.go) at build time,
+// rather than silently falling through to familyUnknown and under-counting a
+// metric forever (#396: dnsmasq-dhcp shipped as a DHCP parser alias with no
+// entry here for months before anyone noticed the counter never moved).
 var programFamily = map[string]family{
 	"filterlog": familyFirewall,
 
@@ -47,16 +51,35 @@ var programFamily = map[string]family{
 	"sshd":         familySSHD,
 	"sshd-session": familySSHD,
 
-	"dhcpd":     familyDHCP,
-	"dnsmasq":   familyDHCP,
-	"kea-dhcp4": familyDHCP,
-	"kea-dhcp6": familyDHCP,
-	"dhcrelay":  familyDHCP,
+	"dhcpd":        familyDHCP,
+	"dnsmasq":      familyDHCP,
+	"dnsmasq-dhcp": familyDHCP,
+	"kea-dhcp4":    familyDHCP,
+	"kea-dhcp6":    familyDHCP,
+	"dhcrelay":     familyDHCP,
 
 	"audit":      familyAudit,
 	"configd.py": familyAudit,
 
 	"suricata": familyIDS,
+}
+
+// nonDerivedPrograms is the explicit, test-pinned allowlist of programs this
+// package parses (each has a RegisterParser call of its own) that deliberately
+// do NOT belong to any of the six derived metric families. A program earns a
+// place here, not by omission: cron/radvd/unbound lines are structured and
+// shipped as records, but there is no derived counter family for "a cron job
+// ran" or "a router advertisement went out", so observeDerived has nothing to
+// bucket them into. TestEveryParserProgramHasAFamilyDecision (derive_test.go)
+// requires every registered parser program to appear in exactly one of this map
+// or programFamily — never both, never neither — so a future parser alias with
+// no derived-family decision fails the build instead of silently
+// under-counting, which is exactly how #396 (dnsmasq-dhcp) went unnoticed.
+var nonDerivedPrograms = map[string]bool{
+	"cron":           true,
+	"/usr/sbin/cron": true,
+	"radvd":          true,
+	"unbound":        true,
 }
 
 // deriveFamily reports the derived metric family for a syslog program name.

@@ -59,6 +59,7 @@ func TestDeriveFamily(t *testing.T) {
 		{"sshd-session", familySSHD, true},
 		{"dhcpd", familyDHCP, true},
 		{"dnsmasq", familyDHCP, true},
+		{"dnsmasq-dhcp", familyDHCP, true},
 		{"kea-dhcp4", familyDHCP, true},
 		{"kea-dhcp6", familyDHCP, true},
 		{"dhcrelay", familyDHCP, true},
@@ -75,6 +76,34 @@ func TestDeriveFamily(t *testing.T) {
 				t.Errorf("deriveFamily(%q) = (%v, %v), want (%v, %v)", tt.program, got, ok, tt.want, tt.wantOK)
 			}
 		})
+	}
+}
+
+// TestEveryParserProgramHasAFamilyDecision replaces the "two parallel lists that
+// should mirror each other" comment derive.go used to carry with an actual check:
+// every program a Parser is registered for (the `parsers` map, populated by the
+// RegisterParser calls in filterlog.go, haproxy.go, sshd.go, dhcp.go, audit.go,
+// suricata.go, cron.go, radvd.go, unbound.go) must land EITHER in programFamily
+// (it derives a metric) or in nonDerivedPrograms (an explicit, test-pinned
+// decision that it deliberately does not). A program in neither is exactly how
+// #396 happened: dnsmasq-dhcp was registered as a DHCP parser alias (#335) after
+// the family map was built (#258), and nothing cross-checked the two against each
+// other, so its lease lines parsed and shipped but never counted.
+func TestEveryParserProgramHasAFamilyDecision(t *testing.T) {
+	if len(parsers) == 0 {
+		t.Fatal("parsers is empty; init() registrations did not run")
+	}
+	for prog := range parsers {
+		_, derived := programFamily[prog]
+		_, exempted := nonDerivedPrograms[prog]
+		switch {
+		case derived && exempted:
+			t.Errorf("program %q is in BOTH programFamily and nonDerivedPrograms; pick one", prog)
+		case !derived && !exempted:
+			t.Errorf("program %q is registered as a parser but has no derived-family decision: "+
+				"add it to programFamily (it should derive a metric) or nonDerivedPrograms "+
+				"(it deliberately should not)", prog)
+		}
 	}
 }
 
@@ -504,6 +533,45 @@ func TestObserveDerived_HAProxy_EndToEnd(t *testing.T) {
 	if got := sink.calls[0].args[4]; got != wantStatusClass {
 		t.Errorf("status_class = %q, want %q", got, wantStatusClass)
 	}
+}
+
+// TestObserveDerived_DnsmasqDHCP_EndToEnd is the regression test for #396: a real
+// dnsmasq-dhcp DHCPREQUEST/DHCPACK line, run through the actual parser (not a
+// hand-built attribute map), must increment the DHCP derived counter. dnsmasq-dhcp
+// was a registered DHCP parser alias (#335) missing from programFamily, so real
+// lease lines parsed and shipped but observeDerived silently refused to count
+// them — TestEveryParserProgramHasAFamilyDecision above is the general guard;
+// this is the specific parser-to-observation path that guard cannot see (it only
+// checks that a family decision EXISTS, not that observeDerived actually fires
+// end to end for that program).
+func TestObserveDerived_DnsmasqDHCP_EndToEnd(t *testing.T) {
+	rec, ok := parseDHCP(dhcpEnvelope("dnsmasq-dhcp", "DHCPACK(ixl0_vlan50) 10.0.50.112 a8:9c:6c:24:b8:00 exporter-traffgen"), nil, func(string) {})
+	if !ok {
+		t.Fatal("parseDHCP returned ok=false for a dnsmasq-dhcp DHCPACK")
+	}
+
+	sink := &fakeSink{}
+	counted := observeDerived(sink, "dnsmasq-dhcp", rec.Attributes)
+	if !counted {
+		t.Fatal("observeDerived did not count a well-formed dnsmasq-dhcp DHCPACK")
+	}
+	if len(sink.calls) != 1 || sink.calls[0].method != "dhcp" {
+		t.Fatalf("calls = %+v, want one dhcp call", sink.calls)
+	}
+	// action=ack, interface falls back to the raw token (no enrichment snapshot was
+	// passed to parseDHCP), server is empty (dnsmasq lines carry no server_ip).
+	assertArgs(t, sink.calls[0].args, []string{"ack", "ixl0_vlan50", ""})
+
+	// A DHCPREQUEST on the same alias must count too, not just DHCPACK.
+	rec2, ok := parseDHCP(dhcpEnvelope("dnsmasq-dhcp", "DHCPREQUEST(ixl0_vlan50) 10.0.50.112 a8:9c:6c:24:b8:00"), nil, func(string) {})
+	if !ok {
+		t.Fatal("parseDHCP returned ok=false for a dnsmasq-dhcp DHCPREQUEST")
+	}
+	sink2 := &fakeSink{}
+	if !observeDerived(sink2, "dnsmasq-dhcp", rec2.Attributes) {
+		t.Fatal("observeDerived did not count a well-formed dnsmasq-dhcp DHCPREQUEST")
+	}
+	assertArgs(t, sink2.calls[0].args, []string{"request", "ixl0_vlan50", ""})
 }
 
 func TestStatusClass(t *testing.T) {
