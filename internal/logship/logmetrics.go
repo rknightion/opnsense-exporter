@@ -1,7 +1,7 @@
 package logship
 
-// MetricSink receives one call per parsed log record from the six programs the
-// receiver derives Prometheus counters from (#258). It is the seam between the
+// MetricSink receives one call per parsed log record from the seven derived
+// metric families (#258). It is the seam between the
 // syslog receiver goroutine (which knows each program's attribute keys) and the
 // `log_events` collector (which owns the metric definitions and running totals).
 //
@@ -50,6 +50,10 @@ type MetricSink interface {
 	// deriver; category is the rule author's own text and is bounded only by the
 	// implementation's key budget.
 	ObserveIDS(eventType, action, category, severity string) bool
+	// ObserveGateway counts a dpinger transition. event is the parser's closed
+	// vocabulary; gateway is the configured monitor name and is bounded by the
+	// implementation's per-family key budget.
+	ObserveGateway(event, gateway string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation) bool
 }
@@ -98,4 +102,5 @@ func (NopMetricSink) ObserveSSHD(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveDHCP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveAudit(_, _ string) bool              { return true }
 func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool          { return true }
+func (NopMetricSink) ObserveGateway(_, _ string) bool            { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

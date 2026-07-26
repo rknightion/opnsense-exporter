@@ -37,6 +37,10 @@ type (
 	dhcpKey  struct{ action, iface, server string }
 	auditKey struct{ event, result string }
 	idsKey   struct{ eventType, action, category, severity string }
+	// gatewayKey deliberately carries only the parser's closed event vocabulary
+	// and the configured dpinger monitor name. Address, alarm state, RTT, loss and
+	// message text remain structured log fields, never labels.
+	gatewayKey struct{ event, gateway string }
 	// zenKey is Zenarmor's tuple, and Zenarmor is the highest-cardinality data this
 	// exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
@@ -55,6 +59,7 @@ const (
 	logFamilyDHCP     = "dhcp"
 	logFamilyAudit    = "audit"
 	logFamilyIDS      = "ids"
+	logFamilyGateway  = "gateway"
 	logFamilyZenarmor = "zenarmor"
 
 	// logEventObservationDropReasonHandoffFull is deliberately code-defined: it
@@ -84,6 +89,7 @@ const (
 	logEventObserveDHCP
 	logEventObserveAudit
 	logEventObserveIDS
+	logEventObserveGateway
 	logEventObserveZenarmor
 	logEventSetMaxKeys
 	logEventTakeSnapshot
@@ -105,6 +111,7 @@ type logEventSnapshot struct {
 	dhcp    []keyed[dhcpKey]
 	audit   []keyed[auditKey]
 	ids     []keyed[idsKey]
+	gateway []keyed[gatewayKey]
 	zen     []keyed[zenKey]
 	sat     []familySaturation
 	dropped uint64
@@ -144,6 +151,7 @@ type LogEventStore struct {
 	dhcp             *cappedCounter[dhcpKey]
 	audit            *cappedCounter[auditKey]
 	ids              *cappedCounter[idsKey]
+	gateway          *cappedCounter[gatewayKey]
 	zen              *cappedCounter[zenKey]
 }
 
@@ -163,6 +171,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		dhcp:           newCappedCounter[dhcpKey](defaultMaxLogEventKeys),
 		audit:          newCappedCounter[auditKey](defaultMaxLogEventKeys),
 		ids:            newCappedCounter[idsKey](defaultMaxLogEventKeys),
+		gateway:        newCappedCounter[gatewayKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 	}
 	go s.run()
@@ -241,6 +250,11 @@ func (s *LogEventStore) ObserveIDS(eventType, action, category, severity string)
 	return s.observe(logEventCommand{kind: logEventObserveIDS, values: [7]string{eventType, action, category, severity}})
 }
 
+// ObserveGateway implements logship.MetricSink.
+func (s *LogEventStore) ObserveGateway(event, gateway string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveGateway, values: [7]string{event, gateway}})
+}
+
 // ObserveZenarmor implements logship.MetricSink.
 func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
@@ -273,6 +287,8 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.audit.inc(auditKey{v[0], v[1]})
 	case logEventObserveIDS:
 		s.ids.inc(idsKey{v[0], v[1], v[2], v[3]})
+	case logEventObserveGateway:
+		s.gateway.inc(gatewayKey{v[0], v[1]})
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventSetMaxKeys:
@@ -282,6 +298,7 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.dhcp.setMax(cmd.maxKeys)
 		s.audit.setMax(cmd.maxKeys)
 		s.ids.setMax(cmd.maxKeys)
+		s.gateway.setMax(cmd.maxKeys)
 		s.zen.setMax(cmd.maxKeys)
 		close(cmd.ack)
 	case logEventTakeSnapshot:
@@ -308,6 +325,8 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.audit, sat = drainFamily(logFamilyAudit, s.audit)
 	snap.sat = append(snap.sat, sat)
 	snap.ids, sat = drainFamily(logFamilyIDS, s.ids)
+	snap.sat = append(snap.sat, sat)
+	snap.gateway, sat = drainFamily(logFamilyGateway, s.gateway)
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
@@ -361,6 +380,7 @@ type logEventsCollector struct {
 	dhcp     *prometheus.Desc
 	audit    *prometheus.Desc
 	ids      *prometheus.Desc
+	gateway  *prometheus.Desc
 	zenarmor *prometheus.Desc
 
 	capped  *prometheus.Desc
@@ -409,6 +429,11 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"Signature text and SID are never labels.",
 		[]string{"event_type", "action", "category", "severity"},
 	)
+	c.gateway = buildPrometheusDesc(c.subsystem, "gateway_total",
+		"dpinger gateway alarm transitions derived from received syslog, by closed event and configured gateway monitor name. "+
+			"Address, alarm state, RTT and loss stay on the structured log record and are never labels.",
+		[]string{"event", "gateway"},
+	)
 	c.zenarmor = buildPrometheusDesc(c.subsystem, "zenarmor_total",
 		"Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), "+
 			"action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do "+
@@ -449,6 +474,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp
 	ch <- c.audit
 	ch <- c.ids
+	ch <- c.gateway
 	ch <- c.zenarmor
 	ch <- c.capped
 	ch <- c.keys
@@ -522,6 +548,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range snap.ids {
 		ch <- prometheus.MustNewConstMetric(c.ids, prometheus.CounterValue, p.v,
 			p.k.eventType, p.k.action, p.k.category, p.k.severity, c.instance)
+	}
+	for _, p := range snap.gateway {
+		ch <- prometheus.MustNewConstMetric(c.gateway, prometheus.CounterValue, p.v,
+			p.k.event, p.k.gateway, c.instance)
 	}
 	for _, p := range snap.zen {
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,

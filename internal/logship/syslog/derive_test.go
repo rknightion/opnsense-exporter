@@ -47,6 +47,11 @@ func (f *fakeSink) ObserveIDS(eventType, action, category, severity string) bool
 	return true
 }
 
+func (f *fakeSink) ObserveGateway(event, gateway string) bool {
+	f.calls = append(f.calls, fakeCall{"gateway", []string{event, gateway}})
+	return true
+}
+
 func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
 	return true
@@ -79,6 +84,7 @@ func TestDeriveFamily(t *testing.T) {
 		{"audit", familyAudit, true},
 		{"configd.py", familyAudit, true},
 		{"suricata", familyIDS, true},
+		{"dpinger", familyGateway, true},
 		{"unbound", familyUnknown, false},
 		{"", familyUnknown, false},
 	}
@@ -92,11 +98,82 @@ func TestDeriveFamily(t *testing.T) {
 	}
 }
 
+// dpinger has a closed event vocabulary from the parser, while the configured
+// monitor name is deployment-scale and therefore belongs under the store's key
+// budget. A change that derives a gateway label from an address, state, loss or
+// message must fail this test.
+func TestObserveDerived_Gateway(t *testing.T) {
+	tests := []struct {
+		name        string
+		attrs       map[string]string
+		wantCounted bool
+		wantArgs    []string
+	}{
+		{
+			name: "captured alarm start",
+			attrs: map[string]string{
+				"gateway.event":          "alarm_started",
+				"gateway.name":           "TEST_GATEWAY",
+				"gateway.address":        "192.0.2.100",
+				"gateway.alarm.previous": "none",
+				"gateway.alarm.current":  "down",
+				"gateway.rtt_ms":         "1000.000",
+				"gateway.loss_percent":   "100.000",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"alarm_started", "TEST_GATEWAY"},
+		},
+		{
+			name: "missing closed event is not counted",
+			attrs: map[string]string{
+				"gateway.name": "TEST_GATEWAY",
+			},
+			wantCounted: false,
+		},
+		{
+			name: "missing configured gateway is not counted",
+			attrs: map[string]string{
+				"gateway.event": "alarm_cleared",
+			},
+			wantCounted: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sink := &fakeSink{}
+			counted := observeDerived(sink, "dpinger", tt.attrs)
+			if counted != tt.wantCounted {
+				t.Fatalf("counted = %v, want %v", counted, tt.wantCounted)
+			}
+			if !tt.wantCounted {
+				if len(sink.calls) != 0 {
+					t.Errorf("calls = %+v, want none", sink.calls)
+				}
+				return
+			}
+			if len(sink.calls) != 1 || sink.calls[0].method != "gateway" {
+				t.Fatalf("calls = %+v, want one gateway call", sink.calls)
+			}
+			assertArgs(t, sink.calls[0].args, tt.wantArgs)
+		})
+	}
+}
+
+func TestObserveDerived_GatewayWithNopSink(t *testing.T) {
+	if !observeDerived(logship.NopMetricSink{}, "dpinger", map[string]string{
+		"gateway.event": "alarm_started",
+		"gateway.name":  "TEST_GATEWAY",
+	}) {
+		t.Fatal("NopMetricSink rejected a valid gateway observation")
+	}
+}
+
 // TestEveryParserProgramHasAFamilyDecision replaces the "two parallel lists that
 // should mirror each other" comment derive.go used to carry with an actual check:
 // every program a Parser is registered for (the `parsers` map, populated by the
 // RegisterParser calls in filterlog.go, haproxy.go, sshd.go, dhcp.go, audit.go,
-// suricata.go, cron.go, radvd.go, unbound.go) must land EITHER in programFamily
+// suricata.go, dpinger.go, cron.go, radvd.go, unbound.go) must land EITHER in
+// programFamily
 // (it derives a metric) or in nonDerivedPrograms (an explicit, test-pinned
 // decision that it deliberately does not). A program in neither is exactly how
 // #396 happened: dnsmasq-dhcp was registered as a DHCP parser alias (#335) after

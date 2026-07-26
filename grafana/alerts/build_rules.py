@@ -202,6 +202,16 @@ RULES = [
          summary="OPNsense FAILOVER gateway {{ $labels.name }} is offline",
          description="Failover/secondary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 15m. "
                      "Lower urgency — primary WAN unaffected. The 15m window tolerates a router reboot / slow secondary-WAN re-establish."),
+    # #405: a dpinger alarm is a transition event, not a replacement for the
+    # current-state gateway collector. Count the starts per gateway; a strict >2
+    # threshold is three or more starts in this fixed 15-minute observation window.
+    dict(name="opnsense-gateway-alarm-flapping", title="OPNsenseGatewayAlarmFlapping",
+         A='sum by (opnsense_instance, gateway) '
+           '(increase(opnsense_log_events_gateway_total{event="alarm_started"}[15m]))',
+         op="gt", params=[2, 0], for_min=0, severity="warning",
+         summary="OPNsense gateway {{ $labels.gateway }} alarm is flapping ({{ $labels.opnsense_instance }})",
+         description="dpinger emitted three or more alarm_started transitions for gateway {{ $labels.gateway }} in 15m. "
+                     "This is transition evidence from syslog, not an assertion that the gateway is currently down; check OPNsenseGatewayDown and the Gateway Status panel for current state."),
     dict(name="opnsense-gateway-high-loss", title="OPNsenseGatewayHighLoss",
          A="opnsense_gateways_loss_percentage", op="gt", params=[20, 0], for_min=10, severity="warning",
          summary="OPNsense gateway {{ $labels.name }} high packet loss",

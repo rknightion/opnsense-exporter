@@ -2,13 +2,14 @@
 Gateways & WAN tab — all 17 opnsense_gateways_* metrics.
 
 Rows:
-  1. Status & Latency   — status statetimeline + RTT timeseries + RTT thresholds table
-  2. Packet Loss        — loss_percentage ts + loss thresholds table
-  3. Gateway Inventory  — gateways_info table + monitor_info table + flags table
-  4. Probe Config       — probe interval/period/timeout table + priority table
+  1. Status & Alarm Events — current state plus dpinger alarm transition rate
+  2. Latency            — RTT timeseries + RTT thresholds table
+  3. Packet Loss        — loss_percentage ts + loss thresholds table
+  4. Gateway Inventory  — gateways_info table + monitor_info table + flags table
+  5. Probe Config       — probe interval/period/timeout table + priority table
 """
 
-from builder import Builder, sel, GW_STATUS
+from builder import Builder, RATE, sel, GW_STATUS
 
 
 def build(b: Builder):
@@ -16,8 +17,20 @@ def build(b: Builder):
     gw_status = b.statetimeline(
         "Gateway Status",
         [(sel("opnsense_gateways_status"), "{{name}} ({{address}})")],
-        GW_STATUS, w=24, h=8,
+        GW_STATUS, w=12, h=8,
         desc="0=Offline, 1=Online, 2=Unknown, 3=Pending, 4=Packetloss, 5=Latency, 6=Offline (forced). Label default_gateway is included in series.",
+    )
+    gateway_alarm_events = sel(
+        "opnsense_log_events_gateway_total", 'event=~"alarm_started|alarm_cleared"'
+    )
+    gateway_alarms = b.ts(
+        "Gateway Alarm Events",
+        [(f'sum by (opnsense_instance, gateway, event) '
+          f'(rate({gateway_alarm_events}[{RATE}]))',
+          "{{gateway}} {{event}}")],
+        unit="ops", w=12, h=8,
+        desc="Rate of dpinger gateway alarm transitions. alarm_started marks none -> down; alarm_cleared marks down -> none. "
+             "This complements the current Gateway Status timeline; it is absent until syslog shipping sees a matching dpinger line.",
     )
     rtt = b.ts(
         "Gateway RTT",
@@ -161,7 +174,8 @@ def build(b: Builder):
     )
 
     b.tab("Gateways & WAN", [
-        b.row("Status & Latency", [gw_status, rtt, rtt_thresholds]),
+        b.row("Status & Alarm Events", [gw_status, gateway_alarms]),
+        b.row("Latency", [rtt, rtt_thresholds]),
         b.row("Packet Loss", [loss, loss_thresholds]),
         b.row("Gateway Inventory", [gw_info, monitor_info, flags]),
         b.row("Probe Config", [probe_cfg]),

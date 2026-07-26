@@ -29,8 +29,9 @@ func sampleKeep(program string, rec logship.Record, counted bool) bool {
 		// 2xx/3xx traffic are dropped once counted.
 		return rec.Severity >= logship.SeverityWarn
 	default:
-		// sshd, dhcp, audit, ids: low-volume security/audit trail, keep all of
-		// it — the counter captures totals, but every line still matters here.
+		// sshd, dhcp, audit, ids and gateway: low-volume security/operational
+		// trails, keep all of them — the counters capture totals, but every line
+		// still matters here.
 		return true
 	}
 }

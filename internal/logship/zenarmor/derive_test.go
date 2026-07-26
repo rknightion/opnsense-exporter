@@ -26,6 +26,7 @@ func (s *captureSink) ObserveSSHD(_, _, _ string) bool           { return true }
 func (s *captureSink) ObserveDHCP(_, _, _ string) bool           { return true }
 func (s *captureSink) ObserveAudit(_, _ string) bool             { return true }
 func (s *captureSink) ObserveIDS(_, _, _, _ string) bool         { return true }
+func (s *captureSink) ObserveGateway(_, _ string) bool           { return true }
 
 var _ logship.MetricSink = (*captureSink)(nil)
 

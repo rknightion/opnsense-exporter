@@ -31,6 +31,7 @@ const (
 	familyDHCP
 	familyAudit
 	familyIDS
+	familyGateway
 )
 
 // programFamily maps every program name a parser in this package registers
@@ -62,11 +63,13 @@ var programFamily = map[string]family{
 	"configd.py": familyAudit,
 
 	"suricata": familyIDS,
+
+	"dpinger": familyGateway,
 }
 
 // nonDerivedPrograms is the explicit, test-pinned allowlist of programs this
 // package parses (each has a RegisterParser call of its own) that deliberately
-// do NOT belong to any of the six derived metric families. A program earns a
+// do NOT belong to any of the seven derived metric families. A program earns a
 // place here, not by omission: cron/radvd/unbound lines are structured and
 // shipped as records, but there is no derived counter family for "a cron job
 // ran" or "a router advertisement went out", so observeDerived has nothing to
@@ -83,7 +86,7 @@ var nonDerivedPrograms = map[string]bool{
 }
 
 // deriveFamily reports the derived metric family for a syslog program name.
-// ok is false for anything outside the six derived families.
+// ok is false for anything outside the seven derived families.
 func deriveFamily(program string) (family, bool) {
 	f, ok := programFamily[program]
 	return f, ok
@@ -167,6 +170,14 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 			attrs["alert_category"],
 			mapEveSeverity(attrs["alert_severity"]),
 		)
+
+	case familyGateway:
+		event := attrs["gateway.event"]
+		gateway := attrs["gateway.name"]
+		if event == "" || gateway == "" {
+			return false
+		}
+		return sink.ObserveGateway(event, gateway)
 	}
 
 	return false

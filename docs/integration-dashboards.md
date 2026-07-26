@@ -56,7 +56,7 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 !!! warning "Minimum Grafana version: 13+"
     The dashboard uses the v2 dynamic schema (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`, which require **Grafana 13 or later**.
 
-A single comprehensive Grafana dashboard covers **all 829 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
+A single comprehensive Grafana dashboard covers **all 830 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
 Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 
@@ -77,6 +77,21 @@ The dashboard uses template variables for `datasource`, `opnsense_instance`, and
 ```promql
 opnsense_gateways_status
 ```
+
+**Gateway alarm transitions from `dpinger`:**
+
+```promql
+sum by (opnsense_instance, gateway, event) (
+  rate(opnsense_log_events_gateway_total{event=~"alarm_started|alarm_cleared"}[5m])
+)
+```
+
+The Gateways & WAN tab puts this transition rate beside the current gateway-state
+timeline. `event` is closed to `alarm_started` (`none -> down`) and
+`alarm_cleared` (`down -> none`); the metric has no address, RTT or loss labels.
+The Grafana-managed `OPNsenseGatewayAlarmFlapping` warning alerts when one gateway
+has three or more `alarm_started` events in 15 minutes. It is transition evidence,
+not a claim that the gateway is currently down.
 
 **Average RTT per gateway over 5 minutes:**
 

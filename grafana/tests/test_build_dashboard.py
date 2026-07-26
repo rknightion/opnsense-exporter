@@ -192,5 +192,26 @@ class LogShippingSemanticsTest(unittest.TestCase):
         self.assertIn("handoff_full", observation_dropped["spec"]["description"])
 
 
+class GatewayOperationalEventSemanticsTest(unittest.TestCase):
+    def test_gateway_alarm_event_rate_is_shown_next_to_current_gateway_state(self):
+        builder = build_dashboard.build_all()
+
+        state = panel_for_metric(builder, "opnsense_gateways_status")
+        alarms = panel_for_metric(builder, "opnsense_log_events_gateway_total")
+
+        self.assertEqual(state["spec"]["title"], "Gateway Status")
+        self.assertEqual(alarms["spec"]["title"], "Gateway Alarm Events")
+        self.assertIn(
+            'sum by (opnsense_instance, gateway, event) '
+            '(rate(opnsense_log_events_gateway_total{'
+            'opnsense_instance=~"$opnsense_instance",'
+            'event=~"alarm_started|alarm_cleared"}[$__rate_interval]))',
+            builder._exprs,
+        )
+        self.assertIn("dpinger", alarms["spec"]["description"])
+        self.assertIn("alarm_started", alarms["spec"]["description"])
+        self.assertIn("alarm_cleared", alarms["spec"]["description"])
+
+
 if __name__ == "__main__":
     unittest.main()

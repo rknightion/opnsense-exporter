@@ -137,10 +137,33 @@ totals without querying Loki at all:
 | `opnsense_log_events_dhcp_total` | `action`, `interface`, `server` |
 | `opnsense_log_events_audit_total` | `event`, `result` |
 | `opnsense_log_events_ids_total` | `event_type`, `action`, `category`, `severity` |
+| `opnsense_log_events_gateway_total` | `event`, `gateway` |
 
-The labels are all low-cardinality by construction - no IP, port, SID, hostname or
-signature text ever becomes a label. This is on by default; turn it off with
-`--exporter.disable-log-events`.
+No IP, port, SID, hostname or signature text becomes a label. Configuration-scale
+values such as gateway, interface, rule, backend and server names are protected by
+the per-family `--logs.max-metric-keys` budget. This is on by default; turn it off
+with `--exporter.disable-log-events`.
+
+### Gateway monitor (`dpinger`) alarms
+
+On OPNsense `27.1.a_40`, the recognised RFC5424 form is:
+
+```text
+<PRI>1 <timestamp> <host> dpinger <pid> - [meta sequenceId="<sequence>"] MONITOR: <gateway> (Addr: <address> Alarm: none -> down RTT: <milliseconds> ms RTTd: <milliseconds> ms Loss: <percent> %)
+```
+
+The clear form is identical except for `Alarm: down -> none`. These are the only
+two transition directions currently counted: `none -> down` becomes
+`event="alarm_started"`; `down -> none` becomes `event="alarm_cleared"`.
+`opnsense_log_events_gateway_total` carries only `event` and `gateway` (along with
+the exporter's standard `opnsense_instance` attribution). The address, RTT, RTTd,
+loss, sequence ID and message text are deliberately not metric labels.
+
+Matching lines are enriched with `gateway.event`, `gateway.name`, `gateway.address`,
+`gateway.alarm.previous`, `gateway.alarm.current`, `gateway.rtt_ms`,
+`gateway.rttd_ms` and `gateway.loss_percent`. A `dpinger` line that does not match
+this grammar still ships as a generic record; it is not counted as an inferred
+gateway transition.
 
 Because the counters already carry the totals, you can **stop shipping the raw lines
 they count** and keep only the ones worth reading. That is `--logs.syslog.sample` (off
@@ -195,6 +218,7 @@ record with its message body verbatim and its envelope as metadata.
 | `sshd`, `sshd-session` | `auth.result` (accepted/failed/invalid-user), `auth.user` (also as the semconv `user.name`), `auth.method`, key fingerprint, source address. A failed login is raised to **warning** - sshd logs a rejected login at the same severity as a successful one, and you should not have to know that to find it. |
 | `dhcpd`, `dnsmasq`, `kea-dhcp4`, `kea-dhcp6` | `dhcp.action`, `dhcp.ip`, `dhcp.mac`, `dhcp.hostname`, `dhcp.lease_seconds` - **normalised across all three backends**, so you can query DHCP activity without caring which one your box runs |
 | `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode. HTTP fields use OTel semconv names: `http.request.method`, `http.response.status_code`, `url.path`, `network.protocol.version`. |
+| `dpinger` | Gateway monitor transitions `none -> down` and `down -> none`, with the observed address, alarm state and probe values. Nonmatching `dpinger` lines remain generic records. |
 
 **Every record**, structured or generic, also gets:
 

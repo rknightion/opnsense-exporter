@@ -208,6 +208,70 @@ func TestLogEventStore_ObserveZenarmor(t *testing.T) {
 	}
 }
 
+func TestLogEventStore_ObserveGateway(t *testing.T) {
+	s := newTestLogEventStore(t)
+	if !s.ObserveGateway("alarm_started", "TEST_GATEWAY") {
+		t.Fatal("first observation was refused")
+	}
+	if !s.ObserveGateway("alarm_started", "TEST_GATEWAY") {
+		t.Fatal("second observation was refused")
+	}
+	if !s.ObserveGateway("alarm_cleared", "TEST_GATEWAY") {
+		t.Fatal("distinct event observation was refused")
+	}
+	s.sync()
+
+	if got := s.gateway.m[gatewayKey{event: "alarm_started", gateway: "TEST_GATEWAY"}]; got != 2 {
+		t.Errorf("alarm_started count = %v, want 2", got)
+	}
+	if got := s.gateway.m[gatewayKey{event: "alarm_cleared", gateway: "TEST_GATEWAY"}]; got != 1 {
+		t.Errorf("alarm_cleared count = %v, want 1", got)
+	}
+}
+
+func TestLogEventStore_GatewayObservationReturnsImmediatelyWhenSnapshotIsStalled(t *testing.T) {
+	s, releaseSnapshot := newStalledSnapshotStore(t, 1)
+
+	returned := make(chan bool, 1)
+	go func() {
+		returned <- s.ObserveGateway("alarm_started", "TEST_GATEWAY")
+	}()
+
+	select {
+	case accepted := <-returned:
+		if !accepted {
+			t.Fatal("accepted = false with free handoff capacity")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("ObserveGateway blocked behind a stalled snapshot")
+	}
+	releaseSnapshot()
+}
+
+func TestLogEventStore_GatewayKeysAreCappedWithoutLoss(t *testing.T) {
+	s := newTestLogEventStore(t)
+	s.SetMaxKeys(1)
+	for _, gateway := range []string{"TEST_GATEWAY", "WAN_DHCP"} {
+		for range 2 {
+			if !s.ObserveGateway("alarm_started", gateway) {
+				t.Fatalf("observation for %s was refused", gateway)
+			}
+		}
+	}
+	s.sync()
+
+	if got := s.gateway.len(); got != 1 {
+		t.Errorf("live keys = %d, want 1", got)
+	}
+	live, overflow := s.gateway.snapshot()
+	if got := live[gatewayKey{event: "alarm_started", gateway: "TEST_GATEWAY"}]; got != 2 {
+		t.Errorf("first gateway count = %v, want 2", got)
+	}
+	if overflow != 2 {
+		t.Errorf("overflow = %v, want 2", overflow)
+	}
+}
+
 // Every family gets a counter, including ones that are empty on any given network
 // (voip/sip). A family silently missing a counter looks identical to a family with
 // no traffic.
@@ -323,6 +387,7 @@ func TestLogEventStore_SetMaxKeysAppliesToEveryFamily(t *testing.T) {
 		s.ObserveDHCP("ack", "igb"+n, "")
 		s.ObserveAudit("config_change-"+n, "")
 		s.ObserveIDS("alert", "block", "cat-"+n, "")
+		s.ObserveGateway("alarm_started", "gateway-"+n)
 		s.ObserveZenarmor(logship.ZenarmorObservation{Family: "flow", Category: "cat-" + n})
 	}
 	s.sync()
@@ -338,10 +403,11 @@ func TestLogEventStore_SetMaxKeysAppliesToEveryFamily(t *testing.T) {
 		logFamilyDHCP:     {s.dhcp.len(), overflowOf(s.dhcp.snapshot())},
 		logFamilyAudit:    {s.audit.len(), overflowOf(s.audit.snapshot())},
 		logFamilyIDS:      {s.ids.len(), overflowOf(s.ids.snapshot())},
+		logFamilyGateway:  {s.gateway.len(), overflowOf(s.gateway.snapshot())},
 		logFamilyZenarmor: {s.zen.len(), overflowOf(s.zen.snapshot())},
 	}
-	if len(families) != 7 {
-		t.Fatalf("families asserted = %d, want all 7 (duplicate family constant?)", len(families))
+	if len(families) != 8 {
+		t.Fatalf("families asserted = %d, want all 8 (duplicate family constant?)", len(families))
 	}
 	for name, got := range families {
 		if got.keys != 1 {
@@ -380,11 +446,11 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	if len(capped) != 7 {
-		t.Errorf("capped families emitted = %d, want 7: %v", len(capped), capped)
+	if len(capped) != 8 {
+		t.Errorf("capped families emitted = %d, want 8: %v", len(capped), capped)
 	}
-	if len(keys) != 7 {
-		t.Errorf("keys families emitted = %d, want 7: %v", len(keys), keys)
+	if len(keys) != 8 {
+		t.Errorf("keys families emitted = %d, want 8: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])
@@ -395,5 +461,34 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 	if capped[logFamilyZenarmor] != 0 {
 		t.Errorf("zenarmor capped = %v, want 0 published from zero", capped[logFamilyZenarmor])
 	}
+	if capped[logFamilyGateway] != 0 {
+		t.Errorf("gateway capped = %v, want 0 published from zero", capped[logFamilyGateway])
+	}
 	assertMetricsAreCounters(t, metrics, "opnsense_log_events_cardinality_capped_total")
+}
+
+func TestLogEventsCollector_EmitsGatewayCounter(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveGateway("alarm_started", "TEST_GATEWAY")
+	c.store.ObserveGateway("alarm_started", "TEST_GATEWAY")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_gateway_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if len(labels) != 3 {
+			t.Fatalf("gateway labels = %v, want only event, gateway and opnsense_instance", labels)
+		}
+		if labels["event"] != "alarm_started" || labels["gateway"] != "TEST_GATEWAY" || labels["opnsense_instance"] != "opnsense.example.com" {
+			t.Fatalf("gateway labels = %v, want event/alarm_started gateway/TEST_GATEWAY instance/opnsense.example.com", labels)
+		}
+		if got := getMetricValue(m); got != 2 {
+			t.Errorf("gateway counter = %v, want 2", got)
+		}
+		return
+	}
+	t.Fatal("gateway_total was not emitted")
 }

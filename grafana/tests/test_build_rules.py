@@ -160,6 +160,26 @@ class LogShippingAlertTest(unittest.TestCase):
         self.assertNotIn("records are being lost", sink["description"].lower())
 
 
+class GatewayAlarmFlapAlertTest(unittest.TestCase):
+    def test_repeated_dpinger_alarm_starts_alert_per_gateway(self):
+        rule = rule_by_title("OPNsenseGatewayAlarmFlapping")
+
+        self.assertEqual(
+            rule["A"],
+            'sum by (opnsense_instance, gateway) '
+            '(increase(opnsense_log_events_gateway_total{event="alarm_started"}[15m]))',
+        )
+        # Grafana's strict greater-than comparator with 2 means three or more
+        # starts in the 15-minute window. Keep the operator-facing threshold in
+        # the description too, rather than hiding it in the condition encoding.
+        self.assertEqual(rule["op"], "gt")
+        self.assertEqual(rule["params"], [2, 0])
+        self.assertEqual(rule["for_min"], 0)
+        self.assertEqual(rule["severity"], "warning")
+        self.assertIn("three or more", rule["description"])
+        self.assertIn("15m", rule["description"])
+
+
 def _flow_doc_dead_hook_query():
     """Extract the fenced ```promql block for the #368 dead-hook detector straight out
     of docs/flow.md ("Joining the two label spaces"), so a future edit to either the
