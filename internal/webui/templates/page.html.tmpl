@@ -224,6 +224,17 @@
       <div class="card"><div class="k">Requests (last scrape)</div><div class="v" id="apiRequests">{{printf "%.0f" .API.Requests}}</div></div>
       <div class="card"><div class="k">Avg duration</div><div class="v" id="apiAvg">{{printf "%.1f" .API.AvgMs}} ms</div></div>
     </div>
+    <div class="sub-h">Permission failures (401/403)</div>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Code</th><th>Collector</th><th>Component</th><th>Grant this privilege</th><th class="num">Count</th></tr></thead>
+      <tbody id="apiAuthzBody">
+      {{range .API.AuthFailures}}
+        <tr title="{{.Hint}}"><td class="mono">{{.Endpoint}}</td><td>{{.Code}}</td><td>{{.Collector}}</td><td class="mono">{{.Component}}</td><td class="mono">{{.Privilege}}{{if eq .ACLStatus "unknown"}} (no narrower ACL exists){{end}}</td><td class="num">{{printf "%.0f" .Count}}</td></tr>
+      {{else}}
+        <tr><td colspan="6" class="empty">No permission failures recorded.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
     <div class="sub-h">Top endpoint errors</div>
     <table>
       <thead><tr><th>Endpoint</th><th class="num">Errors</th></tr></thead>
@@ -452,6 +463,19 @@ function rebuildAPI(api){
   var ab=document.getElementById('apiAuth'); if(ab){ ab.textContent=api.AuthOK?'ok':'failing'; ab.className='badge badge-'+(api.AuthOK?'ok':'bad'); }
   setText('apiRequests', Math.round(api.Requests||0));
   setText('apiAvg', (api.AvgMs||0).toFixed(1)+' ms');
+  var zb=document.getElementById('apiAuthzBody');
+  if(zb){ zb.textContent='';
+    var az=api.AuthFailures||[];
+    if(!az.length){ var trz=el('tr'); trz.appendChild(el('td',{'colspan':'6','class':'empty'},'No permission failures recorded.')); zb.appendChild(trz); }
+    else { az.forEach(function(a){ var tr=el('tr',{'title':a.Hint||''});
+      tr.appendChild(el('td',{'class':'mono'},a.Endpoint));
+      tr.appendChild(el('td',{},a.Code));
+      tr.appendChild(el('td',{},a.Collector));
+      tr.appendChild(el('td',{'class':'mono'},a.Component));
+      tr.appendChild(el('td',{'class':'mono'},a.Privilege + (a.ACLStatus==='unknown' ? ' (no narrower ACL exists)' : '')));
+      tr.appendChild(el('td',{'class':'num'},String(Math.round(a.Count))));
+      zb.appendChild(tr); }); }
+  }
   var tb=document.getElementById('apiBody'); if(!tb) return; tb.textContent='';
   var errs=api.TopErrors||[];
   if(!errs.length){ var tr0=el('tr'); tr0.appendChild(el('td',{'colspan':'2','class':'empty'},'No endpoint errors recorded.')); tb.appendChild(tr0); return; }

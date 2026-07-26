@@ -130,32 +130,13 @@ and recording rules ship alongside it in [`grafana/alerts/`](./grafana/alerts/).
 
 ## OPNsense user permissions
 
-The API user needs the following OPNsense privileges:
-
-| Type     |      Name                    |
-|----------|:-------------:               |
-| GUI |  Diagnostics: ARP Table           |
-| GUI |  Diagnostics: Firewall statistics |
-| GUI |  Diagnostics: Netstat             |
-| GUI |  Reporting: Traffic               |
-| GUI |  Services: Unbound (MVC)          |
-| GUI |  Status: DHCP leases              |
-| GUI |  Status: DNS Overview             |
-| GUI |  Status: IPsec                    |
-| GUI |  Status: OpenVPN                  |
-| GUI |  Status: Services                 |
-| GUI |  System: Firmware                 |
-| GUI |  System: Gateways                 |
-| GUI |  System: Settings: Cron           |
-| GUI |  System: Status                   |
-| GUI |  VPN: OpenVPN: Instances          |
-| GUI |  VPN: WireGuard                   |
+Use the generated [collector-to-ACL matrix](https://m7kni.io/opnsense-exporter/security/#generated-collector-to-acl-matrix) to grant only the privileges required by the collectors you enable. It records known, plugin-dependent, and explicitly unknown mappings, including whether an available privilege can also reach write actions.
 
 Required OPNsense settings:
 
 - Unbound collector: *Unbound DNS > Advanced > Extended Statistics* must be enabled.
 
-Details and least-privilege guidance: [security](https://m7kni.io/opnsense-exporter/security/).
+Details, 401/403 remediation, and ACL caveats: [security](https://m7kni.io/opnsense-exporter/security/).
 
 ## Compatibility
 

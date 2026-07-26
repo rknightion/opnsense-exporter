@@ -214,3 +214,82 @@ func TestBuildStatus(t *testing.T) {
 		t.Fatal("unbound row missing")
 	}
 }
+
+// TestParseAPIStats_AuthFailuresAreActionable is the console half of #442: a 401/403
+// must name the endpoint, the collector behind it and the OPNsense privilege to
+// grant, instead of collapsing into a single "auth: failing" badge.
+func TestParseAPIStats_AuthFailuresAreActionable(t *testing.T) {
+	families := []*dto.MetricFamily{
+		{Name: sp("opnsense_exporter_api_requests_total"), Metric: []*dto.Metric{
+			counterMetric(12, "endpoint", "api/core/service/search", "code", "200"),
+			counterMetric(3, "endpoint", "api/smart/service/list", "code", "403"),
+			counterMetric(1, "endpoint", "api/diagnostics/system/systemDisk", "code", "403"),
+			counterMetric(2, "endpoint", "api/core/system/status", "code", "401"),
+			// A zero-valued 403 series must not manufacture a row.
+			counterMetric(0, "endpoint", "api/cron/settings/searchJobs", "code", "403"),
+		}},
+	}
+
+	api := parseAPIStats(families)
+
+	if api.AuthOK {
+		t.Error("AuthOK should be false when a 403 was observed")
+	}
+	if len(api.AuthFailures) != 3 {
+		t.Fatalf("AuthFailures = %d rows, want 3: %+v", len(api.AuthFailures), api.AuthFailures)
+	}
+
+	byEndpoint := map[string]AuthzRow{}
+	for _, r := range api.AuthFailures {
+		byEndpoint[r.Endpoint] = r
+	}
+
+	smart, ok := byEndpoint["api/smart/service/list"]
+	if !ok {
+		t.Fatalf("missing smart row: %+v", api.AuthFailures)
+	}
+	if smart.Collector != "smart" {
+		t.Errorf("smart collector = %q, want smart", smart.Collector)
+	}
+	if smart.Privilege != "page-services-smart" {
+		t.Errorf("smart privilege = %q, want page-services-smart", smart.Privilege)
+	}
+	if smart.Code != "403" || smart.Count != 3 {
+		t.Errorf("smart code/count = %q/%v, want 403/3", smart.Code, smart.Count)
+	}
+	if smart.Hint == "" {
+		t.Error("smart row has no hint")
+	}
+
+	unknown, ok := byEndpoint["api/diagnostics/system/systemDisk"]
+	if !ok {
+		t.Fatalf("missing systemDisk row")
+	}
+	if unknown.Privilege != "page-all" {
+		t.Errorf("systemDisk privilege = %q; an unknown classification must name page-all, not guess", unknown.Privilege)
+	}
+	if unknown.ACLStatus != "unknown" {
+		t.Errorf("systemDisk ACLStatus = %q, want unknown", unknown.ACLStatus)
+	}
+
+	if got := byEndpoint["api/core/system/status"].Code; got != "401" {
+		t.Errorf("healthCheck row code = %q, want 401", got)
+	}
+
+	// Highest count first, then endpoint name — stable ordering for the console.
+	if api.AuthFailures[0].Endpoint != "api/smart/service/list" {
+		t.Errorf("AuthFailures not sorted by count: %+v", api.AuthFailures)
+	}
+}
+
+func TestParseAPIStats_NoAuthFailuresWhenHealthy(t *testing.T) {
+	families := []*dto.MetricFamily{
+		{Name: sp("opnsense_exporter_api_requests_total"), Metric: []*dto.Metric{
+			counterMetric(12, "endpoint", "api/core/service/search", "code", "200"),
+		}},
+	}
+	api := parseAPIStats(families)
+	if !api.AuthOK || len(api.AuthFailures) != 0 {
+		t.Errorf("healthy scrape produced AuthOK=%v AuthFailures=%+v", api.AuthOK, api.AuthFailures)
+	}
+}

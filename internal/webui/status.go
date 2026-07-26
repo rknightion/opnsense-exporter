@@ -3,6 +3,7 @@ package webui
 import (
 	"fmt"
 	"html/template"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -145,10 +146,42 @@ type CacheRow struct {
 // APIStats summarise the exporter's OPNsense API traffic from the last scrape.
 // AvgMs is the mean request duration (SampleSum/SampleCount), NOT a quantile.
 type APIStats struct {
-	AuthOK    bool
-	Requests  float64
-	AvgMs     float64
-	TopErrors []ErrRow
+	AuthOK   bool
+	Requests float64
+	AvgMs    float64
+	// AuthFailures lists every endpoint the last scrape saw a 401/403 from, with
+	// the collector behind it and the OPNsense privilege that would fix it (#442).
+	// AuthOK is the same signal collapsed to a badge; this is what makes it
+	// actionable. Empty whenever AuthOK is true.
+	AuthFailures []AuthzRow
+	TopErrors    []ErrRow
+}
+
+// AuthzRow is one endpoint OPNsense refused on authentication or authorisation,
+// joined with the exporter's endpoint→collector→privilege matrix.
+//
+// It carries no credential material: every field is derived from the endpoint
+// path, the HTTP status and opnsense's static ACL table. The response body is
+// deliberately not surfaced here.
+type AuthzRow struct {
+	// Endpoint is the api/* path from the self-metric's endpoint label.
+	Endpoint string
+	// Code is "401" or "403".
+	Code string
+	// Count is how many such responses the last scrape's counters hold.
+	Count float64
+	// Collector is the collector subsystem that calls the endpoint, or a
+	// parenthesised non-collector consumer.
+	Collector string
+	// Component is "core" or the plugin's ports path.
+	Component string
+	// ACLStatus is "known", "plugin-dependent" or "unknown".
+	ACLStatus string
+	// Privilege is the ACL key(s) to grant — comma-separated when any one of
+	// several suffices, or "page-all" when nothing narrower covers the URL.
+	Privilege string
+	// Hint is the full operator-facing sentence.
+	Hint string
 }
 
 // ErrRow is one endpoint's error count for the API card's top-errors list.
@@ -486,10 +519,18 @@ func parseAPIStats(families []*dto.MetricFamily) APIStats {
 		for _, m := range mf.GetMetric() {
 			v := m.GetCounter().GetValue()
 			api.Requests += v
-			if code := labelValue(m, "code"); v > 0 && (code == "401" || code == "403") {
+			code := labelValue(m, "code")
+			if v > 0 && (code == "401" || code == "403") {
 				api.AuthOK = false
+				api.AuthFailures = append(api.AuthFailures, authzRow(labelValue(m, "endpoint"), code, v))
 			}
 		}
+		sort.Slice(api.AuthFailures, func(i, j int) bool {
+			if api.AuthFailures[i].Count != api.AuthFailures[j].Count {
+				return api.AuthFailures[i].Count > api.AuthFailures[j].Count
+			}
+			return api.AuthFailures[i].Endpoint < api.AuthFailures[j].Endpoint
+		})
 	}
 
 	if mf := familyBySuffix(families, "exporter_api_request_duration_seconds"); mf != nil {
@@ -527,6 +568,40 @@ func parseAPIStats(families []*dto.MetricFamily) APIStats {
 	}
 
 	return api
+}
+
+// authzRow joins one refused endpoint with the ACL matrix. An endpoint the matrix
+// does not know still produces a row — with the fact stated, not a guessed
+// privilege — because a 403 the console cannot explain is still a 403 the operator
+// needs to see.
+func authzRow(endpoint, code string, count float64) AuthzRow {
+	row := AuthzRow{Endpoint: endpoint, Code: code, Count: count}
+
+	statusCode := http.StatusForbidden
+	if code == "401" {
+		statusCode = http.StatusUnauthorized
+	}
+	apiErr := opnsense.APICallError{Endpoint: endpoint, StatusCode: statusCode}
+	row.Hint = apiErr.AuthzHint()
+
+	acl, ok := opnsense.ACLForPath(endpoint)
+	if !ok {
+		row.Collector = "unknown"
+		row.Component = "unknown"
+		row.ACLStatus = "unclassified"
+		row.Privilege = "unknown"
+		return row
+	}
+	row.Collector = acl.Consumer
+	row.Component = acl.Component
+	row.ACLStatus = string(acl.Status)
+	if acl.Status == opnsense.ACLStatusUnknown {
+		// No ACL unit covers this URL, so page-all is the only honest answer.
+		row.Privilege = "page-all"
+	} else {
+		row.Privilege = strings.Join(acl.PrivilegeKeys(), ", ")
+	}
+	return row
 }
 
 func familyBySuffix(families []*dto.MetricFamily, suffix string) *dto.MetricFamily {

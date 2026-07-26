@@ -152,14 +152,17 @@ func main() {
 	generateCollectorReference(out, filepath.Join(repoRoot, "docs", "collectors", "reference.md"),
 		collectors)
 
-	// Step 6: Inject generated flag tables into docs/configuration.md.
+	// Step 6: Inject the endpoint-to-ACL matrix into docs/security.md.
+	injectSecurityDoc(out)
+
+	// Step 7: Inject generated flag tables into docs/configuration.md.
 	injectConfigurationDoc(out, allFlags)
 
-	// Step 7: Inject the generated dashboard tab-name list into prose that enumerates tabs.
+	// Step 8: Inject the generated dashboard tab-name list into prose that enumerates tabs.
 	dashMetrics, dashTabs, tabNames := loadDashboardStats(repoRoot)
 	injectDashboardTabs(out, tabNames)
 
-	// Step 8: Pin metric/collector/dashboard/rule counts across prose and config.
+	// Step 9: Pin metric/collector/dashboard/rule counts across prose and config.
 	alerts, recording := loadRulesStats(repoRoot)
 	applyStatRules(out, statRules(docStats{
 		Metrics:     totalMetrics,
@@ -170,7 +173,7 @@ func main() {
 		Recording:   recording,
 	}))
 
-	// Step 8: Lint every flag/env-var token in prose docs against the model.
+	// Step 10: Lint every flag/env-var token in prose docs against the model.
 	if problems := runDoclint(repoRoot, allFlags); len(problems) > 0 {
 		fatal("doclint found %d problems:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}

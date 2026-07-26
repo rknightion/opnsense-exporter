@@ -121,6 +121,15 @@ func TestNewClient_EndpointCount(t *testing.T) {
 	if !reflect.DeepEqual(endpoints, defaultEndpoints()) {
 		t.Errorf("client endpoints diverge from defaultEndpoints()")
 	}
+
+	// Every registered endpoint must carry an ACL classification (#442), so a new
+	// endpoint cannot ship without least-privilege guidance or an explicit
+	// "unknown" verdict. TestEndpointACLCoversEveryEndpoint names the offender;
+	// this keeps the requirement visible next to the count it travels with.
+	if len(EndpointACLs()) != len(endpoints) {
+		t.Errorf("ACL matrix covers %d endpoints, registry has %d; see opnsense/acl.go",
+			len(EndpointACLs()), len(endpoints))
+	}
 }
 
 func TestDo_Success(t *testing.T) {
