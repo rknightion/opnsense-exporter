@@ -1,0 +1,25 @@
+name: Question
+description: Ask a question about the project
+title: "[QUESTION]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste API keys, secrets, tokens, or unredacted configuration.**
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and what have you already tried?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Exporter/OPNsense version and deployment method, if relevant.
+    validations:
+      required: false

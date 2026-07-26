@@ -1,0 +1,230 @@
+name: Repo metadata
+
+# Validates the repo's ownership/intake surface: issue-form schema and CODEOWNERS syntax
+# (#441 — the previous CODEOWNERS/templates silently routed everything at a read-only
+# inherited account). Deliberately self-contained (actions/* only, no cross-repo reusable
+# workflow) so it runs unattended on a release-please bot PR too, per the standing
+# release-please/GITHUB_TOKEN limitation.
+#
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - '.github/CODEOWNERS'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/repo-meta.yml'
+  pull_request:
+    paths:
+      - '.github/CODEOWNERS'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/repo-meta.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate issue templates & CODEOWNERS
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.x'
+
+      - name: Install validator dependencies
+        run: python -m pip install --quiet pyyaml
+
+      - name: Validate issue template schema
+        run: |
+          python - <<'PYEOF'
+          import glob
+          import os
+          import sys
+
+          import yaml
+
+          ALLOWED_TYPES = {"markdown", "input", "textarea", "dropdown", "checkboxes"}
+          errors = []
+
+          template_dir = ".github/ISSUE_TEMPLATE"
+          yaml_files = sorted(
+              glob.glob(os.path.join(template_dir, "*.yaml"))
+              + glob.glob(os.path.join(template_dir, "*.yml"))
+          )
+
+          if not yaml_files:
+              errors.append(f"no .yaml/.yml issue templates found under {template_dir}")
+
+          for path in yaml_files:
+              with open(path) as fh:
+                  try:
+                      doc = yaml.safe_load(fh)
+                  except yaml.YAMLError as exc:
+                      errors.append(f"{path}: invalid YAML: {exc}")
+                      continue
+
+              if not isinstance(doc, dict):
+                  errors.append(f"{path}: must be a YAML mapping")
+                  continue
+
+              if os.path.basename(path) == "config.yml":
+                  # Chooser config, not an issue form: different (much smaller) schema.
+                  continue
+
+              for key in ("name", "description", "body"):
+                  if key not in doc:
+                      errors.append(f"{path}: missing required top-level key '{key}'")
+
+              body = doc.get("body")
+              if not isinstance(body, list) or not body:
+                  errors.append(f"{path}: 'body' must be a non-empty list")
+                  body = []
+
+              seen_ids = set()
+              for i, item in enumerate(body):
+                  if not isinstance(item, dict):
+                      errors.append(f"{path}: body[{i}] must be a mapping")
+                      continue
+                  item_type = item.get("type")
+                  if item_type not in ALLOWED_TYPES:
+                      errors.append(f"{path}: body[{i}] has invalid type '{item_type}'")
+                  if item_type != "markdown":
+                      item_id = item.get("id")
+                      if not item_id:
+                          errors.append(
+                              f"{path}: body[{i}] (type={item_type}) is missing a required 'id'"
+                          )
+                      elif item_id in seen_ids:
+                          errors.append(f"{path}: duplicate body id '{item_id}'")
+                      else:
+                          seen_ids.add(item_id)
+
+              # Regression guard (#441): never re-route intake to the inherited
+              # read-only upstream account.
+              assignees = doc.get("assignees")
+              if assignees:
+                  flat = assignees if isinstance(assignees, list) else [assignees]
+                  if any("ihatemodels" in str(a) for a in flat):
+                      errors.append(
+                          f"{path}: still assigns the inherited read-only account "
+                          "'ihatemodels' (#441)"
+                      )
+
+          # Legacy .md issue templates (front-matter based) predate issue forms.
+          # None should exist post-#441, but check any that reappear too.
+          for path in sorted(glob.glob(os.path.join(template_dir, "*.md"))):
+              with open(path) as fh:
+                  text = fh.read()
+              if "ihatemodels" in text:
+                  errors.append(
+                      f"{path}: still references the inherited read-only account "
+                      "'ihatemodels' (#441)"
+                  )
+
+          if errors:
+              print("Issue template validation FAILED:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          print(f"OK: {len(yaml_files)} issue template file(s) validated")
+          PYEOF
+
+      - name: Validate CODEOWNERS syntax and regression-guard identity
+        run: |
+          python - <<'PYEOF'
+          import re
+          import sys
+
+          path = ".github/CODEOWNERS"
+          errors = []
+          try:
+              with open(path) as fh:
+                  lines = fh.readlines()
+          except FileNotFoundError:
+              # Removing CODEOWNERS outright is an acceptable outcome of #441
+              # (explicit rationale required in the PR/commit, not enforced here).
+              print(f"{path} not found — nothing to validate")
+              sys.exit(0)
+
+          owner_re = re.compile(
+              r'^(@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:/[A-Za-z0-9._-]+)?'
+              r'|[^\s@]+@[^\s@]+\.[^\s@]+)$'
+          )
+
+          for lineno, raw in enumerate(lines, start=1):
+              stripped = raw.rstrip("\n").strip()
+              if not stripped or stripped.startswith("#"):
+                  continue
+              parts = stripped.split()
+              if len(parts) < 2:
+                  errors.append(f"{path}:{lineno}: '{stripped}' has a pattern but no owner")
+                  continue
+              _pattern, owners = parts[0], parts[1:]
+              for owner in owners:
+                  if not owner_re.match(owner):
+                      errors.append(
+                          f"{path}:{lineno}: '{owner}' is not a valid @user, @org/team, "
+                          "or email owner"
+                      )
+                  if "ihatemodels" in owner.lower():
+                      errors.append(
+                          f"{path}:{lineno}: still assigns the inherited read-only "
+                          "account 'ihatemodels' (#441)"
+                      )
+
+          if errors:
+              print("CODEOWNERS validation FAILED:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          print(f"OK: {path} syntax validated ({len(lines)} lines)")
+          PYEOF
+
+      # Best-effort only, never the enforcement mechanism: confirming a CODEOWNERS
+      # identity has write+ access requires the collaborator-permission API, and the
+      # default GITHUB_TOKEN's authority to query it for arbitrary accounts is not
+      # guaranteed. This step reports what it can see and WARNS (::warning::) on
+      # anything that looks wrong or unreachable; it never fails the job on an API
+      # refusal. Required-code-owner-review enforcement is a branch-protection /
+      # ruleset setting on GitHub, outside this repo's files entirely (#441) — this
+      # step cannot substitute for checking that setting by hand.
+      - name: Best-effort check that CODEOWNERS identities have write access
+        if: hashFiles('.github/CODEOWNERS') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set +e
+          owners=$(grep -vE '^\s*(#|$)' .github/CODEOWNERS | awk '{for (i=2;i<=NF;i++) print $i}' | sort -u)
+          for owner in $owners; do
+            case "$owner" in
+              @*/*)
+                echo "::notice::skipping team owner $owner (permission model differs from a user collaborator)"
+                continue
+                ;;
+              @*)
+                user="${owner#@}"
+                ;;
+              *)
+                echo "::notice::skipping non-@ owner $owner (email CODEOWNERS entries aren't collaborators)"
+                continue
+                ;;
+            esac
+            resp=$(gh api "repos/${REPO}/collaborators/${user}/permission" 2>&1)
+            status=$?
+            if [ $status -ne 0 ]; then
+              echo "::warning::could not verify collaborator permission for $owner via API (token may lack scope): $resp"
+              continue
+            fi
+            perm=$(printf '%s' "$resp" | python -c "import json,sys; print(json.load(sys.stdin).get('permission',''))" 2>/dev/null)
+            echo "$owner -> permission=$perm"
+            case "$perm" in
+              admin|maintain|write) ;;
+              *) echo "::warning::CODEOWNERS owner $owner has permission '${perm:-unknown}', not write-or-above" ;;
+            esac
+          done

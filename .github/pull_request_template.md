@@ -1,37 +1,32 @@
-# Pull Request Template
+# Pull Request
 
 ## Description
 
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. List any dependencies that are required for this change.
+Summarize the change and link the issue it addresses. Include relevant motivation/context and any dependencies this change requires.
 
 Fixes # (issue)
 
 ## Type of change
 
-Please delete options that are not relevant.
+Delete the options that don't apply.
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] This change requires a documentation update
-- [ ] Just a documentation update
+- [ ] Documentation only
 
-## How Has This Been Tested?
+## How has this been tested?
 
-Please delete if not relevant.
+Delete if not relevant. Describe the tests you ran, and how to reproduce them.
 
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration. Not relevant for documentation updates.
+- [ ] `go test ./...`
+- [ ] Manual verification against a live OPNsense box
 
-- [ ] Test A
-- [ ] Test B
+## Checklist
 
-## Checklist:
-
-Please delete options that are not relevant.
-
-- [ ] I have updated the docs/metrics.md file, when I introduced new metrics
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] Any dependent changes have been merged and published in downstream modules
+- [ ] If I added or changed a collector/metric, I ran `make docs` and committed the regenerated output. I did **not** hand-edit anything between `<!-- docgen:begin/end -->` markers — those are generated files (see `docs/metrics/metrics.md`, `docs/reference/collectors.md`, `docs/configuration.md`).
+- [ ] If I added or changed a metric, I added the corresponding Grafana panel and ran `make dashboard` (see `grafana/README.md`).
+- [ ] If I changed `go.mod`, I ran `make sync-vendor` and committed the vendor diff.
+- [ ] I commented my code, particularly in hard-to-understand areas.
+- [ ] I added or updated tests that prove the fix or feature works.
+- [ ] Local gate is green: `go test ./...`, `go test -race ./...`, `golangci-lint run ./...`, `make docs-check`, `make grafana-check`. (These are exactly the jobs `ci-success` requires; a Docker build-verify job also runs in CI and can optionally be reproduced locally with `docker build .`.)

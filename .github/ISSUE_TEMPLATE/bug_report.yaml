@@ -1,0 +1,107 @@
+name: Bug report
+description: Report a problem with the exporter
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste API keys, secrets, tokens, or unredacted configuration.**
+        Redact `OPS_API_KEY`, `OPS_API_SECRET`, hostnames, and IPs you don't want public before submitting.
+
+  - type: input
+    id: exporter-version
+    attributes:
+      label: Exporter version
+      description: Output of `opnsense-exporter --version`, or the image tag deployed.
+      placeholder: e.g. v1.9.0
+    validations:
+      required: true
+
+  - type: input
+    id: opnsense-version
+    attributes:
+      label: OPNsense version
+      description: System > Firmware > Status on the box being scraped.
+      placeholder: e.g. 25.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker / Docker Compose
+        - Kubernetes
+        - Binary / systemd
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: collector
+    attributes:
+      label: Affected collector or receiver
+      description: The sub-collector or OTLP/logship receiver this affects, if known.
+      placeholder: e.g. interfaces, wireguard, syslog receiver
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run the exporter with ...
+        2. Scrape /metrics
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Effective configuration (redacted)
+      description: Flags or environment variables used to run the exporter, with secrets removed.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Exporter logs around the failure, with hostnames/IPs redacted if needed.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+    validations:
+      required: false

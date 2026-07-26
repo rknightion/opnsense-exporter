@@ -1,1 +1,8 @@
-* @ihatemodels
+# See docs/development/contributing.md for the contribution workflow.
+#
+# Every code owner listed here must have write (or higher) access to this
+# repository, or GitHub silently cannot request their review — verify with:
+# gh api repos/rknightion/opnsense-exporter/collaborators/<user>/permission
+# (#441: the previous single line, `* @ihatemodels`, pointed at an account
+# with only read access, which GitHub's CODEOWNERS rules require to be write+.)
+* @rknightion

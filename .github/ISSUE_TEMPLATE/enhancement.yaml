@@ -2,16 +2,19 @@ name: Enhancement suggestion
 title: "[FEATURE]: "
 description: Provide supporting details for a feature
 labels: ["feature"]
-assignees: 
-  - ihatemodels
 
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste API keys, secrets, tokens, or unredacted configuration.**
+
   - type: textarea
     id: feature
     attributes:
       label: What would you like to be added?
       description: |
-        Please desribe what you like to be added. 
+        Please describe what you'd like to be added.
     validations:
       required: true
 

@@ -1,45 +1,33 @@
 ## Contributing
 
+The full contribution guide — build commands, the complete test/lint/docs/Grafana gate, project
+structure, and conventions — lives on the docs site and is the canonical source. This file
+intentionally does not duplicate that content, so the two can't silently drift apart:
+
+**[docs/development/contributing.md](docs/development/contributing.md)**
+(rendered at <https://m7kni.io/opnsense-exporter/development/contributing/>)
+
+What follows is specific to running the exporter against a real OPNsense box, which isn't otherwise
+obvious from that guide.
+
 ### Requirements
 
 - Go 1.26
 - GNU Make
 - Docker (optional)
-- OPNsense Box with admin access
+- An OPNsense box with admin access
 
-### Environment
+### Create an API key and secret in OPNsense
 
-This guide is for osx and Linux.
+`System > Access > Users > [user] > API keys` — see the
+[OPNsense documentation](https://docs.opnsense.org/development/how-tos/api.html#creating-keys).
 
-### Create API key and secret in OPNsense
-
-`SYSTEM>ACCESS>USERS>[user]>API KEYS`
-
-[OPNsense Documentation](https://docs.opnsense.org/development/how-tos/api.html#creating-keys)
-
-### Run the exporter locally
+### Run the exporter locally against that box
 
 ```bash
 OPS_ADDRESS="ops.example.com" OPS_API_KEY=your-api-key OPS_API_SECRET=your-api-secret make local-run
-```
-
-- test it
-
-```bash
 curl http://localhost:8080/metrics
 ```
 
-### Before PR
-
-- Sync the vendor if dependencies changed.
-
-```bash
-make sync-vendor
-```
-
-- Run the tests and linters.
-
-```bash
-make test
-make lint
-```
+Before opening a PR, read the [contribution guide](docs/development/contributing.md) for the full
+gate every PR must pass.

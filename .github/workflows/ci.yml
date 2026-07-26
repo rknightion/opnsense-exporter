@@ -16,6 +16,9 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  repo-meta:
+    uses: ./.github/workflows/repo-meta.yml
+
   tests:
     name: Tests & Linters
     runs-on: ubuntu-24.04
@@ -180,7 +183,7 @@ jobs:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [tests, race, docs, grafana, docker-build-verify]
+    needs: [repo-meta, tests, race, docs, grafana, docker-build-verify]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
