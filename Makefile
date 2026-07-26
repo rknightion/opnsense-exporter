@@ -2,8 +2,21 @@ BINARY_NAME=opnsense-exporter-local
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 # ── pinned release-tooling versions (override via env) ────────────────────────
-# renovate: datasource=go depName=github.com/google/go-licenses
+# GO_LICENSES_VERSION is the ONE source of truth for the go-licenses version *and*
+# module path shared by `make notices`, the Dockerfile image build, and Renovate
+# (#436). go-licenses v2+ is published under the semantic-import path
+# github.com/google/go-licenses/v2 (v1.x was github.com/google/go-licenses with no
+# suffix) — the module path is therefore baked into GO_LICENSES_MODULE below, not
+# just the version, so a future v3 bump updates both together instead of silently
+# reintroducing the v2.0.1 "post-v2 module path" install failure this fixed.
+# The Dockerfile does NOT keep its own copy: it declares GO_LICENSES_VERSION/
+# GO_LICENSES_MODULE as required build-args with no default (see Dockerfile), and every
+# caller (ci.yml's docker-build-verify job, publish.yml's release build) resolves the
+# current pin via `make print-go-licenses-version` / `make print-go-licenses-module`
+# below and passes it in — so the two paths cannot select different versions unnoticed.
+# renovate: datasource=go depName=github.com/google/go-licenses/v2
 GO_LICENSES_VERSION ?= v2.0.1
+GO_LICENSES_MODULE  := github.com/google/go-licenses/v2
 # renovate: datasource=go depName=github.com/anchore/syft
 SYFT_VERSION        ?= v1.49.0
 
@@ -18,7 +31,8 @@ export PATH := $(TOOLS_DIR):$(PATH)
 GOEXPERIMENT ?= goroutineleakprofile
 
 .PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
-        schemas coverage notices sbom tools-licensing tools-sbom
+        schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
+        print-go-licenses-module
 default:
 	GOEXPERIMENT=$(GOEXPERIMENT) go build \
 	-tags osusergo,netgo \
@@ -64,7 +78,16 @@ coverage:
 tools-licensing:
 	@mkdir -p $(TOOLS_DIR)
 	@{ test -x $(TOOLS_DIR)/go-licenses && $(TOOLS_DIR)/go-licenses --help >/dev/null 2>&1; } || \
-	  GOBIN=$(TOOLS_DIR) go install github.com/google/go-licenses@$(GO_LICENSES_VERSION)
+	  GOBIN=$(TOOLS_DIR) go install $(GO_LICENSES_MODULE)@$(GO_LICENSES_VERSION)
+
+# Print the pinned go-licenses version/module so other build surfaces (the Dockerfile's
+# GO_LICENSES_VERSION/GO_LICENSES_MODULE build-args, supplied by ci.yml and publish.yml)
+# resolve the SAME pin declared above instead of holding an independent copy (#436).
+print-go-licenses-version:
+	@echo $(GO_LICENSES_VERSION)
+print-go-licenses-module:
+	@echo $(GO_LICENSES_MODULE)
+
 tools-sbom:
 	@mkdir -p $(TOOLS_DIR)
 	@{ test -x $(TOOLS_DIR)/syft && $(TOOLS_DIR)/syft version >/dev/null 2>&1; } || \

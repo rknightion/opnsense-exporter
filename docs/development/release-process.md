@@ -19,9 +19,9 @@ graph LR
     C -->|No| E[No action]
     D --> F[PR merged by maintainer]
     F --> G[Tag created]
-    G --> H[Docker image published]
-    G --> I[GitHub Release created]
-    G --> J[CHANGELOG.md updated]
+    G --> H[Cross-platform archives + SBOMs]
+    G --> I[Signed multi-arch image]
+    G --> J[Notices + release asset verification]
 ```
 
 ### 1. Conventional commits
@@ -53,10 +53,14 @@ When commits with `feat:` or `fix:` prefixes land on `main`, release-please auto
 When a maintainer merges the release PR:
 
 1. release-please creates a Git tag (e.g., `v0.2.0`)
-2. The CI workflow builds and publishes multi-architecture Docker images:
-   - `ghcr.io/rknightion/opnsense-exporter:v0.2.0`
-   - `ghcr.io/rknightion/opnsense-exporter:latest`
-3. A GitHub Release is created with the changelog entry
+2. The binary workflow publishes release archives for Linux, macOS, FreeBSD,
+   OpenBSD, and Windows, plus per-archive SBOMs, checksums, keyless signature
+   bundle, and provenance.
+3. The image workflow publishes a signed, attested multi-architecture image and
+   release-level CycloneDX and SPDX SBOMs.
+4. The notices job generates `THIRD_PARTY_NOTICES.md` from the tagged source.
+5. A final read-back job rejects a partial release if any mandatory asset is
+   absent.
 
 ## Docker images
 
@@ -73,7 +77,7 @@ ghcr.io/rknightion/opnsense-exporter
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent release |
-| `v0.1.0` | Specific version |
+| `3.0.0` | Specific version; image tags have no leading `v` |
 
 ### Architectures
 
@@ -81,6 +85,24 @@ Each image is a multi-architecture manifest supporting:
 
 - `linux/amd64`
 - `linux/arm64`
+
+Git tags and release names include the leading `v` (`v3.0.0`); container tags do
+not (`3.0.0`).
+
+## Mandatory GitHub release assets
+
+Every tagged release must contain:
+
+- Nine platform archives: Darwin, FreeBSD, Linux, and OpenBSD on arm64 and
+  x86_64, plus Windows x86_64.
+- One `.sbom.json` beside each archive.
+- `checksums.txt`, its Sigstore bundle, and its in-toto provenance.
+- `opnsense-exporter.cdx.json` and `opnsense-exporter.spdx.json`.
+- `THIRD_PARTY_NOTICES.md`.
+
+The release workflow reads the published release back and checks this exact set.
+Notices are generated from the tag rather than current `main`, so their dependency
+set matches the binaries they accompany.
 
 ### Build details
 
@@ -102,10 +124,14 @@ The `version.txt` file at the repository root contains the current version strin
 
 Runs on every push and PR:
 
-- Go build
+- Go build (`CGO_ENABLED=0 go build ./...`)
 - Go test (`go test ./...`)
 - Race detector (`go test -race ./...`, dedicated `race` job) - a data-race failure is **blocking**: the `race` job feeds `ci-success`, so a race must be fixed before a release PR can merge
-- Linting (`golangci-lint`)
+- Generated documentation (`make docs-check`)
+- Grafana builders and generated artifacts (`make grafana-test` and
+  `make grafana-check`)
+- The release Dockerfile, embedded version, Compose file-secret readability, and
+  the native container healthcheck
 
 ### Release workflow (`release-please.yml`)
 

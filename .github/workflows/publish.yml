@@ -9,7 +9,32 @@ on:
 permissions:
   contents: read
 jobs:
+  # Resolves the pinned go-licenses version/module out of the Makefile (the one source
+  # of truth, #436) so the release image build below installs the SAME tool the
+  # `notices` job (and ci.yml's docker-build-verify) use — the Dockerfile has no
+  # default of its own to silently diverge from that pin.
+  go-licenses-pin:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.pin.outputs.version }}
+      module: ${{ steps.pin.outputs.module }}
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+          persist-credentials: false
+      - name: Resolve pinned go-licenses version + module
+        id: pin
+        run: |
+          echo "version=$(make -s print-go-licenses-version)" >> "$GITHUB_OUTPUT"
+          echo "module=$(make -s print-go-licenses-module)" >> "$GITHUB_OUTPUT"
   image:
+    needs: go-licenses-pin
     permissions:
       contents: write
       packages: write
@@ -19,6 +44,9 @@ jobs:
     uses: rknightion/.github/.github/workflows/container-publish.yml@f31690684f4292d1fe8e528618f7c8306fe27d9a # v1.3.1 # zizmor: ignore[unpinned-uses]
     with:
       release-tag: ${{ inputs.release_tag }}
+      build-args: |
+        GO_LICENSES_VERSION=${{ needs.go-licenses-pin.outputs.version }}
+        GO_LICENSES_MODULE=${{ needs.go-licenses-pin.outputs.module }}
   notices:
     if: inputs.release_tag != ''
     runs-on: ubuntu-24.04

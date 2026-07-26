@@ -65,6 +65,64 @@ jobs:
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
 
+  # A publish job can partially succeed: v3.0.0 proved that the image and binaries
+  # may land while notices fail. Read the release back after both publishing arms
+  # and fail on any missing mandatory artifact (#436).
+  verify-release-assets:
+    needs: [release-please, binaries, publish]
+    if: always() && needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Verify mandatory release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          mapfile -t actual < <(
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '.assets[].name'
+          )
+          required=(
+            THIRD_PARTY_NOTICES.md
+            checksums.txt
+            checksums.txt.intoto.jsonl
+            checksums.txt.sigstore.json
+            opnsense-exporter.cdx.json
+            opnsense-exporter.spdx.json
+            opnsense-exporter_Darwin_arm64.tar.gz
+            opnsense-exporter_Darwin_arm64.tar.gz.sbom.json
+            opnsense-exporter_Darwin_x86_64.tar.gz
+            opnsense-exporter_Darwin_x86_64.tar.gz.sbom.json
+            opnsense-exporter_Freebsd_arm64.tar.gz
+            opnsense-exporter_Freebsd_arm64.tar.gz.sbom.json
+            opnsense-exporter_Freebsd_x86_64.tar.gz
+            opnsense-exporter_Freebsd_x86_64.tar.gz.sbom.json
+            opnsense-exporter_Linux_arm64.tar.gz
+            opnsense-exporter_Linux_arm64.tar.gz.sbom.json
+            opnsense-exporter_Linux_x86_64.tar.gz
+            opnsense-exporter_Linux_x86_64.tar.gz.sbom.json
+            opnsense-exporter_Openbsd_arm64.tar.gz
+            opnsense-exporter_Openbsd_arm64.tar.gz.sbom.json
+            opnsense-exporter_Openbsd_x86_64.tar.gz
+            opnsense-exporter_Openbsd_x86_64.tar.gz.sbom.json
+            opnsense-exporter_Windows_x86_64.zip
+            opnsense-exporter_Windows_x86_64.zip.sbom.json
+          )
+          missing=()
+          for asset in "${required[@]}"; do
+            if ! printf '%s\n' "${actual[@]}" | grep -Fqx "$asset"; then
+              missing+=("$asset")
+            fi
+          done
+          if ((${#missing[@]})); then
+            printf '::error::release %s is missing mandatory asset: %s\n' \
+              "$RELEASE_TAG" "${missing[@]}"
+            exit 1
+          fi
+          printf 'verified %d mandatory assets on %s\n' "${#required[@]}" "$RELEASE_TAG"
+
   # Edge build on every non-release push to main: publishes the :main multi-arch image
   # (replaces the removed docker-build-main job). release_created gates this vs the
   # release publish above, so the two never both run on one push.
