@@ -171,6 +171,34 @@ func TestListenerOversizedTCPFrameCountedAndConnectionSurvives(t *testing.T) {
 	}
 }
 
+// #398: a newline-framed payload above the cap, with no terminator anywhere near
+// it, used to trip a TERMINAL bufio.ErrTooLong — killing the connection so the next
+// valid frame never arrived, and never incrementing Rejected{oversized}. It must
+// instead be skipped and counted exactly once, on a connection that keeps working.
+func TestListenerOversizedNewlineFrameCountedAndConnectionSurvives(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})
+	c := newCollector()
+	l := startListener(t, Config{TCPAddr: "127.0.0.1:0"}, c.handle, m)
+
+	conn, err := net.Dial("tcp", l.TCPAddr())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	n := maxMessageBytes + 1000
+	if _, err := conn.Write([]byte(strings.Repeat("A", n) + "\n<134>good\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := c.await(t, 5*time.Second); got != "<134>good" {
+		t.Fatalf("got %q, want <134>good (an oversized newline frame must not kill the connection)", got)
+	}
+	if got := counterValue(t, reg, "opnsense_exporter_logs_rejected_total", "reason", "oversized"); got != 1 {
+		t.Fatalf("Rejected{oversized} = %v, want 1", got)
+	}
+}
+
 func TestListenerPeerAllowlistUDP(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := logship.NewReceiverMetrics(reg, "syslog", logship.ReceiverVocab{})

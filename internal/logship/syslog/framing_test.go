@@ -126,3 +126,126 @@ func TestScanFramesDegenerateOctetPrefix(t *testing.T) {
 	wantTokens(t, scanAll(t, "12345"), "12345")
 	wantTokens(t, scanAll(t, "123abc\nnext\n"), "123abc", "next")
 }
+
+// #398: a newline-framed payload has NO length prefix, so bufio.Scanner has no way
+// to know a line is oversized until it either finds the terminator or exhausts its
+// buffer. Before the fix, a line over the cap with no '\n' anywhere produced a
+// TERMINAL bufio.ErrTooLong, killing the connection and losing every subsequent
+// frame. The exact boundary (cap-1 fine, cap fine, cap+1 rejected) must hold for
+// LF, CRLF and octet-counted framing alike, with prefix/delimiter overhead never
+// miscounted against the payload.
+func TestScanFramesBoundary(t *testing.T) {
+	good5 := "5 good!" // trailing octet-counted frame used to prove the scan continues
+
+	for _, tc := range []struct {
+		name    string
+		payload int // payload size in bytes
+		delim   string
+		wantOK  bool
+	}{
+		{"LF cap-1", maxMessageBytes - 1, "\n", true},
+		{"LF cap", maxMessageBytes, "\n", true},
+		{"LF cap+1", maxMessageBytes + 1, "\n", false},
+		{"CRLF cap-1", maxMessageBytes - 1, "\r\n", true},
+		{"CRLF cap", maxMessageBytes, "\r\n", true},
+		{"CRLF cap+1", maxMessageBytes + 1, "\r\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.Repeat("A", tc.payload)
+			in := body + tc.delim + good5
+			// The whole payload must be visible to the stateless scanner in one go for
+			// this table (a mid-stream partial-frame is exercised separately below); size
+			// the buffer generously so ScanFrames itself performs the cap check rather
+			// than bufio.Scanner's own ErrTooLong pre-empting it.
+			oversized := 0
+			split := newFrameSplitter(func() { oversized++ })
+			got := scanWith(t, strings.NewReader(in), split.splitFunc(), 4*maxMessageBytes)
+			if tc.wantOK {
+				wantTokens(t, got, body, "good!")
+				if oversized != 0 {
+					t.Fatalf("oversized = %d, want 0 for an exactly-at-cap payload", oversized)
+				}
+			} else {
+				wantTokens(t, got, "good!")
+				if oversized != 1 {
+					t.Fatalf("oversized = %d, want 1", oversized)
+				}
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name    string
+		payload int
+		wantOK  bool
+	}{
+		{"octet-counted cap-1", maxMessageBytes - 1, true},
+		{"octet-counted cap", maxMessageBytes, true},
+		{"octet-counted cap+1", maxMessageBytes + 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := strings.Repeat("B", tc.payload)
+			in := strconv.Itoa(tc.payload) + " " + body + good5
+			oversized := 0
+			split := newFrameSplitter(func() { oversized++ })
+			got := scanWith(t, strings.NewReader(in), split.splitFunc(), 4*maxMessageBytes)
+			if tc.wantOK {
+				wantTokens(t, got, body, "good!")
+				if oversized != 0 {
+					t.Fatalf("oversized = %d, want 0 for an exactly-at-cap payload", oversized)
+				}
+			} else {
+				wantTokens(t, got, "good!")
+				if oversized != 1 {
+					t.Fatalf("oversized = %d, want 1", oversized)
+				}
+			}
+		})
+	}
+}
+
+// A newline-delimited frame with NO terminator anywhere, arriving well beyond the
+// cap before the connection's scanner buffer could hold it all, must be skipped and
+// counted exactly once — never a terminal scanner error — and the next good frame
+// on the same connection must still arrive.
+func TestFrameSplitterSkipsOversizedNewlineFrame(t *testing.T) {
+	n := maxMessageBytes + 1000
+	in := strings.Repeat("A", n) + "\n<134>good\n"
+	oversized := 0
+	split := newFrameSplitter(func() { oversized++ })
+	got := scanWith(t, strings.NewReader(in), split.splitFunc(), maxMessageBytes)
+	wantTokens(t, got, "<134>good")
+	if oversized != 1 {
+		t.Fatalf("oversized count = %d, want 1", oversized)
+	}
+}
+
+// Same, one byte at a time — the newline-skip state must survive arbitrary read
+// boundaries exactly like the octet-counted skip state already does.
+func TestFrameSplitterSkipsOversizedNewlineFrameByteAtATime(t *testing.T) {
+	n := maxMessageBytes + 500
+	in := strings.Repeat("C", n) + "\n<134>good\n"
+	oversized := 0
+	split := newFrameSplitter(func() { oversized++ })
+	got := scanWith(t, iotest.OneByteReader(strings.NewReader(in)), split.splitFunc(), maxMessageBytes)
+	wantTokens(t, got, "<134>good")
+	if oversized != 1 {
+		t.Fatalf("oversized count = %d, want 1", oversized)
+	}
+}
+
+// A newline-delimited frame that never finds its terminator before the connection
+// ends (EOF mid-oversized-line) must not be shipped as a giant token either.
+func TestFrameSplitterOversizedNewlineFrameTruncatedAtEOF(t *testing.T) {
+	n := maxMessageBytes + 200
+	in := strings.Repeat("D", n) // no trailing newline at all
+	oversized := 0
+	split := newFrameSplitter(func() { oversized++ })
+	got := scanWith(t, strings.NewReader(in), split.splitFunc(), maxMessageBytes)
+	if len(got) != 0 {
+		t.Fatalf("got %d tokens, want 0 (an oversized frame with no terminator must never be shipped)", len(got))
+	}
+	if oversized != 1 {
+		t.Fatalf("oversized count = %d, want 1", oversized)
+	}
+}

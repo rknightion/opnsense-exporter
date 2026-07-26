@@ -467,7 +467,11 @@ func (l *Listener) serveConn(conn net.Conn, peer netip.Addr) {
 
 	fs := newFrameSplitter(func() { l.m.Reject("oversized") })
 	sc := bufio.NewScanner(conn)
-	sc.Buffer(make([]byte, 0, 4096), maxMessageBytes)
+	// The max token size must EXCEED maxMessageBytes: a nominally-legal cap-sized
+	// payload still arrives with framing overhead riding alongside it (an
+	// octet-count prefix or a newline delimiter), and a scanner sized to exactly
+	// the payload cap can trip bufio.ErrTooLong on that overhead alone (#398).
+	sc.Buffer(make([]byte, 0, 4096), maxMessageBytes+scannerHeadroom)
 	sc.Split(fs.splitFunc())
 
 	// Multi-line messages arrive as several newline-framed lines and must be rejoined
