@@ -42,7 +42,7 @@ def build(b: Builder):
     )
     zen_blocked = b.ts(
         "Zenarmor Blocks by Category (rate)",
-        [(f'sum by (category) (rate({sel("opnsense_log_events_zenarmor_total")}{{action="block"}}[{RATE}]))',
+        [(f'sum by (category) (rate({sel("opnsense_log_events_zenarmor_total", "action=\"block\"")}[{RATE}]))',
           "{{category}}")],
         unit="short",
         desc="Blocked Zenarmor records per second by category -- application category for "

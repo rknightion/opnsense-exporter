@@ -92,6 +92,13 @@ def panel_for_metric(builder, metric):
     raise AssertionError(f"no panel queries {metric}")
 
 
+def panel_for_title(builder, title):
+    for panel in builder.elements.values():
+        if panel["spec"]["title"] == title:
+            return panel
+    raise AssertionError(f"no panel titled {title}")
+
+
 class DashboardHierarchyTest(unittest.TestCase):
     def test_all_leaf_tabs_are_grouped_exactly_once(self):
         builder = build_dashboard.build_all()
@@ -236,6 +243,25 @@ class RadiusOperationalEventSemanticsTest(unittest.TestCase):
             for query in panel["spec"]["data"]["spec"]["queries"]
         ]
         self.assertFalse(any("username" in expression.lower() for expression in expressions))
+
+
+class ZenarmorQuerySemanticsTest(unittest.TestCase):
+    def test_block_category_rate_uses_one_selector_with_both_matchers(self):
+        builder = build_dashboard.build_all()
+        panel = panel_for_title(builder, "Zenarmor Blocks by Category (rate)")
+        queries = panel["spec"]["data"]["spec"]["queries"]
+        expression = next(
+            query["spec"]["query"]["spec"]["expr"]
+            for query in queries
+            if query["spec"]["refId"] == "A"
+        )
+
+        self.assertIn(
+            'opnsense_log_events_zenarmor_total{'
+            'opnsense_instance=~"$opnsense_instance",'
+            'action="block"}[$__rate_interval]',
+            expression,
+        )
 
 
 if __name__ == "__main__":

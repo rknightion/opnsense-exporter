@@ -152,6 +152,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+          cache-dependency-path: tools/promqlcheck/go.sum
+
       # The builders' own unit tests, run first and named separately so a failure
       # here is not read as a staleness failure. Wired into CI 2026-07-25: they had
       # never run anywhere, and three of sixteen had rotted into failure unnoticed.

@@ -157,6 +157,7 @@ rules:
 grafana-check: grafana-test
 	cd grafana && python3 build_dashboard.py --check
 	cd grafana && python3 build_dashboard.py
+	go run -C tools/promqlcheck . ../../grafana/dashboard.json
 	cd grafana/alerts && python3 build_rules.py
 	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/alerts/grafana-managed/
 	python3 grafana/alerts/validate_manifests.py
@@ -167,6 +168,7 @@ grafana-check: grafana-test
 # which is the same as not having them.
 grafana-test:
 	cd grafana && python3 -m unittest discover -s tests -t . -q
+	go test -C tools/promqlcheck ./...
 
 # Regenerate the committed structure-only golden schemas (opnsense/testdata/schemas/)
 # from the response structs (cmd/apischema). Run after changing any response

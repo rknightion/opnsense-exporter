@@ -73044,7 +73044,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (category) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}{action=\"block\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (category) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\",action=\"block\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{category}}",
                         "instant": false,
