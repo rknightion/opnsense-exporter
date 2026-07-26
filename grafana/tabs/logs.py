@@ -10,17 +10,16 @@ There are deliberately no per-source label panels beyond the low-cardinality
 `source` dimension (one value per registered source, e.g. firewall/ids/audit) —
 the high-cardinality event data itself never becomes a metric.
 
-None of the opnsense_exporter_logs_* metrics carry an opnsense_instance label, so
-every selector here uses b.sel_pipeline (no instance matcher) rather than sel —
-sel's injected opnsense_instance=~"$opnsense_instance" would never match and the
-panel would render empty even with "All" selected.
+Every opnsense_exporter_logs_* metric carries the stable opnsense_instance label,
+so b.sel_pipeline keeps the dashboard's box picker in step with the pipeline
+self-metrics.
 """
 
 from builder import Builder, RATE
 
 
 def build(b: Builder):
-    b.sentinel("has_logs", "label_values(opnsense_exporter_logs_queue_capacity, __name__)")
+    b.sentinel("has_logs", f"label_values({b.sel_pipeline('opnsense_exporter_logs_queue_capacity')}, __name__)")
 
     shipped = b.ts(
         "Records Shipped (rate)",
@@ -48,13 +47,23 @@ def build(b: Builder):
              "depth of the poller->emitter backpressure queue. Approaching capacity precedes "
              "overflow drops.",
     )
+    queue_bytes = b.ts(
+        "Queue Bytes",
+        [(f'{b.sel_pipeline("opnsense_exporter_logs_queue_bytes")}', "queued bytes"),
+         (f'{b.sel_pipeline("opnsense_exporter_logs_queue_max_bytes")}', "max bytes")],
+        unit="bytes",
+        desc="opnsense_exporter_logs_queue_bytes vs opnsense_exporter_logs_queue_max_bytes: "
+             "estimated retained queue memory and its aggregate byte budget. A max of 0 disables "
+             "the byte bound; otherwise this can reach its budget while record depth remains low.",
+    )
 
     ship_errors = b.ts(
         "Sink Errors (rate)",
         [(f'rate({b.sel_pipeline("opnsense_exporter_logs_ship_errors_total")}[{RATE}])', "ship errors")],
         unit="short",
-        desc="opnsense_exporter_logs_ship_errors_total: failed sink Emit calls per second "
-             "(each failed batch is dropped). A dead OTLP endpoint shows up here.",
+        desc="opnsense_exporter_logs_ship_errors_total: sink Emit attempts that did not fully "
+             "deliver per second. The pipeline retries their unacknowledged remainder, so this is "
+             "a retry/degradation signal, not a record-loss counter. A dead OTLP endpoint shows up here.",
     )
     poll_errors = b.ts(
         "Source Poll Errors (rate)",
@@ -63,13 +72,21 @@ def build(b: Builder):
         desc="opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by "
              "source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
     )
-    cursor_lag = b.ts(
-        "Cursor Lag (time since last event)",
-        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_last_event_timestamp_seconds")}', "{{source}}")],
+    received_lag = b.ts(
+        "Source Input Lag",
+        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_last_received_timestamp_seconds")}', "{{source}}")],
         unit="s",
-        desc="Seconds since the most recent shipped event per source, derived from "
-             "opnsense_exporter_logs_last_event_timestamp_seconds. Steady growth on an active "
-             "box indicates the source stopped producing (or the poll is failing).",
+        desc="Seconds since a source last admitted a record to the queue, derived from "
+             "opnsense_exporter_logs_last_received_timestamp_seconds on the exporter clock. "
+             "Steady growth on an active box indicates the source stopped producing or polling.",
+    )
+    exported_lag = b.ts(
+        "Delivery Lag",
+        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_last_exported_timestamp_seconds")}', "{{source}}")],
+        unit="s",
+        desc="Seconds since the sink last acknowledged a record from each source, derived from "
+             "opnsense_exporter_logs_last_exported_timestamp_seconds on the exporter clock. A wide "
+             "gap against Source Input Lag means records are arriving but delivery is retrying or blocked.",
     )
     possible_gaps = b.ts(
         "Possible Sampling Gaps (rate)",
@@ -95,8 +112,8 @@ def build(b: Builder):
           "{{source}} / {{stage}}")],
         unit="short",
         desc="opnsense_exporter_logs_parse_errors_total: received records that failed to parse, "
-             "by source and stage (envelope = not valid RFC5424/RFC3164 syslog; filterlog = a "
-             "malformed pf log row; document = a Zenarmor document that would not decode). These "
+             "by source and stage (syslog envelope = not valid RFC5424/RFC3164; Zenarmor bulk = "
+             "an invalid _bulk envelope; Zenarmor document = one document that would not decode). These "
              "records are NOT dropped -- they ship with their raw body -- so this counts fidelity "
              "lost, not data lost.",
     )
@@ -155,8 +172,8 @@ def build(b: Builder):
 
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),
-        b.row("Queue & Errors", [queue_len, ship_errors, poll_errors], present="has_logs"),
-        b.row("Cursor", [cursor_lag, possible_gaps], present="has_logs"),
+        b.row("Queue & Errors", [queue_len, queue_bytes, ship_errors, poll_errors], present="has_logs"),
+        b.row("Cursor", [received_lag, exported_lag, possible_gaps], present="has_logs"),
         b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
     ])

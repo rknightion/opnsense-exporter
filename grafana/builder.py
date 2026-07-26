@@ -516,10 +516,8 @@ class Builder:
 
     @staticmethod
     def sel_pipeline(metric: str, more: str = "") -> str:
-        """Return metric{<more>} with NO opnsense_instance matcher — for label-less
-        log-derived metrics (the opnsense_exporter_logs_* / log_events family) that
-        carry no such label; `sel()` would render those panels permanently empty."""
-        return f"{metric}{{{more}}}" if more else metric
+        """Return a log-pipeline selector scoped to the stable instance identity."""
+        return sel(metric, more)
 
     # ---- layout ----------------------------------------------------------
     def _place(self, names: list) -> dict:

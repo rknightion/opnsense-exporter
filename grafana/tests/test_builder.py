@@ -20,6 +20,18 @@ def query_model(panel):
 
 
 class QuerySemanticsTest(unittest.TestCase):
+    def test_pipeline_queries_follow_the_stable_opnsense_instance_identity(self):
+        builder = Builder()
+
+        self.assertEqual(
+            builder.sel_pipeline("opnsense_exporter_logs_queue_length"),
+            'opnsense_exporter_logs_queue_length{opnsense_instance=~"$opnsense_instance"}',
+        )
+        self.assertEqual(
+            builder.sel_pipeline("opnsense_exporter_logs_dropped_total", 'reason="overflow"'),
+            'opnsense_exporter_logs_dropped_total{opnsense_instance=~"$opnsense_instance",reason="overflow"}',
+        )
+
     def test_prometheus_query_preserves_exporter_instance_while_removing_deployment_labels(self):
         builder = Builder()
 

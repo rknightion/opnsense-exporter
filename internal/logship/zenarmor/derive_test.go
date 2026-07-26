@@ -11,19 +11,35 @@ import (
 // captureSink records the observations handed to it. Only ObserveZenarmor is
 // exercised here; the rest satisfy the interface.
 type captureSink struct {
-	got []logship.ZenarmorObservation
+	got    []logship.ZenarmorObservation
+	reject bool
 }
 
-func (s *captureSink) ObserveZenarmor(o logship.ZenarmorObservation) { s.got = append(s.got, o) }
+func (s *captureSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
+	s.got = append(s.got, o)
+	return !s.reject
+}
 
-func (s *captureSink) ObserveFirewall(_, _, _, _, _ string) {}
-func (s *captureSink) ObserveHAProxy(_, _, _, _, _ string)  {}
-func (s *captureSink) ObserveSSHD(_, _, _ string)           {}
-func (s *captureSink) ObserveDHCP(_, _, _ string)           {}
-func (s *captureSink) ObserveAudit(_, _ string)             {}
-func (s *captureSink) ObserveIDS(_, _, _, _ string)         {}
+func (s *captureSink) ObserveFirewall(_, _, _, _, _ string) bool { return true }
+func (s *captureSink) ObserveHAProxy(_, _, _, _, _ string) bool  { return true }
+func (s *captureSink) ObserveSSHD(_, _, _ string) bool           { return true }
+func (s *captureSink) ObserveDHCP(_, _, _ string) bool           { return true }
+func (s *captureSink) ObserveAudit(_, _ string) bool             { return true }
+func (s *captureSink) ObserveIDS(_, _, _, _ string) bool         { return true }
 
 var _ logship.MetricSink = (*captureSink)(nil)
+
+func TestObserveDerivedPropagatesSinkAcceptance(t *testing.T) {
+	accepted := &captureSink{}
+	if !observeDerived(accepted, "flow", map[string]string{}) {
+		t.Fatal("accepted observation reported false")
+	}
+
+	rejected := &captureSink{reject: true}
+	if observeDerived(rejected, "flow", map[string]string{}) {
+		t.Fatal("rejected observation reported true")
+	}
+}
 
 func (s *captureSink) only(t *testing.T) logship.ZenarmorObservation {
 	t.Helper()

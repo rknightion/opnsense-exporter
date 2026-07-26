@@ -398,41 +398,53 @@ Watch capture activity with `logs_debug_captured_total{receiver,kind}` and
 
 ## Configuration
 
-The pipeline flags are listed in the [Configuration reference](configuration.md);
-the pipeline-level flags are `--logs.enabled`, `--logs.sink`,
-`--logs.poll-interval` (floor 5s), `--logs.buffer-size`, `--logs.batch-max`, and
-`--logs.state-file`. Per-source `--logs.<source>.enabled` flags are documented
-alongside each source above as it lands.
+The pipeline flags are listed in the [Configuration reference](configuration.md).
+The complete top-level pipeline set is `--logs.enabled`, `--logs.sink`,
+`--logs.poll-interval` (floor 5s), `--logs.buffer-size`,
+`--logs.buffer-max-bytes`, `--logs.batch-max`, `--logs.max-record-bytes`,
+`--logs.ship-max-attempts`, `--logs.max-metric-keys`, and `--logs.state-file`.
+Per-source `--logs.<source>.enabled` flags are documented alongside each source
+above as they land.
 
 ## Self-metrics
 
 The pipeline exposes its own health metrics (visible at `/metrics` and on the
-**Log Shipping** dashboard tab). Every series also carries
-`opnsense_instance`, matching the collector metrics:
+**Log Shipping** dashboard tab). Every series carries the stable
+`opnsense_instance` identity label, matching the collector metrics. The remaining
+labels are listed exactly below; `source`, `reason`, `stage`, `table`, `receiver`,
+`kind`, and `rule` are not substitutes for that box identity.
 
 - `opnsense_exporter_logs_shipped_total{source}` - records the sink confirmed exported
   (an acknowledged OTLP delivery, not merely enqueued).
 - `opnsense_exporter_logs_dropped_total{source,reason}` - records dropped before
-  delivery (`reason=overflow` = queue full; `reason=record_too_large` = rejected at
-  ingest; `reason=rejected` = terminal destination refusal;
-  `reason=ship_failed_permanent` = bounded retries exhausted; `reason=ship_failed` =
-  shutdown abandoned the retryable remainder).
+  delivery. Its closed `reason` values are `overflow` (the count or byte queue bound
+  evicted the oldest record), `record_too_large` (rejected at ingest), `rejected`
+  (terminal destination refusal), `ship_failed_permanent` (the configured retry bound
+  was exhausted), and `ship_failed` (shutdown abandoned the retryable remainder).
 - `opnsense_exporter_logs_ship_errors_total` - attempts that did not fully deliver.
   Acknowledged partitions are removed before retry, so this is an attempt counter rather
   than a record-loss counter.
 - `opnsense_exporter_logs_poll_errors_total{source}` - source poll failures.
 - `opnsense_exporter_logs_last_received_timestamp_seconds{source}` - exporter-clock
-  time when this source most recently admitted a record to the queue.
+  time when this source most recently **admitted** a record to the queue: source-input
+  liveness, not an origin event timestamp.
 - `opnsense_exporter_logs_last_exported_timestamp_seconds{source}` - exporter-clock
-  time when the sink most recently acknowledged a record from this source.
+  time when the sink most recently **acknowledged** a record from this source: delivery
+  liveness, not queue admission or an origin event timestamp.
 - `opnsense_exporter_logs_queue_length` / `opnsense_exporter_logs_queue_capacity` -
-  backpressure queue depth and capacity.
-- `opnsense_exporter_logs_parse_errors_total{stage}` - lines that failed to parse
-  (`stage=envelope` or `stage=filterlog`). These are **not** dropped: they ship with
-  their raw body, so this counts fidelity lost, not data lost.
-- `opnsense_exporter_logs_rejected_total{reason}` - syslog input refused before
-  parsing (`reason=peer` for a sender outside `--logs.syslog.allowed-peers`,
-  `reason=oversized` for a frame beyond the 64KB cap).
+  record depth and configured record-count capacity; `opnsense_exporter_logs_queue_bytes`
+  / `opnsense_exporter_logs_queue_max_bytes` are retained bytes and the aggregate byte
+  budget (a max of 0 disables the byte bound).
+- `opnsense_exporter_logs_parse_errors_total{source,stage}` - lines that failed to
+  parse. Its closed stages are syslog `envelope` and Zenarmor `bulk` / `document`.
+  These are **not** dropped: they ship with their raw body, so this counts fidelity
+  lost, not data lost.
+- `opnsense_exporter_logs_rejected_total{source,reason}` - receiver input refused
+  before shipping. Closed syslog reasons are `peer`, `oversized`, `filtered`,
+  `sampled`, `conn_limit`, `tls_timeout`, `tls_auth_failed`, and `tls_deadline_error`;
+  closed Zenarmor reasons are `peer`, `auth`, `unhandled_endpoint`, `body`,
+  `overloaded`, `index_limit`, `unknown_family`, `filtered`, `self_traffic`, and
+  `excluded`.
 - `opnsense_exporter_logs_enrich_misses_total{table}` - enrichment lookups that
   missed. A steady rate on `table=rules` means the snapshot is behind the box's
   ruleset.
@@ -442,6 +454,11 @@ The pipeline exposes its own health metrics (visible at `/metrics` and on the
 - `opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds{table}` - when each
   lookup table last refreshed successfully. Alert on
   `time() - ...` to catch a silently-stale cache.
+- `opnsense_exporter_logs_possible_gap_total{source}` - a bounded-window source found
+  no continuity with its previous cursor, so an unknown amount may have been skipped.
+- `opnsense_exporter_logs_resource_capped_total` - records shipped without their
+  `opnsense.*` index labels because the resource-label budget was exceeded; the record
+  still arrives, but label-scoped queries under-report.
 - `opnsense_exporter_logs_debug_captured_total{receiver,kind}` - unmodelled signals
   written to the debug-capture dir (see [Debug capture](#debug-capture)). Zero unless
   capture is enabled.
@@ -450,6 +467,19 @@ The pipeline exposes its own health metrics (visible at `/metrics` and on the
   `reason=cap_reached` (`--logs.debug-capture.max-bytes` hit; capture paused),
   `reason=write_error`, `reason=duplicate_shape` (a repeat of a message shape already
   captured this window - see below).
+- `opnsense_exporter_logs_zenarmor_excluded_total{rule}` - Zenarmor records dropped
+  by each configured exclusion rule; this is docs-only because it is a deliberate
+  operator-configured blind spot, not a general pipeline-health panel.
+- `opnsense_exporter_logs_zenarmor_bulk_requests_total` /
+  `opnsense_exporter_logs_zenarmor_bulk_bytes_total` - accepted Zenarmor `_bulk`
+  request count and decompressed request bytes; these are docs-only receiver-volume
+  diagnostics.
+
+`opnsense_log_events_observation_dropped_total{reason}` is **not a Log Shipping
+pipeline self-metric**. It belongs to the separate Log-derived Events collector's
+bounded receiver-to-collector handoff. It is documented in the generated metric
+reference and shown on the **Log-derived Events** tab, rather than the Log Shipping
+tab, with the closed reason `handoff_full`.
 
 ### Why the syslog capture keeps one example per shape
 

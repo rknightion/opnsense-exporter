@@ -14,13 +14,13 @@ import (
 // ja3, session_id, community_id, conn_uuid, server_name, uri, query — must never
 // reach a label. They stay on the shipped record, where they are still filterable.
 //
-// Unlike syslog's observeDerived this reports nothing back: there is no sampling
-// gate to feed, and every document is counted under its family even when the
-// document itself did not parse, so sum(rate(...zenarmor_total)) stays equal to the
-// document rate rather than quietly under-reporting the broken ones.
-func observeDerived(sink logship.MetricSink, family string, attrs map[string]string) {
+// Unlike syslog, Zenarmor does not sample raw records, but the acceptance result is
+// still propagated so callers and tests cannot mistake a full handoff for a counted
+// observation. Every document is offered under its family even when parsing failed,
+// so sum(rate(...zenarmor_total)) stays equal to the accepted document rate.
+func observeDerived(sink logship.MetricSink, family string, attrs map[string]string) bool {
 	if sink == nil {
-		return
+		return false
 	}
 	o := logship.ZenarmorObservation{
 		Family: family,
@@ -42,7 +42,7 @@ func observeDerived(sink logship.MetricSink, family string, attrs map[string]str
 		o.Category = attrs[attrAlertCategory]
 		o.Severity = attrs[attrAlertSeverity]
 	}
-	sink.ObserveZenarmor(o)
+	return sink.ObserveZenarmor(o)
 }
 
 // statusClass buckets an HTTP status code into "2xx".."5xx". Empty or unparseable

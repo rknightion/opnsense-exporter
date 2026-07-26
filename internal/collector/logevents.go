@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
@@ -55,16 +56,63 @@ const (
 	logFamilyAudit    = "audit"
 	logFamilyIDS      = "ids"
 	logFamilyZenarmor = "zenarmor"
+
+	// logEventObservationDropReasonHandoffFull is deliberately code-defined: it
+	// describes the only possible receiver-side refusal, never an unbounded value
+	// received from a log record.
+	logEventObservationDropReasonHandoffFull = "handoff_full"
 )
 
 // defaultMaxLogEventKeys is the per-family key budget a store starts with, matching
 // the default of --logs.max-metric-keys. main overrides it via SetMaxKeys once flags
 // are parsed; this value only governs the window before that call, and exists so the
 // store is never unbounded by accident.
-const defaultMaxLogEventKeys = 5000
+const (
+	defaultMaxLogEventKeys = 5000
+	// logEventHandoffCapacity covers a sizeable burst while keeping admission
+	// bounded and preallocated. Receiver calls never wait: once this queue is full,
+	// they return false and retain any sample-eligible raw record.
+	logEventHandoffCapacity = 65536
+)
 
-// LogEventStore holds the monotonic per-family counters. Observe* run on the
-// receiver read goroutine; the collector reads under the same mutex at scrape time.
+type logEventCommandKind uint8
+
+const (
+	logEventObserveFirewall logEventCommandKind = iota
+	logEventObserveHAProxy
+	logEventObserveSSHD
+	logEventObserveDHCP
+	logEventObserveAudit
+	logEventObserveIDS
+	logEventObserveZenarmor
+	logEventSetMaxKeys
+	logEventTakeSnapshot
+	logEventSync
+)
+
+type logEventCommand struct {
+	kind     logEventCommandKind
+	values   [7]string
+	maxKeys  int
+	snapshot chan<- logEventSnapshot
+	ack      chan<- struct{}
+}
+
+type logEventSnapshot struct {
+	fw      []keyed[fwKey]
+	ha      []keyed[haKey]
+	ssh     []keyed[sshKey]
+	dhcp    []keyed[dhcpKey]
+	audit   []keyed[auditKey]
+	ids     []keyed[idsKey]
+	zen     []keyed[zenKey]
+	sat     []familySaturation
+	dropped uint64
+}
+
+// LogEventStore hands receiver observations to one goroutine that owns every map.
+// Observe* only performs a non-blocking send to the bounded, preallocated queue;
+// scrape snapshots and configuration changes are ordered commands on that queue.
 // Totals reset to zero only on process restart, like any process counter.
 //
 // Each family is a cappedCounter with a per-family INSERT-TIME key budget
@@ -79,26 +127,46 @@ const defaultMaxLogEventKeys = 5000
 // overflow total emitted as opnsense_log_events_cardinality_capped_total, so the
 // live series plus the overflow still sum to the true observed count.
 type LogEventStore struct {
-	mu    sync.Mutex
-	fw    *cappedCounter[fwKey]
-	ha    *cappedCounter[haKey]
-	ssh   *cappedCounter[sshKey]
-	dhcp  *cappedCounter[dhcpKey]
-	audit *cappedCounter[auditKey]
-	ids   *cappedCounter[idsKey]
-	zen   *cappedCounter[zenKey]
+	commands chan logEventCommand
+	stop     chan struct{}
+	done     chan struct{}
+	close    sync.Once
+	// beforeSnapshot is a test seam used to hold the map-owning goroutine in actual
+	// snapshot work. Production stores leave it nil.
+	beforeSnapshot func()
+
+	// observationDrops counts observations refused only because the bounded handoff
+	// was full. It is atomic so recording saturation is itself non-blocking.
+	observationDrops atomic.Uint64
+	fw               *cappedCounter[fwKey]
+	ha               *cappedCounter[haKey]
+	ssh              *cappedCounter[sshKey]
+	dhcp             *cappedCounter[dhcpKey]
+	audit            *cappedCounter[auditKey]
+	ids              *cappedCounter[idsKey]
+	zen              *cappedCounter[zenKey]
 }
 
 func newLogEventStore() *LogEventStore {
-	return &LogEventStore{
-		fw:    newCappedCounter[fwKey](defaultMaxLogEventKeys),
-		ha:    newCappedCounter[haKey](defaultMaxLogEventKeys),
-		ssh:   newCappedCounter[sshKey](defaultMaxLogEventKeys),
-		dhcp:  newCappedCounter[dhcpKey](defaultMaxLogEventKeys),
-		audit: newCappedCounter[auditKey](defaultMaxLogEventKeys),
-		ids:   newCappedCounter[idsKey](defaultMaxLogEventKeys),
-		zen:   newCappedCounter[zenKey](defaultMaxLogEventKeys),
+	return newLogEventStoreWithCapacity(logEventHandoffCapacity, nil)
+}
+
+func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEventStore {
+	s := &LogEventStore{
+		commands:       make(chan logEventCommand, capacity),
+		stop:           make(chan struct{}),
+		done:           make(chan struct{}),
+		beforeSnapshot: beforeSnapshot,
+		fw:             newCappedCounter[fwKey](defaultMaxLogEventKeys),
+		ha:             newCappedCounter[haKey](defaultMaxLogEventKeys),
+		ssh:            newCappedCounter[sshKey](defaultMaxLogEventKeys),
+		dhcp:           newCappedCounter[dhcpKey](defaultMaxLogEventKeys),
+		audit:          newCappedCounter[auditKey](defaultMaxLogEventKeys),
+		ids:            newCappedCounter[idsKey](defaultMaxLogEventKeys),
+		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 	}
+	go s.run()
+	return s
 }
 
 // SetMaxKeys applies the per-family key budget from --logs.max-metric-keys; 0
@@ -109,64 +177,176 @@ func newLogEventStore() *LogEventStore {
 //
 // Lowering it does not evict tuples already tracked — see cappedCounter.setMax.
 func (s *LogEventStore) SetMaxKeys(max int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.fw.setMax(max)
-	s.ha.setMax(max)
-	s.ssh.setMax(max)
-	s.dhcp.setMax(max)
-	s.audit.setMax(max)
-	s.ids.setMax(max)
-	s.zen.setMax(max)
+	ack := make(chan struct{})
+	if !s.sendControl(logEventCommand{kind: logEventSetMaxKeys, maxKeys: max, ack: ack}) {
+		return
+	}
+	select {
+	case <-ack:
+	case <-s.stop:
+	}
+}
+
+func (s *LogEventStore) sendControl(cmd logEventCommand) bool {
+	select {
+	case s.commands <- cmd:
+		return true
+	case <-s.stop:
+		return false
+	}
+}
+
+func (s *LogEventStore) observe(cmd logEventCommand) bool {
+	select {
+	case <-s.stop:
+		return false
+	default:
+	}
+	select {
+	case s.commands <- cmd:
+		return true
+	default:
+		s.observationDrops.Add(1)
+		return false
+	}
 }
 
 // ObserveFirewall implements logship.MetricSink.
-func (s *LogEventStore) ObserveFirewall(action, iface, ruleID, ruleName, scope string) {
-	s.mu.Lock()
-	s.fw.inc(fwKey{action, iface, ruleID, ruleName, scope})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveFirewall(action, iface, ruleID, ruleName, scope string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveFirewall, values: [7]string{action, iface, ruleID, ruleName, scope}})
 }
 
 // ObserveHAProxy implements logship.MetricSink.
-func (s *LogEventStore) ObserveHAProxy(event, backend, server, state, statusClass string) {
-	s.mu.Lock()
-	s.ha.inc(haKey{event, backend, server, state, statusClass})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveHAProxy(event, backend, server, state, statusClass string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveHAProxy, values: [7]string{event, backend, server, state, statusClass}})
 }
 
 // ObserveSSHD implements logship.MetricSink.
-func (s *LogEventStore) ObserveSSHD(result, method, scope string) {
-	s.mu.Lock()
-	s.ssh.inc(sshKey{result, method, scope})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveSSHD(result, method, scope string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveSSHD, values: [7]string{result, method, scope}})
 }
 
 // ObserveDHCP implements logship.MetricSink.
-func (s *LogEventStore) ObserveDHCP(action, iface, server string) {
-	s.mu.Lock()
-	s.dhcp.inc(dhcpKey{action, iface, server})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveDHCP(action, iface, server string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveDHCP, values: [7]string{action, iface, server}})
 }
 
 // ObserveAudit implements logship.MetricSink.
-func (s *LogEventStore) ObserveAudit(event, result string) {
-	s.mu.Lock()
-	s.audit.inc(auditKey{event, result})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveAudit(event, result string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveAudit, values: [7]string{event, result}})
 }
 
 // ObserveIDS implements logship.MetricSink.
-func (s *LogEventStore) ObserveIDS(eventType, action, category, severity string) {
-	s.mu.Lock()
-	s.ids.inc(idsKey{eventType, action, category, severity})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveIDS(eventType, action, category, severity string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveIDS, values: [7]string{eventType, action, category, severity}})
 }
 
 // ObserveZenarmor implements logship.MetricSink.
-func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) {
-	s.mu.Lock()
-	s.zen.inc(zenKey{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass})
-	s.mu.Unlock()
+func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
+	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
+}
+
+func (s *LogEventStore) run() {
+	defer close(s.done)
+	for {
+		select {
+		case cmd := <-s.commands:
+			s.apply(cmd)
+		case <-s.stop:
+			return
+		}
+	}
+}
+
+func (s *LogEventStore) apply(cmd logEventCommand) {
+	v := cmd.values
+	switch cmd.kind {
+	case logEventObserveFirewall:
+		s.fw.inc(fwKey{v[0], v[1], v[2], v[3], v[4]})
+	case logEventObserveHAProxy:
+		s.ha.inc(haKey{v[0], v[1], v[2], v[3], v[4]})
+	case logEventObserveSSHD:
+		s.ssh.inc(sshKey{v[0], v[1], v[2]})
+	case logEventObserveDHCP:
+		s.dhcp.inc(dhcpKey{v[0], v[1], v[2]})
+	case logEventObserveAudit:
+		s.audit.inc(auditKey{v[0], v[1]})
+	case logEventObserveIDS:
+		s.ids.inc(idsKey{v[0], v[1], v[2], v[3]})
+	case logEventObserveZenarmor:
+		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
+	case logEventSetMaxKeys:
+		s.fw.setMax(cmd.maxKeys)
+		s.ha.setMax(cmd.maxKeys)
+		s.ssh.setMax(cmd.maxKeys)
+		s.dhcp.setMax(cmd.maxKeys)
+		s.audit.setMax(cmd.maxKeys)
+		s.ids.setMax(cmd.maxKeys)
+		s.zen.setMax(cmd.maxKeys)
+		close(cmd.ack)
+	case logEventTakeSnapshot:
+		if s.beforeSnapshot != nil {
+			s.beforeSnapshot()
+		}
+		cmd.snapshot <- s.buildSnapshot()
+	case logEventSync:
+		close(cmd.ack)
+	}
+}
+
+func (s *LogEventStore) buildSnapshot() logEventSnapshot {
+	var snap logEventSnapshot
+	var sat familySaturation
+	snap.fw, sat = drainFamily(logFamilyFirewall, s.fw)
+	snap.sat = append(snap.sat, sat)
+	snap.ha, sat = drainFamily(logFamilyHAProxy, s.ha)
+	snap.sat = append(snap.sat, sat)
+	snap.ssh, sat = drainFamily(logFamilySSHD, s.ssh)
+	snap.sat = append(snap.sat, sat)
+	snap.dhcp, sat = drainFamily(logFamilyDHCP, s.dhcp)
+	snap.sat = append(snap.sat, sat)
+	snap.audit, sat = drainFamily(logFamilyAudit, s.audit)
+	snap.sat = append(snap.sat, sat)
+	snap.ids, sat = drainFamily(logFamilyIDS, s.ids)
+	snap.sat = append(snap.sat, sat)
+	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
+	snap.sat = append(snap.sat, sat)
+	snap.dropped = s.observationDrops.Load()
+	return snap
+}
+
+func (s *LogEventStore) snapshot() (logEventSnapshot, bool) {
+	reply := make(chan logEventSnapshot, 1)
+	if !s.sendControl(logEventCommand{kind: logEventTakeSnapshot, snapshot: reply}) {
+		return logEventSnapshot{}, false
+	}
+	select {
+	case snap := <-reply:
+		return snap, true
+	case <-s.stop:
+		return logEventSnapshot{}, false
+	}
+}
+
+func (s *LogEventStore) sync() {
+	ack := make(chan struct{})
+	if !s.sendControl(logEventCommand{kind: logEventSync, ack: ack}) {
+		return
+	}
+	select {
+	case <-ack:
+	case <-s.stop:
+	}
+}
+
+func (s *LogEventStore) Close() {
+	s.close.Do(func() {
+		// Close is called only after receiver producers have stopped. Drain every
+		// observation they were told was accepted before terminating the owner.
+		s.sync()
+		close(s.stop)
+	})
+	<-s.done
 }
 
 type logEventsCollector struct {
@@ -183,8 +363,9 @@ type logEventsCollector struct {
 	ids      *prometheus.Desc
 	zenarmor *prometheus.Desc
 
-	capped *prometheus.Desc
-	keys   *prometheus.Desc
+	capped  *prometheus.Desc
+	keys    *prometheus.Desc
+	dropped *prometheus.Desc
 }
 
 func init() {
@@ -255,6 +436,10 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"this only grows within a process lifetime.",
 		[]string{"family"},
 	)
+	c.dropped = buildPrometheusDesc(c.subsystem, "observation_dropped_total",
+		"Derived log-metric observations refused by the non-blocking receiver handoff. A refused syslog observation retains its raw record so sampling cannot discard an uncounted event.",
+		[]string{"reason"},
+	)
 }
 
 func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -267,6 +452,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.zenarmor
 	ch <- c.capped
 	ch <- c.keys
+	ch <- c.dropped
 }
 
 // keyed is one family's series: a label tuple and its running total, copied out of
@@ -283,9 +469,8 @@ type familySaturation struct {
 	keys   float64
 }
 
-// drainFamily copies one family's live series and its saturation state out of the
-// store. The CALLER holds the store mutex — cappedCounter is not internally locked,
-// and snapshot returns the live map, so the copy must happen before the unlock.
+// drainFamily copies one family's live series and saturation state. It only runs on
+// the store's map-owning goroutine.
 func drainFamily[K comparable](family string, c *cappedCounter[K]) ([]keyed[K], familySaturation) {
 	m, overflow := c.snapshot()
 	out := make([]keyed[K], 0, len(m))
@@ -297,61 +482,48 @@ func drainFamily[K comparable](family string, c *cappedCounter[K]) ([]keyed[K], 
 
 // Update emits the current running totals as const counter metrics. It ignores the
 // client: this collector never calls the API — the syslog receiver feeds the store.
-// The maps are snapshotted under lock and emitted after unlocking, so a slow metric
-// channel can never stall an Observe call on the receiver goroutine.
+// The map owner produces an immutable snapshot before emission. A slow metric
+// channel cannot stall receiver admission; only a full bounded handoff can refuse it.
 func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
-	var sat []familySaturation
-
-	c.store.mu.Lock()
-	fw, s := drainFamily(logFamilyFirewall, c.store.fw)
-	sat = append(sat, s)
-	ha, s := drainFamily(logFamilyHAProxy, c.store.ha)
-	sat = append(sat, s)
-	ssh, s := drainFamily(logFamilySSHD, c.store.ssh)
-	sat = append(sat, s)
-	dhcp, s := drainFamily(logFamilyDHCP, c.store.dhcp)
-	sat = append(sat, s)
-	audit, s := drainFamily(logFamilyAudit, c.store.audit)
-	sat = append(sat, s)
-	ids, s := drainFamily(logFamilyIDS, c.store.ids)
-	sat = append(sat, s)
-	zen, s := drainFamily(logFamilyZenarmor, c.store.zen)
-	sat = append(sat, s)
-	c.store.mu.Unlock()
+	snap, ok := c.store.snapshot()
+	if !ok {
+		return nil
+	}
 
 	// Published for every family on every scrape, including the zeros: a saturation
 	// counter that only materialises once it is non-zero cannot be alerted on until
 	// after it has already mattered.
-	for _, f := range sat {
+	for _, f := range snap.sat {
 		ch <- prometheus.MustNewConstMetric(c.capped, prometheus.CounterValue, f.capped, f.family, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.keys, prometheus.GaugeValue, f.keys, f.family, c.instance)
 	}
+	ch <- prometheus.MustNewConstMetric(c.dropped, prometheus.CounterValue, float64(snap.dropped), logEventObservationDropReasonHandoffFull, c.instance)
 
-	for _, p := range fw {
+	for _, p := range snap.fw {
 		ch <- prometheus.MustNewConstMetric(c.firewall, prometheus.CounterValue, p.v,
 			p.k.action, p.k.iface, p.k.ruleID, p.k.ruleName, p.k.scope, c.instance)
 	}
-	for _, p := range ha {
+	for _, p := range snap.ha {
 		ch <- prometheus.MustNewConstMetric(c.haproxy, prometheus.CounterValue, p.v,
 			p.k.event, p.k.backend, p.k.server, p.k.state, p.k.statusClass, c.instance)
 	}
-	for _, p := range ssh {
+	for _, p := range snap.ssh {
 		ch <- prometheus.MustNewConstMetric(c.sshd, prometheus.CounterValue, p.v,
 			p.k.result, p.k.method, p.k.scope, c.instance)
 	}
-	for _, p := range dhcp {
+	for _, p := range snap.dhcp {
 		ch <- prometheus.MustNewConstMetric(c.dhcp, prometheus.CounterValue, p.v,
 			p.k.action, p.k.iface, p.k.server, c.instance)
 	}
-	for _, p := range audit {
+	for _, p := range snap.audit {
 		ch <- prometheus.MustNewConstMetric(c.audit, prometheus.CounterValue, p.v,
 			p.k.event, p.k.result, c.instance)
 	}
-	for _, p := range ids {
+	for _, p := range snap.ids {
 		ch <- prometheus.MustNewConstMetric(c.ids, prometheus.CounterValue, p.v,
 			p.k.eventType, p.k.action, p.k.category, p.k.severity, c.instance)
 	}
-	for _, p := range zen {
+	for _, p := range snap.zen {
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,
 			p.k.family, p.k.action, p.k.category, p.k.iface, p.k.rcode, p.k.severity,
 			p.k.statusClass, c.instance)

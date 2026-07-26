@@ -28,28 +28,30 @@ package logship
 // refused tuples into a counted overflow rather than dropping them.
 //
 // Calls happen on the receiver read goroutine, so an implementation must be
-// non-blocking and safe for concurrent use with its own scrape-time reads.
+// non-blocking and safe for concurrent use with its own scrape-time reads. A false
+// result means the observation was not accepted; callers that sample raw records
+// must retain that record rather than treating its total as safely captured.
 type MetricSink interface {
 	// ObserveFirewall counts one filterlog line. ruleID is the OPNsense rule id
 	// (rid) or the rulenr ref; ruleName is the rule's description text used as its
 	// human name (1:1 with ruleID, so it does not multiply cardinality).
-	ObserveFirewall(action, iface, ruleID, ruleName, scope string)
+	ObserveFirewall(action, iface, ruleID, ruleName, scope string) bool
 	// ObserveHAProxy counts one HAProxy line. statusClass is "2xx"/"3xx"/"4xx"/"5xx"
 	// or "" when the line carries no HTTP status.
-	ObserveHAProxy(event, backend, server, state, statusClass string)
+	ObserveHAProxy(event, backend, server, state, statusClass string) bool
 	// ObserveSSHD counts one sshd auth line (result = accepted/failed/invalid-user/…).
-	ObserveSSHD(result, method, scope string)
+	ObserveSSHD(result, method, scope string) bool
 	// ObserveDHCP counts one DHCP lease line (action = ack/nak/offer/…).
-	ObserveDHCP(action, iface, server string)
+	ObserveDHCP(action, iface, server string) bool
 	// ObserveAudit counts one audit line (event = config_change/authorization/…).
-	ObserveAudit(event, result string)
+	ObserveAudit(event, result string) bool
 	// ObserveIDS counts one Suricata EVE line. sid and signature text are NEVER
 	// passed. eventType, action and severity are closed vocabularies resolved by the
 	// deriver; category is the rule author's own text and is bounded only by the
 	// implementation's key budget.
-	ObserveIDS(eventType, action, category, severity string)
+	ObserveIDS(eventType, action, category, severity string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
-	ObserveZenarmor(o ZenarmorObservation)
+	ObserveZenarmor(o ZenarmorObservation) bool
 }
 
 // ZenarmorObservation carries the seven dimensions of one Zenarmor record that may
@@ -90,10 +92,10 @@ type ZenarmorObservation struct {
 // log_events collector is turned off). Every method is a no-op.
 type NopMetricSink struct{}
 
-func (NopMetricSink) ObserveFirewall(_, _, _, _, _ string)  {}
-func (NopMetricSink) ObserveHAProxy(_, _, _, _, _ string)   {}
-func (NopMetricSink) ObserveSSHD(_, _, _ string)            {}
-func (NopMetricSink) ObserveDHCP(_, _, _ string)            {}
-func (NopMetricSink) ObserveAudit(_, _ string)              {}
-func (NopMetricSink) ObserveIDS(_, _, _, _ string)          {}
-func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) {}
+func (NopMetricSink) ObserveFirewall(_, _, _, _, _ string) bool  { return true }
+func (NopMetricSink) ObserveHAProxy(_, _, _, _, _ string) bool   { return true }
+func (NopMetricSink) ObserveSSHD(_, _, _ string) bool            { return true }
+func (NopMetricSink) ObserveDHCP(_, _, _ string) bool            { return true }
+func (NopMetricSink) ObserveAudit(_, _ string) bool              { return true }
+func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool          { return true }
+func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

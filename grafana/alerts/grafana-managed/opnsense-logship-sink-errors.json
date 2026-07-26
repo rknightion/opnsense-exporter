@@ -22,8 +22,8 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense log-shipping sink errors ({{ $labels.instance }})",
-      "description": "The log-shipping sink (OTLP/Loki) has been failing Emit calls for 10m \u2014 shipped records are being lost. Grouped by instance, not opnsense_instance: the opnsense_exporter_logs_* family carries no opnsense_instance label.",
+      "summary": "OPNsense log-shipping sink retrying ({{ $labels.opnsense_instance }})",
+      "description": "The log-shipping sink (OTLP/Loki) has had failed Emit attempts for 10m. The unacknowledged remainder is in retry/degradation, not proof of counted record loss. Check OPNsenseLogShipCountedLoss separately.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (instance) (rate(opnsense_exporter_logs_ship_errors_total[5m]))",
+          "expr": "sum by (opnsense_instance) (rate(opnsense_exporter_logs_ship_errors_total[5m]))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

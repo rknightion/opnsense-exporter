@@ -156,5 +156,41 @@ class OverviewSemanticsTest(unittest.TestCase):
         self.assertEqual(options["2"]["text"], "OK")
 
 
+class LogShippingSemanticsTest(unittest.TestCase):
+    def test_queue_and_delivery_panels_follow_the_bounded_acknowledged_pipeline_contract(self):
+        builder = build_dashboard.build_all()
+
+        queue_count = panel_for_metric(builder, "opnsense_exporter_logs_queue_length")
+        count_exprs = [
+            query["spec"]["query"]["spec"]["expr"]
+            for query in queue_count["spec"]["data"]["spec"]["queries"]
+        ]
+        self.assertTrue(any("opnsense_exporter_logs_queue_length" in expr for expr in count_exprs))
+        self.assertTrue(any("opnsense_exporter_logs_queue_capacity" in expr for expr in count_exprs))
+
+        queue_bytes = panel_for_metric(builder, "opnsense_exporter_logs_queue_bytes")
+        byte_exprs = [
+            query["spec"]["query"]["spec"]["expr"]
+            for query in queue_bytes["spec"]["data"]["spec"]["queries"]
+        ]
+        self.assertTrue(any("opnsense_exporter_logs_queue_bytes" in expr for expr in byte_exprs))
+        self.assertTrue(any("opnsense_exporter_logs_queue_max_bytes" in expr for expr in byte_exprs))
+
+        ship_errors = panel_for_metric(builder, "opnsense_exporter_logs_ship_errors_total")
+        description = ship_errors["spec"]["description"]
+        self.assertIn("retry", description.lower())
+        self.assertNotIn("dropped", description.lower())
+
+        received = panel_for_metric(builder, "opnsense_exporter_logs_last_received_timestamp_seconds")
+        exported = panel_for_metric(builder, "opnsense_exporter_logs_last_exported_timestamp_seconds")
+        self.assertIn("admitted", received["spec"]["description"].lower())
+        self.assertIn("acknowledged", exported["spec"]["description"].lower())
+
+        observation_dropped = panel_for_metric(
+            builder, "opnsense_log_events_observation_dropped_total"
+        )
+        self.assertIn("handoff_full", observation_dropped["spec"]["description"])
+
+
 if __name__ == "__main__":
     unittest.main()

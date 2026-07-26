@@ -17,35 +17,48 @@ type fakeCall struct {
 	args   []string
 }
 
-func (f *fakeSink) ObserveFirewall(action, iface, ruleID, ruleName, scope string) {
+func (f *fakeSink) ObserveFirewall(action, iface, ruleID, ruleName, scope string) bool {
 	f.calls = append(f.calls, fakeCall{"firewall", []string{action, iface, ruleID, ruleName, scope}})
+	return true
 }
 
-func (f *fakeSink) ObserveHAProxy(event, backend, server, state, statusClass string) {
+func (f *fakeSink) ObserveHAProxy(event, backend, server, state, statusClass string) bool {
 	f.calls = append(f.calls, fakeCall{"haproxy", []string{event, backend, server, state, statusClass}})
+	return true
 }
 
-func (f *fakeSink) ObserveSSHD(result, method, scope string) {
+func (f *fakeSink) ObserveSSHD(result, method, scope string) bool {
 	f.calls = append(f.calls, fakeCall{"sshd", []string{result, method, scope}})
+	return true
 }
 
-func (f *fakeSink) ObserveDHCP(action, iface, server string) {
+func (f *fakeSink) ObserveDHCP(action, iface, server string) bool {
 	f.calls = append(f.calls, fakeCall{"dhcp", []string{action, iface, server}})
+	return true
 }
 
-func (f *fakeSink) ObserveAudit(event, result string) {
+func (f *fakeSink) ObserveAudit(event, result string) bool {
 	f.calls = append(f.calls, fakeCall{"audit", []string{event, result}})
+	return true
 }
 
-func (f *fakeSink) ObserveIDS(eventType, action, category, severity string) {
+func (f *fakeSink) ObserveIDS(eventType, action, category, severity string) bool {
 	f.calls = append(f.calls, fakeCall{"ids", []string{eventType, action, category, severity}})
+	return true
 }
 
-func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) {
+func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
+	return true
 }
 
 var _ logship.MetricSink = (*fakeSink)(nil)
+
+type rejectFirewallSink struct{ fakeSink }
+
+func (s *rejectFirewallSink) ObserveFirewall(_, _, _, _, _ string) bool { return false }
+
+var _ logship.MetricSink = (*rejectFirewallSink)(nil)
 
 func TestDeriveFamily(t *testing.T) {
 	tests := []struct {
@@ -115,6 +128,18 @@ func TestObserveDerived_UnknownProgram(t *testing.T) {
 	}
 	if len(sink.calls) != 0 {
 		t.Errorf("sink called %d times for an unknown program, want 0", len(sink.calls))
+	}
+}
+
+func TestObserveDerived_ReportsSinkRejection(t *testing.T) {
+	sink := &rejectFirewallSink{}
+	attrs := map[string]string{"action": "pass"}
+	if observeDerived(sink, "filterlog", attrs) {
+		t.Fatal("counted = true after the sink rejected the observation, want false")
+	}
+	rec := logship.Record{Attributes: attrs}
+	if !sampleKeep("filterlog", rec, false) {
+		t.Fatal("sampling dropped a firewall pass whose metric observation was rejected")
 	}
 }
 

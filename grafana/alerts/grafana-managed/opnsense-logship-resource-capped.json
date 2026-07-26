@@ -22,7 +22,7 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense log-shipping records had labels dropped ({{ $labels.instance }})",
+      "summary": "OPNsense log-shipping records had labels dropped ({{ $labels.opnsense_instance }})",
       "description": "Records were shipped with their opnsense.* resource labels dropped in the last 15m, so label-scoped queries against them silently under-report.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
     },
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (instance) (increase(opnsense_exporter_logs_resource_capped_total[15m]))",
+          "expr": "sum by (opnsense_instance) (increase(opnsense_exporter_logs_resource_capped_total[15m]))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

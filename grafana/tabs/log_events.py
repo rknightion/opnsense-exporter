@@ -128,6 +128,17 @@ def build(b: Builder):
              "a sender minting novel tuples (investigate the source).",
     )
 
+    observation_dropped = b.ts(
+        "Derived Metric Observation Drops (rate)",
+        [(f'sum by (reason) (rate({sel("opnsense_log_events_observation_dropped_total")}[{RATE}]))',
+          "{{reason}}")],
+        unit="short",
+        desc="opnsense_log_events_observation_dropped_total: derived observations refused before "
+             "the map-owning collector goroutine because its bounded handoff was full. "
+             "reason=handoff_full is a closed receiver-pressure signal. Syslog keeps a "
+             "sample-eligible raw record when this occurs, but its derived counter was not updated.",
+    )
+
     b.tab("Log-derived Events", [
         b.row("Firewall", [fw_action, fw_rule], present="has_log_events_firewall"),
         b.row("HAProxy", [haproxy, haproxy_backend], present="has_log_events_haproxy"),
@@ -135,5 +146,5 @@ def build(b: Builder):
         b.row("DHCP", [dhcp], present="has_log_events_dhcp"),
         b.row("Config / Audit", [audit], present="has_log_events_audit"),
         b.row("IDS / IPS", [ids], present="has_log_events_ids"),
-        b.row("Cardinality Budget", [cardinality_keys, cardinality_capped]),
+        b.row("Collector Pressure", [cardinality_keys, cardinality_capped, observation_dropped]),
     ], present="has_log_events")

@@ -254,7 +254,10 @@ func (p *docProcessor) process(family string, doc []byte, peer netip.Addr, liste
 	// operator merely does not want stored, so its shape must still reach the derived
 	// counters — those outlive both the exclusion and Loki's retention, and they are
 	// all that remains of it.
-	observeDerived(p.sink, family, rec.Attributes)
+	// Zenarmor never samples raw records, so rejection does not gate emission as it
+	// does for syslog. The sink counts a full handoff centrally; the record continues
+	// through exclusion and shipping unchanged.
+	_ = observeDerived(p.sink, family, rec.Attributes)
 
 	now := time.Now()
 

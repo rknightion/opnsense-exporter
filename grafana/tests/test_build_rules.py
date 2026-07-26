@@ -132,6 +132,34 @@ class OTLPDeliveryAlertTest(unittest.TestCase):
         self.assertIn("/metrics", description)
 
 
+class LogShippingAlertTest(unittest.TestCase):
+    def test_queue_pressure_covers_count_and_enabled_byte_bounds(self):
+        rule = rule_by_title("OPNsenseLogShipQueueNearCapacity")
+
+        self.assertIn("opnsense_exporter_logs_queue_length", rule["A"])
+        self.assertIn("opnsense_exporter_logs_queue_capacity", rule["A"])
+        self.assertIn("opnsense_exporter_logs_queue_bytes", rule["A"])
+        self.assertIn("opnsense_exporter_logs_queue_max_bytes", rule["A"])
+        self.assertIn(" or ", rule["A"])
+        # The two ratios have the same instance labels. Plain `left or right`
+        # would keep the count ratio and hide a higher byte ratio, so the rule
+        # must make the bounds distinct before reducing to their maximum.
+        self.assertIn("max by (opnsense_instance)", rule["A"])
+        self.assertEqual(rule["A"].count("label_replace("), 2)
+
+    def test_counted_loss_is_reason_labelled_and_distinct_from_retry_degradation(self):
+        loss = rule_by_title("OPNsenseLogShipCountedLoss")
+        self.assertIn("increase(opnsense_exporter_logs_dropped_total[", loss["A"])
+        self.assertIn("sum by (opnsense_instance, source, reason)", loss["A"])
+        self.assertIn("{{ $labels.reason }}", loss["summary"])
+        self.assertEqual(loss["severity"], "warning")
+
+        sink = rule_by_title("OPNsenseLogShipSinkErrors")
+        self.assertIn("opnsense_instance", sink["A"])
+        self.assertIn("retry", sink["description"].lower())
+        self.assertNotIn("records are being lost", sink["description"].lower())
+
+
 def _flow_doc_dead_hook_query():
     """Extract the fenced ```promql block for the #368 dead-hook detector straight out
     of docs/flow.md ("Joining the two label spaces"), so a future edit to either the

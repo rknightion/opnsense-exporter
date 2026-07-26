@@ -120,24 +120,21 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		}
 		iface := firstNonEmpty(attrs["interface.name"], attrs["interface"])
 		ruleID := firstNonEmpty(attrs["rule.id"], attrs["rule.ref"])
-		sink.ObserveFirewall(attrs[logship.AttrAction], iface, ruleID, attrs["rule.description"], attrs["src.scope"])
-		return true
+		return sink.ObserveFirewall(attrs[logship.AttrAction], iface, ruleID, attrs["rule.description"], attrs["src.scope"])
 
 	case familyHAProxy:
 		event := attrs["haproxy.event"]
 		if event == "" {
 			return false
 		}
-		sink.ObserveHAProxy(event, attrs["haproxy.backend"], attrs["haproxy.server"], attrs["haproxy.state"], statusClass(attrs[attrHTTPResponseStatusCode]))
-		return true
+		return sink.ObserveHAProxy(event, attrs["haproxy.backend"], attrs["haproxy.server"], attrs["haproxy.state"], statusClass(attrs[attrHTTPResponseStatusCode]))
 
 	case familySSHD:
 		result := attrs["auth.result"]
 		if result == "" {
 			return false
 		}
-		sink.ObserveSSHD(result, attrs["auth.method"], attrs["src.scope"])
-		return true
+		return sink.ObserveSSHD(result, attrs["auth.method"], attrs["src.scope"])
 
 	case familyDHCP:
 		action := attrs["dhcp.action"]
@@ -145,16 +142,14 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 			return false
 		}
 		iface := firstNonEmpty(attrs["interface.name"], attrs["interface"])
-		sink.ObserveDHCP(action, iface, attrs["dhcp.server_ip"])
-		return true
+		return sink.ObserveDHCP(action, iface, attrs["dhcp.server_ip"])
 
 	case familyAudit:
 		event := attrs["event"]
 		if event == "" {
 			return false
 		}
-		sink.ObserveAudit(event, attrs["audit.result"])
-		return true
+		return sink.ObserveAudit(event, attrs["audit.result"])
 
 	case familyIDS:
 		// Same split as familyFirewall: gate on the raw event_type, label with the
@@ -166,13 +161,12 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		if attrs["event_type"] == "" {
 			return false
 		}
-		sink.ObserveIDS(
+		return sink.ObserveIDS(
 			mapEveEventType(attrs["event_type"]),
 			attrs[logship.AttrAction],
 			attrs["alert_category"],
 			mapEveSeverity(attrs["alert_severity"]),
 		)
-		return true
 	}
 
 	return false

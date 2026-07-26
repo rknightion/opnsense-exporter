@@ -291,31 +291,47 @@ RULES = [
     # close that gap for the log-shipping pipeline itself (sink health, backpressure, label loss,
     # source liveness).
     dict(name="opnsense-logship-sink-errors", title="OPNsenseLogShipSinkErrors",
-         A="sum by (instance) (rate(opnsense_exporter_logs_ship_errors_total[5m]))",
+         A="sum by (opnsense_instance) (rate(opnsense_exporter_logs_ship_errors_total[5m]))",
          op="gt", params=[0, 0], for_min=10, severity="warning",
-         summary="OPNsense log-shipping sink errors ({{ $labels.instance }})",
-         description="The log-shipping sink (OTLP/Loki) has been failing Emit calls for 10m — shipped "
-                     "records are being lost. Grouped by instance, not opnsense_instance: the "
-                     "opnsense_exporter_logs_* family carries no opnsense_instance label."),
+         summary="OPNsense log-shipping sink retrying ({{ $labels.opnsense_instance }})",
+         description="The log-shipping sink (OTLP/Loki) has had failed Emit attempts for 10m. The "
+                     "unacknowledged remainder is in retry/degradation, not "
+                     "proof of counted record loss. Check OPNsenseLogShipCountedLoss separately."),
     dict(name="opnsense-logship-queue-near-capacity", title="OPNsenseLogShipQueueNearCapacity",
-         A="opnsense_exporter_logs_queue_length / (opnsense_exporter_logs_queue_capacity > 0)",
+         A="max by (opnsense_instance) ("
+           "label_replace(opnsense_exporter_logs_queue_length / "
+           "(opnsense_exporter_logs_queue_capacity > 0), \"bound\", \"count\", \"__name__\", \".*\") "
+           "or label_replace(opnsense_exporter_logs_queue_bytes / "
+           "(opnsense_exporter_logs_queue_max_bytes > 0), \"bound\", \"bytes\", \"__name__\", \".*\"))",
          op="gt", params=[0.9, 0], for_min=5, severity="warning",
-         summary="OPNsense log-shipping queue near capacity",
-         description="The log-shipping backpressure queue has been over 90% full for 5m — overflow "
-                     "drops are imminent."),
-    dict(name="opnsense-logship-resource-capped", title="OPNsenseLogShipResourceCapped",
-         A="sum by (instance) (increase(opnsense_exporter_logs_resource_capped_total[15m]))",
+         summary="OPNsense log-shipping queue near capacity ({{ $labels.opnsense_instance }})",
+         description="The log-shipping backpressure queue has been above 90% of either its record-count "
+                     "capacity or its enabled byte budget for 5m — overflow drops are imminent."),
+    dict(name="opnsense-logship-counted-loss", title="OPNsenseLogShipCountedLoss",
+         A="sum by (opnsense_instance, source, reason) "
+           "(increase(opnsense_exporter_logs_dropped_total[15m]))",
          op="gt", params=[0, 0], for_min=0, severity="warning",
-         summary="OPNsense log-shipping records had labels dropped ({{ $labels.instance }})",
+         summary="OPNsense log-shipping counted record loss ({{ $labels.reason }}) on "
+                 "{{ $labels.source }} ({{ $labels.opnsense_instance }})",
+         description="Log records were counted as lost in the last 15m, grouped by the exact source and "
+                     "reason. overflow means either queue bound evicted the oldest record; "
+                     "record_too_large was rejected at ingest; rejected was terminally refused by the "
+                     "destination; ship_failed_permanent exhausted the configured retry bound; and "
+                     "ship_failed was abandoned during shutdown. Retry attempts alone increment "
+                     "logs_ship_errors_total, not this alert."),
+    dict(name="opnsense-logship-resource-capped", title="OPNsenseLogShipResourceCapped",
+         A="sum by (opnsense_instance) (increase(opnsense_exporter_logs_resource_capped_total[15m]))",
+         op="gt", params=[0, 0], for_min=0, severity="warning",
+         summary="OPNsense log-shipping records had labels dropped ({{ $labels.opnsense_instance }})",
          description="Records were shipped with their opnsense.* resource labels dropped in the last "
                      "15m, so label-scoped queries against them silently under-report."),
     # Scoped to syslog|zenarmor: both are continuously-active push sources, so 15m of silence is a
     # genuine stall. A source that is legitimately quiet or not configured would false-fire if
     # included, so it is deliberately excluded rather than covered here.
     dict(name="opnsense-logship-cursor-stalled", title="OPNsenseLogShipCursorStalled",
-         A='time() - max by (source) (opnsense_exporter_logs_last_event_timestamp_seconds{source=~"syslog|zenarmor"})',
+         A='time() - max by (opnsense_instance, source) (opnsense_exporter_logs_last_exported_timestamp_seconds{source=~"syslog|zenarmor"})',
          op="gt", params=[900, 0], for_min=0, severity="warning",
-         summary="OPNsense log-shipping source {{ $labels.source }} stalled",
+         summary="OPNsense log-shipping source {{ $labels.source }} stalled ({{ $labels.opnsense_instance }})",
          description="Push source {{ $labels.source }} has shipped no events for 15m despite being "
                      "continuously active. Scoped to syslog|zenarmor only, so a quiet or unconfigured "
                      "source cannot false-fire."),
