@@ -21,8 +21,12 @@ The rollup, the NetFlow receiver and the flow correlator are implemented in
 
 Flow rollups are **on by default** and cost nothing where no flow source is
 configured: the metrics are silent, in the same way `log_events` is silent
-without the syslog receiver. Nothing new is shipped to Loki - the Zenarmor `conn`
-record ships exactly as it did before, and this only adds metrics.
+without the syslog receiver. The Zenarmor `conn` record still ships exactly as it
+did before on its own lane regardless of any flow setting below. Separately, by
+default (`--flow.log-mode=per_flow`), each correlated flow **also** ships one OTLP
+log record of its own on the shared log pipeline - see
+[Flow log records](#flow-log-records) below for what that record contains and how
+to turn it off.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -398,6 +402,43 @@ This exact query is also a managed alert, `OPNsenseNetFlowHookDead`
 on top of the query's own 45m of evidence, one alert instance per `(opnsense_instance, interface,
 device)`. It resolves on its own once `opnsense_netflow_cache_packets_total` starts counting again
 on the device. See `grafana/README.md#alerts` for the full rule catalogue and deployment path.
+
+## Flow log records
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--flow.log-mode` | `per_flow` | `per_flow` ships one OTLP log record per correlated flow on the shared log pipeline; `off` ships none while still deriving all metrics above |
+| `--flow.max-logs-per-window` | `0` (unlimited) | cap on flow log records shipped per minute; excess is TRUNCATED, never sampled, and counted - a flood guard for the unauthenticated NetFlow ingress |
+
+This is separate from, and in addition to, the Zenarmor `conn` record's own lane
+(`--logs.zenarmor.enabled`), which ships regardless of `--flow.log-mode`. Turning
+`--flow.log-mode` off removes only the correlator's own per-flow record; it never
+touches metrics or the Zenarmor lane.
+
+**Record timestamp.** The shipped record's own timestamp is the flow's **End**
+time - the correlator's authoritative close time, "when this conversation last had
+traffic" - falling back to **Start**, then **Observed**, and finally the zero value
+if none of the three is set (an incomplete or synthetic record). It is never the
+time the exporter happened to process the record, which is what makes it usable for
+"when did this actually happen" queries instead of just "when did we notice it."
+
+**Interval attributes.** Every record additionally carries, as Loki structured
+metadata (never a label):
+
+| Attribute | Present when | Value |
+|---|---|---|
+| `flow.start_time` | `Start` is set | RFC3339Nano, UTC |
+| `flow.end_time` | `End` is set | RFC3339Nano, UTC |
+| `flow.duration_ms` | both `Start` and `End` are set **and** `End >= Start` | `End - Start` in milliseconds |
+
+`flow.start_time` and `flow.end_time` are each reported independently - a record
+missing one still reports the other rather than withholding both.
+`flow.duration_ms` is the one derived value and is held to a stricter rule: a
+malformed or synthetic record with `End` before `Start` omits *only*
+`flow.duration_ms` rather than reporting a negative duration, while `flow.start_time`
+and `flow.end_time` themselves are still reported since each is independently a real,
+directly-observed timestamp. Nothing here is ever fabricated - an absent time or
+interval means the data was not there, not that the exporter guessed a value.
 
 ## The label set, and why each dimension is on it
 

@@ -16,6 +16,7 @@ package flowlog
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -126,16 +127,86 @@ func (b *Bridge) Emit(r flow.Record) {
 	}
 	attrs := r.LogAttributes()
 	attrs[logship.AttrSubsystem] = subsystem
+	addIntervalAttributes(attrs, r)
 	lr := logship.Record{
 		Body:       r.LogBody(),
 		Attributes: attrs,
 		Source:     r.Source.String(),
+		Timestamp:  flowTimestamp(r),
 	}
 	if r.LogSeverityBlocked() {
 		lr.Severity = logship.SeverityWarn
 	}
 	(*fn)(lr)
 	b.emitted.Add(1)
+}
+
+// flowTimestamp resolves a flow record's own event time for the emitted log record
+// (#391). End is the correlator's authoritative flow-close time — finalize()
+// (internal/flow/correlate.go) writes the EARLIEST start and LATEST end across every
+// fragment it folded together, so End is "when this conversation last had traffic",
+// exactly matching the Zenarmor lane's own end_time-first rule
+// (internal/logship/zenarmor/parse.go). Start and Observed are defensive fallbacks
+// only, for an incomplete/synthetic record that never reached the correlator with a
+// close time; a genuine NetFlow or merged record always has End set.
+//
+// This deliberately never reads b.clock: that clock exists only to key the
+// per-window log-flood budget and stamping it here would preserve the #391 defect
+// (every record placed at pipeline time) under a different name. A zero return
+// means "no time is known at all" and is left for the sink's own zero-value
+// emit-time fallback (logship/record.go) to handle — this function never invents a
+// time either.
+func flowTimestamp(r flow.Record) time.Time {
+	switch {
+	case !r.End.IsZero():
+		return r.End
+	case !r.Start.IsZero():
+		return r.Start
+	case !r.Observed.IsZero():
+		return r.Observed
+	default:
+		return time.Time{}
+	}
+}
+
+// addIntervalAttributes adds the flow's covered interval to attrs as stable OTLP log
+// attributes (#411): the flow-close event time already stamps the record's own
+// Timestamp (#391), but the interval's START and its DURATION are otherwise lost,
+// which blocks filtering long-lived flows or joining on the covered window without
+// reconstructing it elsewhere.
+//
+// Naming follows logemit.go's existing "flow."-namespaced, dotted convention
+// (flow.direction, flow.vlan, flow.fragments, …) and the codebase's established
+// time-attribute format — internal/logship/ids.go already ships gap_start/gap_end
+// as RFC3339Nano strings, so flow.start_time/flow.end_time match that precedent
+// rather than inventing a new representation. flow.duration_ms is milliseconds
+// because Start/End are firewall-clock timestamps with sub-second precision
+// (FIRST_SWITCHED/LAST_SWITCHED); seconds would truncate every short-lived flow to 0.
+//
+// Everything here is Loki structured metadata (map[string]string), NEVER a label —
+// same rule as every other key LogAttributes sets, and reinforced by #411's own
+// scope: no new metric family or resource label may result from this.
+//
+// Absence over fabrication, twice over: an unset Start or End omits its own key
+// rather than inventing a value (an incomplete/synthetic record legitimately lacks
+// one), and a negative interval (End before Start — a malformed or synthetic record)
+// omits ONLY flow.duration_ms. Start/End themselves are each independently real
+// firewall timestamps and are still reported: withholding a directly-observed field
+// because a DERIVED one turned out nonsensical would hide real data over a problem
+// that is specifically the derived field's to reject.
+func addIntervalAttributes(attrs map[string]string, r flow.Record) {
+	if !r.Start.IsZero() {
+		attrs["flow.start_time"] = r.Start.UTC().Format(time.RFC3339Nano)
+	}
+	if !r.End.IsZero() {
+		attrs["flow.end_time"] = r.End.UTC().Format(time.RFC3339Nano)
+	}
+	if r.Start.IsZero() || r.End.IsZero() {
+		return
+	}
+	if d := r.End.Sub(r.Start); d >= 0 {
+		attrs["flow.duration_ms"] = strconv.FormatInt(d.Milliseconds(), 10)
+	}
 }
 
 // Stats is the bridge's own health, published as self-metrics.
