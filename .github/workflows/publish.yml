@@ -47,6 +47,11 @@ jobs:
       build-args: |
         GO_LICENSES_VERSION=${{ needs.go-licenses-pin.outputs.version }}
         GO_LICENSES_MODULE=${{ needs.go-licenses-pin.outputs.module }}
+      # Publish charts only for real releases. The pinned shared reusable gives
+      # edge charts a 12-character appVersion while its edge image SHA tag is
+      # seven characters, so an edge chart would point at a nonexistent image.
+      # Release packages override both chart/app versions to the same semver.
+      helm-chart-path: ${{ inputs.release_tag != '' && 'charts/opnsense-exporter' || '' }}
   notices:
     if: inputs.release_tag != ''
     runs-on: ubuntu-24.04

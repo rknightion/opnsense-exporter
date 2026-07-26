@@ -341,13 +341,13 @@ volumeMounts:
 
 ```bash
 # Create credential files
-echo "your-api-key" | sudo tee /etc/opnsense-exporter/api-key > /dev/null
-echo "your-api-secret" | sudo tee /etc/opnsense-exporter/api-secret > /dev/null
-
-# Restrict permissions
-sudo chmod 600 /etc/opnsense-exporter/api-key /etc/opnsense-exporter/api-secret
-sudo chown root:root /etc/opnsense-exporter/api-key /etc/opnsense-exporter/api-secret
+# The exporter service user needs read access; unrelated users do not.
+sudo install -d -o root -g opnsense-exporter -m 0710 /etc/opnsense-exporter
+printf '%s\n' 'your-api-key' | sudo install -o root -g opnsense-exporter -m 0640 /dev/stdin /etc/opnsense-exporter/api-key
+printf '%s\n' 'your-api-secret' | sudo install -o root -g opnsense-exporter -m 0640 /dev/stdin /etc/opnsense-exporter/api-secret
 ```
+
+The directory's `0710` mode lets the service group traverse directly to the named files without listing the directory. Each `0640` file is readable only by root and the `opnsense-exporter` group; unrelated users cannot traverse the directory.
 
 ## OPNsense settings
 

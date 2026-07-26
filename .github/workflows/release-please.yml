@@ -110,6 +110,7 @@ jobs:
             opnsense-exporter_Windows_x86_64.zip
             opnsense-exporter_Windows_x86_64.zip.sbom.json
           )
+          required+=("opnsense-exporter-${{ needs.release-please.outputs.version }}.tgz")
           missing=()
           for asset in "${required[@]}"; do
             if ! printf '%s\n' "${actual[@]}" | grep -Fqx "$asset"; then

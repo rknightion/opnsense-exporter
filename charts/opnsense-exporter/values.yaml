@@ -1,0 +1,51 @@
+# One Helm release monitors one OPNsense firewall. Install another release for each
+# additional firewall rather than scaling this Deployment.
+image:
+  repository: ghcr.io/rknightion/opnsense-exporter
+  tag: ""
+  pullPolicy: IfNotPresent
+
+opnsense:
+  # Required: hostname or IP address of the OPNsense API; no scheme.
+  address: ""
+  protocol: https
+  instanceLabel: opnsense
+  # This chart never creates credentials. These defaults match deploy/k8s.
+  existingSecret: opnsense-exporter
+  secretKeys:
+    apiKey: key
+    apiSecret: secret
+  # Bump after rotating an existing Secret to force a rollout without reading it.
+  secretRevision: ""
+
+ports:
+  http: 8080
+  syslog: 5514
+  zenarmor: 9200
+  netflow: 2055
+
+service:
+  type: ClusterIP
+  annotations: {}
+
+podAnnotations: {}
+
+resources: {}
+
+# Extra exporter flags for settings outside this deliberately small chart surface.
+# Supply complete flags, for example: ["--collector.poll-interval=30s"].
+extraArgs: []
+
+receivers:
+  syslog:
+    enabled: false
+    # CIDRs passed to --logs.syslog.allowed-peers, never added to labels.
+    allowedPeers: []
+  zenarmor:
+    enabled: false
+    # CIDRs passed to --logs.zenarmor.allowed-peers, never added to labels.
+    allowedPeers: []
+  netflow:
+    enabled: false
+    # CIDRs passed as repeatable --flow.netflow.allowed-peers flags.
+    allowedPeers: []

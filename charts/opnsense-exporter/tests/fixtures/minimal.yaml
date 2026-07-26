@@ -1,0 +1,4 @@
+opnsense:
+  address: edge-fw.example.net
+  existingSecret: edge-fw-api
+  secretRevision: "42"

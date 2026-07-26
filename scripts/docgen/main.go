@@ -139,11 +139,8 @@ func main() {
 	}
 
 	// Step 5: Generate output files
-	if err := os.MkdirAll(filepath.Join(repoRoot, "docs", "metrics"), 0o755); err != nil {
-		fatal("creating docs/metrics dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(repoRoot, "docs", "collectors"), 0o755); err != nil {
-		fatal("creating docs/collectors dir: %v", err)
+	if err := prepareOutputDirs(repoRoot, *checkMode); err != nil {
+		fatal("preparing generated documentation directories: %v", err)
 	}
 
 	generateMetricsDoc(out, filepath.Join(repoRoot, "docs", "metrics", "metrics.md"),
@@ -173,7 +170,16 @@ func main() {
 		Recording:   recording,
 	}))
 
-	// Step 10: Lint every flag/env-var token in prose docs against the model.
+	// Step 10: Render or check docs that mirror executable public contracts.
+	injectPublicContractDocs(out)
+	if err := verifyPublicContracts(repoRoot, docStats{
+		Metrics: totalMetrics, Collectors: len(collectors), DashMetrics: dashMetrics,
+		DashTabs: dashTabs, Alerts: alerts, Recording: recording,
+	}); err != nil {
+		fatal("%v", err)
+	}
+
+	// Step 11: Lint every flag/env-var token in prose docs against the model.
 	if problems := runDoclint(repoRoot, allFlags); len(problems) > 0 {
 		fatal("doclint found %d problems:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}
@@ -188,6 +194,18 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "docgen: done! Total metrics: %d (Gauges: %d, Counters: %d)\n",
 		totalMetrics, totalGauges, totalCounters)
+}
+
+func prepareOutputDirs(repoRoot string, checkMode bool) error {
+	if checkMode {
+		return nil
+	}
+	for _, dir := range []string{"metrics", "collectors"} {
+		if err := os.MkdirAll(filepath.Join(repoRoot, "docs", dir), 0o755); err != nil {
+			return fmt.Errorf("create docs/%s: %w", dir, err)
+		}
+	}
+	return nil
 }
 
 // injectConfigurationDoc fills every docgen marker region in

@@ -1,0 +1,8 @@
+opnsense:
+  address: edge-fw.example.net
+receivers:
+  syslog:
+    enabled: true
+    allowedPeers:
+      - 10.0.0.254/32
+      - 10.0.1.254/32

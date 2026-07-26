@@ -12,7 +12,7 @@ Get the OPNsense Exporter up and running in under five minutes.
 
 ## Prerequisites
 
-- An OPNsense firewall (any supported version; tested with 24.x and 25.x)
+- An OPNsense firewall supported by the [compatibility policy](compatibility.md)
 - API access enabled on OPNsense
 - Network connectivity from the exporter host to the OPNsense API
 - Docker, a Kubernetes cluster, or a Linux host with systemd

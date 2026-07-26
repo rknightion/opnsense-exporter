@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "opnsense-exporter values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "opnsense", "ports", "service", "receivers", "extraArgs"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "opnsense": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address", "protocol", "instanceLabel", "existingSecret", "secretKeys", "secretRevision"],
+      "properties": {
+        "address": { "type": "string" },
+        "protocol": { "type": "string", "enum": ["http", "https"] },
+        "instanceLabel": { "type": "string", "minLength": 1 },
+        "existingSecret": { "type": "string", "minLength": 1 },
+        "secretKeys": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["apiKey", "apiSecret"],
+          "properties": {
+            "apiKey": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9._-]+$" },
+            "apiSecret": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9._-]+$" }
+          }
+        },
+        "secretRevision": { "type": "string" }
+      }
+    },
+    "ports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["http", "syslog", "zenarmor", "netflow"],
+      "properties": {
+        "http": { "type": "integer", "minimum": 1, "maximum": 65535, "const": 8080 },
+        "syslog": { "type": "integer", "minimum": 1, "maximum": 65535, "const": 5514 },
+        "zenarmor": { "type": "integer", "minimum": 1, "maximum": 65535, "const": 9200 },
+        "netflow": { "type": "integer", "minimum": 1, "maximum": 65535, "const": 2055 }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "annotations"],
+      "properties": {
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "limits": { "type": "object", "additionalProperties": { "type": ["string", "number"] } },
+        "requests": { "type": "object", "additionalProperties": { "type": ["string", "number"] } }
+      },
+      "additionalProperties": false
+    },
+    "extraArgs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "receivers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["syslog", "zenarmor", "netflow"],
+      "properties": {
+        "syslog": { "$ref": "#/definitions/receiver" },
+        "zenarmor": { "$ref": "#/definitions/receiver" },
+        "netflow": { "$ref": "#/definitions/receiver" }
+      }
+    }
+  },
+  "definitions": {
+    "receiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "allowedPeers"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "allowedPeers": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

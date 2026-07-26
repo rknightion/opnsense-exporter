@@ -85,6 +85,7 @@ chmod 600 ./secrets/api-key ./secrets/api-secret
 
 ### Compose file
 
+<!-- executable:begin:compose-file-secrets -->
 ```yaml title="docker-compose.yml"
 services:
   opnsense-exporter:
@@ -111,6 +112,7 @@ secrets:
   opnsense-api-secret:
     file: ./secrets/api-secret
 ```
+<!-- executable:end:compose-file-secrets -->
 
 Verify the file renders before deploying it:
 

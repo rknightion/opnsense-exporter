@@ -47,8 +47,8 @@ docker run -p 8080:8080 \
 ```
 
 Metrics are now at `http://localhost:8080/metrics` and the operator console at
-`http://localhost:8080/`. The instance label defaults to the hostname the OPNsense API reports
-for itself, so a single firewall needs no further configuration.
+`http://localhost:8080/`. The instance label defaults to the configured OPNsense address; set
+`--exporter.instance-use-hostname` to derive it from the hostname the API reports.
 
 For production, prefer file-based secrets over plain environment variables:
 

@@ -1,0 +1,5 @@
+opnsense:
+  address: edge-fw.example.net
+  existingSecret: pre-existing-credentials
+image:
+  tag: 3.0.0

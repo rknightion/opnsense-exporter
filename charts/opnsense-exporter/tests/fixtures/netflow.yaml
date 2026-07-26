@@ -1,0 +1,7 @@
+opnsense:
+  address: edge-fw.example.net
+receivers:
+  netflow:
+    enabled: true
+    allowedPeers:
+      - 10.0.0.254/32

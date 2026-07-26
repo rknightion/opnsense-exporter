@@ -88,6 +88,8 @@ func statRules(s docStats) []statRule {
 	subCollectorsRepl := fmt.Sprintf("%d sub-collectors", s.Collectors)
 	allCollectors := regexp.MustCompile(`all \d+ collectors`)
 	allCollectorsRepl := fmt.Sprintf("all %d collectors", s.Collectors)
+	eachCollectors := regexp.MustCompile(`each of the \d+ collectors`)
+	eachCollectorsRepl := fmt.Sprintf("each of the %d collectors", s.Collectors)
 	approxCollectors := regexp.MustCompile(`~\d+ collectors`)
 	approxCollectorsRepl := fmt.Sprintf("~%d collectors", s.Collectors)
 	dash := regexp.MustCompile(`all \d+ metrics across \d+ tabs`)
@@ -129,6 +131,9 @@ func statRules(s docStats) []statRule {
 		{File: "docs/getting-started.md", Pattern: allCollectors, Replace: allCollectorsRepl, MinHits: 1},
 		{File: "docs/troubleshooting.md", Pattern: approxCollectors, Replace: approxCollectorsRepl, MinHits: 1},
 		{File: "README.md", Pattern: across, Replace: acrossRepl, MinHits: 1},
+		{File: "README.md", Pattern: regexp.MustCompile(`All \d+ metrics`),
+			Replace: fmt.Sprintf("All %d metrics", s.Metrics), MinHits: 1},
+		{File: "README.md", Pattern: eachCollectors, Replace: eachCollectorsRepl, MinHits: 1},
 		{File: "README.md", Pattern: dash, Replace: dashRepl, MinHits: 1},
 		{File: "docs/integration-dashboards.md", Pattern: dash, Replace: dashRepl, MinHits: 1},
 		// grafana/README.md tab count (twice) + alert/recording rule counts drifted (#116).

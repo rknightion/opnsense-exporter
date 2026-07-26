@@ -11,21 +11,28 @@ Run the OPNsense Exporter as a managed systemd service on a Linux host.
 
 ## Step 1: Install the binary
 
-Download the latest release binary from [GitHub Releases](https://github.com/rknightion/opnsense-exporter/releases):
+Download a specific release from [GitHub Releases](https://github.com/rknightion/opnsense-exporter/releases). Linux archives are named `opnsense-exporter_Linux_x86_64.tar.gz` and `opnsense-exporter_Linux_arm64.tar.gz`; do not use the old raw-binary URL.
+
+Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) on the deployment host, then obtain the verifier from the same repository revision you are deploying. The verifier constrains `--certificate-identity` to `https://github.com/rknightion/.github/.github/workflows/binaries.yml@d1c590b295b9d7f2535fadc7bc5e74f2eddbd512` and `--certificate-oidc-issuer` to `https://token.actions.githubusercontent.com`, verifies the archive checksum, extracts the binary, and runs `--version`.
 
 ```bash
-# Download the latest release (adjust version and architecture)
-curl -LO https://github.com/rknightion/opnsense-exporter/releases/latest/download/opnsense-exporter_linux_amd64
+# Select a released version and the Linux architecture reported by uname -m.
+VERSION=vX.Y.Z # a release tag that includes this verifier and --config.check
+ARCH=x86_64 # use arm64 on aarch64 hosts
 
-# Make executable and move to a system path
-chmod +x opnsense-exporter_linux_amd64
-sudo mv opnsense-exporter_linux_amd64 /usr/local/bin/opnsense-exporter
+INSTALL_ROOT=$(mktemp -d)
+git clone --depth 1 --branch "$VERSION" https://github.com/rknightion/opnsense-exporter.git "$INSTALL_ROOT/source"
+"$INSTALL_ROOT/source/scripts/systemd/verify-release.sh" "$VERSION" "$ARCH" "$INSTALL_ROOT/verified"
+
+# install writes a complete new inode; rename makes the final replacement atomic.
+sudo install -o root -g root -m 0755 "$INSTALL_ROOT/verified/opnsense-exporter" /usr/local/bin/opnsense-exporter.new
+sudo mv -f /usr/local/bin/opnsense-exporter.new /usr/local/bin/opnsense-exporter
 ```
 
 Verify the binary:
 
 ```bash
-opnsense-exporter --help
+/usr/local/bin/opnsense-exporter --version
 ```
 
 ## Step 2: Create a system user
@@ -41,7 +48,8 @@ sudo useradd --system --no-create-home --shell /usr/sbin/nologin opnsense-export
 Store configuration and credentials in an environment file with restricted permissions:
 
 ```bash
-sudo mkdir -p /etc/opnsense-exporter
+# The service group may traverse this directory but cannot list it.
+sudo install -d -o root -g opnsense-exporter -m 0710 /etc/opnsense-exporter
 sudo tee /etc/opnsense-exporter/exporter.env > /dev/null << 'EOF'
 OPNSENSE_EXPORTER_OPS_PROTOCOL=https
 OPNSENSE_EXPORTER_OPS_API=opnsense.example.com
@@ -50,7 +58,7 @@ OPNSENSE_EXPORTER_OPS_API_SECRET=your-api-secret
 OPNSENSE_EXPORTER_INSTANCE_LABEL=my-firewall
 EOF
 
-# Restrict permissions to root only
+# systemd reads this file before dropping to the service user.
 sudo chmod 600 /etc/opnsense-exporter/exporter.env
 sudo chown root:root /etc/opnsense-exporter/exporter.env
 ```
@@ -59,9 +67,8 @@ sudo chown root:root /etc/opnsense-exporter/exporter.env
     To keep the credentials out of the service's environment, store the API key and secret in separate files and use `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`:
 
     ```bash
-    echo "your-api-key" | sudo tee /etc/opnsense-exporter/api-key > /dev/null
-    echo "your-api-secret" | sudo tee /etc/opnsense-exporter/api-secret > /dev/null
-    sudo chmod 600 /etc/opnsense-exporter/api-key /etc/opnsense-exporter/api-secret
+    printf '%s\n' 'your-api-key' | sudo install -o root -g opnsense-exporter -m 0640 /dev/stdin /etc/opnsense-exporter/api-key
+    printf '%s\n' 'your-api-secret' | sudo install -o root -g opnsense-exporter -m 0640 /dev/stdin /etc/opnsense-exporter/api-secret
     ```
 
     Then reference them in the environment file:
@@ -126,6 +133,8 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload
 sudo systemctl enable opnsense-exporter
 sudo systemctl start opnsense-exporter
+sudo systemctl is-active --quiet opnsense-exporter
+curl --fail --silent --show-error http://127.0.0.1:8080/-/healthy
 ```
 
 ## Service management
@@ -157,14 +166,20 @@ You should see Prometheus metrics including `opnsense_up{opnsense_instance="my-f
 To upgrade to a new version:
 
 ```bash
-# Download the new binary
-curl -LO https://github.com/rknightion/opnsense-exporter/releases/latest/download/opnsense-exporter_linux_amd64
+# Verify and stage the new binary while the current service remains running.
+VERSION=vX.Y.Z # replace with the target release tag
+ARCH=x86_64 # use arm64 on aarch64 hosts
+UPGRADE_ROOT=$(mktemp -d)
+git clone --depth 1 --branch "$VERSION" https://github.com/rknightion/opnsense-exporter.git "$UPGRADE_ROOT/source"
+"$UPGRADE_ROOT/source/scripts/systemd/verify-release.sh" "$VERSION" "$ARCH" "$UPGRADE_ROOT/verified"
+sudo install -o root -g root -m 0755 "$UPGRADE_ROOT/verified/opnsense-exporter" /usr/local/bin/opnsense-exporter.new
 
-# Replace the binary
+# Only stop after verification and staging succeed. The rename is atomic.
 sudo systemctl stop opnsense-exporter
-chmod +x opnsense-exporter_linux_amd64
-sudo mv opnsense-exporter_linux_amd64 /usr/local/bin/opnsense-exporter
+sudo mv -f /usr/local/bin/opnsense-exporter.new /usr/local/bin/opnsense-exporter
 sudo systemctl start opnsense-exporter
+sudo systemctl is-active --quiet opnsense-exporter
+curl --fail --silent --show-error http://127.0.0.1:8080/-/healthy
 ```
 
 ## Disabling collectors

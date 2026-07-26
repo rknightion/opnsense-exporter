@@ -1,0 +1,8 @@
+{{- $name := include "opnsense-exporter.fullname" . }}
+{{- $namespace := .Release.Namespace }}
+OPNsense exporter {{ $name }} is installed for one firewall.
+
+Prometheus can scrape http://{{ $name }}.{{ $namespace }}.svc:{{ .Values.ports.http }}/metrics.
+
+The chart uses the existing Secret {{ .Values.opnsense.existingSecret }} for API credential files.
+Grafana dashboards and alert rules remain managed by this repository's supported Grafana artifacts; this chart does not install Prometheus Operator dashboard or rule CRDs.

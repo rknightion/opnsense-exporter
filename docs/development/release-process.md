@@ -21,7 +21,8 @@ graph LR
     F --> G[Tag created]
     G --> H[Cross-platform archives + SBOMs]
     G --> I[Signed multi-arch image]
-    G --> J[Notices + release asset verification]
+    G --> J[Signed Helm chart]
+    G --> K[Notices + release asset verification]
 ```
 
 ### 1. Conventional commits
@@ -58,8 +59,11 @@ When a maintainer merges the release PR:
    bundle, and provenance.
 3. The image workflow publishes a signed, attested multi-architecture image and
    release-level CycloneDX and SPDX SBOMs.
-4. The notices job generates `THIRD_PARTY_NOTICES.md` from the tagged source.
-5. A final read-back job rejects a partial release if any mandatory asset is
+4. The same workflow packages and signs the Helm chart, pushes it to
+   `oci://ghcr.io/rknightion/charts/opnsense-exporter`, and attaches
+   `opnsense-exporter-<version>.tgz` to the GitHub release.
+5. The notices job generates `THIRD_PARTY_NOTICES.md` from the tagged source.
+6. A final read-back job rejects a partial release if any mandatory asset is
    absent.
 
 ## Docker images
@@ -99,10 +103,39 @@ Every tagged release must contain:
 - `checksums.txt`, its Sigstore bundle, and its in-toto provenance.
 - `opnsense-exporter.cdx.json` and `opnsense-exporter.spdx.json`.
 - `THIRD_PARTY_NOTICES.md`.
+- `opnsense-exporter-<version>.tgz`, the signed chart package also published to
+  GHCR as an OCI artifact.
 
 The release workflow reads the published release back and checks this exact set.
 Notices are generated from the tag rather than current `main`, so their dependency
 set matches the binaries they accompany.
+
+<!-- docgen:begin:release-assets -->
+- `THIRD_PARTY_NOTICES.md`
+- `checksums.txt`
+- `checksums.txt.intoto.jsonl`
+- `checksums.txt.sigstore.json`
+- `opnsense-exporter.cdx.json`
+- `opnsense-exporter.spdx.json`
+- `opnsense-exporter_Darwin_arm64.tar.gz`
+- `opnsense-exporter_Darwin_arm64.tar.gz.sbom.json`
+- `opnsense-exporter_Darwin_x86_64.tar.gz`
+- `opnsense-exporter_Darwin_x86_64.tar.gz.sbom.json`
+- `opnsense-exporter_Freebsd_arm64.tar.gz`
+- `opnsense-exporter_Freebsd_arm64.tar.gz.sbom.json`
+- `opnsense-exporter_Freebsd_x86_64.tar.gz`
+- `opnsense-exporter_Freebsd_x86_64.tar.gz.sbom.json`
+- `opnsense-exporter_Linux_arm64.tar.gz`
+- `opnsense-exporter_Linux_arm64.tar.gz.sbom.json`
+- `opnsense-exporter_Linux_x86_64.tar.gz`
+- `opnsense-exporter_Linux_x86_64.tar.gz.sbom.json`
+- `opnsense-exporter_Openbsd_arm64.tar.gz`
+- `opnsense-exporter_Openbsd_arm64.tar.gz.sbom.json`
+- `opnsense-exporter_Openbsd_x86_64.tar.gz`
+- `opnsense-exporter_Openbsd_x86_64.tar.gz.sbom.json`
+- `opnsense-exporter_Windows_x86_64.zip`
+- `opnsense-exporter_Windows_x86_64.zip.sbom.json`
+<!-- docgen:end:release-assets -->
 
 ### Build details
 

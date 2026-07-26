@@ -1,0 +1,12 @@
+opnsense:
+  address: edge-fw.example.net
+receivers:
+  syslog:
+    enabled: true
+  zenarmor:
+    enabled: true
+  netflow:
+    enabled: true
+extraArgs:
+  - --collector.poll-interval=30s
+  - --logs.sink=stdout

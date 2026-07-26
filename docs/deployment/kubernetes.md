@@ -38,6 +38,7 @@ kubectl create secret generic opnsense-exporter-cfg \
 
 The following manifest creates a Deployment and a ClusterIP Service. API credentials are mounted as files from the Secret, and connection settings are injected as environment variables.
 
+<!-- docgen:begin:kubernetes-deployment -->
 ```yaml title="deployment.yaml"
 ---
 kind: Deployment
@@ -54,55 +55,22 @@ spec:
       labels:
         app.kubernetes.io/name: opnsense-exporter
     spec:
-      # The exporter never calls the Kubernetes API - don't mount a SA token.
+      # The exporter is a pure HTTP scrape target and never calls the Kubernetes API,
+      # so don't mount a ServiceAccount token (shrinks the pivot surface on compromise).
       automountServiceAccountToken: false
-      # Validate flags, environment and mounted credential files without binding a
-      # listener or contacting OPNsense. A failed check blocks the rollout.
-      initContainers:
-        - name: config-check
-          image: ghcr.io/rknightion/opnsense-exporter:3.0.0 # x-release-please-version
-          imagePullPolicy: IfNotPresent
-          args:
-            - "--config.check"
-          volumeMounts:
-            - name: api-key-vol
-              mountPath: /etc/opnsense-exporter/creds
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 65532
-            seccompProfile:
-              type: RuntimeDefault
-          env:
-            - name: OPNSENSE_EXPORTER_INSTANCE_LABEL
-              value: "opnsense"
-            - name: OPNSENSE_EXPORTER_OPS_API
-              valueFrom:
-                secretKeyRef:
-                  name: opnsense-exporter-cfg
-                  key: host
-            - name: OPNSENSE_EXPORTER_OPS_PROTOCOL
-              valueFrom:
-                secretKeyRef:
-                  name: opnsense-exporter-cfg
-                  key: protocol
-            - name: OPS_API_KEY_FILE
-              value: /etc/opnsense-exporter/creds/api-key
-            - name: OPS_API_SECRET_FILE
-              value: /etc/opnsense-exporter/creds/api-secret
       containers:
         - name: opnsense-exporter
-          # Pin to an immutable release tag (not :latest) so a reschedule can't silently
-          # pull a breaking version. The tag tracks version.txt and is auto-updated on
-          # each release (release-please rewrites the x-release-please-version marker line).
-          # Published image tags carry no leading "v" (git tag v2.2.1 -> image tag 2.2.1).
+          # Pin to an immutable release tag, not :latest — :latest is retagged every
+          # release, so a pod reschedule could silently pull a breaking version with no
+          # deploy event to correlate. The tag tracks version.txt and is rewritten on
+          # each release by release-please via the x-release-please-version marker below;
+          # keep that marker on the image line or the tag stops updating. Published tags
+          # carry no leading "v" (the git tag is v2.2.1, the image tag is 2.2.1).
           image: ghcr.io/rknightion/opnsense-exporter:3.0.0 # x-release-please-version
           imagePullPolicy: IfNotPresent
+          # In pod, mount OPNSense API credentials as files
           volumeMounts:
+            # name must match the volume name below
             - name: api-key-vol
               mountPath: /etc/opnsense-exporter/creds
           securityContext:
@@ -116,16 +84,33 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           ports:
+            # Default value for --web.listen-address= is 8080
             - name: metrics-http
               containerPort: 8080
+            # The syslog receiver (--logs.syslog.enabled), off by default. Both
+            # protocols are declared because OPNsense can be configured to send over
+            # either; the exporter listens on both by default. Port 5514, not 514:
+            # 514 is privileged and this container runs as a non-root user.
+            - name: syslog-udp
+              containerPort: 5514
+              protocol: UDP
+            - name: syslog-tcp
+              containerPort: 5514
+              protocol: TCP
+          # /-/healthy: process liveness only — no firewall dependency. Do NOT
+          # point readinessProbe at /-/ready here: when Prometheus scrapes via
+          # Service endpoints, a not-ready pod stops being scraped and the
+          # opnsense_up=0 signal is lost exactly when the firewall is down.
           livenessProbe:
             httpGet:
-              path: /
+              path: /-/healthy
               port: metrics-http
           readinessProbe:
             httpGet:
-              path: /
+              path: /-/healthy
               port: metrics-http
+          # See main readme; some configuration options can be set via env-vars
+          ##
           args:
             - "--log.level=info"
             - "--log.format=json"
@@ -142,10 +127,18 @@ spec:
                 secretKeyRef:
                   name: opnsense-exporter-cfg
                   key: protocol
+            # Env var points to a location on disk, make sure the value set here matches the volumeMount path
             - name: OPS_API_KEY_FILE
               value: /etc/opnsense-exporter/creds/api-key
             - name: OPS_API_SECRET_FILE
               value: /etc/opnsense-exporter/creds/api-secret
+            # Only enable if using self-signed cert
+            # - name: OPNSENSE_EXPORTER_OPS_INSECURE
+            #   value: "true"
+
+          # in basic testing with a home lab OPNsense 100m CPU and 64Mi memory are sufficient
+          # however if your opnsense instance has a large number of rules, interfaces, etc...
+          # you may need to adjust these values
           resources:
             requests:
               memory: 64Mi
@@ -176,7 +169,21 @@ spec:
       protocol: TCP
       port: 8080
       targetPort: 8080
+    # Syslog receiver (--logs.syslog.enabled), off by default. A ClusterIP is only
+    # reachable from inside the cluster, so the firewall cannot push to it as-is:
+    # to use the receiver, expose these via a LoadBalancer/NodePort Service (or set
+    # `type: LoadBalancer` here) and point the OPNsense logging target at that
+    # address. See docs/syslog-receiver.md.
+    - name: syslog-udp
+      protocol: UDP
+      port: 5514
+      targetPort: 5514
+    - name: syslog-tcp
+      protocol: TCP
+      port: 5514
+      targetPort: 5514
 ```
+<!-- docgen:end:kubernetes-deployment -->
 
 Apply the manifest:
 

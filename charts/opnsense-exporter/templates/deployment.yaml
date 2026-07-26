@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opnsense-exporter.fullname" . }}
+  labels:
+    {{- include "opnsense-exporter.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opnsense-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opnsense-exporter.selectorLabels" . | nindent 8 }}
+      {{- if or .Values.podAnnotations .Values.opnsense.secretRevision }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.opnsense.secretRevision }}
+        opnsense-exporter/secret-revision: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: config-check
+          image: {{ include "opnsense-exporter.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:{{ include "opnsense-exporter.args" . | nindent 12 }}
+            - "--config.check"
+          env:
+            {{- include "opnsense-exporter.env" . | nindent 12 }}
+          volumeMounts:
+            - name: credentials
+              mountPath: /etc/opnsense-exporter/creds
+              readOnly: true
+          securityContext:
+            {{- include "opnsense-exporter.securityContext" . | nindent 12 }}
+      containers:
+        - name: opnsense-exporter
+          image: {{ include "opnsense-exporter.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:{{ include "opnsense-exporter.args" . | nindent 12 }}
+          env:
+            {{- include "opnsense-exporter.env" . | nindent 12 }}
+          ports:
+            - name: metrics-http
+              containerPort: {{ .Values.ports.http }}
+              protocol: TCP
+            {{- if .Values.receivers.syslog.enabled }}
+            - name: syslog-udp
+              containerPort: {{ .Values.ports.syslog }}
+              protocol: UDP
+            - name: syslog-tcp
+              containerPort: {{ .Values.ports.syslog }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.receivers.zenarmor.enabled }}
+            - name: zenarmor
+              containerPort: {{ .Values.ports.zenarmor }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.receivers.netflow.enabled }}
+            - name: netflow
+              containerPort: {{ .Values.ports.netflow }}
+              protocol: UDP
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: metrics-http
+          readinessProbe:
+            httpGet:
+              path: /-/healthy
+              port: metrics-http
+          volumeMounts:
+            - name: credentials
+              mountPath: /etc/opnsense-exporter/creds
+              readOnly: true
+          securityContext:
+            {{- include "opnsense-exporter.securityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: credentials
+          secret:
+            secretName: {{ required "opnsense.existingSecret is required" .Values.opnsense.existingSecret }}
+            items:
+              - key: {{ .Values.opnsense.secretKeys.apiKey | quote }}
+                path: api-key
+              - key: {{ .Values.opnsense.secretKeys.apiSecret | quote }}
+                path: api-secret

@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opnsense-exporter.fullname" . }}
+  labels:
+    {{- include "opnsense-exporter.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "opnsense-exporter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.ports.http }}
+      targetPort: metrics-http
+    {{- if .Values.receivers.syslog.enabled }}
+    - name: syslog-udp
+      protocol: UDP
+      port: {{ .Values.ports.syslog }}
+      targetPort: syslog-udp
+    - name: syslog-tcp
+      protocol: TCP
+      port: {{ .Values.ports.syslog }}
+      targetPort: syslog-tcp
+    {{- end }}
+    {{- if .Values.receivers.zenarmor.enabled }}
+    - name: zenarmor
+      protocol: TCP
+      port: {{ .Values.ports.zenarmor }}
+      targetPort: zenarmor
+    {{- end }}
+    {{- if .Values.receivers.netflow.enabled }}
+    - name: netflow
+      protocol: UDP
+      port: {{ .Values.ports.netflow }}
+      targetPort: netflow
+    {{- end }}

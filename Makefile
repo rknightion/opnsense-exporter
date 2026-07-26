@@ -19,6 +19,8 @@ GO_LICENSES_VERSION ?= v2.0.1
 GO_LICENSES_MODULE  := github.com/google/go-licenses/v2
 # renovate: datasource=go depName=github.com/anchore/syft
 SYFT_VERSION        ?= v1.49.0
+# renovate: datasource=github-releases depName=yannh/kubeconform
+KUBECONFORM_VERSION ?= v0.8.0
 
 TOOLS_DIR := $(CURDIR)/.tools
 export PATH := $(TOOLS_DIR):$(PATH)
@@ -32,7 +34,7 @@ GOEXPERIMENT ?= goroutineleakprofile
 
 .PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
         schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
-        print-go-licenses-module
+        print-go-licenses-module tools-kubeconform deployment-test
 default:
 	GOEXPERIMENT=$(GOEXPERIMENT) go build \
 	-tags osusergo,netgo \
@@ -93,6 +95,11 @@ tools-sbom:
 	@{ test -x $(TOOLS_DIR)/syft && $(TOOLS_DIR)/syft version >/dev/null 2>&1; } || \
 	  GOBIN=$(TOOLS_DIR) go install github.com/anchore/syft/cmd/syft@$(SYFT_VERSION)
 
+tools-kubeconform:
+	@mkdir -p $(TOOLS_DIR)
+	@{ test -x $(TOOLS_DIR)/kubeconform && $(TOOLS_DIR)/kubeconform -v >/dev/null 2>&1; } || \
+	  GOBIN=$(TOOLS_DIR) go install github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION)
+
 # Regenerate THIRD_PARTY_NOTICES.md (LICENSE + NOTICE texts) from the binary's import graph.
 notices: tools-licensing
 	GO_LICENSES=$(TOOLS_DIR)/go-licenses bash scripts/notices.sh
@@ -122,6 +129,15 @@ docgen: docs
 
 docs-check:
 	go run ./scripts/docgen -check
+
+deployment-test: tools-kubeconform
+	bash -n scripts/deployment/test_examples.sh scripts/systemd/*.sh
+	scripts/deployment/test_examples.sh
+	scripts/systemd/test_documentation.sh
+	scripts/systemd/test_secret_permissions.sh
+	scripts/systemd/test_unit.sh
+	$(TOOLS_DIR)/kubeconform -strict -summary deploy/k8s/deployment.yaml
+	PATH="$(TOOLS_DIR):$(PATH)" charts/opnsense-exporter/tests/test-chart.sh
 
 install-hooks:
 	cp scripts/hooks/pre-commit .git/hooks/pre-commit
