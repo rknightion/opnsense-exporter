@@ -2,6 +2,7 @@ package syslog
 
 import (
 	"net/netip"
+	"sync"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
@@ -148,18 +149,51 @@ type ProgramProcessor interface {
 }
 
 // programProcessor is the single stateful, config-built processor registered by a
-// consumer (e.g. the zenarmor package). At most one may be registered; a second
-// registration is a wiring bug that must surface at startup.
-var programProcessor ProgramProcessor
+// consumer (e.g. the zenarmor package), guarded by programProcessorMu.
+//
+// It is package-global on purpose, not per-source: this is deliberately NOT
+// multi-firewall-in-one-process support (#401), just lifecycle hardening around
+// the existing single-processor design. Production builds it once, from the
+// zenarmor push-source factory.
+var (
+	programProcessorMu sync.RWMutex
+	programProcessor   ProgramProcessor
+)
 
-// RegisterProgramProcessor installs the single stateful, config-built processor.
-// Called from a source factory (not an init), so it may carry runtime config.
+// RegisterProgramProcessor installs the single stateful, config-built processor,
+// REPLACING whatever was registered before it. Called from a source factory (not
+// an init), so it may carry runtime config.
+//
+// A second call no longer panics (changed by #401). It used to: at the time, two
+// registrations in one process could only mean two factories racing to claim the
+// same slot, a wiring bug that had to surface at startup. That stopped being true
+// once a rebuild — a test constructing the pipeline twice, or a future in-process
+// reload — became a normal, expected event; a rebuild-safe registry has to let a
+// later build's registration cleanly replace an earlier one instead of aborting
+// the process. Nothing from the replaced processor survives: the very next
+// registeredProgramProcessor call sees only the new one.
 func RegisterProgramProcessor(p ProgramProcessor) {
-	if programProcessor != nil {
-		panic("syslog: duplicate ProgramProcessor registration")
-	}
+	programProcessorMu.Lock()
+	defer programProcessorMu.Unlock()
 	programProcessor = p
 }
 
-// registeredProgramProcessor returns the registered processor, if any.
-func registeredProgramProcessor() ProgramProcessor { return programProcessor }
+// ResetProgramProcessor clears any registered processor. It exists so a caller
+// with a well-defined rebuild boundary (a test tearing down between cases, or a
+// future graceful shutdown/reload path) can leave the registry exactly as it
+// found it, rather than relying on the next RegisterProgramProcessor call to
+// overwrite a leftover registration. Safe to call when nothing is registered.
+func ResetProgramProcessor() {
+	programProcessorMu.Lock()
+	defer programProcessorMu.Unlock()
+	programProcessor = nil
+}
+
+// registeredProgramProcessor returns the registered processor, if any. Safe for
+// concurrent use with RegisterProgramProcessor and ResetProgramProcessor from any
+// number of goroutines.
+func registeredProgramProcessor() ProgramProcessor {
+	programProcessorMu.RLock()
+	defer programProcessorMu.RUnlock()
+	return programProcessor
+}

@@ -1,6 +1,8 @@
 package zenarmor
 
 import (
+	"errors"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
@@ -13,10 +15,17 @@ import (
 // registry.
 type metrics struct {
 	recv      *logship.ReceiverMetrics
-	bulkReqs  prometheus.Counter
-	bulkBytes prometheus.Counter
-	excluded  *prometheus.CounterVec
+	bulkReqs  *zenarmorCounter
+	bulkBytes *zenarmorCounter
+	excluded  *zenarmorCounterVec
 }
+
+// These named wrappers make AlreadyRegisteredError type checks exact. Prometheus'
+// Counter interface is structural, so a Gauge also satisfies it; accepting an
+// existing collector through that interface would silently turn a same-name,
+// wrong-type collision into a broken metric family.
+type zenarmorCounter struct{ prometheus.Counter }
+type zenarmorCounterVec struct{ *prometheus.CounterVec }
 
 // newMetrics builds the receiver's metrics. rules are the configured exclude rules,
 // used only to pre-initialise logs_zenarmor_excluded_total to zero per rule (#280):
@@ -30,7 +39,7 @@ func newMetrics(reg prometheus.Registerer, rules []ExcludeRule) *metrics {
 			Reasons: RejectReasons,
 			Stages:  ParseStages,
 		}),
-		excluded: prometheus.NewCounterVec(prometheus.CounterOpts{
+		excluded: &zenarmorCounterVec{prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_zenarmor_excluded_total",
 			Help: "Total Zenarmor records dropped by a --logs.zenarmor.exclude rule, by rule. The " +
 				"rule label is the rule as configured, so the blind spot an exclusion creates is " +
@@ -38,23 +47,22 @@ func newMetrics(reg prometheus.Registerer, rules []ExcludeRule) *metrics {
 				"observed before the drop, so opnsense_log_events_zenarmor_total still describes " +
 				"excluded traffic — but its raw record, and every high-cardinality field on it " +
 				"(server_name, query, device_name), is gone for good.",
-		}, []string{"rule"}),
-		bulkReqs: prometheus.NewCounter(prometheus.CounterOpts{
+		}, []string{"rule"})},
+		bulkReqs: &zenarmorCounter{prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_zenarmor_bulk_requests_total",
 			Help: "Total Elasticsearch _bulk requests accepted from Zenarmor.",
-		}),
-		bulkBytes: prometheus.NewCounter(prometheus.CounterOpts{
+		})},
+		bulkBytes: &zenarmorCounter{prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_zenarmor_bulk_bytes_total",
 			Help: "Total _bulk request body bytes accepted from Zenarmor, measured after " +
 				"decompression so the figure reflects parsed volume rather than what the " +
 				"socket carried.",
-		}),
+		})},
 	}
 	if reg != nil {
-		// MustRegister, not the get-or-register dance ReceiverMetrics needs: these names
-		// are private to this receiver and only its single factory ever registers them,
-		// so a duplicate here is a programming error and should be loud.
-		reg.MustRegister(m.bulkReqs, m.bulkBytes, m.excluded)
+		m.bulkReqs = registerCounterOrExisting(reg, m.bulkReqs)
+		m.bulkBytes = registerCounterOrExisting(reg, m.bulkBytes)
+		m.excluded = registerCounterVecOrExisting(reg, m.excluded)
 	}
 	// The rule set is closed and known at startup — it is the operator's own config —
 	// so pre-initialising is bounded by it, not by anything off the wire.
@@ -62,6 +70,32 @@ func newMetrics(reg prometheus.Registerer, rules []ExcludeRule) *metrics {
 		m.excluded.WithLabelValues(r.Raw)
 	}
 	return m
+}
+
+func registerCounterOrExisting(reg prometheus.Registerer, c *zenarmorCounter) *zenarmorCounter {
+	if err := reg.Register(c); err != nil {
+		var already prometheus.AlreadyRegisteredError
+		if errors.As(err, &already) {
+			if existing, ok := already.ExistingCollector.(*zenarmorCounter); ok {
+				return existing
+			}
+		}
+		panic(err)
+	}
+	return c
+}
+
+func registerCounterVecOrExisting(reg prometheus.Registerer, c *zenarmorCounterVec) *zenarmorCounterVec {
+	if err := reg.Register(c); err != nil {
+		var already prometheus.AlreadyRegisteredError
+		if errors.As(err, &already) {
+			if existing, ok := already.ExistingCollector.(*zenarmorCounterVec); ok {
+				return existing
+			}
+		}
+		panic(err)
+	}
+	return c
 }
 
 // exclude counts one record dropped by rule, on both counters: the shared

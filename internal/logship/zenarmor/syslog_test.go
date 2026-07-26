@@ -119,8 +119,14 @@ func TestSyslogProcessor_EmittedSource(t *testing.T) {
 // TestFactory_SyslogTransport_RegistersRealProcessor covers the init() factory's
 // transport=="syslog" branch in source.go: build a docProcessor via newDocProcessor
 // (exactly as the factory does), wrap it in a syslogProcessor, and register it with
-// the REAL syslog registry — not a fake ProgramProcessor — then confirm the registry's
-// dup guard is what stands between this branch and a double registration.
+// the REAL syslog registry — not a fake ProgramProcessor — then confirm a second
+// registration from the same branch (the pipeline rebuilt: a test constructing it
+// twice, or a future in-process reload) replaces the first cleanly instead of
+// panicking. Before #401 the registry panicked on any second registration; that
+// guard existed to catch two factories racing to claim the same slot, but it also
+// made an ordinary rebuild fatal. The registry is now rebuild-safe, so this test
+// asserts the OPPOSITE of what it used to: no panic, and the second registration
+// wins.
 //
 // Driving the actual anonymous closure passed to logship.RegisterPushSource is not
 // possible from here: registeredPushFactories (internal/logship/push.go) is
@@ -133,7 +139,13 @@ func TestSyslogProcessor_EmittedSource(t *testing.T) {
 // produce. The branch's `return nil, nil` (no PushSource) is a literal return
 // statement beside those two calls and is verified by inspection, not by this test.
 func TestFactory_SyslogTransport_RegistersRealProcessor(t *testing.T) {
-	proc := newDocProcessor(logship.Deps{Registerer: prometheus.NewRegistry()}, Config{Enrich: false})
+	t.Cleanup(syslog.ResetProgramProcessor)
+
+	reg := prometheus.NewRegistry()
+	proc := newDocProcessor(logship.Deps{Registerer: reg}, Config{
+		Enrich:   false,
+		Families: []string{"dns"},
+	})
 	sp := &syslogProcessor{proc: proc}
 
 	syslog.RegisterProgramProcessor(sp)
@@ -141,13 +153,51 @@ func TestFactory_SyslogTransport_RegistersRealProcessor(t *testing.T) {
 		t.Fatal("registered processor does not handle its own program name")
 	}
 
-	// The dup guard is what would catch this branch running twice (e.g. two
-	// RegisterPushSource factories both resolving transport=syslog): confirm a
-	// second registration panics rather than silently replacing the first.
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("second RegisterProgramProcessor call did not panic (dup guard broken)")
-		}
-	}()
-	syslog.RegisterProgramProcessor(&syslogProcessor{proc: proc})
+	// A rebuild (e.g. the pipeline constructed a second time in this process) must
+	// replace the first registration cleanly, never panic (#401).
+	proc2 := newDocProcessor(logship.Deps{Registerer: reg}, Config{
+		Enrich:   false,
+		Families: []string{"alert"},
+	})
+	sp2 := &syslogProcessor{proc: proc2}
+	syslog.RegisterProgramProcessor(sp2)
+	if !sp2.Handles("zenarmor") {
+		t.Fatal("second registered processor does not handle its own program name")
+	}
+	if sp2.Handles("some-future-plugin") {
+		t.Fatal("unknown program claimed by the Zenarmor processor; generic fallback would be bypassed")
+	}
+	fallback := syslog.BuildRecord(syslog.Envelope{
+		Program: "some-future-plugin",
+		Message: "opaque plugin payload",
+	}, nil, nil)
+	if fallback.Body != "opaque plugin payload" {
+		t.Errorf("unknown-program fallback body = %q, want raw payload preserved", fallback.Body)
+	}
+
+	// A rebuild shares the registry-owned collectors, but no processor state. In
+	// particular, the later runtime config must not mutate the processor it replaced.
+	if proc == proc2 || proc.m == proc2.m || proc.m.recv == proc2.m.recv || proc.cache == proc2.cache {
+		t.Fatal("rebuild shared processor-local state; only registered collectors may be shared")
+	}
+	if !proc.families["dns"] || proc.families["ids"] {
+		t.Errorf("first processor family state changed after rebuild: %v", proc.families)
+	}
+	if !proc2.families["ids"] || proc2.families["dns"] {
+		t.Errorf("second processor family state = %v, want only ids", proc2.families)
+	}
+	if proc.m.bulkReqs != proc2.m.bulkReqs ||
+		proc.m.bulkBytes != proc2.m.bulkBytes ||
+		proc.m.excluded != proc2.m.excluded {
+		t.Fatal("rebuild did not reuse the registry-owned Zenarmor collectors")
+	}
+
+	proc.m.observeBulk(10)
+	proc2.m.observeBulk(20)
+	if got := gatheredCounter(t, reg, "opnsense_exporter_logs_zenarmor_bulk_requests_total", nil); got != 2 {
+		t.Errorf("shared bulk request count = %v, want 2", got)
+	}
+	if got := gatheredCounter(t, reg, "opnsense_exporter_logs_zenarmor_bulk_bytes_total", nil); got != 30 {
+		t.Errorf("shared bulk byte count = %v, want 30", got)
+	}
 }
