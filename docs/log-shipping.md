@@ -307,15 +307,17 @@ Stated honestly, because this pipeline is pull-based over a lossy source:
   ring, so rotation overlap does not duplicate and normal operation does not lose.
   The sink exports each batch **synchronously** and reports the real outcome: a record
   is counted `opnsense_exporter_logs_shipped_total` only once the OTLP endpoint has
-  acknowledged it, never merely on enqueue. A failed export is **retried in memory**
-  (the records stay queued, never re-fetched) until the endpoint recovers, so a
+  acknowledged it, never merely on enqueue. When one resource partition succeeds and a
+  sibling fails, the acknowledged partition is removed and only the retryable remainder
+  is sent again. Permanent HTTP/gRPC failures and OTLP partial-success rejections are
+  terminal: they are counted once under `reason="rejected"` and are not retried.
+  Transient failures are **retried in memory** (the records stay queued, never
+  re-fetched) until the endpoint recovers or `--logs.ship-max-attempts` is reached, so a
   transient outage is ridden out for as long as the bounded queue behind it holds.
-  Loss during a run happens only two ways, both counted: the queue overflows and drops
-  the **oldest** record (`opnsense_exporter_logs_dropped_total{reason="overflow"}`), or
-  shutdown abandons a batch that still cannot be delivered
-  (`opnsense_exporter_logs_dropped_total{reason="ship_failed"}`). Each failed export
-  attempt is visible as `opnsense_exporter_logs_ship_errors_total` while the retry is in
-  flight - degraded but never silent.
+  Every loss path is counted: queue overflow, an oversized input record, a terminal
+  destination rejection, exhausted retries, or a batch abandoned during shutdown. Each
+  attempt that does not fully deliver is visible as
+  `opnsense_exporter_logs_ship_errors_total` - degraded but never silent.
 - **Across restarts: at-most-once by default.** Cursors are in memory, so a restart
   resumes from now. The in-memory retry does **not** survive a process restart: records
   polled but not yet delivered when the process exits mid-outage are lost (counted
@@ -405,19 +407,24 @@ alongside each source above as it lands.
 ## Self-metrics
 
 The pipeline exposes its own health metrics (visible at `/metrics` and on the
-**Log Shipping** dashboard tab):
+**Log Shipping** dashboard tab). Every series also carries
+`opnsense_instance`, matching the collector metrics:
 
 - `opnsense_exporter_logs_shipped_total{source}` - records the sink confirmed exported
   (an acknowledged OTLP delivery, not merely enqueued).
 - `opnsense_exporter_logs_dropped_total{source,reason}` - records dropped before
-  delivery (`reason=overflow` = queue full; `reason=ship_failed` = export failed and the
-  bounded in-memory retries were exhausted, e.g. at shutdown).
-- `opnsense_exporter_logs_ship_errors_total` - failed export attempts. The batch is
-  retried in memory; it is lost (and separately counted `ship_failed`) only once the
-  retries are exhausted.
+  delivery (`reason=overflow` = queue full; `reason=record_too_large` = rejected at
+  ingest; `reason=rejected` = terminal destination refusal;
+  `reason=ship_failed_permanent` = bounded retries exhausted; `reason=ship_failed` =
+  shutdown abandoned the retryable remainder).
+- `opnsense_exporter_logs_ship_errors_total` - attempts that did not fully deliver.
+  Acknowledged partitions are removed before retry, so this is an attempt counter rather
+  than a record-loss counter.
 - `opnsense_exporter_logs_poll_errors_total{source}` - source poll failures.
-- `opnsense_exporter_logs_last_event_timestamp_seconds{source}` - timestamp of the
-  most recent shipped event (cursor lag).
+- `opnsense_exporter_logs_last_received_timestamp_seconds{source}` - exporter-clock
+  time when this source most recently admitted a record to the queue.
+- `opnsense_exporter_logs_last_exported_timestamp_seconds{source}` - exporter-clock
+  time when the sink most recently acknowledged a record from this source.
 - `opnsense_exporter_logs_queue_length` / `opnsense_exporter_logs_queue_capacity` -
   backpressure queue depth and capacity.
 - `opnsense_exporter_logs_parse_errors_total{stage}` - lines that failed to parse

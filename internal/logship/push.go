@@ -66,37 +66,45 @@ func (p *pipeline) runPushSource(ctx context.Context, s PushSource) {
 	// Hoist the default gauge ONCE; WithLabelValues takes a mutex and emit runs on the
 	// receiver goroutine thousands of times a second. Pre-hoist any override sources this
 	// source declares so the override path stays mutex-free too.
-	lastEventDefault := p.metrics.lastEventTime.WithLabelValues(name)
-	extraLastEvent := map[string]prometheus.Gauge{}
+	lastReceivedDefault := p.metrics.lastReceived.WithLabelValues(name)
+	extraLastReceived := map[string]prometheus.Gauge{}
 	if es, ok := s.(ExtraSourceNames); ok {
 		for _, n := range es.ExtraSourceNames() {
 			if n != "" && n != name {
-				extraLastEvent[n] = p.metrics.lastEventTime.WithLabelValues(n)
+				extraLastReceived[n] = p.metrics.lastReceived.WithLabelValues(n)
 			}
 		}
 	}
 	emit := func(r Record) {
 		r.Attributes = sanitizeAttributes(r.Attributes)
 		src := name
-		le := lastEventDefault
+		lr := lastReceivedDefault
 		if r.Source != "" && r.Source != name {
 			src = r.Source
-			if g, ok := extraLastEvent[src]; ok {
-				le = g
+			if g, ok := extraLastReceived[src]; ok {
+				lr = g
 			} else {
-				le = p.metrics.lastEventTime.WithLabelValues(src)
+				lr = p.metrics.lastReceived.WithLabelValues(src)
 			}
 		}
 		// enqueue applies the per-record size cap before the record can reach the
-		// queue (#318). A rejected record must NOT advance the last-event gauge: it
-		// was never accepted, and claiming progress for data we dropped would hide
-		// the loss behind a healthy-looking cursor.
-		if !p.enqueue(Entry{Source: src, Record: r}) {
+		// queue (#318). A rejected record must NOT advance the receive gauge: it was
+		// never accepted, and claiming progress for data we dropped would hide the
+		// loss behind a healthy-looking cursor.
+		//
+		// The gauge is set from enqueue's ADMISSION stamp, not from r.Timestamp (#394).
+		// This is the path that made the old gauge forgeable: with the syslog receiver
+		// enabled, UDP listens on all interfaces and an empty peer allowlist accepts any
+		// sender, so a single future-dated line used to pin the gauge into the future and
+		// suppress the stalled-source alert indefinitely. An admitted record now advances
+		// it by exactly one clock read, whatever the sender claimed the time was — and a
+		// zero-timestamp record, which used to advance nothing at all, now counts as the
+		// arrival it plainly is.
+		recv, ok := p.enqueue(Entry{Source: src, Record: r})
+		if !ok {
 			return
 		}
-		if !r.Timestamp.IsZero() {
-			le.Set(float64(r.Timestamp.Unix()))
-		}
+		lr.Set(unixSeconds(recv))
 	}
 	if err := s.Run(ctx, emit); err != nil && ctx.Err() == nil {
 		p.metrics.pollErrors.WithLabelValues(name).Inc()

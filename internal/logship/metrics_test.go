@@ -1,6 +1,7 @@
 package logship
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
+	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 )
 
 // counterValue reads the current value of a prometheus.Counter without
@@ -116,6 +119,210 @@ func TestPipelineCountersPreInitialisedToZero(t *testing.T) {
 	// Only a bounded-window source can gap. A cursor-based source never can.
 	mustBeZero(t, s, `opnsense_exporter_logs_possible_gap_total{source="unbound"}`)
 	mustBeAbsent(t, s, `opnsense_exporter_logs_possible_gap_total{source="syslog"}`)
+}
+
+// assertEveryLogsSeriesCarriesInstance is the #395 contract: EVERY series in the
+// opnsense_exporter_logs_* family must carry opnsense_instance, with the expected
+// value. It walks the raw Gather output rather than gatherSeries' flattened keys so
+// the failure message can name the offending family, and so a family that publishes
+// no series at all is reported as "watching nothing" instead of silently passing.
+//
+// The invariant is what makes the Log Shipping and Zenarmor dashboard tabs honest on
+// a multi-box deployment: without it, two exporters' self-metrics are indistinguishable
+// and $opnsense_instance cannot filter them, so one healthy box masks a stalled one.
+func assertEveryLogsSeriesCarriesInstance(t *testing.T, reg *prometheus.Registry, want string) {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	seen := 0
+	for _, mf := range mfs {
+		if !strings.HasPrefix(mf.GetName(), "opnsense_exporter_logs_") {
+			continue
+		}
+		if len(mf.GetMetric()) == 0 {
+			t.Errorf("%s publishes no series; this assertion is watching nothing", mf.GetName())
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			seen++
+			got, ok := "", false
+			for _, lp := range m.GetLabel() {
+				if lp.GetName() == instanceLabelName {
+					got, ok = lp.GetValue(), true
+				}
+			}
+			if !ok {
+				t.Errorf("%s series %v is missing the %s label; it cannot be attributed to an exporter instance",
+					mf.GetName(), m.GetLabel(), instanceLabelName)
+				continue
+			}
+			if got != want {
+				t.Errorf("%s carries %s=%q, want %q", mf.GetName(), instanceLabelName, got, want)
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no opnsense_exporter_logs_* series were gathered; the test built nothing to assert on")
+	}
+}
+
+// Every self-metric built through the two logship constructor seams carries the
+// instance label when they are handed the registerer Start builds (#395). This
+// covers the pipeline metrics AND the shared receiver metrics, including the two
+// GaugeFuncs (which are wrapped collectors, not vec children, so they are the ones
+// most likely to slip through a const-label scheme).
+func TestLogshipSelfMetrics_CarryInstanceLabel(t *testing.T) {
+	base := prometheus.NewRegistry()
+	reg := SelfMetricsRegisterer(base, "box-a")
+
+	m := newMetrics(reg, queueBounds{
+		capacity: 10, maxBytes: 100,
+		length: func() float64 { return 0 },
+		bytes:  func() float64 { return 0 },
+	}, sourceNames{
+		all:  []string{"syslog", "unbound"},
+		poll: []string{"unbound"},
+		gap:  []string{"unbound"},
+	})
+	// The last-* gauges are deliberately not pre-initialised (a zero there would read
+	// as 1970), so touch them explicitly or the family would not be gathered at all.
+	m.lastReceived.WithLabelValues("syslog").Set(1)
+	m.lastExported.WithLabelValues("syslog").Set(1)
+
+	// Two receivers sharing the parse/reject vecs, exactly as production does.
+	NewReceiverMetrics(reg, "syslog", ReceiverVocab{Reasons: []string{"peer"}, Stages: []string{"envelope"}})
+	NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{Reasons: []string{"auth"}, Stages: []string{"bulk"}})
+
+	assertEveryLogsSeriesCarriesInstance(t, base, "box-a")
+}
+
+// capture.New and enrich.NewMetrics are the two log self-metric constructors built
+// outside Start. Exercise the real constructors through the exported composition-root
+// seam so a new or renamed series cannot silently escape instance attribution.
+func TestOutOfStartSelfMetrics_CarryInstanceLabel(t *testing.T) {
+	base := prometheus.NewRegistry()
+	reg := SelfMetricsRegisterer(base, "box-outside-start")
+
+	capturer, err := capture.New(capture.Config{
+		Dir:      t.TempDir(),
+		MaxBytes: 1 << 20,
+	}, reg, nil)
+	if err != nil {
+		t.Fatalf("capture.New: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := capturer.Close(); err != nil {
+			t.Errorf("close capturer: %v", err)
+		}
+	})
+
+	enrichMetrics := enrich.NewMetrics(reg)
+	// LastRefresh is deliberately not pre-initialised because zero would mean 1970.
+	// Touch one child so the gauge family joins the counters in the gathered contract.
+	enrichMetrics.LastRefresh.WithLabelValues("rules").Set(1)
+
+	assertEveryLogsSeriesCarriesInstance(t, base, "box-outside-start")
+	series := gatherSeries(t, base)
+	for _, prefix := range []string{
+		"opnsense_exporter_logs_debug_",
+		"opnsense_exporter_logs_enrich_",
+	} {
+		found := false
+		for key := range series {
+			if strings.HasPrefix(key, prefix) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("no %s* series gathered; one out-of-Start constructor registered nothing", prefix)
+		}
+	}
+}
+
+// Two receivers must still SHARE the parse/reject collectors under the wrapping
+// registerer rather than tripping duplicate registration — the wrapping registerer
+// hands back a wrapped collector on conflict, so registerOrExisting's unwrap has to
+// survive it (#395 keeps #280's shared-vec contract intact).
+func TestLogshipSelfMetrics_ReceiversStillShareVecsUnderInstanceLabel(t *testing.T) {
+	base := prometheus.NewRegistry()
+	reg := SelfMetricsRegisterer(base, "box-a")
+
+	a := NewReceiverMetrics(reg, "syslog", ReceiverVocab{Reasons: []string{"peer"}})
+	b := NewReceiverMetrics(reg, "zenarmor", ReceiverVocab{Reasons: []string{"auth"}})
+	if a.rejected != b.rejected {
+		t.Fatal("the two receivers registered separate logs_rejected_total collectors")
+	}
+	a.Reject("peer")
+	b.Reject("auth")
+
+	s := gatherSeries(t, base)
+	mustHave(t, s, `opnsense_exporter_logs_rejected_total{opnsense_instance="box-a",reason="peer",source="syslog"}`, 1)
+	mustHave(t, s, `opnsense_exporter_logs_rejected_total{opnsense_instance="box-a",reason="auth",source="zenarmor"}`, 1)
+}
+
+func mustHave(t *testing.T, series map[string]float64, key string, want float64) {
+	t.Helper()
+	got, ok := series[key]
+	if !ok {
+		t.Errorf("%s is absent", key)
+		return
+	}
+	if got != want {
+		t.Errorf("%s = %v, want %v", key, got, want)
+	}
+}
+
+// The wiring test: the invariant has to hold for the registerer Start actually
+// installs, not only for one a test constructs by hand. Start is what wraps both the
+// pipeline registry AND deps.Registerer, and a receiver registering through an
+// unwrapped deps.Registerer is exactly the regression this catches.
+func TestStart_WrapsBothRegisterersWithInstanceLabel(t *testing.T) {
+	base := prometheus.NewRegistry()
+	withRegistry(t, func(Deps) (Source, error) { return &fakeSource{name: "unbound"}, nil })
+	withPushRegistry(t, func(d Deps) (PushSource, error) {
+		return &receiverRegisteringPush{reg: d.Registerer}, nil
+	})
+
+	deps := testDeps()
+	deps.Registerer = base
+	cfg := testCfg()
+	cfg.Sink = "stdout" // no OTLP endpoint needed; the fake source emits nothing
+
+	stop, err := Start(context.Background(), cfg, nil, deps, "v", "box-b", base)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = stop(context.Background()) })
+
+	waitFor(t, func() bool {
+		return len(gatherSeries(t, base)) > 0 &&
+			gatherSeries(t, base)[`opnsense_exporter_logs_rejected_total{opnsense_instance="box-b",reason="peer",source="pushfake"}`] == 0
+	})
+	assertEveryLogsSeriesCarriesInstance(t, base, "box-b")
+}
+
+// receiverRegisteringPush is a push source that builds ReceiverMetrics off
+// deps.Registerer, the way the real syslog and zenarmor receivers do.
+type receiverRegisteringPush struct{ reg prometheus.Registerer }
+
+func (p *receiverRegisteringPush) Name() string { return "pushfake" }
+
+func (p *receiverRegisteringPush) Run(ctx context.Context, _ func(Record)) error {
+	NewReceiverMetrics(p.reg, "pushfake", ReceiverVocab{Reasons: []string{"peer"}, Stages: []string{"envelope"}})
+	<-ctx.Done()
+	return nil
+}
+
+// withPushRegistry swaps the package push-source registry for one test, mirroring
+// withRegistry.
+func withPushRegistry(t *testing.T, factories ...PushSourceFactory) {
+	t.Helper()
+	saved := registeredPushFactories
+	registeredPushFactories = append([]PushSourceFactory(nil), factories...)
+	t.Cleanup(func() { registeredPushFactories = saved })
 }
 
 // gapFakeSource is a poll source that declares itself bounded-window.

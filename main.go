@@ -893,6 +893,7 @@ func main() {
 		logger.Error("could not resolve instance label", "err", err)
 		os.Exit(1)
 	}
+	logSelfMetricsRegisterer := logship.SelfMetricsRegisterer(selfMetricsRegistry, instanceLabel)
 
 	// Continuous profiling is opt-in: enabled only when a Pyroscope server
 	// address is configured. An invalid configuration is fatal; a transient
@@ -1097,7 +1098,7 @@ func main() {
 		dc, cerr := capture.New(capture.Config{
 			Dir:      options.LogsDebugCaptureDir(),
 			MaxBytes: options.LogsDebugCaptureMaxBytes(),
-		}, selfMetricsRegistry, logger)
+		}, logSelfMetricsRegisterer, logger)
 		if cerr != nil {
 			logger.Error("invalid debug-capture configuration", "err", cerr)
 			os.Exit(1)
@@ -1120,7 +1121,7 @@ func main() {
 		}
 		enrichCache = enrich.NewCache()
 		enrichRefresher = enrich.NewRefresher(
-			&opnsenseClient, enrichCache, enrich.NewMetrics(selfMetricsRegistry), logger)
+			&opnsenseClient, enrichCache, enrich.NewMetrics(logSelfMetricsRegisterer), logger)
 		ectx, cancel := context.WithCancel(context.Background())
 		stopEnrich = cancel
 		go enrichRefresher.Run(ectx)

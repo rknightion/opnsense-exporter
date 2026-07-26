@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -46,6 +47,102 @@ func mainFuncBody(t *testing.T) *ast.BlockStmt {
 	}
 	t.Fatal("func main() not found in main.go")
 	return nil
+}
+
+// TestOutOfStartLogMetricsUseInstanceRegisterer guards the two log self-metric
+// constructors main builds outside logship.Start. Both must receive the ONE wrapped
+// registerer created through logship.SelfMetricsRegisterer; passing
+// selfMetricsRegistry directly leaves their series unattributable in a multi-box
+// deployment, while wrapping Start's arguments here would double-label them.
+func TestOutOfStartLogMetricsUseInstanceRegisterer(t *testing.T) {
+	body := mainFuncBody(t)
+	wrappedName := ""
+	wrapperCalls := 0
+	captureCalls := 0
+	enrichCalls := 0
+
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.AssignStmt:
+			if len(node.Lhs) != 1 || len(node.Rhs) != 1 {
+				return true
+			}
+			call, ok := node.Rhs[0].(*ast.CallExpr)
+			if !ok || !isPackageCall(call, "logship", "SelfMetricsRegisterer") {
+				return true
+			}
+			wrapperCalls++
+			lhs, lhsOK := node.Lhs[0].(*ast.Ident)
+			if !lhsOK {
+				t.Errorf("logship.SelfMetricsRegisterer result is not assigned to an identifier")
+				return true
+			}
+			if len(call.Args) != 2 || !isIdent(call.Args[0], "selfMetricsRegistry") ||
+				!isIdent(call.Args[1], "instanceLabel") {
+				t.Errorf("logship.SelfMetricsRegisterer arguments must be (selfMetricsRegistry, instanceLabel)")
+				return true
+			}
+			wrappedName = lhs.Name
+
+		case *ast.CallExpr:
+			switch {
+			case isPackageCall(node, "capture", "New"):
+				captureCalls++
+				if len(node.Args) < 2 || wrappedName == "" || !isIdent(node.Args[1], wrappedName) {
+					t.Errorf("capture.New registerer is %s, want the identifier returned by logship.SelfMetricsRegisterer",
+						astExprName(nodeArg(node, 1)))
+				}
+			case isPackageCall(node, "enrich", "NewMetrics"):
+				enrichCalls++
+				if len(node.Args) < 1 || wrappedName == "" || !isIdent(node.Args[0], wrappedName) {
+					t.Errorf("enrich.NewMetrics registerer is %s, want the identifier returned by logship.SelfMetricsRegisterer",
+						astExprName(nodeArg(node, 0)))
+				}
+			}
+		}
+		return true
+	})
+
+	if wrapperCalls != 1 {
+		t.Errorf("main() creates %d logship.SelfMetricsRegisterer values, want exactly one", wrapperCalls)
+	}
+	if captureCalls != 1 {
+		t.Errorf("main() contains %d capture.New calls, want exactly one guarded call", captureCalls)
+	}
+	if enrichCalls != 1 {
+		t.Errorf("main() contains %d enrich.NewMetrics calls, want exactly one guarded call", enrichCalls)
+	}
+}
+
+func isPackageCall(call *ast.CallExpr, pkg, name string) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != name {
+		return false
+	}
+	x, ok := sel.X.(*ast.Ident)
+	return ok && x.Name == pkg
+}
+
+func isIdent(expr ast.Expr, name string) bool {
+	id, ok := expr.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+func nodeArg(call *ast.CallExpr, index int) ast.Expr {
+	if index < 0 || index >= len(call.Args) {
+		return nil
+	}
+	return call.Args[index]
+}
+
+func astExprName(expr ast.Expr) string {
+	if expr == nil {
+		return "<missing>"
+	}
+	if id, ok := expr.(*ast.Ident); ok {
+		return id.Name
+	}
+	return fmt.Sprintf("%T", expr)
 }
 
 // TestEveryDisableSwitchWiredInMain guards the fourth "Adding a New Collector" step that

@@ -25,6 +25,14 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   duration, and failure signals. Prometheus's own `scrape_timeout` still bounds the
   HTTP request.
 
+- **Log freshness gauges have stage-specific names** -
+  `opnsense_exporter_logs_last_event_timestamp_seconds` has been removed. Use
+  `opnsense_exporter_logs_last_received_timestamp_seconds{source}` to measure when
+  the exporter last admitted input and
+  `opnsense_exporter_logs_last_exported_timestamp_seconds{source}` to measure when
+  the sink last acknowledged delivery. Both use the exporter clock; neither uses a
+  sender-controlled event timestamp.
+
 - **Container health uses the native `health` subcommand** - the distroless image
   now runs `opnsense-exporter health`, which probes `/-/healthy` without requiring a
   shell, `curl`, or `wget`. Custom images and Compose overrides that copied the old

@@ -103,6 +103,24 @@ type Record struct {
 type Entry struct {
 	Source string
 	Record Record
+	// Received is the EXPORTER-clock instant this record was admitted to the shipping
+	// queue. It lives on Entry rather than Record deliberately: Record is what a Source
+	// (and, for the syslog receiver, ultimately a sender on the network) constructs, so
+	// a field there could be forged. Entry is built by the pipeline, and the stamp is
+	// taken in exactly one place — pipeline.enqueue, the single ingest gate — so it is
+	// taken once per record and never re-taken.
+	//
+	// That "once" is the point (#394). It becomes the OTLP ObservedTimestamp, which the
+	// log data model defines as when the collection system observed the event; setting
+	// it per export ATTEMPT (as the sink used to) made it change on every retry, so the
+	// same record shipped with a different observed time each time it was resent. It is
+	// also what the receive-freshness gauge reads, which is why no sender-supplied
+	// timestamp can move that gauge.
+	//
+	// A zero value means "not stamped by the pipeline" — a Sink constructed directly in
+	// a test, or any future caller that bypasses enqueue. Sinks fall back to their own
+	// clock rather than shipping a 1970 observed time.
+	Received time.Time
 }
 
 // sanitizeAttributes returns attrs with every reserved key removed. It never

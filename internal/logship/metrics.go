@@ -21,7 +21,50 @@ const (
 	// retained size exceeded --logs.max-record-bytes. It never entered the queue, so it
 	// never displaced other records and never became a batch the sink would refuse (#318).
 	dropReasonRecordTooLarge = "record_too_large"
+	// dropReasonRejected is a record the DESTINATION terminally refused: a permanent
+	// protocol response (HTTP 400, gRPC InvalidArgument/Unauthenticated) or the rejected
+	// share of an OTLP partial success (#392). It is deliberately distinct from
+	// ship_failed_permanent, which means "we gave up after --logs.ship-max-attempts and
+	// the endpoint may simply be sick". This one means the endpoint looked at the records
+	// and said no, so the fix is in the payload or the credentials, not in waiting — and
+	// unlike ship_failed_permanent it costs exactly ONE wire attempt, not ten.
+	dropReasonRejected = "rejected"
 )
+
+// instanceLabelName is the identity label every opnsense_exporter_logs_* series
+// carries (#395). It is deliberately the SAME name internal/collector stamps on the
+// collector metrics, so a dashboard's $opnsense_instance variable selects a box's
+// collector metrics and its log-shipping self-metrics with one matcher.
+//
+// Before this, the logship family carried source/reason/stage but no box identity, so
+// on a multi-exporter deployment two boxes' series were indistinguishable: the Log
+// Shipping and Zenarmor tabs silently aggregated every exporter, and the
+// cursor-stalled alert's `max by (source)` let one healthy box mask a stalled one.
+const instanceLabelName = "opnsense_instance"
+
+// SelfMetricsRegisterer is the ONE seam that stamps instance identity onto logship
+// self-metrics. Start wraps both the pipeline registry and deps.Registerer with it,
+// so every metric built through newMetrics or NewReceiverMetrics — and every metric a
+// future source lane registers off deps.Registerer — gets the label without having to
+// remember to add it. Adding the label per-constructor via ConstLabels was the
+// alternative and was rejected: it is exactly the thing a new self-metric can omit.
+//
+// EXPORTED because two opnsense_exporter_logs_* families are built OUTSIDE Start, by
+// the composition root: enrich.NewMetrics (logs_enrich_*) and capture.New
+// (logs_debug_*) take the self-metrics registry directly from main.go, so Start never
+// sees them. Those call sites must pass SelfMetricsRegisterer(reg, instanceLabel) or
+// their series stay unattributable on a multi-box deployment.
+//
+// A nil registerer stays nil rather than becoming a no-op wrapper: NewReceiverMetrics
+// treats nil as "no-op handle, skip pre-initialisation", and wrapping nil would hand
+// it a non-nil registerer that silently discards every registration, turning an
+// explicit opt-out into pre-initialised zeroes nothing ever publishes.
+func SelfMetricsRegisterer(reg prometheus.Registerer, instance string) prometheus.Registerer {
+	if reg == nil {
+		return nil
+	}
+	return prometheus.WrapRegistererWith(prometheus.Labels{instanceLabelName: instance}, reg)
+}
 
 // metrics holds the pipeline self-metrics. They register into the exporter's
 // self-metrics registry (so they appear at /metrics and via the OTLP metrics
@@ -35,7 +78,8 @@ type metrics struct {
 	dropped        *prometheus.CounterVec // logs_dropped_total{source,reason}
 	shipErrors     prometheus.Counter     // logs_ship_errors_total
 	pollErrors     *prometheus.CounterVec // logs_poll_errors_total{source}
-	lastEventTime  *prometheus.GaugeVec   // logs_last_event_timestamp_seconds{source}
+	lastReceived   *prometheus.GaugeVec   // logs_last_received_timestamp_seconds{source}
+	lastExported   *prometheus.GaugeVec   // logs_last_exported_timestamp_seconds{source}
 	queueLength    prometheus.GaugeFunc   // logs_queue_length
 	queueCapacity  prometheus.Gauge       // logs_queue_capacity
 	queueBytes     prometheus.GaugeFunc   // logs_queue_bytes
@@ -99,24 +143,64 @@ func newMetrics(reg prometheus.Registerer, q queueBounds, names sourceNames) *me
 			Help: "Total log records dropped before delivery, by source and reason " +
 				"(overflow = the backpressure queue evicted the oldest record after exceeding its " +
 				"record-count cap or its byte budget; record_too_large = the record exceeded the " +
-				"per-record size cap and was rejected at ingest; ship_failed_permanent = the sink " +
+				"per-record size cap and was rejected at ingest; rejected = the destination " +
+				"terminally refused the records — a permanent protocol response such as HTTP 400 or " +
+				"gRPC InvalidArgument/Unauthenticated, or the rejected share of an OTLP " +
+				"partial-success response — so they were counted once and never retried; " +
+				"ship_failed_permanent = the sink " +
 				"refused the batch for the maximum number of attempts while running, so it was " +
 				"abandoned rather than wedging delivery of every later batch; " +
-				"ship_failed = shutdown abandoned a batch that was still failing to export).",
+				"ship_failed = shutdown abandoned a batch that was still failing to export). " +
+				"Records the destination acknowledged are NEVER counted here, even when a sibling " +
+				"resource partition in the same batch failed.",
 		}, []string{"source", "reason"}),
 		shipErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_ship_errors_total",
-			Help: "Total sink export attempts that failed. The batch is retried in memory; a batch is " +
-				"only lost — and separately counted as logs_dropped_total{reason=\"ship_failed_permanent\"} " +
-				"while running, or {reason=\"ship_failed\"} at shutdown — once the retries are exhausted.",
+			Help: "Total sink export ATTEMPTS that did not fully deliver — a record counter it is " +
+				"not, so it neither adds to nor subtracts from logs_shipped_total / " +
+				"logs_dropped_total, which between them account for every record. One attempt may " +
+				"partly succeed: acknowledged resource partitions are counted shipped and dropped " +
+				"from the retry, so only the unacknowledged remainder is sent again. Records are " +
+				"lost only when that remainder is terminally refused " +
+				"(logs_dropped_total{reason=\"rejected\"}), when retries are exhausted while running " +
+				"({reason=\"ship_failed_permanent\"}), or when shutdown abandons it " +
+				"({reason=\"ship_failed\"}).",
 		}),
 		pollErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: ns, Name: "logs_poll_errors_total",
 			Help: "Total source Poll errors, by source.",
 		}, []string{"source"}),
-		lastEventTime: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: ns, Name: "logs_last_event_timestamp_seconds",
-			Help: "Unix timestamp of the most recent event shipped, by source (cursor lag).",
+		// The two stage gauges below replace the single, ambiguous
+		// logs_last_event_timestamp_seconds (#394). That gauge was set right after queue
+		// ADMISSION but from the record's SOURCE-ORIGIN timestamp, while its help text and
+		// the stalled-source alert both read it as "the last event shipped". Three
+		// consequences, all of which made it useless as a health signal: it advanced
+		// before the sink acknowledged anything (so a backed-up sink looked healthy), it
+		// regressed on out-of-order input (so replaying old data read as a stall), and —
+		// because an enabled syslog receiver listens on all interfaces with an empty peer
+		// allowlist by default — any admitted sender could set it years into the future
+		// and suppress the alert outright.
+		//
+		// BOTH replacements read the EXPORTER's clock, never the record's. That is what
+		// makes them process-health signals: no value off the wire can move them, and no
+		// out-of-order or zero origin timestamp can regress them. Origin event time is
+		// still carried per record (OTLP Timestamp / the stdout line's timestamp field) —
+		// it just no longer masquerades as pipeline liveness.
+		lastReceived: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: ns, Name: "logs_last_received_timestamp_seconds",
+			Help: "Unix timestamp, on the EXPORTER's clock, when this source's most recent record was " +
+				"ADMITTED to the shipping queue, by source. Read it as source liveness: it answers " +
+				"\"is this source still delivering input to us?\" and is unaffected by the record's own " +
+				"(sender-controlled, possibly out-of-order or future-dated) event timestamp. A record " +
+				"rejected at ingest never advances it.",
+		}, []string{"source"}),
+		lastExported: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: ns, Name: "logs_last_exported_timestamp_seconds",
+			Help: "Unix timestamp, on the EXPORTER's clock, when this source's most recent record was " +
+				"ACKNOWLEDGED by the sink, by source. Read it as delivery liveness. It advances only on " +
+				"a confirmed export — never for a queued, retrying, abandoned or permanently dropped " +
+				"batch — so a wide gap against logs_last_received_timestamp_seconds means input is " +
+				"arriving but not getting out.",
 		}, []string{"source"}),
 		queueCapacity: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: ns, Name: "logs_queue_capacity",
@@ -179,7 +263,7 @@ func newMetrics(reg prometheus.Registerer, q queueBounds, names sourceNames) *me
 	m.queueMaxBytes.Set(float64(q.maxBytes))
 	reg.MustRegister(
 		m.shipped, m.dropped, m.shipErrors, m.pollErrors,
-		m.lastEventTime, m.queueLength, m.queueCapacity, m.possibleGap,
+		m.lastReceived, m.lastExported, m.queueLength, m.queueCapacity, m.possibleGap,
 		m.resourceCapped, m.queueBytes, m.queueMaxBytes,
 	)
 	m.preInit(names)
@@ -191,9 +275,11 @@ func newMetrics(reg prometheus.Registerer, q queueBounds, names sourceNames) *me
 // preInit publishes the known label combinations at zero (#280), so a healthy
 // pipeline reports a flat 0 rather than nothing at all.
 //
-// Only the CounterVecs are seeded. lastEventTime is deliberately left alone: it is
-// a GaugeVec of an event's unix timestamp, and a zero there would read as 1970 —
-// claiming an event arrived at the epoch is worse than reporting no event yet.
+// Only the CounterVecs are seeded. lastReceived and lastExported are deliberately left
+// alone: they are GaugeVecs of a unix timestamp, and a zero there would read as 1970 —
+// claiming an event arrived at the epoch is worse than reporting no event yet. Every
+// query over them is `time() - gauge`, which on a seeded zero would report a 56-year
+// stall on a pipeline that has simply not shipped anything yet.
 func (m *metrics) preInit(names sourceNames) {
 	for _, s := range names.all {
 		m.shipped.WithLabelValues(s)
@@ -201,6 +287,7 @@ func (m *metrics) preInit(names sourceNames) {
 		m.dropped.WithLabelValues(s, dropReasonShipFailed)
 		m.dropped.WithLabelValues(s, dropReasonShipFailedPermanent)
 		m.dropped.WithLabelValues(s, dropReasonRecordTooLarge)
+		m.dropped.WithLabelValues(s, dropReasonRejected)
 	}
 	for _, s := range names.poll {
 		m.pollErrors.WithLabelValues(s)

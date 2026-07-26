@@ -66,14 +66,14 @@ type fakeSink struct {
 	shutdown bool
 }
 
-func (s *fakeSink) Emit(_ context.Context, batch []Entry) error {
+func (s *fakeSink) Emit(_ context.Context, batch []Entry) SinkResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.emitErr != nil {
-		return s.emitErr
+		return retryResult(batch, s.emitErr)
 	}
 	s.entries = append(s.entries, batch...)
-	return nil
+	return ackedResult(batch)
 }
 
 func (s *fakeSink) Shutdown(context.Context) error {
@@ -252,14 +252,14 @@ type alwaysFailSink struct {
 	seen     []string
 }
 
-func (s *alwaysFailSink) Emit(_ context.Context, batch []Entry) error {
+func (s *alwaysFailSink) Emit(_ context.Context, batch []Entry) SinkResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.attempts++
 	if len(batch) > 0 {
 		s.seen = append(s.seen, batch[0].Record.Body)
 	}
-	return errors.New("permanently refused")
+	return retryResult(batch, errors.New("permanently refused"))
 }
 
 func (s *alwaysFailSink) Shutdown(context.Context) error { return nil }

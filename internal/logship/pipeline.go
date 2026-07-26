@@ -78,6 +78,16 @@ func Start(
 		deps.Logger = slog.Default()
 	}
 
+	// Stamp instance identity onto EVERY logship self-metric (#395). Both registerers
+	// are wrapped here, before any source is built: reg carries the pipeline's own
+	// metrics, deps.Registerer is what each push receiver registers its shared
+	// parse/reject vecs on. main.go currently passes the same registry for both, but
+	// wrapping them independently is what makes a future split safe — a receiver
+	// registering through an unwrapped deps.Registerer is the exact regression
+	// TestStart_WrapsBothRegisterersWithInstanceLabel guards.
+	reg = SelfMetricsRegisterer(reg, instance)
+	deps.Registerer = SelfMetricsRegisterer(deps.Registerer, instance)
+
 	sources, err := buildSources(deps)
 	if err != nil {
 		return nil, fmt.Errorf("build log sources: %w", err)
@@ -213,7 +223,13 @@ func (p *pipeline) noteOverflow(e Entry) {
 // oversized record that reaches the queue both displaces other records under the
 // byte budget AND can become a batch the sink permanently refuses, which before
 // the attempt cap wedged the single emitter goroutine outright.
-func (p *pipeline) enqueue(e Entry) bool {
+// It is also where the exporter-clock receive time is stamped (#394). Being the single
+// gate is what makes that stamp trustworthy: it is taken exactly once per record, after
+// the size check (so a rejected record carries none and cannot advance receive
+// freshness) and before the record can be retried, so it stays byte-identical across
+// every export attempt. The caller gets the stamp back so it can advance its own
+// pre-hoisted per-source gauge without a second clock read.
+func (p *pipeline) enqueue(e Entry) (time.Time, bool) {
 	if maxBytes := p.cfg.MaxRecordBytes; maxBytes > 0 && recordBytes(e.Record) > maxBytes {
 		p.metrics.dropped.WithLabelValues(e.Source, dropReasonRecordTooLarge).Inc()
 		consoleDropped.Add(1)
@@ -221,10 +237,19 @@ func (p *pipeline) enqueue(e Entry) bool {
 			p.log.Warn("log record exceeds the per-record size cap; rejected at ingest",
 				"source", e.Source, "bytes", recordBytes(e.Record), "max_record_bytes", maxBytes)
 		}
-		return false
+		return time.Time{}, false
 	}
+	e.Received = time.Now()
 	p.queue.push(e)
-	return true
+	return e.Received, true
+}
+
+// unixSeconds renders t for a *_timestamp_seconds gauge, keeping sub-second precision.
+// Truncating to whole seconds would quantise the received/exported gap — the very thing
+// the two gauges exist to measure — to 1s, which is coarser than a healthy pipeline's
+// entire queue-to-acknowledgement latency.
+func unixSeconds(t time.Time) float64 {
+	return float64(t.UnixNano()) / float64(time.Second)
 }
 
 // effectiveInterval is max(global poll interval, source floor).
@@ -255,8 +280,13 @@ func (p *pipeline) runPoller(s Source, interval time.Duration) {
 	}
 }
 
-// pollOnce runs one Poll, sanitizes and enqueues the records, and updates the
-// cursor-lag gauge.
+// pollOnce runs one Poll, sanitizes and enqueues the records, and advances the
+// source's receive-freshness gauge.
+//
+// The gauge is set from the last ADMISSION stamp, never from the newest record
+// timestamp in the poll (#394). Taking the newest origin timestamp made a poll of old
+// or out-of-order data read as a stall, and made the gauge track the data's age rather
+// than the source's liveness — which is what an alert on it needs to mean.
 func (p *pipeline) pollOnce(s Source, name string) {
 	records, err := s.Poll(p.ctx)
 	if err != nil {
@@ -266,18 +296,17 @@ func (p *pipeline) pollOnce(s Source, name string) {
 		}
 		return
 	}
-	var newest time.Time
+	var lastAdmitted time.Time
 	for _, r := range records {
 		r.Attributes = sanitizeAttributes(r.Attributes)
-		if !p.enqueue(Entry{Source: name, Record: r}) {
+		recv, ok := p.enqueue(Entry{Source: name, Record: r})
+		if !ok {
 			continue
 		}
-		if r.Timestamp.After(newest) {
-			newest = r.Timestamp
-		}
+		lastAdmitted = recv
 	}
-	if !newest.IsZero() {
-		p.metrics.lastEventTime.WithLabelValues(name).Set(float64(newest.Unix()))
+	if !lastAdmitted.IsZero() {
+		p.metrics.lastReceived.WithLabelValues(name).Set(unixSeconds(lastAdmitted))
 	}
 }
 
@@ -328,44 +357,99 @@ func (p *pipeline) runEmitter() {
 // counted under reason="ship_failed_permanent" — deliberately trading "never lose a
 // deliverable batch" for "never wedge", and keeping the two loss modes distinguishable
 // from the shutdown-time ship_failed. 0 attempts restores the old unlimited behaviour.
+// Since #392 the retry set SHRINKS as partitions succeed. Only the entries the sink
+// reported as retryable are re-Emitted; anything it acknowledged is counted shipped and
+// removed from the batch, and anything it reported terminally rejected is counted
+// dropped{reason="rejected"} and likewise removed. That is what stops an acknowledged
+// resource partition being resent — and therefore duplicated downstream — because a
+// SIBLING partition failed.
 func (p *pipeline) shipBatch(batch []Entry) {
 	maxAttempts := p.cfg.ShipMaxAttempts
+	pending := batch
 	for attempt := 1; ; attempt++ {
-		err := p.sink.Emit(context.Background(), batch)
-		if err == nil {
-			for _, e := range batch {
-				p.metrics.shipped.WithLabelValues(e.Source).Inc()
-			}
-			consoleShipped.Add(uint64(len(batch)))
+		res := p.sink.Emit(context.Background(), pending)
+		p.noteAcked(res.Acked)
+		p.noteRejected(res.Rejected)
+		pending = res.Retry
+
+		if len(res.Retry) > 0 || len(res.Rejected) > 0 {
+			// One increment per attempt that did not deliver everything, whatever the
+			// reason. It stays an ATTEMPT counter, not a record counter: the records are
+			// accounted for by shipped/dropped, and conflating the two would make the
+			// three families impossible to reconcile.
+			p.metrics.shipErrors.Inc()
+		}
+		if len(res.Rejected) > 0 && p.limiter.Allow("ship_rejected") {
+			p.log.Error("log endpoint terminally rejected records; they are lost and will NOT be retried "+
+				"(a permanent protocol response, or an OTLP partial-success rejection)",
+				"count", len(res.Rejected), "err", res.Err)
+		}
+		if len(pending) == 0 {
 			return
 		}
-		p.metrics.shipErrors.Inc()
+
 		if maxAttempts > 0 && attempt >= maxAttempts {
-			for _, e := range batch {
+			for _, e := range pending {
 				p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailedPermanent).Inc()
 			}
-			consoleDropped.Add(uint64(len(batch)))
+			consoleDropped.Add(uint64(len(pending)))
 			if p.limiter.Allow("ship_permanent") {
 				p.log.Error("log sink refused a batch for the maximum number of attempts; dropping it "+
 					"so delivery of later batches continues; records lost",
-					"attempts", attempt, "count", len(batch), "err", err)
+					"attempts", attempt, "count", len(pending), "err", res.Err)
 			}
 			return
 		}
 		if p.limiter.Allow("ship") {
-			p.log.Warn("log sink export failed; retrying", "attempt", attempt, "count", len(batch), "err", err)
+			p.log.Warn("log sink export failed; retrying", "attempt", attempt, "count", len(pending), "err", res.Err)
 		}
 		select {
 		case <-p.ctx.Done():
-			for _, e := range batch {
+			for _, e := range pending {
 				p.metrics.dropped.WithLabelValues(e.Source, dropReasonShipFailed).Inc()
 			}
-			consoleDropped.Add(uint64(len(batch)))
-			p.log.Error("log batch abandoned during shutdown; records lost", "count", len(batch))
+			consoleDropped.Add(uint64(len(pending)))
+			p.log.Error("log batch abandoned during shutdown; records lost", "count", len(pending))
 			return
 		case <-time.After(shipBackoff(attempt)):
 		}
 	}
+}
+
+// noteAcked counts a confirmed delivery and advances export freshness.
+//
+// One clock read for the whole acknowledgement: every record here was confirmed by the
+// same Emit call, so stamping them at different instants would invent a spread that did
+// not happen (#394). Export freshness advances HERE and nowhere else — not on enqueue,
+// not on a failed attempt, not on a drop, and NOT on a terminal rejection — which is
+// what lets a dashboard read a growing received-minus-exported gap as "input is
+// arriving but delivery is stuck".
+func (p *pipeline) noteAcked(acked []Entry) {
+	if len(acked) == 0 {
+		return
+	}
+	ackedAt := unixSeconds(time.Now())
+	for _, e := range acked {
+		p.metrics.shipped.WithLabelValues(e.Source).Inc()
+		p.metrics.lastExported.WithLabelValues(e.Source).Set(ackedAt)
+	}
+	consoleShipped.Add(uint64(len(acked)))
+}
+
+// noteRejected counts records the endpoint terminally refused. They are LOST — counted
+// under reason="rejected", never as shipped, and never retried, because a byte-identical
+// request would be refused identically. Keeping them distinct from ship_failed_permanent
+// matters operationally: that reason means "we gave up after N attempts, the endpoint
+// may be sick", while this one means "the endpoint looked at these records and said no",
+// which points at the payload or the credentials instead.
+func (p *pipeline) noteRejected(rejected []Entry) {
+	if len(rejected) == 0 {
+		return
+	}
+	for _, e := range rejected {
+		p.metrics.dropped.WithLabelValues(e.Source, dropReasonRejected).Inc()
+	}
+	consoleDropped.Add(uint64(len(rejected)))
 }
 
 // shipBackoff is full-magnitude exponential backoff capped at shipRetryMax, guarded

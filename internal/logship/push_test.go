@@ -134,14 +134,64 @@ func TestPushSourceRecordSourceOverride(t *testing.T) {
 		t.Errorf("plain record Entry.Source = %q, want the emitter's own Name() (fake)", plain.Source)
 	}
 
-	// The override source's own last-event gauge is set from the pre-hoisted
-	// extraLastEvent map, and the default gauge is untouched by the override record.
-	if got := gaugeValue(t, p.metrics.lastEventTime.WithLabelValues("zenarmor")); got != 1700000001 {
-		t.Errorf("lastEventTime{source=zenarmor} = %v, want 1700000001", got)
+	// The override source's own receive gauge is set from the pre-hoisted
+	// extraLastReceived map, and the default gauge is advanced only by the plain record.
+	// Both read the EXPORTER's clock, not the records' 2023 origin timestamps (#394) —
+	// asserting they are NOT those values is the whole point: an origin timestamp must
+	// never be able to set source-liveness, in either direction.
+	for _, src := range []string{"zenarmor", "fake"} {
+		got := gaugeValue(t, p.metrics.lastReceived.WithLabelValues(src))
+		if got == 1700000001 || got == 1700000002 {
+			t.Errorf("lastReceived{source=%s} = %v, which is the record's origin timestamp; it must be the exporter clock", src, got)
+		}
+		if got < float64(time.Now().Add(-time.Minute).Unix()) {
+			t.Errorf("lastReceived{source=%s} = %v, want a recent exporter-clock stamp", src, got)
+		}
 	}
-	if got := gaugeValue(t, p.metrics.lastEventTime.WithLabelValues("fake")); got != 1700000002 {
-		t.Errorf("lastEventTime{source=fake} = %v, want 1700000002 (from the plain record)", got)
+}
+
+// #394: a record's own timestamp — future-dated, stale or zero — must not move the
+// receive-freshness gauge in either direction. With the syslog receiver enabled, UDP
+// listens on all interfaces and an empty peer allowlist accepts any sender, so before
+// this an admitted line claiming a timestamp a decade out pinned the gauge into the
+// future and `time() - gauge` went negative, silently suppressing the stalled-source
+// alert for as long as the sender kept it there.
+func TestPushSourceReceiveFreshnessIgnoresOriginTimestamp(t *testing.T) {
+	p := newTestPipeline(t, 16)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	future := time.Now().Add(10 * 365 * 24 * time.Hour)
+	go p.runPushSource(ctx, &timestampAbusingPush{stamps: []time.Time{
+		future,          // a sender-controlled timestamp far in the future
+		time.Unix(1, 0), // then an ancient one, out of order
+		{},              // then no timestamp at all
+	}})
+	drainN(t, p, 3, 2*time.Second)
+
+	got := gaugeValue(t, p.metrics.lastReceived.WithLabelValues("stamps"))
+	now := float64(time.Now().Unix())
+	if got > now+60 {
+		t.Errorf("lastReceived = %v, which is in the future; a sender pushed process freshness forward", got)
 	}
+	if got < now-60 {
+		t.Errorf("lastReceived = %v, far behind now; an out-of-order or zero origin timestamp regressed it", got)
+	}
+}
+
+// timestampAbusingPush emits one record per supplied origin timestamp, including a
+// zero one (which the old code skipped entirely, so a source that never dated its
+// records advanced nothing and read as permanently stalled).
+type timestampAbusingPush struct{ stamps []time.Time }
+
+func (f *timestampAbusingPush) Name() string { return "stamps" }
+
+func (f *timestampAbusingPush) Run(ctx context.Context, emit func(Record)) error {
+	for _, ts := range f.stamps {
+		emit(Record{Body: "line", Timestamp: ts})
+	}
+	<-ctx.Done()
+	return nil
 }
 
 // #318: a record larger than --logs.max-record-bytes must be rejected BEFORE it

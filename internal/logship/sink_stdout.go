@@ -35,7 +35,17 @@ func newStdoutSinkTo(w io.Writer) *stdoutSink {
 	return &stdoutSink{enc: json.NewEncoder(w), w: w}
 }
 
-func (s *stdoutSink) Emit(_ context.Context, batch []Entry) error {
+// Emit is deliberately and explicitly ALL-OR-NOTHING (#392). Unlike OTLP there is no
+// protocol here and therefore no partial-success or permanent-vs-transient signal to
+// read: a failed Encode means the writer broke, which says nothing about the entries
+// themselves. So the whole batch goes back for retry and nothing is ever classed
+// Rejected — the resource- and protocol-aware classification is an OTLP concept and
+// pretending stdout has one would invent information.
+//
+// Lines already written before the failure ARE on the writer, so a retry can repeat
+// them. That is the accepted trade for a debug/container-log path: at-least-once with
+// visible duplicates beats silently dropping the rest of the batch.
+func (s *stdoutSink) Emit(_ context.Context, batch []Entry) SinkResult {
 	for _, e := range batch {
 		ts := e.Record.Timestamp
 		if ts.IsZero() {
@@ -49,10 +59,10 @@ func (s *stdoutSink) Emit(_ context.Context, batch []Entry) error {
 			Attributes: e.Record.Attributes,
 		}
 		if err := s.enc.Encode(line); err != nil {
-			return err
+			return retryResult(batch, err)
 		}
 	}
-	return nil
+	return ackedResult(batch)
 }
 
 func (s *stdoutSink) Shutdown(_ context.Context) error {

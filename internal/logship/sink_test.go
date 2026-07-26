@@ -15,12 +15,13 @@ func TestStdoutSink_OneJSONLinePerEntry(t *testing.T) {
 	var buf bytes.Buffer
 	s := newStdoutSinkTo(&buf)
 	ts := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
-	err := s.Emit(context.Background(), []Entry{
+	batch := []Entry{
 		{Source: "firewall", Record: Record{Timestamp: ts, Body: "block", Severity: SeverityWarn, Attributes: map[string]string{"src": "10.0.0.1"}}},
 		{Source: "ids", Record: Record{Body: "alert"}},
-	})
-	if err != nil {
-		t.Fatalf("emit: %v", err)
+	}
+	res := s.Emit(context.Background(), batch)
+	if len(res.Acked) != len(batch) || res.Err != nil {
+		t.Fatalf("emit: %+v", res)
 	}
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	if len(lines) != 2 {
