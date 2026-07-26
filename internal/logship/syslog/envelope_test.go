@@ -150,17 +150,111 @@ func TestParseEnvelopeMalformed(t *testing.T) {
 	}
 }
 
-// Escaped ']' inside structured data must not end the SD element early.
+// Escaped ']', '"' and '\\' inside a structured-data param value must not end the
+// element early or otherwise corrupt parsing (#397 acceptance).
 func TestParseEnvelopeStructuredDataEscapes(t *testing.T) {
 	now := time.Now()
-	line := `<134>1 2026-07-14T19:50:01Z host app 1 - [ex a="b\]c"][two x="y"] the message`
-	env, err := ParseEnvelope([]byte(line), now)
+	for _, tc := range []struct {
+		name    string
+		line    string
+		wantMsg string
+	}{
+		{
+			name:    "escaped close bracket across two elements",
+			line:    `<134>1 2026-07-14T19:50:01Z host app 1 - [ex a="b\]c"][two x="y"] the message`,
+			wantMsg: "the message",
+		},
+		{
+			name:    "escaped quote inside a value",
+			line:    `<134>1 2026-07-14T19:50:01Z host app 1 - [ex a="b\"c"] the message`,
+			wantMsg: "the message",
+		},
+		{
+			name:    "escaped backslash inside a value",
+			line:    `<134>1 2026-07-14T19:50:01Z host app 1 - [ex a="b\\c"] the message`,
+			wantMsg: "the message",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, err := ParseEnvelope([]byte(tc.line), now)
+			if err != nil {
+				t.Fatalf("ParseEnvelope: %v", err)
+			}
+			if env.Message != tc.wantMsg {
+				t.Fatalf("Message = %q, want %q", env.Message, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// #397: an unclosed '[' structured-data element (no trailing ']' anywhere) reached
+// EOF and was accepted as a VALID empty message — the raw-fallback path never ran
+// and the original bytes were silently lost. It must return an error instead.
+func TestParseEnvelopeStructuredDataTruncation(t *testing.T) {
+	now := time.Date(2026, 7, 14, 20, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		line string
+	}{
+		{"unclosed single element", `<134>1 2026-07-14T19:50:01Z host app 1 - [meta x="y"`},
+		{"unclosed after a closed element", `<134>1 2026-07-14T19:50:01Z host app 1 - [a="b"][meta x="y"`},
+		{"dangling escape at EOF", `<134>1 2026-07-14T19:50:01Z host app 1 - [meta x="y\`},
+		{"unclosed element ending in an escape sequence", `<134>1 2026-07-14T19:50:01Z host app 1 - [meta x="y\z`},
+		{"bare unclosed bracket", `<134>1 2026-07-14T19:50:01Z host app 1 - [`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("panicked on %q: %v", tc.line, r)
+				}
+			}()
+			if _, err := ParseEnvelope([]byte(tc.line), now); err == nil {
+				t.Fatalf("ParseEnvelope(%q) = nil error, want a truncated-envelope error", tc.line)
+			}
+		})
+	}
+}
+
+// A correctly closed structured-data element that ends exactly at EOF (no MSG
+// follows) is a legitimate RFC5424 shape and must keep parsing successfully — the
+// #397 truncation fix must not regress it.
+func TestParseEnvelopeStructuredDataOnlyNoMessage(t *testing.T) {
+	env, err := ParseEnvelope([]byte(`<134>1 2026-07-14T19:50:01Z host app 1 - [meta x="y"]`), time.Now())
 	if err != nil {
 		t.Fatalf("ParseEnvelope: %v", err)
 	}
-	if env.Message != "the message" {
-		t.Fatalf("Message = %q, want %q", env.Message, "the message")
+	if env.Message != "" {
+		t.Fatalf("Message = %q, want empty (SD-only, no MSG)", env.Message)
 	}
+}
+
+// FuzzSkipStructuredData is the #397 acceptance's fuzz/no-panic coverage: bracket
+// and escape truncation must never panic, on any input.
+func FuzzSkipStructuredData(f *testing.F) {
+	for _, seed := range []string{
+		"-",
+		"- msg",
+		`[a="b"]`,
+		`[a="b"] msg`,
+		`[a="b\]c"][two x="y"] the message`,
+		"[",
+		"[a",
+		`[a="b\`,
+		`[a="b"`,
+		"[a][b",
+		"",
+		`\`,
+	} {
+		f.Add([]byte(seed))
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("skipStructuredData panicked on %q: %v", b, r)
+			}
+		}()
+		_, _ = skipStructuredData(b)
+	})
 }
 
 // RFC5424 nil values ("-") for hostname/procid must degrade to empty strings.

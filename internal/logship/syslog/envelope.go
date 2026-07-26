@@ -174,18 +174,32 @@ func skipStructuredData(b []byte) ([]byte, error) {
 	i := 0
 	for i < len(b) && b[i] == '[' {
 		i++
+		closed := false
 		for i < len(b) {
 			if b[i] == '\\' { // escaped char inside a param value: \] \" \\
+				if i+1 >= len(b) {
+					// A dangling escape at EOF can never resolve to a real closing
+					// ']' — this element is truncated, not merely still-open.
+					return nil, errTruncated
+				}
 				i += 2
 				continue
 			}
 			if b[i] == ']' {
 				i++
+				closed = true
 				break
 			}
 			i++
 		}
-		if i > len(b) {
+		// The inner loop above exits exactly two ways: it found a real closing ']'
+		// (closed == true), or it ran off the end of b without one. The old check
+		// here was `i > len(b)`, which is NEVER true for the "ran off the end" case
+		// — the loop condition `i < len(b)` guarantees i stops at exactly len(b) —
+		// so an unclosed "[..." with no trailing ']' fell through as if it had
+		// closed, returning a valid empty message and silently discarding the raw
+		// line (#397).
+		if !closed {
 			return nil, errTruncated
 		}
 	}
