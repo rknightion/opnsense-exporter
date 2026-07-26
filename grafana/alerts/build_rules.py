@@ -410,6 +410,51 @@ RULES = [
                      "10m. Metrics are unaffected, but per-flow logs are incomplete. Raise the budget if "
                      "this is expected volume, or restrict the unauthenticated NetFlow ingress with "
                      "--flow.netflow.allowed-peers if it is a flood."),
+    # #402: managed alert for the #368 dead-hook detector. Query is copied VERBATIM from
+    # docs/flow.md ("Joining the two label spaces") - do not simplify it, each clause kills
+    # a specific false positive. Clause 1 restricts to interfaces actually configured for
+    # capture. Clause 2 is the only signal a dead hook cannot hide from: ng_netflow fills one
+    # side of every flow from a FIB lookup, so merged flow records can still name a dead
+    # interface via a peer's route - only the interface's OWN cache node proves it silent.
+    # Clause 3 is what tells a dead hook from a legitimately idle interface (a quiet guest
+    # VLAN's cache node is flat too; pf confirms bytes actually crossed the device). Clause 4
+    # is the honesty guard: it withdraws the whole query once the box's own NetFlow active
+    # timeout is at least the 45m observation window, rather than letting a shorter box-side
+    # timeout make "45m of silence" a lie. Do NOT read NetFlow source_id=0 as loss elsewhere -
+    # it is not a sequence counter. Live-verified 2026-07-25 against the reference box: exactly
+    # one row, {interface="AAISP", device="pppoe0"} - the hook whose death took a packet
+    # capture to find.
+    dict(name="opnsense-netflow-hook-dead", title="OPNsenseNetFlowHookDead",
+         A="max by (opnsense_instance, interface, device) (\n"
+           "  (opnsense_netflow_capture_expected == 1)\n"
+           "    * on (opnsense_instance, interface) group_left (device) opnsense_flow_interface_info\n"
+           ")\n"
+           "and on (opnsense_instance, device) max by (opnsense_instance, device) (\n"
+           "  label_join(increase(opnsense_netflow_cache_packets_total[45m]), \"device\", \"\", "
+           "\"interface\") == 0\n"
+           ")\n"
+           "and on (opnsense_instance, device) max by (opnsense_instance, device) (\n"
+           "  label_join(increase(opnsense_firewall_in_ipv4_pass_bytes_total[45m]), \"device\", \"\", "
+           "\"interface\") > 0\n"
+           ")\n"
+           "and on (opnsense_instance) (opnsense_netflow_capture_active_timeout_seconds < 2700)",
+         op="gt", params=[0, 0], for_min=5, severity="warning",
+         summary="OPNsense NetFlow hook dead on {{ $labels.interface }} ({{ $labels.device }})",
+         description="The NetFlow hook configured for interface {{ $labels.interface }} (kernel device "
+                     "{{ $labels.device }}) on {{ $labels.opnsense_instance }} has recorded zero packets "
+                     "on its own ng_netflow node (opnsense_netflow_cache_packets_total) for 45m while pf "
+                     "keeps passing traffic on the same device (opnsense_firewall_in_ipv4_pass_bytes_total "
+                     "> 0) - the #368 pppoe0 failure mode, where ng_netflow accepted a bogus hook on a "
+                     "PPPoE interface and silently captured nothing, because ng_netflow attaches to mpd's "
+                     "framing node rather than the ng_iface node ng_pppoe exposes. The alert withdraws "
+                     "itself if the box's own configured NetFlow active timeout is 45m (2700s) or more, "
+                     "rather than call a shorter window dead on an honesty guard it cannot clear - check "
+                     "opnsense_netflow_capture_active_timeout_seconds first if this never fires on a box "
+                     "you know has a dead hook. On firing: open the operator console's NetFlow / ifIndex "
+                     "tab, confirm {{ $labels.device }} is a real ng_netflow node with `ngctl list` on the "
+                     "box, then rebind the capture to the correct kernel device. See docs/flow.md "
+                     "('Joining the two label spaces') for the full derivation. Resolves automatically "
+                     "once opnsense_netflow_cache_packets_total resumes counting on the device."),
 ]
 
 # Recording rules: metric name (level:metric:operation) + value query.

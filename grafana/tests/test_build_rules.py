@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 ALERTS_DIR = Path(__file__).resolve().parents[1] / "alerts"
+REPO_ROOT = ALERTS_DIR.parent.parent
 sys.path.insert(0, str(ALERTS_DIR))
 
 import build_rules  # noqa: E402
@@ -129,6 +130,177 @@ class OTLPDeliveryAlertTest(unittest.TestCase):
         description = rule_by_title("OPNsenseOTLPDeliveryFailing")["description"]
         self.assertIn("CANNOT REACH A PURE-OTLP BACKEND", description)
         self.assertIn("/metrics", description)
+
+
+def _flow_doc_dead_hook_query():
+    """Extract the fenced ```promql block for the #368 dead-hook detector straight out
+    of docs/flow.md ("Joining the two label spaces"), so a future edit to either the
+    doc or the rule that lets them drift apart fails loudly instead of silently."""
+    text = (REPO_ROOT / "docs" / "flow.md").read_text()
+    match = re.search(
+        r"```promql\n(max by \(opnsense_instance, interface, device\) \(.*?"
+        r"opnsense_netflow_capture_active_timeout_seconds < 2700\))\n```",
+        text, re.DOTALL,
+    )
+    if not match:
+        raise AssertionError(
+            "docs/flow.md no longer contains the #368 dead-hook detector query in the "
+            "expected form - update this extractor or restore the doc")
+    return match.group(1)
+
+
+def _dead_hook_clauses(capture_expected, has_interface_info, packets_increase_45m,
+                        firewall_bytes_increase_45m, active_timeout_seconds):
+    """Python mirror of the four `and`-chained PromQL clauses (no Prometheus engine is
+    available to this test suite - see the tier-aware staleness tests above for the
+    established pattern). Returns whether a row would exist for the candidate
+    (opnsense_instance, interface, device) series at one evaluation instant.
+
+    Clause 1: interface configured for capture AND joined to a device via
+              opnsense_flow_interface_info (absent join = inactive/no receiver).
+    Clause 2: that device's OWN ng_netflow node counted zero packets over 45m.
+    Clause 3: pf confirms real traffic crossed the same device over 45m (rules out
+              a legitimately idle interface, whose cache node is flat for the same
+              reason a dead hook's is).
+    Clause 4: honesty guard - withdrawn once the box's own configured NetFlow active
+              timeout is at least the 45m observation window.
+    """
+    clause1 = capture_expected == 1 and has_interface_info
+    clause2 = packets_increase_45m == 0
+    clause3 = firewall_bytes_increase_45m > 0
+    clause4 = active_timeout_seconds < 2700
+    return clause1 and clause2 and clause3 and clause4
+
+
+def _simulate_for_duration(conditions, for_minutes):
+    """Mirror of Grafana's for-duration state machine (Normal -> Pending -> Alerting),
+    driven by one boolean per 1-minute evaluation tick for a SINGLE alert instance
+    (one fixed opnsense_instance/interface/device label set throughout - the state
+    machine never starts a new instance mid-timeline). A false tick clears the
+    pending clock immediately, matching Grafana's default (no keep-firing-for)."""
+    states = []
+    pending_since = None
+    for i, cond in enumerate(conditions):
+        if not cond:
+            pending_since = None
+            states.append("Normal")
+            continue
+        if pending_since is None:
+            pending_since = i
+        states.append("Alerting" if i - pending_since >= for_minutes else "Pending")
+    return states
+
+
+class NetFlowHookDeadAlertTest(unittest.TestCase):
+    """#402: managed alert for the #368 four-clause dead-hook detector."""
+
+    def setUp(self):
+        self.rule = rule_by_title("OPNsenseNetFlowHookDead")
+        self.for_min = self.rule["for_min"]
+
+    def test_query_is_byte_identical_to_docs_flow_md(self):
+        # #402 scope: copy the exact live-verified query, never simplify it.
+        self.assertEqual(self.rule["A"], _flow_doc_dead_hook_query())
+
+    def test_all_four_clauses_present(self):
+        a = self.rule["A"]
+        self.assertIn("opnsense_netflow_capture_expected == 1", a)
+        self.assertIn("group_left (device) opnsense_flow_interface_info", a)
+        self.assertIn(
+            'label_join(increase(opnsense_netflow_cache_packets_total[45m]), '
+            '"device", "", "interface") == 0', a)
+        self.assertIn(
+            'label_join(increase(opnsense_firewall_in_ipv4_pass_bytes_total[45m]), '
+            '"device", "", "interface") > 0', a)
+        self.assertIn("opnsense_netflow_capture_active_timeout_seconds < 2700", a)
+
+    def test_never_infers_loss_from_netflow_source_id(self):
+        # #402 dependency: source_id=0 is not a sequence counter.
+        self.assertNotIn("source_id", self.rule["A"])
+        self.assertNotIn("source_id", self.rule["description"])
+
+    def test_severity_is_warning_not_a_page(self):
+        # Visibility loss, not a firewall/service outage - matches the other
+        # NetFlow/flow-lane rules (correlator-evicting, logs-truncated).
+        self.assertEqual(self.rule["severity"], "warning")
+
+    def test_pppoe0_live_failure_reaches_pending_then_alerting(self):
+        # The exact #368 finding: AAISP/pppoe0 configured, joined, its own cache node
+        # flat, pf still passing bytes, default 1800s active timeout.
+        cond = _dead_hook_clauses(
+            capture_expected=1, has_interface_info=True,
+            packets_increase_45m=0, firewall_bytes_increase_45m=100_000,
+            active_timeout_seconds=1800)
+        self.assertTrue(cond)
+        states = _simulate_for_duration([cond] * (self.for_min + 5), self.for_min)
+        self.assertEqual(states[0], "Pending")
+        self.assertEqual(states[-1], "Alerting")
+        self.assertIn("Alerting", states)
+
+    def test_idle_interface_stays_normal(self):
+        # Configured and joined, own cache node flat too - but pf shows nothing
+        # crossed the device either, so it's quiet, not dead.
+        cond = _dead_hook_clauses(
+            capture_expected=1, has_interface_info=True,
+            packets_increase_45m=0, firewall_bytes_increase_45m=0,
+            active_timeout_seconds=1800)
+        self.assertFalse(cond)
+        states = _simulate_for_duration([cond] * (self.for_min + 5), self.for_min)
+        self.assertTrue(all(s == "Normal" for s in states))
+
+    def test_disabled_hook_stays_normal(self):
+        # Not configured for capture at all - clause 1 excludes it up front.
+        cond = _dead_hook_clauses(
+            capture_expected=0, has_interface_info=True,
+            packets_increase_45m=0, firewall_bytes_increase_45m=100_000,
+            active_timeout_seconds=1800)
+        self.assertFalse(cond)
+        states = _simulate_for_duration([cond] * (self.for_min + 5), self.for_min)
+        self.assertTrue(all(s == "Normal" for s in states))
+
+    def test_inactive_receiver_stays_normal(self):
+        # No NetFlow receiver/lane running at all, so opnsense_flow_interface_info
+        # never gets published and the group_left join has nothing to match -
+        # clause 1 drops the series before the rest of the chain ever runs.
+        cond = _dead_hook_clauses(
+            capture_expected=1, has_interface_info=False,
+            packets_increase_45m=0, firewall_bytes_increase_45m=100_000,
+            active_timeout_seconds=1800)
+        self.assertFalse(cond)
+        states = _simulate_for_duration([cond] * (self.for_min + 5), self.for_min)
+        self.assertTrue(all(s == "Normal" for s in states))
+
+    def test_long_active_timeout_withdraws_the_alert(self):
+        # Same dead-hook shape as the pppoe0 case, but the box's own configured
+        # active timeout (here 3600s) is at least the 45m/2700s observation window,
+        # so clause 4 withdraws the query rather than call 45m of silence proven.
+        cond = _dead_hook_clauses(
+            capture_expected=1, has_interface_info=True,
+            packets_increase_45m=0, firewall_bytes_increase_45m=100_000,
+            active_timeout_seconds=3600)
+        self.assertFalse(cond)
+        states = _simulate_for_duration([cond] * (self.for_min + 5), self.for_min)
+        self.assertTrue(all(s == "Normal" for s in states))
+
+    def test_recovery_resolves_the_same_labelled_alert_instance(self):
+        # One fixed (opnsense_instance, interface, device) timeline throughout -
+        # _simulate_for_duration never changes labels mid-run, so "resolves" here
+        # is the SAME alert instance clearing, not a different one going quiet.
+        dead = _dead_hook_clauses(
+            capture_expected=1, has_interface_info=True,
+            packets_increase_45m=0, firewall_bytes_increase_45m=100_000,
+            active_timeout_seconds=1800)
+        recovered = _dead_hook_clauses(
+            capture_expected=1, has_interface_info=True,
+            packets_increase_45m=500, firewall_bytes_increase_45m=100_000,
+            active_timeout_seconds=1800)
+        self.assertTrue(dead)
+        self.assertFalse(recovered)
+
+        timeline = [dead] * (self.for_min + 3) + [recovered] * 5
+        states = _simulate_for_duration(timeline, self.for_min)
+        self.assertEqual(states[self.for_min], "Alerting")
+        self.assertEqual(states[-1], "Normal")
 
 
 class GrafanaManagedRuleGenerationTest(unittest.TestCase):

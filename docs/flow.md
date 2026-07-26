@@ -393,6 +393,12 @@ Run against the reference box on 2026-07-25 the expression returned exactly one 
 `{interface="AAISP", device="pppoe0"}` - the hook whose death took a packet capture to find in
 July.
 
+This exact query is also a managed alert, `OPNsenseNetFlowHookDead`
+(`grafana/alerts/build_rules.py`, rule `opnsense-netflow-hook-dead`) - `warning` severity, `for: 5m`
+on top of the query's own 45m of evidence, one alert instance per `(opnsense_instance, interface,
+device)`. It resolves on its own once `opnsense_netflow_cache_packets_total` starts counting again
+on the device. See `grafana/README.md#alerts` for the full rule catalogue and deployment path.
+
 ## The label set, and why each dimension is on it
 
 Every flow metric carries exactly these, and nothing else:

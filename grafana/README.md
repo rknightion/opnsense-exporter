@@ -99,7 +99,7 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 
 ## Alerts & recording rules
 
-`alerts/` contains **36 alert rules** and **14 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **37 alert rules** and **14 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format - it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
