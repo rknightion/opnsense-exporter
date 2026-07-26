@@ -5,6 +5,17 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 compose_doc="$root/docs/deployment/docker.md"
 
+grep -Fq 'sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret' "$compose_doc" ||
+  {
+    printf 'file-secret instructions must make UID 65532 the owner\n' >&2
+    exit 1
+  }
+grep -Fq 'chmod 400 ./secrets/api-key ./secrets/api-secret' "$compose_doc" ||
+  {
+    printf 'file-secret instructions must keep credentials owner-readable only\n' >&2
+    exit 1
+  }
+
 for command in docker python3; do
   command -v "$command" >/dev/null || {
     printf 'required command not found: %s\n' "$command" >&2

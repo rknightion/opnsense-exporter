@@ -18,19 +18,19 @@ fail() {
 
 assert_contains() {
   local file="$1" pattern="$2"
-  rg -F --quiet -- "$pattern" "$file" || fail "expected $pattern in $file"
+  grep -Fq -- "$pattern" "$file" || fail "expected $pattern in $file"
 }
 
 assert_not_contains() {
   local file="$1" pattern="$2"
-  if rg -F --quiet -- "$pattern" "$file"; then
+  if grep -Fq -- "$pattern" "$file"; then
     fail "did not expect $pattern in $file"
   fi
 }
 
 assert_count() {
   local file="$1" pattern="$2" expected="$3" count
-  count="$(rg -F --count -- "$pattern" "$file" || true)"
+  count="$(grep -Fc -- "$pattern" "$file" || true)"
   [[ "$count" == "$expected" ]] || fail "expected $expected occurrences of $pattern in $file, got ${count:-0}"
 }
 

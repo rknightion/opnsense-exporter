@@ -232,7 +232,8 @@ jobs:
           mkdir -p "$compose_dir/secrets"
           printf '%s' 'ci-api-key' > "$compose_dir/secrets/api-key"
           printf '%s' 'ci-api-secret' > "$compose_dir/secrets/api-secret"
-          chmod 600 "$compose_dir/secrets/api-key" "$compose_dir/secrets/api-secret"
+          sudo chown 65532:65532 "$compose_dir/secrets/api-key" "$compose_dir/secrets/api-secret"
+          chmod 400 "$compose_dir/secrets/api-key" "$compose_dir/secrets/api-secret"
 
           tee "$compose_dir/compose.yaml" >/dev/null <<'YAML'
           services:

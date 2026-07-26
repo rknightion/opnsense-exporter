@@ -80,7 +80,8 @@ This is the plain-Compose form and works on a single Docker host with no Swarm.
 mkdir -p ./secrets
 printf '%s' "your-api-key" > ./secrets/api-key
 printf '%s' "your-api-secret" > ./secrets/api-secret
-chmod 600 ./secrets/api-key ./secrets/api-secret
+sudo chown 65532:65532 ./secrets/api-key ./secrets/api-secret
+chmod 400 ./secrets/api-key ./secrets/api-secret
 ```
 
 ### Compose file
@@ -120,7 +121,7 @@ Verify the file renders before deploying it:
 docker compose config
 ```
 
-The container runs as UID 65532, so both secret files must be readable by that UID. Compose file secrets are mounted `0444` by default, which satisfies that; a bind mount keeps the host file's own ownership and mode, which may not.
+The container runs as UID 65532, so both secret files must be readable by that UID. Plain Compose implements file-backed secrets as bind mounts and preserves the host ownership and mode; the `uid`, `gid`, and `mode` fields do not remap a local file. Keep the files private by owning them with UID/GID 65532 and mode `0400`, as shown above.
 
 ### Alternative: Swarm external secrets
 
