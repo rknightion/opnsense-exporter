@@ -124,7 +124,13 @@ RETIRED_UIDS: dict[str, str] = {
 # documentation and repository, which every importer of the dashboard can reach.
 DOCS_BASE = "https://m7kni.io/opnsense-exporter/"
 REPO_BASE = "https://github.com/rknightion/opnsense-exporter"
-RUNBOOK_URL = f"{REPO_BASE}/blob/main/grafana/README.md#alerts"
+# #430: repointed from the README's old flat inventory table to the generated
+# per-rule runbook document. This constant is the INDEX link (the dashboard's single
+# "Alert runbooks" DashboardLink, and any other place that wants "the runbooks doc"
+# rather than one specific rule) - the anchor names the document's own top-level
+# heading, which `grafana/tests/test_manifest_contract.py` checks resolves for real.
+# Individual alerts get their own anchor from `runbook_url()` below instead.
+RUNBOOK_URL = f"{REPO_BASE}/blob/main/grafana/runbooks.md#alerts--recording-rules"
 EXTERNAL_LINK_BASES = (DOCS_BASE, REPO_BASE)
 
 # Schema v2's placement for a control that belongs in the dropdown rather than on the
@@ -143,6 +149,37 @@ _SPACES = re.compile(r" +")
 def tab_slug(title: str) -> str:
     """Grafana's tab slug: runs of spaces collapsed to one hyphen, nothing else."""
     return _SPACES.sub("-", title.strip())
+
+
+# ---- GitHub Markdown heading-anchor algorithm ------------------------------
+# Shared home for the slugger (#430): both `runbook_url()` below (which must EMIT an
+# anchor that GitHub will actually produce) and `grafana/alerts/validate_manifests.py`
+# (which must independently RESOLVE that anchor against runbooks.md) need the exact
+# same algorithm. Keeping one copy here, imported by both, is what makes "the anchor
+# resolves" a real check rather than two slugs happening to agree by coincidence.
+_HEADING_SLUG_STRIP_RE = re.compile(r"[^\w\s-]")
+_HEADING_SLUG_WS_RE = re.compile(r"\s")
+
+
+def github_heading_slug(text: str) -> str:
+    """Approximate GitHub's Markdown heading-anchor algorithm: lowercase, drop
+    punctuation (keep word chars/spaces/hyphens), then turn each whitespace
+    character into its own hyphen - GitHub does not collapse the doubled
+    hyphen a removed '&' leaves behind, e.g. "Alerts & Recording" ->
+    "alerts--recording"."""
+    text = text.strip().lower()
+    text = _HEADING_SLUG_STRIP_RE.sub("", text)
+    return _HEADING_SLUG_WS_RE.sub("-", text)
+
+
+def runbook_url(title: str) -> str:
+    """Per-rule anchor into the generated runbook document (#430). `title` is the
+    rule's own `title` field (e.g. "OPNsenseExporterDown"), rendered as that exact
+    "## <title>" heading in `grafana/runbooks.md` by
+    `grafana/alerts/build_rules.py`'s `generate_runbooks_md()` - so the anchor this
+    produces is guaranteed to name a real heading, not a document built separately
+    from the same list, by construction."""
+    return f"{REPO_BASE}/blob/main/grafana/runbooks.md#{github_heading_slug(title)}"
 
 
 def _encode_slug(slug: str) -> str:

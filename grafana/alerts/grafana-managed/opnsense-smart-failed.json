@@ -22,9 +22,9 @@
       "severity": "critical"
     },
     "annotations": {
-      "summary": "OPNsense SMART health failed on {{ $labels.device }}",
+      "summary": "OPNsense SMART health failed on {{ $labels.device }} ({{ $labels.opnsense_instance }})",
       "description": "SMART overall-health for {{ $labels.device }} ({{ $labels.model }}) reports FAILED.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensesmarthealthfailed"
     },
     "expressions": {
       "A": {

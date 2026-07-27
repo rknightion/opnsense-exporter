@@ -10,6 +10,7 @@ OPNsense Exporter:
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
 | `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
+| `runbooks.md` | **Generated** - full per-alert runbook: what each rule measures, its threshold/window, absent/no-data semantics, first checks, likely causes, and recovery verification. Regenerate with `make rules`. |
 
 The dashboard is **mixed-datasource**: Prometheus metrics plus opt-in **Loki** log panels
 (raw Zenarmor/syslog streams, top-talker tables) that auto-hide when no matching log stream
@@ -307,35 +308,15 @@ new exporter protects itself once it has been up an hour. The cost is that a **d
 decommissioned instance keeps alerting until it has been absent for 1h**; silence it until
 then, or wait it out.
 
-| Alert | Severity | Fires when |
-|-------|----------|-----------|
-| OPNsenseExporterDown | critical | `opnsense_up` 0 (API unreachable / scrape failed) or NoData for 15m |
-| OPNsenseExporterInstanceMissing | critical | an exporter that reported within the last 1h has vanished entirely while others still report |
-| OPNsenseFirewallUnhealthy | warning | firewall health check reports errors for 10m |
-| OPNsenseCrashReports | warning | crash reports present |
-| OPNsenseEndpointErrors | warning | an API endpoint returned errors in 15m (fast/medium tiers - see below) |
-| OPNsenseCollectorDataStale | warning | a collector's retained data is older than 3 of its own poll intervals |
-| OPNsenseCollectorDegraded | info | a collector keeps refreshing partial data but has not fully succeeded for 6 intervals |
-| OPNsenseCollectorNeverStoredData | warning | a collector has polled for 30m and never once stored data |
-| OPNsenseOTLPDeliveryFailing | warning | every OTLP metric export has failed for 15m |
-| OPNsenseGatewayDown | critical | the primary gateway is offline for 5m |
-| OPNsenseGatewayDownFailover | warning | a failover/secondary gateway is offline for 15m |
-| OPNsenseGatewayHighLoss | warning | gateway loss > 20% for 10m |
-| OPNsenseGatewayHighRTT | warning | gateway RTT over its configured high threshold for 10m |
-| OPNsensePFStateTableNearLimit | warning | PF state table > 90% of limit for 10m |
-| OPNsenseMemoryHigh | warning | memory > 90% for 15m |
-| OPNsenseDiskUsageHigh | warning | a filesystem > 90% for 15m |
-| OPNsenseHighTemperature | warning | a sensor > 85 °C for 10m |
-| OPNsenseSmartHealthFailed | critical | a disk's SMART health is FAILED |
-| OPNsenseFirmwareNeedsReboot | warning | a firmware update needs a reboot (30m) |
-| OPNsenseCertificateExpiringSoon | warning | a certificate expires within 14 days |
-| OPNsenseCertificateExpiringCritical | critical | a certificate expires within 3 days |
-| OPNsenseServiceDown | warning | a monitored service is stopped for 10m |
-| OPNsenseNTPPeerUnreachable | warning | an NTP peer's reachability register is 0 for 15m |
-| OPNsenseUnboundDNSSECBogus | info | > 5 DNSSEC-bogus answers in 15m |
-
-Thresholds are conservative defaults - tune them in `build_rules.py` for your environment.
-Note: `OPNsenseEndpointErrors` and `OPNsenseServiceDown` emit one alert per endpoint/service.
+`alerts/` contains **42 alert rules** covering exporter/instance liveness, collector health,
+gateways, system resources, certificates, services, log shipping, OTLP delivery, VPN/HA/CARP, IDS,
+and flow capture. The full list - trigger condition, threshold and window, absent/no-data
+semantics, first checks, likely causes, and recovery verification for every single one - is
+generated from the exact same `RULES` source as the manifests into
+[`grafana/runbooks.md`](runbooks.md); `grafana/tests/test_runbooks.py` fails CI on a missing,
+duplicate, or stale entry, so this README deliberately does not carry a second, hand-maintained
+copy of that table. Thresholds are conservative defaults - tune them in `build_rules.py` for your
+environment. Every alert's own `runbook_url` annotation links straight to its section.
 
 **Stale-data alerting is tier-aware, and attempt age is not freshness.** Each collector polls on
 its own tier (fast 15s / medium 60s / slow 5m / cold 15m, overridable with
@@ -385,7 +366,10 @@ so a leftover crash report now pages as a warning (`OPNsenseCrashReports`) inste
 
 ### Recording rules
 
-`instance:opnsense_interface_rx_bits:rate5m`, `…_tx_bits:rate5m`,
-`instance:opnsense_firewall_block_packets:rate5m`, `instance:opnsense_pf_state:utilization`,
-`instance:opnsense_unbound_cache:hit_ratio`, `instance:opnsense_unbound_queries:rate5m`,
-`instance:opnsense_gateway_loss:ratio`, `instance:opnsense_system_mem:utilization`.
+`alerts/` contains **14 recording rules** following the
+`instance:opnsense_<subsystem>_<measurement>:<op>` naming convention - precomputed
+aggregations/ratios (interface throughput, PF state utilization, DNS cache hit ratio, gateway
+loss, HAProxy/Zenarmor block ratios, tunnel/peer down-counts, IDS alert volume, deduplicated flow
+byte rate) that dashboards and alerts reuse rather than recomputing. The full list with each
+rule's expression is generated alongside the alert runbooks in
+[`grafana/runbooks.md`](runbooks.md#recording-rules).

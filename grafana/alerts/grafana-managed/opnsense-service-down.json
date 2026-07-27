@@ -22,9 +22,9 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense service {{ $labels.name }} stopped",
+      "summary": "OPNsense service {{ $labels.name }} stopped ({{ $labels.opnsense_instance }})",
       "description": "Service {{ $labels.name }} ({{ $labels.description }}) has been stopped for 10m. On-demand services (e.g. iperf) are excluded. One alert per service.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseservicedown"
     },
     "expressions": {
       "A": {

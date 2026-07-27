@@ -23,11 +23,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST_DIR = os.path.join(HERE, "grafana-managed")
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-# uids.py is the single registry for the runbook URL (#419/#429): import it
-# rather than duplicate the literal, so the anchor this validator resolves is
-# always the exact same one build_rules.py stamped onto every rule.
+# uids.py is the single registry for the runbook URL/slug algorithm (#419/#429/#430):
+# import it rather than duplicate the literal or the slugger, so the anchor this
+# validator resolves is built the exact same way build_rules.py stamped it onto
+# each rule.
 sys.path.insert(0, os.path.dirname(HERE))
-from uids import REPO_BASE, RUNBOOK_URL  # noqa: E402
+from uids import REPO_BASE, github_heading_slug  # noqa: E402
 
 FOLDER_API = "folder.grafana.app/v1beta1"
 RULE_API = "rules.alerting.grafana.app/v0alpha1"
@@ -61,22 +62,15 @@ AGG_BY_RE = re.compile(r"(?:sum|max|min|avg|count)\s+by\s*\(([^)]*)\)")
 # than erroring.
 LABEL_TOKEN_RE = re.compile(r"\{\{\s*\$labels\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
-_SLUG_STRIP_RE = re.compile(r"[^\w\s-]")
-_SLUG_WS_RE = re.compile(r"\s")
 _HEADING_RE = re.compile(r"^#{1,6}\s+(.*)$")
 
 _anchor_cache: dict = {}
 
-
-def _github_heading_slug(text: str) -> str:
-    """Approximate GitHub's Markdown heading-anchor algorithm: lowercase, drop
-    punctuation (keep word chars/spaces/hyphens), then turn each whitespace
-    character into its own hyphen - GitHub does not collapse the doubled
-    hyphen a removed '&' leaves behind, e.g. "Alerts & Recording" ->
-    "alerts--recording"."""
-    text = text.strip().lower()
-    text = _SLUG_STRIP_RE.sub("", text)
-    return _SLUG_WS_RE.sub("-", text)
+# Kept as a module-level alias: this validator, and the tests that exercise it
+# (`grafana/tests/test_manifest_contract.py`), historically called this function by
+# this name. The real (and only) implementation now lives in uids.py (#430) so that
+# build_rules.py's `runbook_url()` and this validator can never drift apart.
+_github_heading_slug = github_heading_slug
 
 
 def _runbook_anchor_resolves(url: str):
@@ -235,14 +229,15 @@ def validate_document(name: str, doc: dict) -> list:
                     "build_rules.py only pages critical alerts"
                 )
 
+        # #430: each alert carries its OWN anchor into grafana/runbooks.md (built by
+        # uids.runbook_url()) rather than the single shared RUNBOOK_URL index link -
+        # so the check here is that the URL actually resolves to a real heading, not
+        # that it equals one shared constant.
         annotations = spec.get("annotations", {}) or {}
         runbook_url = annotations.get("runbook_url")
-        if runbook_url != RUNBOOK_URL:
-            errors.append(
-                f"{name}: annotations.runbook_url {runbook_url!r} != the shared "
-                f"registry value {RUNBOOK_URL!r} (grafana/uids.py)"
-            )
-        elif runbook_url:
+        if not runbook_url:
+            errors.append(f"{name}: missing annotations.runbook_url")
+        else:
             ok, why = _runbook_anchor_resolves(runbook_url)
             if not ok:
                 errors.append(f"{name}: runbook_url {runbook_url!r} does not resolve: {why}")

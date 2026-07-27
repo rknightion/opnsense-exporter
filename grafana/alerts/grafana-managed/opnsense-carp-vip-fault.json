@@ -22,9 +22,9 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense CARP VIP {{ $labels.vip }} fault on {{ $labels.interface }}",
+      "summary": "OPNsense CARP VIP {{ $labels.vip }} fault on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
       "description": "CARP VIP {{ $labels.vip }} on {{ $labels.interface }} has been outside the normal MASTER(1)/BACKUP(0) range for 5m \u2014 status 2 (INIT) or -1 (unknown). BACKUP is a normal, healthy state and does not fire; this only fires on INIT/unknown. Suppressed while opnsense_carp_maintenance_mode is 1.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecarpvipfault"
     },
     "expressions": {
       "A": {

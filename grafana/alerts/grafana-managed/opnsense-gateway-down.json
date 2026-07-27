@@ -22,9 +22,9 @@
       "severity": "critical"
     },
     "annotations": {
-      "summary": "OPNsense PRIMARY gateway {{ $labels.name }} is offline",
+      "summary": "OPNsense PRIMARY gateway {{ $labels.name }} is offline ({{ $labels.opnsense_instance }})",
       "description": "Primary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 5m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensegatewaydown"
     },
     "expressions": {
       "A": {

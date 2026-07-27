@@ -286,13 +286,42 @@ class PerInstanceLabelPreservationContractTest(unittest.TestCase):
 
 
 class RunbookAnchorContractTest(unittest.TestCase):
-    """#430/#429: the shared RUNBOOK_URL (grafana/uids.py) must resolve to a
-    real heading in the document it names - checked structurally by reading
-    the file, never over the network."""
+    """#430/#429: since per-rule anchors replaced one shared constant, every alert's
+    OWN runbook_url must resolve to a real heading in grafana/runbooks.md - checked
+    structurally by reading the file, never over the network. RUNBOOK_URL itself
+    survives as the document-level index link (used by the dashboard's "Alert
+    runbooks" DashboardLink), not as the per-alert value any more."""
 
-    def test_the_real_runbook_url_resolves(self):
+    def test_the_shared_index_runbook_url_resolves(self):
         ok, why = vm._runbook_anchor_resolves(RUNBOOK_URL)
         self.assertTrue(ok, why)
+
+    def test_every_real_manifest_has_its_own_resolving_runbook_url(self):
+        for name, doc in ((n, _load(n)) for n in glob.glob("*.json", root_dir=REAL_MANIFEST_DIR)):
+            if doc.get("kind") != "AlertRule":
+                continue
+            with self.subTest(name=name):
+                url = doc["spec"]["annotations"].get("runbook_url")
+                self.assertTrue(url, f"{name}: missing runbook_url")
+                ok, why = vm._runbook_anchor_resolves(url)
+                self.assertTrue(ok, f"{name}: {why}")
+
+    def test_two_different_alerts_get_two_different_runbook_urls(self):
+        # The old contract required every alert to carry the SAME shared constant;
+        # the new one requires the opposite - each alert's anchor names ITS OWN
+        # heading, so no two (real, distinct) alerts should collide.
+        down = _load("opnsense-exporter-down.json")
+        carp = _load(BASE_ALERT_NAME)
+        self.assertNotEqual(
+            down["spec"]["annotations"]["runbook_url"],
+            carp["spec"]["annotations"]["runbook_url"],
+        )
+
+    def test_a_missing_runbook_url_is_rejected(self):
+        doc = _base_alert()
+        del doc["spec"]["annotations"]["runbook_url"]
+        errors = vm.validate_document(BASE_ALERT_NAME, doc)
+        self.assertTrue(any("runbook_url" in e for e in errors), errors)
 
     def test_a_wrong_runbook_url_is_rejected(self):
         doc = _base_alert()

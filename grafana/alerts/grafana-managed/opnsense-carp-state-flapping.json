@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense CARP vhid {{ $labels.vhid }} is flapping on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
       "description": "Four or more CARP state changes for vhid {{ $labels.vhid }} on interface {{ $labels.interface }} in 15m. A boot sequence is two changes (INIT -> BACKUP -> MASTER) and a single failover is one, so neither fires. This is transition evidence from syslog, not an assertion about the current state; read the kernel's cause from the carp.reason field on the shipped log records, and check OPNsenseCARPVIPFault and the CARP VIP Status panel for where the VIP actually sits now.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecarpstateflapping"
     },
     "expressions": {
       "A": {

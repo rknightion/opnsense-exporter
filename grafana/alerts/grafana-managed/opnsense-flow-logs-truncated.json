@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense flow logs truncated by budget ({{ $labels.opnsense_instance }})",
       "description": "Flow log records have been dropped by the --flow.max-logs-per-window budget for 10m. Metrics are unaffected, but per-flow logs are incomplete. Raise the budget if this is expected volume, or restrict the unauthenticated NetFlow ingress with --flow.netflow.allowed-peers if it is a flood.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseflowlogstruncated"
     },
     "expressions": {
       "A": {

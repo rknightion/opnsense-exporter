@@ -22,9 +22,9 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense PF state table near its limit",
+      "summary": "OPNsense PF state table near its limit ({{ $labels.opnsense_instance }})",
       "description": "PF state table is over 90% of its configured limit for 10m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensepfstatetablenearlimit"
     },
     "expressions": {
       "A": {

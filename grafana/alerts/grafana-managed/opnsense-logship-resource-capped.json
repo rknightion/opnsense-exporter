@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense log-shipping records had labels dropped ({{ $labels.opnsense_instance }})",
       "description": "Records were shipped with their opnsense.* resource labels dropped in the last 15m, so label-scoped queries against them silently under-report.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipresourcecapped"
     },
     "expressions": {
       "A": {

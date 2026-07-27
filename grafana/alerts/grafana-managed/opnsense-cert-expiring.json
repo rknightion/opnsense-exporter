@@ -22,9 +22,9 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense certificate expiring soon: {{ $labels.commonname }}",
+      "summary": "OPNsense certificate expiring soon: {{ $labels.commonname }} ({{ $labels.opnsense_instance }})",
       "description": "Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 14 days.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecertificateexpiringsoon"
     },
     "expressions": {
       "A": {

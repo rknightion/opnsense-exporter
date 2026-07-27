@@ -22,9 +22,9 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense gateway {{ $labels.name }} high packet loss",
+      "summary": "OPNsense gateway {{ $labels.name }} high packet loss ({{ $labels.opnsense_instance }})",
       "description": "Gateway {{ $labels.name }} packet loss > 20% for 10m (current {{ $values.A.Value | printf \"%.1f\" }}%).",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensegatewayhighloss"
     },
     "expressions": {
       "A": {

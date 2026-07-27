@@ -24,7 +24,7 @@
     "annotations": {
       "summary": "OPNsense update check failing ({{ $labels.opnsense_instance }})",
       "description": "opnsense_firmware_update_check_success is 0: the firewall's stored update check RAN AND FAILED, so the box cannot currently see security updates. opnsense_firmware_update_check_state says which half broke - component connection (DNS/proxy/credentials) or component repository (fingerprint/subscription/release train). This is NOT real-time mirror monitoring: it is the STORED result of a check OPNsense runs roughly daily, read through the exporter's firmware response cache, so a failure can take up to --exporter.firmware-cache-ttl (default 12h) to appear here and just as long to clear after it is fixed. The value is therefore constant across that window, so the 1h pending period filters scrape gaps and restarts, not mirror flapping.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseupdatecheckfailing"
     },
     "expressions": {
       "A": {
