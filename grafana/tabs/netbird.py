@@ -44,6 +44,18 @@ def build(b: Builder):
                    w=8, h=4,
                    excludes=["Value", "__name__", "job", "instance"],
                    renames={"cli_version": "CLI Version", "daemon_version": "Daemon Version"})
+    # Bounded state: exactly one series per scrape (#455). state comes from
+    # netbird's own closed DaemonStatus vocabulary; anything unrecognized
+    # reads "unknown". Idle is a normal lazy-connection state, not a fault.
+    daemon_state = b.table("Daemon State", [sel("opnsense_netbird_daemon_state")],
+                           w=4, h=4,
+                           excludes=["Value", "__name__", "job", "instance"],
+                           renames={"state": "State", "opnsense_instance": "Instance"},
+                           desc="opnsense_netbird_daemon_state: current state of this node's netbird "
+                                "daemon. Idle/Connecting/Connected/NeedsLogin/LoginFailed/SessionExpired "
+                                "are netbird's own closed vocabulary; anything else collapses to unknown. "
+                                "Idle is a normal lazy-connection state, NOT a fault. NeedsLogin/"
+                                "SessionExpired mean the peer needs operator re-authentication.")
 
     peer_traffic = b.ts("Per-Peer Traffic",
                         [(f'topk {grp()} (20, rate({sel("opnsense_netbird_peer_received_bytes_total")}[{RATE}]))*8',
@@ -98,7 +110,7 @@ def build(b: Builder):
 
     b.tab("NetBird", [
         b.row("NetBird Node",
-              [svc, mgmt, signal, relays_total, relays_available, peers_total, peers_connected, info],
+              [svc, mgmt, signal, relays_total, relays_available, peers_total, peers_connected, info, daemon_state],
               present="has_netbird"),
         b.row("NetBird Peers (details flag)",
               [peer_traffic, peer_connected_tl, peer_direct, peer_latency, peer_handshake],

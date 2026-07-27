@@ -27,6 +27,14 @@ def build(b: Builder):
     # raw registry cannot copy this line and read as scoped when it is not.
     b.sentinel("has_logs", metric="opnsense_exporter_logs_queue_capacity",
                scope="self_labeled")
+    # Debug capture is opt-in twice over (--logs.debug-capture.dir plus a per-receiver
+    # --logs.<recv>.debug-capture), so its own row gets its own sentinel rather than
+    # riding has_logs: on the overwhelmingly common deployment these two series do not
+    # exist at all, and an always-on row would be two permanently blank panels on the
+    # tab an operator opens when shipping is already broken. Same registerer as the
+    # rest of the family, so it carries opnsense_instance (#428).
+    b.sentinel("has_debug_capture", metric="opnsense_exporter_logs_debug_captured_total",
+               scope="self_labeled")
 
     shipped = b.ts(
         "Records Shipped (rate)",
@@ -177,6 +185,33 @@ def build(b: Builder):
              "the API is failing and enrichment is silently going stale.",
     )
 
+    # ---- debug capture (#428) ---------------------------------------------
+    # These two series existed with no panel anywhere, and the coverage gate could not
+    # notice because it only ever read the collector catalogue.
+    debug_captured = b.ts(
+        "Debug Captures Written (rate)",
+        [(f'sum {grp("receiver", "kind")} (rate({b.sel_pipeline("opnsense_exporter_logs_debug_captured_total")}[{RATE}]))',
+          "{{receiver}} {{kind}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_debug_captured_total: signals written to the debug-capture "
+             "dir per second, by receiver and kind. Only signals the exporter does NOT model are "
+             "captured — unhandled endpoints, unknown families, parse errors, unparsed syslog "
+             "lines — so a non-zero rate here is a shopping list of things worth teaching the "
+             "parser, not an error rate. Silence means everything arriving is understood.",
+    )
+    debug_dropped = b.ts(
+        "Debug Captures Dropped (rate)",
+        [(f'sum {grp("receiver", "reason")} (rate({b.sel_pipeline("opnsense_exporter_logs_debug_capture_dropped_total")}[{RATE}]))',
+          "{{receiver}} {{reason}}")],
+        unit="short",
+        desc="opnsense_exporter_logs_debug_capture_dropped_total: capture entries dropped rather "
+             "than written, by receiver and reason. Read the reasons differently: duplicate_shape "
+             "is the healthy steady state (one example of each shape is already on disk, and this "
+             "rate — not the file size — tells you how busy the lane is), while cap_reached means "
+             "--logs.debug-capture.max-bytes is full and buffer_full or write_error mean the disk "
+             "is not keeping up. Capture never blocks ingest, so none of these cost log records.",
+    )
+
     # ---- drilldowns (#419) ------------------------------------------------
     # This tab is the pipeline's own health; the two questions it raises point
     # elsewhere. "Is anything arriving?" is the Loki-backed syslog stream, and "is the
@@ -199,4 +234,5 @@ def build(b: Builder):
         b.row("Cursor", [received_lag, exported_lag, possible_gaps], present="has_logs"),
         b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
+        b.row("Debug Capture", [debug_captured, debug_dropped], present="has_debug_capture"),
     ])

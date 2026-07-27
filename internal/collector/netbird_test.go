@@ -72,10 +72,11 @@ func TestNetbirdCollector_Update_Default(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 	// management_connected + signal_connected + relays_total + relays_available +
-	// peers_total + peers_connected + service_running + info = 8
-	if len(metrics) != 8 {
-		t.Fatalf("expected 8 metrics without details, got %d", len(metrics))
+	// peers_total + peers_connected + service_running + info + daemon_state = 9
+	if len(metrics) != 9 {
+		t.Fatalf("expected 9 metrics without details, got %d", len(metrics))
 	}
+	var sawDaemonState bool
 	for _, m := range metrics {
 		desc := m.Desc().String()
 		if strings.Contains(desc, "netbird_info") {
@@ -87,6 +88,19 @@ func TestNetbirdCollector_Update_Default(t *testing.T) {
 		if strings.Contains(desc, "management_connected") && getMetricValue(m) != 0 {
 			t.Errorf("expected management_connected=0 when unenrolled, got %v", getMetricValue(m))
 		}
+		if strings.Contains(desc, "daemon_state") {
+			sawDaemonState = true
+			labels := getMetricLabels(m)
+			if labels["state"] != "NeedsLogin" {
+				t.Errorf("expected daemon_state=NeedsLogin, got %v", labels)
+			}
+			if getMetricValue(m) != 1 {
+				t.Errorf("expected daemon_state value 1, got %v", getMetricValue(m))
+			}
+		}
+	}
+	if !sawDaemonState {
+		t.Error("missing netbird_daemon_state series for the NeedsLogin fixture")
 	}
 }
 
@@ -100,13 +114,13 @@ func TestNetbirdCollector_Update_Details(t *testing.T) {
 	c.SetDetailsEnabled(true)
 
 	metrics := collectMetrics(t, c, client)
-	// 8 default (management/signal connected true, relays 2/2, peers 2/1,
-	// service_running, info) + per-peer:
+	// 9 default (management/signal connected true, relays 2/2, peers 2/1,
+	// service_running, info, daemon_state) + per-peer:
 	//   peer-a (connected): connected/direct/rx/tx/last_handshake/latency (6)
 	//   peer-b (idle): connected/rx/tx (3 — direct/handshake/latency omitted)
-	// = 8 + 9 = 17
-	if len(metrics) != 17 {
-		t.Fatalf("expected 17 metrics with details, got %d", len(metrics))
+	// = 9 + 9 = 18
+	if len(metrics) != 18 {
+		t.Fatalf("expected 18 metrics with details, got %d", len(metrics))
 	}
 
 	var sawRxForA, sawDirectForB, sawLatencyForA bool
@@ -154,6 +168,7 @@ func TestNetbirdCollector_DaemonDown(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 	// 7 aggregates (no info: no version data when the daemon is down) + service_running = 7
+	// No daemon_state either: the bare-[] fallback carries no daemonStatus.
 	if len(metrics) != 7 {
 		t.Fatalf("expected 7 metrics when daemon is down (no info metric), got %d", len(metrics))
 	}
@@ -162,9 +177,41 @@ func TestNetbirdCollector_DaemonDown(t *testing.T) {
 		if strings.Contains(desc, "netbird_info") {
 			t.Error("info metric must not be emitted when the daemon is down (no version data)")
 		}
+		if strings.Contains(desc, "daemon_state") {
+			t.Error("daemon_state metric must not be emitted when the daemon is down (no daemonStatus)")
+		}
 		if !strings.Contains(desc, "service_running") && getMetricValue(m) != 0 {
 			t.Errorf("expected all aggregates at 0 when daemon is down: %s = %v", desc, getMetricValue(m))
 		}
+	}
+}
+
+// TestNetbirdCollector_DaemonStateUnknown covers #455's fallback bucket at the
+// collector layer: a daemonStatus value outside netbird's closed vocabulary
+// must still emit exactly one daemon_state series, canonicalized to
+// "unknown" rather than the raw string.
+func TestNetbirdCollector_DaemonStateUnknown(t *testing.T) {
+	body := `{"peers":{"total":0,"connected":0,"details":null},"cliVersion":"0.99.0","daemonVersion":"0.99.0","daemonStatus":"SomeFutureState","management":{"connected":false},"signal":{"connected":false},"relays":{"total":0,"available":0}}`
+	server := netbirdTestServer(t, body)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &netbirdCollector{subsystem: NetbirdSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+	var sawDaemonState bool
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "daemon_state") {
+			sawDaemonState = true
+			labels := getMetricLabels(m)
+			if labels["state"] != "unknown" {
+				t.Errorf("expected daemon_state=unknown for an unrecognized value, got %v", labels)
+			}
+		}
+	}
+	if !sawDaemonState {
+		t.Error("missing netbird_daemon_state series for an unrecognized daemonStatus")
 	}
 }
 

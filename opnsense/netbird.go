@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -130,10 +131,19 @@ type NetbirdStatus struct {
 	// parseable output (daemon down / unreachable). Present can be true while
 	// DaemonUp is false: the plugin (and its API route) is installed, but the
 	// daemon itself did not answer.
-	DaemonUp            bool
-	CliVersion          string
-	DaemonVersion       string
-	DaemonStatus        string
+	DaemonUp      bool
+	CliVersion    string
+	DaemonVersion string
+	DaemonStatus  string
+	// DaemonState/DaemonStateValid (#455) are the canonicalized form of
+	// DaemonStatus: DaemonState is one of netbird's closed DaemonStatus
+	// vocabulary (see canonicalizeNetbirdDaemonState) or "unknown" for
+	// anything else, and DaemonStateValid is false only when DaemonStatus
+	// itself was empty (no stored state to report) — mirroring
+	// FirmwareStatus.CheckPresent, this is what stops an absent field from
+	// fabricating a state.
+	DaemonState         string
+	DaemonStateValid    bool
 	ManagementConnected bool
 	SignalConnected     bool
 	RelaysTotal         int
@@ -141,6 +151,45 @@ type NetbirdStatus struct {
 	PeersTotal          int
 	PeersConnected      int
 	Peers               []NetbirdPeer
+}
+
+// netbirdDaemonStates is the CLOSED DaemonStatus vocabulary from the
+// currently packaged netbird's client/status/status.go (v0.74.4, the OPNsense
+// ceiling as of #379/#455):
+//
+//	DaemonStatusIdle           = "Idle"
+//	DaemonStatusConnecting     = "Connecting"
+//	DaemonStatusConnected      = "Connected"
+//	DaemonStatusNeedsLogin     = "NeedsLogin"
+//	DaemonStatusLoginFailed    = "LoginFailed"
+//	DaemonStatusSessionExpired = "SessionExpired"
+//
+// Keyed lowercase for case-insensitive matching; values are the canonical
+// wire-cased form emitted as the metric label.
+var netbirdDaemonStates = map[string]string{
+	"idle":           "Idle",
+	"connecting":     "Connecting",
+	"connected":      "Connected",
+	"needslogin":     "NeedsLogin",
+	"loginfailed":    "LoginFailed",
+	"sessionexpired": "SessionExpired",
+}
+
+// canonicalizeNetbirdDaemonState maps a raw daemonStatus string onto its
+// closed vocabulary. An empty/whitespace-only value returns ("", false) — no
+// state was reported, so no series should be emitted (mirrors
+// FirmwareStatus.CheckPresent). Any non-empty value outside the vocabulary,
+// including a future upstream state, collapses to ("unknown", true): the raw
+// string is NEVER passed through to a label.
+func canonicalizeNetbirdDaemonState(raw string) (state string, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", false
+	}
+	if canon, found := netbirdDaemonStates[strings.ToLower(s)]; found {
+		return canon, true
+	}
+	return "unknown", true
 }
 
 // FetchNetbirdStatus calls the os-netbird status endpoint. A HTTP 404 means
@@ -198,6 +247,7 @@ func (c *Client) FetchNetbirdStatus() (NetbirdStatus, *APICallError) {
 	data.CliVersion = obj.CliVersion
 	data.DaemonVersion = obj.DaemonVersion
 	data.DaemonStatus = obj.DaemonStatus
+	data.DaemonState, data.DaemonStateValid = canonicalizeNetbirdDaemonState(obj.DaemonStatus)
 	data.ManagementConnected = obj.Management.Connected
 	data.SignalConnected = obj.Signal.Connected
 	data.RelaysTotal = obj.Relays.Total

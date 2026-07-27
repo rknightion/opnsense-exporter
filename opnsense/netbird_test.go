@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -113,6 +114,78 @@ func TestFetchNetbirdStatus_DaemonDown(t *testing.T) {
 	if data.CliVersion != "" || data.DaemonVersion != "" {
 		t.Errorf("expected no version info when daemon is down: %+v", data)
 	}
+	if data.DaemonStateValid {
+		t.Errorf("expected no daemon state when daemon is down: %+v", data)
+	}
+}
+
+// TestFetchNetbirdStatus_DaemonStatusUnknown covers #455's fallback bucket: a
+// daemonStatus value outside netbird's closed DaemonStatus vocabulary (a
+// future upstream state, or a decode-adjacent typo) must canonicalize to
+// "unknown" rather than passing the raw string through to a label.
+func TestFetchNetbirdStatus_DaemonStatusUnknown(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/netbird/status/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"peers":{"total":0,"connected":0,"details":null},"cliVersion":"0.99.0","daemonVersion":"0.99.0","daemonStatus":"SomeFutureState","management":{"connected":false},"signal":{"connected":false},"relays":{"total":0,"available":0}}`))
+	})
+
+	data, err := client.FetchNetbirdStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !data.DaemonStateValid || data.DaemonState != "unknown" {
+		t.Errorf("expected unrecognized daemonStatus to canonicalize to unknown, got %q (valid=%v)", data.DaemonState, data.DaemonStateValid)
+	}
+}
+
+// TestFetchNetbirdStatus_DaemonStatusEmpty covers the case where the daemon
+// answered (DaemonUp) but daemonStatus itself was empty — must emit no state
+// at all rather than fabricating one, mirroring firmware's CheckPresent gate.
+func TestFetchNetbirdStatus_DaemonStatusEmpty(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/netbird/status/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"peers":{"total":0,"connected":0,"details":null},"cliVersion":"0.99.0","daemonVersion":"0.99.0","daemonStatus":"","management":{"connected":false},"signal":{"connected":false},"relays":{"total":0,"available":0}}`))
+	})
+
+	data, err := client.FetchNetbirdStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.DaemonStateValid {
+		t.Errorf("expected empty daemonStatus to emit no state, got %q", data.DaemonState)
+	}
+}
+
+// TestCanonicalizeNetbirdDaemonState covers netbird's closed DaemonStatus
+// vocabulary (client/status/status.go, netbirdio/netbird v0.74.4 — the
+// currently packaged os-netbird version): Idle, Connecting, Connected,
+// NeedsLogin, LoginFailed, SessionExpired. Anything else collapses to
+// "unknown".
+func TestCanonicalizeNetbirdDaemonState(t *testing.T) {
+	canonical := []string{"Idle", "Connecting", "Connected", "NeedsLogin", "LoginFailed", "SessionExpired"}
+	for _, s := range canonical {
+		if got, ok := canonicalizeNetbirdDaemonState(s); !ok || got != s {
+			t.Errorf("canonicalizeNetbirdDaemonState(%q) = (%q, %v), want (%q, true)", s, got, ok, s)
+		}
+		// Case-insensitive: the wire value is consistently PascalCase in every
+		// live capture, but the vocabulary match should not depend on it.
+		if got, ok := canonicalizeNetbirdDaemonState(strings.ToUpper(s)); !ok || got != s {
+			t.Errorf("canonicalizeNetbirdDaemonState(%q) = (%q, %v), want (%q, true)", strings.ToUpper(s), got, ok, s)
+		}
+	}
+	if got, ok := canonicalizeNetbirdDaemonState("Reconnecting"); !ok || got != "unknown" {
+		t.Errorf("canonicalizeNetbirdDaemonState(%q) = (%q, %v), want (unknown, true)", "Reconnecting", got, ok)
+	}
+	if got, ok := canonicalizeNetbirdDaemonState(""); ok || got != "" {
+		t.Errorf("canonicalizeNetbirdDaemonState(\"\") = (%q, %v), want (\"\", false)", got, ok)
+	}
+	if got, ok := canonicalizeNetbirdDaemonState("   "); ok || got != "" {
+		t.Errorf("canonicalizeNetbirdDaemonState(whitespace) = (%q, %v), want (\"\", false)", got, ok)
+	}
 }
 
 func TestFetchNetbirdStatus_Unenrolled(t *testing.T) {
@@ -141,6 +214,9 @@ func TestFetchNetbirdStatus_Unenrolled(t *testing.T) {
 	}
 	if data.DaemonStatus != "NeedsLogin" {
 		t.Errorf("expected daemonStatus NeedsLogin, got %q", data.DaemonStatus)
+	}
+	if !data.DaemonStateValid || data.DaemonState != "NeedsLogin" {
+		t.Errorf("expected canonical daemon state NeedsLogin, got %q (valid=%v)", data.DaemonState, data.DaemonStateValid)
 	}
 }
 
@@ -206,6 +282,9 @@ func TestFetchNetbirdStatus_Enrolled(t *testing.T) {
 	}
 	if b.ReceivedBytes != 0 || b.TransmittedBytes != 0 {
 		t.Errorf("expected peer-b zero transfer: %+v", b)
+	}
+	if !data.DaemonStateValid || data.DaemonState != "Connected" {
+		t.Errorf("expected canonical daemon state Connected, got %q (valid=%v)", data.DaemonState, data.DaemonStateValid)
 	}
 }
 

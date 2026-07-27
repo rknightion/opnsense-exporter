@@ -288,13 +288,14 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 99 total (collector 96 / self_labeled 1 / target_join 2 / global 0)
+### Prometheus sentinels — 101 total (collector 96 / self_labeled 3 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
 | `has_acme` | `collector` | existence (series presence) | System > Certificates > ACME Client | `label_values(opnsense_acme_certificates_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_alias` | `collector` | existence (series presence) | Security > Aliases; Security > Aliases > Alias Tables | `label_values(opnsense_alias_tables_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_alias_details` | `collector` | existence (series presence) | Security > Aliases > Alias pf Counters (details flag) | `label_values(opnsense_alias_table_packets_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_annotations` | `self_labeled` | existence (series presence) | Observability > Diagnostics > Grafana Annotation Writing | `label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_apcupsd` | `collector` | existence (series presence) | System > UPS; System > UPS > APC UPS (apcupsd) | `label_values(opnsense_apcupsd_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_bridge` | `collector` | existence (series presence) | Network > Interfaces > Bridge Membership | `label_values(opnsense_interfaces_bridge_member{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_captiveportal` | `collector` | existence (series presence) | Network > Captive Portal; Network > Captive Portal > Captive Portal Overview; Network > Captive Portal > Per-Zone Sessions | `label_values(opnsense_captiveportal_zones_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
@@ -306,6 +307,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_crowdsec` | `collector` | existence (series presence) | Security > CrowdSec; Security > CrowdSec > Bouncer Details; Security > CrowdSec > CrowdSec Overview; Security > CrowdSec > Machine Details | `label_values(opnsense_crowdsec_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_crowdsec_hub_items` | `collector` | existence (series presence) | Security > CrowdSec > Hub Component Health | `label_values(opnsense_crowdsec_hub_items{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_crowdsec_version` | `collector` | existence (series presence) | Security > CrowdSec > Engine Version | `label_values(opnsense_crowdsec_version_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_debug_capture` | `self_labeled` | existence (series presence) | Observability > Log Shipping > Debug Capture | `label_values(opnsense_exporter_logs_debug_captured_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_dhcpv4_details` | `collector` | existence (series presence) | Network > DHCP > ISC DHCPv4 Lease Details | `label_values(opnsense_dhcpv4_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_dhcpv4_isc` | `collector` | existence (series presence) | Network > DHCP; Network > DHCP > ISC DHCPv4 | `label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_dhcpv6_details` | `collector` | existence (series presence) | Network > DHCP > ISC DHCPv6 Lease Details | `label_values(opnsense_dhcpv6_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |

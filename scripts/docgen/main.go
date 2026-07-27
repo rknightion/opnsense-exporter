@@ -149,6 +149,14 @@ func main() {
 	generateCollectorReference(out, filepath.Join(repoRoot, "docs", "collectors", "reference.md"),
 		collectors)
 
+	// Step 5b: Inventory the metrics the exporter emits about ITSELF (#428). This is a
+	// source scan, deliberately independent of the collector walk above: everything
+	// outside internal/collector — the whole opnsense_exporter_logs_* family, the
+	// annotations writer, the OTLP delivery series — is registered without ever
+	// touching the collector registry, so the walk above cannot see any of it.
+	selfMetrics := generateSelfMetrics(out, repoRoot)
+	fmt.Fprintf(os.Stderr, "docgen: self-metric inventory: %d metrics\n", len(selfMetrics))
+
 	// Step 6: Inject the endpoint-to-ACL matrix into docs/security.md.
 	injectSecurityDoc(out)
 

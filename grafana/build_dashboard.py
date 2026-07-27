@@ -24,6 +24,8 @@ from builder import (INSTANCE_SEL, Builder, sel, grp, RATE, ENABLED, UPDOWN, OKE
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 METRICS_MD = os.path.join(REPO, "docs", "metrics", "metrics.md")
+# The exporter's own self-metrics, source-scanned rather than registry-walked (#428).
+SELF_METRICS_MD = os.path.join(REPO, "docs", "metrics", "self-metrics.md")
 OUT = os.path.join(HERE, "dashboard.json")
 STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
 # The feature-sentinel documentation contract (#417): a machine-readable manifest
@@ -623,6 +625,39 @@ def build_diagnostics(b: Builder):
              "configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an "
              "ineffective TTL.")
 
+    # ---- annotation writing (#428) ---------------------------------------
+    # Opt-in (--annotations.enabled) and, once on, deliberately quiet: nothing is
+    # written until a watched event occurs, which on a healthy firewall may be days.
+    # That is exactly why these four series need to be visible — a successful start
+    # proves nothing, so without them "correctly quiet" and "the Grafana token expired
+    # three weeks ago" look identical. The family was registered through
+    # logship.SelfMetricsRegisterer, so unlike otlp_* it DOES carry opnsense_instance
+    # and the ordinary instance matcher scopes it (scope="self_labeled").
+    b.sentinel("has_annotations", metric="opnsense_exporter_annotations_written_total",
+               scope="self_labeled")
+    ann_rate = b.ts("Annotation Writes (rate)",
+                    [(f'rate({sel("opnsense_exporter_annotations_written_total")}[{RATE}])', "written"),
+                     (f'rate({sel("opnsense_exporter_annotations_failed_total")}[{RATE}])', "failed"),
+                     (f'rate({sel("opnsense_exporter_annotations_skipped_total")}[{RATE}])', "skipped")],
+                    unit="short", w=12, h=7,
+                    desc="Annotations written to Grafana per second, against those that failed or were "
+                         "skipped. A failed write is RETRIED on the next detection pass — the event is "
+                         "not marked seen — so a brief failure rate that stops without a matching drop "
+                         "in writes cost nothing. Skips are different and are lossy: they mean a "
+                         "detection pass hit its --annotations.max-per-cycle cap and abandoned the "
+                         "excess, so a sustained skip rate means events are being silently discarded "
+                         "and the cap needs raising.")
+    ann_age = b.stat("Time Since Last Annotation Written",
+                     f'time() - ({sel("opnsense_exporter_annotations_last_success_timestamp_seconds")} > 0)',
+                     unit="s", w=12, h=7, graph="none", color_mode="background",
+                     thresholds=[{"color": "green", "value": None}],
+                     desc="Seconds since the last annotation Grafana accepted. Deliberately has NO red "
+                          "threshold: a long age is the normal state on a quiet firewall and says "
+                          "nothing on its own. NO DATA means no annotation has EVER been written since "
+                          "this exporter started. Read it beside the failure rate — a climbing age with "
+                          "a non-zero failure rate is a broken token or URL, while a climbing age with "
+                          "no failures at all is simply a firewall with nothing to report.")
+
     b.tab("Diagnostics", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
@@ -632,6 +667,7 @@ def build_diagnostics(b: Builder):
               present="has_otlp"),
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
         b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
+        b.row("Grafana Annotation Writing", [ann_rate, ann_age], present="has_annotations"),
         b.row("Exporter Build & Collectors", [build, cov]),
         b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),
@@ -640,12 +676,26 @@ def build_diagnostics(b: Builder):
 
 # ---- coverage gate -------------------------------------------------------
 def load_catalogue() -> list:
+    """Every metric this exporter can emit: firewall metrics AND its own self-metrics.
+
+    Two sources, because no single one sees everything (#428). METRICS_MD is generated
+    by walking the COLLECTOR registry, so it covers firewall data and internal/collector's
+    own meta family — and nothing else. Every metric registered outside that package was
+    therefore invisible to this gate: the whole opnsense_exporter_logs_* family, the
+    annotations writer, and the OTLP delivery series could ship with no panel and no
+    complaint. SELF_METRICS_MD is generated by scanning the source for metric
+    declarations (scripts/docgen/selfmetrics.go) and closes that hole.
+
+    The two overlap on internal/collector's meta metrics, which is intended: they are
+    reached by both mechanisms and the set union deduplicates them.
+    """
     names = []
-    with open(METRICS_MD) as f:
-        for line in f:
-            m = re.match(r"\|\s*(opnsense_[a-z0-9_]+)\s*\|", line)
-            if m:
-                names.append(m.group(1))
+    for path in (METRICS_MD, SELF_METRICS_MD):
+        with open(path) as f:
+            for line in f:
+                m = re.match(r"\|\s*(opnsense_[a-z0-9_]+)\s*\|", line)
+                if m:
+                    names.append(m.group(1))
     return sorted(set(names))
 
 

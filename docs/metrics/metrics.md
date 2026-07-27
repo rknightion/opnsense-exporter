@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 838
-- **Gauges:** 552
+- **Total metrics:** 839
+- **Gauges:** 553
 - **Counters:** 286
 
 ## General
@@ -765,6 +765,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_netbird_peers_connected | Gauge | --- | Number of netbird network peers this node currently has an active WireGuard connection to | --exporter.disable-netbird |
 | opnsense_netbird_service_running | Gauge | --- | Whether the netbird plugin service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-netbird |
 | opnsense_netbird_info | Gauge | cli_version, daemon_version | NetBird node version information (value is always 1; see labels). Only emitted when the daemon reports version data (absent while the daemon itself is down) | --exporter.disable-netbird |
+| opnsense_netbird_daemon_state | Gauge | state | Current state of this node's netbird daemon (#455; always 1; exactly one series per scrape). state is drawn from netbird's closed DaemonStatus vocabulary - Idle, Connecting, Connected, NeedsLogin, LoginFailed, SessionExpired - and anything else, including a future upstream state, collapses to unknown. Idle is a normal lazy-connection state, NOT a fault; NeedsLogin/SessionExpired mean the peer needs operator re-authentication. Only emitted when the daemon reported a daemonStatus (absent while the daemon itself is down). | --exporter.disable-netbird |
 | opnsense_netbird_peer_connected | Gauge | fqdn | Whether this node currently has an active WireGuard connection to the peer (1 = connected, 0 = not). Only emitted when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
 | opnsense_netbird_peer_direct | Gauge | fqdn | Whether the connection to the peer uses a direct P2P path (1 = direct, 0 = relayed). Only emitted for peers with an active connection and when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |
 | opnsense_netbird_peer_received_bytes_total | Counter | fqdn | Bytes received from this peer since the netbird daemon started. Only emitted when --exporter.enable-netbird-details is set. | --exporter.disable-netbird |

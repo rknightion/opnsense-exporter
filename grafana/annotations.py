@@ -368,6 +368,11 @@ NOT_ANNOTATED: dict = {
         "produces a continuous smear of markers rather than events.",
     "opnsense_crowdsec_machine_last_heartbeat_timestamp_seconds":
         "A heartbeat by name and by behaviour — same continuous-smear problem.",
+    "opnsense_exporter_annotations_last_success_timestamp_seconds":
+        "Advances on every annotation the exporter successfully writes, so it is a "
+        "freshness reading of the writer rather than an event. Annotating it would also "
+        "be circular: a marker on the timeline saying a marker was placed on the "
+        "timeline. It is read as an age on Diagnostics instead (#428).",
     "opnsense_exporter_collector_last_poll_timestamp_seconds":
         "Exporter scheduler liveness, advancing every poll interval. Belongs on the "
         "self-observability dashboard as a freshness panel, never as a marker.",
@@ -377,6 +382,20 @@ NOT_ANNOTATED: dict = {
         "Future-dated by construction, so any marker would sit ahead of now.",
     "opnsense_exporter_collector_snapshot_timestamp_seconds":
         "Advances whenever a collector's buffer is replaced — a per-poll heartbeat.",
+    "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds":
+        "Advances every time an enrichment table refreshes — rules every 60s, interfaces "
+        "every 5m — so under value-as-time it is a continuous smear, not events. Its "
+        "value is as a STALENESS reading, which is how the Log Shipping tab plots it.",
+    "opnsense_exporter_logs_last_exported_timestamp_seconds":
+        "A pipeline-stage cursor that advances with every batch the sink acknowledges. "
+        "The whole point of the pair with logs_last_received is the LAG between them; a "
+        "marker per shipped batch would be one per second on a busy box.",
+    "opnsense_exporter_logs_last_received_timestamp_seconds":
+        "Same: advances on every record admitted to the queue. Cursor, not event.",
+    "opnsense_exporter_otlp_last_success_timestamp_seconds":
+        "Advances on every OTLP export the backend accepts, i.e. once per export "
+        "interval while delivery is healthy — a heartbeat. What an operator needs from "
+        "it is the AGE since the last acceptance, which Diagnostics already stats.",
     "opnsense_firmware_last_check_timestamp_seconds":
         "The last UPDATE CHECK, which changes nothing on the box. The upgrade that "
         "does is annotated from the boot environment it creates.",

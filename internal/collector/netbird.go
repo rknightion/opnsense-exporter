@@ -27,6 +27,7 @@ type netbirdCollector struct {
 	peersConnected      *prometheus.Desc
 	serviceRunning      *prometheus.Desc
 	info                *prometheus.Desc
+	daemonState         *prometheus.Desc
 
 	peerConnected     *prometheus.Desc
 	peerDirect        *prometheus.Desc
@@ -80,6 +81,9 @@ func (c *netbirdCollector) Register(namespace, instanceLabel string, log *slog.L
 	c.info = buildPrometheusDesc(c.subsystem, "info",
 		"NetBird node version information (value is always 1; see labels). Only emitted when the daemon reports version data (absent while the daemon itself is down)",
 		[]string{"cli_version", "daemon_version"})
+	c.daemonState = buildPrometheusDesc(c.subsystem, "daemon_state",
+		"Current state of this node's netbird daemon (#455; always 1; exactly one series per scrape). state is drawn from netbird's closed DaemonStatus vocabulary - Idle, Connecting, Connected, NeedsLogin, LoginFailed, SessionExpired - and anything else, including a future upstream state, collapses to unknown. Idle is a normal lazy-connection state, NOT a fault; NeedsLogin/SessionExpired mean the peer needs operator re-authentication. Only emitted when the daemon reported a daemonStatus (absent while the daemon itself is down).",
+		[]string{"state"})
 
 	c.peerConnected = buildPrometheusDesc(c.subsystem, "peer_connected",
 		"Whether this node currently has an active WireGuard connection to the peer (1 = connected, 0 = not). Only emitted when --exporter.enable-netbird-details is set.",
@@ -110,6 +114,7 @@ func (c *netbirdCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.peersConnected
 	ch <- c.serviceRunning
 	ch <- c.info
+	ch <- c.daemonState
 	ch <- c.peerConnected
 	ch <- c.peerDirect
 	ch <- c.peerRxBytes
@@ -158,6 +163,15 @@ func (c *netbirdCollector) Update(ctx context.Context, client *opnsense.Client, 
 	if data.DaemonUp && (data.CliVersion != "" || data.DaemonVersion != "") {
 		ch <- prometheus.MustNewConstMetric(c.info, prometheus.GaugeValue,
 			1, data.CliVersion, data.DaemonVersion, c.instance)
+	}
+
+	// #455: exactly one series for the CURRENT state, so the label stays
+	// bounded and a state change never leaves a stale series behind. Absent
+	// entirely when daemonStatus itself was empty (DaemonStateValid false) —
+	// mirrors firmware's CheckPresent gate rather than fabricating a state.
+	if data.DaemonStateValid {
+		ch <- prometheus.MustNewConstMetric(c.daemonState, prometheus.GaugeValue,
+			1, data.DaemonState, c.instance)
 	}
 
 	if c.detailsEnabled {

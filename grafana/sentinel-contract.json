@@ -1,9 +1,9 @@
 {
   "prometheus": {
-    "total": 99,
+    "total": 101,
     "by_scope": {
       "collector": 96,
-      "self_labeled": 1,
+      "self_labeled": 3,
       "target_join": 2,
       "global": 0
     },
@@ -37,6 +37,16 @@
         "query": "label_values(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "Security > Aliases > Alias pf Counters (details flag)"
+        ]
+      },
+      {
+        "name": "has_annotations",
+        "datasource": "prometheus",
+        "scope": "self_labeled",
+        "presence": "existence",
+        "query": "label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Diagnostics > Grafana Annotation Writing"
         ]
       },
       {
@@ -160,6 +170,16 @@
         "query": "label_values(opnsense_crowdsec_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "Security > CrowdSec > Engine Version"
+        ]
+      },
+      {
+        "name": "has_debug_capture",
+        "datasource": "prometheus",
+        "scope": "self_labeled",
+        "presence": "existence",
+        "query": "label_values(opnsense_exporter_logs_debug_captured_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log Shipping > Debug Capture"
         ]
       },
       {
