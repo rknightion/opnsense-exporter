@@ -70,7 +70,7 @@ func TestValidateDashboardAcceptsKnownGrafanaTokens(t *testing.T) {
 		`opnsense_instance=~"$opnsense_instance",` +
 		`device=~"$device",interface=~"$interface"}[$__rate_interval])`
 
-	count, _, err := validateDashboard(
+	count, _, _, err := validateDashboard(
 		dashboardFixture(1, "Valid", "prometheus", "prometheus", "A", expression),
 	)
 
@@ -93,7 +93,7 @@ const deviceVariableQuery = `query_result(group by (opnsense_instance, device) (
 	` or opnsense_flow_interface_info{opnsense_instance=~"$opnsense_instance",device!=""}))`
 
 func TestValidateDashboardParsesTheDeviceVariableUnion(t *testing.T) {
-	targets, variables, err := validateDashboard(
+	targets, variables, _, err := validateDashboard(
 		variableFixture("device", "prometheus", deviceVariableQuery),
 	)
 
@@ -116,7 +116,7 @@ func TestValidateDashboardUnwrapsLabelValuesSelectors(t *testing.T) {
 		`label_values(opnsense_interfaces_link_state{opnsense_instance=~"$opnsense_instance"}, interface)`,
 		`label_values({__name__=~"opnsense_flow_.+",opnsense_instance=~"$opnsense_instance"}, __name__)`,
 	} {
-		_, variables, err := validateDashboard(variableFixture("v", "prometheus", query))
+		_, variables, _, err := validateDashboard(variableFixture("v", "prometheus", query))
 		if err != nil {
 			t.Errorf("validateDashboard(%q) error = %v", query, err)
 		}
@@ -129,7 +129,7 @@ func TestValidateDashboardUnwrapsLabelValuesSelectors(t *testing.T) {
 func TestValidateDashboardReportsMalformedVariablePromQLWithVariableName(t *testing.T) {
 	query := `query_result(group by (opnsense_instance, device) (opnsense_thing{a="1"}{b="2"}))`
 
-	_, _, err := validateDashboard(variableFixture("device", "prometheus", query))
+	_, _, _, err := validateDashboard(variableFixture("device", "prometheus", query))
 
 	if err == nil {
 		t.Fatal("validateDashboard() error = nil, want malformed variable PromQL error")
@@ -145,7 +145,7 @@ func TestValidateDashboardRejectsAVariableThatIsNotAGrafanaVariableFunction(t *t
 	// Bare PromQL in a variable is not a syntax error, it is a variable Grafana
 	// sends verbatim to an endpoint that cannot answer it - so the picker is
 	// empty with nothing malformed to find.
-	_, _, err := validateDashboard(
+	_, _, _, err := validateDashboard(
 		variableFixture("device", "prometheus", `group by (device) (opnsense_interfaces_info)`),
 	)
 
@@ -158,7 +158,7 @@ func TestValidateDashboardRejectsAVariableThatIsNotAGrafanaVariableFunction(t *t
 }
 
 func TestValidateDashboardSkipsLokiVariables(t *testing.T) {
-	_, variables, err := validateDashboard(
+	_, variables, _, err := validateDashboard(
 		variableFixture("has_syslog_logs", "loki", `label_values({service_name="x"}, level)`),
 	)
 
@@ -173,7 +173,7 @@ func TestValidateDashboardSkipsLokiVariables(t *testing.T) {
 func TestValidateDashboardReportsMalformedPromQLWithPanelContext(t *testing.T) {
 	expression := `opnsense_metric{one="1"}{two="2"}`
 
-	count, _, err := validateDashboard(
+	count, _, _, err := validateDashboard(
 		dashboardFixture(
 			665,
 			"Zenarmor Blocks by Category (rate)",
@@ -203,7 +203,7 @@ func TestValidateDashboardReportsMalformedPromQLWithPanelContext(t *testing.T) {
 }
 
 func TestValidateDashboardSkipsExactLokiTargets(t *testing.T) {
-	count, _, err := validateDashboard(
+	count, _, _, err := validateDashboard(
 		dashboardFixture(2, "Loki", "loki", "loki", "A", "this is not PromQL {"),
 	)
 
@@ -216,7 +216,7 @@ func TestValidateDashboardSkipsExactLokiTargets(t *testing.T) {
 }
 
 func TestValidateDashboardRejectsDatasourceMetadataMismatch(t *testing.T) {
-	_, _, err := validateDashboard(
+	_, _, _, err := validateDashboard(
 		dashboardFixture(3, "Mismatch", "prometheus", "loki", "B", "up"),
 	)
 
@@ -231,7 +231,7 @@ func TestValidateDashboardRejectsDatasourceMetadataMismatch(t *testing.T) {
 func TestValidateDashboardRejectsUnknownGrafanaToken(t *testing.T) {
 	expression := `rate(opnsense_metric_total[$unknown_macro])`
 
-	_, _, err := validateDashboard(
+	_, _, _, err := validateDashboard(
 		dashboardFixture(4, "Unknown token", "prometheus", "prometheus", "C", expression),
 	)
 
@@ -244,12 +244,75 @@ func TestValidateDashboardRejectsUnknownGrafanaToken(t *testing.T) {
 }
 
 func TestValidateDashboardRejectsInvalidJSON(t *testing.T) {
-	_, _, err := validateDashboard([]byte(`{"spec":`))
+	_, _, _, err := validateDashboard([]byte(`{"spec":`))
 
 	if err == nil {
 		t.Fatal("validateDashboard() error = nil, want JSON decoding error")
 	}
 	if !strings.Contains(err.Error(), "decode dashboard JSON") {
 		t.Fatalf("validateDashboard() error = %q, want JSON decoding context", err)
+	}
+}
+
+// annotationFixture is a dashboard carrying one annotation query and no panels. A
+// v2 AnnotationQuery keeps its real expression in `legacyOptions`, not in
+// `query.spec` — the panel and variable walks never reach it, so before #421 an
+// annotation could ship a malformed expression that failed only in a browser, with
+// the timeline silently empty rather than erroring.
+func annotationFixture(name, group, expression string) []byte {
+	return []byte(fmt.Sprintf(`{
+		"spec": {
+			"elements": {},
+			"annotations": [{
+				"kind": "AnnotationQuery",
+				"spec": {
+					"name": %q,
+					"legacyOptions": {"expr": %q},
+					"query": {"kind": "DataQuery", "group": %q, "spec": {}}
+				}
+			}]
+		}
+	}`, name, expression, group))
+}
+
+func TestValidateDashboardValidatesPrometheusAnnotations(t *testing.T) {
+	// The value-as-time idiom: scaled to milliseconds and bounded to the visible
+	// window. `$__from`/`$__to` are epoch-millisecond numbers, so the comparison
+	// chain has to parse as PromQL once they are substituted.
+	expression := `opnsense_system_boot_timestamp_seconds{opnsense_instance=~"$opnsense_instance"}` +
+		` * 1000 > $__from < $__to`
+
+	_, _, annotations, err := validateDashboard(annotationFixture("Reboot", "prometheus", expression))
+	if err != nil {
+		t.Fatalf("validateDashboard() error = %v", err)
+	}
+	if annotations != 1 {
+		t.Fatalf("validated %d annotation queries, want 1", annotations)
+	}
+}
+
+func TestValidateDashboardRejectsMalformedAnnotation(t *testing.T) {
+	_, _, _, err := validateDashboard(
+		annotationFixture("Broken", "prometheus", `sum(opnsense_up{`),
+	)
+	if err == nil {
+		t.Fatal("expected a malformed annotation expression to be rejected")
+	}
+	if !strings.Contains(err.Error(), "annotation \"Broken\"") {
+		t.Errorf("diagnostic should name the annotation, got: %v", err)
+	}
+}
+
+func TestValidateDashboardSkipsLokiAnnotations(t *testing.T) {
+	// LogQL is not PromQL. A Loki annotation must be skipped rather than parsed,
+	// exactly as Loki panel targets are.
+	_, _, annotations, err := validateDashboard(annotationFixture(
+		"Gateway alarm", "loki",
+		`{service_instance_id=~"$opnsense_instance"} | gateway_event="alarm_started"`))
+	if err != nil {
+		t.Fatalf("validateDashboard() error = %v", err)
+	}
+	if annotations != 0 {
+		t.Fatalf("counted %d annotation queries, want 0 for a Loki annotation", annotations)
 	}
 }

@@ -95,8 +95,8 @@ func TestSystemCollector_Update(t *testing.T) {
 	// Disk: 3 per device (total, used, usageRatio) * 1 device = 3
 	// Swap: 2 per device (total, used) * 1 device = 2
 	// Info: 1 metric
-	// Total: 3 + 5 + 3 + 2 + 1 = 14
-	expectedCount := 14
+	// Total: 3 + 6 + 3 + 2 + 1 = 15
+	expectedCount := 15
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -192,12 +192,13 @@ func TestSystemCollector_Update_NoArc(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Memory: 2 metrics (total, used) - no arc
-	// Time: 1 uptime + 3 loadAverage = 4 (no configLastChange since config is "")
+	// Time: 1 uptime + 1 bootTimestamp + 3 loadAverage = 5 (no configLastChange
+	// since config is "")
 	// Disk: 0 (no devices)
 	// Swap: 0 (no swap)
 	// Info: 1 metric
-	// Total: 2 + 4 + 0 + 0 + 1 = 7
-	expectedCount := 7
+	// Total: 2 + 5 + 0 + 0 + 1 = 8
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -211,8 +212,8 @@ func TestSystemCollector_Name(t *testing.T) {
 }
 
 // TestSystemCollector_Update_TimeUnavailable guards #91: when the systemTime
-// sub-call fails (but systemResources succeeds), uptime_seconds and the three
-// load_average series must NOT be emitted (uptime=0 reads as a host reboot), while
+// sub-call fails (but systemResources succeeds), uptime_seconds, boot_timestamp_seconds
+// and the three load_average series must NOT be emitted (uptime=0 reads as a host reboot), while
 // memory series are still emitted.
 func TestSystemCollector_Update_TimeUnavailable(t *testing.T) {
 	mux := http.NewServeMux()
@@ -249,7 +250,8 @@ func TestSystemCollector_Update_TimeUnavailable(t *testing.T) {
 	sawMemory := false
 	for _, m := range metrics {
 		d := m.Desc().String()
-		if strings.Contains(d, "uptime_seconds") || strings.Contains(d, "load_average") {
+		if strings.Contains(d, "uptime_seconds") || strings.Contains(d, "load_average") ||
+			strings.Contains(d, "boot_timestamp_seconds") {
 			t.Errorf("time-derived series must not be emitted when systemTime failed: %s", d)
 		}
 		if strings.Contains(d, "memory_total_bytes") {
@@ -258,5 +260,64 @@ func TestSystemCollector_Update_TimeUnavailable(t *testing.T) {
 	}
 	if !sawMemory {
 		t.Error("expected memory series to still be emitted when only systemTime failed")
+	}
+}
+
+// TestSystemCollector_BootTimestamp covers #421's annotation source. The reboot
+// annotation places its marker AT the metric's value (Grafana's
+// `useValueForTime`), so the value has to be the real boot instant rather than
+// anything recomputed per evaluation — see TestFetchSystemResources_BootTimestamp
+// for why a derived `time() - uptime` was rejected.
+func TestSystemCollector_BootTimestamp(t *testing.T) {
+	boot := time.Now().Add(-36 * time.Hour).Truncate(time.Second)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/system/systemResources", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"memory": {"total": "1", "used": 1, "arc": ""}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemTime", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"uptime": "1 day",
+			"datetime": "` + time.Now().Format("Mon Jan 2 15:04:05 MST 2006") + `",
+			"boottime": "` + boot.Format("Mon Jan 2 15:04:05 MST 2006") + `",
+			"config": "",
+			"loadavg": "0.0, 0.0, 0.0"
+		}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemDisk", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"devices": []}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/systemSwap", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"swap": []}`))
+	})
+	mux.HandleFunc("/api/diagnostics/system/system_information", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"name": "fw01", "versions": [], "updates": "0"}`))
+	})
+	mux.HandleFunc("/api/diagnostics/cpu_usage/getCPUType", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`["CPU"]`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	c := &systemCollector{subsystem: SystemSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+
+	var got float64
+	found := false
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_system_boot_timestamp_seconds") {
+			found = true
+			got = getMetricValue(m)
+		}
+	}
+	if !found {
+		t.Fatal("opnsense_system_boot_timestamp_seconds not emitted")
+	}
+	// The fixture's abbreviation is the exporter's own, so the instant resolves
+	// exactly; allow a second for the format's second-level truncation.
+	if diff := got - float64(boot.Unix()); diff > 1 || diff < -1 {
+		t.Errorf("boot_timestamp_seconds: got %v, want %v", got, float64(boot.Unix()))
 	}
 }

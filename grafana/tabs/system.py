@@ -98,18 +98,34 @@ def build(b: Builder):
         desc="opnsense_system_load_average{interval=\"15\"}: 15-minute load average.",
     )
 
+    booted = b.stat(
+        "Booted At",
+        epoch_ms(sel("opnsense_system_boot_timestamp_seconds")),
+        unit="dateTimeAsIso",
+        w=4,
+        h=4,
+        graph="none",
+        instant=True,
+        desc="opnsense_system_boot_timestamp_seconds: the absolute instant the box "
+             "booted, read from the API's boottime rather than derived from uptime. "
+             "This is what anchors the Reboot annotation on every tab (#421); a "
+             "query-time time()-uptime drifts between evaluations and would move the "
+             "marker. Absent when the systemTime sub-call failed.",
+    )
+
     config_change = b.stat(
         "Config Last Changed",
         epoch_ms(sel("opnsense_system_config_last_change")),
         unit="dateTimeAsIso",
-        w=8,
+        w=4,
         h=4,
         graph="none",
         instant=True,
-        desc="opnsense_system_config_last_change: Unix timestamp of last configuration change.",
+        desc="opnsense_system_config_last_change: Unix timestamp of last configuration "
+             "change, and the source of the Config change annotation on every tab (#421).",
     )
 
-    row_host = b.row("Host", [info_tbl, uptime, load1, load5, load15, config_change])
+    row_host = b.row("Host", [info_tbl, uptime, load1, load5, load15, booted, config_change])
 
     # =========================================================================
     # Row: Subsystem Health (#218 — every health-check subsystem, not just

@@ -102,23 +102,39 @@ def loki_sentinel_targets(builder) -> list[tuple[str, str]]:
     return targets
 
 
+def loki_annotation_targets(builder) -> list:
+    """LogQL emitted by the annotation layer (#421). Annotations have no panel, so
+    they reach `_loki_exprs` through `Builder.record_loki_expr` instead."""
+    targets = []
+    for annotation in builder.annotations:
+        spec = annotation["spec"]
+        if spec["query"]["group"] != "loki":
+            continue
+        targets.append((f"annotation {spec['name']!r}", spec["legacyOptions"]["expr"]))
+    return targets
+
+
 class LokiScopingTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.builder = build_dashboard.build_all()
         cls.panels = loki_panel_targets(cls.builder)
         cls.sentinels = loki_sentinel_targets(cls.builder)
-        cls.everything = cls.panels + cls.sentinels
+        cls.annotations = loki_annotation_targets(cls.builder)
+        cls.everything = cls.panels + cls.sentinels + cls.annotations
 
     def test_the_target_inventory_covers_every_emitted_logql_string(self):
         """Guards the guard: `_loki_exprs` is the builder's own tally of LogQL it
         emitted, so a panel helper that stopped registering its datasource type
-        would otherwise drop out of this file silently."""
+        would otherwise drop out of this file silently. Annotation queries are in
+        that tally too, and are counted here so adding one cannot make the panel
+        arithmetic drift instead of failing."""
         self.assertTrue(self.panels, "no Loki panel targets found at all")
         self.assertTrue(self.sentinels, "no Loki sentinels found at all")
+        self.assertTrue(self.annotations, "no Loki annotations found at all")
         self.assertEqual(
-            len(self.builder._loki_exprs), len(self.panels),
-            "Loki panel targets found by this test disagree with Builder._loki_exprs",
+            len(self.builder._loki_exprs), len(self.panels) + len(self.annotations),
+            "Loki targets found by this test disagree with Builder._loki_exprs",
         )
 
     def test_logql_never_reaches_the_prometheus_coverage_gate(self):

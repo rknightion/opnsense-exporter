@@ -1,0 +1,140 @@
+package options
+
+import (
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/alecthomas/kingpin/v2"
+)
+
+var (
+	annotationsEnabled = kingpin.Flag(
+		"annotations.enabled",
+		"Write OPNsense change events (reboots, configuration changes, interface counter "+
+			"resets, upgrades, certificate renewals, feed updates) into Grafana's annotation "+
+			"store so they overlay any dashboard. Off by default: this is the exporter's only "+
+			"outbound write.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_ENABLED").Default("false").Bool()
+	annotationsGrafanaURL = kingpin.Flag(
+		"annotations.grafana-url",
+		"Grafana base URL to write annotations to, e.g. https://mystack.grafana.net.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_GRAFANA_URL").Default("").String()
+	annotationsToken = kingpin.Flag(
+		"annotations.token",
+		"Grafana service-account token used to write annotations. It needs the annotation "+
+			"write permission and nothing else. This flag/ENV or "+
+			"OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE may be set.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN").Default("").String()
+	annotationsInterval = kingpin.Flag(
+		"annotations.interval",
+		"How often the watched event metrics are checked for changes. This bounds how late "+
+			"an annotation is WRITTEN, never where it is PLACED — each annotation carries the "+
+			"event's own timestamp.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_INTERVAL").Default("60s").Duration()
+	annotationsLookback = kingpin.Flag(
+		"annotations.lookback",
+		"How old an event may be and still be worth annotating, and how far back the "+
+			"startup reconciliation looks for annotations this exporter already wrote. Keeps a "+
+			"fresh deployment from annotating a reboot that happened months ago.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_LOOKBACK").Default("24h").Duration()
+	annotationsTimeout = kingpin.Flag(
+		"annotations.timeout",
+		"Timeout for each Grafana annotation API request.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_TIMEOUT").Default("10s").Duration()
+	annotationsExtraTags = kingpin.Flag(
+		"annotations.extra-tags",
+		"Extra tag to add to every written annotation (repeatable), e.g. env:prod. Every "+
+			"annotation already carries opnsense-exporter, the event kind and instance:<name>.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_EXTRA_TAGS").Strings()
+	annotationsMaxPerCycle = kingpin.Flag(
+		"annotations.max-per-cycle",
+		"Maximum annotations written per check. A guard against one bad reading writing "+
+			"hundreds of annotations, not a rate limit to tune.",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_MAX_PER_CYCLE").Default("20").Int()
+)
+
+// AnnotationsConfig holds the resolved annotation-writer configuration.
+type AnnotationsConfig struct {
+	GrafanaURL  string
+	Token       string
+	Interval    time.Duration
+	Lookback    time.Duration
+	Timeout     time.Duration
+	ExtraTags   []string
+	MaxPerCycle int
+}
+
+// Validate rejects a configuration that would start cleanly and then fail on every
+// write. The URL check is deliberately strict for the reason recorded in
+// PyroscopeConfig.Validate: a schemeless "host:3000" parses without error and only
+// fails at request time, once per interval, forever.
+func (c *AnnotationsConfig) Validate() error {
+	if c.GrafanaURL == "" {
+		return fmt.Errorf("annotations.grafana-url must be set when annotations are enabled")
+	}
+	parsed, err := url.Parse(c.GrafanaURL)
+	if err != nil {
+		return fmt.Errorf("annotations.grafana-url %q is not a valid URL: %w", c.GrafanaURL, err)
+	}
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("annotations.grafana-url %q must be a full http(s) URL, e.g. "+
+			"https://mystack.grafana.net (got scheme %q, host %q)",
+			c.GrafanaURL, parsed.Scheme, parsed.Host)
+	}
+	if c.Token == "" {
+		return fmt.Errorf("annotations.token (or OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE) " +
+			"must be set when annotations are enabled")
+	}
+	if c.Interval <= 0 {
+		return fmt.Errorf("annotations.interval must be positive, got %s", c.Interval)
+	}
+	if c.Lookback <= 0 {
+		return fmt.Errorf("annotations.lookback must be positive, got %s", c.Lookback)
+	}
+	if c.Timeout <= 0 {
+		return fmt.Errorf("annotations.timeout must be positive, got %s", c.Timeout)
+	}
+	if c.MaxPerCycle <= 0 {
+		return fmt.Errorf("annotations.max-per-cycle must be positive, got %d", c.MaxPerCycle)
+	}
+	for _, tag := range c.ExtraTags {
+		if strings.TrimSpace(tag) == "" {
+			return fmt.Errorf("annotations.extra-tags contains an empty tag")
+		}
+	}
+	return nil
+}
+
+// Annotations assembles the annotation-writer configuration. The returned bool
+// reports whether writing is enabled; when it is, the config has been validated.
+func Annotations() (*AnnotationsConfig, bool, error) {
+	if !*annotationsEnabled {
+		return nil, false, nil
+	}
+
+	token, err := resolveSecret("OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE", *annotationsToken)
+	if err != nil {
+		return nil, false, err
+	}
+
+	tags := make([]string, 0, len(*annotationsExtraTags))
+	for _, tag := range *annotationsExtraTags {
+		tags = append(tags, strings.TrimSpace(tag))
+	}
+
+	cfg := &AnnotationsConfig{
+		GrafanaURL:  strings.TrimSpace(*annotationsGrafanaURL),
+		Token:       strings.TrimSpace(token),
+		Interval:    *annotationsInterval,
+		Lookback:    *annotationsLookback,
+		Timeout:     *annotationsTimeout,
+		ExtraTags:   tags,
+		MaxPerCycle: *annotationsMaxPerCycle,
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, false, err
+	}
+	return cfg, true, nil
+}

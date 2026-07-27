@@ -16,6 +16,7 @@ import re
 import sys
 
 import sentinel_contract
+from annotations import add_annotations
 from builder import (INSTANCE_SEL, Builder, sel, grp, RATE, ENABLED, UPDOWN, OKERR,
                      YESNO, GW_STATUS)
 
@@ -656,6 +657,7 @@ def leaf_tab_titles(b: Builder) -> list[str]:
 def build_all() -> Builder:
     b = Builder()
     add_core_variables(b)
+    add_annotations(b)           # shared event timeline (#421)
     # Leaf order is local to each domain after organize_tabs().
     build_overview(b)
     register_subsystem_tabs(b)   # provided by tabs/ modules

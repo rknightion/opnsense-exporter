@@ -63,6 +63,99 @@ answered "is it up?").
 Examples of what hides when unused: NetFlow, VPN, UPS, HAProxy, CrowdSec, Zenarmor and recording-rule
 tabs; OpenVPN / WireGuard-peer / IPsec-tunnel rows; CARP VIPs, SMART, ACME, DynDNS, and Go-runtime rows.
 
+### Event annotations
+
+The dashboard ships a generated event timeline (`annotations.py`, #421) so a discontinuity on any
+panel can be attributed without leaving the tab. **16 layers**, each individually toggleable; most
+are on by default and the rest are one click away.
+
+Three mechanisms, chosen per source:
+
+- **Prometheus, value-as-time.** For a metric whose value *is* an instant, Grafana's
+  `useValueForTime` places the marker at the value rather than at the sample that carried it. The
+  expression is always `<expr> * 1000 > $__from < $__to`: milliseconds because that is how Grafana
+  reads the value, and the window bound because otherwise a months-old event renders on every
+  six-hour view.
+- **Loki, the record's own timestamp.** Used where the event was logged and the log carries detail
+  no metric can — which API endpoint a config change hit, which gateway alarmed, why CARP demoted.
+- **Grafana's own annotation store**, for events the exporter *wrote* there with
+  `--annotations.enabled` (see `internal/annotations`, and *Writing annotations* below). Same events
+  as the metric layers derive, but written once — so they also show on every other dashboard, in
+  Explore, and anywhere else that queries the tag.
+
+`opnsense_system_boot_timestamp_seconds` exists for this: `time() - opnsense_system_uptime_seconds`
+is recomputed on every evaluation, and a live one-hour query produced two inferred epochs a second
+apart, so a derived reboot marker would move between refreshes.
+
+`step` is deliberately left at Grafana's default. A coarse fixed step is the obvious way to stop one
+long-lived gauge value producing a marker per sample, but it drops events: the live box emitted two
+`config_change` records inside the same second. Duplicate markers at one instant collapse visually;
+a missing config change is a wrong answer to the question the layer exists to answer.
+
+**Default on:** Reboot, Config change, Interface counter reset, Boot environment created (upgrade),
+Certificate renewed, GeoIP database updated, nginx config reloaded, Public IP updated, Gateway alarm,
+CARP transition, Exporter-pushed events, and External change events.
+**Default off:** IDS ruleset updated and Threat feed updated (scheduled churn on a box tracking many
+feeds), Config change detail (duplicates Config change's timestamps; turning it on is asking for the
+audit detail), Tunnel lifecycle (a box with many road-warrior peers reconnects them all day).
+
+No annotation tags an address, a hostname or a raw log body — tags are indexed and queryable across
+dashboards, which is a far wider exposure than annotation text an operator has to hover to read. The
+audit layer tags only `config_uri`, never the `user@address` its body carries.
+
+Annotations have no `conditionalRendering`, and need none: a disabled collector or an unshipped log
+source produces no series, and no series produces no annotation.
+
+**`External change events` is a deployment-local overlay, not an exporter feature.** It reads
+annotations written into Grafana's store by automation outside this repository, under the tags in
+`EXTERNAL_CHANGE_TAGS`. It is generated so that publishing generated output cannot delete a layer the
+live dashboard has carried since before the generator existed. Both tags are load-bearing: without
+the dashboard-scoping tag, every change event in the estate lands on this dashboard. Change the
+constant if your deployment tags them differently, or drop the layer if you have no such automation.
+
+### Writing annotations from the exporter
+
+`--annotations.enabled` makes the exporter push these events into Grafana itself, rather than leaving
+every dashboard to re-derive them:
+
+```bash
+--annotations.enabled \
+--annotations.grafana-url=https://mystack.grafana.net \
+--annotations.token=<service-account token with annotation write>   # or …_TOKEN_FILE
+```
+
+How it works, and why it is built this way:
+
+- **Detection is a diff over the metrics, not a second poll.** The watcher gathers the same registry
+  the OTLP bridge gathers, so it issues no OPNsense API call of its own and cannot add load.
+- **Each annotation carries the event's own instant**, so a cold-tier collector noticing fifteen
+  minutes late still places the marker correctly. The interface marker is a system-uptime reading, so
+  it is anchored to the boot epoch; with no boot epoch it is skipped rather than dated from zero.
+- **Restarts do not duplicate.** On start the writer reads back its own annotations over
+  `--annotations.lookback` and seeds from them. If that read fails, the first pass seeds *silently*:
+  duplicating the whole recent timeline is worse than missing one event.
+- **Old events are not news.** An instant older than the lookback is history — otherwise every fresh
+  deployment would annotate a reboot from months ago. An instant more than five minutes in the future
+  is refused.
+- **A failed write is retried**, because it is only marked as seen once Grafana has accepted it, and
+  `--annotations.max-per-cycle` caps one bad reading at a bounded number of writes.
+- **Tags are closed vocabularies**: `opnsense-exporter`, the event kind, `instance:<name>`, and any
+  identifier named in the catalogue (`interface:LAN`, `ruleset:…`). Never an address, an identity or
+  free text. `--annotations.extra-tags` adds your own.
+- Delivery is observable — `opnsense_exporter_annotations_written_total`, `_failed_total`,
+  `_skipped_total` and `_last_success_timestamp_seconds`. A successful start proves nothing, because
+  nothing is written until an event happens.
+
+The token needs the annotation write permission and nothing else. This is the exporter's only
+outbound write, which is why it is off by default and why there is no TLS-verification escape hatch:
+trust a private CA through `SSL_CERT_FILE` instead.
+
+Every instant-valued metric in the catalogue is either a layer or carries a written reason in
+`annotations.NOT_ANNOTATED`, and `tests/test_annotations.py` fails on one that is neither — so a new
+`*_timestamp_seconds` metric is a decision rather than an oversight. Heartbeats
+(`*_last_poll_*`, per-peer handshakes), future-dated values (`*_next_update_*`, license expiry) and
+upstream-authored timestamps (ClamAV's signature *build* date) are the recurring exclusion reasons.
+
 ### Variables
 
 - **Data source** - pick your Prometheus datasource.

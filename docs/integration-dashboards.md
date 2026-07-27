@@ -66,7 +66,7 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 
     An empty dashboard on Grafana 12 is not a broken export; it is the version. Upgrade to Grafana 13.
 
-A single comprehensive Grafana dashboard covers **all 836 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
+A single comprehensive Grafana dashboard covers **all 837 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
 Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 
@@ -77,6 +77,66 @@ Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit,
 3. Select your Prometheus data source and click **Import**.
 
 The dashboard uses template variables for `datasource`, `opnsense_instance`, and `interface`. See [`grafana/README.md`](https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md) for `gcx`/GitOps deployment and the bundled alert and recording rules.
+
+### Event annotations
+
+Every tab shares one event timeline, so a step in a graph can be attributed without leaving the panel. Sixteen layers ship, each toggleable from the dashboard controls.
+
+| Layer | Marks | Source |
+| --- | --- | --- |
+| Reboot | Every counter on the box resetting at once | `opnsense_system_boot_timestamp_seconds` |
+| Config change | A configuration being applied | `opnsense_system_config_last_change` |
+| Interface counter reset | One interface's counters restarting | boot instant + `opnsense_interfaces_attach_or_statistics_reset_uptime_seconds` |
+| Boot environment created | An OPNsense upgrade | `opnsense_snapshots_active_created_timestamp_seconds` |
+| Certificate renewed | Services reloading behind a new certificate | `opnsense_acme_certificate_last_update_timestamp_seconds` |
+| GeoIP database updated | Country rules matching differently | `opnsense_firewall_geoip_last_update_timestamp_seconds` |
+| nginx config reloaded | nginx's vts counters zeroing | `opnsense_nginx_config_load_timestamp_seconds` |
+| Public IP updated | The WAN address changing | `opnsense_dyndns_account_last_update_timestamp_seconds` |
+| IDS ruleset updated (off) | Alert rate changing under a static config | `opnsense_ids_ruleset_last_updated_timestamp_seconds` |
+| Threat feed updated (off) | Blocklist contents changing | `opnsense_qfeeds_feed_last_update_timestamp_seconds` |
+| Gateway alarm | `dpinger` declaring a gateway down or recovered | shipped `gateways` log records |
+| CARP transition | A failover, demotion or promotion | shipped `kernel` log records |
+| Config change detail (off) | Which API endpoint changed the config | shipped `audit` log records |
+| Tunnel lifecycle (off) | A VPN tunnel coming up or going down | shipped `vpn`/`ipsec` log records |
+| Exporter-pushed events | Everything above, as written by the exporter | Grafana's annotation store, tag `opnsense-exporter` |
+| External change events | Changes your own automation records | Grafana's annotation store, deployment-local tags |
+
+The metric-sourced layers place their marker at the metric's **value** (Grafana's
+`useValueForTime`), not at the scrape that observed it, so a reboot annotation sits at the real boot
+instant rather than up to a poll interval later. The log-sourced layers use the record's own
+syslog timestamp and require [log shipping](configuration.md) to be enabled; without it they are
+simply empty. A collector you have disabled produces no series and therefore no annotation — absent,
+not noisy.
+
+The most common use is the one metrics alone cannot answer: a new firewall rule starts dropping
+traffic, every rate panel steps down at once, and the Config change marker is what distinguishes
+"someone changed something" from "the network broke". Enable **Config change detail** to see that the
+change came from `/api/firewall/filter/addRule`.
+
+#### Let the exporter write the annotations
+
+The layers above derive events from data this dashboard already queries, so they cost nothing and
+need no configuration. Their limit is that they only exist here. Turning on `--annotations.enabled`
+makes the exporter write the same events into Grafana's own annotation store, so they also appear on
+**any other dashboard** that queries the tag, in Explore, and beside your alerts:
+
+```bash
+opnsense-exporter \
+  --annotations.enabled \
+  --annotations.grafana-url=https://mystack.grafana.net \
+  --annotations.token=<token>          # or OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE
+```
+
+The token is a Grafana service-account token needing only the annotation write permission. This is the
+exporter's only outbound write, which is why it is off by default.
+
+Each annotation is stamped with the event's own timestamp rather than the moment it was noticed, is
+tagged `opnsense-exporter` plus the event kind and `instance:<name>`, and is reconciled against what
+is already in Grafana on startup so a restart neither duplicates nor loses events. Nothing is written
+for an event older than `--annotations.lookback` (default 24h), so enabling it on a long-running
+firewall does not backfill a reboot from months ago. Watch
+`opnsense_exporter_annotations_written_total` and `opnsense_exporter_annotations_failed_total` to
+confirm it is working — a quiet firewall legitimately writes nothing for days.
 
 ## Example PromQL queries
 

@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 836
-- **Gauges:** 550
+- **Total metrics:** 837
+- **Gauges:** 551
 - **Counters:** 286
 
 ## General
@@ -1023,6 +1023,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_system_memory_used_bytes | Gauge | --- | Used physical memory in bytes | --exporter.disable-system |
 | opnsense_system_memory_arc_bytes | Gauge | --- | ZFS ARC memory usage in bytes | --exporter.disable-system |
 | opnsense_system_uptime_seconds | Gauge | --- | System uptime in seconds | --exporter.disable-system |
+| opnsense_system_boot_timestamp_seconds | Gauge | --- | Unix timestamp at which the firewall booted, taken from the API's own boottime value rather than derived from uptime. Anchors the reboot dashboard annotation (#421): a query-time time()-uptime is recomputed on every evaluation and drifts between them, which moves the marker. Absent when the systemTime sub-call failed or boottime was unparseable. | --exporter.disable-system |
 | opnsense_system_load_average | Gauge | interval | System load average | --exporter.disable-system |
 | opnsense_system_config_last_change | Gauge | --- | Unix timestamp of last configuration change | --exporter.disable-system |
 | opnsense_system_disk_total_bytes | Gauge | device, type, mountpoint | Total disk space in bytes | --exporter.disable-system |

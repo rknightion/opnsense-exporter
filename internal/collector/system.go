@@ -15,6 +15,7 @@ type systemCollector struct {
 	memoryUsedBytes  *prometheus.Desc
 	memoryArcBytes   *prometheus.Desc
 	uptimeSeconds    *prometheus.Desc
+	bootTimestamp    *prometheus.Desc
 	loadAverage      *prometheus.Desc
 	configLastChange *prometheus.Desc
 	diskTotalBytes   *prometheus.Desc
@@ -59,6 +60,10 @@ func (c *systemCollector) Register(namespace, instanceLabel string, log *slog.Lo
 		"System uptime in seconds",
 		nil,
 	)
+	c.bootTimestamp = buildPrometheusDesc(c.subsystem, "boot_timestamp_seconds",
+		"Unix timestamp at which the firewall booted, taken from the API's own boottime value rather than derived from uptime. Anchors the reboot dashboard annotation (#421): a query-time time()-uptime is recomputed on every evaluation and drifts between them, which moves the marker. Absent when the systemTime sub-call failed or boottime was unparseable.",
+		nil,
+	)
 	c.loadAverage = buildPrometheusDesc(c.subsystem, "load_average",
 		"System load average",
 		[]string{"interval"},
@@ -98,6 +103,7 @@ func (c *systemCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.memoryUsedBytes
 	ch <- c.memoryArcBytes
 	ch <- c.uptimeSeconds
+	ch <- c.bootTimestamp
 	ch <- c.loadAverage
 	ch <- c.configLastChange
 	ch <- c.diskTotalBytes
@@ -171,6 +177,18 @@ func (c *systemCollector) Update(ctx context.Context, client *opnsense.Client, c
 			prometheus.GaugeValue,
 			data.Time.LoadAverage[2],
 			"15",
+			c.instance,
+		)
+	}
+
+	// Gated on a positive value, not on Time.Available, exactly like
+	// config_last_change below: an unparseable boottime leaves it zero, and an
+	// epoch-0 sample would place the reboot annotation at 1970 (#421).
+	if data.Time.BootTimestamp > 0 {
+		ch <- prometheus.MustNewConstMetric(
+			c.bootTimestamp,
+			prometheus.GaugeValue,
+			data.Time.BootTimestamp,
 			c.instance,
 		)
 	}

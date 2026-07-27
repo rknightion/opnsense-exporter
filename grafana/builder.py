@@ -188,6 +188,7 @@ class Builder:
         self.elements: dict = {}
         self.tabs: list = []
         self.variables: list = []
+        self.annotations: list = []            # v2 AnnotationQuery envelopes (#421)
         self._sentinels: set = set()          # every claimed sentinel name (both datasources)
         self._sentinel_scopes: dict = {}      # prometheus sentinel name -> declared scope mode
         self._id = 0
@@ -199,6 +200,19 @@ class Builder:
         self._ts_violations: list = []  # dateTimeAsIso fields fed unscaled epoch seconds (#78)
         self._table_key_violations: list = []  # dead metric-name/Value renames+units on multi-expr tables (#97)
         self._table_exclude_conflicts: list = []  # a rename/unit key that is also excluded (#112)
+
+    # ---- expression recorders -------------------------------------------
+    # Panels record their own queries as a side effect of being built. The
+    # annotation layer has no panel, so it records through these instead — which is
+    # what puts annotation queries inside the existing coverage, promqlcheck,
+    # instance-identity and Loki-scoping gates rather than outside them (#421).
+    def record_expr(self, expr: str) -> None:
+        """Record a PromQL string that is emitted somewhere other than a panel."""
+        self._exprs.append(expr)
+
+    def record_loki_expr(self, expr: str) -> None:
+        """Record a LogQL string that is emitted somewhere other than a panel."""
+        self._loki_exprs.append(expr)
 
     # ---- low-level -------------------------------------------------------
     def _next(self) -> tuple[str, int]:
@@ -823,7 +837,8 @@ class Builder:
                                  "autoRefreshIntervals": ["30s", "1m", "5m", "15m", "30m", "1h"],
                                  "timezone": "browser", "fiscalYearStartMonth": 0,
                                  "hideTimepicker": False},
-                "links": [], "annotations": [], "variables": self.variables,
+                "links": [], "annotations": self.annotations,
+                "variables": self.variables,
                 "elements": self.elements,
                 "layout": {"kind": "TabsLayout", "spec": {"tabs": self.tabs}},
             },

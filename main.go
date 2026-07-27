@@ -20,6 +20,7 @@ import (
 	promcollectors "github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/exporter-toolkit/web"
+	"github.com/rknightion/opnsense-exporter/internal/annotations"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
@@ -189,6 +190,10 @@ type startupConfig struct {
 	LogsOTLP *options.OTLPConfig
 	Syslog   *options.SyslogConfig
 	SyslogOn bool
+	// Annotations writes OPNsense change events into Grafana's annotation store
+	// (#421). Opt-in, and the exporter's only outbound write.
+	Annotations   *options.AnnotationsConfig
+	AnnotationsOn bool
 }
 
 // resolveOptions parses nothing and starts nothing: it reads the already-parsed
@@ -284,6 +289,11 @@ func resolveOptions() (*startupConfig, []error) {
 	cfg.OTLP, cfg.OTLPOn, err = options.OTLP()
 	if err != nil {
 		errs = append(errs, fmt.Errorf("invalid otlp configuration: %w", err))
+	}
+
+	cfg.Annotations, cfg.AnnotationsOn, err = options.Annotations()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("invalid annotations configuration: %w", err))
 	}
 
 	cfg.Logs, cfg.LogsOn, err = options.Logs()
@@ -962,6 +972,33 @@ func main() {
 	// no live API call. StopPolling is invoked from gracefulShutdown.
 	collectorInstance.StartPolling(context.Background())
 
+	// Annotation writing is opt-in (--annotations.enabled). It diffs the watched
+	// instant-valued metrics on the SAME registry the OTLP bridge gathers, so it
+	// makes no OPNsense API call of its own: it reads the snapshot the poll
+	// scheduler already filled. Each annotation is stamped with the event's own
+	// timestamp, so a cold-tier collector noticing fifteen minutes late still
+	// places the marker correctly (#421).
+	// Cancelled from gracefulShutdown so an in-flight annotation write cannot
+	// outlive the process's other subsystems.
+	annotationCtx, stopAnnotations := context.WithCancel(context.Background())
+	defer stopAnnotations()
+	if cfg.AnnotationsOn {
+		annotationWatcher := annotations.New(annotations.Config{
+			URL:         cfg.Annotations.GrafanaURL,
+			Token:       cfg.Annotations.Token,
+			Interval:    cfg.Annotations.Interval,
+			Timeout:     cfg.Annotations.Timeout,
+			Lookback:    cfg.Annotations.Lookback,
+			ExtraTags:   cfg.Annotations.ExtraTags,
+			MaxPerCycle: cfg.Annotations.MaxPerCycle,
+		}, collectorRegistry, logship.SelfMetricsRegisterer(selfMetricsRegistry, instanceLabel), logger)
+		go annotationWatcher.Run(annotationCtx)
+		logger.Info("grafana annotation writing enabled",
+			"url", cfg.Annotations.GrafanaURL,
+			"interval", cfg.Annotations.Interval.String(),
+			"lookback", cfg.Annotations.Lookback.String())
+	}
+
 	// metricsRecorder passively captures the collector family set of each real
 	// scrape (the unfiltered /metrics path and the OTLP bridge) so the web UI can
 	// read a last-scrape snapshot without ever gathering — and thus re-scraping
@@ -1512,7 +1549,8 @@ func main() {
 	for {
 		select {
 		case sig := <-term:
-			gracefulShutdown(srv, sig, collectorInstance.StopPolling, stopLogs, stopOTLP, stopProfiling, logger)
+			gracefulShutdown(srv, sig, collectorInstance.StopPolling, stopLogs, stopOTLP,
+				stopProfiling, stopAnnotations, logger)
 			return
 		case <-srvClose:
 			os.Exit(1)
@@ -1524,7 +1562,7 @@ func main() {
 // telemetry and returning, so a scrape landing mid-response during a rollout/redeploy
 // finishes instead of being severed (which Prometheus records as up=0). The log line
 // reports the actual signal received rather than a hardcoded "SIGTERM" (#161).
-func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopLogs, stopOTLP, stopProfiling func(), logger *slog.Logger) {
+func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopLogs, stopOTLP, stopProfiling, stopAnnotations func(), logger *slog.Logger) {
 	logger.Info("received signal, shutting down gracefully", "signal", sig.String())
 	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 	defer cancel()
@@ -1546,6 +1584,9 @@ func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopLogs, st
 	}
 	if stopProfiling != nil {
 		stopProfiling()
+	}
+	if stopAnnotations != nil {
+		stopAnnotations()
 	}
 }
 

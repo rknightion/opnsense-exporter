@@ -103,6 +103,13 @@ type SystemTime struct {
 	Uptime           float64
 	LoadAverage      [3]float64
 	ConfigLastChange float64
+
+	// BootTimestamp is the absolute Unix instant the box booted, resolved from
+	// boottime's own zone abbreviation exactly as ConfigLastChange is. It exists
+	// because a query-time `time() - uptime` is not stable enough to anchor a
+	// dashboard annotation: it is recomputed on every evaluation and drifts by a
+	// second or more between them (#421). Zero when boottime was unparseable.
+	BootTimestamp float64
 }
 
 type SystemDisk struct {
@@ -311,6 +318,23 @@ func (c *Client) fetchSystemTime(data *SystemResources) *APICallError {
 		data.Time.Uptime = dstCorrectedDiffSeconds(dateTime, bootTime)
 	case errBoot == nil:
 		data.Time.Uptime = time.Since(bootTime).Seconds()
+	}
+
+	// Boot instant: same resolution ladder as ConfigLastChange below. Prefer
+	// boottime's own abbreviation (exporter-clock independent); otherwise anchor
+	// the DST-corrected uptime to the exporter clock, which cancels the box's base
+	// offset; only fall back to the raw parse when there is nothing else, since
+	// that one carries the full unresolved-offset error (#421).
+	if abs, ok := absUnixFromAbbrev(bootTime, errBoot); ok {
+		data.Time.BootTimestamp = float64(abs)
+	} else {
+		switch {
+		case errDate == nil && errBoot == nil:
+			age := time.Duration(dstCorrectedDiffSeconds(dateTime, bootTime)) * time.Second
+			data.Time.BootTimestamp = float64(now.Add(-age).Unix())
+		case errBoot == nil:
+			data.Time.BootTimestamp = float64(bootTime.Unix())
+		}
 	}
 
 	// Config last change: prefer the absolute instant recovered from config's own

@@ -632,3 +632,91 @@ func TestFetchSystemResources_DSTStraddle(t *testing.T) {
 		t.Errorf("config_last_change: got %v, want %v (skew %v)", data.Time.ConfigLastChange, wantConfig, data.Time.ConfigLastChange-wantConfig)
 	}
 }
+
+// TestFetchSystemResources_BootTimestamp covers #421. The annotation layer needs
+// the ABSOLUTE boot instant rather than one derived at query time: `time() -
+// opnsense_system_uptime_seconds` is recomputed on every evaluation, and a live
+// one-hour query produced two inferred epochs one second apart — enough to move a
+// reboot marker on a dashboard between refreshes. So boottime's own instant is
+// exported, resolved exactly like ConfigLastChange next to it (#107).
+func TestFetchSystemResources_BootTimestamp(t *testing.T) {
+	// Each case supplies only the systemTime payload; the other sub-calls are
+	// stubbed minimally because nothing here reads them.
+	cases := []struct {
+		name      string
+		boottime  string
+		datetime  string
+		want      func() float64 // 0 means "must not be emitted"
+		tolerance float64
+	}{
+		{
+			// The abbreviation is in dstAbbrevOffset, so the true instant is
+			// recoverable with no reference to the exporter's own clock: wall
+			// 19:22:39 BST = 18:22:39 UTC.
+			name:     "known abbreviation resolves to the absolute instant",
+			boottime: "Fri May 29 19:22:39 BST 2026",
+			datetime: "Mon Jun 8 18:41:59 BST 2026",
+			want: func() float64 {
+				return float64(time.Date(2026, 5, 29, 18, 22, 39, 0, time.UTC).Unix())
+			},
+		},
+		{
+			// NZST is deliberately absent from dstAbbrevOffset, so the offset
+			// cannot be recovered. Falling back to the raw parse would place the
+			// annotation 12h out; anchoring datetime-boottime to the exporter
+			// clock keeps it within a poll of the truth instead.
+			name:     "unknown abbreviation falls back to the uptime-anchored instant",
+			boottime: "Fri May 29 19:22:39 NZST 2026",
+			datetime: "Mon Jun 8 18:41:59 NZST 2026",
+			want: func() float64 {
+				return float64(time.Now().Unix()) - 861560
+			},
+			tolerance: 5,
+		},
+		{
+			name:     "absent boottime emits nothing",
+			boottime: "",
+			datetime: "Mon Jun 8 18:41:59 BST 2026",
+			want:     func() float64 { return 0 },
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, mux, client := newTestClientWithMux(t)
+			defer server.Close()
+
+			mux.HandleFunc("/api/diagnostics/system/systemResources", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"memory": {"total": "1", "used": 1, "arc": ""}}`))
+			})
+			mux.HandleFunc("/api/diagnostics/system/systemTime", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"uptime": "", "boottime": %q, "datetime": %q, "config": "", "loadavg": "0.0, 0.0, 0.0"}`,
+					tc.boottime, tc.datetime)
+			})
+			mux.HandleFunc("/api/diagnostics/system/systemDisk", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"devices": []}`))
+			})
+			mux.HandleFunc("/api/diagnostics/system/systemSwap", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"swap": []}`))
+			})
+			registerSystemInfoHandlers(mux)
+
+			data, err := client.FetchSystemResources()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			want := tc.want()
+			got := data.Time.BootTimestamp
+			if tc.tolerance == 0 {
+				if got != want {
+					t.Errorf("BootTimestamp: got %v, want %v (skew %v)", got, want, got-want)
+				}
+				return
+			}
+			if diff := got - want; diff > tc.tolerance || diff < -tc.tolerance {
+				t.Errorf("BootTimestamp: got %v, want %v ±%v", got, want, tc.tolerance)
+			}
+		})
+	}
+}

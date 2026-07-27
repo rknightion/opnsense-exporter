@@ -15,6 +15,12 @@ var (
 	grafanaTokens = strings.NewReplacer(
 		"$__rate_interval", "5m",
 		"$opnsense_instance", "fixture",
+		// $__from / $__to interpolate to epoch MILLISECONDS. They appear only in
+		// the value-as-time annotation idiom `<expr> * 1000 > $__from < $__to`,
+		// whose comparison chain must still parse once they are numbers (#421).
+		"$__from", "1700000000000",
+		"$__to", "1700003600000",
+		"$__interval", "5m",
 		"$device", "fixture",
 		"$interface", "fixture",
 	)
@@ -25,8 +31,25 @@ var (
 
 type dashboard struct {
 	Spec struct {
-		Elements  map[string]element `json:"elements"`
-		Variables []variable         `json:"variables"`
+		Elements    map[string]element `json:"elements"`
+		Variables   []variable         `json:"variables"`
+		Annotations []annotation       `json:"annotations"`
+	} `json:"spec"`
+}
+
+// A v2 AnnotationQuery keeps its expression in legacyOptions rather than in
+// query.spec, so neither the panel walk nor the variable walk reaches it. An
+// annotation that fails to parse renders an empty timeline and reports nothing,
+// which is the quietest possible failure on the dashboard (#421).
+type annotation struct {
+	Spec struct {
+		Name          string `json:"name"`
+		LegacyOptions struct {
+			Expression string `json:"expr"`
+		} `json:"legacyOptions"`
+		Query struct {
+			Group string `json:"group"`
+		} `json:"query"`
 	} `json:"spec"`
 }
 
@@ -189,10 +212,36 @@ func validateVariables(document dashboard) (int, validationErrors) {
 	return validated, diagnostics
 }
 
-func validateDashboard(data []byte) (int, int, error) {
+// validateAnnotations parses every Prometheus annotation expression and returns how
+// many were checked. Loki annotations are skipped, as Loki panel targets are.
+func validateAnnotations(document dashboard) (int, validationErrors) {
+	var (
+		validated   int
+		diagnostics validationErrors
+	)
+	for _, a := range document.Spec.Annotations {
+		if a.Spec.Query.Group != "prometheus" {
+			continue
+		}
+		expression := a.Spec.LegacyOptions.Expression
+		if strings.TrimSpace(expression) == "" {
+			diagnostics = append(diagnostics, fmt.Sprintf(
+				"annotation %q: prometheus annotation has no expression", a.Spec.Name))
+			continue
+		}
+		validated++
+		if err := validateExpression(grafanaTokens.Replace(expression)); err != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf(
+				"annotation %q: %v\nexpression: %s", a.Spec.Name, err, expression))
+		}
+	}
+	return validated, diagnostics
+}
+
+func validateDashboard(data []byte) (int, int, int, error) {
 	var document dashboard
 	if err := json.Unmarshal(data, &document); err != nil {
-		return 0, 0, fmt.Errorf("decode dashboard JSON: %w", err)
+		return 0, 0, 0, fmt.Errorf("decode dashboard JSON: %w", err)
 	}
 
 	var targets []target
@@ -256,10 +305,13 @@ func validateDashboard(data []byte) (int, int, error) {
 	prometheusVariables, variableDiagnostics := validateVariables(document)
 	diagnostics = append(diagnostics, variableDiagnostics...)
 
+	prometheusAnnotations, annotationDiagnostics := validateAnnotations(document)
+	diagnostics = append(diagnostics, annotationDiagnostics...)
+
 	if len(diagnostics) > 0 {
-		return prometheusTargets, prometheusVariables, diagnostics
+		return prometheusTargets, prometheusVariables, prometheusAnnotations, diagnostics
 	}
-	return prometheusTargets, prometheusVariables, nil
+	return prometheusTargets, prometheusVariables, prometheusAnnotations, nil
 }
 
 func main() {
@@ -273,10 +325,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "read dashboard: %v\n", err)
 		os.Exit(1)
 	}
-	targets, variables, err := validateDashboard(data)
+	targets, variables, annotations, err := validateDashboard(data)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Printf("validated %d Prometheus targets and %d variable queries\n", targets, variables)
+	fmt.Printf("validated %d Prometheus targets, %d variable queries and %d annotation queries\n",
+		targets, variables, annotations)
 }

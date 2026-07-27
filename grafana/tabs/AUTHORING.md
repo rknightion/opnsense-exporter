@@ -86,6 +86,13 @@ map or the build fails as unassigned. The canonical worked examples are `build_o
    timeseries, and never exclude the instance column (#468).
 8. **Coverage.** Every metric assigned to your tab MUST appear in at least one panel query.
    The orchestrator's coverage gate fails if any catalogue metric is unreferenced.
+9. **A tab module never adds an annotation.** The event timeline is dashboard-wide and lives in
+   `annotations.py` (#421); annotations carry no `conditionalRendering`, so there is nothing
+   tab-scoped about them. If your subsystem emits an instant-valued metric
+   (`*_timestamp_seconds`), `tests/test_annotations.py` will fail until it is either added to
+   `ANNOTATIONS` or listed in `NOT_ANNOTATED` with a reason — a heartbeat, a future-dated value
+   or an upstream-authored timestamp is an exclusion, a discrete event is a layer. Tag keys may
+   never carry an address, hostname or raw log body.
 
 ## Builder viz helpers (all return an element-name string)
 
