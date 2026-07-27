@@ -800,7 +800,11 @@ def leaf_tab_titles(b: Builder) -> list[str]:
 
 
 # ---- registry ------------------------------------------------------------
-def build_all() -> Builder:
+def build_all(tab_groups=TAB_GROUPS) -> Builder:
+    """Build this dashboard's Builder. `tab_groups` is threaded through to
+    `organize_tabs` rather than read from the module global, so this same function
+    can serve as the `build_fn` for any `DashboardSpec` in `DASHBOARDS` (#431) —
+    defaults to `TAB_GROUPS` for today's single spec and any pre-existing caller."""
     b = Builder()
     add_core_variables(b)
     add_navigation(b)            # dashboard-level links (#419)
@@ -809,15 +813,21 @@ def build_all() -> Builder:
     build_overview(b)
     register_subsystem_tabs(b)   # provided by tabs/ modules
     build_diagnostics(b)
-    organize_tabs(b)
+    organize_tabs(b, tab_groups)
     return b
 
 
-def organize_tabs(b: Builder):
+def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
     """Move every leaf tab into the layered top-level information architecture.
 
     Title matching is deliberate: it makes a renamed, duplicate, or unassigned
     leaf a build failure instead of silently dropping feature coverage.
+
+    `tab_groups` is a parameter, not the module-level `TAB_GROUPS` global, because
+    each dashboard in the family (`DASHBOARDS`, #431) organizes its OWN leaf set —
+    reading the module global here would make a second dashboard's leaves fail this
+    dashboard's assignment check. Defaults to `TAB_GROUPS` so today's single spec
+    (and any caller that predates the family) is unaffected.
     """
     leaves = {}
     for tab in b.tabs:
@@ -827,7 +837,7 @@ def organize_tabs(b: Builder):
         leaves[title] = tab
 
     expected = {"Overview"}
-    for _, titles in TAB_GROUPS:
+    for _, titles in tab_groups:
         expected.update(titles)
     actual = set(leaves)
     if actual != expected:
@@ -840,7 +850,7 @@ def organize_tabs(b: Builder):
 
     overview = leaves.pop("Overview")
     b.tabs = [overview]
-    for group_title, leaf_titles in TAB_GROUPS:
+    for group_title, leaf_titles in tab_groups:
         # A parent containing only optional features must disappear with its
         # children. Otherwise Grafana leaves an empty top-level domain visible.
         # Domains with at least one core leaf stay unconditional.
@@ -882,16 +892,68 @@ def register_subsystem_tabs(b: Builder):
         m.build(b)
 
 
+class DashboardSpec:
+    """Describes one dashboard the family (`DASHBOARDS`) builds, so `main()` can
+    iterate rather than assume there is exactly one (#431 step 2).
+
+    `uid` doubles as the manifest's `metadata.name` — this repo's v2 dashboards have
+    no separate uid field; `metadata.name` IS the uid Grafana resolves navigation
+    links against (see `uids.py`). Kept as one field rather than two to avoid a
+    seam that could silently drift apart.
+
+    `build_fn` must accept this spec's `tab_groups` and return a fully-built
+    `Builder` (variables, navigation, annotations, every tab, already organized via
+    `organize_tabs`) — `build_all` is today's only implementation.
+    """
+
+    def __init__(self, *, uid: str, title: str, description: str, tags: list[str],
+                 out_path: str, tab_groups: list, build_fn):
+        self.uid = uid
+        self.title = title
+        self.description = description
+        self.tags = tags
+        self.out_path = out_path
+        self.tab_groups = tab_groups
+        self.build_fn = build_fn
+
+    def build(self) -> Builder:
+        return self.build_fn(self.tab_groups)
+
+
+# The dashboard family. Exactly one spec today — describing the dashboard this file
+# has always produced — so `OUT`/`TAB_GROUPS`/the `DASH_NAME` env var (previously
+# module-level literals `main()` read directly) become this spec's fields instead.
+# #431 step 3 adds a second entry once content actually moves; step 2 (this one) is
+# the seam, proven by `dashboard.json` etc. coming out byte-identical.
+DASHBOARDS = [
+    DashboardSpec(
+        uid=os.environ.get("DASH_NAME", "opnsense-exporter"),
+        title="OPNsense Exporter",
+        description="Comprehensive single-pane OPNsense firewall dashboard. Tabs and "
+                    "rows auto-hide when their metrics are absent. Built from "
+                    "grafana/build_dashboard.py.",
+        tags=["opnsense", "firewall", "network", "exporter"],
+        out_path=OUT,
+        tab_groups=TAB_GROUPS,
+        build_fn=build_all,
+    ),
+]
+
+
 def main():
     check_only = "--check" in sys.argv
-    b = build_all()
-    missing = coverage(b)
+    built = [(spec, spec.build()) for spec in DASHBOARDS]
+    builders = [b for _, b in built]
+
+    missing = coverage(*builders)
     total = len(load_catalogue())
     covered = total - len(missing)
-    leaf_names = leaf_tab_titles(b)
-    print(f"coverage: {covered}/{total} catalogue metrics referenced "
-          f"({len(b.elements)} panels, {len(b.tabs)} domains, {len(leaf_names)} feature tabs)",
-          file=sys.stderr)
+    for spec, b in built:
+        leaf_names = leaf_tab_titles(b)
+        print(f"{spec.title}: {len(b.elements)} panels, {len(b.tabs)} domains, "
+              f"{len(leaf_names)} feature tabs", file=sys.stderr)
+    print(f"coverage: {covered}/{total} catalogue metrics referenced across the "
+          f"dashboard family", file=sys.stderr)
     if missing:
         print(f"MISSING ({len(missing)}):", file=sys.stderr)
         for n in missing:
@@ -900,17 +962,22 @@ def main():
     # Correctness gate: every dateTimeAsIso field must be fed epoch milliseconds
     # (epoch seconds render as ~1970 dates otherwise). Fails the build in both
     # modes — a stale dashboard.json can't ship without this being satisfied (#78).
-    if b._ts_violations:
-        print(f"dateTimeAsIso fields fed unscaled epoch seconds ({len(b._ts_violations)}):", file=sys.stderr)
-        for v in b._ts_violations:
+    # Aggregated across the whole family: a violation on any dashboard's Builder is
+    # still a violation, and today's single-spec case is unaffected (one Builder in
+    # the list, same items as before).
+    ts_violations = [v for b in builders for v in b._ts_violations]
+    if ts_violations:
+        print(f"dateTimeAsIso fields fed unscaled epoch seconds ({len(ts_violations)}):", file=sys.stderr)
+        for v in ts_violations:
             print(f"  - {v}  (wrap the expr in epoch_ms())", file=sys.stderr)
         sys.exit(1)
 
     # A multi-expr table() renames/units its merged columns by "Value #A".."Value #N"; keying on a
     # metric name (or bare "Value") is a silent no-op that ships unlabeled, unit-less columns (#97).
-    if b._table_key_violations:
-        print(f"dead multi-expr table rename/unit keys ({len(b._table_key_violations)}):", file=sys.stderr)
-        for v in b._table_key_violations:
+    table_key_violations = [v for b in builders for v in b._table_key_violations]
+    if table_key_violations:
+        print(f"dead multi-expr table rename/unit keys ({len(table_key_violations)}):", file=sys.stderr)
+        for v in table_key_violations:
             print(f"  - {v}  (key it on \"Value #A\"..\"Value #N\" in expr order, not the metric name)", file=sys.stderr)
         sys.exit(1)
 
@@ -921,14 +988,15 @@ def main():
     # "is it up?" (#114). These must gate on existence via label_values(...)/service_running.
     # A table field listed in `excludes` is dropped, so renaming/unit-overriding that same field
     # is a dead no-op that silently hides the column (#112).
-    if b._table_exclude_conflicts:
-        print(f"table rename/unit keys that are also excluded ({len(b._table_exclude_conflicts)}):", file=sys.stderr)
-        for v in b._table_exclude_conflicts:
+    table_exclude_conflicts = [v for b in builders for v in b._table_exclude_conflicts]
+    if table_exclude_conflicts:
+        print(f"table rename/unit keys that are also excluded ({len(table_exclude_conflicts)}):", file=sys.stderr)
+        for v in table_exclude_conflicts:
             print(f"  - {v}", file=sys.stderr)
         sys.exit(1)
 
     dhcp_presence_sentinels = {"has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"}
-    bad_sentinels = [v["spec"]["name"] for v in b.variables
+    bad_sentinels = [v["spec"]["name"] for b in builders for v in b.variables
                      if v["spec"]["name"] in dhcp_presence_sentinels
                      and "> 0" in v["spec"]["query"]["spec"]["query"]]
     if bad_sentinels:
@@ -938,29 +1006,36 @@ def main():
         sys.exit(1)
 
     if not check_only:
-        manifest = b.manifest(
-            title="OPNsense Exporter",
-            description="Comprehensive single-pane OPNsense firewall dashboard. Tabs and "
-                        "rows auto-hide when their metrics are absent. Built from "
-                        "grafana/build_dashboard.py.",
-            tags=["opnsense", "firewall", "network", "exporter"],
-            name=os.environ.get("DASH_NAME", "opnsense-exporter"))
-        with open(OUT, "w") as f:
-            json.dump(manifest, f, indent=2)
-            f.write("\n")
-        print(f"wrote {OUT}", file=sys.stderr)
-        top_level_tab_names = [t["spec"]["title"] for t in b.tabs]
+        for spec, b in built:
+            manifest = b.manifest(
+                title=spec.title, description=spec.description, tags=spec.tags,
+                name=spec.uid)
+            with open(spec.out_path, "w") as f:
+                json.dump(manifest, f, indent=2)
+                f.write("\n")
+            print(f"wrote {spec.out_path}", file=sys.stderr)
+
+        # Stats + the sentinel-contract/AUTHORING.md doc contract are keyed off the
+        # PRIMARY dashboard (the first spec) rather than per-spec — there is exactly
+        # one spec today, so this is the pre-existing single-dashboard behaviour
+        # unchanged. Extending either to the whole family is a #431 step-3 decision,
+        # not this step's.
+        _, primary_b = built[0]
+        primary_leaf_names = leaf_tab_titles(primary_b)
+        top_level_tab_names = [t["spec"]["title"] for t in primary_b.tabs]
         with open(STATS_PATH, "w") as f:
-            json.dump({"metrics": total, "panels": len(b.elements), "tabs": len(leaf_names),
-                       "tab_names": leaf_names, "top_level_tabs": len(b.tabs),
+            json.dump({"metrics": total, "panels": len(primary_b.elements),
+                       "tabs": len(primary_leaf_names),
+                       "tab_names": primary_leaf_names,
+                       "top_level_tabs": len(primary_b.tabs),
                        "top_level_tab_names": top_level_tab_names}, f, indent=2)
             f.write("\n")
         print(f"wrote {STATS_PATH}", file=sys.stderr)
 
         # Feature-sentinel documentation contract (#417): regenerate both the
         # machine-readable manifest and the generated section of AUTHORING.md from
-        # THIS SAME Builder, so the two can never independently drift.
-        contract = sentinel_contract.build_contract(b)
+        # THIS SAME (primary) Builder, so the two can never independently drift.
+        contract = sentinel_contract.build_contract(primary_b)
         with open(SENTINEL_CONTRACT_PATH, "w") as f:
             f.write(sentinel_contract.contract_json(contract))
         print(f"wrote {SENTINEL_CONTRACT_PATH}", file=sys.stderr)
