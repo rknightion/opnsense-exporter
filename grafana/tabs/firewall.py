@@ -21,11 +21,9 @@ DEV = 'interface=~"$device"'
 
 def build(b: Builder):
     # ── Sentinel for firewall rules rows ──────────────────────────────────
-    b.sentinel("has_firewall_rules",
-               "label_values(opnsense_firewall_rule_rules_total, __name__)")
+    b.sentinel("has_firewall_rules", metric="opnsense_firewall_rule_rules_total")
     # ── Sentinel for the opt-in NAT rule inventory row (#221) ─────────────
-    b.sentinel("has_firewall_nat_counts",
-               "label_values(opnsense_firewall_nat_rules, __name__)")
+    b.sentinel("has_firewall_nat_counts", metric="opnsense_firewall_nat_rules")
 
     # ══════════════════════════════════════════════════════════════════════
     # ROW 1 — Traffic pass/block packets (pps) by interface

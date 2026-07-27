@@ -40,10 +40,20 @@ build if any catalogue metric is left unreferenced).
 
 Feature tabs and rows for optional collectors / OPNsense plugins **hide automatically when their
 metrics are absent**, so the same dashboard adapts to any deployment. This is driven by hidden
-sentinel template variables (`label_values(metric, __name__)` → empty when the metric is absent)
-plus `conditionalRendering` on the tab/row. A few sections are gated on *data* rather than mere
-presence (e.g. a DHCP backend's row only appears when it actually has leases), so a box that
-runs Kea but not legacy ISC DHCPv4 only shows the Kea section.
+sentinel template variables (`label_values(metric{opnsense_instance=~"$opnsense_instance"},
+__name__)` → empty when the metric is absent) plus `conditionalRendering` on the tab/row.
+
+Sentinels are scoped to the **selected** appliance, not the fleet. On a multi-box Prometheus an
+unscoped sentinel would light a tab up because a *different* firewall runs the plugin, leaving
+every panel behind it reading "No data" — a navigation element that lies. Metrics with no
+appliance label (`go_*`, `process_*`) are scoped by joining to `opnsense_up` on the co-scrape
+identity `(job, instance)`. Loki panels are scoped the same way via `service_instance_id`, which
+carries the same value space as `opnsense_instance`.
+
+Presence means **the series exists**, not that its value is above zero: a box running Kea but not
+legacy ISC DHCPv4 shows only the Kea section, and it keeps showing it while the pool is idle
+(gating on lease COUNT used to hide a live-but-empty backend along with the health stat that
+answered "is it up?").
 
 Examples of what hides when unused: NetFlow, VPN, UPS, HAProxy, CrowdSec, Zenarmor and recording-rule
 tabs; OpenVPN / WireGuard-peer / IPsec-tunnel rows; CARP VIPs, SMART, ACME, DynDNS, and Go-runtime rows.

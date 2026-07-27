@@ -14,7 +14,7 @@ from builder import Builder, sel
 
 
 def build(b: Builder):
-    b.sentinel("has_siproxd", "label_values(opnsense_siproxd_registrations, __name__)")
+    b.sentinel("has_siproxd", metric="opnsense_siproxd_registrations")
 
     registrations = b.stat(
         "Active SIP Registrations",

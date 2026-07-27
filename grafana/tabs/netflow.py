@@ -36,8 +36,7 @@ _ACTIVE = {"0": ("Inactive", "red"), "1": ("Active", "green")}
 
 def build(b: Builder):
     # ---- Sentinel --------------------------------------------------------
-    b.sentinel("has_netflow",
-               "label_values(opnsense_netflow_active, __name__)")
+    b.sentinel("has_netflow", metric="opnsense_netflow_active")
 
     # ======================================================================
     # Row 1 – NetFlow Status

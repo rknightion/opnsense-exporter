@@ -5,14 +5,15 @@ Counters (processed/dropped/written/truncated) are cumulative -> rate().
 queued / memory_usage / eps / message_size are instantaneous -> RAW.
 """
 
-from builder import Builder, sel, RATE, RUNSTOP
+from builder import Builder, sel, loki_sel, RATE, RUNSTOP
+
+SYSLOG_STREAM = loki_sel('opnsense_source="syslog"')
 
 
 def build(b: Builder):
-    b.sentinel("has_syslog",
-               "label_values(opnsense_syslog_service_running, __name__)")
-    b.loki_sentinel("has_syslog_logs",
-                     'label_values({opnsense_source="syslog"}, opnsense_source)')
+    b.sentinel("has_syslog", metric="opnsense_syslog_service_running")
+    b.loki_sentinel("has_syslog_logs", matchers='opnsense_source="syslog"',
+                    label="opnsense_source")
 
     svc = b.stat("Syslog Service", sel("opnsense_syslog_service_running"),
                  unit="short", w=4, h=4, mappings=RUNSTOP,
@@ -52,10 +53,10 @@ def build(b: Builder):
                      "{{source_id}} {{stat}}")],
                    unit="bytes", w=8, h=8)
 
-    raw_logs = b.logs("Raw syslog stream", '{opnsense_source="syslog"}')
+    raw_logs = b.logs("Raw syslog stream", SYSLOG_STREAM)
     lines_by_subsystem = b.loki_ts(
         "Syslog lines/s by subsystem",
-        [('sum by (opnsense_subsystem) (rate({opnsense_source="syslog"} [$__auto]))',
+        [(f'sum by (opnsense_subsystem) (rate({SYSLOG_STREAM} [$__auto]))',
           "{{opnsense_subsystem}}")])
 
     b.tab("Syslog", [

@@ -8,10 +8,8 @@ from builder import Builder, sel, RATE
 
 
 def build(b: Builder):
-    b.sentinel("has_alias",
-               "label_values(opnsense_alias_tables_total, __name__)")
-    b.sentinel("has_alias_details",
-               "label_values(opnsense_alias_table_packets_total, __name__)")
+    b.sentinel("has_alias", metric="opnsense_alias_tables_total")
+    b.sentinel("has_alias_details", metric="opnsense_alias_table_packets_total")
 
     tables = b.stat("Alias Tables", sel("opnsense_alias_tables_total"),
                     unit="short", w=4, h=4)

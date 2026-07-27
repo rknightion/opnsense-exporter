@@ -46,12 +46,11 @@ from builder import Builder, sel, RATE
 
 def build(b: Builder):
     # ---- Sentinels -------------------------------------------------------
-    b.sentinel("has_network_diag",
-               "label_values(opnsense_network_diag_sockets_unix_total, __name__)")
+    b.sentinel("has_network_diag", metric="opnsense_network_diag_sockets_unix_total")
     # opnsense_lldp_neighbors/neighbor_info are only emitted when at least one
     # neighbor has been seen (os-lldpd present but quiet emits nothing at all),
     # so this sentinel doubles as "plugin present AND has neighbors right now".
-    b.sentinel("has_lldp", "label_values(opnsense_lldp_neighbors, __name__)")
+    b.sentinel("has_lldp", metric="opnsense_lldp_neighbors")
 
     # ======================================================================
     # Row 1 – ARP table

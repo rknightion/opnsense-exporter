@@ -29,22 +29,14 @@ _WG_PEER = {"0": ("Down", "red"), "1": ("Up", "green"), "2": ("Unknown", "orange
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    b.sentinel("has_wireguard",
-               "label_values(opnsense_wireguard_service_running, __name__)")
-    b.sentinel("has_wireguard_ifaces",
-               "label_values(opnsense_wireguard_interfaces_status, __name__)")
-    b.sentinel("has_wireguard_peers",
-               "label_values(opnsense_wireguard_peer_status, __name__)")
-    b.sentinel("has_openvpn",
-               "label_values(opnsense_openvpn_instances, __name__)")
-    b.sentinel("has_ipsec",
-               "label_values(opnsense_ipsec_service_running, __name__)")
-    b.sentinel("has_ipsec_tunnels",
-               "label_values(opnsense_ipsec_phase1_status, __name__)")
-    b.sentinel("has_ipsec_pools",
-               "label_values(opnsense_ipsec_pool_size, __name__)")
-    b.sentinel("has_ipsec_sad",
-               "label_values(opnsense_ipsec_sad_entries, __name__)")
+    b.sentinel("has_wireguard", metric="opnsense_wireguard_service_running")
+    b.sentinel("has_wireguard_ifaces", metric="opnsense_wireguard_interfaces_status")
+    b.sentinel("has_wireguard_peers", metric="opnsense_wireguard_peer_status")
+    b.sentinel("has_openvpn", metric="opnsense_openvpn_instances")
+    b.sentinel("has_ipsec", metric="opnsense_ipsec_service_running")
+    b.sentinel("has_ipsec_tunnels", metric="opnsense_ipsec_phase1_status")
+    b.sentinel("has_ipsec_pools", metric="opnsense_ipsec_pool_size")
+    b.sentinel("has_ipsec_sad", metric="opnsense_ipsec_sad_entries")
 
     # ================================================================
     # Row 1: VPN Services (always visible)

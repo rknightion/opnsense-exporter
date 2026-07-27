@@ -13,7 +13,7 @@ from builder import Builder, sel
 
 
 def build(b: Builder):
-    b.sentinel("has_ntp", "label_values(opnsense_ntp_peer_info, __name__)")
+    b.sentinel("has_ntp", metric="opnsense_ntp_peer_info")
 
     # =====================================================================
     # Row 1: Peers
@@ -158,7 +158,7 @@ def build(b: Builder):
     # =====================================================================
     # Row 3: GPS (EXPERIMENTAL — only present with a GPS refclock attached)
     # =====================================================================
-    b.sentinel("has_ntp_gps", "label_values(opnsense_ntp_gps_ok, __name__)")
+    b.sentinel("has_ntp_gps", metric="opnsense_ntp_gps_ok")
 
     gps_ok_stat = b.stat(
         "GPS Fix",

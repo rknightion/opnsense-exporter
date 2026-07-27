@@ -22,7 +22,7 @@ from builder import Builder, sel, epoch_ms
 
 
 def build(b: Builder):
-    b.sentinel("has_acme", "label_values(opnsense_acme_certificates_total, __name__)")
+    b.sentinel("has_acme", metric="opnsense_acme_certificates_total")
 
     # =====================================================================
     # Row 1: Certificates

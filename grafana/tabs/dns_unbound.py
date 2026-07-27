@@ -15,11 +15,9 @@ from builder import Builder, sel, RATE, RUNSTOP, ENABLED
 
 
 def build(b: Builder):
-    b.sentinel("has_unbound", "label_values(opnsense_unbound_dns_uptime_seconds, __name__)")
-    b.sentinel("has_unbound_infra",
-               "label_values(opnsense_unbound_dns_infra_rtt_seconds, __name__)")
-    b.sentinel("has_unbound_qstats",
-               "label_values(opnsense_unbound_dns_qstats_enabled, __name__)")
+    b.sentinel("has_unbound", metric="opnsense_unbound_dns_uptime_seconds")
+    b.sentinel("has_unbound_infra", metric="opnsense_unbound_dns_infra_rtt_seconds")
+    b.sentinel("has_unbound_qstats", metric="opnsense_unbound_dns_qstats_enabled")
 
     # ---- convenience shorthands -----------------------------------------
     def u(metric, extra=""):

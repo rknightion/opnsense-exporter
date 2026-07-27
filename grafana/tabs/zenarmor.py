@@ -15,18 +15,28 @@ Label rules (verified live against the real Zenarmor stream, 2026-07-18):
   -> sel_pipeline(); these aggregate across exporter instances on a
   multi-box setup, since there's no instance label to split by.
 - LogQL stream selectors {} may ONLY use the three indexed labels
-  (opnsense_source, opnsense_subsystem, opnsense_action). Every other
-  field seen on the wire (device_name, server_name, ja3, dst_nbytes,
-  dst_geoip_country_name, app_name, ...) is structured metadata: usable
-  only after a `|` filter/unwrap, never inside `{}`.
+  (opnsense_source, opnsense_subsystem, opnsense_action) plus the transport's
+  own service_instance_id. Every other field seen on the wire (device_name,
+  server_name, ja3, dst_nbytes, dst_geoip_country_name, app_name, ...) is
+  structured metadata: usable only after a `|` filter/unwrap, never inside `{}`.
+- Every stream selector is built by loki_sel() so it is scoped to
+  $opnsense_instance via service_instance_id (#413). That matters most on the
+  Row C tables: their topk ranks whatever the selector admitted, so an
+  unscoped selector would rank another firewall's servers and devices.
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, loki_sel, RATE
+
+ZEN_STREAM = loki_sel('opnsense_source="zenarmor"')
+ZEN_BLOCKED = loki_sel('opnsense_source="zenarmor", opnsense_action="block"')
+ZEN_FLOW = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="flow"')
+ZEN_TLS = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="tls"')
 
 
 def build(b: Builder):
-    b.sentinel("has_zenarmor_metrics", "label_values(opnsense_log_events_zenarmor_total, __name__)")
-    b.loki_sentinel("has_zenarmor_logs", 'label_values({opnsense_source="zenarmor"}, opnsense_source)')
+    b.sentinel("has_zenarmor_metrics", metric="opnsense_log_events_zenarmor_total")
+    b.loki_sentinel("has_zenarmor_logs", matchers='opnsense_source="zenarmor"',
+                    label="opnsense_source")
 
     # --- Row A: Overview (Prometheus-derived counters) --------------------
 
@@ -105,20 +115,20 @@ def build(b: Builder):
 
     zen_raw_logs = b.logs(
         "Raw Zenarmor Records",
-        '{opnsense_source="zenarmor"}',
+        ZEN_STREAM,
         desc="Unfiltered Zenarmor log stream. Use the log details panel to inspect structured "
              "metadata fields (device_name, server_name, ja3, dst_nbytes, ...) on any line.",
         w=24,
     )
     zen_records_rate = b.loki_ts(
         "Records/s by Family",
-        [('sum by (opnsense_subsystem) (rate({opnsense_source="zenarmor"} [$__auto]))', "{{opnsense_subsystem}}")],
+        [(f'sum by (opnsense_subsystem) (rate({ZEN_STREAM} [$__auto]))', "{{opnsense_subsystem}}")],
         desc="Raw Zenarmor log line rate by family, computed directly over the Loki stream "
              "(opnsense_subsystem is the indexed family label: flow/dns/tls/web/ids/voip).",
     )
     zen_blocked_rate = b.loki_ts(
         "Blocked/s by Family",
-        [('sum by (opnsense_subsystem) (rate({opnsense_source="zenarmor", opnsense_action="block"} [$__auto]))',
+        [(f'sum by (opnsense_subsystem) (rate({ZEN_BLOCKED} [$__auto]))',
           "{{opnsense_subsystem}}")],
         desc="Blocked Zenarmor log line rate by family, computed directly over the Loki stream.",
     )
@@ -127,7 +137,7 @@ def build(b: Builder):
 
     zen_top_blocked_servers = b.loki_table(
         "Top Blocked Servers",
-        ['topk(20, sum by (server_name) (count_over_time({opnsense_source="zenarmor", opnsense_action="block"} '
+        [f'topk(20, sum by (server_name) (count_over_time({ZEN_BLOCKED} '
          '| server_name!="" [$__auto])))'],
         desc="Top 20 server names (TLS SNI / DNS query name) appearing in blocked Zenarmor "
              "records, over the selected range. server_name is structured metadata, so this "
@@ -135,20 +145,20 @@ def build(b: Builder):
     )
     zen_top_talkers = b.loki_table(
         "Top Talkers by Bytes",
-        ['topk(20, sum by (device_name) (sum_over_time({opnsense_source="zenarmor", opnsense_subsystem="flow"} '
+        [f'topk(20, sum by (device_name) (sum_over_time({ZEN_FLOW} '
          '| device_name!="" | unwrap dst_nbytes [$__auto])))'],
         desc="Top 20 devices by inbound flow bytes (dst_nbytes), flow family only. Value column "
              "is raw bytes. device_name and dst_nbytes are structured metadata on the flow record.",
     )
     zen_blocked_by_country = b.loki_table(
         "Blocked by Country",
-        ['topk(20, sum by (dst_geoip_country_name) (count_over_time({opnsense_source="zenarmor", opnsense_action="block"} '
+        [f'topk(20, sum by (dst_geoip_country_name) (count_over_time({ZEN_BLOCKED} '
          '| dst_geoip_country_name!="" [$__auto])))'],
         desc="Top 20 destination countries (GeoIP) for blocked Zenarmor records.",
     )
     zen_top_ja3 = b.loki_table(
         "Top JA3 Fingerprints",
-        ['topk(20, sum by (ja3) (count_over_time({opnsense_source="zenarmor", opnsense_subsystem="tls"} '
+        [f'topk(20, sum by (ja3) (count_over_time({ZEN_TLS} '
          '| ja3!="" [$__auto])))'],
         desc="Top 20 TLS client fingerprints (JA3) seen, tls family only. JA3 identifies the "
              "TLS client implementation, not the endpoint -- many distinct devices sharing a "

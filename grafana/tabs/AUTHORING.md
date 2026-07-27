@@ -24,13 +24,15 @@ map or the build fails as unassigned. The canonical worked examples are `build_o
 1. **Instance filter on every query.** Use `sel("opnsense_metric")` →
    `opnsense_metric{opnsense_instance=~"$opnsense_instance"}`. Extra matchers:
    `sel("opnsense_x", 'interface=~"$interface"')`. Never write a bare metric without `sel`
-   (except `go_*`/`process_*` which use `{job="opnsense-exporter"}`).
+   (except `go_*`/`process_*`, which carry no appliance label and use `{job=~"opnsense.*"}`).
+   On the Loki side the equivalent chokepoint is `loki_sel(matchers)` — see *Loki panels*.
 2. **Datasource** is always `${datasource}` — handled by the helpers, never hard-code a UID.
 3. **conditionalRendering is TAB/ROW level only** (never per-panel). Gate a tab with
    `b.tab(..., present="sentinel")`; gate a row with `b.row(..., present="sentinel")`.
-   Register the sentinel first with `b.sentinel("name", "<grafana variable query>")`. A list such
-   as `present=["has_nut", "has_apcupsd"]` is an OR condition. Add optional leaves to
-   `OPTIONAL_TAB_PRESENCE` so Grafana hides the tab itself when every implementation is absent.
+   Register the sentinel first with `b.sentinel("name", metric="opnsense_x")` — see *Sentinels*
+   below for the scope modes. A list such as `present=["has_nut", "has_apcupsd"]` is an OR
+   condition. Add optional leaves to `OPTIONAL_TAB_PRESENCE` so Grafana hides the tab itself
+   when every implementation is absent.
 4. **Counters → rate.** Metrics whose name ends `_total` AND that are true cumulative
    counters must be charted as `rate(sel("..._total")[{RATE}])` (use the `RATE` constant).
    EXCEPTIONS — these are named `_total` but are *instantaneous* (current value); show RAW,
@@ -97,26 +99,49 @@ The dashboard is mixed Prometheus + Loki. Loki panels reference `${loki_datasour
 when no log stream exists. Helpers (all return an element name; LogQL is kept OUT of the
 Prometheus coverage gate via a separate `_loki_exprs` list):
 
+**Build every stream selector with `loki_sel(matchers)` (#413).** It is the LogQL chokepoint,
+the exact counterpart of `sel()`:
+
+```python
+from builder import loki_sel
+ZEN_BLOCKED = loki_sel('opnsense_source="zenarmor", opnsense_action="block"')
+# -> {service_instance_id=~"$opnsense_instance",opnsense_source="zenarmor", opnsense_action="block"}
+```
+
+`service_instance_id`, not `opnsense_instance`: a shipped stream's complete label set is
+`opnsense_action`, `opnsense_source`, `opnsense_subsystem`, `service_instance_id`,
+`service_name`, and `service_instance_id` holds the same value space as Prometheus
+`opnsense_instance` (both verified live). Hoist the selector to a module constant so a tab's
+panels cannot drift apart. The matcher MUST sit in the stream selector rather than after the
+`|`: a `topk` over `count_over_time` ranks whatever the selector admitted, so a late matcher
+would still have summed every appliance's records before ranking them.
+
 - `b.logs(title, expr, desc="", w=24, h=10)` — raw log-line viz. `expr` is a LogQL stream
-  selector, e.g. `'{opnsense_source="zenarmor"}'`.
+  selector, e.g. `loki_sel('opnsense_source="zenarmor"')`.
 - `b.loki_ts(title, series, unit="short", w=12, h=8)` — timeseries from LogQL metric queries.
-  `series=[(logql, legend)]`, e.g. `'sum by (opnsense_subsystem) (rate({opnsense_source="syslog"} [$__auto]))'`.
+  `series=[(logql, legend)]`, e.g. `f'sum by (opnsense_subsystem) (rate({SYSLOG_STREAM} [$__auto]))'`.
 - `b.loki_stat(title, expr, ...)` — single stat; sets `noValue:"0"` (Loki returns no series,
   not a zero series, so an un-annotated stat reads "No data" when the answer is 0).
 - `b.loki_table(title, exprs, sort_by="Total", ...)` — top-N tables. THE cardinality-safe
   path: range query + reduce(sum, seriesToRows) + 5m interval. Column display name is `Total`.
-- `b.loki_sentinel(name, query)` — hidden Loki presence variable; gate a row/tab with
-  `present=name`, exactly like `b.sentinel`.
-- `b.sel_pipeline(metric, more="")` — selector WITHOUT `opnsense_instance` for the
-  `opnsense_exporter_logs_*` (internal/logship) family, which carries no such label; `sel()`
-  would render those panels empty on both OTLP and scrape.
+- `b.loki_sentinel(name, matchers=..., label=...)` — hidden Loki presence variable, scoped
+  through `loki_sel()`; gate a row/tab with `present=name`, exactly like `b.sentinel`.
+- `b.sel_pipeline(metric, more="")` — a pure **alias of `sel()`**, kept for the log-pipeline
+  panels. **It is NOT a bare selector**, despite its name and a long-standing comment in
+  `build_dashboard.py` that claimed otherwise: it injects `opnsense_instance` exactly like
+  `sel()`. Correct for the `opnsense_exporter_logs_*` (internal/logship) family, which DOES
+  carry that label via `SelfMetricsRegisterer` — but **wrong for anything on the raw
+  self-metrics registry**, which is why the four `opnsense_exporter_otlp_*` delivery panels
+  are currently always empty (**tracked in #466** — do not fix in passing). For a self-metric
+  with no appliance label, scope the *sentinel* with `scope="target_join"` and give the panel
+  a genuinely bare selector.
 
 **LogQL label rule (load-bearing):** ONLY these labels are indexed and may appear inside `{}` —
 `opnsense_source`, `opnsense_subsystem`, `opnsense_action`, `service_name`, `service_instance_id`.
 Everything else (`device_name`, `server_name`, `ja3`, `dst_nbytes`, `dst_geoip_*`, `app_name`,
 `host`, `program`, …) is **structured metadata** — use only after `|` (`| key="value"`,
-`| key!=""`, `| unwrap key`). Select exporter-shipped logs on `{opnsense_source="zenarmor"}` /
-`{opnsense_source="syslog"}`, never on `service_name` (ambiguous on Grafana Cloud).
+`| key!=""`, `| unwrap key`). Select exporter-shipped logs on `opnsense_source`, never on
+`service_name` (ambiguous on Grafana Cloud).
 
 **Cardinality guard (hard):** never `topk(N, sum by (<structured-metadata-key>) (...))` as an
 instant query — it materializes one series per distinct value before `topk` and blows Loki's
@@ -136,50 +161,59 @@ reducer id; (3) `reduce` needs `mode:"seriesToRows"`; (4) a stat over a Loki que
 `GW_STATUS` {0:Offline,1:Online,2:Unknown,3:Pending,4:Packetloss,5:Latency,6:Offline (forced)}. Build a custom one as a dict
 `{"value": ("Text", "color"), ...}` and pass to `mappings=`.
 
-## Sentinel queries (use EXACTLY these — corrected for real emission behaviour)
+## Sentinels
 
-Register with `b.sentinel(name, query)` then gate the tab/row with `present=name`.
+A sentinel is a hidden presence variable that drives `conditionalRendering`. You declare
+WHAT it probes and HOW it is scoped; `b.sentinel` builds the query, so there is no raw
+query string to get wrong (#414). This section used to be a table of ~40 hand-written
+queries; two of its rows had rotted into prescribing exactly what the build now rejects.
 
-| name | query |
-|---|---|
-| has_smart | `label_values(opnsense_smart_device_health, __name__)` |
-| has_temperature | `label_values(opnsense_temperature_celsius, __name__)` |
-| has_firewall_rules | `label_values(opnsense_firewall_rule_rules_total, __name__)` |
-| has_carp | `label_values(opnsense_carp_allow, __name__)` |
-| has_carp_vips | `query_result(opnsense_carp_vips_total > 0)` |
-| has_unbound | `label_values(opnsense_unbound_dns_uptime_seconds, __name__)` |
-| has_unbound_qstats | `label_values(opnsense_unbound_dns_qstats_enabled, __name__)` |
-| has_ntp | `label_values(opnsense_ntp_peer_info, __name__)` |
-| has_acme | `label_values(opnsense_acme_certificates_total, __name__)` |
-| has_netflow | `label_values(opnsense_netflow_active, __name__)` |
-| has_openvpn | `label_values(opnsense_openvpn_instances, __name__)` |
-| has_wireguard | `label_values(opnsense_wireguard_service_running, __name__)` |
-| has_wireguard_ifaces | `label_values(opnsense_wireguard_interfaces_status, __name__)` |
-| has_wireguard_peers | `label_values(opnsense_wireguard_peer_status, __name__)` |
-| has_ipsec | `label_values(opnsense_ipsec_service_running, __name__)` |
-| has_ipsec_tunnels | `label_values(opnsense_ipsec_phase1_status, __name__)` |
-| has_dyndns | `label_values(opnsense_dyndns_accounts_total, __name__)` |
-| has_network_diag | `label_values(opnsense_network_diag_sockets_unix_total, __name__)` |
-| has_dnsmasq | `query_result(opnsense_dnsmasq_leases_total > 0)` |
-| has_kea | `query_result((opnsense_kea_dhcp4_leases_total + opnsense_kea_dhcp6_leases_total) > 0)` |
-| has_dhcpv4_isc | `query_result(opnsense_dhcpv4_leases_total > 0)` |
-| has_dnsmasq_details | `label_values(opnsense_dnsmasq_lease_info, __name__)` |
-| has_kea4_details | `label_values(opnsense_kea_dhcp4_lease_info, __name__)` |
-| has_kea6_details | `label_values(opnsense_kea_dhcp6_lease_info, __name__)` |
-| has_dhcpv4_details | `label_values(opnsense_dhcpv4_lease_info, __name__)` |
-| has_firmware_details | `label_values(opnsense_firmware_plugin_installed, __name__)` |
-| has_syslog | `label_values(opnsense_syslog_service_running, __name__)` |
-| has_qfeeds | `label_values(opnsense_qfeeds_feeds_total, __name__)` |
-| has_tailscale | `label_values(opnsense_tailscale_service_running, __name__)` |
-| has_tailscale_peers | `label_values(opnsense_tailscale_peer_session_active, __name__)` |
-| has_netbird | `label_values(opnsense_netbird_service_running, __name__)` |
-| has_netbird_peers | `label_values(opnsense_netbird_peer_connected, __name__)` |
-| has_alias | `label_values(opnsense_alias_tables_total, __name__)` |
-| has_alias_details | `label_values(opnsense_alias_table_packets_total, __name__)` |
-| has_captiveportal_vouchers | `label_values(opnsense_captiveportal_vouchers, __name__)` |
-| has_zenarmor_metrics | `label_values(opnsense_log_events_zenarmor_total, __name__)` |
-| has_zenarmor_logs (Loki) | `b.loki_sentinel(...)` → `label_values({opnsense_source="zenarmor"}, opnsense_source)` |
-| has_syslog_logs (Loki) | `b.loki_sentinel(...)` → `label_values({opnsense_source="syslog"}, opnsense_source)` |
+```python
+b.sentinel("has_thing", metric="opnsense_thing_service_running")   # the common case
+b.sentinel("has_family", name_regex="opnsense_thing_.+")           # "any metric in this family"
+b.sentinel("has_thing", metric="opnsense_thing_x", more='kind="a"') # extra matchers
+```
+
+Then gate with `present="has_thing"` on `b.tab(...)` / `b.row(...)`, and add optional
+leaves to `OPTIONAL_TAB_PRESENCE` in `build_dashboard.py`.
+
+**`scope=` — every sentinel declares one; default `"collector"`.** The instance matcher is
+injected accordingly, and `tests/test_sentinel_scoping.py` fails the build if one is missing.
+
+| scope | when | how it is scoped |
+|---|---|---|
+| `collector` | domain metric (`opnsense_*`, `instance:opnsense_*`) | `opnsense_instance=~"$opnsense_instance"` in the selector |
+| `self_labeled` | exporter self-metric that DOES carry `opnsense_instance` — the `opnsense_exporter_logs_*` family, via `logship.SelfMetricsRegisterer` | same matcher; the distinct mode records *why* it is available |
+| `target_join` | metric with NO appliance label: `go_*`, `process_*`, and the raw-registry `opnsense_exporter_otlp_*` | `query_result(<metric> * on(job, instance) group_left() max by (job, instance) (opnsense_up{...}))` — the co-scrape identity |
+| `global` | deliberately fleet-wide | not scoped; requires `reason=` AND an entry in the guard's `GLOBAL_SENTINEL_ALLOWLIST`. Currently empty — prefer one of the above |
+
+**Two hard rules:**
+
+1. **Test existence, not value — the rule is about the METRIC, not about taste.**
+
+   > Use existence when the series only appears if the feature is **deployed**; use a value
+   > test (`nonzero=True`) only when the series is emitted **unconditionally**.
+
+   `label_values(...)` is the default because for a plugin-gated metric the series already
+   *is* the presence signal, so a `> 0` on top conflates "absent" with "present but zero" and
+   blanks the health panel that answers "is it up?" (#114 — a dedicated gate in
+   `build_dashboard.py` fails the build on a count-gated DHCP sentinel). Where the collector
+   goes silent when the feature is absent, plain existence is both correct and simpler.
+
+   `nonzero=True` has exactly **one** justified user: `opnsense_carp_vips_total`. CARP status
+   is core rather than a plugin, so every readable box emits it — including as a literal `0`
+   — which means existence conveys nothing and the value test is the only presence test
+   available. Read the comment at that call site before touching it — converting it for
+   consistency with its neighbours is exactly what that comment exists to stop.
+2. **Names are unique, and a collision RAISES.** It used to be silently deduped, which is
+   how `has_netflow` came to be registered twice with two different queries — three rows in
+   the module that lost the race were gated on an unrelated collector's metric.
+
+Loki sentinels take the same shape, scoped through `loki_sel()` by construction:
+
+```python
+b.loki_sentinel("has_thing_logs", matchers='opnsense_source="thing"', label="opnsense_source")
+```
 
 ## Self-test before finishing
 

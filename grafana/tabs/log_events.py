@@ -21,15 +21,15 @@ from builder import Builder, sel, RATE
 
 
 def build(b: Builder):
-    b.sentinel("has_log_events", 'label_values({__name__=~"opnsense_log_events_.+"}, __name__)')
-    b.sentinel("has_log_events_firewall", "label_values(opnsense_log_events_firewall_total, __name__)")
-    b.sentinel("has_log_events_haproxy", "label_values(opnsense_log_events_haproxy_total, __name__)")
-    b.sentinel("has_log_events_sshd", "label_values(opnsense_log_events_sshd_total, __name__)")
-    b.sentinel("has_log_events_dhcp", "label_values(opnsense_log_events_dhcp_total, __name__)")
-    b.sentinel("has_log_events_audit", "label_values(opnsense_log_events_audit_total, __name__)")
-    b.sentinel("has_log_events_ids", "label_values(opnsense_log_events_ids_total, __name__)")
-    b.sentinel("has_log_events_radius", "label_values(opnsense_log_events_radius_total, __name__)")
-    b.sentinel("has_log_events_vpn", "label_values(opnsense_log_events_vpn_total, __name__)")
+    b.sentinel("has_log_events", name_regex="opnsense_log_events_.+")
+    b.sentinel("has_log_events_firewall", metric="opnsense_log_events_firewall_total")
+    b.sentinel("has_log_events_haproxy", metric="opnsense_log_events_haproxy_total")
+    b.sentinel("has_log_events_sshd", metric="opnsense_log_events_sshd_total")
+    b.sentinel("has_log_events_dhcp", metric="opnsense_log_events_dhcp_total")
+    b.sentinel("has_log_events_audit", metric="opnsense_log_events_audit_total")
+    b.sentinel("has_log_events_ids", metric="opnsense_log_events_ids_total")
+    b.sentinel("has_log_events_radius", metric="opnsense_log_events_radius_total")
+    b.sentinel("has_log_events_vpn", metric="opnsense_log_events_vpn_total")
 
     fw_action = b.ts(
         "Firewall Events by Action & Scope (rate)",

@@ -32,8 +32,7 @@ _LEAP = {
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    b.sentinel("has_chrony",
-               "label_values(opnsense_chrony_stratum, __name__)")
+    b.sentinel("has_chrony", metric="opnsense_chrony_stratum")
 
     # ================================================================
     # Row 1: Service & Sync

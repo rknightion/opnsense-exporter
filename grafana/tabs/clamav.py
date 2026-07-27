@@ -18,7 +18,7 @@ from builder import Builder, sel, epoch_ms
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    b.sentinel("has_clamav", "label_values(opnsense_clamav_version_info, __name__)")
+    b.sentinel("has_clamav", metric="opnsense_clamav_version_info")
 
     # ================================================================
     # Row 1: Engine & Signatures

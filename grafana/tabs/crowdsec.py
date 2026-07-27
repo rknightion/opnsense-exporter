@@ -18,12 +18,9 @@ from builder import Builder, sel, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_crowdsec",
-               "label_values(opnsense_crowdsec_service_running, __name__)")
-    b.sentinel("has_crowdsec_hub_items",
-               "label_values(opnsense_crowdsec_hub_items, __name__)")
-    b.sentinel("has_crowdsec_version",
-               "label_values(opnsense_crowdsec_version_info, __name__)")
+    b.sentinel("has_crowdsec", metric="opnsense_crowdsec_service_running")
+    b.sentinel("has_crowdsec_hub_items", metric="opnsense_crowdsec_hub_items")
+    b.sentinel("has_crowdsec_version", metric="opnsense_crowdsec_version_info")
 
     # ------------------------------------------------------------------ #
     # Row 1: CrowdSec Overview                                             #

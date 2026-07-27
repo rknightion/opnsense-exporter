@@ -13,8 +13,7 @@ from builder import Builder, sel, UPDOWN
 
 
 def build(b: Builder):
-    b.sentinel("has_relayd",
-               "label_values(opnsense_relayd_virtualserver_status, __name__)")
+    b.sentinel("has_relayd", metric="opnsense_relayd_virtualserver_status")
 
     # ------------------------------------------------------------------ #
     # Row 1: Overview                                                     #

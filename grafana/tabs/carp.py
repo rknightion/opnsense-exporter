@@ -33,10 +33,23 @@ _VIP_STATUS = {
 
 def build(b: Builder):
     # ── Sentinels ─────────────────────────────────────────────────────────
-    b.sentinel("has_carp",
-               "label_values(opnsense_carp_allow, __name__)")
-    b.sentinel("has_carp_vips",
-               "query_result(opnsense_carp_vips_total > 0)")
+    b.sentinel("has_carp", metric="opnsense_carp_allow")
+    # Scoped, but the `> 0` comparison STAYS (#414). DO NOT "fix" this to plain
+    # existence for consistency with the other sentinels — it is the deliberate
+    # exception, and the reason is the metric's emission behaviour, not a preference.
+    #
+    # THE RULE: use existence when the series only appears if the feature is
+    # deployed; use a value test only when the series is emitted unconditionally.
+    #
+    # CARP status is CORE, not a plugin, so internal/collector/carp.go emits
+    # vips_total on every readable box — including as a literal 0 when no VIPs are
+    # configured. Existence therefore conveys nothing about whether the feature is
+    # in use, which makes `> 0` not a value-gate bolted onto a presence test but the
+    # only presence test available. #414's "presence tests remain based on series
+    # existence" is about not regressing #114; it is not a mandate to convert a
+    # metric every box emits. Contrast opnsense_captiveportal_zones_total in
+    # captiveportal.py, which is plugin-gated and so uses existence.
+    b.sentinel("has_carp_vips", metric="opnsense_carp_vips_total", nonzero=True)
 
     # ══════════════════════════════════════════════════════════════════════
     # ROW 1 — CARP global state

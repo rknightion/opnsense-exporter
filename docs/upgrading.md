@@ -53,6 +53,20 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   generated metric catalogue also now types all sixteen pf pass/block series as Counter
   - the eight packet series were previously mis-documented as Gauge.
 
+- **Dashboard feature detection and log panels are now scoped to the selected
+  instance** - the hidden feature sentinels that drive conditional rendering, and every
+  Loki panel, previously searched the whole datasource. In a multi-firewall stack that
+  made navigation lie: selecting appliance A could expose a tab because appliance B had
+  the feature, and raw-log and top-talker panels could show another firewall's records.
+  Prometheus sentinels now filter `opnsense_instance`, Loki queries filter
+  `service_instance_id`, and runtime metrics with no appliance label join to
+  `opnsense_up`. Three visible consequences after regenerating the dashboard: tabs for
+  features the selected appliance lacks now correctly disappear; the Traffic Shaper and
+  Captive Portal tabs now appear when the feature is deployed but idle, where a
+  zero-count test previously hid them; and the NetFlow receiver rows are now gated on
+  the exporter's own receiver metric rather than OPNsense's netflow-export setting, so
+  they hide on a box that exports netflow without this exporter receiving it.
+
 ## Upgrading to v2.0 from v1.x
 
 - **SMART collector is now opt-in** - the `opnsense_smart_*` metrics are no longer

@@ -250,7 +250,15 @@ def build_overview(b: Builder):
 
 
 def build_diagnostics(b: Builder):
-    b.sentinel("has_go_runtime", f'label_values(go_goroutines{{{JOB}}}, __name__)')
+    # scope="target_join": go_*/process_* come from the Go client library and carry
+    # no appliance label at all, so the only portable way to scope them is the
+    # co-scrape identity — they are gathered from the SAME /metrics target as
+    # opnsense_up (main.go hands selfMetricsRegistry to the same handler), so
+    # joining on (job, instance) tells us whether the SELECTED box's exporter is
+    # the one exposing them. The JOB matcher is kept as belt-and-braces: go_goroutines
+    # is a near-universal series name and the join is the only thing narrowing it.
+    b.sentinel("has_go_runtime", metric="go_goroutines", more=JOB,
+               scope="target_join")
     up = b.statushistory("Scrape Success (opnsense_up)", [(sel("opnsense_up"), "{{opnsense_instance}}")],
                          UPDOWN, w=12, h=6)
     # #439: this panel used to plot opnsense_exporter_scrapes_total against
@@ -368,10 +376,24 @@ def build_diagnostics(b: Builder):
     # delivers nothing indefinitely. KNOWN LIMITATION — these series cannot reach a
     # pure-OTLP backend while the OTLP path is down; read them at /metrics or on the
     # operator console during an outage, and as historical evidence after recovery.
-    # NOTE: the otlp_* family is registered on the exporter self-metrics registry with
-    # NO opnsense_instance label, so it uses sel_pipeline() (bare selector), never sel()
-    # — sel() would render every panel here permanently empty.
-    b.sentinel("has_otlp", "label_values(opnsense_exporter_otlp_enabled, __name__)")
+    #
+    # ⚠ THE FOUR PANELS BELOW ARE CURRENTLY ALWAYS EMPTY — owned by #466, do not fix
+    # here. The claim that used to sit in this comment was INVERTED: it said the
+    # otlp_* family "uses sel_pipeline() (bare selector), never sel(), because sel()
+    # would render every panel here permanently empty". sel_pipeline() is a pure ALIAS
+    # of sel() (see builder.py) — it injects opnsense_instance just the same. So the
+    # premise is right and the conclusion is backwards: the family really does carry
+    # NO opnsense_instance (telemetry.Start receives the RAW selfMetricsRegistry at
+    # main.go:1016, unlike logship which wraps its registerer at main.go:896), and
+    # because sel_pipeline() filters on that absent label anyway, all four panels are
+    # structurally empty. #466 carries both candidate fixes; #414 deliberately left
+    # the panels untouched and only scoped the sentinel.
+    #
+    # scope="target_join" for the same reason as has_go_runtime: the otlp_* family is
+    # on the RAW self-metrics registry, so it carries no opnsense_instance — but it
+    # is served from the same target as opnsense_up, so (job, instance) scopes it.
+    b.sentinel("has_otlp", metric="opnsense_exporter_otlp_enabled",
+               scope="target_join")
     otlp_on = b.stat("OTLP Export Enabled", b.sel_pipeline("opnsense_exporter_otlp_enabled"),
                      mappings=ENABLED, color_mode="background", graph="none", w=4, h=7,
                      thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],

@@ -18,7 +18,7 @@ from builder import Builder, sel, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_tor", "label_values(opnsense_tor_control_port_up, __name__)")
+    b.sentinel("has_tor", metric="opnsense_tor_control_port_up")
 
     def t(metric, extra=""):
         return sel(f"opnsense_tor_{metric}", extra)

@@ -140,7 +140,7 @@ class QuerySemanticsTest(unittest.TestCase):
 class NestedLayoutTest(unittest.TestCase):
     def test_tab_group_nests_leaf_tabs_without_losing_conditions(self):
         builder = Builder()
-        builder.sentinel("has_feature", "label_values(opnsense_feature, __name__)")
+        builder.sentinel("has_feature", metric="opnsense_feature")
         panel = builder.stat("Feature", "opnsense_feature")
         builder.tab("Feature", [panel], present="has_feature")
         leaf = builder.tabs.pop()

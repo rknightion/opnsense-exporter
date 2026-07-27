@@ -16,8 +16,18 @@ from builder import Builder, sel, RATE, epoch_ms
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    b.sentinel("has_trafficshaper",
-               "query_result(opnsense_trafficshaper_pipes_total > 0)")
+    # Existence, not `pipes_total > 0` (#414 / #114).
+    #
+    # THE RULE: use existence when the series only appears if the feature is
+    # deployed; use a value test only when the series is emitted unconditionally.
+    #
+    # The collector stays COMPLETELY silent when the shaper is absent (404) or
+    # configured with no pipes and no queues (internal/collector/trafficshaper.go),
+    # so this metric is never exported as a lone zero and the comparison was already
+    # redundant. It was also actively wrong in one state: a box with queues but no
+    # pipes exports pipes_total=0 alongside real queue data, and `> 0` hid the whole
+    # tab. Contrast opnsense_carp_vips_total in carp.py, which every box emits.
+    b.sentinel("has_trafficshaper", metric="opnsense_trafficshaper_pipes_total")
 
     # ================================================================
     # Row 1: Summary

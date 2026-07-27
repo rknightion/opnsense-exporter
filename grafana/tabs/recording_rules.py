@@ -4,42 +4,18 @@ from builder import Builder, sel
 
 
 def build(b: Builder):
-    b.sentinel(
-        "has_recording_rules",
-        'label_values({__name__=~"instance:opnsense_.+"}, __name__)',
-    )
-    b.sentinel(
-        "has_recording_gateway_loss",
-        "label_values(instance:opnsense_gateway_loss:ratio, __name__)",
-    )
-    b.sentinel(
-        "has_recording_ipsec",
-        "label_values(instance:opnsense_ipsec_tunnels_down:count, __name__)",
-    )
-    b.sentinel(
-        "has_recording_wireguard",
-        "label_values(instance:opnsense_wireguard_peers_down:count, __name__)",
-    )
-    b.sentinel(
-        "has_recording_unbound",
-        "label_values(instance:opnsense_unbound_queries:rate5m, __name__)",
-    )
-    b.sentinel(
-        "has_recording_zenarmor",
-        "label_values(instance:opnsense_zenarmor_block:ratio5m, __name__)",
-    )
-    b.sentinel(
-        "has_recording_haproxy",
-        "label_values(instance:opnsense_haproxy_5xx:ratio5m, __name__)",
-    )
-    b.sentinel(
-        "has_recording_ids",
-        "label_values(instance:opnsense_ids_alerts:active, __name__)",
-    )
-    b.sentinel(
-        "has_recording_flow",
-        "label_values(instance:opnsense_flow_bytes:rate5m, __name__)",
-    )
+    # Every bundled recording rule preserves opnsense_instance (each either
+    # aggregates `by (opnsense_instance, ...)` or is a binary op over metrics that
+    # carry it), so the derived series are scoped exactly like the raw ones.
+    b.sentinel("has_recording_rules", name_regex="instance:opnsense_.+")
+    b.sentinel("has_recording_gateway_loss", metric="instance:opnsense_gateway_loss:ratio")
+    b.sentinel("has_recording_ipsec", metric="instance:opnsense_ipsec_tunnels_down:count")
+    b.sentinel("has_recording_wireguard", metric="instance:opnsense_wireguard_peers_down:count")
+    b.sentinel("has_recording_unbound", metric="instance:opnsense_unbound_queries:rate5m")
+    b.sentinel("has_recording_zenarmor", metric="instance:opnsense_zenarmor_block:ratio5m")
+    b.sentinel("has_recording_haproxy", metric="instance:opnsense_haproxy_5xx:ratio5m")
+    b.sentinel("has_recording_ids", metric="instance:opnsense_ids_alerts:active")
+    b.sentinel("has_recording_flow", metric="instance:opnsense_flow_bytes:rate5m")
 
     memory = b.gauge(
         "Memory Utilization",

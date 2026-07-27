@@ -107,9 +107,10 @@ func (c *trafficShaperCollector) Update(_ context.Context, client *opnsense.Clie
 	}
 
 	// Shaper present but unconfigured (empty items): stay completely silent.
-	// This matches plugin-collector convention: the shaper tab is hidden by a
-	// "pipes_total > 0" sentinel — emitting zeros would require the dashboard
-	// to handle them differently.
+	// This matches plugin-collector convention, and this silence IS what hides the
+	// dashboard's Traffic Shaper tab: its presence sentinel tests whether
+	// pipes_total EXISTS (#414). Emitting zeros here would show an empty tab on
+	// every box with the plugin installed.
 	if len(data.Pipes) == 0 && len(data.Queues) == 0 {
 		return nil
 	}

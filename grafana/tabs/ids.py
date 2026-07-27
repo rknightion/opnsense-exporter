@@ -25,8 +25,8 @@ IPS_MODE = {"0": ("IDS (passive)", "blue"), "1": ("IPS (inline)", "orange")}
 
 
 def build(b: Builder):
-    b.sentinel("has_ids", "label_values(opnsense_ids_status, __name__)")
-    b.sentinel("has_ids_alerts", "label_values(opnsense_ids_recent_alerts, __name__)")
+    b.sentinel("has_ids", metric="opnsense_ids_status")
+    b.sentinel("has_ids_alerts", metric="opnsense_ids_recent_alerts")
 
     # ------------------------------------------------------------------ #
     # Row 1: Overview                                                      #

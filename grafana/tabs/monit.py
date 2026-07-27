@@ -10,8 +10,7 @@ from builder import Builder, sel, RUNSTOP, OKERR, UPDOWN
 
 
 def build(b: Builder):
-    b.sentinel("has_monit",
-               "label_values(opnsense_monit_status_ok, __name__)")
+    b.sentinel("has_monit", metric="opnsense_monit_status_ok")
 
     # ------------------------------------------------------------------ #
     # Row 1: Monit Overview                                                #

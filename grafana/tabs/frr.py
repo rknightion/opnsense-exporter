@@ -33,10 +33,8 @@ from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
 
 
 def build(b: Builder):
-    b.sentinel("has_frr",
-               "label_values(opnsense_frr_service_running, __name__)")
-    b.sentinel("has_frr_routes",
-               "label_values(opnsense_frr_route_count, __name__)")
+    b.sentinel("has_frr", metric="opnsense_frr_service_running")
+    b.sentinel("has_frr_routes", metric="opnsense_frr_route_count")
 
     # ------------------------------------------------------------------ #
     # Row 1: FRR Service                                                   #

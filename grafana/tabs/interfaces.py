@@ -49,10 +49,10 @@ def build(b: Builder):
     # same reasoning as the LAGG/bridge/SFP rows above and firewall.py's DEV constant (#98).
     vnstat_iface = 'interface=~"$device"'
 
-    b.sentinel("has_lagg", "label_values(opnsense_interfaces_lagg_info, __name__)")
-    b.sentinel("has_bridge", "label_values(opnsense_interfaces_bridge_member, __name__)")
-    b.sentinel("has_sfp", "label_values(opnsense_interfaces_sfp_info, __name__)")
-    b.sentinel("has_vnstat", "label_values(opnsense_vnstat_total_bytes, __name__)")
+    b.sentinel("has_lagg", metric="opnsense_interfaces_lagg_info")
+    b.sentinel("has_bridge", metric="opnsense_interfaces_bridge_member")
+    b.sentinel("has_sfp", metric="opnsense_interfaces_sfp_info")
+    b.sentinel("has_vnstat", metric="opnsense_vnstat_total_bytes")
 
     # ---- Row 1: Throughput ------------------------------------------------
     rx_bps = b.ts(

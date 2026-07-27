@@ -23,7 +23,7 @@ from builder import Builder, sel, epoch_ms, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_dyndns", "label_values(opnsense_dyndns_accounts_total, __name__)")
+    b.sentinel("has_dyndns", metric="opnsense_dyndns_accounts_total")
 
     # =====================================================================
     # Row 1: Services

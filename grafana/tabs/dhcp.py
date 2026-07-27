@@ -37,26 +37,16 @@ def build(b: Builder):
     # value, so the row shows for a live backend even at 0 leases (or when the service is stopped).
     # dnsmasq/kea expose service_running; the ISC v4/v6 collectors emit nothing when their plugin is
     # absent (Present-gated, #87), so their always-emitted leases_total is a valid presence signal.
-    b.sentinel("has_dnsmasq",
-               "label_values(opnsense_dnsmasq_service_running, __name__)")
-    b.sentinel("has_dnsmasq_details",
-               "label_values(opnsense_dnsmasq_lease_info, __name__)")
-    b.sentinel("has_kea",
-               "label_values(opnsense_kea_service_running, __name__)")
-    b.sentinel("has_kea4_details",
-               "label_values(opnsense_kea_dhcp4_lease_info, __name__)")
-    b.sentinel("has_kea6_details",
-               "label_values(opnsense_kea_dhcp6_lease_info, __name__)")
-    b.sentinel("has_kea_pd_pools",
-               "label_values(opnsense_kea_dhcp6_pd_pool_size, __name__)")
-    b.sentinel("has_dhcpv4_isc",
-               "label_values(opnsense_dhcpv4_leases_total, __name__)")
-    b.sentinel("has_dhcpv4_details",
-               "label_values(opnsense_dhcpv4_lease_info, __name__)")
-    b.sentinel("has_dhcpv6_isc",
-               "label_values(opnsense_dhcpv6_leases_total, __name__)")
-    b.sentinel("has_dhcpv6_details",
-               "label_values(opnsense_dhcpv6_lease_info, __name__)")
+    b.sentinel("has_dnsmasq", metric="opnsense_dnsmasq_service_running")
+    b.sentinel("has_dnsmasq_details", metric="opnsense_dnsmasq_lease_info")
+    b.sentinel("has_kea", metric="opnsense_kea_service_running")
+    b.sentinel("has_kea4_details", metric="opnsense_kea_dhcp4_lease_info")
+    b.sentinel("has_kea6_details", metric="opnsense_kea_dhcp6_lease_info")
+    b.sentinel("has_kea_pd_pools", metric="opnsense_kea_dhcp6_pd_pool_size")
+    b.sentinel("has_dhcpv4_isc", metric="opnsense_dhcpv4_leases_total")
+    b.sentinel("has_dhcpv4_details", metric="opnsense_dhcpv4_lease_info")
+    b.sentinel("has_dhcpv6_isc", metric="opnsense_dhcpv6_leases_total")
+    b.sentinel("has_dhcpv6_details", metric="opnsense_dhcpv6_lease_info")
 
     # ================================================================
     # DNSMASQ — Row 1: summary

@@ -30,12 +30,30 @@ BY_SOURCE = "source"
 
 
 def build(b: Builder):
-    b.sentinel("has_flow", 'label_values({__name__=~"opnsense_flow_.+"}, __name__)')
-    b.sentinel("has_flow_volume", "label_values(opnsense_flow_bytes_total, __name__)")
+    b.sentinel("has_flow", name_regex="opnsense_flow_.+")
+    b.sentinel("has_flow_volume", metric="opnsense_flow_bytes_total")
     # The NetFlow rows stay hidden entirely where the receiver was never enabled: its
     # metrics are absent rather than zero there, deliberately, so a row of flat zeros
     # would imply a receiver that does not exist.
-    b.sentinel("has_netflow", "label_values(opnsense_flow_netflow_datagrams_total, __name__)")
+    #
+    # Named has_flow_NETFLOW, not has_netflow (#414) — and this rename FIXED A LATENT
+    # MIS-GATING BUG, it is not cosmetic.
+    #
+    # This was registered as has_netflow, colliding with the NetFlow tab's own
+    # sentinel (netflow.py) on opnsense_netflow_active. Those ask DIFFERENT questions
+    # about DIFFERENT collectors: opnsense_netflow_active is "has OPNsense's own
+    # netflow export been configured on the box?", while
+    # opnsense_flow_netflow_datagrams_total is "is OUR receiver actually taking
+    # datagrams?". `Builder.sentinel()` used to dedupe silently and keep whichever
+    # module built first — netflow.py, per register_subsystem_tabs order — so THIS
+    # registration was a no-op and the three rows below were gated on the unrelated
+    # metric. The bug was invisible on a box where both happened to be true.
+    #
+    # Corrected behaviour: on a box running OPNsense's netflow export WITHOUT our
+    # receiver, these rows now hide. Previously they rendered empty, which is worse —
+    # an operator cannot tell "receiver off" from "receiver broken" from a blank row.
+    # Duplicate sentinel names now raise, so this collision cannot recur silently.
+    b.sentinel("has_flow_netflow", metric="opnsense_flow_netflow_datagrams_total")
 
     iface = b.ts(
         "Throughput by Interface (bits/sec)",
@@ -358,7 +376,7 @@ def build(b: Builder):
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("Domain, Talkers & Source Delta", [dnscache, uniquedest, toptalkers, delta], present="has_flow"),
-        b.row("NetFlow Receiver", [ingest, funnel, decoder], present="has_netflow"),
-        b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_netflow"),
+        b.row("NetFlow Receiver", [ingest, funnel, decoder], present="has_flow_netflow"),
+        b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs], present="has_flow"),
     ], present="has_flow")

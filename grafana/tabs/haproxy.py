@@ -32,10 +32,8 @@ from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
 
 
 def build(b: Builder):
-    b.sentinel("has_haproxy",
-               "label_values(opnsense_haproxy_frontend_status, __name__)")
-    b.sentinel("has_haproxy_stick_tables",
-               "label_values(opnsense_haproxy_stick_table_size, __name__)")
+    b.sentinel("has_haproxy", metric="opnsense_haproxy_frontend_status")
+    b.sentinel("has_haproxy_stick_tables", metric="opnsense_haproxy_stick_table_size")
 
     # ------------------------------------------------------------------ #
     # Row 1: HAProxy Overview                                              #

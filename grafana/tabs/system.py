@@ -31,10 +31,10 @@ _SUBSYS_STATUS = {
 
 def build(b: Builder):
     # ---- sentinels ----------------------------------------------------------
-    b.sentinel("has_temperature", "label_values(opnsense_temperature_celsius, __name__)")
-    b.sentinel("has_smart", "label_values(opnsense_smart_device_health, __name__)")
-    b.sentinel("has_hardware_dmi", "label_values(opnsense_hardware_dmi_info, __name__)")
-    b.sentinel("has_hardware_psu", "label_values(opnsense_hardware_psu_status, __name__)")
+    b.sentinel("has_temperature", metric="opnsense_temperature_celsius")
+    b.sentinel("has_smart", metric="opnsense_smart_device_health")
+    b.sentinel("has_hardware_dmi", metric="opnsense_hardware_dmi_info")
+    b.sentinel("has_hardware_psu", metric="opnsense_hardware_psu_status")
 
     # =========================================================================
     # Row: Host Info
@@ -449,8 +449,7 @@ def build(b: Builder):
     # =========================================================================
     # Row: Firmware Packages (gated — requires --exporter.enable-firmware-package-details)
     # =========================================================================
-    b.sentinel("has_firmware_details",
-               "label_values(opnsense_firmware_plugin_installed, __name__)")
+    b.sentinel("has_firmware_details", metric="opnsense_firmware_plugin_installed")
     fw_pending_updates = b.table(
         "Pending Package Updates",
         [sel("opnsense_firmware_package_update_available")],

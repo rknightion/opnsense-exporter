@@ -16,8 +16,7 @@ from builder import Builder, sel, RUNSTOP, UPDOWN
 
 def build(b: Builder):
     # ---- Sentinels ---------------------------------------------------------
-    b.sentinel("has_hasync",
-               "label_values(opnsense_hasync_remote_reachable, __name__)")
+    b.sentinel("has_hasync", metric="opnsense_hasync_remote_reachable")
 
     # ================================================================
     # Row 1: HA Sync Status

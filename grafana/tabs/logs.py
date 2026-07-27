@@ -19,7 +19,13 @@ from builder import Builder, RATE
 
 
 def build(b: Builder):
-    b.sentinel("has_logs", f"label_values({b.sel_pipeline('opnsense_exporter_logs_queue_capacity')}, __name__)")
+    # scope="self_labeled": an exporter self-metric, but one that DOES carry
+    # opnsense_instance because internal/logship wraps its registerer in
+    # SelfMetricsRegisterer. Same matcher as a collector metric; the distinct mode
+    # records WHY it is available, so a future self-metric family registered on the
+    # raw registry cannot copy this line and read as scoped when it is not.
+    b.sentinel("has_logs", metric="opnsense_exporter_logs_queue_capacity",
+               scope="self_labeled")
 
     shipped = b.ts(
         "Records Shipped (rate)",

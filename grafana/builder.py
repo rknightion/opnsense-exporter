@@ -11,9 +11,14 @@ This file is the FROZEN API used by every tab module under `tabs/`. See
 
 * Every panel query is filtered by the instance selector. Use `b.sel(metric, more)`
   to build `metric{opnsense_instance=~"$opnsense_instance"<more>}`.
+* Every LogQL query is filtered by `loki_sel(matchers)`, which builds the stream
+  selector `{service_instance_id=~"$opnsense_instance",<matchers>}` (#413).
 * Datasources are referenced as `${datasource}` — never a hard-coded UID.
 * conditionalRendering lives on TABS and ROWS only (never panels): pass `present=`
   a sentinel-variable name to `b.tab(...)` / `b.row(...)`.
+* Sentinels are declared STRUCTURALLY (`b.sentinel(name, metric=..., scope=...)`),
+  never as a raw query string, so a presence variable cannot be written fleet-wide
+  by accident (#414).
 """
 
 from __future__ import annotations
@@ -21,6 +26,13 @@ from __future__ import annotations
 import re
 
 INSTANCE_SEL = 'opnsense_instance=~"$opnsense_instance"'
+# Loki's equivalent of INSTANCE_SEL. A shipped log stream carries NO
+# `opnsense_instance` label — its complete label set is opnsense_action,
+# opnsense_source, opnsense_subsystem, service_instance_id, service_name — and
+# `service_instance_id` holds the SAME value space as Prometheus
+# `opnsense_instance` (both verified live, 2026-07-26). So `$opnsense_instance`
+# selects correctly on either side, and multi-select/All stay regex-based.
+LOKI_INSTANCE_SEL = 'service_instance_id=~"$opnsense_instance"'
 RATE = "$__rate_interval"
 DS = {"name": "${datasource}"}
 LOKI_DS = {"name": "${loki_datasource}"}
@@ -30,10 +42,51 @@ TRANSPORT_LABELS = (
 )
 
 
+# ---- sentinel scope modes ------------------------------------------------
+# Every presence sentinel declares HOW it is scoped to the selected appliance. A
+# sentinel drives conditionalRendering on a tab/row, so an unscoped one asks "does
+# ANY box in the fleet export this?" while every panel behind it asks "does the
+# SELECTED box?" — the tab lights up because a different firewall runs the plugin
+# and every panel inside reads No data (#414).
+SCOPE_COLLECTOR = "collector"          # domain metric carrying opnsense_instance
+SCOPE_SELF_LABELED = "self_labeled"    # exporter self-metric that carries it too
+SCOPE_TARGET_JOIN = "target_join"      # no appliance label; join to opnsense_up
+SCOPE_GLOBAL = "global"                # deliberately fleet-wide; needs a reason
+SENTINEL_SCOPES = (SCOPE_COLLECTOR, SCOPE_SELF_LABELED, SCOPE_TARGET_JOIN, SCOPE_GLOBAL)
+
+# `go_*` / `process_*` and the raw-registry `opnsense_exporter_otlp_*` family have
+# no appliance label at all, but they ARE scraped from the same target as
+# opnsense_up, so the co-scrape identity (job, instance) scopes them. `max by
+# (job, instance)` makes the right-hand side unique — group_left() errors on
+# duplicate match-group entries, and opnsense_up is one series per appliance.
+TARGET_JOIN_TEMPLATE = (
+    "{left} * on(job, instance) group_left() "
+    "max by (job, instance) (opnsense_up{{{instance_sel}}})"
+)
+
+
 def sel(metric: str, more: str = "") -> str:
     """Return metric{opnsense_instance=~"$opnsense_instance"<more>}."""
     inner = INSTANCE_SEL + (("," + more) if more else "")
     return f"{metric}{{{inner}}}"
+
+
+def loki_sel(matchers: str = "") -> str:
+    """Return the Loki stream selector {service_instance_id=~"$opnsense_instance"<,matchers>}.
+
+    The ONE LogQL chokepoint, mirroring `sel()` on the Prometheus side (#413).
+    Putting the matcher in the STREAM SELECTOR rather than appending a label
+    filter is what makes it correct under aggregation: a `topk` over
+    `count_over_time` ranks whatever the selector admitted, so a matcher applied
+    after the `|` would already have summed every appliance's lines.
+
+    `matchers` may only use Loki's INDEXED labels (opnsense_source,
+    opnsense_subsystem, opnsense_action). Everything else on the wire
+    (device_name, server_name, ja3, ...) is structured metadata, usable only
+    after a `|` filter/unwrap.
+    """
+    inner = LOKI_INSTANCE_SEL + (("," + matchers) if matchers else "")
+    return f"{{{inner}}}"
 
 
 def epoch_ms(expr: str) -> str:
@@ -76,7 +129,8 @@ class Builder:
         self.elements: dict = {}
         self.tabs: list = []
         self.variables: list = []
-        self._sentinels: set = set()
+        self._sentinels: set = set()          # every claimed sentinel name (both datasources)
+        self._sentinel_scopes: dict = {}      # prometheus sentinel name -> declared scope mode
         self._id = 0
         self.size: dict = {}      # element name -> (w, h)
         self._exprs: list = []    # every PromQL string emitted (for coverage)
@@ -483,11 +537,93 @@ class Builder:
         return name
 
     # ---- variables / sentinels ------------------------------------------
-    def sentinel(self, name: str, query: str):
-        """Hidden presence variable: label_values(...) or query_result(...)."""
+    def _claim_sentinel_name(self, name: str):
+        """Reserve a sentinel name, or raise if it is already taken.
+
+        This used to `return` silently, which made a duplicate registration a
+        no-op: `has_netflow` was declared twice with two DIFFERENT queries and
+        whichever tab module imported first won, so three rows in the loser were
+        silently gated on somebody else's metric (#414). A presence variable is a
+        navigation element — the collision has to be loud.
+        """
         if name in self._sentinels:
-            return
+            raise ValueError(
+                f"sentinel {name!r} is already registered; two presence variables "
+                "cannot share a name (give the second one its own)")
         self._sentinels.add(name)
+
+    @staticmethod
+    def _sentinel_query(name: str, metric: str, name_regex: str, scope: str,
+                        more: str, nonzero: bool, reason: str) -> str:
+        """Build a sentinel's PromQL from its declared scope. See SENTINEL_SCOPES."""
+        if scope not in SENTINEL_SCOPES:
+            raise ValueError(
+                f"sentinel {name!r}: unknown scope {scope!r} "
+                f"(pick one of {', '.join(SENTINEL_SCOPES)})")
+        if bool(metric) == bool(name_regex):
+            raise ValueError(
+                f"sentinel {name!r}: pass exactly one of metric= or name_regex=")
+        if scope == SCOPE_GLOBAL and not reason:
+            raise ValueError(
+                f"sentinel {name!r}: scope={SCOPE_GLOBAL!r} must state reason=... "
+                "(a fleet-wide presence variable lights a tab up for the wrong box)")
+        if scope == SCOPE_TARGET_JOIN:
+            if name_regex:
+                raise ValueError(
+                    f"sentinel {name!r}: scope={SCOPE_TARGET_JOIN!r} needs a concrete "
+                    "metric= — a join has no series to attach to a __name__ regex")
+            if nonzero:
+                raise ValueError(
+                    f"sentinel {name!r}: scope={SCOPE_TARGET_JOIN!r} is already a "
+                    "query_result join; nonzero= would compare the join's product")
+            # query_result(), not label_values(): Grafana's label_values() takes a
+            # selector, which cannot hold a vector match.
+            left = f"{metric}{{{more}}}" if more else metric
+            joined = TARGET_JOIN_TEMPLATE.format(left=left, instance_sel=INSTANCE_SEL)
+            return f"query_result({joined})"
+
+        scoped = scope in (SCOPE_COLLECTOR, SCOPE_SELF_LABELED)
+        if name_regex:
+            parts = [f'__name__=~"{name_regex}"']
+            if scoped:
+                parts.append(INSTANCE_SEL)
+            if more:
+                parts.append(more)
+            selector = f"{{{','.join(parts)}}}"
+        else:
+            parts = ([INSTANCE_SEL] if scoped else []) + ([more] if more else [])
+            selector = f"{metric}{{{','.join(parts)}}}" if parts else metric
+        if nonzero:
+            return f"query_result({selector} > 0)"
+        return f"label_values({selector}, __name__)"
+
+    def sentinel(self, name: str, *, metric: str = "", name_regex: str = "",
+                 scope: str = SCOPE_COLLECTOR, more: str = "",
+                 nonzero: bool = False, reason: str = ""):
+        """Register a hidden Prometheus presence variable, scoped by construction.
+
+        Structured rather than raw-query on purpose (#414): the instance matcher is
+        injected here, so no call site can forget it and no reviewer has to check 96
+        hand-written strings. Pass exactly one of:
+
+          metric=      a concrete metric name.
+          name_regex=  a `__name__=~` family probe, for "any metric in this family".
+
+        and optionally:
+
+          scope=       one of SENTINEL_SCOPES; defaults to `collector`.
+          more=        extra label matchers, inside the same selector.
+          nonzero=     emit `query_result(<selector> > 0)` instead of
+                       `label_values(...)`. Presence should test SERIES EXISTENCE,
+                       not value (#114 hid a live-but-idle DHCP backend that way),
+                       so this is only for metrics a collector emits as a literal 0
+                       when the feature is present but empty.
+          reason=      mandatory justification for scope='global'.
+        """
+        query = self._sentinel_query(name, metric, name_regex, scope, more,
+                                     nonzero, reason)
+        self._claim_sentinel_name(name)
+        self._sentinel_scopes[name] = scope
         self.variables.append({"kind": "QueryVariable", "spec": {
             "name": name, "label": name, "hide": "hideVariable",
             "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
@@ -497,14 +633,19 @@ class Builder:
             "refresh": "onDashboardLoad", "regex": "", "skipUrlSync": True,
             "sort": "disabled"}})
 
-    def loki_sentinel(self, name: str, query: str):
-        """Hidden Loki presence variable: mirrors `sentinel()` but against the Loki
-        datasource, and the query spec shape matches a Grafana-authored Loki
-        QueryVariable (a bare `__legacyStringValue` string, e.g. `label_values(...)`),
-        not the prometheus `{"query": ..., "refId": ...}` shape."""
-        if name in self._sentinels:
-            return
-        self._sentinels.add(name)
+    def loki_sentinel(self, name: str, *, label: str, matchers: str = ""):
+        """Register a hidden Loki presence variable, scoped through `loki_sel()`.
+
+        Mirrors `sentinel()` but against the Loki datasource, and the query spec
+        shape matches a Grafana-authored Loki QueryVariable (a bare
+        `__legacyStringValue` string, e.g. `label_values(...)`), not the prometheus
+        `{"query": ..., "refId": ...}` shape.
+
+        There is one scope mode on this side, so it is applied rather than declared:
+        the stream selector always comes from `loki_sel()` (#413).
+        """
+        query = f"label_values({loki_sel(matchers)}, {label})"
+        self._claim_sentinel_name(name)
         self.variables.append({"kind": "QueryVariable", "spec": {
             "name": name, "label": name, "hide": "hideVariable",
             "query": {"kind": "DataQuery", "version": "v0", "group": "loki",

@@ -28,10 +28,22 @@ from builder import Builder, sel, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_captiveportal",
-               "query_result(opnsense_captiveportal_zones_total > 0)")
-    b.sentinel("has_captiveportal_vouchers",
-               "label_values(opnsense_captiveportal_vouchers, __name__)")
+    # Existence, not `opnsense_captiveportal_zones_total > 0` (#414 / #114).
+    #
+    # THE RULE: use existence when the series only appears if the feature is
+    # deployed; use a value test only when the series is emitted unconditionally.
+    #
+    # This collector returns early on a zones-endpoint 404, i.e. when the plugin is
+    # not installed (internal/collector/captiveportal.go), so the series exists ONLY
+    # on a box that has captive portal deployed. Existence therefore IS the
+    # feature-presence signal, and the old `> 0` was a value-gate layered on top of
+    # it — exactly the #114 shape that hid a live-but-idle DHCP backend along with
+    # the health stat meant to answer "is it up?". A Captive Portal tab reading
+    # "0 zones" on a box with the plugin installed is honest; hiding it misreports
+    # what is deployed. Contrast opnsense_carp_vips_total in carp.py, which every
+    # box emits and which therefore still needs the value test.
+    b.sentinel("has_captiveportal", metric="opnsense_captiveportal_zones_total")
+    b.sentinel("has_captiveportal_vouchers", metric="opnsense_captiveportal_vouchers")
 
     # ------------------------------------------------------------------ #
     # Row 1: Captive Portal Overview                                       #

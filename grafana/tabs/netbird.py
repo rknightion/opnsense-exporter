@@ -15,10 +15,8 @@ from builder import Builder, sel, epoch_ms, RATE, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_netbird",
-               "label_values(opnsense_netbird_service_running, __name__)")
-    b.sentinel("has_netbird_peers",
-               "label_values(opnsense_netbird_peer_connected, __name__)")
+    b.sentinel("has_netbird", metric="opnsense_netbird_service_running")
+    b.sentinel("has_netbird_peers", metric="opnsense_netbird_peer_connected")
 
     svc = b.stat("Plugin Service", sel("opnsense_netbird_service_running"),
                  unit="short", w=4, h=4, mappings=RUNSTOP)

@@ -190,7 +190,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_temperature_celsius, __name__)",
+              "query": "label_values(opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_temperature"
             }
           },
@@ -222,7 +222,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_smart_device_health, __name__)",
+              "query": "label_values(opnsense_smart_device_health{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_smart"
             }
           },
@@ -254,7 +254,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_hardware_dmi_info, __name__)",
+              "query": "label_values(opnsense_hardware_dmi_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_hardware_dmi"
             }
           },
@@ -286,7 +286,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_hardware_psu_status, __name__)",
+              "query": "label_values(opnsense_hardware_psu_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_hardware_psu"
             }
           },
@@ -318,7 +318,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_firmware_plugin_installed, __name__)",
+              "query": "label_values(opnsense_firmware_plugin_installed{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_firmware_details"
             }
           },
@@ -350,7 +350,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_interfaces_lagg_info, __name__)",
+              "query": "label_values(opnsense_interfaces_lagg_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_lagg"
             }
           },
@@ -382,7 +382,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_interfaces_bridge_member, __name__)",
+              "query": "label_values(opnsense_interfaces_bridge_member{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_bridge"
             }
           },
@@ -414,7 +414,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_interfaces_sfp_info, __name__)",
+              "query": "label_values(opnsense_interfaces_sfp_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_sfp"
             }
           },
@@ -446,7 +446,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_vnstat_total_bytes, __name__)",
+              "query": "label_values(opnsense_vnstat_total_bytes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_vnstat"
             }
           },
@@ -478,7 +478,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_firewall_rule_rules_total, __name__)",
+              "query": "label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_firewall_rules"
             }
           },
@@ -510,7 +510,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_firewall_nat_rules, __name__)",
+              "query": "label_values(opnsense_firewall_nat_rules{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_firewall_nat_counts"
             }
           },
@@ -542,7 +542,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_alias_tables_total, __name__)",
+              "query": "label_values(opnsense_alias_tables_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_alias"
             }
           },
@@ -574,7 +574,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_alias_table_packets_total, __name__)",
+              "query": "label_values(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_alias_details"
             }
           },
@@ -606,7 +606,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_unbound_dns_uptime_seconds, __name__)",
+              "query": "label_values(opnsense_unbound_dns_uptime_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_unbound"
             }
           },
@@ -638,7 +638,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_unbound_dns_infra_rtt_seconds, __name__)",
+              "query": "label_values(opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_unbound_infra"
             }
           },
@@ -670,7 +670,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_unbound_dns_qstats_enabled, __name__)",
+              "query": "label_values(opnsense_unbound_dns_qstats_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_unbound_qstats"
             }
           },
@@ -702,7 +702,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dnsmasq_service_running, __name__)",
+              "query": "label_values(opnsense_dnsmasq_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dnsmasq"
             }
           },
@@ -734,7 +734,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dnsmasq_lease_info, __name__)",
+              "query": "label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dnsmasq_details"
             }
           },
@@ -766,7 +766,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_kea_service_running, __name__)",
+              "query": "label_values(opnsense_kea_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_kea"
             }
           },
@@ -798,7 +798,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_kea_dhcp4_lease_info, __name__)",
+              "query": "label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_kea4_details"
             }
           },
@@ -830,7 +830,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_kea_dhcp6_lease_info, __name__)",
+              "query": "label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_kea6_details"
             }
           },
@@ -862,7 +862,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_kea_dhcp6_pd_pool_size, __name__)",
+              "query": "label_values(opnsense_kea_dhcp6_pd_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_kea_pd_pools"
             }
           },
@@ -894,7 +894,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dhcpv4_leases_total, __name__)",
+              "query": "label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dhcpv4_isc"
             }
           },
@@ -926,7 +926,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dhcpv4_lease_info, __name__)",
+              "query": "label_values(opnsense_dhcpv4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dhcpv4_details"
             }
           },
@@ -958,7 +958,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dhcpv6_leases_total, __name__)",
+              "query": "label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dhcpv6_isc"
             }
           },
@@ -990,7 +990,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dhcpv6_lease_info, __name__)",
+              "query": "label_values(opnsense_dhcpv6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dhcpv6_details"
             }
           },
@@ -1022,7 +1022,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_wireguard_service_running, __name__)",
+              "query": "label_values(opnsense_wireguard_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_wireguard"
             }
           },
@@ -1054,7 +1054,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_wireguard_interfaces_status, __name__)",
+              "query": "label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_wireguard_ifaces"
             }
           },
@@ -1086,7 +1086,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_wireguard_peer_status, __name__)",
+              "query": "label_values(opnsense_wireguard_peer_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_wireguard_peers"
             }
           },
@@ -1118,7 +1118,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_openvpn_instances, __name__)",
+              "query": "label_values(opnsense_openvpn_instances{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_openvpn"
             }
           },
@@ -1150,7 +1150,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ipsec_service_running, __name__)",
+              "query": "label_values(opnsense_ipsec_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ipsec"
             }
           },
@@ -1182,7 +1182,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ipsec_phase1_status, __name__)",
+              "query": "label_values(opnsense_ipsec_phase1_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ipsec_tunnels"
             }
           },
@@ -1214,7 +1214,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ipsec_pool_size, __name__)",
+              "query": "label_values(opnsense_ipsec_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ipsec_pools"
             }
           },
@@ -1246,7 +1246,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ipsec_sad_entries, __name__)",
+              "query": "label_values(opnsense_ipsec_sad_entries{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ipsec_sad"
             }
           },
@@ -1278,7 +1278,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_tailscale_service_running, __name__)",
+              "query": "label_values(opnsense_tailscale_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_tailscale"
             }
           },
@@ -1310,7 +1310,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_tailscale_peer_session_active, __name__)",
+              "query": "label_values(opnsense_tailscale_peer_session_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_tailscale_peers"
             }
           },
@@ -1342,7 +1342,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_netbird_service_running, __name__)",
+              "query": "label_values(opnsense_netbird_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_netbird"
             }
           },
@@ -1374,7 +1374,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_netbird_peer_connected, __name__)",
+              "query": "label_values(opnsense_netbird_peer_connected{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_netbird_peers"
             }
           },
@@ -1406,7 +1406,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_network_diag_sockets_unix_total, __name__)",
+              "query": "label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_network_diag"
             }
           },
@@ -1438,7 +1438,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_lldp_neighbors, __name__)",
+              "query": "label_values(opnsense_lldp_neighbors{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_lldp"
             }
           },
@@ -1470,7 +1470,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ntp_peer_info, __name__)",
+              "query": "label_values(opnsense_ntp_peer_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ntp"
             }
           },
@@ -1502,7 +1502,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ntp_gps_ok, __name__)",
+              "query": "label_values(opnsense_ntp_gps_ok{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ntp_gps"
             }
           },
@@ -1534,7 +1534,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_acme_certificates_total, __name__)",
+              "query": "label_values(opnsense_acme_certificates_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_acme"
             }
           },
@@ -1566,7 +1566,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_clamav_version_info, __name__)",
+              "query": "label_values(opnsense_clamav_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_clamav"
             }
           },
@@ -1598,7 +1598,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_dyndns_accounts_total, __name__)",
+              "query": "label_values(opnsense_dyndns_accounts_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_dyndns"
             }
           },
@@ -1630,7 +1630,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_syslog_service_running, __name__)",
+              "query": "label_values(opnsense_syslog_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_syslog"
             }
           },
@@ -1662,7 +1662,7 @@
               "name": "${loki_datasource}"
             },
             "spec": {
-              "__legacyStringValue": "label_values({opnsense_source=\"syslog\"}, opnsense_source)"
+              "__legacyStringValue": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"}, opnsense_source)"
             }
           },
           "current": {
@@ -1693,7 +1693,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_qfeeds_feeds_total, __name__)",
+              "query": "label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_qfeeds"
             }
           },
@@ -1725,7 +1725,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_netflow_active, __name__)",
+              "query": "label_values(opnsense_netflow_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_netflow"
             }
           },
@@ -1757,7 +1757,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_carp_allow, __name__)",
+              "query": "label_values(opnsense_carp_allow{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_carp"
             }
           },
@@ -1789,7 +1789,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_carp_vips_total > 0)",
+              "query": "query_result(opnsense_carp_vips_total{opnsense_instance=~\"$opnsense_instance\"} > 0)",
               "refId": "has_carp_vips"
             }
           },
@@ -1821,7 +1821,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_haproxy_frontend_status, __name__)",
+              "query": "label_values(opnsense_haproxy_frontend_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_haproxy"
             }
           },
@@ -1853,7 +1853,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_haproxy_stick_table_size, __name__)",
+              "query": "label_values(opnsense_haproxy_stick_table_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_haproxy_stick_tables"
             }
           },
@@ -1885,7 +1885,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_relayd_virtualserver_status, __name__)",
+              "query": "label_values(opnsense_relayd_virtualserver_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_relayd"
             }
           },
@@ -1917,7 +1917,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_nginx_connections_active, __name__)",
+              "query": "label_values(opnsense_nginx_connections_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_nginx"
             }
           },
@@ -1949,7 +1949,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_nginx_cache_zone_max_bytes, __name__)",
+              "query": "label_values(opnsense_nginx_cache_zone_max_bytes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_nginx_cache"
             }
           },
@@ -1981,7 +1981,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_frr_service_running, __name__)",
+              "query": "label_values(opnsense_frr_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_frr"
             }
           },
@@ -2013,7 +2013,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_frr_route_count, __name__)",
+              "query": "label_values(opnsense_frr_route_count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_frr_routes"
             }
           },
@@ -2045,7 +2045,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_monit_status_ok, __name__)",
+              "query": "label_values(opnsense_monit_status_ok{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_monit"
             }
           },
@@ -2077,7 +2077,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_crowdsec_service_running, __name__)",
+              "query": "label_values(opnsense_crowdsec_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_crowdsec"
             }
           },
@@ -2109,7 +2109,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_crowdsec_hub_items, __name__)",
+              "query": "label_values(opnsense_crowdsec_hub_items{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_crowdsec_hub_items"
             }
           },
@@ -2141,7 +2141,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_crowdsec_version_info, __name__)",
+              "query": "label_values(opnsense_crowdsec_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_crowdsec_version"
             }
           },
@@ -2173,7 +2173,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ids_status, __name__)",
+              "query": "label_values(opnsense_ids_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ids"
             }
           },
@@ -2205,7 +2205,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_ids_recent_alerts, __name__)",
+              "query": "label_values(opnsense_ids_recent_alerts{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_ids_alerts"
             }
           },
@@ -2237,7 +2237,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_nut_ups_info, __name__)",
+              "query": "label_values(opnsense_nut_ups_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_nut"
             }
           },
@@ -2269,7 +2269,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_apcupsd_ups_info, __name__)",
+              "query": "label_values(opnsense_apcupsd_ups_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_apcupsd"
             }
           },
@@ -2301,7 +2301,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_captiveportal_zones_total > 0)",
+              "query": "label_values(opnsense_captiveportal_zones_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_captiveportal"
             }
           },
@@ -2333,7 +2333,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_captiveportal_vouchers, __name__)",
+              "query": "label_values(opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_captiveportal_vouchers"
             }
           },
@@ -2365,7 +2365,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_trafficshaper_pipes_total > 0)",
+              "query": "label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_trafficshaper"
             }
           },
@@ -2397,7 +2397,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_hasync_remote_reachable, __name__)",
+              "query": "label_values(opnsense_hasync_remote_reachable{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_hasync"
             }
           },
@@ -2429,7 +2429,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_chrony_stratum, __name__)",
+              "query": "label_values(opnsense_chrony_stratum{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_chrony"
             }
           },
@@ -2461,7 +2461,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_tor_control_port_up, __name__)",
+              "query": "label_values(opnsense_tor_control_port_up{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_tor"
             }
           },
@@ -2493,7 +2493,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_siproxd_registrations, __name__)",
+              "query": "label_values(opnsense_siproxd_registrations{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_siproxd"
             }
           },
@@ -2525,7 +2525,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values({__name__=~\"opnsense_log_events_.+\"}, __name__)",
+              "query": "label_values({__name__=~\"opnsense_log_events_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events"
             }
           },
@@ -2557,7 +2557,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_firewall_total, __name__)",
+              "query": "label_values(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_firewall"
             }
           },
@@ -2589,7 +2589,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_haproxy_total, __name__)",
+              "query": "label_values(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_haproxy"
             }
           },
@@ -2621,7 +2621,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_sshd_total, __name__)",
+              "query": "label_values(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_sshd"
             }
           },
@@ -2653,7 +2653,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_dhcp_total, __name__)",
+              "query": "label_values(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_dhcp"
             }
           },
@@ -2685,7 +2685,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_audit_total, __name__)",
+              "query": "label_values(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_audit"
             }
           },
@@ -2717,7 +2717,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_ids_total, __name__)",
+              "query": "label_values(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_ids"
             }
           },
@@ -2749,7 +2749,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_radius_total, __name__)",
+              "query": "label_values(opnsense_log_events_radius_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_radius"
             }
           },
@@ -2781,7 +2781,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_vpn_total, __name__)",
+              "query": "label_values(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_log_events_vpn"
             }
           },
@@ -2813,7 +2813,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values({__name__=~\"opnsense_flow_.+\"}, __name__)",
+              "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_flow"
             }
           },
@@ -2845,8 +2845,40 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_flow_bytes_total, __name__)",
+              "query": "label_values(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_flow_volume"
+            }
+          },
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": false,
+          "refresh": "onDashboardLoad",
+          "regex": "",
+          "skipUrlSync": true,
+          "sort": "disabled"
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "has_flow_netflow",
+          "label": "has_flow_netflow",
+          "hide": "hideVariable",
+          "query": {
+            "kind": "DataQuery",
+            "version": "v0",
+            "group": "prometheus",
+            "datasource": {
+              "name": "${datasource}"
+            },
+            "spec": {
+              "query": "label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+              "refId": "has_flow_netflow"
             }
           },
           "current": {
@@ -2877,7 +2909,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_log_events_zenarmor_total, __name__)",
+              "query": "label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_zenarmor_metrics"
             }
           },
@@ -2909,7 +2941,7 @@
               "name": "${loki_datasource}"
             },
             "spec": {
-              "__legacyStringValue": "label_values({opnsense_source=\"zenarmor\"}, opnsense_source)"
+              "__legacyStringValue": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"}, opnsense_source)"
             }
           },
           "current": {
@@ -2972,7 +3004,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values({__name__=~\"instance:opnsense_.+\"}, __name__)",
+              "query": "label_values({__name__=~\"instance:opnsense_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_rules"
             }
           },
@@ -3004,7 +3036,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_gateway_loss:ratio, __name__)",
+              "query": "label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_gateway_loss"
             }
           },
@@ -3036,7 +3068,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_ipsec_tunnels_down:count, __name__)",
+              "query": "label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_ipsec"
             }
           },
@@ -3068,7 +3100,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_wireguard_peers_down:count, __name__)",
+              "query": "label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_wireguard"
             }
           },
@@ -3100,7 +3132,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_unbound_queries:rate5m, __name__)",
+              "query": "label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_unbound"
             }
           },
@@ -3132,7 +3164,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_zenarmor_block:ratio5m, __name__)",
+              "query": "label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_zenarmor"
             }
           },
@@ -3164,7 +3196,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m, __name__)",
+              "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_haproxy"
             }
           },
@@ -3196,7 +3228,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_ids_alerts:active, __name__)",
+              "query": "label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_ids"
             }
           },
@@ -3228,7 +3260,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(instance:opnsense_flow_bytes:rate5m, __name__)",
+              "query": "label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_recording_flow"
             }
           },
@@ -3260,7 +3292,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(go_goroutines{job=~\"opnsense.*\"}, __name__)",
+              "query": "query_result(go_goroutines{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
               "refId": "has_go_runtime"
             }
           },
@@ -3292,7 +3324,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_exporter_otlp_enabled, __name__)",
+              "query": "query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
               "refId": "has_otlp"
             }
           },
@@ -44290,7 +44322,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "{opnsense_source=\"syslog\"}",
+                        "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"}",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -44362,7 +44394,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (opnsense_subsystem) (rate({opnsense_source=\"syslog\"} [$__auto]))",
+                        "expr": "sum by (opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"} [$__auto]))",
                         "refId": "A",
                         "legendFormat": "{{opnsense_subsystem}}",
                         "queryType": "range",
@@ -73806,7 +73838,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "{opnsense_source=\"zenarmor\"}",
+                        "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"}",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -73878,7 +73910,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (opnsense_subsystem) (rate({opnsense_source=\"zenarmor\"} [$__auto]))",
+                        "expr": "sum by (opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"} [$__auto]))",
                         "refId": "A",
                         "legendFormat": "{{opnsense_subsystem}}",
                         "queryType": "range",
@@ -73968,7 +74000,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (opnsense_subsystem) (rate({opnsense_source=\"zenarmor\", opnsense_action=\"block\"} [$__auto]))",
+                        "expr": "sum by (opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} [$__auto]))",
                         "refId": "A",
                         "legendFormat": "{{opnsense_subsystem}}",
                         "queryType": "range",
@@ -74058,7 +74090,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (server_name) (count_over_time({opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | server_name!=\"\" [$__auto])))",
+                        "expr": "topk(20, sum by (server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | server_name!=\"\" [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74158,7 +74190,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (device_name) (sum_over_time({opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name!=\"\" | unwrap dst_nbytes [$__auto])))",
+                        "expr": "topk(20, sum by (device_name) (sum_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name!=\"\" | unwrap dst_nbytes [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74258,7 +74290,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (dst_geoip_country_name) (count_over_time({opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | dst_geoip_country_name!=\"\" [$__auto])))",
+                        "expr": "topk(20, sum by (dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | dst_geoip_country_name!=\"\" [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74358,7 +74390,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (ja3) (count_over_time({opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | ja3!=\"\" [$__auto])))",
+                        "expr": "topk(20, sum by (ja3) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | ja3!=\"\" [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -94449,7 +94481,7 @@
                                         {
                                           "kind": "ConditionalRenderingVariable",
                                           "spec": {
-                                            "variable": "has_netflow",
+                                            "variable": "has_flow_netflow",
                                             "operator": "matches",
                                             "value": ".+"
                                           }
@@ -94506,7 +94538,7 @@
                                         {
                                           "kind": "ConditionalRenderingVariable",
                                           "spec": {
-                                            "variable": "has_netflow",
+                                            "variable": "has_flow_netflow",
                                             "operator": "matches",
                                             "value": ".+"
                                           }

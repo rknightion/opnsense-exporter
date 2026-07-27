@@ -29,10 +29,8 @@ from builder import Builder, sel, epoch_ms, RATE, RUNSTOP, UPDOWN
 
 
 def build(b: Builder):
-    b.sentinel("has_nginx",
-               "label_values(opnsense_nginx_connections_active, __name__)")
-    b.sentinel("has_nginx_cache",
-               "label_values(opnsense_nginx_cache_zone_max_bytes, __name__)")
+    b.sentinel("has_nginx", metric="opnsense_nginx_connections_active")
+    b.sentinel("has_nginx_cache", metric="opnsense_nginx_cache_zone_max_bytes")
 
     # ------------------------------------------------------------------ #
     # Row 1: nginx Overview                                                #

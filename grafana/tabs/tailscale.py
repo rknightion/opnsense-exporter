@@ -10,10 +10,8 @@ from builder import Builder, sel, epoch_ms, RATE, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_tailscale",
-               "label_values(opnsense_tailscale_service_running, __name__)")
-    b.sentinel("has_tailscale_peers",
-               "label_values(opnsense_tailscale_peer_session_active, __name__)")
+    b.sentinel("has_tailscale", metric="opnsense_tailscale_service_running")
+    b.sentinel("has_tailscale_peers", metric="opnsense_tailscale_peer_session_active")
 
     svc = b.stat("Plugin Service", sel("opnsense_tailscale_service_running"),
                  unit="short", w=4, h=4, mappings=RUNSTOP)

@@ -25,10 +25,8 @@ from builder import Builder, sel, RATE, RUNSTOP
 
 
 def build(b: Builder):
-    b.sentinel("has_nut",
-               "label_values(opnsense_nut_ups_info, __name__)")
-    b.sentinel("has_apcupsd",
-               "label_values(opnsense_apcupsd_ups_info, __name__)")
+    b.sentinel("has_nut", metric="opnsense_nut_ups_info")
+    b.sentinel("has_apcupsd", metric="opnsense_apcupsd_ups_info")
 
     # ================================================================== #
     # NUT row                                                              #
