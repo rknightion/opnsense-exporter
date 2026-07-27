@@ -310,3 +310,60 @@ class AnnotationLedgerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnnotationPlacementTest(unittest.TestCase):
+    """Where each layer's toggle lives is a decision, not a default (#470).
+
+    Sixteen layers plus two dashboard links pushed the controls area to three rows on
+    every tab, which rendered validation caught and reasoning had not. Schema v2 has
+    `placement: "inControlsMenu"` for exactly this, and Grafana 13 / v2 is the only
+    supported target, so it is used unconditionally.
+
+    The toolbar is for the layers an operator toggles WHILE reading a graph. Everything
+    else — including every default-off layer — goes in the menu, and a new layer must
+    say which it is.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.specs = [a["spec"] for a in
+                     build_dashboard.build_all().manifest("t", "d", [])["spec"]["annotations"]]
+
+    def test_every_layer_declares_a_placement(self):
+        for entry in ann.ANNOTATIONS:
+            with self.subTest(name=entry.name):
+                self.assertIsInstance(entry.on_toolbar, bool)
+
+    def test_the_toolbar_set_is_small_and_is_the_declared_one(self):
+        toolbar = {s["name"] for s in self.specs if "placement" not in s}
+        self.assertEqual(toolbar, ann.TOOLBAR_LAYERS)
+        self.assertLessEqual(
+            len(toolbar), 4,
+            "the toolbar set is growing again; a layer belongs there only if an "
+            "operator toggles it while reading a graph")
+
+    def test_everything_else_is_in_the_controls_menu(self):
+        for spec in self.specs:
+            if spec["name"] in ann.TOOLBAR_LAYERS:
+                continue
+            with self.subTest(name=spec["name"]):
+                self.assertEqual(spec["placement"], "inControlsMenu")
+
+    def test_no_default_off_layer_sits_on_the_toolbar(self):
+        """A layer nobody has enabled is the last thing worth toolbar space."""
+        for entry in ann.ANNOTATIONS:
+            if not entry.enable:
+                with self.subTest(name=entry.name):
+                    self.assertFalse(entry.on_toolbar)
+
+    def test_toolbar_layers_are_the_discontinuity_explainers(self):
+        """Named rather than counted: these three are why the feature exists — a
+        rate panel stepping because the box rebooted, because the config changed, or
+        because one interface's counters reset."""
+        self.assertEqual(
+            ann.TOOLBAR_LAYERS,
+            {"Reboot", "Config change", "Interface counter reset"})
+        for entry in ann.ANNOTATIONS:
+            if entry.on_toolbar:
+                self.assertTrue(entry.enable, f"{entry.name} is on the toolbar but off")

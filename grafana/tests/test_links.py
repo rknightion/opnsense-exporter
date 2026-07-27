@@ -259,6 +259,14 @@ class LinkRegistryTest(unittest.TestCase):
                           "family to be navigable")
         self.assertEqual(REQUIRED_FAMILIES, set(REQUIRED_DRILLDOWN_PANELS.values()))
 
+    def test_dashboard_links_live_in_the_controls_menu(self):
+        """#470: the controls area was three rows deep before any data. These links are
+        read once, not toggled while reading a graph, so they belong in the menu."""
+        dash = [l for w, _, l in self.links if w == "dashboard"]
+        for link in dash:
+            self.assertEqual(link.get("placement"), uids.CONTROLS_MENU,
+                             f"dashboard link {link['title']!r} takes a toolbar slot")
+
     def test_dashboard_level_links_are_present_and_titled(self):
         dash = [l for w, _, l in self.links if w == "dashboard"]
         self.assertTrue(dash, "the dashboard has no dashboard-level links")

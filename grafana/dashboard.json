@@ -45,7 +45,8 @@
         "asDropdown": false,
         "targetBlank": true,
         "includeVars": false,
-        "keepTime": false
+        "keepTime": false,
+        "placement": "inControlsMenu"
       },
       {
         "title": "Alert runbooks",
@@ -57,7 +58,8 @@
         "asDropdown": false,
         "targetBlank": true,
         "includeVars": false,
-        "keepTime": false
+        "keepTime": false,
+        "placement": "inControlsMenu"
       }
     ],
     "annotations": [
@@ -144,6 +146,7 @@
           "hide": false,
           "iconColor": "purple",
           "name": "Boot environment created",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "opnsense_snapshots_active_created_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "Boot environment created (upgrade)",
@@ -169,6 +172,7 @@
           "hide": false,
           "iconColor": "green",
           "name": "Certificate renewed",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "opnsense_acme_certificate_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "ACME certificate issued or renewed",
@@ -194,6 +198,7 @@
           "hide": false,
           "iconColor": "dark-blue",
           "name": "GeoIP database updated",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "opnsense_firewall_geoip_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "GeoIP database updated",
@@ -219,6 +224,7 @@
           "hide": false,
           "iconColor": "dark-green",
           "name": "nginx config reloaded",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "opnsense_nginx_config_load_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "nginx configuration reloaded",
@@ -244,6 +250,7 @@
           "hide": false,
           "iconColor": "yellow",
           "name": "Public IP updated",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "opnsense_dyndns_account_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"} * 1000 > $__from < $__to",
             "titleFormat": "DynDNS updated the public address",
@@ -269,6 +276,7 @@
           "hide": false,
           "iconColor": "dark-orange",
           "name": "IDS ruleset updated",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "max by (opnsense_instance) (opnsense_ids_ruleset_last_updated_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000 > $__from < $__to",
             "titleFormat": "IDS ruleset updated",
@@ -294,6 +302,7 @@
           "hide": false,
           "iconColor": "orange",
           "name": "Threat feed updated",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "max by (opnsense_instance) (opnsense_qfeeds_feed_last_update_timestamp_seconds{opnsense_instance=~\"$opnsense_instance\"}) * 1000 > $__from < $__to",
             "titleFormat": "Q-Feeds threat feed updated",
@@ -319,6 +328,7 @@
           "hide": false,
           "iconColor": "blue",
           "name": "Config change detail",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_subsystem=\"audit\"} | event=\"config_change\"",
             "titleFormat": "Configuration changed (audit)",
@@ -343,6 +353,7 @@
           "hide": false,
           "iconColor": "red",
           "name": "Gateway alarm",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_subsystem=\"gateways\"} | gateway_event=~\"alarm_started|alarm_cleared\"",
             "titleFormat": "Gateway alarm",
@@ -367,6 +378,7 @@
           "hide": false,
           "iconColor": "dark-red",
           "name": "CARP transition",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_subsystem=\"kernel\"} | carp_event=~\"state_changed|demoted|promoted\"",
             "titleFormat": "CARP state change",
@@ -391,6 +403,7 @@
           "hide": false,
           "iconColor": "light-purple",
           "name": "Tunnel lifecycle",
+          "placement": "inControlsMenu",
           "legacyOptions": {
             "expr": "{service_instance_id=~\"$opnsense_instance\",opnsense_subsystem=~\"vpn|ipsec\"} | vpn_event=~\"established|terminated\"",
             "titleFormat": "VPN tunnel established or terminated",
@@ -415,6 +428,7 @@
           "hide": false,
           "iconColor": "rgba(255, 145, 0, 1)",
           "name": "Exporter-pushed events",
+          "placement": "inControlsMenu",
           "query": {
             "datasource": {
               "name": "-- Grafana --"
@@ -441,6 +455,7 @@
           "hide": false,
           "iconColor": "rgba(255, 145, 0, 1)",
           "name": "External change events",
+          "placement": "inControlsMenu",
           "query": {
             "datasource": {
               "name": "-- Grafana --"

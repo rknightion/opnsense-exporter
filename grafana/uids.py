@@ -126,6 +126,11 @@ REPO_BASE = "https://github.com/rknightion/opnsense-exporter"
 RUNBOOK_URL = f"{REPO_BASE}/blob/main/grafana/README.md#alerts"
 EXTERNAL_LINK_BASES = (DOCS_BASE, REPO_BASE)
 
+# Schema v2's placement for a control that belongs in the dropdown rather than on the
+# always-visible toolbar (#470). v2-only, which is fine: Grafana 13 is the only
+# supported target.
+CONTROLS_MENU = "inControlsMenu"
+
 URL_TIME_RANGE = "${__url_time_range}"
 INSTANCE_PARAM = "${opnsense_instance:queryparam}"
 DS_PARAM = "${datasource:queryparam}"
@@ -208,7 +213,12 @@ def external_link(title: str, url: str, *, tooltip: str = "") -> dict:
             "must not embed a third-party or stack-specific address")
     return {"title": title, "type": "link", "url": url, "icon": "external link",
             "tooltip": tooltip, "tags": [], "asDropdown": False, "targetBlank": True,
-            "includeVars": False, "keepTime": False}
+            "includeVars": False, "keepTime": False,
+            # Dashboard links share the controls area with 16 annotation toggles, which
+            # rendered as three rows of chrome above the tab bar (#470). Documentation
+            # and runbooks are read once, not toggled while reading a graph, so they
+            # belong in the v2 controls menu.
+            "placement": CONTROLS_MENU}
 
 
 def dashboard_link(title: str, *, uid: str = MAIN_UID,
@@ -221,7 +231,7 @@ def dashboard_link(title: str, *, uid: str = MAIN_UID,
     return {"title": title, "type": "link",
             "url": dash_url(uid=uid, tab=tab), "icon": "dashboard",
             "tooltip": tooltip, "tags": [], "asDropdown": False, "targetBlank": False,
-            "includeVars": False, "keepTime": False}
+            "includeVars": False, "keepTime": False, "placement": CONTROLS_MENU}
 
 
 # ---- ready-made drilldowns ------------------------------------------------

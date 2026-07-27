@@ -68,6 +68,10 @@ class Annotation:
     text: str = ""
     value_as_time: bool = False
     metrics: tuple = field(default=())
+    # Where this layer's toggle renders (#470). False puts it in the v2 controls
+    # menu; True spends a slot on the always-visible toolbar, which sixteen layers
+    # cannot all have — see TOOLBAR_LAYERS.
+    on_toolbar: bool = False
 
 
 # Observation-time Prometheus annotations — an entry here says "the marker is
@@ -79,6 +83,21 @@ OBSERVATION_TIME_ANNOTATIONS: dict = {}
 
 def observation_time_is_deliberate(name: str) -> bool:
     return name in OBSERVATION_TIME_ANNOTATIONS
+
+
+# ---- toolbar vs controls menu (#470) -------------------------------------
+# Sixteen annotation toggles plus two dashboard links pushed the controls area to
+# THREE rows above the tab bar, on every tab, before any data — caught by rendering
+# the published dashboard, not by reading the manifest. Schema v2 has
+# `placement: "inControlsMenu"` for this, and Grafana 13 / v2 is the only supported
+# target, so it is used unconditionally.
+#
+# The toolbar is for layers an operator toggles WHILE reading a graph, and these
+# three are the reason the feature exists: a rate panel steps because the box
+# rebooted, because the configuration changed, or because one interface's counters
+# reset. Everything else is context you want on by default and rarely switch, or is
+# default-off — and a layer nobody has enabled is the last thing worth a toolbar slot.
+TOOLBAR_LAYERS = {"Reboot", "Config change", "Interface counter reset"}
 
 
 # ---- the catalogue -------------------------------------------------------
@@ -95,6 +114,7 @@ ANNOTATIONS: list = [
     Annotation(
         name="Reboot",
         group="prometheus",
+        on_toolbar=True,
         title="Firewall rebooted",
         expr=f'{sel("opnsense_system_boot_timestamp_seconds")} * 1000 > $__from < $__to',
         value_as_time=True,
@@ -108,6 +128,7 @@ ANNOTATIONS: list = [
     Annotation(
         name="Config change",
         group="prometheus",
+        on_toolbar=True,
         title="Configuration changed",
         expr=f'{sel("opnsense_system_config_last_change")} * 1000 > $__from < $__to',
         value_as_time=True,
@@ -122,6 +143,7 @@ ANNOTATIONS: list = [
     Annotation(
         name="Interface counter reset",
         group="prometheus",
+        on_toolbar=True,
         title="Interface attached or counters reset",
         expr=f"{_IFACE_RESET} * 1000 > $__from < $__to",
         value_as_time=True,
@@ -401,6 +423,8 @@ def render(entry: Annotation) -> dict:
         "iconColor": entry.color,
         "name": entry.name,
     }
+    if not entry.on_toolbar:
+        spec["placement"] = "inControlsMenu"
     if entry.group == "grafana":
         spec["query"] = {
             "datasource": {"name": "-- Grafana --"},
