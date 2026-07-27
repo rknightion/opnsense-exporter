@@ -27,6 +27,10 @@ METRICS_MD = os.path.join(REPO, "docs", "metrics", "metrics.md")
 # The exporter's own self-metrics, source-scanned rather than registry-walked (#428).
 SELF_METRICS_MD = os.path.join(REPO, "docs", "metrics", "self-metrics.md")
 OUT = os.path.join(HERE, "dashboard.json")
+# The self-observability companion (#431). A second file rather than a second layout
+# inside the first: it has its own uid, its own tags and its own audience, and Grafana
+# resolves a dashboard link by uid.
+HEALTH_OUT = os.path.join(HERE, "dashboard-health.json")
 STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
 # The feature-sentinel documentation contract (#417): a machine-readable manifest
 # plus the generated section of tabs/AUTHORING.md, both derived from the same
@@ -69,6 +73,12 @@ CRASH_STATUS = {"0": ("Reports present", "red"), "1": ("Clear", "green")}
 # Leaf modules keep their local `b.tab(...)` contract. Once every leaf exists,
 # the orchestrator moves each one into exactly one compact top-level domain.
 TAB_GROUPS = [
+    # A `None` domain title means "these leaves sit at the top level, ungrouped".
+    # Overview has always been top-level; expressing it as an entry here rather than
+    # as a special case inside organize_tabs is what lets the health dashboard —
+    # three tabs, no useful domain layer — reuse the same function and the same
+    # strict leaf-assignment check (#431 step 3).
+    (None, ("Overview",)),
     ("System", (
         "System & Resources", "Services, Cron & DynDNS", "Certificates", "UPS",
         "Monit", "HA Sync", "CARP / HA",
@@ -85,8 +95,23 @@ TAB_GROUPS = [
     ("VPN & remote access", ("VPN", "Tailscale", "NetBird", "Tor")),
     ("Services", ("Syslog", "HAProxy", "Relayd", "Nginx", "Siproxd")),
     ("Observability", (
-        "Log-derived Events", "Flow Volume", "Log Shipping", "Recording rules", "Diagnostics",
+        "Log-derived Events", "Flow Volume", "Recording rules",
     )),
+]
+
+# The self-observability dashboard (#431). Deliberately flat: three tabs do not
+# need a domain layer, and burying "Diagnostics" one click deeper on the dashboard
+# an operator opens *because something is already wrong* would be a regression.
+#
+# "Recording rules" is NOT here, and that is a per-rule finding rather than a
+# per-tab preference. The owner's rule is that a recording rule relating to
+# self-observability may move while the rest stay on the main dashboard; all 14
+# bundled rules derive from firewall metrics (`opnsense_*`), none from exporter
+# self-metrics (`opnsense_exporter_*`), so the sort produces an empty set today.
+# `tests/test_recording_rules.py` enforces the rule going forward rather than
+# leaving it as a comment.
+HEALTH_TAB_GROUPS = [
+    (None, ("Diagnostics", "Log Shipping")),
 ]
 
 # A tab containing only conditional rows is still rendered by Grafana unless the
@@ -236,17 +261,35 @@ def add_core_variables(b: Builder):
         "allowCustomValue": True, "skipUrlSync": False}})
 
 
-def add_navigation(b: Builder):
+# The other dashboard in the family, and the wording of the link to it. Keyed by the
+# dashboard doing the linking, so each one advertises its counterpart exactly once and
+# neither can link to itself (#431).
+SIBLING_LINK = {
+    uids.MAIN_UID: (uids.HEALTH_UID, "Exporter health",
+                    "Is the exporter feeding this dashboard healthy? Scrape and poll "
+                    "health, OTLP delivery, log shipping"),
+    uids.HEALTH_UID: (uids.MAIN_UID, "Firewall dashboard",
+                      "Back to the OPNsense operational dashboard, same instance and "
+                      "time range"),
+}
+
+
+def add_navigation(b: Builder, *, self_uid: str = uids.MAIN_UID):
     """Dashboard-level links, from the frozen registry in uids.py (#419).
 
-    Deliberately only the two destinations that EXIST. The self-observability
-    dashboard's UID is frozen (`uids.HEALTH_UID`) but reserved until #431 generates
-    it, and `uids.dash_url()` refuses a reserved destination — so the main-to-self
-    link is added by flipping one `exists` flag in that commit, not by remembering to
-    come back here. Emitting it now would ship a link that 404s, which is the failure
-    #419's own acceptance criteria call broken navigation.
+    `self_uid` picks the sibling link: each dashboard in the family links to the
+    other, and both keep the documentation and runbook links. Passing the dashboard's
+    own uid rather than the destination's means a spec cannot accidentally be given a
+    link to itself.
+
+    #419 reserved `uids.HEALTH_UID` with `exists=False` and `uids.dash_url()` refuses
+    a reserved destination, so this call only started working when #431 generated the
+    health dashboard and flipped that flag — a link that 404s could not have shipped
+    in between.
     """
+    sibling_uid, sibling_title, sibling_tip = SIBLING_LINK[self_uid]
     b.dashboard_links([
+        uids.dashboard_link(sibling_title, uid=sibling_uid, tooltip=sibling_tip),
         uids.external_link(
             "Documentation", uids.DOCS_BASE,
             tooltip="Metric reference, collector reference and configuration"),
@@ -354,7 +397,55 @@ def build_overview(b: Builder):
         b.row("Health", [up, fw, crash, reboot, syscode, pkgs, uptime, svc]),
         b.row("Resource pressure", [mem, pf, load, disk, temp, cpu]),
         b.row("Connectivity & History", [gw_status, wan_rtt, health_hist]),
+        b.row("Exporter Health", exporter_health_summary(b)),
     ])
+
+
+def exporter_health_summary(b: Builder) -> list:
+    """Three tiles answering "can I trust the rest of this dashboard?" (#431).
+
+    The self-observability detail moved to its own dashboard, which creates a new
+    way to be wrong: an operator reading a flat graph has no reason to suspect the
+    exporter stopped collecting rather than the firewall going quiet. These stay
+    behind as the tripwire, and every one of them links through to the detail.
+
+    Deliberately three tiles and no graphs. Anything that needs a time axis to read
+    belongs on the health dashboard; duplicating panels here would give two places
+    to fix a description and one of them would rot.
+    """
+    detail = [uids.data_link("Open the exporter health dashboard",
+                             uid=uids.HEALTH_UID, tab=("Diagnostics", ""))]
+    failing = b.stat(
+        "Failing Collectors",
+        f'sum {grp()} ({sel("opnsense_exporter_scrape_collector_success")} == bool 0)',
+        w=4, h=5, graph="none", color_mode="background",
+        legend="{{opnsense_instance}}",
+        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+        desc="Sub-collectors whose most recent scheduled poll failed. Anything above "
+             "zero means part of this dashboard is showing retained data rather than "
+             "current data — which tab is affected is on the health dashboard.")
+    stalest = b.stat(
+        "Stalest Collector Data",
+        f'max {grp()} (time() - {sel("opnsense_exporter_collector_last_success_timestamp_seconds")})',
+        unit="s", w=4, h=5, graph="none", color_mode="background",
+        legend="{{opnsense_instance}}",
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 900},
+                    {"color": "red", "value": 3600}],
+        desc="Age of the oldest fully-clean collector poll. Compare against the poll "
+             "tiers before alarming: the cold tier legitimately sits at 15 minutes, so "
+             "a value under an hour is normal on a healthy exporter.")
+    api_errs = b.stat(
+        "OPNsense API Error Rate",
+        f'sum {grp()} (rate({sel("opnsense_exporter_endpoint_errors_total")}[{RATE}]))',
+        unit="errps", w=4, h=5, graph="none", color_mode="background",
+        legend="{{opnsense_instance}}",
+        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 0.01}],
+        desc="Errors per second calling the firewall's API. A plugin-gated endpoint "
+             "returning 404 is not counted, so anything here is a real failure — auth, "
+             "TLS, timeout or a 5xx.")
+    for name in (failing, stalest, api_errs):
+        b.panel_links(name, detail)
+    return [failing, stalest, api_errs]
 
 
 def build_diagnostics(b: Builder):
@@ -801,20 +892,58 @@ def leaf_tab_titles(b: Builder) -> list[str]:
 
 # ---- registry ------------------------------------------------------------
 def build_all(tab_groups=TAB_GROUPS) -> Builder:
-    """Build this dashboard's Builder. `tab_groups` is threaded through to
-    `organize_tabs` rather than read from the module global, so this same function
-    can serve as the `build_fn` for any `DashboardSpec` in `DASHBOARDS` (#431) —
-    defaults to `TAB_GROUPS` for today's single spec and any pre-existing caller."""
+    """Build the MAIN (firewall-operational) dashboard's Builder. `tab_groups` is
+    threaded through to `organize_tabs` rather than read from the module global, so
+    this same function can serve as the `build_fn` for any `DashboardSpec` in
+    `DASHBOARDS` (#431) — defaults to `TAB_GROUPS` for its own spec and for any
+    pre-existing caller."""
     b = Builder()
     add_core_variables(b)
-    add_navigation(b)            # dashboard-level links (#419)
+    add_navigation(b, self_uid=uids.MAIN_UID)   # dashboard-level links (#419)
     add_annotations(b)           # shared event timeline (#421)
     # Leaf order is local to each domain after organize_tabs().
     build_overview(b)
-    register_subsystem_tabs(b)   # provided by tabs/ modules
+    register_subsystem_tabs(b, MAIN_TAB_MODULES)   # provided by tabs/ modules
+    organize_tabs(b, tab_groups)
+    return b
+
+
+def build_health(tab_groups=HEALTH_TAB_GROUPS) -> Builder:
+    """Build the SELF-OBSERVABILITY dashboard's Builder (#431).
+
+    This is the exporter watching itself: scrape health, per-collector poll
+    schedule and freshness, OTLP delivery, the API response cache, the Go runtime
+    and the log-shipping pipeline. Deliberately NOT firewall domain health — the
+    epic's own scope line — which is why the Recording Rules tab stays on the main
+    dashboard even though it is "derived" data.
+
+    It carries the same core variables and annotation layers as the main dashboard
+    on purpose: the question an operator asks here is almost always "was the
+    exporter unwell *when that firewall event happened*", and answering it needs
+    the same instance picker and the same event timeline.
+
+    There is deliberately no separate Overview tab. Diagnostics already opens on
+    scrape health, and a summary tab in front of it would be a second place to
+    state the same three facts — the summary that IS wanted lives on the main
+    dashboard, where the reader has no other way to learn them.
+    """
+    b = Builder()
+    add_core_variables(b)
+    add_navigation(b, self_uid=uids.HEALTH_UID)
+    add_annotations(b)
+    register_subsystem_tabs(b, HEALTH_TAB_MODULES)
     build_diagnostics(b)
     organize_tabs(b, tab_groups)
     return b
+
+
+def build_family() -> list:
+    """Build every dashboard in the family, as `(spec, builder)` pairs in spec order.
+
+    The primary dashboard is first: `dashboard-stats.json` and the docgen prose
+    counts that read it describe the main dashboard specifically.
+    """
+    return [(spec, spec.build()) for spec in DASHBOARDS]
 
 
 def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
@@ -836,7 +965,7 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
             raise ValueError(f"duplicate dashboard leaf tab: {title}")
         leaves[title] = tab
 
-    expected = {"Overview"}
+    expected = set()
     for _, titles in tab_groups:
         expected.update(titles)
     actual = set(leaves)
@@ -845,12 +974,19 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
         unassigned = sorted(actual - expected)
         raise ValueError(f"dashboard leaf assignment mismatch: missing={missing}, unassigned={unassigned}")
 
+    # Restricted to leaves this dashboard actually has. OPTIONAL_TAB_PRESENCE is a
+    # family-wide registry (one entry per optional feature, wherever it lives), so
+    # indexing it unconditionally would KeyError on whichever dashboard does not
+    # own that tab.
     for title, present in OPTIONAL_TAB_PRESENCE.items():
-        leaves[title]["spec"]["conditionalRendering"] = b._cond(present=present)
+        if title in leaves:
+            leaves[title]["spec"]["conditionalRendering"] = b._cond(present=present)
 
-    overview = leaves.pop("Overview")
-    b.tabs = [overview]
+    b.tabs = []
     for group_title, leaf_titles in tab_groups:
+        if group_title is None:
+            b.tabs.extend(leaves.pop(title) for title in leaf_titles)
+            continue
         # A parent containing only optional features must disappear with its
         # children. Otherwise Grafana leaves an empty top-level domain visible.
         # Domains with at least one core leaf stay unconditional.
@@ -870,18 +1006,25 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
         raise ValueError(f"unassigned dashboard leaf tabs: {sorted(leaves)}")
 
 
-def register_subsystem_tabs(b: Builder):
-    """Import every tab module and call its build(b). Tab modules live in tabs/ and
-    are listed here in display order. Missing modules are skipped (lets the dashboard
+# Tab modules in display order, split by which dashboard owns them (#431). A module
+# appears in exactly one list: building it onto both dashboards would produce two
+# copies of the same tab that drift independently.
+MAIN_TAB_MODULES = [
+    "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound", "dhcp",
+    "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
+    "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
+    "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
+    "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events",
+    "flow", "zenarmor", "recording_rules",
+]
+HEALTH_TAB_MODULES = ["logs"]
+
+
+def register_subsystem_tabs(b: Builder, order=None):
+    """Import each listed tab module and call its build(b). Tab modules live in tabs/
+    and are listed in display order. Missing modules are skipped (lets the dashboard
     build incrementally during development)."""
-    order = [
-        "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound", "dhcp",
-        "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
-        "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
-        "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
-        "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events",
-        "flow", "zenarmor", "logs", "recording_rules",
-    ]
+    order = MAIN_TAB_MODULES if order is None else order
     import importlib
     for mod in order:
         try:
@@ -920,29 +1063,45 @@ class DashboardSpec:
         return self.build_fn(self.tab_groups)
 
 
-# The dashboard family. Exactly one spec today — describing the dashboard this file
-# has always produced — so `OUT`/`TAB_GROUPS`/the `DASH_NAME` env var (previously
-# module-level literals `main()` read directly) become this spec's fields instead.
-# #431 step 3 adds a second entry once content actually moves; step 2 (this one) is
-# the seam, proven by `dashboard.json` etc. coming out byte-identical.
+# The dashboard family. The MAIN spec must stay first: `dashboard-stats.json` and the
+# docgen prose counts that read it describe the operational dashboard specifically.
+#
+# `DASH_NAME` overrides the main uid only. It exists so a fork can publish under its
+# own uid; the health dashboard derives its uid from the registry either way, because
+# `uids.dash_url()` resolves cross-links through `DESTINATIONS` and an unregistered
+# uid would fail the build rather than silently emitting a link that 404s.
 DASHBOARDS = [
     DashboardSpec(
-        uid=os.environ.get("DASH_NAME", "opnsense-exporter"),
+        uid=os.environ.get("DASH_NAME", uids.MAIN_UID),
         title="OPNsense Exporter",
         description="Comprehensive single-pane OPNsense firewall dashboard. Tabs and "
-                    "rows auto-hide when their metrics are absent. Built from "
-                    "grafana/build_dashboard.py.",
+                    "rows auto-hide when their metrics are absent. Exporter "
+                    "self-observability lives on the companion OPNsense Exporter "
+                    "Health dashboard. Built from grafana/build_dashboard.py.",
         tags=["opnsense", "firewall", "network", "exporter"],
         out_path=OUT,
         tab_groups=TAB_GROUPS,
         build_fn=build_all,
+    ),
+    DashboardSpec(
+        uid=uids.HEALTH_UID,
+        title="OPNsense Exporter Health",
+        description="Self-observability for the OPNsense exporter itself: scrape and "
+                    "poll health, per-collector freshness, OPNsense API errors and "
+                    "response cache, OTLP delivery and the log-shipping pipeline. "
+                    "Firewall data lives on the OPNsense Exporter dashboard. Built "
+                    "from grafana/build_dashboard.py.",
+        tags=["opnsense", "exporter", "self-observability"],
+        out_path=HEALTH_OUT,
+        tab_groups=HEALTH_TAB_GROUPS,
+        build_fn=build_health,
     ),
 ]
 
 
 def main():
     check_only = "--check" in sys.argv
-    built = [(spec, spec.build()) for spec in DASHBOARDS]
+    built = build_family()
     builders = [b for _, b in built]
 
     missing = coverage(*builders)
@@ -1015,27 +1174,45 @@ def main():
                 f.write("\n")
             print(f"wrote {spec.out_path}", file=sys.stderr)
 
-        # Stats + the sentinel-contract/AUTHORING.md doc contract are keyed off the
-        # PRIMARY dashboard (the first spec) rather than per-spec — there is exactly
-        # one spec today, so this is the pre-existing single-dashboard behaviour
-        # unchanged. Extending either to the whole family is a #431 step-3 decision,
-        # not this step's.
+        # Both artifacts describe the FAMILY, not the primary dashboard (#431 step 3).
+        #
+        # `dashboard-stats.json` feeds prose in the README and docs site — "all N
+        # metrics across M tabs". `metrics` was already family-wide (it is the
+        # catalogue the union coverage gate ran against), so leaving `tabs` primary-
+        # scoped would have paired a family number with a single-dashboard one in the
+        # same sentence and made it quietly false. `top_level_tabs` stays primary: the
+        # domain layer is a property of the operational dashboard's information
+        # architecture and the companion deliberately has no domain layer at all. The
+        # per-dashboard breakdown is carried alongside for anything that needs it.
+        #
+        # The sentinel contract is family-wide for a different reason: it documents
+        # the rules a TAB MODULE author must follow, and tab modules now build onto
+        # either dashboard, so scoping it to the primary would drop the health
+        # dashboard's sentinels from the contract that is supposed to govern them.
         _, primary_b = built[0]
-        primary_leaf_names = leaf_tab_titles(primary_b)
+        leaf_names = [t for _, b in built for t in leaf_tab_titles(b)]
         top_level_tab_names = [t["spec"]["title"] for t in primary_b.tabs]
         with open(STATS_PATH, "w") as f:
-            json.dump({"metrics": total, "panels": len(primary_b.elements),
-                       "tabs": len(primary_leaf_names),
-                       "tab_names": primary_leaf_names,
+            json.dump({"metrics": total,
+                       "panels": sum(len(b.elements) for _, b in built),
+                       "tabs": len(leaf_names),
+                       "tab_names": leaf_names,
                        "top_level_tabs": len(primary_b.tabs),
-                       "top_level_tab_names": top_level_tab_names}, f, indent=2)
+                       "top_level_tab_names": top_level_tab_names,
+                       "dashboards": [
+                           {"uid": spec.uid, "title": spec.title,
+                            "panels": len(b.elements),
+                            "tabs": len(leaf_tab_titles(b)),
+                            "tab_names": leaf_tab_titles(b)}
+                           for spec, b in built]}, f, indent=2)
             f.write("\n")
         print(f"wrote {STATS_PATH}", file=sys.stderr)
 
         # Feature-sentinel documentation contract (#417): regenerate both the
         # machine-readable manifest and the generated section of AUTHORING.md from
-        # THIS SAME (primary) Builder, so the two can never independently drift.
-        contract = sentinel_contract.build_contract(primary_b)
+        # THESE SAME Builders, so the two can never independently drift.
+        contract = sentinel_contract.build_contract(
+            [(spec.title, b) for spec, b in built])
         with open(SENTINEL_CONTRACT_PATH, "w") as f:
             f.write(sentinel_contract.contract_json(contract))
         print(f"wrote {SENTINEL_CONTRACT_PATH}", file=sys.stderr)

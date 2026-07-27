@@ -123,3 +123,67 @@ class RecordingRulesTabTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+SELF_METRIC = re.compile(r"\bopnsense_exporter_[a-z0-9_]+")
+FIREWALL_METRIC = re.compile(r"\bopnsense_(?!exporter_)[a-z0-9_]+")
+
+
+def is_self_observability(rule) -> bool:
+    """A recording rule belongs to the exporter's own health iff it derives ONLY
+    from exporter self-metrics.
+
+    This is the owner's rule for the #431 split, stated as code rather than as a
+    comment: "if a recording rule relates to self-observability it can move,
+    otherwise it stays on the main dashboard — they generate data used for
+    monitoring OPNsense, so that's where they live". A rule mixing both is
+    firewall data derived with an exporter metric alongside it, and stays.
+    """
+    expr = rule["expr"]
+    return bool(SELF_METRIC.search(expr)) and not FIREWALL_METRIC.search(expr)
+
+
+class RecordingRuleDashboardSortTest(unittest.TestCase):
+    """#431: recording rules are sorted PER RULE, not relocated as a tab.
+
+    All 14 bundled rules derive from firewall metrics today, so the self-observability
+    set is empty and the Recording rules tab stays whole on the main dashboard. That
+    makes this test the thing that stops the finding from silently expiring: add a
+    recording rule over `opnsense_exporter_*` and chart it on the main dashboard, and
+    this fails and names it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import build_dashboard
+        cls.by_uid = {spec.uid: b for spec, b in build_dashboard.build_family()}
+        cls.uids = __import__("uids")
+
+    def _dashboards_charting(self, metric):
+        return {uid for uid, b in self.by_uid.items()
+                if any(metric in expr for expr in b._exprs)}
+
+    def test_every_recording_rule_is_charted_on_the_dashboard_its_subject_belongs_to(self):
+        for rule in RECORDING:
+            metric, expected = rule["metric"], (
+                self.uids.HEALTH_UID if is_self_observability(rule) else self.uids.MAIN_UID)
+            with self.subTest(metric=metric):
+                charted = self._dashboards_charting(metric)
+                self.assertIn(expected, charted,
+                              f"{metric} derives from "
+                              f"{'exporter self-metrics' if expected == self.uids.HEALTH_UID else 'firewall metrics'}"
+                              f", so it belongs on {expected}, but is only charted on "
+                              f"{sorted(charted) or 'no dashboard'}")
+
+    def test_the_classifier_actually_discriminates(self):
+        """The control. Every real rule is firewall-derived, so without this the
+        test above would pass on a classifier that always returned False."""
+        self.assertFalse(any(is_self_observability(r) for r in RECORDING),
+                         "a self-observability recording rule now exists; the test "
+                         "above is live for it and this control needs updating")
+        self.assertTrue(is_self_observability(
+            {"metric": "x", "expr": "rate(opnsense_exporter_logs_shipped_total[5m])"}))
+        self.assertFalse(is_self_observability(
+            {"metric": "x", "expr": "opnsense_system_memory_used_bytes"}))
+        self.assertFalse(is_self_observability(
+            {"metric": "x", "expr": "opnsense_up / opnsense_exporter_scrapes_total"}))

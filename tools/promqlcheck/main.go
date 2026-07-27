@@ -337,36 +337,73 @@ func validateDashboard(data []byte) (int, int, int, error) {
 // as before against a dashboard alone, and gains rule-expression coverage only when
 // grafana/alerts/grafana-managed/*.json is passed too - the shell expands that glob
 // into the argument list, so this program never needs to know the directory itself.
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: promqlcheck <dashboard.json> [rule-manifest.json ...]")
-		os.Exit(2)
+// manifestKind reads the top-level `kind` of any manifest this tool accepts, so an
+// argument is routed by what it IS rather than by where it sits on the command line.
+// Positional routing broke the moment #431 made the dashboard family plural: the
+// second dashboard reached validateRuleManifest and was rejected as an unrecognized
+// rule kind, which is a confusing way to report "you passed two dashboards".
+func manifestKind(data []byte) (string, error) {
+	var head struct {
+		Kind string `json:"kind"`
 	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return "", fmt.Errorf("decode manifest JSON: %w", err)
+	}
+	return head.Kind, nil
+}
 
-	data, err := os.ReadFile(os.Args[1])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "read dashboard: %v\n", err)
-		os.Exit(1)
-	}
-	targets, variables, annotations, err := validateDashboard(data)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	ruleExpressions := 0
-	var diagnostics validationErrors
-	for _, path := range os.Args[2:] {
-		ruleData, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "read rule manifest %s: %v\n", path, err)
-			os.Exit(1)
+// validatePaths validates every path, routing each by its manifest kind. Returns the
+// four counts the summary line reports, plus any diagnostics. A read error is fatal
+// and returned as an error rather than a diagnostic: it means the caller's arguments
+// are wrong, not that the content is.
+func validatePaths(paths []string) (targets, variables, annotations, ruleExpressions int,
+	diagnostics validationErrors, err error) {
+	dashboards := 0
+	for _, path := range paths {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return 0, 0, 0, 0, nil, fmt.Errorf("read %s: %w", path, readErr)
 		}
-		count, errs := validateRuleManifest(ruleData)
+		kind, kindErr := manifestKind(data)
+		if kindErr != nil {
+			return 0, 0, 0, 0, nil, fmt.Errorf("%s: %w", path, kindErr)
+		}
+		if kind == "Dashboard" {
+			dashboards++
+			t, v, a, dashErr := validateDashboard(data)
+			if dashErr != nil {
+				diagnostics = append(diagnostics, fmt.Sprintf("%s: %s", path, dashErr))
+				continue
+			}
+			targets += t
+			variables += v
+			annotations += a
+			continue
+		}
+		count, errs := validateRuleManifest(data)
 		ruleExpressions += count
 		for _, e := range errs {
 			diagnostics = append(diagnostics, fmt.Sprintf("%s: %s", path, e))
 		}
+	}
+	if dashboards == 0 {
+		return 0, 0, 0, 0, nil, fmt.Errorf(
+			"no dashboard manifest among %d argument(s); this tool exists to check the "+
+				"dashboard family and passing only rule manifests silently skips it", len(paths))
+	}
+	return targets, variables, annotations, ruleExpressions, diagnostics, nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: promqlcheck <dashboard.json ...> [rule-manifest.json ...]")
+		os.Exit(2)
+	}
+
+	targets, variables, annotations, ruleExpressions, diagnostics, err := validatePaths(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	if len(diagnostics) > 0 {
 		fmt.Fprintln(os.Stderr, diagnostics.Error())

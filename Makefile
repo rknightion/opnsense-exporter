@@ -152,7 +152,8 @@ rules:
 
 # CI gate for the generated grafana/ artifacts (#84): coverage gate + regeneration
 # staleness + manifest validity. Fails if any catalogue metric is off the dashboard,
-# if dashboard.json / dashboard-stats.json / sentinel-contract.json / AUTHORING.md's
+# if dashboard.json / dashboard-health.json / dashboard-stats.json /
+# sentinel-contract.json / AUTHORING.md's
 # generated section / the grafana-managed manifests are stale relative to their
 # builders, or if a manifest is malformed. sentinel-contract.json + the generated
 # AUTHORING.md region are the feature-sentinel documentation contract (#417).
@@ -166,8 +167,8 @@ grafana-check:
 	cd grafana && python3 build_dashboard.py --check
 	cd grafana && python3 build_dashboard.py
 	cd grafana/alerts && python3 build_rules.py
-	cd tools/promqlcheck && go run . ../../grafana/dashboard.json ../../grafana/alerts/grafana-managed/*.json
-	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/sentinel-contract.json grafana/tabs/AUTHORING.md grafana/alerts/grafana-managed/
+	cd tools/promqlcheck && go run . ../../grafana/dashboard.json ../../grafana/dashboard-health.json ../../grafana/alerts/grafana-managed/*.json
+	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-health.json grafana/dashboard-stats.json grafana/sentinel-contract.json grafana/tabs/AUTHORING.md grafana/alerts/grafana-managed/
 	python3 grafana/alerts/validate_manifests.py
 
 # The grafana/ builders' own unit tests (stdlib unittest, no deps). These existed for

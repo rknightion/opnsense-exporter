@@ -66,14 +66,16 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 
     An empty dashboard on Grafana 12 is not a broken export; it is the version. Upgrade to Grafana 13.
 
-A single comprehensive Grafana dashboard covers **all 874 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
+Two cross-linked Grafana dashboards cover **all 874 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
+Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Recording rules, Diagnostics, Log Shipping
 <!-- docgen:end:dashboard-tabs -->). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 
 ### Import the dashboard
 
 1. Open Grafana and navigate to **Dashboards > New > Import**.
-2. Import the JSON file from the repository: `grafana/dashboard.json`
+2. Import the JSON files from the repository: `grafana/dashboard.json` (the firewall) and
+   `grafana/dashboard-health.json` (the exporter's own health). Import both — the operational
+   dashboard's exporter-health summary links to the companion.
 3. Select your Prometheus data source and click **Import**.
 
 The dashboard uses template variables for `datasource`, `opnsense_instance`, and `interface`. See [`grafana/README.md`](https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md) for `gcx`/GitOps deployment and the bundled alert and recording rules.

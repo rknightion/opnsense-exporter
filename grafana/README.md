@@ -5,8 +5,9 @@ OPNsense Exporter:
 
 | Path | What it is |
 |------|------------|
-| `dashboard.json` | A **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) with 7 top-level domains and 41 tabs that render conditionally. |
-| `build_dashboard.py` | Generator for `dashboard.json`. Run `python3 build_dashboard.py`. |
+| `dashboard.json` | The **operational** dashboard: a **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) organised into 7 top-level domains, rendering conditionally. UID `opnsense-exporter`. |
+| `dashboard-health.json` | The **self-observability companion** (UID `opnsense-exporter-health`): Diagnostics and Log Shipping — the exporter watching itself. Cross-linked with the operational dashboard, carrying the selected instance and time range. |
+| `build_dashboard.py` | Generator for BOTH dashboards. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
 | `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
@@ -33,10 +34,10 @@ datasource carrying the exporter's shipped logs is selected.
 
 ## The dashboard
 
-One dashboard, 7 top-level domains and 41 tabs grouped by feature (generated list, do not hand-edit):
+Two dashboards, 41 tabs grouped by feature (generated list, do not hand-edit — the last two belong to the health companion):
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
+Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Recording rules, Diagnostics, Log Shipping
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the
@@ -224,7 +225,11 @@ of the build itself, so renaming a tab fails the build rather than silently mis-
 
 ### Deploy the dashboard
 
-**Grafana UI:** Dashboards → New → Import, and upload `dashboard.json` (Grafana 13+).
+Both dashboards deploy the same way, and both should be deployed: the operational dashboard's
+"Exporter Health" summary row links to the companion, and that link 404s if only one is imported.
+
+**Grafana UI:** Dashboards → New → Import, and upload `dashboard.json`, then `dashboard-health.json`
+(Grafana 13+).
 
 **gcx (standalone / unmanaged dashboard only):**
 ```bash
@@ -245,6 +250,7 @@ gcx dashboards snapshot opnsense-exporter-review --since 6h --width 1920
 # Restore the canonical UID, then copy/commit this file in the GitSync repository.
 python3 build_dashboard.py
 cp dashboard.json /path/to/gitsync-repo/networking/opnsense-exporter.json
+cp dashboard-health.json /path/to/gitsync-repo/networking/opnsense-exporter-health.json
 ```
 
 **GitOps (GitSync):** commit and push the manifest at the target repository path; GitSync performs
@@ -256,10 +262,16 @@ dashboard has rendered successfully.
 
 ```bash
 cd grafana
-python3 build_dashboard.py          # writes dashboard.json + prints coverage (NNN/NNN)
+python3 build_dashboard.py          # writes both dashboards + prints coverage (NNN/NNN)
 python3 build_dashboard.py --check  # coverage gate only (non-zero exit if any metric unreferenced)
 ```
-Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation copies).
+Set `DASH_NAME=<slug>` to override the OPERATIONAL dashboard's `metadata.name` (used for
+scratch/validation copies). The companion's UID is fixed, because cross-dashboard links resolve
+through the frozen registry in `uids.py`.
+
+The coverage gate spans the **family**: a metric charted on either dashboard counts as covered,
+which is what lets the self-observability panels live on their own file without every self-metric
+reading as missing.
 
 ## Alerts & recording rules
 

@@ -10,8 +10,10 @@ So navigation is built rather than written, and this file is the contract:
 
 1. **Every destination comes from `uids.py`.** A UID is never typed at a call site,
    the three retired UIDs can never reappear, and a destination that does not exist
-   yet (`opnsense-exporter-health`, #431) emits no link at all — the registry's
-   `exists` flag is what stops us shipping a link to a 404.
+   yet emits no link at all — the registry's `exists` flag is what stops us shipping
+   a link to a 404. (`opnsense-exporter-health` was the reserved case until #431
+   generated it; there is no reserved destination today, so that guard is exercised
+   against a synthetic one in `UrlBuilderTest`.)
 2. **Every internal link carries context.** Time range, selected instance, and the
    datasource travel with the click; a link that drops one of them is the silent
    failure this issue exists to prevent.
@@ -71,26 +73,34 @@ STACK_SPECIFIC = re.compile(
     r"grafanacloud-|grafana\.net|grafana\.com/orgs|\.m7kni\.|localhost:3000|https?://[^/]*grafana")
 
 
-def build():
-    return build_dashboard.build_all()
+def build_specs():
+    """`{uid: manifest spec}` for the whole dashboard family (#431).
+
+    Family-wide rather than main-only on purpose: the split moved panels onto a
+    second dashboard, and a link on a moved panel is exactly as capable of 404ing
+    or dropping the instance as one that stayed. Scoping this file to `build_all()`
+    would have silently stopped checking them.
+    """
+    return {spec.uid: spec_manifest(b)
+            for spec, b in build_dashboard.build_family()}
 
 
-def manifest(b):
+def spec_manifest(b):
     return b.manifest(title="t", description="d", tags=[])
 
 
-def all_links(spec):
-    """Yield (where, panel_title_or_None, link_dict) for every DataLink in a spec."""
+def all_links(uid, spec):
+    """Yield (uid, where, panel_title_or_None, link_dict) for every DataLink."""
     for link in spec.get("links", []):
-        yield "dashboard", None, link
+        yield uid, "dashboard", None, link
     for element in spec["elements"].values():
         pspec = element["spec"]
         title = pspec["title"]
         for link in pspec.get("links", []):
-            yield "panel", title, link
+            yield uid, "panel", title, link
         defaults = pspec["vizConfig"]["spec"].get("fieldConfig", {}).get("defaults", {})
         for link in defaults.get("links", []):
-            yield "field", title, link
+            yield uid, "field", title, link
 
 
 def panel_exprs(pspec):
@@ -103,17 +113,18 @@ def panel_exprs(pspec):
 class LinkRegistryTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.b = build()
-        cls.spec = manifest(cls.b)["spec"]
-        cls.links = list(all_links(cls.spec))
-        cls.blob = json.dumps(cls.spec)
+        cls.specs = {uid: m["spec"] for uid, m in build_specs().items()}
+        cls.spec = cls.specs[uids.MAIN_UID]
+        cls.links = [entry for uid, spec in cls.specs.items()
+                     for entry in all_links(uid, spec)]
+        cls.blob = json.dumps(cls.specs)
 
     # ---- registry ------------------------------------------------------
     def test_links_exist_at_all(self):
         self.assertTrue(self.links, "the dashboard generates no links (#419)")
 
     def test_every_internal_link_targets_an_existing_registered_destination(self):
-        for where, title, link in self.links:
+        for src, where, title, link in self.links:
             url = link["url"]
             if not url.startswith("/d/"):
                 continue
@@ -139,7 +150,7 @@ class LinkRegistryTest(unittest.TestCase):
                     f"{uid} is reserved (not generated yet) but a link points at it")
 
     def test_external_links_are_allowlisted_project_urls(self):
-        for where, title, link in self.links:
+        for src, where, title, link in self.links:
             url = link["url"]
             if url.startswith("/"):
                 continue
@@ -150,7 +161,7 @@ class LinkRegistryTest(unittest.TestCase):
 
     # ---- context preservation ------------------------------------------
     def test_every_internal_link_preserves_time_instance_and_datasource(self):
-        for where, title, link in self.links:
+        for src, where, title, link in self.links:
             url = link["url"]
             if not url.startswith("/d/"):
                 continue
@@ -161,16 +172,20 @@ class LinkRegistryTest(unittest.TestCase):
                     "navigation would land on a different window or instance")
 
     def test_no_link_embeds_a_stack_specific_url_or_datasource_uid(self):
-        for where, title, link in self.links:
+        for src, where, title, link in self.links:
             hit = STACK_SPECIFIC.search(link["url"])
             self.assertIsNone(
                 hit, f"{where} link {link['title']!r} on {title!r} embeds "
                      f"stack-specific {hit.group(0) if hit else ''!r}: {link['url']}")
 
     def test_link_variables_are_declared_and_visible(self):
-        declared = {v["spec"]["name"]: v["spec"] for v in self.spec["variables"]}
-        hidden = {n for n, s in declared.items() if s.get("hide") == "hideVariable"}
-        for where, title, link in self.links:
+        # Scoped to the SOURCE dashboard: a `var-` parameter is interpolated from the
+        # variable of that name on the dashboard the reader is leaving, so a name that
+        # only exists on the other dashboard would interpolate to nothing.
+        for src, where, title, link in self.links:
+            declared = {v["spec"]["name"]: v["spec"]
+                        for v in self.specs[src]["variables"]}
+            hidden = {n for n, s in declared.items() if s.get("hide") == "hideVariable"}
             url = link["url"]
             if not url.startswith("/d/"):
                 continue
@@ -191,12 +206,15 @@ class LinkRegistryTest(unittest.TestCase):
 
     # ---- field links ---------------------------------------------------
     def test_field_links_only_template_labels_their_panel_returns(self):
-        by_title = {e["spec"]["title"]: e["spec"] for e in self.spec["elements"].values()}
-        for where, title, link in self.links:
+        by_title = {uid: {e["spec"]["title"]: e["spec"]
+                          for e in spec["elements"].values()}
+                    for uid, spec in self.specs.items()}
+        for src, where, title, link in self.links:
+            by_title_src = by_title[src]
             if where != "field":
                 continue
             for label in re.findall(r"\$\{__field\.labels\.([a-zA-Z0-9_]+)\}", link["url"]):
-                exprs = " ".join(panel_exprs(by_title[title]))
+                exprs = " ".join(panel_exprs(by_title_src[title]))
                 self.assertIn(
                     label, exprs,
                     f"field link {link['title']!r} on {title!r} templates label "
@@ -205,32 +223,42 @@ class LinkRegistryTest(unittest.TestCase):
 
     # ---- tab targeting -------------------------------------------------
     def test_tab_targets_match_the_generated_layout(self):
+        # Resolved against the DESTINATION dashboard, not the source. Since the #431
+        # split a link routinely crosses dashboards, and checking a cross-dashboard
+        # `dtab` against the source's own tab titles would both miss real typos and
+        # reject correct links.
         slugs = {}
-        for tab in self.spec["layout"]["spec"]["tabs"]:
-            domain = uids.tab_slug(tab["spec"]["title"])
-            layout = tab["spec"]["layout"]
-            leaves = ([c["spec"]["title"] for c in layout["spec"]["tabs"]]
-                      if layout["kind"] == "TabsLayout" else [])
-            slugs[domain] = {uids.tab_slug(t) for t in leaves}
-        for where, title, link in self.links:
+        for uid, spec in self.specs.items():
+            per_dash = {}
+            for tab in spec["layout"]["spec"]["tabs"]:
+                domain = uids.tab_slug(tab["spec"]["title"])
+                layout = tab["spec"]["layout"]
+                leaves = ([c["spec"]["title"] for c in layout["spec"]["tabs"]]
+                          if layout["kind"] == "TabsLayout" else [])
+                per_dash[domain] = {uids.tab_slug(t) for t in leaves}
+            slugs[uid] = per_dash
+        for src, where, title, link in self.links:
             url = link["url"]
             if not url.startswith("/d/"):
                 continue
+            dest_uid = urlsplit(url).path.split("/")[2]
             params = dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
             domain = params.get("dtab")
             if domain is None:
                 continue
-            self.assertIn(domain, slugs,
-                          f"{where} link on {title!r} targets unknown domain tab {domain!r}")
+            dest_slugs = slugs[dest_uid]
+            self.assertIn(domain, dest_slugs,
+                          f"{where} link on {title!r} targets unknown domain tab "
+                          f"{domain!r} on {dest_uid}")
             leaf_key = f"{domain}-dtab"
             leaf = params.get(leaf_key)
             if leaf is not None:
-                self.assertIn(leaf, slugs[domain],
+                self.assertIn(leaf, dest_slugs[domain],
                               f"{where} link on {title!r} targets unknown leaf tab "
-                              f"{leaf!r} under {domain!r}")
+                              f"{leaf!r} under {domain!r} on {dest_uid}")
 
     def test_tab_slugs_are_percent_encoded_in_urls(self):
-        for where, title, link in self.links:
+        for src, where, title, link in self.links:
             url = link["url"]
             if "dtab" not in url:
                 continue
@@ -248,8 +276,11 @@ class LinkRegistryTest(unittest.TestCase):
 
     # ---- coverage ------------------------------------------------------
     def test_required_panel_families_have_drilldowns(self):
-        linked = {t for _, t, _ in self.links if t}
-        titles = {e["spec"]["title"] for e in self.spec["elements"].values()}
+        linked = {t for _, _, t, _ in self.links if t}
+        # Family-wide: "Records Shipped (rate)" moved to the health dashboard in #431
+        # and its drilldown is no less required there.
+        titles = {e["spec"]["title"] for spec in self.specs.values()
+                  for e in spec["elements"].values()}
         for title, family in REQUIRED_DRILLDOWN_PANELS.items():
             self.assertIn(title, titles,
                           f"{title!r} ({family}) is named in REQUIRED_DRILLDOWN_PANELS "
@@ -262,13 +293,13 @@ class LinkRegistryTest(unittest.TestCase):
     def test_dashboard_links_live_in_the_controls_menu(self):
         """#470: the controls area was three rows deep before any data. These links are
         read once, not toggled while reading a graph, so they belong in the menu."""
-        dash = [l for w, _, l in self.links if w == "dashboard"]
+        dash = [l for _, w, _, l in self.links if w == "dashboard"]
         for link in dash:
             self.assertEqual(link.get("placement"), uids.CONTROLS_MENU,
                              f"dashboard link {link['title']!r} takes a toolbar slot")
 
     def test_dashboard_level_links_are_present_and_titled(self):
-        dash = [l for w, _, l in self.links if w == "dashboard"]
+        dash = [l for _, w, _, l in self.links if w == "dashboard"]
         self.assertTrue(dash, "the dashboard has no dashboard-level links")
         for link in dash:
             self.assertTrue(link["title"].strip())
@@ -293,8 +324,22 @@ class UrlBuilderTest(unittest.TestCase):
         self.assertIn("var-interface=${__field.labels.interface}", url)
 
     def test_dash_url_refuses_a_reserved_destination(self):
-        with self.assertRaises(ValueError):
-            uids.dash_url(uid=uids.HEALTH_UID)
+        """Tested against a synthetic reservation, not a real one.
+
+        This used to point at `HEALTH_UID`, which #431 generated and flipped to
+        `exists=True` — so the assertion would have started passing vacuously (or
+        rather, failing) the moment the mechanism was still working perfectly. The
+        guard has to outlive whichever destination happens to be reserved today,
+        and today none is.
+        """
+        fake = "opnsense-not-built-yet"
+        uids.DESTINATIONS[fake] = uids.Destination(
+            uid=fake, title="Reserved", exists=False, why="test fixture")
+        try:
+            with self.assertRaises(ValueError):
+                uids.dash_url(uid=fake)
+        finally:
+            del uids.DESTINATIONS[fake]
 
     def test_dash_url_refuses_an_unregistered_or_retired_destination(self):
         with self.assertRaises(ValueError):

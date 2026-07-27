@@ -15,7 +15,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_acme_certificates_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > Certificates > ACME Client"
+          "OPNsense Exporter > System > Certificates > ACME Client"
         ]
       },
       {
@@ -25,8 +25,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_alias_tables_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > Aliases",
-          "Security > Aliases > Alias Tables"
+          "OPNsense Exporter > Security > Aliases",
+          "OPNsense Exporter > Security > Aliases > Alias Tables"
         ]
       },
       {
@@ -36,7 +36,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > Aliases > Alias pf Counters (details flag)"
+          "OPNsense Exporter > Security > Aliases > Alias pf Counters (details flag)"
         ]
       },
       {
@@ -46,7 +46,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Diagnostics > Grafana Annotation Writing"
+          "OPNsense Exporter Health > Diagnostics > Grafana Annotation Writing"
         ]
       },
       {
@@ -56,8 +56,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_apcupsd_ups_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > UPS",
-          "System > UPS > APC UPS (apcupsd)"
+          "OPNsense Exporter > System > UPS",
+          "OPNsense Exporter > System > UPS > APC UPS (apcupsd)"
         ]
       },
       {
@@ -67,7 +67,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_interfaces_bridge_member{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Interfaces > Bridge Membership"
+          "OPNsense Exporter > Network > Interfaces > Bridge Membership"
         ]
       },
       {
@@ -77,9 +77,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_captiveportal_zones_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Captive Portal",
-          "Network > Captive Portal > Captive Portal Overview",
-          "Network > Captive Portal > Per-Zone Sessions"
+          "OPNsense Exporter > Network > Captive Portal",
+          "OPNsense Exporter > Network > Captive Portal > Captive Portal Overview",
+          "OPNsense Exporter > Network > Captive Portal > Per-Zone Sessions"
         ]
       },
       {
@@ -89,8 +89,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Captive Portal > Voucher Expiry",
-          "Network > Captive Portal > Voucher Inventory"
+          "OPNsense Exporter > Network > Captive Portal > Voucher Expiry",
+          "OPNsense Exporter > Network > Captive Portal > Voucher Inventory"
         ]
       },
       {
@@ -100,7 +100,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_carp_allow{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > CARP / HA"
+          "OPNsense Exporter > System > CARP / HA"
         ]
       },
       {
@@ -110,7 +110,7 @@
         "presence": "value",
         "query": "query_result(opnsense_carp_vips_total{opnsense_instance=~\"$opnsense_instance\"} > 0)",
         "gates": [
-          "System > CARP / HA > VIP Status & Advertisement"
+          "OPNsense Exporter > System > CARP / HA > VIP Status & Advertisement"
         ]
       },
       {
@@ -120,11 +120,11 @@
         "presence": "existence",
         "query": "label_values(opnsense_chrony_stratum{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Chrony",
-          "Network > Chrony > Service & Sync",
-          "Network > Chrony > Source Statistics",
-          "Network > Chrony > Sources",
-          "Network > Chrony > Tracking"
+          "OPNsense Exporter > Network > Chrony",
+          "OPNsense Exporter > Network > Chrony > Service & Sync",
+          "OPNsense Exporter > Network > Chrony > Source Statistics",
+          "OPNsense Exporter > Network > Chrony > Sources",
+          "OPNsense Exporter > Network > Chrony > Tracking"
         ]
       },
       {
@@ -134,9 +134,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_clamav_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > ClamAV",
-          "Security > ClamAV > Engine & Signatures",
-          "Security > ClamAV > Signature Databases"
+          "OPNsense Exporter > Security > ClamAV",
+          "OPNsense Exporter > Security > ClamAV > Engine & Signatures",
+          "OPNsense Exporter > Security > ClamAV > Signature Databases"
         ]
       },
       {
@@ -146,10 +146,10 @@
         "presence": "existence",
         "query": "label_values(opnsense_crowdsec_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > CrowdSec",
-          "Security > CrowdSec > Bouncer Details",
-          "Security > CrowdSec > CrowdSec Overview",
-          "Security > CrowdSec > Machine Details"
+          "OPNsense Exporter > Security > CrowdSec",
+          "OPNsense Exporter > Security > CrowdSec > Bouncer Details",
+          "OPNsense Exporter > Security > CrowdSec > CrowdSec Overview",
+          "OPNsense Exporter > Security > CrowdSec > Machine Details"
         ]
       },
       {
@@ -159,7 +159,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_crowdsec_hub_items{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > CrowdSec > Hub Component Health"
+          "OPNsense Exporter > Security > CrowdSec > Hub Component Health"
         ]
       },
       {
@@ -169,7 +169,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_crowdsec_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > CrowdSec > Engine Version"
+          "OPNsense Exporter > Security > CrowdSec > Engine Version"
         ]
       },
       {
@@ -179,7 +179,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_logs_debug_captured_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log Shipping > Debug Capture"
+          "OPNsense Exporter Health > Log Shipping > Debug Capture"
         ]
       },
       {
@@ -189,7 +189,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_dhcpv4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP > ISC DHCPv4 Lease Details"
+          "OPNsense Exporter > Network > DHCP > ISC DHCPv4 Lease Details"
         ]
       },
       {
@@ -199,8 +199,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP",
-          "Network > DHCP > ISC DHCPv4"
+          "OPNsense Exporter > Network > DHCP",
+          "OPNsense Exporter > Network > DHCP > ISC DHCPv4"
         ]
       },
       {
@@ -210,7 +210,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_dhcpv6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP > ISC DHCPv6 Lease Details"
+          "OPNsense Exporter > Network > DHCP > ISC DHCPv6 Lease Details"
         ]
       },
       {
@@ -220,8 +220,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP",
-          "Network > DHCP > ISC DHCPv6"
+          "OPNsense Exporter > Network > DHCP",
+          "OPNsense Exporter > Network > DHCP > ISC DHCPv6"
         ]
       },
       {
@@ -231,8 +231,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_dnsmasq_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP",
-          "Network > DHCP > Dnsmasq DHCP"
+          "OPNsense Exporter > Network > DHCP",
+          "OPNsense Exporter > Network > DHCP > Dnsmasq DHCP"
         ]
       },
       {
@@ -242,7 +242,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP > Dnsmasq Lease Details"
+          "OPNsense Exporter > Network > DHCP > Dnsmasq Lease Details"
         ]
       },
       {
@@ -252,7 +252,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_dyndns_accounts_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > Services, Cron & DynDNS > DynDNS"
+          "OPNsense Exporter > System > Services, Cron & DynDNS > DynDNS"
         ]
       },
       {
@@ -262,7 +262,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_firewall_nat_rules{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > Firewall & PF > NAT Rule Inventory (details flag)"
+          "OPNsense Exporter > Security > Firewall & PF > NAT Rule Inventory (details flag)"
         ]
       },
       {
@@ -272,7 +272,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > Firewall & PF > Firewall Rules (top 20)"
+          "OPNsense Exporter > Security > Firewall & PF > Firewall Rules (top 20)"
         ]
       },
       {
@@ -282,7 +282,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_firmware_plugin_installed{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > System & Resources > Firmware Packages"
+          "OPNsense Exporter > System > System & Resources > Firmware Packages"
         ]
       },
       {
@@ -292,9 +292,10 @@
         "presence": "existence",
         "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Flow Volume",
-          "Observability > Flow Volume > Correlator & Log Emission",
-          "Observability > Flow Volume > Domain, Talkers & Source Delta"
+          "OPNsense Exporter > Observability",
+          "OPNsense Exporter > Observability > Flow Volume",
+          "OPNsense Exporter > Observability > Flow Volume > Correlator & Log Emission",
+          "OPNsense Exporter > Observability > Flow Volume > Domain, Talkers & Source Delta"
         ]
       },
       {
@@ -304,8 +305,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Flow Volume > NetFlow Receiver",
-          "Observability > Flow Volume > NetFlow Repairs & Topology"
+          "OPNsense Exporter > Observability > Flow Volume > NetFlow Receiver",
+          "OPNsense Exporter > Observability > Flow Volume > NetFlow Repairs & Topology"
         ]
       },
       {
@@ -315,9 +316,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Flow Volume > Breakdown",
-          "Observability > Flow Volume > Records & Packets",
-          "Observability > Flow Volume > Volume"
+          "OPNsense Exporter > Observability > Flow Volume > Breakdown",
+          "OPNsense Exporter > Observability > Flow Volume > Records & Packets",
+          "OPNsense Exporter > Observability > Flow Volume > Volume"
         ]
       },
       {
@@ -327,14 +328,14 @@
         "presence": "existence",
         "query": "label_values(opnsense_frr_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > FRR Routing",
-          "Network > FRR Routing > BFD",
-          "Network > FRR Routing > BGP Peer Session Detail",
-          "Network > FRR Routing > BGP Peers",
-          "Network > FRR Routing > FRR Service & Summary",
-          "Network > FRR Routing > OSPF",
-          "Network > FRR Routing > OSPF Interface Detail",
-          "Network > FRR Routing > OSPFv3 (ospf6) Parity"
+          "OPNsense Exporter > Network > FRR Routing",
+          "OPNsense Exporter > Network > FRR Routing > BFD",
+          "OPNsense Exporter > Network > FRR Routing > BGP Peer Session Detail",
+          "OPNsense Exporter > Network > FRR Routing > BGP Peers",
+          "OPNsense Exporter > Network > FRR Routing > FRR Service & Summary",
+          "OPNsense Exporter > Network > FRR Routing > OSPF",
+          "OPNsense Exporter > Network > FRR Routing > OSPF Interface Detail",
+          "OPNsense Exporter > Network > FRR Routing > OSPFv3 (ospf6) Parity"
         ]
       },
       {
@@ -344,7 +345,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_frr_route_count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > FRR Routing > Routing-State Volume (opt-in: --exporter.enable-frr-routes)"
+          "OPNsense Exporter > Network > FRR Routing > Routing-State Volume (opt-in: --exporter.enable-frr-routes)"
         ]
       },
       {
@@ -354,7 +355,7 @@
         "presence": "existence",
         "query": "query_result(go_goroutines{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
         "gates": [
-          "Observability > Diagnostics > Exporter Runtime (Go client metrics)"
+          "OPNsense Exporter Health > Diagnostics > Exporter Runtime (Go client metrics)"
         ]
       },
       {
@@ -364,12 +365,12 @@
         "presence": "existence",
         "query": "label_values(opnsense_haproxy_frontend_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services",
-          "Services > HAProxy",
-          "Services > HAProxy > Backend Traffic",
-          "Services > HAProxy > Frontend Traffic",
-          "Services > HAProxy > HAProxy Overview",
-          "Services > HAProxy > Server Details"
+          "OPNsense Exporter > Services",
+          "OPNsense Exporter > Services > HAProxy",
+          "OPNsense Exporter > Services > HAProxy > Backend Traffic",
+          "OPNsense Exporter > Services > HAProxy > Frontend Traffic",
+          "OPNsense Exporter > Services > HAProxy > HAProxy Overview",
+          "OPNsense Exporter > Services > HAProxy > Server Details"
         ]
       },
       {
@@ -379,7 +380,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_haproxy_stick_table_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services > HAProxy > Stick Tables"
+          "OPNsense Exporter > Services > HAProxy > Stick Tables"
         ]
       },
       {
@@ -389,7 +390,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_hardware_dmi_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > System & Resources > Hardware Identity"
+          "OPNsense Exporter > System > System & Resources > Hardware Identity"
         ]
       },
       {
@@ -399,7 +400,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_hardware_psu_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > System & Resources > Hardware Power Supply"
+          "OPNsense Exporter > System > System & Resources > Hardware Power Supply"
         ]
       },
       {
@@ -409,9 +410,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_hasync_remote_reachable{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > HA Sync",
-          "System > HA Sync > HA Sync Status",
-          "System > HA Sync > Remote Services"
+          "OPNsense Exporter > System > HA Sync",
+          "OPNsense Exporter > System > HA Sync > HA Sync Status",
+          "OPNsense Exporter > System > HA Sync > Remote Services"
         ]
       },
       {
@@ -421,10 +422,10 @@
         "presence": "existence",
         "query": "label_values(opnsense_ids_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > IDS/IPS",
-          "Security > IDS/IPS > Rulesets",
-          "Security > IDS/IPS > Suricata Overview",
-          "Security > IDS/IPS > eve Log Files"
+          "OPNsense Exporter > Security > IDS/IPS",
+          "OPNsense Exporter > Security > IDS/IPS > Rulesets",
+          "OPNsense Exporter > Security > IDS/IPS > Suricata Overview",
+          "OPNsense Exporter > Security > IDS/IPS > eve Log Files"
         ]
       },
       {
@@ -434,7 +435,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ids_recent_alerts{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > IDS/IPS > Alert Activity"
+          "OPNsense Exporter > Security > IDS/IPS > Alert Activity"
         ]
       },
       {
@@ -444,9 +445,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access",
-          "VPN & remote access > VPN",
-          "VPN & remote access > VPN > IPsec Config State"
+          "OPNsense Exporter > VPN & remote access",
+          "OPNsense Exporter > VPN & remote access > VPN",
+          "OPNsense Exporter > VPN & remote access > VPN > IPsec Config State"
         ]
       },
       {
@@ -456,7 +457,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > VPN > IPsec Mode-CFG Pools"
+          "OPNsense Exporter > VPN & remote access > VPN > IPsec Mode-CFG Pools"
         ]
       },
       {
@@ -466,7 +467,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_sad_entries{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > VPN > IPsec Kernel (SAD/SPD)"
+          "OPNsense Exporter > VPN & remote access > VPN > IPsec Kernel (SAD/SPD)"
         ]
       },
       {
@@ -476,8 +477,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_ipsec_phase1_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > VPN > IPsec Phase 1",
-          "VPN & remote access > VPN > IPsec Phase 2"
+          "OPNsense Exporter > VPN & remote access > VPN > IPsec Phase 1",
+          "OPNsense Exporter > VPN & remote access > VPN > IPsec Phase 2"
         ]
       },
       {
@@ -487,8 +488,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_kea_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP",
-          "Network > DHCP > Kea DHCP"
+          "OPNsense Exporter > Network > DHCP",
+          "OPNsense Exporter > Network > DHCP > Kea DHCP"
         ]
       },
       {
@@ -498,7 +499,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP > Kea DHCPv4 Lease Details"
+          "OPNsense Exporter > Network > DHCP > Kea DHCPv4 Lease Details"
         ]
       },
       {
@@ -508,7 +509,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP > Kea DHCPv6 Lease Details"
+          "OPNsense Exporter > Network > DHCP > Kea DHCPv6 Lease Details"
         ]
       },
       {
@@ -518,7 +519,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_kea_dhcp6_pd_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DHCP > Kea DHCPv6 Prefix Delegation"
+          "OPNsense Exporter > Network > DHCP > Kea DHCPv6 Prefix Delegation"
         ]
       },
       {
@@ -528,7 +529,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_interfaces_lagg_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Interfaces > LAGG (Link Aggregation)"
+          "OPNsense Exporter > Network > Interfaces > LAGG (Link Aggregation)"
         ]
       },
       {
@@ -538,7 +539,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_lldp_neighbors{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Routing & Neighbors > LLDP Neighbors"
+          "OPNsense Exporter > Network > Routing & Neighbors > LLDP Neighbors"
         ]
       },
       {
@@ -548,7 +549,8 @@
         "presence": "existence",
         "query": "label_values({__name__=~\"opnsense_log_events_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events"
+          "OPNsense Exporter > Observability",
+          "OPNsense Exporter > Observability > Log-derived Events"
         ]
       },
       {
@@ -558,7 +560,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > Config / Audit"
+          "OPNsense Exporter > Observability > Log-derived Events > Config / Audit"
         ]
       },
       {
@@ -568,7 +570,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_carp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > CARP / HA > Transition Events (from syslog)"
+          "OPNsense Exporter > System > CARP / HA > Transition Events (from syslog)"
         ]
       },
       {
@@ -578,7 +580,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > DHCP"
+          "OPNsense Exporter > Observability > Log-derived Events > DHCP"
         ]
       },
       {
@@ -588,7 +590,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > Firewall"
+          "OPNsense Exporter > Observability > Log-derived Events > Firewall"
         ]
       },
       {
@@ -598,7 +600,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > HAProxy"
+          "OPNsense Exporter > Observability > Log-derived Events > HAProxy"
         ]
       },
       {
@@ -608,7 +610,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > IDS / IPS"
+          "OPNsense Exporter > Observability > Log-derived Events > IDS / IPS"
         ]
       },
       {
@@ -618,7 +620,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_radius_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > RADIUS Authentication"
+          "OPNsense Exporter > Observability > Log-derived Events > RADIUS Authentication"
         ]
       },
       {
@@ -628,7 +630,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > SSH Authentication"
+          "OPNsense Exporter > Observability > Log-derived Events > SSH Authentication"
         ]
       },
       {
@@ -638,7 +640,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_upnp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > UPnP / NAT-PMP Mappings"
+          "OPNsense Exporter > Observability > Log-derived Events > UPnP / NAT-PMP Mappings"
         ]
       },
       {
@@ -648,7 +650,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log-derived Events > VPN Lifecycle (IPsec / OpenVPN)"
+          "OPNsense Exporter > Observability > Log-derived Events > VPN Lifecycle (IPsec / OpenVPN)"
         ]
       },
       {
@@ -658,12 +660,12 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_logs_queue_capacity{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Log Shipping",
-          "Observability > Log Shipping > Cursor",
-          "Observability > Log Shipping > Enrichment",
-          "Observability > Log Shipping > Queue & Errors",
-          "Observability > Log Shipping > Receivers",
-          "Observability > Log Shipping > Throughput"
+          "OPNsense Exporter Health > Log Shipping",
+          "OPNsense Exporter Health > Log Shipping > Cursor",
+          "OPNsense Exporter Health > Log Shipping > Enrichment",
+          "OPNsense Exporter Health > Log Shipping > Queue & Errors",
+          "OPNsense Exporter Health > Log Shipping > Receivers",
+          "OPNsense Exporter Health > Log Shipping > Throughput"
         ]
       },
       {
@@ -673,13 +675,13 @@
         "presence": "existence",
         "query": "label_values(opnsense_monit_status_ok{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > Monit",
-          "System > Monit > Check Status Detail",
-          "System > Monit > Filesystem Check Resources",
-          "System > Monit > Host Check Resources",
-          "System > Monit > Monit Overview",
-          "System > Monit > Process Check Resources",
-          "System > Monit > System Check Resources"
+          "OPNsense Exporter > System > Monit",
+          "OPNsense Exporter > System > Monit > Check Status Detail",
+          "OPNsense Exporter > System > Monit > Filesystem Check Resources",
+          "OPNsense Exporter > System > Monit > Host Check Resources",
+          "OPNsense Exporter > System > Monit > Monit Overview",
+          "OPNsense Exporter > System > Monit > Process Check Resources",
+          "OPNsense Exporter > System > Monit > System Check Resources"
         ]
       },
       {
@@ -689,9 +691,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_netbird_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access",
-          "VPN & remote access > NetBird",
-          "VPN & remote access > NetBird > NetBird Node"
+          "OPNsense Exporter > VPN & remote access",
+          "OPNsense Exporter > VPN & remote access > NetBird",
+          "OPNsense Exporter > VPN & remote access > NetBird > NetBird Node"
         ]
       },
       {
@@ -701,7 +703,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_netbird_peer_connected{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > NetBird > NetBird Peers (details flag)"
+          "OPNsense Exporter > VPN & remote access > NetBird > NetBird Peers (details flag)"
         ]
       },
       {
@@ -711,7 +713,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_netflow_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > NetFlow"
+          "OPNsense Exporter > Network > NetFlow"
         ]
       },
       {
@@ -721,9 +723,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem)",
-          "Network > Routing & Neighbors > Sockets & Routes",
-          "Network > Routing & Neighbors > pfsync"
+          "OPNsense Exporter > Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem)",
+          "OPNsense Exporter > Network > Routing & Neighbors > Sockets & Routes",
+          "OPNsense Exporter > Network > Routing & Neighbors > pfsync"
         ]
       },
       {
@@ -733,14 +735,14 @@
         "presence": "existence",
         "query": "label_values(opnsense_nginx_connections_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services",
-          "Services > Nginx",
-          "Services > Nginx > Config Reload & Autoblock",
-          "Services > Nginx > Nginx Overview",
-          "Services > Nginx > Server Zone Cache Status & Latency",
-          "Services > Nginx > Server Zones",
-          "Services > Nginx > Shared Memory",
-          "Services > Nginx > Upstream Servers"
+          "OPNsense Exporter > Services",
+          "OPNsense Exporter > Services > Nginx",
+          "OPNsense Exporter > Services > Nginx > Config Reload & Autoblock",
+          "OPNsense Exporter > Services > Nginx > Nginx Overview",
+          "OPNsense Exporter > Services > Nginx > Server Zone Cache Status & Latency",
+          "OPNsense Exporter > Services > Nginx > Server Zones",
+          "OPNsense Exporter > Services > Nginx > Shared Memory",
+          "OPNsense Exporter > Services > Nginx > Upstream Servers"
         ]
       },
       {
@@ -750,7 +752,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_nginx_cache_zone_max_bytes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services > Nginx > Cache Zones"
+          "OPNsense Exporter > Services > Nginx > Cache Zones"
         ]
       },
       {
@@ -760,7 +762,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ntp_peer_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > NTP"
+          "OPNsense Exporter > Network > NTP"
         ]
       },
       {
@@ -770,7 +772,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_ntp_gps_ok{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > NTP > GPS (experimental)"
+          "OPNsense Exporter > Network > NTP > GPS (experimental)"
         ]
       },
       {
@@ -780,8 +782,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_nut_ups_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > UPS",
-          "System > UPS > NUT (Network UPS Tools)"
+          "OPNsense Exporter > System > UPS",
+          "OPNsense Exporter > System > UPS > NUT (Network UPS Tools)"
         ]
       },
       {
@@ -791,9 +793,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_openvpn_instances{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access",
-          "VPN & remote access > VPN",
-          "VPN & remote access > VPN > OpenVPN"
+          "OPNsense Exporter > VPN & remote access",
+          "OPNsense Exporter > VPN & remote access > VPN",
+          "OPNsense Exporter > VPN & remote access > VPN > OpenVPN"
         ]
       },
       {
@@ -803,7 +805,7 @@
         "presence": "existence",
         "query": "query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
         "gates": [
-          "Observability > Diagnostics > OTLP Delivery Health"
+          "OPNsense Exporter Health > Diagnostics > OTLP Delivery Health"
         ]
       },
       {
@@ -813,9 +815,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > Q-Feeds",
-          "Security > Q-Feeds > Q-Feeds Activity",
-          "Security > Q-Feeds > Q-Feeds Overview"
+          "OPNsense Exporter > Security > Q-Feeds",
+          "OPNsense Exporter > Security > Q-Feeds > Q-Feeds Activity",
+          "OPNsense Exporter > Security > Q-Feeds > Q-Feeds Overview"
         ]
       },
       {
@@ -825,7 +827,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > Flow Volume"
+          "OPNsense Exporter > Observability > Recording rules > Flow Volume"
         ]
       },
       {
@@ -835,7 +837,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > Gateway Health"
+          "OPNsense Exporter > Observability > Recording rules > Gateway Health"
         ]
       },
       {
@@ -845,7 +847,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > HAProxy"
+          "OPNsense Exporter > Observability > Recording rules > HAProxy"
         ]
       },
       {
@@ -855,7 +857,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > IDS / IPS"
+          "OPNsense Exporter > Observability > Recording rules > IDS / IPS"
         ]
       },
       {
@@ -865,7 +867,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > IPsec Health"
+          "OPNsense Exporter > Observability > Recording rules > IPsec Health"
         ]
       },
       {
@@ -875,7 +877,8 @@
         "presence": "existence",
         "query": "label_values({__name__=~\"instance:opnsense_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules"
+          "OPNsense Exporter > Observability",
+          "OPNsense Exporter > Observability > Recording rules"
         ]
       },
       {
@@ -885,7 +888,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > Unbound DNS"
+          "OPNsense Exporter > Observability > Recording rules > Unbound DNS"
         ]
       },
       {
@@ -895,7 +898,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > WireGuard Health"
+          "OPNsense Exporter > Observability > Recording rules > WireGuard Health"
         ]
       },
       {
@@ -905,7 +908,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Observability > Recording rules > Zenarmor"
+          "OPNsense Exporter > Observability > Recording rules > Zenarmor"
         ]
       },
       {
@@ -915,11 +918,11 @@
         "presence": "existence",
         "query": "label_values(opnsense_relayd_virtualserver_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services",
-          "Services > Relayd",
-          "Services > Relayd > Host Health",
-          "Services > Relayd > Relayd Overview",
-          "Services > Relayd > Virtual Server & Table Status"
+          "OPNsense Exporter > Services",
+          "OPNsense Exporter > Services > Relayd",
+          "OPNsense Exporter > Services > Relayd > Host Health",
+          "OPNsense Exporter > Services > Relayd > Relayd Overview",
+          "OPNsense Exporter > Services > Relayd > Virtual Server & Table Status"
         ]
       },
       {
@@ -929,7 +932,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_interfaces_sfp_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Interfaces > SFP / Optics (DOM)"
+          "OPNsense Exporter > Network > Interfaces > SFP / Optics (DOM)"
         ]
       },
       {
@@ -939,9 +942,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_siproxd_registrations{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services",
-          "Services > Siproxd",
-          "Services > Siproxd > Registrations"
+          "OPNsense Exporter > Services",
+          "OPNsense Exporter > Services > Siproxd",
+          "OPNsense Exporter > Services > Siproxd > Registrations"
         ]
       },
       {
@@ -951,8 +954,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_smart_device_health{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > System & Resources > SMART",
-          "System > System & Resources > SMART Attributes & NVMe"
+          "OPNsense Exporter > System > System & Resources > SMART",
+          "OPNsense Exporter > System > System & Resources > SMART Attributes & NVMe"
         ]
       },
       {
@@ -962,10 +965,10 @@
         "presence": "existence",
         "query": "label_values(opnsense_syslog_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Services",
-          "Services > Syslog",
-          "Services > Syslog > Syslog-ng Overview",
-          "Services > Syslog > Syslog-ng Throughput"
+          "OPNsense Exporter > Services",
+          "OPNsense Exporter > Services > Syslog",
+          "OPNsense Exporter > Services > Syslog > Syslog-ng Overview",
+          "OPNsense Exporter > Services > Syslog > Syslog-ng Throughput"
         ]
       },
       {
@@ -975,9 +978,9 @@
         "presence": "existence",
         "query": "label_values(opnsense_tailscale_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access",
-          "VPN & remote access > Tailscale",
-          "VPN & remote access > Tailscale > Tailscale Node"
+          "OPNsense Exporter > VPN & remote access",
+          "OPNsense Exporter > VPN & remote access > Tailscale",
+          "OPNsense Exporter > VPN & remote access > Tailscale > Tailscale Node"
         ]
       },
       {
@@ -987,7 +990,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_tailscale_peer_session_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > Tailscale > Tailscale Peers (details flag)"
+          "OPNsense Exporter > VPN & remote access > Tailscale > Tailscale Peers (details flag)"
         ]
       },
       {
@@ -997,7 +1000,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "System > System & Resources > Temperature"
+          "OPNsense Exporter > System > System & Resources > Temperature"
         ]
       },
       {
@@ -1007,12 +1010,12 @@
         "presence": "existence",
         "query": "label_values(opnsense_tor_control_port_up{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access",
-          "VPN & remote access > Tor",
-          "VPN & remote access > Tor > Circuits",
-          "VPN & remote access > Tor > Hidden Services",
-          "VPN & remote access > Tor > Streams",
-          "VPN & remote access > Tor > Tor Overview"
+          "OPNsense Exporter > VPN & remote access",
+          "OPNsense Exporter > VPN & remote access > Tor",
+          "OPNsense Exporter > VPN & remote access > Tor > Circuits",
+          "OPNsense Exporter > VPN & remote access > Tor > Hidden Services",
+          "OPNsense Exporter > VPN & remote access > Tor > Streams",
+          "OPNsense Exporter > VPN & remote access > Tor > Tor Overview"
         ]
       },
       {
@@ -1022,11 +1025,11 @@
         "presence": "existence",
         "query": "label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Traffic Shaper",
-          "Network > Traffic Shaper > Pipes",
-          "Network > Traffic Shaper > Queues",
-          "Network > Traffic Shaper > Rules",
-          "Network > Traffic Shaper > Summary"
+          "OPNsense Exporter > Network > Traffic Shaper",
+          "OPNsense Exporter > Network > Traffic Shaper > Pipes",
+          "OPNsense Exporter > Network > Traffic Shaper > Queues",
+          "OPNsense Exporter > Network > Traffic Shaper > Rules",
+          "OPNsense Exporter > Network > Traffic Shaper > Summary"
         ]
       },
       {
@@ -1036,7 +1039,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_unbound_dns_uptime_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DNS - Unbound"
+          "OPNsense Exporter > Network > DNS - Unbound"
         ]
       },
       {
@@ -1046,7 +1049,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DNS - Unbound > Upstream Infra Cache"
+          "OPNsense Exporter > Network > DNS - Unbound > Upstream Infra Cache"
         ]
       },
       {
@@ -1056,7 +1059,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_unbound_dns_qstats_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > DNS - Unbound > DNSBL / Query Stats"
+          "OPNsense Exporter > Network > DNS - Unbound > DNSBL / Query Stats"
         ]
       },
       {
@@ -1066,7 +1069,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_vnstat_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Network > Interfaces > Vnstat Traffic Accounting"
+          "OPNsense Exporter > Network > Interfaces > Vnstat Traffic Accounting"
         ]
       },
       {
@@ -1076,8 +1079,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_wireguard_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access",
-          "VPN & remote access > VPN"
+          "OPNsense Exporter > VPN & remote access",
+          "OPNsense Exporter > VPN & remote access > VPN"
         ]
       },
       {
@@ -1087,7 +1090,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > VPN > WireGuard Interfaces"
+          "OPNsense Exporter > VPN & remote access > VPN > WireGuard Interfaces"
         ]
       },
       {
@@ -1097,7 +1100,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_wireguard_peer_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "VPN & remote access > VPN > WireGuard Peers"
+          "OPNsense Exporter > VPN & remote access > VPN > WireGuard Peers"
         ]
       },
       {
@@ -1107,8 +1110,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "Security > Zenarmor",
-          "Security > Zenarmor > Overview"
+          "OPNsense Exporter > Security > Zenarmor",
+          "OPNsense Exporter > Security > Zenarmor > Overview"
         ]
       }
     ]
@@ -1123,9 +1126,9 @@
         "presence": "existence",
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"}, opnsense_source)",
         "gates": [
-          "Services",
-          "Services > Syslog",
-          "Services > Syslog > Shipped Syslog Logs"
+          "OPNsense Exporter > Services",
+          "OPNsense Exporter > Services > Syslog",
+          "OPNsense Exporter > Services > Syslog > Shipped Syslog Logs"
         ]
       },
       {
@@ -1135,12 +1138,12 @@
         "presence": "existence",
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"}, opnsense_source)",
         "gates": [
-          "Security > Zenarmor",
-          "Security > Zenarmor > Applications & Destinations",
-          "Security > Zenarmor > DNS Detail",
-          "Security > Zenarmor > Live Records & Rates",
-          "Security > Zenarmor > Security Detail",
-          "Security > Zenarmor > Web / HTTP Detail"
+          "OPNsense Exporter > Security > Zenarmor",
+          "OPNsense Exporter > Security > Zenarmor > Applications & Destinations",
+          "OPNsense Exporter > Security > Zenarmor > DNS Detail",
+          "OPNsense Exporter > Security > Zenarmor > Live Records & Rates",
+          "OPNsense Exporter > Security > Zenarmor > Security Detail",
+          "OPNsense Exporter > Security > Zenarmor > Web / HTTP Detail"
         ]
       }
     ]

@@ -123,9 +123,11 @@ The generated flag and collector reference lives in the
 > schema-v1 build, by design. Note that Grafana 12.4 *accepts* this file with HTTP 200 and then
 > renders an empty dashboard with no error at all - that is the version, not a broken export.
 
-A single dynamic dashboard covers all 874 metrics across 41 tabs, auto-hiding tabs and rows for
-collectors and OPNsense plugins you don't run. Import
-[`grafana/dashboard.json`](./grafana/dashboard.json) via the Grafana UI, `gcx`, or GitOps. Alert
+Two cross-linked dynamic dashboards cover all 874 metrics across 41 tabs, auto-hiding tabs and rows
+for collectors and OPNsense plugins you don't run. Import
+[`grafana/dashboard.json`](./grafana/dashboard.json) for the firewall itself and
+[`grafana/dashboard-health.json`](./grafana/dashboard-health.json) for the exporter's own health,
+via the Grafana UI, `gcx`, or GitOps. Alert
 and recording rules ship alongside it in [`grafana/alerts/`](./grafana/alerts/). See
 [`grafana/README.md`](./grafana/README.md) and
 [integration & dashboards](https://m7kni.io/opnsense-exporter/integration-dashboards/).

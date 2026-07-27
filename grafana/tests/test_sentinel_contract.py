@@ -42,22 +42,36 @@ EXPECTED_VALUE_TESTED_SENTINELS = {"has_carp_vips"}
 DHCP_PRESENCE_SENTINELS = {"has_dnsmasq", "has_kea", "has_dhcpv4_isc", "has_dhcpv6_isc"}
 
 
+def merge(extract, builders):
+    """Union one extractor's per-Builder mapping across the dashboard family."""
+    out = {}
+    for b in builders:
+        out.update(extract(b))
+    return out
+
+
 class SentinelContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.builder = build_dashboard.build_all()
-        cls.contract = sentinel_contract.build_contract(cls.builder)
+        # The whole family, not `build_all()`: since #431 split the dashboard, tab
+        # modules build onto either one, and a contract derived from a single Builder
+        # would omit the health dashboard's sentinels from the document that governs
+        # them. `builders` is what the "shipped" side of every check below reads.
+        cls.built = build_dashboard.build_family()
+        cls.builders = [b for _, b in cls.built]
+        cls.contract = sentinel_contract.build_contract(
+            [(spec.title, b) for spec, b in cls.built])
 
     # ---- completeness -----------------------------------------------------
     def test_every_shipped_prometheus_sentinel_appears_exactly_once(self):
-        shipped = sentinel_contract._extract_prometheus_sentinels(self.builder)
+        shipped = merge(sentinel_contract._extract_prometheus_sentinels, self.builders)
         documented = [e["name"] for e in self.contract["prometheus"]["sentinels"]]
         self.assertEqual(sorted(shipped), sorted(documented))
         self.assertEqual(len(documented), len(set(documented)),
                           "a sentinel is documented more than once")
 
     def test_every_shipped_loki_sentinel_appears_exactly_once(self):
-        shipped = sentinel_contract._extract_loki_sentinels(self.builder)
+        shipped = merge(sentinel_contract._extract_loki_sentinels, self.builders)
         documented = [e["name"] for e in self.contract["loki"]["sentinels"]]
         self.assertEqual(sorted(shipped), sorted(documented))
         self.assertEqual(len(documented), len(set(documented)),
@@ -70,25 +84,25 @@ class SentinelContractTest(unittest.TestCase):
 
     # ---- fidelity: docs must match the live registry, field by field ------
     def test_declared_scope_matches_the_live_registry(self):
-        live = dict(self.builder._sentinel_scopes)
+        live = merge(lambda b: b._sentinel_scopes, self.builders)
         for entry in self.contract["prometheus"]["sentinels"]:
             with self.subTest(name=entry["name"]):
                 self.assertEqual(live[entry["name"]], entry["scope"])
                 self.assertIn(entry["scope"], SENTINEL_SCOPES)
 
     def test_query_matches_the_live_registry(self):
-        live = sentinel_contract._extract_prometheus_sentinels(self.builder)
+        live = merge(sentinel_contract._extract_prometheus_sentinels, self.builders)
         for entry in self.contract["prometheus"]["sentinels"]:
             with self.subTest(name=entry["name"]):
                 self.assertEqual(live[entry["name"]], entry["query"])
-        live_loki = sentinel_contract._extract_loki_sentinels(self.builder)
+        live_loki = merge(sentinel_contract._extract_loki_sentinels, self.builders)
         for entry in self.contract["loki"]["sentinels"]:
             with self.subTest(name=entry["name"]):
                 self.assertEqual(live_loki[entry["name"]], entry["query"])
 
     def test_by_scope_totals_match_a_direct_count(self):
         from collections import Counter
-        live_counts = Counter(self.builder._sentinel_scopes.values())
+        live_counts = Counter(merge(lambda b: b._sentinel_scopes, self.builders).values())
         for mode in SENTINEL_SCOPES:
             with self.subTest(mode=mode):
                 self.assertEqual(live_counts.get(mode, 0),

@@ -134,7 +134,7 @@ def _walk_tab(tab_spec: dict, path: list[str], out: dict[str, list[str]]) -> Non
                 _record_gate(rcond, " > ".join(row_path), out)
 
 
-def sentinel_gates(tabs: list) -> dict[str, list[str]]:
+def sentinel_gates(tabs: list, root: list | None = None) -> dict[str, list[str]]:
     """name -> sorted, deduplicated list of "Domain > Leaf[ > Row]" paths where
     that sentinel drives `conditionalRendering`, walked from the FINAL tab tree
     (i.e. after `build_dashboard.organize_tabs()` has nested every leaf under its
@@ -143,25 +143,54 @@ def sentinel_gates(tabs: list) -> dict[str, list[str]]:
     domain re-declares its children's presence at the group level), legitimately
     appears more than once — that is a real, documented fact about the manifest,
     not a bug in the walk.
+
+    `root` prefixes every path, so a family of dashboards (#431) can be walked into
+    one map without two dashboards' identically-titled tabs colliding.
     """
     out: dict[str, list[str]] = {}
     for tab in tabs:
-        _walk_tab(tab["spec"], [], out)
+        _walk_tab(tab["spec"], list(root or []), out)
     return {name: sorted(paths) for name, paths in out.items()}
 
 
-def build_contract(builder) -> dict:
-    """Build the full JSON-serializable sentinel contract from a built `Builder`.
+def build_contract(dashboards) -> dict:
+    """Build the full JSON-serializable sentinel contract for the dashboard family.
+
+    `dashboards` is a list of `(dashboard_title, Builder)` pairs. It spans the whole
+    family rather than one Builder because the contract documents the rules a TAB
+    MODULE author must follow, and a tab module builds onto whichever dashboard owns
+    it — scoping this to one dashboard would drop the other's sentinels from the
+    document that governs them (#431). Gate paths are prefixed with the dashboard
+    title so two dashboards cannot collide on a shared tab or row name.
 
     Deterministic by construction: sentinels are emitted in name-sorted order and
     scope totals in the fixed `SENTINEL_SCOPES` order, so two runs against an
     unchanged registry byte-for-byte agree — required for the `git diff
     --exit-code` staleness check in `make grafana-check`.
     """
-    scopes = dict(getattr(builder, "_sentinel_scopes", {}))
-    gates = sentinel_gates(builder.tabs)
+    if not isinstance(dashboards, list):   # a bare Builder, the pre-#431 signature
+        raise TypeError(
+            "build_contract() takes a list of (dashboard_title, Builder) pairs, not a "
+            "single Builder; passing one dashboard would silently omit the rest of the "
+            "family from the contract")
 
-    prom_queries = _extract_prometheus_sentinels(builder)
+    scopes: dict[str, str] = {}
+    gates: dict[str, list[str]] = {}
+    prom_queries: dict[str, str] = {}
+    loki_queries: dict[str, str] = {}
+    for title, builder in dashboards:
+        for name, scope in getattr(builder, "_sentinel_scopes", {}).items():
+            if scopes.setdefault(name, scope) != scope:
+                raise ValueError(
+                    f"sentinel {name!r} is declared with scope {scopes[name]!r} on one "
+                    f"dashboard and {scope!r} on {title!r}; one sentinel name means one "
+                    "availability contract across the family")
+        for name, paths in sentinel_gates(builder.tabs, root=[title]).items():
+            gates.setdefault(name, []).extend(paths)
+        prom_queries.update(_extract_prometheus_sentinels(builder))
+        loki_queries.update(_extract_loki_sentinels(builder))
+    gates = {name: sorted(set(paths)) for name, paths in gates.items()}
+
     prom_entries = []
     for name in sorted(prom_queries):
         query = prom_queries[name]
@@ -174,7 +203,6 @@ def build_contract(builder) -> dict:
             "gates": gates.get(name, []),
         })
 
-    loki_queries = _extract_loki_sentinels(builder)
     loki_entries = []
     for name in sorted(loki_queries):
         query = loki_queries[name]

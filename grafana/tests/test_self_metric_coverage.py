@@ -25,6 +25,13 @@ import build_dashboard  # noqa: E402
 SELF_METRICS_MD = REPO / "docs" / "metrics" / "self-metrics.md"
 
 
+def family():
+    """Every Builder in the dashboard family (#431). The gate is a union across
+    them, so a check that built only the main dashboard would report every
+    self-metric that moved to the health dashboard as missing."""
+    return [b for _, b in build_dashboard.build_family()]
+
+
 class SelfMetricCatalogueTest(unittest.TestCase):
     def test_self_metrics_reach_the_catalogue(self):
         """The generated inventory must actually be loaded, not merely exist on disk."""
@@ -75,11 +82,11 @@ class SelfMetricGateFailsOnUncoveredMetricTest(unittest.TestCase):
             fake = Path(tmp) / "self-metrics.md"
             fake.write_text(SELF_METRICS_MD.read_text() + extra_rows)
             build_dashboard.SELF_METRICS_MD = str(fake)
-            return build_dashboard.coverage(build_dashboard.build_all())
+            return build_dashboard.coverage(*family())
 
     def test_real_tree_is_fully_covered(self):
         """The control. Without this, the test below could pass on an already-red gate."""
-        missing = build_dashboard.coverage(build_dashboard.build_all())
+        missing = build_dashboard.coverage(*family())
         self.assertEqual(missing, [],
                          "the coverage gate is already failing before this test injects "
                          f"anything: {missing}")

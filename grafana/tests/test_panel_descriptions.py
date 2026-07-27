@@ -54,8 +54,11 @@ def panels(builder):
 class PanelDescriptionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.builder = build_dashboard.build_all()
-        cls.panels = panels(cls.builder)
+        # Across the whole family (#431). Every panel this project ships has to be
+        # described; scoping this to the main dashboard would have quietly stopped
+        # checking the ~49 that moved to the health dashboard.
+        cls.builders = [b for _, b in build_dashboard.build_family()]
+        cls.panels = [p for b in cls.builders for p in panels(b)]
 
     def test_every_panel_is_described_or_recorded_as_not_needing_one(self):
         undecided = sorted({

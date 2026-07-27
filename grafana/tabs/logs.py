@@ -16,7 +16,7 @@ self-metrics.
 """
 
 from builder import Builder, grp, RATE
-from uids import to_tab
+from uids import HEALTH_UID, to_tab
 
 
 def build(b: Builder):
@@ -222,10 +222,12 @@ def build(b: Builder):
         to_tab("Log-derived event metrics", "Observability", "Log-derived Events"),
     ])
     b.panel_links(ship_errors, [
-        to_tab("Exporter delivery health for this window", "Observability", "Diagnostics"),
+        to_tab("Exporter delivery health for this window", "Diagnostics", "",
+               uid=HEALTH_UID),
     ])
     b.panel_links(dropped, [
-        to_tab("Exporter delivery health for this window", "Observability", "Diagnostics"),
+        to_tab("Exporter delivery health for this window", "Diagnostics", "",
+               uid=HEALTH_UID),
     ])
 
     b.tab("Log Shipping", [

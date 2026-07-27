@@ -136,8 +136,12 @@ func statRules(s docStats) []statRule {
 		{File: "README.md", Pattern: eachCollectors, Replace: eachCollectorsRepl, MinHits: 1},
 		{File: "README.md", Pattern: dash, Replace: dashRepl, MinHits: 1},
 		{File: "docs/integration-dashboards.md", Pattern: dash, Replace: dashRepl, MinHits: 1},
-		// grafana/README.md tab count (twice) + alert/recording rule counts drifted (#116).
-		{File: "grafana/README.md", Pattern: tabsCount, Replace: tabsCountRepl, MinHits: 2},
+		// grafana/README.md tab count + alert/recording rule counts drifted (#116).
+		// MinHits dropped 2 -> 1 by #431: the second occurrence was the per-file table
+		// row for `dashboard.json`, which can no longer carry the family-wide tab count
+		// now that the family has two dashboards. One occurrence remains, on the
+		// sentence that introduces the generated tab list.
+		{File: "grafana/README.md", Pattern: tabsCount, Replace: tabsCountRepl, MinHits: 1},
 		{File: "grafana/README.md", Pattern: alertRules, Replace: alertRulesRepl, MinHits: 1},
 		{File: "grafana/README.md", Pattern: recordingRules, Replace: recordingRulesRepl, MinHits: 1},
 	}

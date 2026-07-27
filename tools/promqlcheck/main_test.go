@@ -3,9 +3,34 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// withKind stamps a top-level `kind` onto a fixture, which is what validatePaths
+// routes on. The panel/variable fixtures omit it because validateDashboard itself
+// never looks at it.
+func withKind(fixture []byte, kind string) string {
+	var doc map[string]any
+	if err := json.Unmarshal(fixture, &doc); err != nil {
+		panic(err)
+	}
+	doc["kind"] = kind
+	out, err := json.Marshal(doc)
+	if err != nil {
+		panic(err)
+	}
+	return string(out)
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
 
 func dashboardFixture(
 	panelID int,
@@ -343,5 +368,41 @@ func TestTextVariableDoesNotBreakTheDocument(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("validated %d variable queries, want 1 (the textbox is not a query)", count)
+	}
+}
+
+// --- argument routing (#431) ------------------------------------------------
+// The dashboard family became plural, so an argument is routed by its manifest
+// `kind` rather than by position. These pin the two ways that can go wrong: a
+// second dashboard being fed to the rule validator (which rejects it with a
+// misleading "unrecognized rule manifest kind"), and a run that checks no
+// dashboard at all reporting success.
+
+func TestValidatePathsValidatesEveryDashboardRegardlessOfPosition(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "a.json")
+	writeFile(t, first, withKind(dashboardFixture(1, "p", "prometheus", "prometheus", "A", "up"), "Dashboard"))
+	second := filepath.Join(dir, "b.json")
+	writeFile(t, second, withKind(dashboardFixture(2, "q", "prometheus", "prometheus", "A", "go_goroutines"), "Dashboard"))
+
+	targets, _, _, _, diagnostics, err := validatePaths([]string{first, second})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", diagnostics)
+	}
+	if targets != 2 {
+		t.Fatalf("validated %d targets across two dashboards, want 2", targets)
+	}
+}
+
+func TestValidatePathsRejectsARunWithNoDashboard(t *testing.T) {
+	dir := t.TempDir()
+	folder := filepath.Join(dir, "folder.json")
+	writeFile(t, folder, `{"kind":"Folder","spec":{"title":"x"}}`)
+
+	if _, _, _, _, _, err := validatePaths([]string{folder}); err == nil {
+		t.Fatal("a run that checked no dashboard reported success")
 	}
 }

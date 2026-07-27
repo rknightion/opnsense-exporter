@@ -7,6 +7,7 @@ GRAFANA_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(GRAFANA_DIR))
 
 import build_dashboard  # noqa: E402
+import uids  # noqa: E402
 from builder import Builder  # noqa: E402
 
 
@@ -59,9 +60,21 @@ LEAF_TITLES = {
     "Log-derived Events",
     "Flow Volume",
     "Zenarmor",
-    "Log Shipping",
-    "Diagnostics",
     "Recording rules",
+}
+
+# The self-observability dashboard's leaves (#431). A separate inventory rather than
+# a union: these two tabs moving to a dashboard of their own is the whole point of
+# the split, so a change that put either back on the main dashboard should fail
+# BOTH lists rather than pass a combined one.
+HEALTH_LEAF_TITLES = {
+    "Diagnostics",
+    "Log Shipping",
+}
+
+LEAF_TITLES_BY_UID = {
+    uids.MAIN_UID: LEAF_TITLES,
+    uids.HEALTH_UID: HEALTH_LEAF_TITLES,
 }
 
 # Derived, not duplicated. This was a hand-maintained copy of
@@ -82,6 +95,19 @@ def leaf_tabs(builder):
         else:
             leaves.append(tab)
     return leaves
+
+
+def merged_family_builder():
+    """A stand-in Builder whose `elements` are every panel in the family (#431).
+
+    Only `elements` is merged, which is all `panel_for_metric` reads. Layout is
+    deliberately NOT merged: two dashboards' tab trees do not compose, and a test
+    that needs layout should ask a real Builder for it.
+    """
+    merged = Builder()
+    for _, b in build_dashboard.build_family():
+        merged.elements.update(b.elements)
+    return merged
 
 
 def panel_for_metric(builder, metric):
@@ -109,12 +135,25 @@ class DashboardHierarchyTest(unittest.TestCase):
         self.assertEqual(len(titles), len(set(titles)))
         self.assertEqual(set(titles), LEAF_TITLES)
 
+    def test_every_dashboard_in_the_family_has_its_expected_leaves(self):
+        for spec, b in build_dashboard.build_family():
+            with self.subTest(uid=spec.uid):
+                titles = [t["spec"]["title"] for t in leaf_tabs(b)]
+                self.assertEqual(len(titles), len(set(titles)))
+                self.assertEqual(set(titles), LEAF_TITLES_BY_UID[spec.uid])
+
     def test_optional_leaf_tabs_have_conditional_rendering(self):
-        builder = build_dashboard.build_all()
-        by_title = {tab["spec"]["title"]: tab for tab in leaf_tabs(builder)}
+        # Family-wide: OPTIONAL_TAB_PRESENCE is one registry covering both
+        # dashboards, and "Log Shipping" is now gated on the health dashboard.
+        by_title = {tab["spec"]["title"]: tab
+                    for _, b in build_dashboard.build_family()
+                    for tab in leaf_tabs(b)}
 
         for title in OPTIONAL_LEAVES:
             with self.subTest(title=title):
+                self.assertIn(title, by_title,
+                              f"{title} is in OPTIONAL_TAB_PRESENCE but no dashboard "
+                              "in the family builds a leaf tab with that title")
                 self.assertIn("conditionalRendering", by_title[title]["spec"])
 
     def test_fully_optional_domains_are_presence_gated(self):
@@ -165,7 +204,11 @@ class OverviewSemanticsTest(unittest.TestCase):
 
 class LogShippingSemanticsTest(unittest.TestCase):
     def test_queue_and_delivery_panels_follow_the_bounded_acknowledged_pipeline_contract(self):
-        builder = build_dashboard.build_all()
+        # This contract spans BOTH dashboards since #431: the queue/delivery panels
+        # moved to the health dashboard while the log-derived event counters stayed
+        # on the main one, and the invariant is precisely that they agree. A
+        # merged view keeps the check on the pipeline rather than on one file.
+        builder = merged_family_builder()
 
         queue_count = panel_for_metric(builder, "opnsense_exporter_logs_queue_length")
         count_exprs = [

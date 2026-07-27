@@ -1,6 +1,6 @@
 {
   "metrics": 874,
-  "panels": 760,
+  "panels": 763,
   "tabs": 41,
   "tab_names": [
     "Overview",
@@ -41,9 +41,9 @@
     "Siproxd",
     "Log-derived Events",
     "Flow Volume",
-    "Log Shipping",
     "Recording rules",
-    "Diagnostics"
+    "Diagnostics",
+    "Log Shipping"
   ],
   "top_level_tabs": 7,
   "top_level_tab_names": [
@@ -54,5 +54,64 @@
     "VPN & remote access",
     "Services",
     "Observability"
+  ],
+  "dashboards": [
+    {
+      "uid": "opnsense-exporter",
+      "title": "OPNsense Exporter",
+      "panels": 714,
+      "tabs": 39,
+      "tab_names": [
+        "Overview",
+        "System & Resources",
+        "Services, Cron & DynDNS",
+        "Certificates",
+        "UPS",
+        "Monit",
+        "HA Sync",
+        "CARP / HA",
+        "Interfaces",
+        "Gateways & WAN",
+        "DNS - Unbound",
+        "DHCP",
+        "Routing & Neighbors",
+        "Protocol Stats",
+        "NTP",
+        "Chrony",
+        "Traffic Shaper",
+        "NetFlow",
+        "FRR Routing",
+        "Captive Portal",
+        "Firewall & PF",
+        "Aliases",
+        "IDS/IPS",
+        "CrowdSec",
+        "ClamAV",
+        "Q-Feeds",
+        "Zenarmor",
+        "VPN",
+        "Tailscale",
+        "NetBird",
+        "Tor",
+        "Syslog",
+        "HAProxy",
+        "Relayd",
+        "Nginx",
+        "Siproxd",
+        "Log-derived Events",
+        "Flow Volume",
+        "Recording rules"
+      ]
+    },
+    {
+      "uid": "opnsense-exporter-health",
+      "title": "OPNsense Exporter Health",
+      "panels": 49,
+      "tabs": 2,
+      "tab_names": [
+        "Diagnostics",
+        "Log Shipping"
+      ]
+    }
   ]
 }
