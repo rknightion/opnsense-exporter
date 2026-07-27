@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 )
@@ -18,7 +19,7 @@ func TestMetricsHandler_RecorderCapturesUnfilteredOnly(t *testing.T) {
 	f := &fakeViews{names: []string{"x"}}
 	self := prometheus.NewRegistry()
 	rec := metricsnap.New()
-	h := NewMetricsHandler(f, self, promslog.NewNopLogger(), rec)
+	h := NewMetricsHandler(f, self, promslog.NewNopLogger(), rec, nil)
 
 	// A filtered scrape must NOT populate the recorder (a partial view must never
 	// clobber the last full-scrape snapshot the web UI reads).
@@ -59,7 +60,97 @@ func newTestMetricsSetup(names ...string) (*fakeViews, http.Handler) {
 	selfGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "fake_self_metric", Help: "fake"})
 	selfGauge.Set(1)
 	self.MustRegister(selfGauge)
-	return f, NewMetricsHandler(f, self, promslog.NewNopLogger(), nil)
+	return f, NewMetricsHandler(f, self, promslog.NewNopLogger(), nil, nil)
+}
+
+// newTestMetricsSetupWithObs is newTestMetricsSetup but also wires a real
+// registry for the handler's own self-observability metrics (#426), so a test
+// can gather and assert on them.
+func newTestMetricsSetupWithObs(names ...string) (*fakeViews, http.Handler, *prometheus.Registry) {
+	f := &fakeViews{names: names}
+	self := prometheus.NewRegistry()
+	selfGauge := prometheus.NewGauge(prometheus.GaugeOpts{Name: "fake_self_metric", Help: "fake"})
+	selfGauge.Set(1)
+	self.MustRegister(selfGauge)
+	obs := prometheus.NewRegistry()
+	return f, NewMetricsHandler(f, self, promslog.NewNopLogger(), nil, obs), obs
+}
+
+// counterValue reads the current value of a zero-label Counter registered on reg,
+// or fails the test if it cannot be found.
+func counterValue(t *testing.T, reg *prometheus.Registry, name string, labels map[string]string) float64 {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if labelsMatch(m, labels) {
+				if c := m.GetCounter(); c != nil {
+					return c.GetValue()
+				}
+			}
+		}
+	}
+	t.Fatalf("metric %s{%v} not found", name, labels)
+	return 0
+}
+
+func gaugeValue(t *testing.T, reg *prometheus.Registry, name string) float64 {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		if len(mf.GetMetric()) != 1 {
+			t.Fatalf("gauge %s has %d series, want exactly 1 (no labels)", name, len(mf.GetMetric()))
+		}
+		return mf.GetMetric()[0].GetGauge().GetValue()
+	}
+	t.Fatalf("metric %s not found", name)
+	return 0
+}
+
+func histogramCount(t *testing.T, reg *prometheus.Registry, name string, labels map[string]string) uint64 {
+	t.Helper()
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if labelsMatch(m, labels) {
+				if h := m.GetHistogram(); h != nil {
+					return h.GetSampleCount()
+				}
+			}
+		}
+	}
+	t.Fatalf("histogram %s{%v} not found", name, labels)
+	return 0
+}
+
+func labelsMatch(m *dto.Metric, want map[string]string) bool {
+	if len(m.GetLabel()) != len(want) {
+		return false
+	}
+	for _, lp := range m.GetLabel() {
+		if wv, ok := want[lp.GetName()]; !ok || wv != lp.GetValue() {
+			return false
+		}
+	}
+	return true
 }
 
 func serve(h http.Handler, target string, headers map[string]string) *httptest.ResponseRecorder {
@@ -230,7 +321,7 @@ func TestMetricsHandler_ConcurrencyLimitReturns503(t *testing.T) {
 		t.Fatalf("maxMetricsInFlight = %d, want a positive bound", maxMetricsInFlight)
 	}
 	b := &blockingViews{names: []string{"a"}, release: make(chan struct{})}
-	h := NewMetricsHandler(b, prometheus.NewRegistry(), promslog.NewNopLogger(), nil)
+	h := NewMetricsHandler(b, prometheus.NewRegistry(), promslog.NewNopLogger(), nil, nil)
 
 	var wg sync.WaitGroup
 	for range maxMetricsInFlight {
@@ -325,4 +416,112 @@ func TestMetricsHandler_WriteDeadlineUnsupportedIsIgnored(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "fake_view_metric") {
 		t.Errorf("expected metrics body, got %q", rec.Body.String())
 	}
+}
+
+// --- self-observability (#426) --------------------------------------------
+
+// TestMetricsHandler_SuccessfulScrapeRecordsCompletionAndDuration pins the
+// happy-path bookkeeping: a served scrape counts once under the "ok" status, its
+// duration lands in the matching histogram bucket series, and the in-flight
+// gauge returns to zero once the request has fully returned (its own admission
+// window is over).
+func TestMetricsHandler_SuccessfulScrapeRecordsCompletionAndDuration(t *testing.T) {
+	_, h, obs := newTestMetricsSetupWithObs("a")
+
+	rec := serve(h, "/metrics", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	got := counterValue(t, obs, metricNameRequestsTotal, map[string]string{"status": requestStatusOK})
+	if got != 1 {
+		t.Errorf("%s{status=%s} = %v, want 1", metricNameRequestsTotal, requestStatusOK, got)
+	}
+	if n := histogramCount(t, obs, metricNameRequestDuration, map[string]string{"status": requestStatusOK}); n != 1 {
+		t.Errorf("%s{status=%s} sample count = %d, want 1", metricNameRequestDuration, requestStatusOK, n)
+	}
+	if g := gaugeValue(t, obs, metricNameRequestsInFlight); g != 0 {
+		t.Errorf("%s = %v after the request returned, want 0", metricNameRequestsInFlight, g)
+	}
+}
+
+// TestMetricsHandler_BadRequestRecordsCompletion pins the 400 path: a rejected
+// collect[]/exclude[] combination is still a completed request from the
+// admission cap's point of view, tallied under its own bounded status value
+// rather than silently missing from the completion counter.
+func TestMetricsHandler_BadRequestRecordsCompletion(t *testing.T) {
+	_, h, obs := newTestMetricsSetupWithObs("a", "b")
+
+	rec := serve(h, "/metrics?collect[]=a&exclude[]=b", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+
+	got := counterValue(t, obs, metricNameRequestsTotal, map[string]string{"status": requestStatusBadRequest})
+	if got != 1 {
+		t.Errorf("%s{status=%s} = %v, want 1", metricNameRequestsTotal, requestStatusBadRequest, got)
+	}
+}
+
+// TestMetricsHandler_RejectedRequestIncrementsAdmissionCounter drives a real
+// 41st request through the actual handler (not a reimplementation of its
+// admission check) and asserts the rejection lands on a bounded reason label,
+// separately from the completion counter above — a rejected request was never
+// admitted, so it must not also appear as a "completed" request.
+func TestMetricsHandler_RejectedRequestIncrementsAdmissionCounter(t *testing.T) {
+	b := &blockingViews{names: []string{"a"}, release: make(chan struct{})}
+	obs := prometheus.NewRegistry()
+	h := NewMetricsHandler(b, prometheus.NewRegistry(), promslog.NewNopLogger(), nil, obs)
+
+	var wg sync.WaitGroup
+	for range maxMetricsInFlight {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			serve(h, "/metrics", nil)
+		}()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for b.inHandler() < maxMetricsInFlight {
+		if time.Now().After(deadline) {
+			close(b.release)
+			wg.Wait()
+			t.Fatalf("only %d/%d requests reached the handler", b.inHandler(), maxMetricsInFlight)
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// The 41st request: forced to overflow the admission cap while the first 40
+	// are still parked inside ScrapeView.
+	over := serve(h, "/metrics", nil)
+	if over.Code != http.StatusServiceUnavailable {
+		t.Fatalf("overflow status = %d, want 503", over.Code)
+	}
+
+	got := counterValue(t, obs, metricNameRequestsRejectedTotal, map[string]string{"reason": rejectReasonInFlightLimit})
+	if got != 1 {
+		t.Errorf("%s{reason=%s} = %v, want 1", metricNameRequestsRejectedTotal, rejectReasonInFlightLimit, got)
+	}
+	// A rejected request was never admitted, so it must not also show up as a
+	// completed request under any status. requestsTotal pre-initialises every
+	// status to zero (so a dashboard never has to distinguish "never happened"
+	// from "this build predates the label" via NO DATA), so the assertion is on
+	// VALUE, not on the series' mere existence.
+	mfs, err := obs.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != metricNameRequestsTotal {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if got := m.GetCounter().GetValue(); got != 0 {
+				t.Errorf("%s unexpectedly recorded for the rejected request: %v", metricNameRequestsTotal, m)
+			}
+		}
+	}
+
+	close(b.release)
+	wg.Wait()
 }

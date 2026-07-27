@@ -51,7 +51,7 @@
       {
         "title": "Alert runbooks",
         "type": "link",
-        "url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts",
+        "url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#alerts--recording-rules",
         "icon": "external link",
         "tooltip": "What each generated alert means and what to do about it",
         "tags": [],
@@ -82229,6 +82229,449 @@
             }
           }
         }
+      },
+      "panel-756": {
+        "kind": "Panel",
+        "spec": {
+          "id": 756,
+          "title": "Metrics Handler In-Flight Requests",
+          "description": "Requests currently admitted and being served by /metrics, bounded by the exporter's --collector.poll-interval-independent in-flight cap (40). Self-referential by construction: the very scrape that reads this gauge is itself one of the requests it counts, so it never reads 0 in its own response - read it as a trend, not a single-sample zero/nonzero check.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_exporter_server_metrics_requests_in_flight{opnsense_instance=~\"$opnsense_instance\"})",
+                        "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
+                        "instant": true,
+                        "range": false,
+                        "format": "table"
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "blue",
+                        "value": null
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            }
+          }
+        }
+      },
+      "panel-757": {
+        "kind": "Panel",
+        "spec": {
+          "id": 757,
+          "title": "Metrics Handler Requests (rate, by status)",
+          "description": "Admitted /metrics requests completed per second, by outcome status: ok = served (however the underlying gather went - see Gather Errors below); bad_request = rejected collect[]/exclude[] parameters; internal_error = the scrape view itself failed to register. A request the admission cap rejected outright is never counted here - see the Rejections panel.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_exporter_server_metrics_requests_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{status}} {{opnsense_instance}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-758": {
+        "kind": "Panel",
+        "spec": {
+          "id": 758,
+          "title": "Metrics Handler Admission Rejections (rate)",
+          "description": "Requests refused before admission because 40 concurrent /metrics requests were already being served (reason=in_flight_limit). The exporter's listener has no authentication by default, so any reachable client can drive this; a sustained non-zero rate means either a slow-reading scraper backlog or more concurrent scrapers than the exporter is sized for.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_exporter_server_metrics_requests_rejected_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{reason}} {{opnsense_instance}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "reqps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-759": {
+        "kind": "Panel",
+        "spec": {
+          "id": 759,
+          "title": "Metrics Handler Gather Errors / Partial Scrapes (rate)",
+          "description": "Gather() errors ContinueOnError caught and logged instead of blanking the whole response (#81) - most commonly a collector emitting a duplicate label tuple. The response still returned 200 with whatever WAS collected; this is the only queryable evidence that a scrape was partial rather than complete.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_exporter_server_metrics_gather_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "A",
+                        "legendFormat": "{{reason}} {{opnsense_instance}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "errps",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-760": {
+        "kind": "Panel",
+        "spec": {
+          "id": 760,
+          "title": "Metrics Handler Request p95 Latency (by status)",
+          "description": "p95 of opnsense_exporter_server_metrics_request_duration_seconds, timed from admission to response completion, by outcome status. Excludes requests the admission cap rejected outright (they never do enough work to be worth timing) - a rejection shows up on the Rejections panel instead.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.95, sum by (opnsense_instance, le, status) (rate(opnsense_exporter_server_metrics_request_duration_seconds_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "refId": "A",
+                        "legendFormat": "{{status}}",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "s",
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  },
+                  "min": 0
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -99029,6 +99472,85 @@
                                             "variable": "has_annotations",
                                             "operator": "matches",
                                             "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "Metrics Handler Serving Path",
+                                  "collapse": false,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 6,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-756"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 6,
+                                            "y": 0,
+                                            "width": 9,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-757"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 15,
+                                            "y": 0,
+                                            "width": 9,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-758"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 6,
+                                            "width": 6,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-759"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 6,
+                                            "y": 6,
+                                            "width": 6,
+                                            "height": 6,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-760"
+                                            }
                                           }
                                         }
                                       ]

@@ -1454,6 +1454,15 @@ func main() {
 		selfMetricsRegistry,
 		logger,
 		metricsRecorder,
+		// The handler's own request/duration/rejection/gather-error metrics
+		// (#426) reuse the same instance-stamping wrapper as logship and the
+		// annotation writer, rather than registering bare onto
+		// selfMetricsRegistry — that bare path is exactly how the
+		// opnsense_exporter_otlp_* family ended up with no opnsense_instance
+		// label at all (#466). logShip's SelfMetricsRegisterer is a generic
+		// "wrap with instance identity" helper despite its package name; it is
+		// already reused this way for the non-logship annotation writer above.
+		logSelfMetricsRegisterer,
 	)
 	mux.Handle(*options.MetricsPath, metricsHandler)
 

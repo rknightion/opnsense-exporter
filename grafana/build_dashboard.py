@@ -46,6 +46,9 @@ COVERAGE_EXEMPT = {
     # Same histogram case (#353): the flow source-byte-delta-ratio is charted via its
     # _bucket series (histogram_quantile on the Flow Volume tab), never the bare base.
     "opnsense_flow_source_byte_delta_ratio",
+    # Same histogram case (#426): the /metrics handler's own request-duration histogram
+    # is charted via its _bucket series in build_diagnostics, never the bare base.
+    "opnsense_exporter_server_metrics_request_duration_seconds",
 }
 
 # The exporter's own go_*/process_* runtime metrics carry whatever `job` label the user's
@@ -658,6 +661,66 @@ def build_diagnostics(b: Builder):
                           "a non-zero failure rate is a broken token or URL, while a climbing age with "
                           "no failures at all is simply a firewall with nothing to report.")
 
+    # ---- /metrics handler self-observability (#426) ----------------------
+    # No presence sentinel: unlike annotations (opt-in) or OTLP (opt-in), the
+    # handler serving THIS dashboard's own data source is by definition always
+    # running whenever any of these panels can render at all — the same
+    # reasoning "Scrape Health" above already relies on for opnsense_up. The
+    # family registers through the SAME instance-stamping wrapper as the
+    # annotation writer (main.go passes logSelfMetricsRegisterer, reused
+    # rather than duplicated), so it carries opnsense_instance and is scoped
+    # here with the ordinary sel() instance matcher (scope="self_labeled") —
+    # not sel_pipeline()/target_join, and not the #466 mistake of assuming
+    # opnsense_instance where it doesn't exist.
+    server_inflight = b.stat(
+        "Metrics Handler In-Flight Requests",
+        sel("opnsense_exporter_server_metrics_requests_in_flight"),
+        unit="short", w=6, h=6, graph="none", legend="{{opnsense_instance}}",
+        desc="Requests currently admitted and being served by /metrics, bounded by the "
+             "exporter's --collector.poll-interval-independent in-flight cap (40). "
+             "Self-referential by construction: the very scrape that reads this gauge is "
+             "itself one of the requests it counts, so it never reads 0 in its own response "
+             "- read it as a trend, not a single-sample zero/nonzero check.")
+    server_req_rate = b.ts(
+        "Metrics Handler Requests (rate, by status)",
+        [(f'rate({sel("opnsense_exporter_server_metrics_requests_total")}[{RATE}])',
+          "{{status}} {{opnsense_instance}}")],
+        unit="reqps", w=9, h=6,
+        desc="Admitted /metrics requests completed per second, by outcome status: ok = "
+             "served (however the underlying gather went - see Gather Errors below); "
+             "bad_request = rejected collect[]/exclude[] parameters; internal_error = the "
+             "scrape view itself failed to register. A request the admission cap rejected "
+             "outright is never counted here - see the Rejections panel.")
+    server_rejected = b.ts(
+        "Metrics Handler Admission Rejections (rate)",
+        [(f'rate({sel("opnsense_exporter_server_metrics_requests_rejected_total")}[{RATE}])',
+          "{{reason}} {{opnsense_instance}}")],
+        unit="reqps", w=9, h=6,
+        desc="Requests refused before admission because 40 concurrent /metrics requests "
+             "were already being served (reason=in_flight_limit). The exporter's listener "
+             "has no authentication by default, so any reachable client can drive this; a "
+             "sustained non-zero rate means either a slow-reading scraper backlog or more "
+             "concurrent scrapers than the exporter is sized for.")
+    server_gather_err = b.ts(
+        "Metrics Handler Gather Errors / Partial Scrapes (rate)",
+        [(f'rate({sel("opnsense_exporter_server_metrics_gather_errors_total")}[{RATE}])',
+          "{{reason}} {{opnsense_instance}}")],
+        unit="errps", w=6, h=6,
+        desc="Gather() errors ContinueOnError caught and logged instead of blanking the "
+             "whole response (#81) - most commonly a collector emitting a duplicate label "
+             "tuple. The response still returned 200 with whatever WAS collected; this is "
+             "the only queryable evidence that a scrape was partial rather than complete.")
+    server_p95 = b.ts(
+        "Metrics Handler Request p95 Latency (by status)",
+        [(f'histogram_quantile(0.95, sum {grp("le", "status")} '
+          f'(rate(opnsense_exporter_server_metrics_request_duration_seconds_bucket'
+          f'{{opnsense_instance=~"$opnsense_instance"}}[{RATE}])))', "{{status}}")],
+        unit="s", w=6, h=6,
+        desc="p95 of opnsense_exporter_server_metrics_request_duration_seconds, timed from "
+             "admission to response completion, by outcome status. Excludes requests the "
+             "admission cap rejected outright (they never do enough work to be worth "
+             "timing) - a rejection shows up on the Rejections panel instead.")
+
     b.tab("Diagnostics", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
@@ -668,6 +731,8 @@ def build_diagnostics(b: Builder):
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
         b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
         b.row("Grafana Annotation Writing", [ann_rate, ann_age], present="has_annotations"),
+        b.row("Metrics Handler Serving Path",
+              [server_inflight, server_req_rate, server_rejected, server_gather_err, server_p95]),
         b.row("Exporter Build & Collectors", [build, cov]),
         b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),

@@ -13,6 +13,144 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 )
 
+// Self-observability for the /metrics handler itself (#426). Before this, a
+// stuck admission cap or a persistently duplicate-labelled collector was
+// visible only in logs — an operator scraping the exporter had no queryable
+// signal that scrapes were being rejected or served partial. Every name below
+// is a literal constant so the self-metric inventory's source scan
+// (scripts/docgen/selfmetrics.go) can see it; see that file's header for why an
+// unresolvable name is a hard build failure rather than a skip.
+//
+// Label vocabularies are closed by construction, never derived from a request:
+// requestStatus* and the reject/gather-error reasons are the only values these
+// metrics can ever carry, so cardinality is bounded regardless of client
+// behaviour (no path, no client IP, no header value ever becomes a label).
+const (
+	metricNameRequestsInFlight      = "opnsense_exporter_server_metrics_requests_in_flight"
+	metricNameRequestsTotal         = "opnsense_exporter_server_metrics_requests_total"
+	metricNameRequestDuration       = "opnsense_exporter_server_metrics_request_duration_seconds"
+	metricNameRequestsRejectedTotal = "opnsense_exporter_server_metrics_requests_rejected_total"
+	metricNameGatherErrorsTotal     = "opnsense_exporter_server_metrics_gather_errors_total"
+)
+
+// requestStatus* is the closed vocabulary for metricNameRequestsTotal and
+// metricNameRequestDuration. Only a request the admission cap actually let
+// through gets a status: a rejected request never reaches this label set (see
+// rejectReasonInFlightLimit below), so the two counters are never
+// double-counting the same event.
+const (
+	requestStatusOK         = "ok"          // served, however the gather itself went (see gather-error counter)
+	requestStatusBadRequest = "bad_request" // rejected by parseCollectorFilters (unknown/conflicting collect[]/exclude[])
+)
+
+// requestStatusInternalError is the third and last requestStatus* value: the
+// scrape view itself failed to register into the fresh per-request registry
+// (distinct from a downstream Gather() error, which is a partial 200 tracked
+// by metricNameGatherErrorsTotal instead — this is the request that never got
+// as far as gathering anything at all).
+const requestStatusInternalError = "internal_error"
+
+// rejectReasonInFlightLimit is the sole admission-rejection reason today. It is
+// still a label (not a bare Counter) because the admission path is the one
+// place a second reason could plausibly join it later (e.g. a future
+// per-client throttle); a bare Counter would have to become a CounterVec at
+// that point and break every existing query.
+const rejectReasonInFlightLimit = "in_flight_limit"
+
+// gatherErrorReasonCollectorError is the sole reason value for
+// metricNameGatherErrorsTotal. promhttp's ContinueOnError reports Gather()
+// failures (duplicate label tuples, inconsistent HELP/TYPE, and similar
+// collector-programming errors) as a single opaque error value with no
+// stable, closed sub-classification available to this handler — see
+// promErrorLogger.Println below. A label is kept anyway, for the same
+// forward-compatibility reason as rejectReasonInFlightLimit.
+const gatherErrorReasonCollectorError = "collector_error"
+
+// handlerMetrics is the /metrics handler's OWN self-observability, as distinct
+// from h.self (process_*/go_*, forwarded not owned) and the per-request scrape
+// view (firewall data). Constructed once per handler and always non-nil so
+// every code path can record unconditionally; registration onto a real
+// registerer is what actually makes the series visible; a nil registerer (as
+// in most unit tests) leaves the same Inc()/Observe() calls as harmless no-ops
+// on unregistered collectors.
+//
+// SELF-REFERENTIAL BY CONSTRUCTION, DOCUMENTED RATHER THAN FOUGHT (#426): these
+// metrics are gathered from the SAME registry the /metrics handler serves, so
+// requestsInFlight is incremented before promhttp.HandlerFor runs and is
+// therefore always >= 1 (never 0) in the very response that reports it — the
+// scrape collecting the gauge is itself one of the in-flight requests it
+// counts. Do not "fix" this with a snapshot-before-increment trick: it would
+// only relocate the same fencepost by one request, and the collection path
+// must never itself register a new label combination (a metric whose own
+// Collect() mutates cardinality is worse than an off-by-one gauge).
+type handlerMetrics struct {
+	requestsInFlight prometheus.Gauge
+	requestsTotal    *prometheus.CounterVec
+	requestDuration  *prometheus.HistogramVec
+	requestsRejected *prometheus.CounterVec
+	gatherErrors     *prometheus.CounterVec
+}
+
+func newHandlerMetrics(reg prometheus.Registerer) *handlerMetrics {
+	m := &handlerMetrics{
+		requestsInFlight: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: metricNameRequestsInFlight,
+			Help: "Current number of /metrics requests admitted and being served, bounded by " +
+				"maxMetricsInFlight. Self-referential by construction: the request that gathers this " +
+				"series is itself one of the requests it counts, so it never reads 0 in its own " +
+				"response.",
+		}),
+		requestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: metricNameRequestsTotal,
+			Help: "Total /metrics requests admitted and completed, by outcome status " +
+				"(ok = served, however the underlying gather went; bad_request = rejected " +
+				"collect[]/exclude[] parameters; internal_error = the scrape view itself failed to " +
+				"register). A request the admission cap rejected is never counted here; see " +
+				metricNameRequestsRejectedTotal + ".",
+		}, []string{"status"}),
+		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name: metricNameRequestDuration,
+			Help: "Duration in seconds of an admitted /metrics request, from the point it passed " +
+				"the in-flight admission check to the point its response finished writing, by " +
+				"outcome status. Excludes requests the admission cap rejected outright — those never " +
+				"do enough work to be worth timing and would otherwise dilute the distribution with " +
+				"near-zero samples.",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"status"}),
+		requestsRejected: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: metricNameRequestsRejectedTotal,
+			Help: "Total /metrics requests rejected before admission, by reason " +
+				"(in_flight_limit = maxMetricsInFlight concurrent requests were already being served).",
+		}, []string{"reason"}),
+		gatherErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: metricNameGatherErrorsTotal,
+			Help: "Total Gather() errors promhttp's ContinueOnError handling caught and logged " +
+				"rather than turning into a 500 (#81) — most commonly a collector emitting a " +
+				"duplicate label tuple. The response for that request still returns 200 with " +
+				"whatever the gather DID collect; this counter is the only queryable evidence that " +
+				"the response was partial. By reason (collector_error is the only value today: " +
+				"ContinueOnError does not expose a stable finer-grained cause).",
+		}, []string{"reason"}),
+	}
+	// Pre-initialise the closed vocabularies to zero (rather than leaving them
+	// absent until first occurrence) so a dashboard/alert querying a specific
+	// reason/status never has to distinguish "never happened" from "this
+	// exporter build predates the label" via NO DATA.
+	m.requestsTotal.WithLabelValues(requestStatusOK)
+	m.requestsTotal.WithLabelValues(requestStatusBadRequest)
+	m.requestsTotal.WithLabelValues(requestStatusInternalError)
+	m.requestDuration.WithLabelValues(requestStatusOK)
+	m.requestDuration.WithLabelValues(requestStatusBadRequest)
+	m.requestDuration.WithLabelValues(requestStatusInternalError)
+	m.requestsRejected.WithLabelValues(rejectReasonInFlightLimit)
+	m.gatherErrors.WithLabelValues(gatherErrorReasonCollectorError)
+
+	if reg != nil {
+		reg.MustRegister(m.requestsInFlight, m.requestsTotal, m.requestDuration, m.requestsRejected, m.gatherErrors)
+	}
+	return m
+}
+
 // maxMetricsInFlight bounds concurrent /metrics scrapes; overflow is answered
 // 503 (the same degradation promhttp's own MaxRequestsInFlight applies). The
 // exporter's listener has no authentication by default, so without a bound any
@@ -68,6 +206,9 @@ type metricsHandler struct {
 	// private semaphore that can never fill — a silent no-op. This one is
 	// created once in NewMetricsHandler and shared, so it actually bounds.
 	inFlight chan struct{}
+	// metrics is this handler's own self-observability (#426), always non-nil
+	// regardless of whether selfObs was nil — see newHandlerMetrics.
+	metrics *handlerMetrics
 }
 
 // NewMetricsHandler returns the /metrics handler. Per request it parses
@@ -84,13 +225,24 @@ type metricsHandler struct {
 // polling; poll deadlines come from --exporter.max-scrape-duration and the poll
 // intervals. Response-side bounds that DO apply live here: maxMetricsInFlight and
 // metricsWriteDeadline.
-func NewMetricsHandler(views ScrapeViews, self prometheus.Gatherer, log *slog.Logger, recorder *metricsnap.Recorder) http.Handler {
+//
+// selfObs is where this handler's OWN request/duration/rejection/gather-error
+// metrics (#426) register — deliberately a caller-supplied registerer rather
+// than the bare self gatherer above, so the caller can stamp instance identity
+// onto it the same way logship and the annotation writer do (via
+// logship.SelfMetricsRegisterer), instead of these series repeating the
+// opnsense_exporter_otlp_* mistake (#466) of carrying no opnsense_instance
+// label at all. nil is accepted (most unit tests pass it) and simply leaves
+// these metrics unregistered — Inc()/Observe() calls still happen but produce
+// no visible series.
+func NewMetricsHandler(views ScrapeViews, self prometheus.Gatherer, log *slog.Logger, recorder *metricsnap.Recorder, selfObs prometheus.Registerer) http.Handler {
 	return &metricsHandler{
 		views:    views,
 		self:     self,
 		log:      log,
 		recorder: recorder,
 		inFlight: make(chan struct{}, maxMetricsInFlight),
+		metrics:  newHandlerMetrics(selfObs),
 	}
 }
 
@@ -101,11 +253,26 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case h.inFlight <- struct{}{}:
 		defer func() { <-h.inFlight }()
 	default:
+		h.metrics.requestsRejected.WithLabelValues(rejectReasonInFlightLimit).Inc()
 		http.Error(w, fmt.Sprintf(
 			"Limit of concurrent requests reached (%d), try again later.", maxMetricsInFlight,
 		), http.StatusServiceUnavailable)
 		return
 	}
+
+	// Admission succeeded: this request now counts toward requestsInFlight and
+	// will be tallied exactly once, under whichever requestStatus* it finally
+	// resolves to, by the deferred recorder below. status is mutated by every
+	// return path between here and the end of the function; the zero value is
+	// never observed because every path sets it before returning.
+	h.metrics.requestsInFlight.Inc()
+	defer h.metrics.requestsInFlight.Dec()
+	start := time.Now()
+	var status string
+	defer func() {
+		h.metrics.requestsTotal.WithLabelValues(status).Inc()
+		h.metrics.requestDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+	}()
 
 	// Bound how long this response may take to write, so a slow or non-reading
 	// client cannot pin a fully-gathered metric set and a goroutine indefinitely.
@@ -124,6 +291,7 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	include, err := parseCollectorFilters(query["collect[]"], query["exclude[]"], h.views.EnabledCollectorNames())
 	if err != nil {
+		status = requestStatusBadRequest
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -135,6 +303,7 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	reg := prometheus.NewRegistry()
 	if err := reg.Register(h.views.ScrapeView(ctx, include)); err != nil {
+		status = requestStatusInternalError
 		h.log.Error("failed to register scrape view", "err", err)
 		http.Error(w, "failed to build metrics handler", http.StatusInternalServerError)
 		return
@@ -147,6 +316,7 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		collectorGatherer = h.recorder.Tee(reg)
 	}
 
+	status = requestStatusOK
 	promhttp.HandlerFor(
 		prometheus.Gatherers{h.self, collectorGatherer},
 		// ContinueOnError (not the zero-value HTTPErrorOnError) so a single
@@ -161,18 +331,28 @@ func (h *metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// top of ServeHTTP.
 		promhttp.HandlerOpts{
 			ErrorHandling: promhttp.ContinueOnError,
-			ErrorLog:      promErrorLogger{log: h.log},
+			ErrorLog:      promErrorLogger{log: h.log, metrics: h.metrics},
 		},
 	).ServeHTTP(w, r)
+	// status is "ok" even when ErrorLog above fired: ContinueOnError means this
+	// response still carries a genuine (if partial) body, which is a completed
+	// request from the admission cap's point of view. The partial-gather
+	// condition itself is metricNameGatherErrorsTotal's job, not this counter's.
 }
 
 // promErrorLogger adapts a *slog.Logger to promhttp.Logger so Gather errors
 // (e.g. duplicate label tuples) are surfaced in structured logs rather than
-// silently swallowed by the default nil ErrorLog.
-type promErrorLogger struct{ log *slog.Logger }
+// silently swallowed by the default nil ErrorLog, and counted (#426) so a
+// sustained partial-gather condition is queryable rather than only
+// discoverable by grepping logs.
+type promErrorLogger struct {
+	log     *slog.Logger
+	metrics *handlerMetrics
+}
 
 func (l promErrorLogger) Println(v ...any) {
 	l.log.Warn("error gathering metrics for scrape", "err", strings.TrimSuffix(fmt.Sprintln(v...), "\n"))
+	l.metrics.gatherErrors.WithLabelValues(gatherErrorReasonCollectorError).Inc()
 }
 
 // parseCollectorFilters turns collect[]/exclude[] query parameters into an

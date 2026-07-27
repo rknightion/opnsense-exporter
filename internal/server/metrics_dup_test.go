@@ -42,7 +42,8 @@ func TestMetricsHandler_DuplicateSeriesDegradesGracefully(t *testing.T) {
 	selfGauge.Set(1)
 	self.MustRegister(selfGauge)
 
-	h := NewMetricsHandler(dupViews{}, self, logger, nil)
+	obs := prometheus.NewRegistry()
+	h := NewMetricsHandler(dupViews{}, self, logger, nil, obs)
 	rec := serve(h, "/metrics", nil)
 
 	if rec.Code != http.StatusOK {
@@ -53,5 +54,32 @@ func TestMetricsHandler_DuplicateSeriesDegradesGracefully(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "error gathering metrics for scrape") {
 		t.Errorf("expected the gather error to be logged, got: %s", buf.String())
+	}
+
+	// #426: the same gather error that was logged above must also be counted, on
+	// a bounded reason label, so a sustained partial-gather condition is
+	// queryable rather than only discoverable by grepping logs.
+	mfs, err := obs.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	var found bool
+	for _, mf := range mfs {
+		if mf.GetName() != metricNameGatherErrorsTotal {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, lp := range m.GetLabel() {
+				if lp.GetName() == "reason" && lp.GetValue() == gatherErrorReasonCollectorError {
+					found = true
+					if got := m.GetCounter().GetValue(); got != 1 {
+						t.Errorf("%s{reason=%s} = %v, want 1", metricNameGatherErrorsTotal, gatherErrorReasonCollectorError, got)
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("%s{reason=%s} not found in gathered families: %v", metricNameGatherErrorsTotal, gatherErrorReasonCollectorError, mfs)
 	}
 }
