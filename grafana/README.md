@@ -66,7 +66,10 @@ tabs; OpenVPN / WireGuard-peer / IPsec-tunnel rows; CARP VIPs, SMART, ACME, DynD
   has no matching stream, so a metrics-only deployment is unaffected.
 - **OPNsense instance** - multi-select over `opnsense_instance` (supports multiple exporters).
 - **Interface** - multi-select, scopes the Interfaces tab.
-- **Device (pf/netflow)** - multi-select over kernel interface names used by PF and NetFlow.
+- **Device (pf/netflow/interfaces)** - multi-select over kernel interface names (`igb0`, `pppoe0`),
+  the label space PF, NetFlow and vnStat panels filter on. Built from the union of every
+  device-bearing collector, so disabling any one of them (firewall, NetFlow, vnStat, interfaces,
+  flow) leaves the picker populated.
 
 ### Deploy the dashboard
 

@@ -25,7 +25,21 @@ var (
 
 type dashboard struct {
 	Spec struct {
-		Elements map[string]element `json:"elements"`
+		Elements  map[string]element `json:"elements"`
+		Variables []variable         `json:"variables"`
+	} `json:"spec"`
+}
+
+type variable struct {
+	Kind string `json:"kind"`
+	Spec struct {
+		Name  string `json:"name"`
+		Query struct {
+			Group string `json:"group"`
+			Spec  struct {
+				Query string `json:"query"`
+			} `json:"spec"`
+		} `json:"query"`
 	} `json:"spec"`
 }
 
@@ -73,10 +87,112 @@ func (e validationErrors) Error() string {
 	return strings.Join(e, "\n")
 }
 
-func validateDashboard(data []byte) (int, error) {
+// A Grafana QueryVariable never holds bare PromQL: it holds one of the Prometheus
+// datasource's variable functions, with the expression inside. Unwrap the forms
+// this dashboard uses so the real parser sees the expression — the panel walk
+// above never reaches a variable, so a malformed variable query used to ship
+// silently and fail only in the operator's browser, taking the picker (and every
+// panel filtering on it) with it (#424).
+var (
+	labelValuesQuery = regexp.MustCompile(`^label_values\((.*)\)$`)
+	queryResultQuery = regexp.MustCompile(`^query_result\((.*)\)$`)
+)
+
+// splitLastTopLevelComma splits on the final comma outside quotes and outside any
+// bracket, which is how Grafana separates label_values' series selector from its
+// label argument. Returns ok=false when there is no such comma.
+func splitLastTopLevelComma(text string) (string, string, bool) {
+	depth, quoted, at := 0, false, -1
+	for i, r := range text {
+		switch {
+		case quoted:
+			if r == '"' {
+				quoted = false
+			}
+		case r == '"':
+			quoted = true
+		case r == '(' || r == '{' || r == '[':
+			depth++
+		case r == ')' || r == '}' || r == ']':
+			depth--
+		case r == ',' && depth == 0:
+			at = i
+		}
+	}
+	if at < 0 {
+		return "", "", false
+	}
+	return text[:at], text[at+1:], true
+}
+
+// unwrapVariableQuery returns the PromQL inside a Grafana variable function, and
+// whether there is any expression to validate at all.
+func unwrapVariableQuery(query string) (string, bool, error) {
+	query = strings.TrimSpace(query)
+	if match := queryResultQuery.FindStringSubmatch(query); match != nil {
+		return strings.TrimSpace(match[1]), true, nil
+	}
+	if match := labelValuesQuery.FindStringSubmatch(query); match != nil {
+		selector, _, ok := splitLastTopLevelComma(match[1])
+		if !ok {
+			// label_values(<label>) — no series selector, nothing to parse.
+			return "", false, nil
+		}
+		return strings.TrimSpace(selector), true, nil
+	}
+	return "", false, fmt.Errorf(
+		"not a label_values(...) or query_result(...) query; Grafana would send it verbatim")
+}
+
+func validateExpression(normalized string) error {
+	if token := unknownGrafanaToken.FindString(normalized); token != "" {
+		return fmt.Errorf("unknown Grafana token %q", token)
+	}
+	p := parser.NewParser(parser.Options{})
+	_, err := p.ParseExpr(normalized)
+	return err
+}
+
+func validateVariables(document dashboard) (int, validationErrors) {
+	var (
+		names       []string
+		queries     = map[string]string{}
+		diagnostics validationErrors
+	)
+	for _, v := range document.Spec.Variables {
+		if v.Kind != "QueryVariable" || v.Spec.Query.Group != "prometheus" {
+			continue
+		}
+		names = append(names, v.Spec.Name)
+		queries[v.Spec.Name] = v.Spec.Query.Spec.Query
+	}
+	sort.Strings(names)
+
+	validated := 0
+	for _, name := range names {
+		query := queries[name]
+		expression, present, err := unwrapVariableQuery(query)
+		if err != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf(
+				"variable %q: %v\nquery: %s", name, err, query))
+			continue
+		}
+		if !present {
+			continue
+		}
+		validated++
+		if err := validateExpression(grafanaTokens.Replace(expression)); err != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf(
+				"variable %q: %v\nquery: %s", name, err, query))
+		}
+	}
+	return validated, diagnostics
+}
+
+func validateDashboard(data []byte) (int, int, error) {
 	var document dashboard
 	if err := json.Unmarshal(data, &document); err != nil {
-		return 0, fmt.Errorf("decode dashboard JSON: %w", err)
+		return 0, 0, fmt.Errorf("decode dashboard JSON: %w", err)
 	}
 
 	var targets []target
@@ -125,21 +241,7 @@ func validateDashboard(data []byte) (int, error) {
 		}
 
 		prometheusTargets++
-		normalized := grafanaTokens.Replace(query.Expression)
-		if token := unknownGrafanaToken.FindString(normalized); token != "" {
-			diagnostics = append(diagnostics, fmt.Sprintf(
-				"panel %d %q ref %s: unknown Grafana token %q\nexpression: %s",
-				query.PanelID,
-				query.PanelTitle,
-				query.RefID,
-				token,
-				query.Expression,
-			))
-			continue
-		}
-
-		p := parser.NewParser(parser.Options{})
-		if _, err := p.ParseExpr(normalized); err != nil {
+		if err := validateExpression(grafanaTokens.Replace(query.Expression)); err != nil {
 			diagnostics = append(diagnostics, fmt.Sprintf(
 				"panel %d %q ref %s: %v\nexpression: %s",
 				query.PanelID,
@@ -151,10 +253,13 @@ func validateDashboard(data []byte) (int, error) {
 		}
 	}
 
+	prometheusVariables, variableDiagnostics := validateVariables(document)
+	diagnostics = append(diagnostics, variableDiagnostics...)
+
 	if len(diagnostics) > 0 {
-		return prometheusTargets, diagnostics
+		return prometheusTargets, prometheusVariables, diagnostics
 	}
-	return prometheusTargets, nil
+	return prometheusTargets, prometheusVariables, nil
 }
 
 func main() {
@@ -168,10 +273,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "read dashboard: %v\n", err)
 		os.Exit(1)
 	}
-	count, err := validateDashboard(data)
+	targets, variables, err := validateDashboard(data)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Printf("validated %d Prometheus targets\n", count)
+	fmt.Printf("validated %d Prometheus targets and %d variable queries\n", targets, variables)
 }

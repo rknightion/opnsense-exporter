@@ -147,7 +147,7 @@
         "kind": "QueryVariable",
         "spec": {
           "name": "device",
-          "label": "Device (pf/netflow)",
+          "label": "Device (pf/netflow/interfaces)",
           "current": {
             "text": "All",
             "value": "$__all"
@@ -161,12 +161,12 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance=~\"$opnsense_instance\"}, interface)",
+              "query": "query_result(group by (opnsense_instance, device) (label_join(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance=~\"$opnsense_instance\"}, \"device\", \"\", \"interface\") or label_join(opnsense_netflow_cache_packets_total{opnsense_instance=~\"$opnsense_instance\"}, \"device\", \"\", \"interface\") or label_join(opnsense_vnstat_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, \"device\", \"\", \"interface\") or opnsense_interfaces_info{opnsense_instance=~\"$opnsense_instance\",device!=\"\"} or opnsense_flow_interface_info{opnsense_instance=~\"$opnsense_instance\",device!=\"\"}))",
               "refId": "device"
             }
           },
           "refresh": "onTimeRangeChanged",
-          "regex": "",
+          "regex": "/device=\"([^\"]+)\"/",
           "sort": "alphabeticalAsc",
           "hide": "dontHide",
           "includeAll": true,

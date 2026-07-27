@@ -15,7 +15,7 @@ import os
 import re
 import sys
 
-from builder import Builder, sel, RATE, ENABLED, UPDOWN, OKERR, YESNO, GW_STATUS
+from builder import INSTANCE_SEL, Builder, sel, RATE, ENABLED, UPDOWN, OKERR, YESNO, GW_STATUS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -113,6 +113,57 @@ OPTIONAL_TAB_PRESENCE = {
 }
 
 
+# ---- $device sources -----------------------------------------------------
+# $device enumerates the kernel DEVICE-name interface label (igb0, ixl0_vlan25,
+# pppoe0) — a DISJOINT label space from $interface's configured descriptions (LAN,
+# IOT). That contract is #98's and every one of the 14 consuming panels still
+# depends on it: they all filter `interface=~"$device"`.
+#
+# It is sourced from ALL FIVE device-bearing collectors rather than one (#424).
+# Collectors are independently disableable and firewall data is not a prerequisite
+# for the interface/flow/vnStat views, so a single-metric source held the picker —
+# and with it every consuming panel — hostage to one --exporter.disable-* flag.
+#
+# Three of the five publish the kernel device in an `interface` label and are
+# normalised with label_join (the same normalisation the #368 dead-hook rule uses).
+DEVICE_SOURCES_INTERFACE_LABEL = (
+    "opnsense_firewall_in_ipv4_pass_packets_total",   # collector/firewall.go:77-80
+    "opnsense_netflow_cache_packets_total",           # collector/netflow.go:86-89
+    "opnsense_vnstat_bytes_total",                    # collector/vnstat.go:37,45-48
+)
+# The other two already carry a `device` label. Both are info metrics that publish
+# an entry even when the device name is unknown — flow.go:779-784 does so
+# deliberately, so an operator can SEE an unresolved ifIndex — hence device!="",
+# or the picker grows a blank entry.
+DEVICE_SOURCES_DEVICE_LABEL = (
+    "opnsense_interfaces_info",                       # collector/interfaces.go:148-151
+    "opnsense_flow_interface_info",                   # collector/flow.go:554,568
+)
+# query_result rows arrive as `{device="igb0",opnsense_instance="fw1"} 1 <ms>`, so
+# the picker needs a capturing regex to pull the value back out. It must be a JS
+# regex LITERAL: Grafana anchors a bare string as ^…$, which never matches inside a
+# row. Requiring one or more characters is the second layer of the blank-entry guard.
+DEVICE_VALUE_REGEX = r'/device="([^"]+)"/'
+
+
+def device_variable_query() -> str:
+    """Bounded union of every device-bearing source, one series per (appliance,
+    device). `or` is a set union on full label sets, so a series is only ever
+    dropped by an identically-labelled one — the device set can never shrink.
+    Grouping on (opnsense_instance, device) keeps two appliances' identically
+    named devices as separate series instead of merging them, and strips every
+    other label so the result stays one valueless series per pair."""
+    operands = [
+        f'label_join({metric}{{{INSTANCE_SEL}}}, "device", "", "interface")'
+        for metric in DEVICE_SOURCES_INTERFACE_LABEL
+    ] + [
+        f'{metric}{{{INSTANCE_SEL},device!=""}}'
+        for metric in DEVICE_SOURCES_DEVICE_LABEL
+    ]
+    return ("query_result(group by (opnsense_instance, device) ("
+            + " or ".join(operands) + "))")
+
+
 def add_core_variables(b: Builder):
     b.variables.append({"kind": "DatasourceVariable", "spec": {
         "name": "datasource", "label": "Data source", "pluginId": "prometheus",
@@ -155,16 +206,18 @@ def add_core_variables(b: Builder):
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
         "allowCustomValue": True, "skipUrlSync": False}})
     # $device enumerates the kernel DEVICE-name interface label (igb0, ixl0_vlan25, pppoe0)
-    # from the pf-traffic / netflow collectors — a DISJOINT label space from $interface (#98).
-    # Sourced from a firewall pf-traffic metric so it lists exactly the devices those panels plot.
+    # — a DISJOINT label space from $interface (#98) — from every device-bearing
+    # collector, so no single --exporter.disable-* flag can empty the picker (#424).
+    # See DEVICE_SOURCES_* above for the union and why each source is shaped as it is.
     b.variables.append({"kind": "QueryVariable", "spec": {
-        "name": "device", "label": "Device (pf/netflow)",
+        "name": "device", "label": "Device (pf/netflow/interfaces)",
         "current": {"text": "All", "value": "$__all"}, "options": [],
         "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
                   "datasource": {"name": "${datasource}"},
-                  "spec": {"query": 'label_values(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance=~"$opnsense_instance"}, interface)',
+                  "spec": {"query": device_variable_query(),
                            "refId": "device"}},
-        "refresh": "onTimeRangeChanged", "regex": "", "sort": "alphabeticalAsc",
+        "refresh": "onTimeRangeChanged", "regex": DEVICE_VALUE_REGEX,
+        "sort": "alphabeticalAsc",
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
         "allowCustomValue": True, "skipUrlSync": False}})
 

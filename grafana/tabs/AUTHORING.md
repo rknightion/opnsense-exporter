@@ -52,11 +52,18 @@ map or the build fails as unassigned. The canonical worked examples are `build_o
      `opnsense_interfaces_*` family and `opnsense_firewall_interface_log_entries_recent`.
      Filter these with **`$interface`**.
    * **device-name space** — `igb0`, `ixl0_vlan25`, `pppoe0` (the kernel device). Used by the
-     pf-traffic counters (`opnsense_firewall_in/out_ipv4/6_{pass,block}_{packets,bytes_total}`)
-     and the netflow cache metrics (`opnsense_netflow_cache_*`). Filter these with **`$device`**
-     (module constant `DEV = 'interface=~"$device"'` in firewall.py).
+     pf-traffic counters (`opnsense_firewall_in/out_ipv4/6_{pass,block}_{packets,bytes_total}`),
+     the netflow cache metrics (`opnsense_netflow_cache_*`) and `opnsense_vnstat_*`, and carried
+     in a separate `device` label by `opnsense_interfaces_info`/`_admin_up`/`_lagg_*`/`_sfp_*` and
+     `opnsense_flow_interface_info`. Filter these with **`$device`** (module constant
+     `DEV = 'interface=~"$device"'` in firewall.py).
    The two value sets never overlap, so applying `$interface` to a device-space metric silently
    blanks the panel whenever a specific interface is selected. Never cross the spaces.
+   **`$device` is filtered on the `interface` label, never on `device`.** The variable's five
+   *sources* (`DEVICE_SOURCES_*` in build_dashboard.py, #424) include two that own a real `device`
+   label — that is how the picker survives a disabled firewall collector — but every *consumer*
+   still filters `interface=~"$device"`. A panel filtering `device=~"$device"` is a bug, and
+   `grafana/tests/test_device_variable.py` fails on it.
 6. **Cardinality.** For high-series metrics use `topk(20, ...)` in tables/timeseries and put
    detail tables in their own row gated behind a `*_details`/presence sentinel. Known big ones:
    arp_table (~106), ndp (~67), firewall_rule (~129), dnsmasq lease_info (~91). For "count"
