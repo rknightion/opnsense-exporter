@@ -9,7 +9,107 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.addressFamilyInfo",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.addressFamilyInfo.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.addressFamilyInfo.*.acceptedPrefixCounter",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.bgpState",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.connectionsDropped",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.connectionsEstablished",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.lastResetDueTo",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.lastResetTimerMsecs",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.messageStats.capabilityRecv",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.capabilitySent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.depthInq",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.depthOutq",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.keepalivesRecv",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.keepalivesSent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.notificationsRecv",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.notificationsSent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.opensRecv",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.opensSent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.routeRefreshRecv",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.routeRefreshSent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.updatesRecv",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.messageStats.updatesSent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.remoteAs",
+      "kind": "number"
     }
   ]
 }

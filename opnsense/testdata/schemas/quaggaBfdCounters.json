@@ -9,7 +9,31 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.control-packet-input",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.control-packet-output",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peer",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.session-down-events",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.session-up-events",
+      "kind": "number"
     }
   ]
 }

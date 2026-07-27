@@ -9,7 +9,47 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.areaId",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.cost",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.numberOfInterfaceScopedLsa",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.ospf6InterfaceState",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.pendingLsaLsAckCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.pendingLsaLsUpdateCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.priority",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.status",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.type",
+      "kind": "string"
     }
   ]
 }

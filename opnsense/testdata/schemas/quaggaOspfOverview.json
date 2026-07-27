@@ -9,6 +9,10 @@
   "fields": [
     {
       "path": "response",
+      "kind": "object"
+    },
+    {
+      "path": "response.areas",
       "kind": "any"
     }
   ]

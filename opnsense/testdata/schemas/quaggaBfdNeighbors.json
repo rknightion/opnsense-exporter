@@ -9,7 +9,31 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.interface",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.local",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.peer",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.status",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.uptime",
+      "kind": "number"
     }
   ]
 }

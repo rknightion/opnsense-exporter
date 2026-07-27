@@ -517,3 +517,61 @@ func TestValidateResponseSchemaBadJSON(t *testing.T) {
 		t.Fatal("expected an error for a non-JSON body")
 	}
 }
+
+// #459: before the envelope-descent registry entry, quaggaOspfv3Interface's
+// derived schema modelled the WHOLE response as a single KindAny field, so
+// ValidateResponseSchema accepted literally any payload there — exactly why
+// OSPFv3's absent "type" key (#458) went unnoticed until the testbed had a
+// real adjacency. Now that the schema reflects through the envelope, an inner
+// field that changes JSON type (a live box serving "cost" as a string instead
+// of a number, say) must surface as a Mismatch — the breaking class of drift —
+// not silently pass.
+func TestValidateResponseSchemaOSPFv3InnerFieldTypeConflict(t *testing.T) {
+	schemas, err := AllEndpointSchemas()
+	if err != nil {
+		t.Fatalf("AllEndpointSchemas: %v", err)
+	}
+	var s EndpointSchema
+	found := false
+	for _, sc := range schemas {
+		if sc.Endpoint == "quaggaOspfv3Interface" {
+			s = sc
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("quaggaOspfv3Interface schema not found")
+	}
+
+	// A healthy live payload: cost is a JSON number.
+	healthy := []byte(`{"response":{"eth1":{"status":"up","cost":10,"ospf6InterfaceState":"BDR","pendingLsaLsUpdateCount":0,"pendingLsaLsAckCount":0}}}`)
+	res, err := ValidateResponseSchema(s, healthy, SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema (healthy): %v", err)
+	}
+	for _, m := range res.Mismatches {
+		if m.Path == "response.*.cost" {
+			t.Errorf("unexpected Mismatch on a healthy payload: %+v", m)
+		}
+	}
+
+	// Drift: cost arrives as a string. Before #459 this was invisible — the
+	// whole "response" value was KindAny — so this assertion is the one that
+	// proves the reflector actually stops being blind.
+	drifted := []byte(`{"response":{"eth1":{"status":"up","cost":"ten","ospf6InterfaceState":"BDR","pendingLsaLsUpdateCount":0,"pendingLsaLsAckCount":0}}}`)
+	res, err = ValidateResponseSchema(s, drifted, SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema (drifted): %v", err)
+	}
+	wantMismatch := Mismatch{Path: "response.*.cost", Expected: KindNumber, Got: "string"}
+	foundMismatch := false
+	for _, m := range res.Mismatches {
+		if m == wantMismatch {
+			foundMismatch = true
+		}
+	}
+	if !foundMismatch {
+		t.Errorf("Mismatches = %v, want to contain %+v", res.Mismatches, wantMismatch)
+	}
+}

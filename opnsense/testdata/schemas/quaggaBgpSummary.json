@@ -9,7 +9,59 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.failedPeers",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peerCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.peers.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.peers.*.msgRcvd",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers.*.msgSent",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers.*.peerUptimeMsec",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers.*.pfxRcd",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers.*.pfxSnt",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers.*.remoteAs",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.peers.*.state",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.ribCount",
+      "kind": "number"
     }
   ]
 }

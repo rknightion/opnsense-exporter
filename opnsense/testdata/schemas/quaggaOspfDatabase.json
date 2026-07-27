@@ -9,7 +9,47 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.areas",
+      "kind": "object"
+    },
+    {
+      "path": "response.areas.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.areas.*.asbrSummaryLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.networkLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.nssaExternalLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.opaqueAreaLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.opaqueLinkLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.routerLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.areas.*.summaryLinkStatesCount",
+      "kind": "number"
+    },
+    {
+      "path": "response.asExternalLinkStatesCount",
+      "kind": "number"
     }
   ]
 }

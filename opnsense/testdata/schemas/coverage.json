@@ -1,4 +1,10 @@
 {
+  "hasyncVersion": {
+    "note": "#459 audited every endpoint sharing OSPFv3's `Response json.RawMessage` envelope pattern and left this one unwrapped deliberately, not for lack of a body type to point at. hasyncVersionResponse.Response is genuinely polymorphic on the wire: an object ({\"firmware\":{...}}) only when HA is configured and the peer answers; a bare JSON boolean (`false`) on the overwhelming majority of installs (single-node, HA unconfigured — see HasyncStatusController.php's exception path); JSON null on some error paths. Reflecting through it as an object would misdescribe the common case as a schema conflict rather than widen an unverified path, which is the opposite of what #459 is for. PRUNE TRIGGER: if a future OPNsense release collapses this to one shape, or if per-field polymorphic kinds are ever supported by FieldKind, register an envelopeDescent here like the other FRR/Tor endpoints."
+  },
+  "quaggaOspfInterface": {
+    "note": "#459 audited every endpoint sharing OSPFv3's `Response json.RawMessage` envelope pattern; this one is deliberately left as a bare envelope rather than unwrapped. frr.go's FetchFRROSPFInterfaces decodes TWO candidate shapes for the same endpoint: FRR>=8 wraps per-interface data in {\"interfaces\": {...}} (frrOSPFInterfaceWrapped, confirmed live against this box's FRR 10.3), while older FRR returns the flat per-interface map directly at the top level (frrOSPFInterfaceEntry map) per the plugin's own doc comments — but that flat shape has never itself been confirmed live. Registering an envelopeDescent requires naming ONE Inner type; picking the wrapped shape would silently assert the flat shape doesn't exist, and picking the flat shape would misdescribe the one shape actually verified. PRUNE TRIGGER: confirm which shape(s) a live box in the support window actually sends (dev-box FRR is 10.3, already wrapped-only), then register an envelopeDescent — same treatment as quaggaOspfv3Interface below, which has no such ambiguity."
+  },
   "dechwPowerStatus": {
     "stateOptional": [
       {
@@ -165,32 +171,60 @@
   "quaggaOspfv3Interface": {
     "required": [
       {
-        "path": "response",
-        "opaque": true,
+        "path": "response.*.status",
         "metrics": [
-          "opnsense_frr_ospfv3_interface_up",
-          "opnsense_frr_ospfv3_interface_cost",
-          "opnsense_frr_ospfv3_interface_state",
-          "opnsense_frr_ospfv3_interface_pending_lsa"
+          "opnsense_frr_ospfv3_interface_up"
         ],
         "exercise": "Bring up an OSPFv3 adjacency on a box with a working IPv6 stack (two os-frr peers over a v6 transit link), capture api/quagga/diagnostics/ospfv3interface, and check the field names against opnsense/frr.go's ospf6 structs by hand.",
-        "verified": "LIVE STATE ACHIEVED 2026-07-25, BUT STILL STRUCTURALLY OPAQUE - see #459. OSPFv3 was enabled on the testbed and a Full adjacency brought up across the isolated bridge; all four v3 endpoints now return real objects instead of {\"response\":[]}, and all 13 source-derived field names in opnsense/frr.go were confirmed present in the live payload by hand. The canary still cannot verify any of them: schema_registry.go registers the ENVELOPE type, whose sole field is Response json.RawMessage -> KindAny. This is therefore a CODE gap, not a testbed gap - the distinction was rediscovered twice during #447. PRUNE TRIGGER: #459 unwraps the envelope; then drop the opaque flag and this becomes an ordinary required path a live run resolves."
+        "verified": "LIVE STATE ACHIEVED 2026-07-25 (#377): OSPFv3 was enabled on the testbed and a Full adjacency brought up across the isolated bridge; all four v3 endpoints now return real objects instead of {\"response\":[]}, and all 13 source-derived field names in opnsense/frr.go were confirmed present in the live payload by hand. UNTIL #459, the canary still could not verify any of them structurally: schema_registry.go registered the bare ENVELOPE type, whose sole field is Response json.RawMessage -> KindAny. #459 (envelopeDescent) unwraps the envelope, so this is now an ORDINARY required path — the same live run that achieved 2026-07-25 state would resolve it, once re-run."
+      },
+      {
+        "path": "response.*.cost",
+        "metrics": [
+          "opnsense_frr_ospfv3_interface_cost"
+        ],
+        "exercise": "Same OSPFv3 lab as above.",
+        "verified": "See response.*.status above — same 2026-07-25 live confirmation, same #459 unwrap."
+      },
+      {
+        "path": "response.*.ospf6InterfaceState",
+        "metrics": [
+          "opnsense_frr_ospfv3_interface_state"
+        ],
+        "exercise": "Same OSPFv3 lab as above; the adjacency-bearing interface returns a real non-Down value (BDR was observed).",
+        "verified": "See response.*.status above — same 2026-07-25 live confirmation, same #459 unwrap."
+      },
+      {
+        "path": "response.*.pendingLsaLsUpdateCount",
+        "metrics": [
+          "opnsense_frr_ospfv3_interface_pending_lsa"
+        ],
+        "exercise": "Same OSPFv3 lab as above.",
+        "verified": "See response.*.status above — same 2026-07-25 live confirmation, same #459 unwrap."
+      },
+      {
+        "path": "response.*.pendingLsaLsAckCount",
+        "metrics": [
+          "opnsense_frr_ospfv3_interface_pending_lsa"
+        ],
+        "exercise": "Same OSPFv3 lab as above.",
+        "verified": "See response.*.status above — same 2026-07-25 live confirmation, same #459 unwrap."
       }
     ],
-    "note": "The only path OSPFv3 exposes to the canary is the response envelope. Recorded as required-but-opaque so the gap is a NAMED blind spot instead of vanishing into the unverified count; see the OSPFv3 exception in the VERIFICATION comment at the top of opnsense/frr.go. UPDATE 2026-07-25: the lab gap is closed (real v3 adjacency, live payload confirmed field-by-field); what remains is purely the envelope reflection limit tracked in #459. Do not re-provision the lab chasing this - provisioning cannot fix it."
+    "note": "Until #459 the only path OSPFv3 exposed to the canary was the response envelope, recorded as required-but-opaque so the gap was a NAMED blind spot instead of vanishing into the unverified count (see the OSPFv3 note in the VERIFICATION comment at the top of opnsense/frr.go). #459 registered an envelopeDescent for this endpoint instead, so the schema now carries the real inner paths and these are ordinary required entries a live run resolves."
   },
   "quaggaOspfv3Overview": {
     "required": [
       {
-        "path": "response",
-        "opaque": true,
+        "path": "response.areas.*.numberOfAreaScopedLsa",
         "metrics": [
           "opnsense_frr_ospfv3_area_lsa_count"
         ],
         "exercise": "Same OSPFv3 lab as quaggaOspfv3Interface; capture api/quagga/diagnostics/ospfv3overview with at least one area carrying LSAs and check the area key structure by hand.",
-        "verified": "LIVE STATE ACHIEVED 2026-07-25, BUT STILL STRUCTURALLY OPAQUE - see #459. OSPFv3 was enabled on the testbed and a Full adjacency brought up across the isolated bridge; all four v3 endpoints now return real objects instead of {\"response\":[]}, and all 13 source-derived field names in opnsense/frr.go were confirmed present in the live payload by hand. The canary still cannot verify any of them: schema_registry.go registers the ENVELOPE type, whose sole field is Response json.RawMessage -> KindAny. This is therefore a CODE gap, not a testbed gap - the distinction was rediscovered twice during #447. PRUNE TRIGGER: #459 unwraps the envelope; then drop the opaque flag and this becomes an ordinary required path a live run resolves."
+        "verified": "LIVE STATE ACHIEVED 2026-07-25 (#377): OSPFv3 was enabled on the testbed and a Full adjacency brought up across the isolated bridge; all four v3 endpoints now return real objects instead of {\"response\":[]}, and all 13 source-derived field names in opnsense/frr.go were confirmed present in the live payload by hand. UNTIL #459, the canary still could not verify this structurally: schema_registry.go registered the bare ENVELOPE type, whose sole field is Response json.RawMessage -> KindAny. #459 (envelopeDescent) unwraps the envelope, so this is now an ORDINARY required path — the same live run that achieved 2026-07-25 state would resolve it, once re-run."
       }
-    ]
+    ],
+    "note": "Until #459 the only path OSPFv3 exposed to the canary was the response envelope, recorded as required-but-opaque (see the OSPFv3 note in the VERIFICATION comment at the top of opnsense/frr.go). #459 registered an envelopeDescent for this endpoint instead, so the schema now carries the real inner path and this is an ordinary required entry a live run resolves."
   },
   "systemTemperature": {
     "stateOptional": [

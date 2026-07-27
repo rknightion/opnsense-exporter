@@ -9,7 +9,27 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.flags",
+      "kind": "object"
+    },
+    {
+      "path": "response.*.flags.PURPOSE",
+      "kind": "array"
+    },
+    {
+      "path": "response.*.flags.PURPOSE[]",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.status",
+      "kind": "string"
     }
   ]
 }

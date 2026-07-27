@@ -9,7 +9,27 @@
   "fields": [
     {
       "path": "response",
-      "kind": "any"
+      "kind": "object"
+    },
+    {
+      "path": "response.areas",
+      "kind": "object"
+    },
+    {
+      "path": "response.areas.*",
+      "kind": "object"
+    },
+    {
+      "path": "response.areas.*.numberOfAreaScopedLsa",
+      "kind": "number"
+    },
+    {
+      "path": "response.numberOfAsScopedLsa",
+      "kind": "number"
+    },
+    {
+      "path": "response.routerId",
+      "kind": "string"
     }
   ]
 }
