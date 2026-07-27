@@ -1116,8 +1116,11 @@
         "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"}, opnsense_source)",
         "gates": [
           "Security > Zenarmor",
+          "Security > Zenarmor > Applications & Destinations",
+          "Security > Zenarmor > DNS Detail",
           "Security > Zenarmor > Live Records & Rates",
-          "Security > Zenarmor > Security Detail"
+          "Security > Zenarmor > Security Detail",
+          "Security > Zenarmor > Web / HTTP Detail"
         ]
       }
     ]

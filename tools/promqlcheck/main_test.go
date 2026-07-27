@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -314,5 +315,33 @@ func TestValidateDashboardSkipsLokiAnnotations(t *testing.T) {
 	}
 	if annotations != 0 {
 		t.Fatalf("counted %d annotation queries, want 0 for a Loki annotation", annotations)
+	}
+}
+
+// A TextVariable's `spec.query` is a plain string, not a query object. When the
+// variable type was decoded with a typed `query` struct, ONE textbox made the whole
+// document fail to decode, so the tool validated nothing at all and said so only as a
+// json error (#435). Any variable kind whose query is not a Prometheus query object
+// must be skipped, and the real targets must still be validated.
+func TestTextVariableDoesNotBreakTheDocument(t *testing.T) {
+	document := `{"spec":{"elements":{"panel-1":{"kind":"Panel","spec":{"id":1,
+      "title":"p","data":{"spec":{"queries":[{"spec":{"refId":"A","query":{
+      "group":"prometheus","spec":{"expr":"up"}}}}]}}}}},
+      "variables":[
+        {"kind":"TextVariable","spec":{"name":"free","query":".*"}},
+        {"kind":"QueryVariable","spec":{"name":"real","query":{"group":"prometheus",
+          "spec":{"query":"label_values(up, job)"}}}}],
+      "annotations":[]}}`
+
+	var parsed dashboard
+	if err := json.Unmarshal([]byte(document), &parsed); err != nil {
+		t.Fatalf("a TextVariable must not break decoding: %v", err)
+	}
+	count, diagnostics := validateVariables(parsed)
+	if len(diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", diagnostics)
+	}
+	if count != 1 {
+		t.Fatalf("validated %d variable queries, want 1 (the textbox is not a query)", count)
 	}
 }

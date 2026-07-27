@@ -397,7 +397,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
 | `has_syslog_logs` | `stream_selector` | existence (series presence) | Services; Services > Syslog; Services > Syslog > Shipped Syslog Logs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog"}, opnsense_source)` |
-| `has_zenarmor_logs` | `stream_selector` | existence (series presence) | Security > Zenarmor; Security > Zenarmor > Live Records & Rates; Security > Zenarmor > Security Detail | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="zenarmor"}, opnsense_source)` |
+| `has_zenarmor_logs` | `stream_selector` | existence (series presence) | Security > Zenarmor; Security > Zenarmor > Applications & Destinations; Security > Zenarmor > DNS Detail; Security > Zenarmor > Live Records & Rates; Security > Zenarmor > Security Detail; Security > Zenarmor > Web / HTTP Detail | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="zenarmor"}, opnsense_source)` |
 <!-- sentinelgen:end -->
 
 ## Self-test before finishing

@@ -112,12 +112,13 @@ RETIRED_UIDS: dict[str, str] = {
                                  "content lives in the Interfaces and Flow tabs",
     "ddfj9vprnpio74a": "OPNsense SFP & Port Monitor companion, deleted; migrated onto "
                        "exporter metrics in the main dashboard",
+    "opnsense-zenarmor": "OPNsense Zenarmor companion, retired by #435 after its nine "
+                         "unique DNS/web/application panels were merged into the "
+                         "generated Zenarmor tab. There is deliberately nothing to link "
+                         "to: the owner's 2026-07-27 decision made Zenarmor a "
+                         "sentinel-gated tab of the main dashboard, and an in-dashboard "
+                         "tab needs no link",
 }
-
-# The Zenarmor companion `opnsense-zenarmor` is deliberately NOT a destination: the
-# owner's 2026-07-27 decision folds Zenarmor into the main dashboard as a
-# sentinel-gated tab (#435), and an in-dashboard tab needs no link. It is not listed
-# as retired either, because it still exists on the deployed stack and is not ours.
 
 # Project URLs a link may point at. Not stack-specific: these are the project's own
 # documentation and repository, which every importer of the dashboard can reach.

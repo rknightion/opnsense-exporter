@@ -26,17 +26,53 @@ Label rules (verified live against the real Zenarmor stream, 2026-07-18):
 """
 
 from builder import Builder, sel, grp, loki_sel, loki_grp, RATE
+from uids import CONTROLS_MENU
 
 ZEN_STREAM = loki_sel('opnsense_source="zenarmor"')
 ZEN_BLOCKED = loki_sel('opnsense_source="zenarmor", opnsense_action="block"')
 ZEN_FLOW = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="flow"')
 ZEN_TLS = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="tls"')
+ZEN_DNS = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="dns"')
+ZEN_WEB = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="web"')
+
+# Zenarmor attributes traffic to a CLIENT device (a laptop, a phone) in the
+# structured-metadata field `device_name`. That is a completely different label space
+# from the dashboard's `$device`, which enumerates kernel interface names (igb0,
+# ixl0_vlan25) — the same disjointness that #98 is about, one level further out. So it
+# gets its own variable rather than reusing either existing picker (#435).
+#
+# It is a TEXTBOX, not a query variable, and that is a finding rather than a shortcut:
+# `device_name` is structured metadata, so it is NOT an indexed Loki label, and
+# `label_values(..., device_name)` returns null (verified live 2026-07-27 — the label
+# does not appear in the datasource's 44 label names). The retired companion dashboard
+# tried a query variable whose query was a bare stream selector, which cannot have
+# populated anything. A textbox says so honestly, costs no cold-load query, and takes a
+# regex, so `phone|laptop` works.
+CLIENT_VAR = "zenarmor_client"
+CLIENT_FILTER = f'| device_name=~"${CLIENT_VAR}"'
+
+# Zenarmor delivers its records to the exporter over HTTP, so its own bulk-ingest
+# requests appear in the WEB family as requests to our own endpoint. Left in, they are
+# the top host, the top URI and a large share of the status codes — the dashboard would
+# mostly describe itself. The exporter already drops these from shipping where it can
+# (Self-Traffic Drop Rate, #278); this filter covers what still lands.
+NOT_SELF = '| uri!~"/zenarmor_.*/_bulk"'
 
 
 def build(b: Builder):
     b.sentinel("has_zenarmor_metrics", metric="opnsense_log_events_zenarmor_total")
     b.loki_sentinel("has_zenarmor_logs", matchers='opnsense_source="zenarmor"',
                     label="opnsense_source")
+    b.textbox(CLIENT_VAR, label="Zenarmor client device", default=".*",
+              description=(
+                  "Filter the Zenarmor log panels to the client device Zenarmor "
+                  "attributed the traffic to (its own identification, not the "
+                  "exporter's). A regex: 'phone|laptop' works, '.*' is everything. "
+                  "This is Zenarmor's device_name, NOT the kernel interface names in "
+                  "the Device picker."),
+              # In the controls menu (#470): it applies to one tab of 41, so it does not
+              # earn a permanent toolbar slot on every other tab.
+              placement=CONTROLS_MENU)
 
     # --- Row A: Overview (Prometheus-derived counters) --------------------
 
@@ -183,6 +219,106 @@ def build(b: Builder):
              "precise device count.",
     )
 
+    # --- Row D: DNS (Loki, dns family) -------------------------------------
+    # Merged from the retired `opnsense-zenarmor` companion (#435). Everything here
+    # needs a field the derived counters do not carry: a query name, an rcode, a
+    # domain category. The counters answer "how much"; these answer "what".
+    #
+    # Rewritten rather than copied: every selector goes through loki_sel() so it is
+    # instance-scoped, and every topk carries loki_grp() so ranking cannot silently
+    # drop a second firewall's rows (#413/#468). The companion had neither.
+    zen_dns_queries = b.loki_table(
+        "Top DNS Queries",
+        [f'topk {loki_grp()} (25, sum {loki_grp("query")} (count_over_time({ZEN_DNS} '
+         f'{CLIENT_FILTER} | query!="" [$__auto])))'],
+        desc="Top 25 DNS query names Zenarmor saw, over the selected range. `query` is "
+             "structured metadata, so this is a range+reduce table rather than an instant "
+             "query. High cardinality by nature — this is why it is not a metric.",
+    )
+    zen_dns_rcodes = b.loki_ts(
+        "DNS Response Codes",
+        [(f'sum {loki_grp("rcode")} (rate({ZEN_DNS} {CLIENT_FILTER} [$__auto]))',
+          "{{rcode}}")],
+        desc="DNS responses per second by response code. A climbing NXDOMAIN or SERVFAIL "
+             "share is usually a resolver or upstream problem rather than a client one; "
+             "read it beside the Unbound tab, which measures the same failures from the "
+             "resolver's side.",
+    )
+    zen_dns_categories = b.loki_table(
+        "Top DNS Domain Categories",
+        [f'topk {loki_grp()} (15, sum {loki_grp("domain_category")} (count_over_time({ZEN_DNS} '
+         f'{CLIENT_FILTER} | domain_category!="" [$__auto])))'],
+        desc="Top 15 domain categories for DNS records, Zenarmor's own classification. "
+             "Unlike Blocks by Category above this counts ALL records, not just blocked "
+             "ones, so it describes what the network asks for rather than what policy "
+             "stopped.",
+    )
+
+    # --- Row E: Web / HTTP (Loki, web family) ------------------------------
+    zen_web_hosts = b.loki_table(
+        "Top HTTP Hosts",
+        [f'topk {loki_grp()} (25, sum {loki_grp("host")} (count_over_time({ZEN_WEB} '
+         f'{CLIENT_FILTER} {NOT_SELF} | host!="" [$__auto])))'],
+        desc="Top 25 plaintext-HTTP hosts. Zenarmor's own bulk-ingest requests to the "
+             "exporter are excluded, or they would be the top host and the panel would "
+             "mostly describe this exporter. HTTPS hosts are not here — they appear as TLS "
+             "SNI in Top TLS Server Names.",
+    )
+    zen_web_uris = b.loki_table(
+        "Top URIs",
+        [f'topk {loki_grp()} (25, sum {loki_grp("uri")} (count_over_time({ZEN_WEB} '
+         f'{CLIENT_FILTER} {NOT_SELF} | uri!="" [$__auto])))'],
+        desc="Top 25 request URIs on plaintext HTTP, excluding the exporter's own ingest "
+             "endpoint. Only unencrypted traffic can be seen at this level.",
+    )
+    zen_web_agents = b.loki_table(
+        "Top User Agents",
+        [f'topk {loki_grp()} (15, sum {loki_grp("user_agent")} (count_over_time({ZEN_WEB} '
+         f'{CLIENT_FILTER} {NOT_SELF} | user_agent!="" [$__auto])))'],
+        desc="Top 15 user agents on plaintext HTTP. Useful for spotting an unexpected "
+             "device class or an automated client; it is self-reported, so treat it as a "
+             "hint rather than identification.",
+    )
+    zen_web_status = b.loki_ts(
+        "HTTP Status Codes",
+        [(f'sum {loki_grp("http_status_code")} (rate({ZEN_WEB} {CLIENT_FILTER} '
+          f'{NOT_SELF} [$__auto]))', "{{http_status_code}}")],
+        desc="Plaintext-HTTP responses per second by status code, excluding the exporter's "
+             "own ingest endpoint. This is traffic Zenarmor OBSERVED passing through the "
+             "firewall, not requests served by it — the exporter's own HTTP health is on "
+             "the Diagnostics tab.",
+    )
+
+    # --- Row F: Applications & destinations (Loki, all verdicts) -----------
+    # The companion's all-verdict counterparts to the blocked-only tables in Row C.
+    # Kept as separate panels rather than widening those: "what got blocked" and "what
+    # the network does" are different questions, and merging them would answer neither.
+    zen_apps = b.loki_table(
+        "Top Applications",
+        [f'topk {loki_grp()} (25, sum {loki_grp("app_name")} (count_over_time({ZEN_FLOW} '
+         f'{CLIENT_FILTER} | app_name!="" [$__auto])))'],
+        desc="Top 25 applications Zenarmor identified on flow records, all verdicts. "
+             "Application NAMES are deliberately not a metric label (cardinality), so this "
+             "is the only place they appear; the Flow Volume tab has the same shape by "
+             "application CATEGORY, from metrics, and is far cheaper to read.",
+    )
+    zen_server_names = b.loki_table(
+        "Top TLS Server Names (SNI)",
+        [f'topk {loki_grp()} (25, sum {loki_grp("server_name")} (count_over_time({ZEN_TLS} '
+         f'{CLIENT_FILTER} | server_name!="" [$__auto])))'],
+        desc="Top 25 TLS server names (SNI) across ALL verdicts — where the network goes, "
+             "not what policy stopped. Top Blocked Servers above is the blocked-only "
+             "counterpart; a name high here and absent there is simply allowed traffic.",
+    )
+    zen_dst_countries = b.loki_table(
+        "Destination Countries",
+        [f'topk {loki_grp()} (15, sum {loki_grp("dst_geoip_country_name")} '
+         f'(count_over_time({ZEN_TLS} {CLIENT_FILTER} | dst_geoip_country_name!="" '
+         '[$__auto])))'],
+        desc="Top 15 destination countries (GeoIP) for TLS records, all verdicts. Blocked "
+             "by Country above is the blocked-only counterpart.",
+    )
+
     b.tab("Zenarmor", [
         b.row("Overview", [zen_events, zen_blocked, zen_block_ratio, zen_family_pie,
                            zen_bulk_requests, zen_bulk_bytes, zen_excluded, zen_self_traffic],
@@ -192,4 +328,16 @@ def build(b: Builder):
         b.row("Security Detail", [zen_top_blocked_servers, zen_top_talkers,
                                   zen_blocked_by_country, zen_top_ja3],
               present="has_zenarmor_logs"),
+        # Rows D-F carry the retired companion's unique content (#435). Collapsed by
+        # default: they are the expensive half of this tab — nine range queries over a
+        # 2.5-3.3M records/day stream — and #422's finding was that cold-load cost is
+        # round-trip COUNT. A collapsed row issues nothing until it is opened.
+        b.row("DNS Detail", [zen_dns_queries, zen_dns_rcodes, zen_dns_categories],
+              present="has_zenarmor_logs", collapse=True),
+        b.row("Web / HTTP Detail", [zen_web_hosts, zen_web_uris, zen_web_agents,
+                                    zen_web_status],
+              present="has_zenarmor_logs", collapse=True),
+        b.row("Applications & Destinations", [zen_apps, zen_server_names,
+                                              zen_dst_countries],
+              present="has_zenarmor_logs", collapse=True),
     ])

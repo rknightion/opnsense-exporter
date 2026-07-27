@@ -206,17 +206,21 @@ class ColdLoadBudgetTest(unittest.TestCase):
                 f"the {name} budget ({budget}) is far above the actual figure "
                 f"({actual}); tighten it or it will never fire")
 
-    def test_every_cold_load_variable_is_a_query_that_could_be_collapsed_or_is_needed(self):
-        """Sanity: the census counts variables, not datasource pickers.
+    def test_the_census_counts_query_variables_and_nothing_else(self):
+        """Sanity: the census must count round trips, not variables.
 
-        The two DatasourceVariables issue no datasource query at all (they list
-        installed datasources), so counting them would inflate the budget by two and
-        make the guard measure something other than query fan-out.
+        Two variable kinds issue no datasource query and so cost nothing on load:
+        `DatasourceVariable` lists installed datasources, and `TextVariable` is a
+        textbox (#435 uses one for a Loki structured-metadata field that cannot be
+        enumerated at all). Counting either would inflate the budget and make this
+        guard measure something other than fan-out — which is the one thing the #422
+        measurements identified as the real cost.
         """
         kinds = Counter(v["kind"] for v in self.dash["variables"])
         self.assertEqual(kinds["DatasourceVariable"], 2)
-        self.assertEqual(len(self.variables),
-                         len(self.dash["variables"]) - kinds["DatasourceVariable"])
+        free = kinds["DatasourceVariable"] + kinds["TextVariable"]
+        self.assertEqual(len(self.variables), len(self.dash["variables"]) - free)
+        self.assertEqual(kinds["QueryVariable"], len(self.variables))
 
 
 if __name__ == "__main__":

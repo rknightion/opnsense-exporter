@@ -3463,6 +3463,22 @@
         }
       },
       {
+        "kind": "TextVariable",
+        "spec": {
+          "name": "zenarmor_client",
+          "label": "Zenarmor client device",
+          "query": ".*",
+          "current": {
+            "text": ".*",
+            "value": ".*"
+          },
+          "hide": "dontHide",
+          "skipUrlSync": false,
+          "description": "Filter the Zenarmor log panels to the client device Zenarmor attributed the traffic to (its own identification, not the exporter's). A regex: 'phone|laptop' works, '.*' is everything. This is Zenarmor's device_name, NOT the kernel interface names in the Device picker.",
+          "placement": "inControlsMenu"
+        }
+      },
+      {
         "kind": "QueryVariable",
         "spec": {
           "name": "has_logs",
@@ -75397,6 +75413,986 @@
         "kind": "Panel",
         "spec": {
           "id": 686,
+          "title": "Top DNS Queries",
+          "description": "Top 25 DNS query names Zenarmor saw, over the selected range. `query` is structured metadata, so this is a range+reduce table rather than an instant query. High cardinality by nature \u2014 this is why it is not a metric.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, query) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | query!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-687": {
+        "kind": "Panel",
+        "spec": {
+          "id": 687,
+          "title": "DNS Response Codes",
+          "description": "DNS responses per second by response code. A climbing NXDOMAIN or SERVFAIL share is usually a resolver or upstream problem rather than a client one; read it beside the Unbound tab, which measures the same failures from the resolver's side.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (service_instance_id, rcode) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" [$__auto]))",
+                        "refId": "A",
+                        "legendFormat": "{{rcode}}",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "min": 0,
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-688": {
+        "kind": "Panel",
+        "spec": {
+          "id": 688,
+          "title": "Top DNS Domain Categories",
+          "description": "Top 15 domain categories for DNS records, Zenarmor's own classification. Unlike Blocks by Category above this counts ALL records, not just blocked ones, so it describes what the network asks for rather than what policy stopped.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (15, sum by (service_instance_id, domain_category) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | domain_category!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-689": {
+        "kind": "Panel",
+        "spec": {
+          "id": 689,
+          "title": "Top HTTP Hosts",
+          "description": "Top 25 plaintext-HTTP hosts. Zenarmor's own bulk-ingest requests to the exporter are excluded, or they would be the top host and the panel would mostly describe this exporter. HTTPS hosts are not here \u2014 they appear as TLS SNI in Top TLS Server Names.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, host) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | host!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-690": {
+        "kind": "Panel",
+        "spec": {
+          "id": 690,
+          "title": "Top URIs",
+          "description": "Top 25 request URIs on plaintext HTTP, excluding the exporter's own ingest endpoint. Only unencrypted traffic can be seen at this level.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, uri) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | uri!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-691": {
+        "kind": "Panel",
+        "spec": {
+          "id": 691,
+          "title": "Top User Agents",
+          "description": "Top 15 user agents on plaintext HTTP. Useful for spotting an unexpected device class or an automated client; it is self-reported, so treat it as a hint rather than identification.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (15, sum by (service_instance_id, user_agent) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | user_agent!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-692": {
+        "kind": "Panel",
+        "spec": {
+          "id": 692,
+          "title": "HTTP Status Codes",
+          "description": "Plaintext-HTTP responses per second by status code, excluding the exporter's own ingest endpoint. This is traffic Zenarmor OBSERVED passing through the firewall, not requests served by it \u2014 the exporter's own HTTP health is on the Diagnostics tab.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "sum by (service_instance_id, http_status_code) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" [$__auto]))",
+                        "refId": "A",
+                        "legendFormat": "{{http_status_code}}",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "30s"
+              },
+              "transformations": []
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "short",
+                  "min": 0,
+                  "custom": {
+                    "axisCenteredZero": false,
+                    "fillOpacity": 18,
+                    "gradientMode": "opacity",
+                    "lineInterpolation": "smooth",
+                    "lineWidth": 2,
+                    "showPoints": "never",
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "stacking": {
+                      "mode": "none"
+                    }
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [
+                    "mean",
+                    "max",
+                    "lastNotNull"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom"
+                },
+                "tooltip": {
+                  "mode": "multi",
+                  "sort": "desc"
+                }
+              }
+            }
+          }
+        }
+      },
+      "panel-693": {
+        "kind": "Panel",
+        "spec": {
+          "id": 693,
+          "title": "Top Applications",
+          "description": "Top 25 applications Zenarmor identified on flow records, all verdicts. Application NAMES are deliberately not a metric label (cardinality), so this is the only place they appear; the Flow Volume tab has the same shape by application CATEGORY, from metrics, and is far cheaper to read.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, app_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name=~\"$zenarmor_client\" | app_name!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-694": {
+        "kind": "Panel",
+        "spec": {
+          "id": 694,
+          "title": "Top TLS Server Names (SNI)",
+          "description": "Top 25 TLS server names (SNI) across ALL verdicts \u2014 where the network goes, not what policy stopped. Top Blocked Servers above is the blocked-only counterpart; a name high here and absent there is simply allowed traffic.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | device_name=~\"$zenarmor_client\" | server_name!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-695": {
+        "kind": "Panel",
+        "spec": {
+          "id": 695,
+          "title": "Destination Countries",
+          "description": "Top 15 destination countries (GeoIP) for TLS records, all verdicts. Blocked by Country above is the blocked-only counterpart.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "A",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "${loki_datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "loki",
+                      "datasource": {
+                        "name": "${loki_datasource}"
+                      },
+                      "spec": {
+                        "expr": "topk by (service_instance_id) (15, sum by (service_instance_id, dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | device_name=~\"$zenarmor_client\" | dst_geoip_country_name!=\"\" [$__auto])))",
+                        "refId": "A",
+                        "queryType": "range",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {
+                "interval": "5m"
+              },
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "reduce",
+                  "spec": {
+                    "options": {
+                      "reducers": [
+                        "sum"
+                      ],
+                      "mode": "seriesToRows"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "table",
+            "version": "v11.5.0",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "inspect": false,
+                    "filterable": true
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false,
+                  "reducer": [
+                    "sum"
+                  ],
+                  "countRows": false,
+                  "fields": ""
+                },
+                "sortBy": [
+                  {
+                    "displayName": "Total",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "panel-696": {
+        "kind": "Panel",
+        "spec": {
+          "id": 696,
           "title": "Records Shipped (rate)",
           "description": "opnsense_exporter_logs_shipped_total: records successfully handed to the sink per second, by source. This is the primary throughput signal.",
           "links": [
@@ -75491,10 +76487,10 @@
           }
         }
       },
-      "panel-687": {
+      "panel-697": {
         "kind": "Panel",
         "spec": {
-          "id": 687,
+          "id": 697,
           "title": "Records Dropped (rate)",
           "description": "opnsense_exporter_logs_dropped_total: records dropped before delivery, by source and reason (reason=overflow means the backpressure queue was full and the oldest record was evicted). Sustained drops mean the sink cannot keep up.",
           "links": [
@@ -75585,10 +76581,10 @@
           }
         }
       },
-      "panel-688": {
+      "panel-698": {
         "kind": "Panel",
         "spec": {
-          "id": 688,
+          "id": 698,
           "title": "Queue Depth",
           "description": "opnsense_exporter_logs_queue_length vs opnsense_exporter_logs_queue_capacity: depth of the poller->emitter backpressure queue. Approaching capacity precedes overflow drops.",
           "links": [],
@@ -75700,10 +76696,10 @@
           }
         }
       },
-      "panel-689": {
+      "panel-699": {
         "kind": "Panel",
         "spec": {
-          "id": 689,
+          "id": 699,
           "title": "Queue Bytes",
           "description": "opnsense_exporter_logs_queue_bytes vs opnsense_exporter_logs_queue_max_bytes: estimated retained queue memory and its aggregate byte budget. A max of 0 disables the byte bound; otherwise this can reach its budget while record depth remains low.",
           "links": [],
@@ -75815,10 +76811,10 @@
           }
         }
       },
-      "panel-690": {
+      "panel-700": {
         "kind": "Panel",
         "spec": {
-          "id": 690,
+          "id": 700,
           "title": "Sink Errors (rate)",
           "description": "opnsense_exporter_logs_ship_errors_total: sink Emit attempts that did not fully deliver per second. The pipeline retries their unacknowledged remainder, so this is a retry/degradation signal, not a record-loss counter. A dead OTLP endpoint shows up here.",
           "links": [
@@ -75909,10 +76905,10 @@
           }
         }
       },
-      "panel-691": {
+      "panel-701": {
         "kind": "Panel",
         "spec": {
-          "id": 691,
+          "id": 701,
           "title": "Source Poll Errors (rate)",
           "description": "opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
           "links": [],
@@ -75998,10 +76994,10 @@
           }
         }
       },
-      "panel-692": {
+      "panel-702": {
         "kind": "Panel",
         "spec": {
-          "id": 692,
+          "id": 702,
           "title": "Source Input Lag",
           "description": "Seconds since a source last admitted a record to the queue, derived from opnsense_exporter_logs_last_received_timestamp_seconds on the exporter clock. Steady growth on an active box indicates the source stopped producing or polling.",
           "links": [],
@@ -76087,10 +77083,10 @@
           }
         }
       },
-      "panel-693": {
+      "panel-703": {
         "kind": "Panel",
         "spec": {
-          "id": 693,
+          "id": 703,
           "title": "Delivery Lag",
           "description": "Seconds since the sink last acknowledged a record from each source, derived from opnsense_exporter_logs_last_exported_timestamp_seconds on the exporter clock. A wide gap against Source Input Lag means records are arriving but delivery is retrying or blocked.",
           "links": [],
@@ -76176,10 +77172,10 @@
           }
         }
       },
-      "panel-694": {
+      "panel-704": {
         "kind": "Panel",
         "spec": {
-          "id": 694,
+          "id": 704,
           "title": "Possible Sampling Gaps (rate)",
           "description": "opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a source whose only view of its data is a bounded window (e.g. the unbound source's latest-1000-row DNS query log, #233) \u2014 incremented when a poll's page shows no continuity with the previous cursor, meaning an unknown amount of data was skipped between polls. Non-zero on a quiet box is expected occasionally; sustained non-zero means the source cannot keep up with event volume at its poll interval.",
           "links": [],
@@ -76265,10 +77261,10 @@
           }
         }
       },
-      "panel-695": {
+      "panel-705": {
         "kind": "Panel",
         "spec": {
-          "id": 695,
+          "id": 705,
           "title": "Parse Errors (rate)",
           "description": "opnsense_exporter_logs_parse_errors_total: received records that failed to parse, by source and stage (syslog envelope = not valid RFC5424/RFC3164; Zenarmor bulk = an invalid _bulk envelope; Zenarmor document = one document that would not decode). These records are NOT dropped -- they ship with their raw body -- so this counts fidelity lost, not data lost.",
           "links": [],
@@ -76354,10 +77350,10 @@
           }
         }
       },
-      "panel-696": {
+      "panel-706": {
         "kind": "Panel",
         "spec": {
-          "id": 696,
+          "id": 706,
           "title": "Input Rejected (rate)",
           "description": "opnsense_exporter_logs_rejected_total: receiver input refused rather than shipped. reason=peer means a sender outside the allowlist (check this first when a receiver appears to receive nothing); oversized means a frame beyond the message cap; unhandled_endpoint means Zenarmor called an Elasticsearch route the receiver does not implement -- a sustained rate there means its client changed and the receiver needs teaching. self_traffic is Zenarmor reporting the connection that delivers its own records to us (#278): a steady rate is normal and healthy, roughly one per bulk request, and is the feature working.",
           "links": [],
@@ -76443,10 +77439,10 @@
           }
         }
       },
-      "panel-697": {
+      "panel-707": {
         "kind": "Panel",
         "spec": {
-          "id": 697,
+          "id": 707,
           "title": "Resource Label Cap Hit (rate)",
           "description": "opnsense_exporter_logs_resource_capped_total: records shipped with their opnsense.* index labels DROPPED because the distinct (source, subsystem, action) count exceeded the sink's resource cap. The records still arrive, so throughput looks fine -- but every label-scoped query silently under-reports, and which records lose their labels depends on arrival order. Any non-zero value means the closed label sets grew beyond budget and needs investigating.",
           "links": [],
@@ -76532,10 +77528,10 @@
           }
         }
       },
-      "panel-698": {
+      "panel-708": {
         "kind": "Panel",
         "spec": {
-          "id": 698,
+          "id": 708,
           "title": "Enrichment Misses (rate)",
           "description": "opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by table. A sustained rate on table=rules means the rule snapshot is behind the box's ruleset, so log lines are shipping without a rule description. A miss triggers a rate-limited refresh, so a brief spike after a ruleset change is normal.",
           "links": [],
@@ -76621,10 +77617,10 @@
           }
         }
       },
-      "panel-699": {
+      "panel-709": {
         "kind": "Panel",
         "spec": {
-          "id": 699,
+          "id": 709,
           "title": "Enrichment Refresh Errors (rate)",
           "description": "opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes against the OPNsense API, by table. The previous snapshot keeps serving, so records still ship -- enriched with increasingly stale data. Pair with the staleness panel.",
           "links": [],
@@ -76710,10 +77706,10 @@
           }
         }
       },
-      "panel-700": {
+      "panel-710": {
         "kind": "Panel",
         "spec": {
-          "id": 700,
+          "id": 710,
           "title": "Enrichment Staleness",
           "description": "Seconds since each enrichment table last refreshed successfully, derived from opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every 60s, interfaces every 5m, leases every 60s -- a value climbing far past those means the API is failing and enrichment is silently going stale.",
           "links": [],
@@ -76799,10 +77795,10 @@
           }
         }
       },
-      "panel-701": {
+      "panel-711": {
         "kind": "Panel",
         "spec": {
-          "id": 701,
+          "id": 711,
           "title": "Memory Utilization",
           "description": "Physical-memory utilization precomputed by the bundled recording rule.",
           "links": [],
@@ -76892,10 +77888,10 @@
           }
         }
       },
-      "panel-702": {
+      "panel-712": {
         "kind": "Panel",
         "spec": {
-          "id": 702,
+          "id": 712,
           "title": "PF State Utilization",
           "description": "Current PF state-table occupancy as a fraction of its configured limit.",
           "links": [],
@@ -76985,10 +77981,10 @@
           }
         }
       },
-      "panel-703": {
+      "panel-713": {
         "kind": "Panel",
         "spec": {
-          "id": 703,
+          "id": 713,
           "title": "Resource Pressure Trend",
           "description": "Precomputed memory and PF state-table utilization over the selected period.",
           "links": [],
@@ -77100,10 +78096,10 @@
           }
         }
       },
-      "panel-704": {
+      "panel-714": {
         "kind": "Panel",
         "spec": {
-          "id": 704,
+          "id": 714,
           "title": "Interface Traffic (5m rate)",
           "description": "Per-interface receive and transmit throughput computed over five minutes.",
           "links": [],
@@ -77215,10 +78211,10 @@
           }
         }
       },
-      "panel-705": {
+      "panel-715": {
         "kind": "Panel",
         "spec": {
-          "id": 705,
+          "id": 715,
           "title": "Firewall Blocks (5m rate)",
           "description": "IPv4 and IPv6 packets blocked in either direction, grouped by interface.",
           "links": [],
@@ -77304,10 +78300,10 @@
           }
         }
       },
-      "panel-706": {
+      "panel-716": {
         "kind": "Panel",
         "spec": {
-          "id": 706,
+          "id": 716,
           "title": "Gateway Packet Loss",
           "description": "Current packet-loss ratio for each monitored gateway.",
           "links": [],
@@ -77397,10 +78393,10 @@
           }
         }
       },
-      "panel-707": {
+      "panel-717": {
         "kind": "Panel",
         "spec": {
-          "id": 707,
+          "id": 717,
           "title": "IPsec Tunnels Down",
           "description": "Number of configured IPsec phase-one tunnels currently down.",
           "links": [],
@@ -77486,10 +78482,10 @@
           }
         }
       },
-      "panel-708": {
+      "panel-718": {
         "kind": "Panel",
         "spec": {
-          "id": 708,
+          "id": 718,
           "title": "WireGuard Peers Down",
           "description": "Number of monitored WireGuard peers currently down.",
           "links": [],
@@ -77575,10 +78571,10 @@
           }
         }
       },
-      "panel-709": {
+      "panel-719": {
         "kind": "Panel",
         "spec": {
-          "id": 709,
+          "id": 719,
           "title": "Unbound Cache Hit Ratio",
           "description": "Share of Unbound DNS lookups served from cache over five minutes.",
           "links": [],
@@ -77668,10 +78664,10 @@
           }
         }
       },
-      "panel-710": {
+      "panel-720": {
         "kind": "Panel",
         "spec": {
-          "id": 710,
+          "id": 720,
           "title": "Unbound Query Rate",
           "description": "DNS queries per second averaged over five minutes.",
           "links": [],
@@ -77753,10 +78749,10 @@
           }
         }
       },
-      "panel-711": {
+      "panel-721": {
         "kind": "Panel",
         "spec": {
-          "id": 711,
+          "id": 721,
           "title": "Zenarmor Block Ratio",
           "description": "Share of Zenarmor log events with a block action over five minutes; informational, not a health threshold.",
           "links": [],
@@ -77838,10 +78834,10 @@
           }
         }
       },
-      "panel-712": {
+      "panel-722": {
         "kind": "Panel",
         "spec": {
-          "id": 712,
+          "id": 722,
           "title": "HAProxy 5xx Ratio",
           "description": "Share of HAProxy requests returning server errors, grouped by backend.",
           "links": [],
@@ -77931,10 +78927,10 @@
           }
         }
       },
-      "panel-713": {
+      "panel-723": {
         "kind": "Panel",
         "spec": {
-          "id": 713,
+          "id": 723,
           "title": "Active IDS Blocks",
           "description": "Blocked IDS alerts retained in the exporter's active recent-alert window.",
           "links": [],
@@ -78024,10 +79020,10 @@
           }
         }
       },
-      "panel-714": {
+      "panel-724": {
         "kind": "Panel",
         "spec": {
-          "id": 714,
+          "id": 724,
           "title": "Flow Volume (5m rate)",
           "description": "Per-interface flow throughput by direction, precomputed over five minutes. The rule pins source=\"netflow\" deliberately: the flow family carries two independent measurements of the same traffic (Zenarmor and NetFlow) and #346 decision 3 forbids summing them, so this series is safe to build on without every query having to remember the source filter.",
           "links": [],
@@ -78113,10 +79109,10 @@
           }
         }
       },
-      "panel-715": {
+      "panel-725": {
         "kind": "Panel",
         "spec": {
-          "id": 715,
+          "id": 725,
           "title": "Scrape Success (opnsense_up)",
           "description": "1 = the exporter reached the firewall on its last poll. A GAP is not a zero: zero means the exporter answered and reported the firewall unreachable, while a gap means Prometheus got nothing from the exporter at all.",
           "links": [],
@@ -78214,10 +79210,10 @@
           }
         }
       },
-      "panel-716": {
+      "panel-726": {
         "kind": "Panel",
         "spec": {
-          "id": 716,
+          "id": 726,
           "title": "Scrape Rate vs OPNsense API Rate",
           "description": "How often Prometheus scrapes this exporter, against how often the exporter actually calls the firewall. Since #336 the two are decoupled: a scrape replays an in-memory snapshot and makes no API call, so scraping harder costs the firewall nothing and the API line moves only when you change poll intervals, enable collectors, or the response cache stops serving hits. API rate climbing on its own is worth a look; scrape rate climbing on its own is not. Serving backpressure, if you are hunting it, shows up as HTTP 503s from the exporter's in-flight cap, not on this panel.",
           "links": [],
@@ -78329,10 +79325,10 @@
           }
         }
       },
-      "panel-717": {
+      "panel-727": {
         "kind": "Panel",
         "spec": {
-          "id": 717,
+          "id": 727,
           "title": "Endpoint Errors (rate)",
           "description": "OPNsense API errors per second, per endpoint. A plugin-gated endpoint that 404s is NOT counted here \u2014 the client treats that as feature-absent \u2014 so anything on this panel is a real failure: auth, TLS, timeout or a 5xx.",
           "links": [],
@@ -78418,10 +79414,10 @@
           }
         }
       },
-      "panel-718": {
+      "panel-728": {
         "kind": "Panel",
         "spec": {
-          "id": 718,
+          "id": 728,
           "title": "Endpoint Errors (total)",
           "description": "Cumulative API errors per endpoint since the exporter started. A large total with a flat rate panel beside it is history, not a live problem; the two are meant to be read together.",
           "links": [],
@@ -78522,10 +79518,10 @@
           }
         }
       },
-      "panel-719": {
+      "panel-729": {
         "kind": "Panel",
         "spec": {
-          "id": 719,
+          "id": 729,
           "title": "Build Info",
           "description": "Requires the exporter build that emits opnsense_exporter_build_info.",
           "links": [],
@@ -78629,10 +79625,10 @@
           }
         }
       },
-      "panel-720": {
+      "panel-730": {
         "kind": "Panel",
         "spec": {
-          "id": 720,
+          "id": 730,
           "title": "Collector Enabled",
           "description": "opnsense_exporter_collector_enabled: which collectors are on.",
           "links": [],
@@ -78737,10 +79733,10 @@
           }
         }
       },
-      "panel-721": {
+      "panel-731": {
         "kind": "Panel",
         "spec": {
-          "id": 721,
+          "id": 731,
           "title": "Collector Poll Duration",
           "description": "Duration of the latest scheduled background poll. The metric keeps its historical node_exporter-compatible name; /metrics only replays this value.",
           "links": [],
@@ -78826,10 +79822,10 @@
           }
         }
       },
-      "panel-722": {
+      "panel-732": {
         "kind": "Panel",
         "spec": {
-          "id": 722,
+          "id": 732,
           "title": "Collector Poll Success",
           "description": "1 = the latest scheduled sub-collector poll completed cleanly; 0 = error or panic. The metric name is retained for compatibility.",
           "links": [],
@@ -78934,10 +79930,10 @@
           }
         }
       },
-      "panel-723": {
+      "panel-733": {
         "kind": "Panel",
         "spec": {
-          "id": 723,
+          "id": 733,
           "title": "Collector Poll Interval",
           "description": "Configured poll interval per collector (#336): fast 15s / medium 60s / slow 5m / cold 15m, overridable via --collector.poll-interval-override.",
           "links": [],
@@ -79040,10 +80036,10 @@
           }
         }
       },
-      "panel-724": {
+      "panel-734": {
         "kind": "Panel",
         "spec": {
-          "id": 724,
+          "id": 734,
           "title": "Collector Last Attempt Age (scheduler liveness)",
           "description": "Seconds since each collector's last poll ATTEMPT completed \u2014 successful or not. This is SCHEDULER LIVENESS, NOT data freshness: a failed poll advances this clock just like a successful one, so a collector that has been failing for six hours still reads under one interval here while replaying six-hour-old retained data. A value climbing past the collector's interval means the poller itself is stalled or starved of a concurrency slot. For how old the served data actually is, read 'Collector Retained Data Age' below (#382).",
           "links": [],
@@ -79129,10 +80125,10 @@
           }
         }
       },
-      "panel-725": {
+      "panel-735": {
         "kind": "Panel",
         "spec": {
-          "id": 725,
+          "id": 735,
           "title": "Collector Next Poll (in)",
           "description": "Seconds until each collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline rather than derived from last poll + interval (#385).",
           "links": [],
@@ -79218,10 +80214,10 @@
           }
         }
       },
-      "panel-726": {
+      "panel-736": {
         "kind": "Panel",
         "spec": {
-          "id": 726,
+          "id": 736,
           "title": "Collector Retained Data Age (true data age)",
           "description": "Seconds since each collector's stored metric buffer was last REPLACED \u2014 the true age of the data every scrape and every OTLP export replays. It advances on a successful poll and on a partial-error poll that still emitted data, and deliberately does NOT advance when a failed poll emitted nothing and the last-good buffer was retained. This is the freshness number: a line climbing past ~3x that collector's poll interval means it is serving stale retained data, which is what OPNsenseCollectorDataStale alerts on. A collector that has never stored data has no line at all (the gauge is absent rather than 0, so it cannot render as a 1970 epoch) \u2014 OPNsenseCollectorNeverStoredData covers that case.",
           "links": [],
@@ -79307,10 +80303,10 @@
           }
         }
       },
-      "panel-727": {
+      "panel-737": {
         "kind": "Panel",
         "spec": {
-          "id": 727,
+          "id": 737,
           "title": "Collector Time Since Last Full Success",
           "description": "Seconds since each collector's last FULLY CLEAN poll. Unlike retained data age this does not advance on a partial-error poll, so the two together separate 'refreshed but degraded' from 'fully healthy': if this climbs while retained data age stays low, the collector is still refreshing part of its data but one of its endpoints has been erroring the whole time \u2014 see the Endpoint Errors panels above for which one. OPNsenseCollectorDegraded alerts on this.",
           "links": [],
@@ -79396,10 +80392,10 @@
           }
         }
       },
-      "panel-728": {
+      "panel-738": {
         "kind": "Panel",
         "spec": {
-          "id": 728,
+          "id": 738,
           "title": "OTLP Export Enabled",
           "description": "1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery is working: the exporter connects lazily, so this reads 1 from startup even with a wrong endpoint or an expired credential. Judge delivery by the two panels to the right. Construction failure is fatal at startup, so there is no configured-but-inactive state \u2014 the metric is either 1 or absent.",
           "links": [],
@@ -79503,10 +80499,10 @@
           }
         }
       },
-      "panel-729": {
+      "panel-739": {
         "kind": "Panel",
         "spec": {
-          "id": 729,
+          "id": 739,
           "title": "OTLP Consecutive Failures",
           "description": "Exports that have failed back-to-back. Reset to 0 by the next success, so any sustained non-zero value is an ongoing delivery outage rather than a blip. OPNsenseOTLPDeliveryFailing alerts on this.",
           "links": [],
@@ -79592,10 +80588,10 @@
           }
         }
       },
-      "panel-730": {
+      "panel-740": {
         "kind": "Panel",
         "spec": {
-          "id": 730,
+          "id": 740,
           "title": "Time Since Last Successful OTLP Export",
           "description": "Seconds since the last export the backend accepted. NO DATA here means no export has EVER succeeded since this exporter started \u2014 the gauge is 0 in that state and the `> 0` guard suppresses it deliberately, because subtracting 0 from time() would render a 56-year age as though a real export had once landed. No-data plus a rising consecutive-failure count is the never-worked-since-boot case (wrong endpoint / bad credential).",
           "links": [],
@@ -79686,10 +80682,10 @@
           }
         }
       },
-      "panel-731": {
+      "panel-741": {
         "kind": "Panel",
         "spec": {
-          "id": 731,
+          "id": 741,
           "title": "OTLP Export Rate (by result)",
           "description": "Export calls per second by outcome, counted once per export call and never per metric. Both result values are seeded to 0 at startup, so a healthy exporter shows a flat zero error line rather than an absent series.",
           "links": [],
@@ -79775,10 +80771,10 @@
           }
         }
       },
-      "panel-732": {
+      "panel-742": {
         "kind": "Panel",
         "spec": {
-          "id": 732,
+          "id": 742,
           "title": "Exporter Goroutines",
           "description": "Go runtime goroutines in the exporter process. NOTE: go_* metrics carry no opnsense_instance label, so this panel is scoped by scrape job and does NOT follow the $opnsense_instance picker \u2014 with two exporters scraped it shows both.",
           "links": [],
@@ -79864,10 +80860,10 @@
           }
         }
       },
-      "panel-733": {
+      "panel-743": {
         "kind": "Panel",
         "spec": {
-          "id": 733,
+          "id": 743,
           "title": "Exporter Memory",
           "description": "Exporter process RSS and Go heap in use. Like the other two process panels this is scoped by scrape job, not by $opnsense_instance, because process_*/go_* metrics carry no appliance label. RSS above heap is normal \u2014 it includes the Go runtime's arenas.",
           "links": [],
@@ -79979,10 +80975,10 @@
           }
         }
       },
-      "panel-734": {
+      "panel-744": {
         "kind": "Panel",
         "spec": {
-          "id": 734,
+          "id": 744,
           "title": "Exporter CPU",
           "description": "CPU seconds per second consumed by the exporter process: 1.0 means one core saturated. Scoped by scrape job rather than by $opnsense_instance, since process_* metrics carry no appliance label.",
           "links": [],
@@ -80068,10 +81064,10 @@
           }
         }
       },
-      "panel-735": {
+      "panel-745": {
         "kind": "Panel",
         "spec": {
-          "id": 735,
+          "id": 745,
           "title": "API Request Rate (by endpoint)",
           "description": "",
           "links": [],
@@ -80157,10 +81153,10 @@
           }
         }
       },
-      "panel-736": {
+      "panel-746": {
         "kind": "Panel",
         "spec": {
-          "id": 736,
+          "id": 746,
           "title": "API Request p95 Latency (by endpoint)",
           "description": "p95 of opnsense_exporter_api_request_duration_seconds by endpoint.",
           "links": [],
@@ -80246,10 +81242,10 @@
           }
         }
       },
-      "panel-737": {
+      "panel-747": {
         "kind": "Panel",
         "spec": {
-          "id": 737,
+          "id": 747,
           "title": "API Cache Hit Rate",
           "description": "Share of calls to cacheable endpoints served from cache rather than the firewall. Endpoints with no TTL are not counted, so this describes the cache itself. Expect a high steady-state value: slow-moving endpoints are re-fetched only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.",
           "links": [],
@@ -80332,10 +81328,10 @@
           }
         }
       },
-      "panel-738": {
+      "panel-748": {
         "kind": "Panel",
         "spec": {
-          "id": 738,
+          "id": 748,
           "title": "API Cache Hits (by kind)",
           "description": "kind=\"body\": a replayed payload from a slow-moving endpoint (firmware status, certificate inventory, CPU/system identity). kind=\"absent\": a replayed 404 from a plugin-gated endpoint \u2014 the plugin is not installed on this firewall, and the exporter is no longer re-asking on every scheduled poll.",
           "links": [],
@@ -80421,10 +81417,10 @@
           }
         }
       },
-      "panel-739": {
+      "panel-749": {
         "kind": "Panel",
         "spec": {
-          "id": 739,
+          "id": 749,
           "title": "API Cache Hits (by endpoint)",
           "description": "Which endpoints the cache is actually saving calls on. An endpoint with a configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an ineffective TTL.",
           "links": [],
@@ -91204,6 +92200,229 @@
                                     }
                                   }
                                 }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "DNS Detail",
+                                  "collapse": true,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-686"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 10,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-687"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 18,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-688"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_zenarmor_logs",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "Web / HTTP Detail",
+                                  "collapse": true,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-689"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 10,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-690"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 20,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-691"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 30,
+                                            "width": 12,
+                                            "height": 8,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-692"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_zenarmor_logs",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "kind": "RowsLayoutRow",
+                                "spec": {
+                                  "title": "Applications & Destinations",
+                                  "collapse": true,
+                                  "layout": {
+                                    "kind": "GridLayout",
+                                    "spec": {
+                                      "items": [
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 0,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-693"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 10,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-694"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "kind": "GridLayoutItem",
+                                          "spec": {
+                                            "x": 0,
+                                            "y": 20,
+                                            "width": 24,
+                                            "height": 10,
+                                            "element": {
+                                              "kind": "ElementReference",
+                                              "name": "panel-695"
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "conditionalRendering": {
+                                    "kind": "ConditionalRenderingGroup",
+                                    "spec": {
+                                      "visibility": "show",
+                                      "condition": "and",
+                                      "items": [
+                                        {
+                                          "kind": "ConditionalRenderingVariable",
+                                          "spec": {
+                                            "variable": "has_zenarmor_logs",
+                                            "operator": "matches",
+                                            "value": ".+"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
                               }
                             ]
                           }
@@ -95744,7 +96963,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-686"
+                                              "name": "panel-696"
                                             }
                                           }
                                         },
@@ -95757,7 +96976,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-687"
+                                              "name": "panel-697"
                                             }
                                           }
                                         }
@@ -95801,7 +97020,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-688"
+                                              "name": "panel-698"
                                             }
                                           }
                                         },
@@ -95814,7 +97033,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-689"
+                                              "name": "panel-699"
                                             }
                                           }
                                         },
@@ -95827,7 +97046,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-690"
+                                              "name": "panel-700"
                                             }
                                           }
                                         },
@@ -95840,7 +97059,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-691"
+                                              "name": "panel-701"
                                             }
                                           }
                                         }
@@ -95884,7 +97103,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-692"
+                                              "name": "panel-702"
                                             }
                                           }
                                         },
@@ -95897,7 +97116,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-693"
+                                              "name": "panel-703"
                                             }
                                           }
                                         },
@@ -95910,7 +97129,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-694"
+                                              "name": "panel-704"
                                             }
                                           }
                                         }
@@ -95954,7 +97173,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-695"
+                                              "name": "panel-705"
                                             }
                                           }
                                         },
@@ -95967,7 +97186,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-696"
+                                              "name": "panel-706"
                                             }
                                           }
                                         },
@@ -95980,7 +97199,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-697"
+                                              "name": "panel-707"
                                             }
                                           }
                                         }
@@ -96024,7 +97243,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-698"
+                                              "name": "panel-708"
                                             }
                                           }
                                         },
@@ -96037,7 +97256,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-699"
+                                              "name": "panel-709"
                                             }
                                           }
                                         },
@@ -96050,7 +97269,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-700"
+                                              "name": "panel-710"
                                             }
                                           }
                                         }
@@ -96124,7 +97343,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-701"
+                                              "name": "panel-711"
                                             }
                                           }
                                         },
@@ -96137,7 +97356,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-702"
+                                              "name": "panel-712"
                                             }
                                           }
                                         },
@@ -96150,7 +97369,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-703"
+                                              "name": "panel-713"
                                             }
                                           }
                                         }
@@ -96177,7 +97396,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-704"
+                                              "name": "panel-714"
                                             }
                                           }
                                         },
@@ -96190,7 +97409,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-705"
+                                              "name": "panel-715"
                                             }
                                           }
                                         }
@@ -96217,7 +97436,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-706"
+                                              "name": "panel-716"
                                             }
                                           }
                                         }
@@ -96261,7 +97480,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-707"
+                                              "name": "panel-717"
                                             }
                                           }
                                         }
@@ -96305,7 +97524,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-708"
+                                              "name": "panel-718"
                                             }
                                           }
                                         }
@@ -96349,7 +97568,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-709"
+                                              "name": "panel-719"
                                             }
                                           }
                                         },
@@ -96362,7 +97581,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-710"
+                                              "name": "panel-720"
                                             }
                                           }
                                         }
@@ -96406,7 +97625,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-711"
+                                              "name": "panel-721"
                                             }
                                           }
                                         }
@@ -96450,7 +97669,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-712"
+                                              "name": "panel-722"
                                             }
                                           }
                                         }
@@ -96494,7 +97713,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-713"
+                                              "name": "panel-723"
                                             }
                                           }
                                         }
@@ -96538,7 +97757,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-714"
+                                              "name": "panel-724"
                                             }
                                           }
                                         }
@@ -96612,7 +97831,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-715"
+                                              "name": "panel-725"
                                             }
                                           }
                                         },
@@ -96625,7 +97844,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-716"
+                                              "name": "panel-726"
                                             }
                                           }
                                         },
@@ -96638,7 +97857,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-717"
+                                              "name": "panel-727"
                                             }
                                           }
                                         },
@@ -96651,7 +97870,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-718"
+                                              "name": "panel-728"
                                             }
                                           }
                                         }
@@ -96678,7 +97897,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-721"
+                                              "name": "panel-731"
                                             }
                                           }
                                         },
@@ -96691,7 +97910,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-722"
+                                              "name": "panel-732"
                                             }
                                           }
                                         }
@@ -96718,7 +97937,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-723"
+                                              "name": "panel-733"
                                             }
                                           }
                                         },
@@ -96731,7 +97950,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-724"
+                                              "name": "panel-734"
                                             }
                                           }
                                         },
@@ -96744,7 +97963,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-725"
+                                              "name": "panel-735"
                                             }
                                           }
                                         }
@@ -96771,7 +97990,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-726"
+                                              "name": "panel-736"
                                             }
                                           }
                                         },
@@ -96784,7 +98003,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-727"
+                                              "name": "panel-737"
                                             }
                                           }
                                         }
@@ -96811,7 +98030,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-728"
+                                              "name": "panel-738"
                                             }
                                           }
                                         },
@@ -96824,7 +98043,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-729"
+                                              "name": "panel-739"
                                             }
                                           }
                                         },
@@ -96837,7 +98056,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-730"
+                                              "name": "panel-740"
                                             }
                                           }
                                         },
@@ -96850,7 +98069,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-731"
+                                              "name": "panel-741"
                                             }
                                           }
                                         }
@@ -96894,7 +98113,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-735"
+                                              "name": "panel-745"
                                             }
                                           }
                                         },
@@ -96907,7 +98126,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-736"
+                                              "name": "panel-746"
                                             }
                                           }
                                         }
@@ -96934,7 +98153,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-737"
+                                              "name": "panel-747"
                                             }
                                           }
                                         },
@@ -96947,7 +98166,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-738"
+                                              "name": "panel-748"
                                             }
                                           }
                                         },
@@ -96960,7 +98179,7 @@
                                             "height": 7,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-739"
+                                              "name": "panel-749"
                                             }
                                           }
                                         }
@@ -96987,7 +98206,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-719"
+                                              "name": "panel-729"
                                             }
                                           }
                                         },
@@ -97000,7 +98219,7 @@
                                             "height": 8,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-720"
+                                              "name": "panel-730"
                                             }
                                           }
                                         }
@@ -97027,7 +98246,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-732"
+                                              "name": "panel-742"
                                             }
                                           }
                                         },
@@ -97040,7 +98259,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-733"
+                                              "name": "panel-743"
                                             }
                                           }
                                         },
@@ -97053,7 +98272,7 @@
                                             "height": 6,
                                             "element": {
                                               "kind": "ElementReference",
-                                              "name": "panel-734"
+                                              "name": "panel-744"
                                             }
                                           }
                                         }

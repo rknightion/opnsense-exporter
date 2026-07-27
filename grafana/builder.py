@@ -789,6 +789,26 @@ class Builder:
             "refresh": "onDashboardLoad", "regex": "", "skipUrlSync": True,
             "sort": "disabled"}})
 
+    def textbox(self, name: str, *, label: str, default: str, description: str,
+                placement: str | None = None):
+        """Register a free-text (TextVariable) filter.
+
+        For a field that CANNOT be enumerated. Loki structured metadata is the case
+        this exists for (#435): `device_name`, `server_name`, `ja3` and friends are
+        not indexed labels, so `label_values()` returns null for them and a query
+        variable renders an empty picker that looks broken rather than saying so. A
+        textbox is honest about it, costs no cold-load query (#422), and still does
+        the operator's job — the value is used as a regex in a `|` filter.
+
+        `default` should match everything, so an untouched dashboard filters nothing.
+        """
+        spec = {"name": name, "label": label, "query": default,
+                "current": {"text": default, "value": default},
+                "hide": "dontHide", "skipUrlSync": False, "description": description}
+        if placement:
+            spec["placement"] = placement
+        self.variables.append({"kind": "TextVariable", "spec": spec})
+
     @staticmethod
     def sel_pipeline(metric: str, more: str = "") -> str:
         """Return a log-pipeline selector scoped to the stable instance identity."""

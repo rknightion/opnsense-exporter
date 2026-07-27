@@ -53,16 +53,25 @@ type annotation struct {
 	} `json:"spec"`
 }
 
+// `query` is deliberately json.RawMessage rather than a struct: only a
+// QueryVariable holds a datasource query object there. A TextVariable's `query` is
+// a plain STRING (its textbox value), so a typed field made the whole document fail
+// to decode — the tool reported nothing about 975 valid targets because one textbox
+// existed (#435). Decoding is now per-kind, and an unknown kind is skipped rather
+// than fatal.
 type variable struct {
 	Kind string `json:"kind"`
 	Spec struct {
-		Name  string `json:"name"`
-		Query struct {
-			Group string `json:"group"`
-			Spec  struct {
-				Query string `json:"query"`
-			} `json:"spec"`
-		} `json:"query"`
+		Name  string          `json:"name"`
+		Query json.RawMessage `json:"query"`
+	} `json:"spec"`
+}
+
+// variableQuery is the QueryVariable shape of `spec.query`.
+type variableQuery struct {
+	Group string `json:"group"`
+	Spec  struct {
+		Query string `json:"query"`
 	} `json:"spec"`
 }
 
@@ -183,11 +192,21 @@ func validateVariables(document dashboard) (int, validationErrors) {
 		diagnostics validationErrors
 	)
 	for _, v := range document.Spec.Variables {
-		if v.Kind != "QueryVariable" || v.Spec.Query.Group != "prometheus" {
+		if v.Kind != "QueryVariable" || len(v.Spec.Query) == 0 {
+			continue
+		}
+		var query variableQuery
+		if err := json.Unmarshal(v.Spec.Query, &query); err != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf(
+				"variable %q: query is not a QueryVariable query object: %v",
+				v.Spec.Name, err))
+			continue
+		}
+		if query.Group != "prometheus" {
 			continue
 		}
 		names = append(names, v.Spec.Name)
-		queries[v.Spec.Name] = v.Spec.Query.Spec.Query
+		queries[v.Spec.Name] = query.Spec.Query
 	}
 	sort.Strings(names)
 
