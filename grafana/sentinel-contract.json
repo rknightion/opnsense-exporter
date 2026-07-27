@@ -1,0 +1,1115 @@
+{
+  "prometheus": {
+    "total": 98,
+    "by_scope": {
+      "collector": 95,
+      "self_labeled": 1,
+      "target_join": 2,
+      "global": 0
+    },
+    "sentinels": [
+      {
+        "name": "has_acme",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_acme_certificates_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > Certificates > ACME Client"
+        ]
+      },
+      {
+        "name": "has_alias",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_alias_tables_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > Aliases",
+          "Security > Aliases > Alias Tables"
+        ]
+      },
+      {
+        "name": "has_alias_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > Aliases > Alias pf Counters (details flag)"
+        ]
+      },
+      {
+        "name": "has_apcupsd",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_apcupsd_ups_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > UPS",
+          "System > UPS > APC UPS (apcupsd)"
+        ]
+      },
+      {
+        "name": "has_bridge",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_interfaces_bridge_member{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Interfaces > Bridge Membership"
+        ]
+      },
+      {
+        "name": "has_captiveportal",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_captiveportal_zones_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Captive Portal",
+          "Network > Captive Portal > Captive Portal Overview",
+          "Network > Captive Portal > Per-Zone Sessions"
+        ]
+      },
+      {
+        "name": "has_captiveportal_vouchers",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_captiveportal_vouchers{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Captive Portal > Voucher Expiry",
+          "Network > Captive Portal > Voucher Inventory"
+        ]
+      },
+      {
+        "name": "has_carp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_carp_allow{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > CARP / HA"
+        ]
+      },
+      {
+        "name": "has_carp_vips",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "value",
+        "query": "query_result(opnsense_carp_vips_total{opnsense_instance=~\"$opnsense_instance\"} > 0)",
+        "gates": [
+          "System > CARP / HA > VIP Status & Advertisement"
+        ]
+      },
+      {
+        "name": "has_chrony",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_chrony_stratum{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Chrony",
+          "Network > Chrony > Service & Sync",
+          "Network > Chrony > Source Statistics",
+          "Network > Chrony > Sources",
+          "Network > Chrony > Tracking"
+        ]
+      },
+      {
+        "name": "has_clamav",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_clamav_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > ClamAV",
+          "Security > ClamAV > Engine & Signatures",
+          "Security > ClamAV > Signature Databases"
+        ]
+      },
+      {
+        "name": "has_crowdsec",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_crowdsec_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > CrowdSec",
+          "Security > CrowdSec > Bouncer Details",
+          "Security > CrowdSec > CrowdSec Overview",
+          "Security > CrowdSec > Machine Details"
+        ]
+      },
+      {
+        "name": "has_crowdsec_hub_items",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_crowdsec_hub_items{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > CrowdSec > Hub Component Health"
+        ]
+      },
+      {
+        "name": "has_crowdsec_version",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_crowdsec_version_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > CrowdSec > Engine Version"
+        ]
+      },
+      {
+        "name": "has_dhcpv4_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dhcpv4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP > ISC DHCPv4 Lease Details"
+        ]
+      },
+      {
+        "name": "has_dhcpv4_isc",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP",
+          "Network > DHCP > ISC DHCPv4"
+        ]
+      },
+      {
+        "name": "has_dhcpv6_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dhcpv6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP > ISC DHCPv6 Lease Details"
+        ]
+      },
+      {
+        "name": "has_dhcpv6_isc",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP",
+          "Network > DHCP > ISC DHCPv6"
+        ]
+      },
+      {
+        "name": "has_dnsmasq",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dnsmasq_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP",
+          "Network > DHCP > Dnsmasq DHCP"
+        ]
+      },
+      {
+        "name": "has_dnsmasq_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP > Dnsmasq Lease Details"
+        ]
+      },
+      {
+        "name": "has_dyndns",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_dyndns_accounts_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > Services, Cron & DynDNS > DynDNS"
+        ]
+      },
+      {
+        "name": "has_firewall_nat_counts",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_firewall_nat_rules{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > Firewall & PF > NAT Rule Inventory (details flag)"
+        ]
+      },
+      {
+        "name": "has_firewall_rules",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > Firewall & PF > Firewall Rules (top 20)"
+        ]
+      },
+      {
+        "name": "has_firmware_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_firmware_plugin_installed{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > System & Resources > Firmware Packages"
+        ]
+      },
+      {
+        "name": "has_flow",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Flow Volume",
+          "Observability > Flow Volume > Correlator & Log Emission",
+          "Observability > Flow Volume > Domain, Talkers & Source Delta"
+        ]
+      },
+      {
+        "name": "has_flow_netflow",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Flow Volume > NetFlow Receiver",
+          "Observability > Flow Volume > NetFlow Repairs & Topology"
+        ]
+      },
+      {
+        "name": "has_flow_volume",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Flow Volume > Breakdown",
+          "Observability > Flow Volume > Records & Packets",
+          "Observability > Flow Volume > Volume"
+        ]
+      },
+      {
+        "name": "has_frr",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_frr_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > FRR Routing",
+          "Network > FRR Routing > BFD",
+          "Network > FRR Routing > BGP Peer Session Detail",
+          "Network > FRR Routing > BGP Peers",
+          "Network > FRR Routing > FRR Service & Summary",
+          "Network > FRR Routing > OSPF",
+          "Network > FRR Routing > OSPF Interface Detail",
+          "Network > FRR Routing > OSPFv3 (ospf6) Parity"
+        ]
+      },
+      {
+        "name": "has_frr_routes",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_frr_route_count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > FRR Routing > Routing-State Volume (opt-in: --exporter.enable-frr-routes)"
+        ]
+      },
+      {
+        "name": "has_go_runtime",
+        "datasource": "prometheus",
+        "scope": "target_join",
+        "presence": "existence",
+        "query": "query_result(go_goroutines{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+        "gates": [
+          "Observability > Diagnostics > Exporter Runtime (Go client metrics)"
+        ]
+      },
+      {
+        "name": "has_haproxy",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_haproxy_frontend_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services",
+          "Services > HAProxy",
+          "Services > HAProxy > Backend Traffic",
+          "Services > HAProxy > Frontend Traffic",
+          "Services > HAProxy > HAProxy Overview",
+          "Services > HAProxy > Server Details"
+        ]
+      },
+      {
+        "name": "has_haproxy_stick_tables",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_haproxy_stick_table_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services > HAProxy > Stick Tables"
+        ]
+      },
+      {
+        "name": "has_hardware_dmi",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_hardware_dmi_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > System & Resources > Hardware Identity"
+        ]
+      },
+      {
+        "name": "has_hardware_psu",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_hardware_psu_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > System & Resources > Hardware Power Supply"
+        ]
+      },
+      {
+        "name": "has_hasync",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_hasync_remote_reachable{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > HA Sync",
+          "System > HA Sync > HA Sync Status",
+          "System > HA Sync > Remote Services"
+        ]
+      },
+      {
+        "name": "has_ids",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ids_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > IDS/IPS",
+          "Security > IDS/IPS > Rulesets",
+          "Security > IDS/IPS > Suricata Overview",
+          "Security > IDS/IPS > eve Log Files"
+        ]
+      },
+      {
+        "name": "has_ids_alerts",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ids_recent_alerts{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > IDS/IPS > Alert Activity"
+        ]
+      },
+      {
+        "name": "has_ipsec",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ipsec_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access",
+          "VPN & remote access > VPN",
+          "VPN & remote access > VPN > IPsec Config State"
+        ]
+      },
+      {
+        "name": "has_ipsec_pools",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ipsec_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > VPN > IPsec Mode-CFG Pools"
+        ]
+      },
+      {
+        "name": "has_ipsec_sad",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ipsec_sad_entries{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > VPN > IPsec Kernel (SAD/SPD)"
+        ]
+      },
+      {
+        "name": "has_ipsec_tunnels",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ipsec_phase1_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > VPN > IPsec Phase 1",
+          "VPN & remote access > VPN > IPsec Phase 2"
+        ]
+      },
+      {
+        "name": "has_kea",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_kea_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP",
+          "Network > DHCP > Kea DHCP"
+        ]
+      },
+      {
+        "name": "has_kea4_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP > Kea DHCPv4 Lease Details"
+        ]
+      },
+      {
+        "name": "has_kea6_details",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP > Kea DHCPv6 Lease Details"
+        ]
+      },
+      {
+        "name": "has_kea_pd_pools",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_kea_dhcp6_pd_pool_size{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DHCP > Kea DHCPv6 Prefix Delegation"
+        ]
+      },
+      {
+        "name": "has_lagg",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_interfaces_lagg_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Interfaces > LAGG (Link Aggregation)"
+        ]
+      },
+      {
+        "name": "has_lldp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_lldp_neighbors{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Routing & Neighbors > LLDP Neighbors"
+        ]
+      },
+      {
+        "name": "has_log_events",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values({__name__=~\"opnsense_log_events_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events"
+        ]
+      },
+      {
+        "name": "has_log_events_audit",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > Config / Audit"
+        ]
+      },
+      {
+        "name": "has_log_events_carp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_carp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > CARP / HA > Transition Events (from syslog)"
+        ]
+      },
+      {
+        "name": "has_log_events_dhcp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > DHCP"
+        ]
+      },
+      {
+        "name": "has_log_events_firewall",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > Firewall"
+        ]
+      },
+      {
+        "name": "has_log_events_haproxy",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > HAProxy"
+        ]
+      },
+      {
+        "name": "has_log_events_ids",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > IDS / IPS"
+        ]
+      },
+      {
+        "name": "has_log_events_radius",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_radius_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > RADIUS Authentication"
+        ]
+      },
+      {
+        "name": "has_log_events_sshd",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > SSH Authentication"
+        ]
+      },
+      {
+        "name": "has_log_events_vpn",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > VPN Lifecycle (IPsec / OpenVPN)"
+        ]
+      },
+      {
+        "name": "has_logs",
+        "datasource": "prometheus",
+        "scope": "self_labeled",
+        "presence": "existence",
+        "query": "label_values(opnsense_exporter_logs_queue_capacity{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log Shipping",
+          "Observability > Log Shipping > Cursor",
+          "Observability > Log Shipping > Enrichment",
+          "Observability > Log Shipping > Queue & Errors",
+          "Observability > Log Shipping > Receivers",
+          "Observability > Log Shipping > Throughput"
+        ]
+      },
+      {
+        "name": "has_monit",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_monit_status_ok{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > Monit",
+          "System > Monit > Check Status Detail",
+          "System > Monit > Filesystem Check Resources",
+          "System > Monit > Host Check Resources",
+          "System > Monit > Monit Overview",
+          "System > Monit > Process Check Resources",
+          "System > Monit > System Check Resources"
+        ]
+      },
+      {
+        "name": "has_netbird",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_netbird_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access",
+          "VPN & remote access > NetBird",
+          "VPN & remote access > NetBird > NetBird Node"
+        ]
+      },
+      {
+        "name": "has_netbird_peers",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_netbird_peer_connected{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > NetBird > NetBird Peers (details flag)"
+        ]
+      },
+      {
+        "name": "has_netflow",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_netflow_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > NetFlow"
+        ]
+      },
+      {
+        "name": "has_network_diag",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem)",
+          "Network > Routing & Neighbors > Sockets & Routes",
+          "Network > Routing & Neighbors > pfsync"
+        ]
+      },
+      {
+        "name": "has_nginx",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_nginx_connections_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services",
+          "Services > Nginx",
+          "Services > Nginx > Config Reload & Autoblock",
+          "Services > Nginx > Nginx Overview",
+          "Services > Nginx > Server Zone Cache Status & Latency",
+          "Services > Nginx > Server Zones",
+          "Services > Nginx > Shared Memory",
+          "Services > Nginx > Upstream Servers"
+        ]
+      },
+      {
+        "name": "has_nginx_cache",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_nginx_cache_zone_max_bytes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services > Nginx > Cache Zones"
+        ]
+      },
+      {
+        "name": "has_ntp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ntp_peer_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > NTP"
+        ]
+      },
+      {
+        "name": "has_ntp_gps",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_ntp_gps_ok{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > NTP > GPS (experimental)"
+        ]
+      },
+      {
+        "name": "has_nut",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_nut_ups_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > UPS",
+          "System > UPS > NUT (Network UPS Tools)"
+        ]
+      },
+      {
+        "name": "has_openvpn",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_openvpn_instances{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access",
+          "VPN & remote access > VPN",
+          "VPN & remote access > VPN > OpenVPN"
+        ]
+      },
+      {
+        "name": "has_otlp",
+        "datasource": "prometheus",
+        "scope": "target_join",
+        "presence": "existence",
+        "query": "query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+        "gates": [
+          "Observability > Diagnostics > OTLP Delivery Health"
+        ]
+      },
+      {
+        "name": "has_qfeeds",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > Q-Feeds",
+          "Security > Q-Feeds > Q-Feeds Activity",
+          "Security > Q-Feeds > Q-Feeds Overview"
+        ]
+      },
+      {
+        "name": "has_recording_flow",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > Flow Volume"
+        ]
+      },
+      {
+        "name": "has_recording_gateway_loss",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > Gateway Health"
+        ]
+      },
+      {
+        "name": "has_recording_haproxy",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > HAProxy"
+        ]
+      },
+      {
+        "name": "has_recording_ids",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > IDS / IPS"
+        ]
+      },
+      {
+        "name": "has_recording_ipsec",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > IPsec Health"
+        ]
+      },
+      {
+        "name": "has_recording_rules",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values({__name__=~\"instance:opnsense_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules"
+        ]
+      },
+      {
+        "name": "has_recording_unbound",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > Unbound DNS"
+        ]
+      },
+      {
+        "name": "has_recording_wireguard",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > WireGuard Health"
+        ]
+      },
+      {
+        "name": "has_recording_zenarmor",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Recording rules > Zenarmor"
+        ]
+      },
+      {
+        "name": "has_relayd",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_relayd_virtualserver_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services",
+          "Services > Relayd",
+          "Services > Relayd > Host Health",
+          "Services > Relayd > Relayd Overview",
+          "Services > Relayd > Virtual Server & Table Status"
+        ]
+      },
+      {
+        "name": "has_sfp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_interfaces_sfp_info{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Interfaces > SFP / Optics (DOM)"
+        ]
+      },
+      {
+        "name": "has_siproxd",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_siproxd_registrations{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services",
+          "Services > Siproxd",
+          "Services > Siproxd > Registrations"
+        ]
+      },
+      {
+        "name": "has_smart",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_smart_device_health{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > System & Resources > SMART",
+          "System > System & Resources > SMART Attributes & NVMe"
+        ]
+      },
+      {
+        "name": "has_syslog",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_syslog_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Services",
+          "Services > Syslog",
+          "Services > Syslog > Syslog-ng Overview",
+          "Services > Syslog > Syslog-ng Throughput"
+        ]
+      },
+      {
+        "name": "has_tailscale",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_tailscale_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access",
+          "VPN & remote access > Tailscale",
+          "VPN & remote access > Tailscale > Tailscale Node"
+        ]
+      },
+      {
+        "name": "has_tailscale_peers",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_tailscale_peer_session_active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > Tailscale > Tailscale Peers (details flag)"
+        ]
+      },
+      {
+        "name": "has_temperature",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "System > System & Resources > Temperature"
+        ]
+      },
+      {
+        "name": "has_tor",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_tor_control_port_up{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access",
+          "VPN & remote access > Tor",
+          "VPN & remote access > Tor > Circuits",
+          "VPN & remote access > Tor > Hidden Services",
+          "VPN & remote access > Tor > Streams",
+          "VPN & remote access > Tor > Tor Overview"
+        ]
+      },
+      {
+        "name": "has_trafficshaper",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Traffic Shaper",
+          "Network > Traffic Shaper > Pipes",
+          "Network > Traffic Shaper > Queues",
+          "Network > Traffic Shaper > Rules",
+          "Network > Traffic Shaper > Summary"
+        ]
+      },
+      {
+        "name": "has_unbound",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_unbound_dns_uptime_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DNS - Unbound"
+        ]
+      },
+      {
+        "name": "has_unbound_infra",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DNS - Unbound > Upstream Infra Cache"
+        ]
+      },
+      {
+        "name": "has_unbound_qstats",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_unbound_dns_qstats_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > DNS - Unbound > DNSBL / Query Stats"
+        ]
+      },
+      {
+        "name": "has_vnstat",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_vnstat_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Network > Interfaces > Vnstat Traffic Accounting"
+        ]
+      },
+      {
+        "name": "has_wireguard",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_wireguard_service_running{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access",
+          "VPN & remote access > VPN"
+        ]
+      },
+      {
+        "name": "has_wireguard_ifaces",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > VPN > WireGuard Interfaces"
+        ]
+      },
+      {
+        "name": "has_wireguard_peers",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_wireguard_peer_status{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "VPN & remote access > VPN > WireGuard Peers"
+        ]
+      },
+      {
+        "name": "has_zenarmor_metrics",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Security > Zenarmor",
+          "Security > Zenarmor > Overview"
+        ]
+      }
+    ]
+  },
+  "loki": {
+    "total": 2,
+    "sentinels": [
+      {
+        "name": "has_syslog_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"}, opnsense_source)",
+        "gates": [
+          "Services",
+          "Services > Syslog",
+          "Services > Syslog > Shipped Syslog Logs"
+        ]
+      },
+      {
+        "name": "has_zenarmor_logs",
+        "datasource": "loki",
+        "scope": "stream_selector",
+        "presence": "existence",
+        "query": "label_values({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"}, opnsense_source)",
+        "gates": [
+          "Security > Zenarmor",
+          "Security > Zenarmor > Live Records & Rates",
+          "Security > Zenarmor > Security Detail"
+        ]
+      }
+    ]
+  }
+}

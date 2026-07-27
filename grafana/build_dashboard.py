@@ -15,6 +15,7 @@ import os
 import re
 import sys
 
+import sentinel_contract
 from builder import INSTANCE_SEL, Builder, sel, RATE, ENABLED, UPDOWN, OKERR, YESNO, GW_STATUS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +23,11 @@ REPO = os.path.dirname(HERE)
 METRICS_MD = os.path.join(REPO, "docs", "metrics", "metrics.md")
 OUT = os.path.join(HERE, "dashboard.json")
 STATS_PATH = os.path.join(REPO, "grafana", "dashboard-stats.json")
+# The feature-sentinel documentation contract (#417): a machine-readable manifest
+# plus the generated section of tabs/AUTHORING.md, both derived from the same
+# Builder this file already produces. See sentinel_contract.py.
+SENTINEL_CONTRACT_PATH = os.path.join(HERE, "sentinel-contract.json")
+AUTHORING_PATH = os.path.join(HERE, "tabs", "AUTHORING.md")
 
 # Metrics intentionally NOT charted on a panel (covered structurally / not useful as a
 # series). Keep this list short and justified — the coverage gate flags everything else.
@@ -740,6 +746,21 @@ def main():
                        "top_level_tab_names": top_level_tab_names}, f, indent=2)
             f.write("\n")
         print(f"wrote {STATS_PATH}", file=sys.stderr)
+
+        # Feature-sentinel documentation contract (#417): regenerate both the
+        # machine-readable manifest and the generated section of AUTHORING.md from
+        # THIS SAME Builder, so the two can never independently drift.
+        contract = sentinel_contract.build_contract(b)
+        with open(SENTINEL_CONTRACT_PATH, "w") as f:
+            f.write(sentinel_contract.contract_json(contract))
+        print(f"wrote {SENTINEL_CONTRACT_PATH}", file=sys.stderr)
+        with open(AUTHORING_PATH) as f:
+            authoring_doc = f.read()
+        authoring_doc = sentinel_contract.inject_authoring_section(
+            authoring_doc, sentinel_contract.render_authoring_section(contract))
+        with open(AUTHORING_PATH, "w") as f:
+            f.write(authoring_doc)
+        print(f"wrote {AUTHORING_PATH}", file=sys.stderr)
 
     # Coverage gate fails the build in BOTH modes: CLAUDE.md promises `make dashboard`
     # fails if any catalogue metric is left off the dashboard, and CI enforces the same

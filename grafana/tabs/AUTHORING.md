@@ -222,6 +222,134 @@ Loki sentinels take the same shape, scoped through `loki_sel()` by construction:
 b.loki_sentinel("has_thing_logs", matchers='opnsense_source="thing"', label="opnsense_source")
 ```
 
+## Generated sentinel contract (#417)
+
+The table below is generated from the live registry, not hand-maintained — the table this
+section replaced was a ~40-row manual inventory that had drifted so far it prescribed exactly
+the DHCP `leases_total > 0` query the #114 build guard exists to reject. `grafana/sentinel_contract.py`
+reads the same `Builder` instance `build_dashboard.build_all()` produces and lists, for every
+hidden presence sentinel: its declared scope mode (`collector` / `self_labeled` / `target_join` /
+`global`, or the single Loki `stream_selector` mode), whether it presence-tests series
+**existence** or a nonzero **value** (the #114/#417 rule above — `has_carp_vips` is the one
+justified exception), every tab/row it gates, and its built query.
+
+Regenerate with `make dashboard` — never hand-edit between the markers. The same data is also
+written machine-readably to `grafana/sentinel-contract.json`; `make grafana-check` fails the
+build if either drifts from the registry (`git diff --exit-code`), and
+`tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
+
+<!-- sentinelgen:begin -->
+### Prometheus sentinels — 98 total (collector 95 / self_labeled 1 / target_join 2 / global 0)
+
+| Sentinel | Scope | Presence test | Gates (tab/row) | Query |
+|---|---|---|---|---|
+| `has_acme` | `collector` | existence (series presence) | System > Certificates > ACME Client | `label_values(opnsense_acme_certificates_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_alias` | `collector` | existence (series presence) | Security > Aliases; Security > Aliases > Alias Tables | `label_values(opnsense_alias_tables_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_alias_details` | `collector` | existence (series presence) | Security > Aliases > Alias pf Counters (details flag) | `label_values(opnsense_alias_table_packets_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_apcupsd` | `collector` | existence (series presence) | System > UPS; System > UPS > APC UPS (apcupsd) | `label_values(opnsense_apcupsd_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_bridge` | `collector` | existence (series presence) | Network > Interfaces > Bridge Membership | `label_values(opnsense_interfaces_bridge_member{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_captiveportal` | `collector` | existence (series presence) | Network > Captive Portal; Network > Captive Portal > Captive Portal Overview; Network > Captive Portal > Per-Zone Sessions | `label_values(opnsense_captiveportal_zones_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_captiveportal_vouchers` | `collector` | existence (series presence) | Network > Captive Portal > Voucher Expiry; Network > Captive Portal > Voucher Inventory | `label_values(opnsense_captiveportal_vouchers{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_carp` | `collector` | existence (series presence) | System > CARP / HA | `label_values(opnsense_carp_allow{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_carp_vips` | `collector` | value (nonzero threshold) | System > CARP / HA > VIP Status & Advertisement | `query_result(opnsense_carp_vips_total{opnsense_instance=~"$opnsense_instance"} > 0)` |
+| `has_chrony` | `collector` | existence (series presence) | Network > Chrony; Network > Chrony > Service & Sync; Network > Chrony > Source Statistics; Network > Chrony > Sources; Network > Chrony > Tracking | `label_values(opnsense_chrony_stratum{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_clamav` | `collector` | existence (series presence) | Security > ClamAV; Security > ClamAV > Engine & Signatures; Security > ClamAV > Signature Databases | `label_values(opnsense_clamav_version_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_crowdsec` | `collector` | existence (series presence) | Security > CrowdSec; Security > CrowdSec > Bouncer Details; Security > CrowdSec > CrowdSec Overview; Security > CrowdSec > Machine Details | `label_values(opnsense_crowdsec_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_crowdsec_hub_items` | `collector` | existence (series presence) | Security > CrowdSec > Hub Component Health | `label_values(opnsense_crowdsec_hub_items{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_crowdsec_version` | `collector` | existence (series presence) | Security > CrowdSec > Engine Version | `label_values(opnsense_crowdsec_version_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dhcpv4_details` | `collector` | existence (series presence) | Network > DHCP > ISC DHCPv4 Lease Details | `label_values(opnsense_dhcpv4_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dhcpv4_isc` | `collector` | existence (series presence) | Network > DHCP; Network > DHCP > ISC DHCPv4 | `label_values(opnsense_dhcpv4_leases_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dhcpv6_details` | `collector` | existence (series presence) | Network > DHCP > ISC DHCPv6 Lease Details | `label_values(opnsense_dhcpv6_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dhcpv6_isc` | `collector` | existence (series presence) | Network > DHCP; Network > DHCP > ISC DHCPv6 | `label_values(opnsense_dhcpv6_leases_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dnsmasq` | `collector` | existence (series presence) | Network > DHCP; Network > DHCP > Dnsmasq DHCP | `label_values(opnsense_dnsmasq_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dnsmasq_details` | `collector` | existence (series presence) | Network > DHCP > Dnsmasq Lease Details | `label_values(opnsense_dnsmasq_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_dyndns` | `collector` | existence (series presence) | System > Services, Cron & DynDNS > DynDNS | `label_values(opnsense_dyndns_accounts_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_firewall_nat_counts` | `collector` | existence (series presence) | Security > Firewall & PF > NAT Rule Inventory (details flag) | `label_values(opnsense_firewall_nat_rules{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_firewall_rules` | `collector` | existence (series presence) | Security > Firewall & PF > Firewall Rules (top 20) | `label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_firmware_details` | `collector` | existence (series presence) | System > System & Resources > Firmware Packages | `label_values(opnsense_firmware_plugin_installed{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_flow` | `collector` | existence (series presence) | Observability > Flow Volume; Observability > Flow Volume > Correlator & Log Emission; Observability > Flow Volume > Domain, Talkers & Source Delta | `label_values({__name__=~"opnsense_flow_.+",opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_flow_netflow` | `collector` | existence (series presence) | Observability > Flow Volume > NetFlow Receiver; Observability > Flow Volume > NetFlow Repairs & Topology | `label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_flow_volume` | `collector` | existence (series presence) | Observability > Flow Volume > Breakdown; Observability > Flow Volume > Records & Packets; Observability > Flow Volume > Volume | `label_values(opnsense_flow_bytes_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_frr` | `collector` | existence (series presence) | Network > FRR Routing; Network > FRR Routing > BFD; Network > FRR Routing > BGP Peer Session Detail; Network > FRR Routing > BGP Peers; Network > FRR Routing > FRR Service & Summary; Network > FRR Routing > OSPF; Network > FRR Routing > OSPF Interface Detail; Network > FRR Routing > OSPFv3 (ospf6) Parity | `label_values(opnsense_frr_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_frr_routes` | `collector` | existence (series presence) | Network > FRR Routing > Routing-State Volume (opt-in: --exporter.enable-frr-routes) | `label_values(opnsense_frr_route_count{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_go_runtime` | `target_join` | existence (series presence) | Observability > Diagnostics > Exporter Runtime (Go client metrics) | `query_result(go_goroutines{job=~"opnsense.*"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~"$opnsense_instance"}))` |
+| `has_haproxy` | `collector` | existence (series presence) | Services; Services > HAProxy; Services > HAProxy > Backend Traffic; Services > HAProxy > Frontend Traffic; Services > HAProxy > HAProxy Overview; Services > HAProxy > Server Details | `label_values(opnsense_haproxy_frontend_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_haproxy_stick_tables` | `collector` | existence (series presence) | Services > HAProxy > Stick Tables | `label_values(opnsense_haproxy_stick_table_size{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_hardware_dmi` | `collector` | existence (series presence) | System > System & Resources > Hardware Identity | `label_values(opnsense_hardware_dmi_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_hardware_psu` | `collector` | existence (series presence) | System > System & Resources > Hardware Power Supply | `label_values(opnsense_hardware_psu_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_hasync` | `collector` | existence (series presence) | System > HA Sync; System > HA Sync > HA Sync Status; System > HA Sync > Remote Services | `label_values(opnsense_hasync_remote_reachable{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ids` | `collector` | existence (series presence) | Security > IDS/IPS; Security > IDS/IPS > Rulesets; Security > IDS/IPS > Suricata Overview; Security > IDS/IPS > eve Log Files | `label_values(opnsense_ids_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ids_alerts` | `collector` | existence (series presence) | Security > IDS/IPS > Alert Activity | `label_values(opnsense_ids_recent_alerts{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ipsec` | `collector` | existence (series presence) | VPN & remote access; VPN & remote access > VPN; VPN & remote access > VPN > IPsec Config State | `label_values(opnsense_ipsec_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ipsec_pools` | `collector` | existence (series presence) | VPN & remote access > VPN > IPsec Mode-CFG Pools | `label_values(opnsense_ipsec_pool_size{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ipsec_sad` | `collector` | existence (series presence) | VPN & remote access > VPN > IPsec Kernel (SAD/SPD) | `label_values(opnsense_ipsec_sad_entries{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ipsec_tunnels` | `collector` | existence (series presence) | VPN & remote access > VPN > IPsec Phase 1; VPN & remote access > VPN > IPsec Phase 2 | `label_values(opnsense_ipsec_phase1_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_kea` | `collector` | existence (series presence) | Network > DHCP; Network > DHCP > Kea DHCP | `label_values(opnsense_kea_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_kea4_details` | `collector` | existence (series presence) | Network > DHCP > Kea DHCPv4 Lease Details | `label_values(opnsense_kea_dhcp4_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_kea6_details` | `collector` | existence (series presence) | Network > DHCP > Kea DHCPv6 Lease Details | `label_values(opnsense_kea_dhcp6_lease_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_kea_pd_pools` | `collector` | existence (series presence) | Network > DHCP > Kea DHCPv6 Prefix Delegation | `label_values(opnsense_kea_dhcp6_pd_pool_size{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_lagg` | `collector` | existence (series presence) | Network > Interfaces > LAGG (Link Aggregation) | `label_values(opnsense_interfaces_lagg_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_lldp` | `collector` | existence (series presence) | Network > Routing & Neighbors > LLDP Neighbors | `label_values(opnsense_lldp_neighbors{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events` | `collector` | existence (series presence) | Observability > Log-derived Events | `label_values({__name__=~"opnsense_log_events_.+",opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_audit` | `collector` | existence (series presence) | Observability > Log-derived Events > Config / Audit | `label_values(opnsense_log_events_audit_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_carp` | `collector` | existence (series presence) | System > CARP / HA > Transition Events (from syslog) | `label_values(opnsense_log_events_carp_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_dhcp` | `collector` | existence (series presence) | Observability > Log-derived Events > DHCP | `label_values(opnsense_log_events_dhcp_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_firewall` | `collector` | existence (series presence) | Observability > Log-derived Events > Firewall | `label_values(opnsense_log_events_firewall_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_haproxy` | `collector` | existence (series presence) | Observability > Log-derived Events > HAProxy | `label_values(opnsense_log_events_haproxy_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_ids` | `collector` | existence (series presence) | Observability > Log-derived Events > IDS / IPS | `label_values(opnsense_log_events_ids_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_radius` | `collector` | existence (series presence) | Observability > Log-derived Events > RADIUS Authentication | `label_values(opnsense_log_events_radius_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_sshd` | `collector` | existence (series presence) | Observability > Log-derived Events > SSH Authentication | `label_values(opnsense_log_events_sshd_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_vpn` | `collector` | existence (series presence) | Observability > Log-derived Events > VPN Lifecycle (IPsec / OpenVPN) | `label_values(opnsense_log_events_vpn_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_logs` | `self_labeled` | existence (series presence) | Observability > Log Shipping; Observability > Log Shipping > Cursor; Observability > Log Shipping > Enrichment; Observability > Log Shipping > Queue & Errors; Observability > Log Shipping > Receivers; Observability > Log Shipping > Throughput | `label_values(opnsense_exporter_logs_queue_capacity{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_monit` | `collector` | existence (series presence) | System > Monit; System > Monit > Check Status Detail; System > Monit > Filesystem Check Resources; System > Monit > Host Check Resources; System > Monit > Monit Overview; System > Monit > Process Check Resources; System > Monit > System Check Resources | `label_values(opnsense_monit_status_ok{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_netbird` | `collector` | existence (series presence) | VPN & remote access; VPN & remote access > NetBird; VPN & remote access > NetBird > NetBird Node | `label_values(opnsense_netbird_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_netbird_peers` | `collector` | existence (series presence) | VPN & remote access > NetBird > NetBird Peers (details flag) | `label_values(opnsense_netbird_peer_connected{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_netflow` | `collector` | existence (series presence) | Network > NetFlow | `label_values(opnsense_netflow_active{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_network_diag` | `collector` | existence (series presence) | Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem); Network > Routing & Neighbors > Sockets & Routes; Network > Routing & Neighbors > pfsync | `label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_nginx` | `collector` | existence (series presence) | Services; Services > Nginx; Services > Nginx > Config Reload & Autoblock; Services > Nginx > Nginx Overview; Services > Nginx > Server Zone Cache Status & Latency; Services > Nginx > Server Zones; Services > Nginx > Shared Memory; Services > Nginx > Upstream Servers | `label_values(opnsense_nginx_connections_active{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_nginx_cache` | `collector` | existence (series presence) | Services > Nginx > Cache Zones | `label_values(opnsense_nginx_cache_zone_max_bytes{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ntp` | `collector` | existence (series presence) | Network > NTP | `label_values(opnsense_ntp_peer_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_ntp_gps` | `collector` | existence (series presence) | Network > NTP > GPS (experimental) | `label_values(opnsense_ntp_gps_ok{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_nut` | `collector` | existence (series presence) | System > UPS; System > UPS > NUT (Network UPS Tools) | `label_values(opnsense_nut_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_openvpn` | `collector` | existence (series presence) | VPN & remote access; VPN & remote access > VPN; VPN & remote access > VPN > OpenVPN | `label_values(opnsense_openvpn_instances{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_otlp` | `target_join` | existence (series presence) | Observability > Diagnostics > OTLP Delivery Health | `query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~"$opnsense_instance"}))` |
+| `has_qfeeds` | `collector` | existence (series presence) | Security > Q-Feeds; Security > Q-Feeds > Q-Feeds Activity; Security > Q-Feeds > Q-Feeds Overview | `label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_flow` | `collector` | existence (series presence) | Observability > Recording rules > Flow Volume | `label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_gateway_loss` | `collector` | existence (series presence) | Observability > Recording rules > Gateway Health | `label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_haproxy` | `collector` | existence (series presence) | Observability > Recording rules > HAProxy | `label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_ids` | `collector` | existence (series presence) | Observability > Recording rules > IDS / IPS | `label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_ipsec` | `collector` | existence (series presence) | Observability > Recording rules > IPsec Health | `label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_rules` | `collector` | existence (series presence) | Observability > Recording rules | `label_values({__name__=~"instance:opnsense_.+",opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_unbound` | `collector` | existence (series presence) | Observability > Recording rules > Unbound DNS | `label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_wireguard` | `collector` | existence (series presence) | Observability > Recording rules > WireGuard Health | `label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_recording_zenarmor` | `collector` | existence (series presence) | Observability > Recording rules > Zenarmor | `label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_relayd` | `collector` | existence (series presence) | Services; Services > Relayd; Services > Relayd > Host Health; Services > Relayd > Relayd Overview; Services > Relayd > Virtual Server & Table Status | `label_values(opnsense_relayd_virtualserver_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_sfp` | `collector` | existence (series presence) | Network > Interfaces > SFP / Optics (DOM) | `label_values(opnsense_interfaces_sfp_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_siproxd` | `collector` | existence (series presence) | Services; Services > Siproxd; Services > Siproxd > Registrations | `label_values(opnsense_siproxd_registrations{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_smart` | `collector` | existence (series presence) | System > System & Resources > SMART; System > System & Resources > SMART Attributes & NVMe | `label_values(opnsense_smart_device_health{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_syslog` | `collector` | existence (series presence) | Services; Services > Syslog; Services > Syslog > Syslog-ng Overview; Services > Syslog > Syslog-ng Throughput | `label_values(opnsense_syslog_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_tailscale` | `collector` | existence (series presence) | VPN & remote access; VPN & remote access > Tailscale; VPN & remote access > Tailscale > Tailscale Node | `label_values(opnsense_tailscale_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_tailscale_peers` | `collector` | existence (series presence) | VPN & remote access > Tailscale > Tailscale Peers (details flag) | `label_values(opnsense_tailscale_peer_session_active{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_temperature` | `collector` | existence (series presence) | System > System & Resources > Temperature | `label_values(opnsense_temperature_celsius{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_tor` | `collector` | existence (series presence) | VPN & remote access; VPN & remote access > Tor; VPN & remote access > Tor > Circuits; VPN & remote access > Tor > Hidden Services; VPN & remote access > Tor > Streams; VPN & remote access > Tor > Tor Overview | `label_values(opnsense_tor_control_port_up{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_trafficshaper` | `collector` | existence (series presence) | Network > Traffic Shaper; Network > Traffic Shaper > Pipes; Network > Traffic Shaper > Queues; Network > Traffic Shaper > Rules; Network > Traffic Shaper > Summary | `label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_unbound` | `collector` | existence (series presence) | Network > DNS - Unbound | `label_values(opnsense_unbound_dns_uptime_seconds{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_unbound_infra` | `collector` | existence (series presence) | Network > DNS - Unbound > Upstream Infra Cache | `label_values(opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_unbound_qstats` | `collector` | existence (series presence) | Network > DNS - Unbound > DNSBL / Query Stats | `label_values(opnsense_unbound_dns_qstats_enabled{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_vnstat` | `collector` | existence (series presence) | Network > Interfaces > Vnstat Traffic Accounting | `label_values(opnsense_vnstat_bytes_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_wireguard` | `collector` | existence (series presence) | VPN & remote access; VPN & remote access > VPN | `label_values(opnsense_wireguard_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_wireguard_ifaces` | `collector` | existence (series presence) | VPN & remote access > VPN > WireGuard Interfaces | `label_values(opnsense_wireguard_interfaces_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_wireguard_peers` | `collector` | existence (series presence) | VPN & remote access > VPN > WireGuard Peers | `label_values(opnsense_wireguard_peer_status{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_zenarmor_metrics` | `collector` | existence (series presence) | Security > Zenarmor; Security > Zenarmor > Overview | `label_values(opnsense_log_events_zenarmor_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+
+### Loki sentinels — 2 total (scope: `stream_selector`)
+
+| Sentinel | Scope | Presence test | Gates (tab/row) | Query |
+|---|---|---|---|---|
+| `has_syslog_logs` | `stream_selector` | existence (series presence) | Services; Services > Syslog; Services > Syslog > Shipped Syslog Logs | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="syslog"}, opnsense_source)` |
+| `has_zenarmor_logs` | `stream_selector` | existence (series presence) | Security > Zenarmor; Security > Zenarmor > Live Records & Rates; Security > Zenarmor > Security Detail | `label_values({service_instance_id=~"$opnsense_instance",opnsense_source="zenarmor"}, opnsense_source)` |
+<!-- sentinelgen:end -->
+
 ## Self-test before finishing
 
 Run from `grafana/`:
