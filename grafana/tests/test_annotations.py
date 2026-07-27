@@ -36,6 +36,7 @@ GRAFANA_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(GRAFANA_DIR))
 
 import annotations as ann  # noqa: E402
+import uids  # noqa: E402
 import build_dashboard  # noqa: E402
 from builder import INSTANCE_SEL, LOKI_INSTANCE_SEL  # noqa: E402
 
@@ -84,6 +85,37 @@ def go_watched_metrics() -> set:
 
 def epoch_metrics():
     return [n for n in build_dashboard.load_catalogue() if EPOCH_METRIC.search(n)]
+
+
+def go_link_constants() -> dict:
+    """The dashboard UID and instance parameter the Go annotation writer links to.
+
+    Read out of `internal/annotations/links.go` for the same reason as the tag
+    constant above, and for a worse failure mode: a pushed annotation's link is
+    clicked by an operator during an incident, weeks after the divergence, and a UID
+    that no longer matches simply 404s. Nothing tests it on the Go side either — the
+    UID is only meaningful relative to the dashboard this repository generates.
+    """
+    source = (GRAFANA_DIR.parent / "internal" / "annotations" / "links.go").read_text()
+    out = {}
+    for const in ("DashboardUID", "InstanceVar"):
+        match = re.search(const + r'\s*=\s*"([^"]+)"', source)
+        assert match, f"{const} not found in internal/annotations/links.go"
+        out[const] = match.group(1)
+    return out
+
+
+class AnnotationLinkContractTest(unittest.TestCase):
+    """The exporter's pushed annotations link back to THIS dashboard (#419/#421)."""
+
+    def test_go_writer_links_to_the_registered_main_dashboard(self):
+        self.assertEqual(go_link_constants()["DashboardUID"], uids.MAIN_UID)
+
+    def test_go_writer_uses_the_dashboards_own_instance_variable(self):
+        instance_vars = [v["spec"]["name"] for v in build_dashboard.build_all().variables
+                         if v["spec"]["name"] == "opnsense_instance"]
+        self.assertEqual(instance_vars, ["opnsense_instance"])
+        self.assertEqual(go_link_constants()["InstanceVar"], "var-opnsense_instance")
 
 
 class AnnotationEnvelopeTest(unittest.TestCase):

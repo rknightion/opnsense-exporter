@@ -111,13 +111,20 @@ func (c *client) do(ctx context.Context, method, target string, body io.Reader) 
 	return payload, nil
 }
 
-// post writes one annotation.
-func (c *client) post(ctx context.Context, event Event) error {
-	body, err := json.Marshal(annotationPayload{
+// payloadFor renders one event into Grafana's annotation body. Separate from post()
+// so the body — including the dashboard link (#419/#421) — is testable without an
+// HTTP round trip.
+func (c *client) payloadFor(event Event) annotationPayload {
+	return annotationPayload{
 		Time: event.At.UnixMilli(),
 		Tags: event.Tags,
-		Text: event.Text,
-	})
+		Text: withLink(event, c.cfg.URL),
+	}
+}
+
+// post writes one annotation.
+func (c *client) post(ctx context.Context, event Event) error {
+	body, err := json.Marshal(c.payloadFor(event))
 	if err != nil {
 		return err
 	}
