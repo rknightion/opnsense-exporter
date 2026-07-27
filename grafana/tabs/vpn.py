@@ -255,9 +255,9 @@ def build(b: Builder):
     ipsec_p1_bytes = b.ts(
         "IPsec Phase 1 Throughput",
         [
-            (f'rate({sel("opnsense_ipsec_phase1_bytes_in")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase1_bytes_in_total")}[{RATE}])',
              "{{name}} in"),
-            (f'rate({sel("opnsense_ipsec_phase1_bytes_out")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase1_bytes_out_total")}[{RATE}])',
              "{{name}} out"),
         ],
         unit="Bps", w=8, h=8,
@@ -266,9 +266,9 @@ def build(b: Builder):
     ipsec_p1_pkts = b.ts(
         "IPsec Phase 1 Packets",
         [
-            (f'rate({sel("opnsense_ipsec_phase1_packets_in")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase1_packets_in_total")}[{RATE}])',
              "{{name}} in"),
-            (f'rate({sel("opnsense_ipsec_phase1_packets_out")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase1_packets_out_total")}[{RATE}])',
              "{{name}} out"),
         ],
         unit="pps", w=8, h=8,
@@ -294,9 +294,9 @@ def build(b: Builder):
     ipsec_p2_throughput = b.ts(
         "IPsec Phase 2 Throughput",
         [
-            (f'rate({sel("opnsense_ipsec_phase2_bytes_in")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase2_bytes_in_total")}[{RATE}])',
              "{{name}} in"),
-            (f'rate({sel("opnsense_ipsec_phase2_bytes_out")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase2_bytes_out_total")}[{RATE}])',
              "{{name}} out"),
         ],
         unit="Bps", w=12, h=8,
@@ -305,9 +305,9 @@ def build(b: Builder):
     ipsec_p2_pkts = b.ts(
         "IPsec Phase 2 Packets",
         [
-            (f'rate({sel("opnsense_ipsec_phase2_packets_in")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase2_packets_in_total")}[{RATE}])',
              "{{name}} in"),
-            (f'rate({sel("opnsense_ipsec_phase2_packets_out")}[{RATE}])',
+            (f'rate({sel("opnsense_ipsec_phase2_packets_out_total")}[{RATE}])',
              "{{name}} out"),
         ],
         unit="pps", w=12, h=8,

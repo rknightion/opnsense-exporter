@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -78,11 +79,98 @@ func TestIPsecCollector_Update(t *testing.T) {
 
 	// #106: phase1 bytes/packets are cumulative counters (matching phase2).
 	assertMetricsAreCounters(t, metrics,
-		"opnsense_ipsec_phase1_bytes_in",
-		"opnsense_ipsec_phase1_bytes_out",
-		"opnsense_ipsec_phase1_packets_in",
-		"opnsense_ipsec_phase1_packets_out",
+		"opnsense_ipsec_phase1_bytes_in_total",
+		"opnsense_ipsec_phase1_bytes_out_total",
+		"opnsense_ipsec_phase1_packets_in_total",
+		"opnsense_ipsec_phase1_packets_out_total",
 	)
+}
+
+// TestIPsecCollector_CounterMetricsEndInTotal guards #464 (the same defect
+// class #418 fixed for the firewall collector — see
+// TestFirewallCollector_CounterMetricsEndInTotal): OTLP->Prometheus
+// canonicalization appends `_total` to every monotonic sum regardless of the
+// Go-declared name, so a CounterValue metric declared without `_total`
+// produces two different names depending on backend (direct /metrics vs the
+// supported OTLP-bridged live backend) and any consumer written against the
+// unsuffixed name returns no data on the supported live backend.
+func TestIPsecCollector_CounterMetricsEndInTotal(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"phase1desc": "Site-to-Site Tunnel",
+					"connected": true,
+					"ikeid": "1",
+					"name": "con1",
+					"install-time": "120",
+					"bytes-in": 10240,
+					"bytes-out": 20480,
+					"packets-in": 100,
+					"packets-out": 200
+				}
+			],
+			"rowCount": 1,
+			"total": 1,
+			"current": 1
+		}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/sessions/search_phase2", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"phase2desc": "Child SA 1",
+					"name": "child-1",
+					"spi-in": "c1234567",
+					"spi-out": "c7654321",
+					"install-time": "60",
+					"rekey-time": "3200",
+					"life-time": "3600",
+					"bytes-in": "5120",
+					"bytes-out": "10240",
+					"packets-in": "50",
+					"packets-out": "100"
+				}
+			]
+		}`))
+	})
+
+	mux.HandleFunc("/api/ipsec/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status": "running"}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &ipsecCollector{subsystem: IPsecSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	checked := 0
+	for _, m := range metrics {
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		if d.Counter == nil {
+			continue
+		}
+		checked++
+		name := descFQName(m.Desc().String())
+		if name == "" {
+			t.Fatalf("could not parse fqName from descriptor: %s", m.Desc().String())
+		}
+		if !strings.HasSuffix(name, "_total") {
+			t.Errorf("counter metric %q is emitted with CounterValue but its name does not end in _total", name)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected at least one CounterValue metric from the ipsec collector")
+	}
 }
 
 func TestIPsecCollector_Update_NoPhase2(t *testing.T) {
@@ -331,7 +419,7 @@ func TestIPsecCollector_Update_DedupeRekeyOverlap(t *testing.T) {
 		}
 	}
 
-	bytesIn := metricsByDesc(metrics, "opnsense_ipsec_phase2_bytes_in")
+	bytesIn := metricsByDesc(metrics, "opnsense_ipsec_phase2_bytes_in_total")
 	if len(bytesIn) != 2 {
 		t.Fatalf("expected 2 phase2_bytes_in metrics, got %d", len(bytesIn))
 	}

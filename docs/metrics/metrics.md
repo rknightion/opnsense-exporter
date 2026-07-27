@@ -519,15 +519,15 @@ The `opnsense_instance` label is applied to all metrics.
 |-------------|------|--------|-------------|--------------|
 | opnsense_ipsec_phase1_status | Gauge | description, name | IPsec phase1 (1 = connected, 0 = down) | --exporter.disable-ipsec |
 | opnsense_ipsec_phase1_install_time | Gauge | description, name | IPsec phase1 install time | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_bytes_in | Counter | description, name | IPsec phase1 bytes in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_bytes_out | Counter | description, name | IPsec phase1 bytes out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_packets_in | Counter | description, name | IPsec phase1 packets in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase1_packets_out | Counter | description, name | IPsec phase1 packets out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_bytes_in_total | Counter | description, name | IPsec phase1 bytes in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_bytes_out_total | Counter | description, name | IPsec phase1 bytes out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_packets_in_total | Counter | description, name | IPsec phase1 packets in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase1_packets_out_total | Counter | description, name | IPsec phase1 packets out | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_install_time | Gauge | description, name, phase1_name | IPsec phase2 install time | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_bytes_in | Counter | description, name, phase1_name | IPsec phase2 bytes in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_bytes_out | Counter | description, name, phase1_name | IPsec phase2 bytes out | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_packets_in | Counter | description, name, phase1_name | IPsec phase2 packets in | --exporter.disable-ipsec |
-| opnsense_ipsec_phase2_packets_out | Counter | description, name, phase1_name | IPsec phase2 packets out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_bytes_in_total | Counter | description, name, phase1_name | IPsec phase2 bytes in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_bytes_out_total | Counter | description, name, phase1_name | IPsec phase2 bytes out | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_packets_in_total | Counter | description, name, phase1_name | IPsec phase2 packets in | --exporter.disable-ipsec |
+| opnsense_ipsec_phase2_packets_out_total | Counter | description, name, phase1_name | IPsec phase2 packets out | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_rekey_time | Gauge | description, name, phase1_name | IPsec phase2 rekey time | --exporter.disable-ipsec |
 | opnsense_ipsec_phase2_life_time | Gauge | description, name, phase1_name | IPsec phase2 life time | --exporter.disable-ipsec |
 | opnsense_ipsec_service_running | Gauge | --- | Whether the service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-ipsec |
@@ -1134,7 +1134,7 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Enable Flag |
 |-------------|------|--------|-------------|-------------|
-| opnsense_vnstat_total_bytes | Counter | interface, direction | Cumulative bytes recorded by vnstat since this interface's database was created (counter; resets only on vnstat --resetdb) | --exporter.enable-vnstat |
+| opnsense_vnstat_bytes_total | Counter | interface, direction | Cumulative bytes recorded by vnstat since this interface's database was created (counter; resets only on vnstat --resetdb) | --exporter.enable-vnstat |
 | opnsense_vnstat_current_day_bytes | Gauge | interface, direction | Bytes recorded by vnstat so far today (gauge; resets to 0 at local midnight in vnstat's own bookkeeping) | --exporter.enable-vnstat |
 | opnsense_vnstat_current_month_bytes | Gauge | interface, direction | Bytes recorded by vnstat so far this month (gauge; resets monthly) | --exporter.enable-vnstat |
 

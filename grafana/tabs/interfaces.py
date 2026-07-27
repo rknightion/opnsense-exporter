@@ -52,7 +52,7 @@ def build(b: Builder):
     b.sentinel("has_lagg", metric="opnsense_interfaces_lagg_info")
     b.sentinel("has_bridge", metric="opnsense_interfaces_bridge_member")
     b.sentinel("has_sfp", metric="opnsense_interfaces_sfp_info")
-    b.sentinel("has_vnstat", metric="opnsense_vnstat_total_bytes")
+    b.sentinel("has_vnstat", metric="opnsense_vnstat_bytes_total")
 
     # ---- Row 1: Throughput ------------------------------------------------
     rx_bps = b.ts(
@@ -349,21 +349,24 @@ def build(b: Builder):
     )
 
     # ---- Row 10: Vnstat traffic accounting (#215) ---------------------------
-    # total_bytes is a genuine counter (cumulative since vnstat's DB was created,
+    # bytes_total is a genuine counter (cumulative since vnstat's DB was created,
     # resets only on `vnstat --resetdb`), but it is intentionally NOT rate()'d here:
     # the point of vnstat's figures is the accumulated total itself (ISP data-cap
     # tracking), not a throughput trend — the Throughput row above already covers
     # live bps from the interface counters. current_day/current_month are gauges
     # (they reset daily/monthly in vnstat's own bookkeeping) and are shown raw for
     # the same reason: operators read these as "how much so far", not a rate.
+    # #464: renamed from total_bytes -> bytes_total (Prometheus `_<unit>_total`
+    # convention). "total" always meant "cumulative since DB creation", not
+    # "rx+tx combined" — direction is still its own label, untouched by this rename.
     vnstat_total = b.ts(
         "Vnstat Total Traffic (Since DB Creation)",
         [
-            (sel("opnsense_vnstat_total_bytes", f'{vnstat_iface},direction="rx"'), "{{interface}} rx"),
-            (sel("opnsense_vnstat_total_bytes", f'{vnstat_iface},direction="tx"'), "{{interface}} tx"),
+            (sel("opnsense_vnstat_bytes_total", f'{vnstat_iface},direction="rx"'), "{{interface}} rx"),
+            (sel("opnsense_vnstat_bytes_total", f'{vnstat_iface},direction="tx"'), "{{interface}} tx"),
         ],
         unit="bytes", w=24, h=8,
-        desc="opnsense_vnstat_total_bytes: cumulative bytes recorded by vnstat since this "
+        desc="opnsense_vnstat_bytes_total: cumulative bytes recorded by vnstat since this "
              "interface's persistent database was created. Survives reboots and exporter "
              "restarts — a drop to 0 means an admin ran `vnstat --resetdb`, not data loss.",
     )

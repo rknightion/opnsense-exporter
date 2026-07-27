@@ -446,7 +446,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_vnstat_total_bytes{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+              "query": "label_values(opnsense_vnstat_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_vnstat"
             }
           },
@@ -14619,7 +14619,7 @@
         "spec": {
           "id": 110,
           "title": "Vnstat Total Traffic (Since DB Creation)",
-          "description": "opnsense_vnstat_total_bytes: cumulative bytes recorded by vnstat since this interface's persistent database was created. Survives reboots and exporter restarts \u2014 a drop to 0 means an admin ran `vnstat --resetdb`, not data loss.",
+          "description": "opnsense_vnstat_bytes_total: cumulative bytes recorded by vnstat since this interface's persistent database was created. Survives reboots and exporter restarts \u2014 a drop to 0 means an admin ran `vnstat --resetdb`, not data loss.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -14642,7 +14642,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_vnstat_total_bytes{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\",direction=\"rx\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_vnstat_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\",direction=\"rx\"})",
                         "refId": "A",
                         "legendFormat": "{{interface}} rx",
                         "instant": false,
@@ -14668,7 +14668,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_vnstat_total_bytes{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\",direction=\"tx\"})",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_vnstat_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\",direction=\"tx\"})",
                         "refId": "B",
                         "legendFormat": "{{interface}} tx",
                         "instant": false,
@@ -29400,7 +29400,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_bytes_in{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_bytes_in_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{name}} in",
                         "instant": false,
@@ -29426,7 +29426,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_bytes_out{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_bytes_out_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{name}} out",
                         "instant": false,
@@ -29515,7 +29515,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_packets_in{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_packets_in_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{name}} in",
                         "instant": false,
@@ -29541,7 +29541,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_packets_out{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase1_packets_out_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{name}} out",
                         "instant": false,
@@ -29756,7 +29756,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_bytes_in{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_bytes_in_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{name}} in",
                         "instant": false,
@@ -29782,7 +29782,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_bytes_out{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_bytes_out_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{name}} out",
                         "instant": false,
@@ -29871,7 +29871,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_packets_in{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_packets_in_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{name}} in",
                         "instant": false,
@@ -29897,7 +29897,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_packets_out{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_ipsec_phase2_packets_out_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{name}} out",
                         "instant": false,

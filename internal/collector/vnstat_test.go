@@ -3,6 +3,7 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -74,7 +75,7 @@ func TestVnstatCollector_Update_Normal(t *testing.T) {
 		val := getMetricValue(m)
 		desc := m.Desc().String()
 		switch {
-		case hasFqName(m, "opnsense_vnstat_total_bytes") && val == 4820720:
+		case hasFqName(m, "opnsense_vnstat_bytes_total") && val == 4820720:
 			sawTotalRX = true
 		case hasFqName(m, "opnsense_vnstat_current_day_bytes") && val == 4820720:
 			sawDayRX = true
@@ -114,7 +115,7 @@ func TestVnstatCollector_MetricTypes(t *testing.T) {
 		d := &dto.Metric{}
 		_ = m.Write(d)
 		switch {
-		case hasFqName(m, "opnsense_vnstat_total_bytes"):
+		case hasFqName(m, "opnsense_vnstat_bytes_total"):
 			if d.Counter == nil {
 				t.Errorf("expected total_bytes to be a counter: %s", m.Desc().String())
 			}
@@ -123,6 +124,47 @@ func TestVnstatCollector_MetricTypes(t *testing.T) {
 				t.Errorf("expected current day/month bytes to be a gauge: %s", m.Desc().String())
 			}
 		}
+	}
+}
+
+// TestVnstatCollector_CounterMetricsEndInTotal guards #464 (the same defect
+// class #418 fixed for the firewall collector — see
+// TestFirewallCollector_CounterMetricsEndInTotal): OTLP->Prometheus
+// canonicalization appends `_total` to every monotonic sum regardless of the
+// Go-declared name, so a CounterValue metric declared without `_total`
+// produces two different names depending on backend (direct /metrics vs the
+// supported OTLP-bridged live backend) and any consumer written against the
+// unsuffixed name returns no data on the supported live backend.
+func TestVnstatCollector_CounterMetricsEndInTotal(t *testing.T) {
+	mux := vnstatTestMux(t)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &vnstatCollector{subsystem: VnstatSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	checked := 0
+	for _, m := range metrics {
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		if d.Counter == nil {
+			continue
+		}
+		checked++
+		name := descFQName(m.Desc().String())
+		if name == "" {
+			t.Fatalf("could not parse fqName from descriptor: %s", m.Desc().String())
+		}
+		if !strings.HasSuffix(name, "_total") {
+			t.Errorf("counter metric %q is emitted with CounterValue but its name does not end in _total", name)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected at least one CounterValue metric from the vnstat collector")
 	}
 }
 

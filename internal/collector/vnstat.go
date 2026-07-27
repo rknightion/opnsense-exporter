@@ -36,7 +36,13 @@ func (c *vnstatCollector) Register(namespace, instanceLabel string, log *slog.Lo
 
 	labels := []string{"interface", "direction"}
 
-	c.totalBytes = buildPrometheusDesc(c.subsystem, "total_bytes",
+	// #464: renamed total_bytes -> bytes_total (not total_bytes_total). "total"
+	// here always meant "cumulative since the vnstat DB was created", never "rx+tx
+	// combined" — the direction label already carries rx/tx separately, and this
+	// rename does not touch or collapse that label. bytes_total both follows the
+	// Prometheus `_<unit>_total` counter convention and still reads as "total
+	// bytes", whereas a mechanical total_bytes_total suffix would not.
+	c.totalBytes = buildPrometheusDesc(c.subsystem, "bytes_total",
 		"Cumulative bytes recorded by vnstat since this interface's database was created (counter; resets only on vnstat --resetdb)",
 		labels,
 	)

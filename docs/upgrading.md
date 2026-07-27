@@ -53,6 +53,24 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   generated metric catalogue also now types all sixteen pf pass/block series as Counter
   - the eight packet series were previously mis-documented as Gauge.
 
+- **IPsec and vnStat counters renamed with a `_total` suffix** - the eight
+  `opnsense_ipsec_phase{1,2}_{bytes,packets}_{in,out}` series are now
+  `..._{in,out}_total` (for example `opnsense_ipsec_phase1_bytes_in` is now
+  `opnsense_ipsec_phase1_bytes_in_total`), and `opnsense_vnstat_total_bytes` is
+  now `opnsense_vnstat_bytes_total`. All nine were always emitted as Prometheus
+  counters, and OTLP-to-Prometheus canonicalization appends `_total` to every
+  monotonic sum regardless of the Go-declared name, so the unsuffixed names
+  would disagree with what the supported OTLP-fed live backend exports as soon
+  as the series is populated (an IPsec tunnel exists, or vnStat is enabled) -
+  the same convention violation #418 fixed for the firewall pf pass/block
+  descriptors, closed here before it could bite in production. Update any
+  custom dashboard, recording rule, or alert that referenced the unsuffixed
+  names; the bundled Grafana dashboard is already updated. `vnstat_total_bytes`
+  becomes `vnstat_bytes_total` rather than a mechanical `..._total_bytes_total`:
+  "total" here has always meant "cumulative since vnstat's database was
+  created," never "rx+tx combined," and the `direction` label carrying rx/tx is
+  untouched by this rename.
+
 - **Dashboard feature detection and log panels are now scoped to the selected
   instance** - the hidden feature sentinels that drive conditional rendering, and every
   Loki panel, previously searched the whole datasource. In a multi-firewall stack that

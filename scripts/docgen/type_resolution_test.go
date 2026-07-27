@@ -34,13 +34,16 @@ func TestMetricTypesFromEmission(t *testing.T) {
 		}
 	}
 
-	// Genuine counters (emitted with CounterValue) — some lack a _total suffix, so the old
-	// heuristic misdocumented them as Gauge.
+	// Genuine counters (emitted with CounterValue). The ipsec phase2 descriptors
+	// lacked a _total suffix until #464 (they were the "misdocumented as Gauge by
+	// the old heuristic" example here); kept as a regression guard that the type
+	// still resolves from the emission site now that the suffix and the fallback
+	// heuristic happen to agree too.
 	counters := []string{
-		"opnsense_ipsec_phase2_bytes_in",
-		"opnsense_ipsec_phase2_bytes_out",
-		"opnsense_ipsec_phase2_packets_in",
-		"opnsense_ipsec_phase2_packets_out",
+		"opnsense_ipsec_phase2_bytes_in_total",
+		"opnsense_ipsec_phase2_bytes_out_total",
+		"opnsense_ipsec_phase2_packets_in_total",
+		"opnsense_ipsec_phase2_packets_out_total",
 		// Reclassified to CounterValue in the Phase-2 fix #106 — docgen now follows the emission.
 		"opnsense_protocol_icmp_dropped_by_reason_total",
 		"opnsense_protocol_udp_dropped_by_reason_total",

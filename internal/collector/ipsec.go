@@ -78,19 +78,23 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"IPsec phase1 install time",
 		[]string{"description", "name"},
 	)
-	c.phase1_bytes_in = buildPrometheusDesc(c.subsystem, "phase1_bytes_in",
+	// #464: named with a _total suffix — these are Counters (CounterValue below),
+	// and OTLP->Prometheus canonicalization appends _total to every monotonic sum
+	// regardless of the Go-declared name, so an unsuffixed Counter descriptor
+	// disagrees with what the supported OTLP-fed live backend exports.
+	c.phase1_bytes_in = buildPrometheusDesc(c.subsystem, "phase1_bytes_in_total",
 		"IPsec phase1 bytes in",
 		[]string{"description", "name"},
 	)
-	c.phase1_bytes_out = buildPrometheusDesc(c.subsystem, "phase1_bytes_out",
+	c.phase1_bytes_out = buildPrometheusDesc(c.subsystem, "phase1_bytes_out_total",
 		"IPsec phase1 bytes out",
 		[]string{"description", "name"},
 	)
-	c.phase1_packets_in = buildPrometheusDesc(c.subsystem, "phase1_packets_in",
+	c.phase1_packets_in = buildPrometheusDesc(c.subsystem, "phase1_packets_in_total",
 		"IPsec phase1 packets in",
 		[]string{"description", "name"},
 	)
-	c.phase1_packets_out = buildPrometheusDesc(c.subsystem, "phase1_packets_out",
+	c.phase1_packets_out = buildPrometheusDesc(c.subsystem, "phase1_packets_out_total",
 		"IPsec phase1 packets out",
 		[]string{"description", "name"},
 	)
@@ -99,19 +103,20 @@ func (c *ipsecCollector) Register(namespace, instanceLabel string, log *slog.Log
 		"IPsec phase2 install time",
 		[]string{"description", "name", "phase1_name"},
 	)
-	c.phase2_bytes_in = buildPrometheusDesc(c.subsystem, "phase2_bytes_in",
+	// #464: same _total naming fix as phase1 above.
+	c.phase2_bytes_in = buildPrometheusDesc(c.subsystem, "phase2_bytes_in_total",
 		"IPsec phase2 bytes in",
 		[]string{"description", "name", "phase1_name"},
 	)
-	c.phase2_bytes_out = buildPrometheusDesc(c.subsystem, "phase2_bytes_out",
+	c.phase2_bytes_out = buildPrometheusDesc(c.subsystem, "phase2_bytes_out_total",
 		"IPsec phase2 bytes out",
 		[]string{"description", "name", "phase1_name"},
 	)
-	c.phase2_packets_in = buildPrometheusDesc(c.subsystem, "phase2_packets_in",
+	c.phase2_packets_in = buildPrometheusDesc(c.subsystem, "phase2_packets_in_total",
 		"IPsec phase2 packets in",
 		[]string{"description", "name", "phase1_name"},
 	)
-	c.phase2_packets_out = buildPrometheusDesc(c.subsystem, "phase2_packets_out",
+	c.phase2_packets_out = buildPrometheusDesc(c.subsystem, "phase2_packets_out_total",
 		"IPsec phase2 packets out",
 		[]string{"description", "name", "phase1_name"},
 	)
