@@ -491,8 +491,8 @@ RECORDING = [
          expr="sum by (opnsense_instance, interface) (rate(opnsense_interfaces_transmitted_bytes_total[5m])) * 8"),
     dict(metric="instance:opnsense_firewall_block_packets:rate5m",
          expr="sum by (opnsense_instance, interface) ("
-              "rate(opnsense_firewall_in_ipv4_block_packets[5m]) + rate(opnsense_firewall_out_ipv4_block_packets[5m]) + "
-              "rate(opnsense_firewall_in_ipv6_block_packets[5m]) + rate(opnsense_firewall_out_ipv6_block_packets[5m]))"),
+              "rate(opnsense_firewall_in_ipv4_block_packets_total[5m]) + rate(opnsense_firewall_out_ipv4_block_packets_total[5m]) + "
+              "rate(opnsense_firewall_in_ipv6_block_packets_total[5m]) + rate(opnsense_firewall_out_ipv6_block_packets_total[5m]))"),
     dict(metric="instance:opnsense_pf_state:utilization",
          expr="opnsense_firewall_pf_states_current / (opnsense_firewall_pf_states_limit > 0)"),
     dict(metric="instance:opnsense_unbound_cache:hit_ratio",

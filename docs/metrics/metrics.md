@@ -8,8 +8,8 @@ The `opnsense_instance` label is applied to all metrics.
 ## Summary
 
 - **Total metrics:** 831
-- **Gauges:** 558
-- **Counters:** 273
+- **Gauges:** 550
+- **Counters:** 281
 
 ## General
 
@@ -274,14 +274,14 @@ The `opnsense_instance` label is applied to all metrics.
 
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
-| opnsense_firewall_in_ipv4_pass_packets | Gauge | interface | The number of IPv4 incoming packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_out_ipv4_pass_packets | Gauge | interface | The number of IPv4 outgoing packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_in_ipv4_block_packets | Gauge | interface | The number of IPv4 incoming packets that were blocked by the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_out_ipv4_block_packets | Gauge | interface | The number of IPv4 outgoing packets that were blocked by the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_in_ipv6_pass_packets | Gauge | interface | The number of IPv6 incoming packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_out_ipv6_pass_packets | Gauge | interface | The number of IPv6 outgoing packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_in_ipv6_block_packets | Gauge | interface | The number of IPv6 incoming packets that were blocked by the firewall by interface | --exporter.disable-firewall |
-| opnsense_firewall_out_ipv6_block_packets | Gauge | interface | The number of IPv6 outgoing packets that were blocked by the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_in_ipv4_pass_packets_total | Counter | interface | The number of IPv4 incoming packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_out_ipv4_pass_packets_total | Counter | interface | The number of IPv4 outgoing packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_in_ipv4_block_packets_total | Counter | interface | The number of IPv4 incoming packets that were blocked by the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_out_ipv4_block_packets_total | Counter | interface | The number of IPv4 outgoing packets that were blocked by the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_in_ipv6_pass_packets_total | Counter | interface | The number of IPv6 incoming packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_out_ipv6_pass_packets_total | Counter | interface | The number of IPv6 outgoing packets that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_in_ipv6_block_packets_total | Counter | interface | The number of IPv6 incoming packets that were blocked by the firewall by interface | --exporter.disable-firewall |
+| opnsense_firewall_out_ipv6_block_packets_total | Counter | interface | The number of IPv6 outgoing packets that were blocked by the firewall by interface | --exporter.disable-firewall |
 | opnsense_firewall_in_ipv4_pass_bytes_total | Counter | interface | The number of IPv4 incoming bytes that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
 | opnsense_firewall_out_ipv4_pass_bytes_total | Counter | interface | The number of IPv4 outgoing bytes that were allowed to pass through the firewall by interface | --exporter.disable-firewall |
 | opnsense_firewall_in_ipv4_block_bytes_total | Counter | interface | The number of IPv4 incoming bytes that were blocked by the firewall by interface | --exporter.disable-firewall |

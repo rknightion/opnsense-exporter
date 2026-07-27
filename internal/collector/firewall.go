@@ -74,42 +74,42 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 	c.instance = instanceLabel
 	c.log.Debug("Registering collector", "collector", c.Name())
 
-	c.inIPv4PassPackets = buildPrometheusDesc(c.subsystem, "in_ipv4_pass_packets",
+	c.inIPv4PassPackets = buildPrometheusDesc(c.subsystem, "in_ipv4_pass_packets_total",
 		"The number of IPv4 incoming packets that were allowed to pass through the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.outIPv4PassPackets = buildPrometheusDesc(c.subsystem, "out_ipv4_pass_packets",
+	c.outIPv4PassPackets = buildPrometheusDesc(c.subsystem, "out_ipv4_pass_packets_total",
 		"The number of IPv4 outgoing packets that were allowed to pass through the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.inIPv4BlockPackets = buildPrometheusDesc(c.subsystem, "in_ipv4_block_packets",
+	c.inIPv4BlockPackets = buildPrometheusDesc(c.subsystem, "in_ipv4_block_packets_total",
 		"The number of IPv4 incoming packets that were blocked by the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.outIPv4BlockPackets = buildPrometheusDesc(c.subsystem, "out_ipv4_block_packets",
+	c.outIPv4BlockPackets = buildPrometheusDesc(c.subsystem, "out_ipv4_block_packets_total",
 		"The number of IPv4 outgoing packets that were blocked by the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.inIPv6PassPackets = buildPrometheusDesc(c.subsystem, "in_ipv6_pass_packets",
+	c.inIPv6PassPackets = buildPrometheusDesc(c.subsystem, "in_ipv6_pass_packets_total",
 		"The number of IPv6 incoming packets that were allowed to pass through the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.outIPv6PassPackets = buildPrometheusDesc(c.subsystem, "out_ipv6_pass_packets",
+	c.outIPv6PassPackets = buildPrometheusDesc(c.subsystem, "out_ipv6_pass_packets_total",
 		"The number of IPv6 outgoing packets that were allowed to pass through the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.inIPv6BlockPackets = buildPrometheusDesc(c.subsystem, "in_ipv6_block_packets",
+	c.inIPv6BlockPackets = buildPrometheusDesc(c.subsystem, "in_ipv6_block_packets_total",
 		"The number of IPv6 incoming packets that were blocked by the firewall by interface",
 		[]string{"interface"},
 	)
 
-	c.outIPv6BlockPackets = buildPrometheusDesc(c.subsystem, "out_ipv6_block_packets",
+	c.outIPv6BlockPackets = buildPrometheusDesc(c.subsystem, "out_ipv6_block_packets_total",
 		"The number of IPv6 outgoing packets that were blocked by the firewall by interface",
 		[]string{"interface"},
 	)
@@ -241,36 +241,49 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 	}
 
 	for _, v := range data.Interfaces {
-		metricsValueMapping := map[*prometheus.Desc]int64{
-			c.inIPv4PassPackets:   v.In4PassPackets,
-			c.outIPv4PassPackets:  v.Out4PassPackets,
-			c.inIPv4BlockPackets:  v.In4BlockPackets,
-			c.outIPv4BlockPackets: v.Out4BlockPackets,
-			c.inIPv6PassPackets:   v.In6PassPackets,
-			c.outIPv6PassPackets:  v.Out6PassPackets,
-			c.inIPv6BlockPackets:  v.In6BlockPackets,
-			c.outIPv6BlockPackets: v.Out6BlockPackets,
-			c.inIPv4PassBytes:     v.In4PassBytes,
-			c.outIPv4PassBytes:    v.Out4PassBytes,
-			c.inIPv4BlockBytes:    v.In4BlockBytes,
-			c.outIPv4BlockBytes:   v.Out4BlockBytes,
-			c.inIPv6PassBytes:     v.In6PassBytes,
-			c.outIPv6PassBytes:    v.Out6PassBytes,
-			c.inIPv6BlockBytes:    v.In6BlockBytes,
-			c.outIPv6BlockBytes:   v.Out6BlockBytes,
-		}
-		for metric, value := range metricsValueMapping {
-			// These pf pass/block byte and packet totals are cumulative,
-			// reset-on-reboot counters — emit as CounterValue so rate()/increase()
-			// and TYPE-aware tooling handle them correctly (#106).
-			ch <- prometheus.MustNewConstMetric(
-				metric,
-				prometheus.CounterValue,
-				float64(value),
-				v.InterfaceName,
-				c.instance,
-			)
-		}
+		// These pf pass/block byte and packet totals are cumulative,
+		// reset-on-reboot counters — emit as CounterValue so rate()/increase()
+		// and TYPE-aware tooling handle them correctly (#106).
+		//
+		// Each metric is emitted through its own explicit c.<field> call site
+		// (rather than a shared map[*prometheus.Desc]int64 loop keyed by a
+		// single generic loop variable) so scripts/docgen's static per-field
+		// type resolution (collectEmittedValueTypes) can attribute the
+		// CounterValue argument back to the exact desc field declared in
+		// Register(), instead of falling back to the _total-suffix heuristic
+		// and misdocumenting the unsuffixed packet counters as Gauges (#418).
+		ch <- prometheus.MustNewConstMetric(c.inIPv4PassPackets, prometheus.CounterValue,
+			float64(v.In4PassPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv4PassPackets, prometheus.CounterValue,
+			float64(v.Out4PassPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv4BlockPackets, prometheus.CounterValue,
+			float64(v.In4BlockPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv4BlockPackets, prometheus.CounterValue,
+			float64(v.Out4BlockPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv6PassPackets, prometheus.CounterValue,
+			float64(v.In6PassPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv6PassPackets, prometheus.CounterValue,
+			float64(v.Out6PassPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv6BlockPackets, prometheus.CounterValue,
+			float64(v.In6BlockPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv6BlockPackets, prometheus.CounterValue,
+			float64(v.Out6BlockPackets), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv4PassBytes, prometheus.CounterValue,
+			float64(v.In4PassBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv4PassBytes, prometheus.CounterValue,
+			float64(v.Out4PassBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv4BlockBytes, prometheus.CounterValue,
+			float64(v.In4BlockBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv4BlockBytes, prometheus.CounterValue,
+			float64(v.Out4BlockBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv6PassBytes, prometheus.CounterValue,
+			float64(v.In6PassBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv6PassBytes, prometheus.CounterValue,
+			float64(v.Out6PassBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.inIPv6BlockBytes, prometheus.CounterValue,
+			float64(v.In6BlockBytes), v.InterfaceName, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.outIPv6BlockBytes, prometheus.CounterValue,
+			float64(v.Out6BlockBytes), v.InterfaceName, c.instance)
 	}
 
 	pfStates, pfErr := client.FetchPFStates()

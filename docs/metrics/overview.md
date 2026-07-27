@@ -23,7 +23,7 @@ Where `<subsystem>` corresponds to a collector (e.g., `gateways`, `firewall`, `u
 Examples:
 
 - `opnsense_gateways_loss_percentage` - packet loss for a gateway
-- `opnsense_firewall_ipv4_pass_packets_total` - IPv4 pass packet counter per interface
+- `opnsense_firewall_in_ipv4_pass_packets_total` - IPv4 inbound pass packet counter per interface
 - `opnsense_unbound_dns_queries_total` - total DNS queries handled by Unbound
 - `opnsense_system_memory_used_bytes` - memory currently in use
 
@@ -72,7 +72,7 @@ Most metrics are gauges representing the current value at scrape time:
 
 Counters represent monotonically increasing values and use the `_total` suffix:
 
-- `opnsense_firewall_ipv4_pass_packets_total`
+- `opnsense_firewall_in_ipv4_pass_packets_total`
 - `opnsense_exporter_scrapes_total`
 - `opnsense_exporter_endpoint_errors_total`
 - `opnsense_interfaces_received_bytes_total`
@@ -80,7 +80,7 @@ Counters represent monotonically increasing values and use the `_total` suffix:
 Use the `rate()` or `increase()` function to compute per-second rates or interval changes:
 
 ```promql
-rate(opnsense_firewall_ipv4_pass_packets_total[5m])
+rate(opnsense_firewall_in_ipv4_pass_packets_total[5m])
 ```
 
 ## Top-level exporter metrics
@@ -129,7 +129,10 @@ Packets per second through the firewall by interface:
 
 ```promql
 sum by (interface) (
-  rate(opnsense_firewall_ipv4_pass_packets_total{opnsense_instance="my-firewall"}[5m])
+  rate(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance="my-firewall"}[5m])
+  + rate(opnsense_firewall_out_ipv4_pass_packets_total{opnsense_instance="my-firewall"}[5m])
+  + rate(opnsense_firewall_in_ipv6_pass_packets_total{opnsense_instance="my-firewall"}[5m])
+  + rate(opnsense_firewall_out_ipv6_pass_packets_total{opnsense_instance="my-firewall"}[5m])
 )
 ```
 

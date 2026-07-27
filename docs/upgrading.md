@@ -40,6 +40,19 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   not trigger `restart:`; process exit or an external unhealthy-container
   remediation mechanism is still required for automatic replacement.
 
+- **PF packet counters renamed with a `_total` suffix** - the eight
+  `opnsense_firewall_{in,out}_{ipv4,ipv6}_{pass,block}_packets` series are now
+  `..._packets_total`. They were always emitted as Prometheus counters, but the
+  unsuffixed names only ever appeared on a direct `/metrics` scrape: OTLP-to-Prometheus
+  canonicalization appends `_total` to every monotonic sum, so a stack fed through the
+  OTLP bridge exposed only the `_total` names and every panel, recording rule, and alert
+  written against the unsuffixed name silently returned no data. The descriptors now
+  match what both paths expose. The sibling byte counters already carried `_total` and
+  are unchanged. Update any custom dashboard, recording rule, or alert that referenced
+  the unsuffixed names; the bundled Grafana dashboard and rules are already updated. The
+  generated metric catalogue also now types all sixteen pf pass/block series as Counter
+  - the eight packet series were previously mis-documented as Gauge.
+
 ## Upgrading to v2.0 from v1.x
 
 - **SMART collector is now opt-in** - the `opnsense_smart_*` metrics are no longer

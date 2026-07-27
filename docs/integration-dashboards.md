@@ -111,8 +111,10 @@ opnsense_gateways_loss_percentage > 1
 
 ```promql
 sum by (interface) (
-  rate(opnsense_firewall_ipv4_pass_packets_total[5m])
-  + rate(opnsense_firewall_ipv6_pass_packets_total[5m])
+  rate(opnsense_firewall_in_ipv4_pass_packets_total[5m])
+  + rate(opnsense_firewall_out_ipv4_pass_packets_total[5m])
+  + rate(opnsense_firewall_in_ipv6_pass_packets_total[5m])
+  + rate(opnsense_firewall_out_ipv6_pass_packets_total[5m])
 )
 ```
 
@@ -120,15 +122,17 @@ sum by (interface) (
 
 ```promql
 sum by (interface) (
-  rate(opnsense_firewall_ipv4_block_packets_total[5m])
-  + rate(opnsense_firewall_ipv6_block_packets_total[5m])
+  rate(opnsense_firewall_in_ipv4_block_packets_total[5m])
+  + rate(opnsense_firewall_out_ipv4_block_packets_total[5m])
+  + rate(opnsense_firewall_in_ipv6_block_packets_total[5m])
+  + rate(opnsense_firewall_out_ipv6_block_packets_total[5m])
 )
 ```
 
 **Firewall state table utilization:**
 
 ```promql
-opnsense_firewall_states_current / opnsense_firewall_states_limit * 100
+opnsense_firewall_pf_states_current / opnsense_firewall_pf_states_limit * 100
 ```
 
 ### System resources

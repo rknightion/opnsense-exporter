@@ -33,9 +33,9 @@ def build(b: Builder):
     pkt_pass_in = b.ts(
         "Inbound Pass Packets/s",
         [
-            (f'rate({sel("opnsense_firewall_in_ipv4_pass_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_in_ipv4_pass_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv4 pass-in"),
-            (f'rate({sel("opnsense_firewall_in_ipv6_pass_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_in_ipv6_pass_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv6 pass-in"),
         ],
         unit="pps", w=12, h=8,
@@ -45,9 +45,9 @@ def build(b: Builder):
     pkt_block_in = b.ts(
         "Inbound Block Packets/s",
         [
-            (f'rate({sel("opnsense_firewall_in_ipv4_block_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_in_ipv4_block_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv4 block-in"),
-            (f'rate({sel("opnsense_firewall_in_ipv6_block_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_in_ipv6_block_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv6 block-in"),
         ],
         unit="pps", w=12, h=8,
@@ -57,9 +57,9 @@ def build(b: Builder):
     pkt_pass_out = b.ts(
         "Outbound Pass Packets/s",
         [
-            (f'rate({sel("opnsense_firewall_out_ipv4_pass_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_out_ipv4_pass_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv4 pass-out"),
-            (f'rate({sel("opnsense_firewall_out_ipv6_pass_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_out_ipv6_pass_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv6 pass-out"),
         ],
         unit="pps", w=12, h=8,
@@ -69,9 +69,9 @@ def build(b: Builder):
     pkt_block_out = b.ts(
         "Outbound Block Packets/s",
         [
-            (f'rate({sel("opnsense_firewall_out_ipv4_block_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_out_ipv4_block_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv4 block-out"),
-            (f'rate({sel("opnsense_firewall_out_ipv6_block_packets", DEV)}[{RATE}])',
+            (f'rate({sel("opnsense_firewall_out_ipv6_block_packets_total", DEV)}[{RATE}])',
              "{{interface}} IPv6 block-out"),
         ],
         unit="pps", w=12, h=8,

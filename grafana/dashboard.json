@@ -161,7 +161,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "label_values(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\"}, interface)",
+              "query": "label_values(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance=~\"$opnsense_instance\"}, interface)",
               "refId": "device"
             }
           },
@@ -14923,7 +14923,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 pass-in",
                         "instant": false,
@@ -14949,7 +14949,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv6_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv6_pass_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 pass-in",
                         "instant": false,
@@ -15038,7 +15038,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv4_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv4_block_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 block-in",
                         "instant": false,
@@ -15064,7 +15064,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv6_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_in_ipv6_block_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 block-in",
                         "instant": false,
@@ -15153,7 +15153,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv4_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv4_pass_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 pass-out",
                         "instant": false,
@@ -15179,7 +15179,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv6_pass_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv6_pass_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 pass-out",
                         "instant": false,
@@ -15268,7 +15268,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv4_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv4_block_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "A",
                         "legendFormat": "{{interface}} IPv4 block-out",
                         "instant": false,
@@ -15294,7 +15294,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv6_block_packets{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_firewall_out_ipv6_block_packets_total{opnsense_instance=~\"$opnsense_instance\",interface=~\"$device\"}[$__rate_interval]))",
                         "refId": "B",
                         "legendFormat": "{{interface}} IPv6 block-out",
                         "instant": false,

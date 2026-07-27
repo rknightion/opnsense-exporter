@@ -162,7 +162,7 @@ def add_core_variables(b: Builder):
         "current": {"text": "All", "value": "$__all"}, "options": [],
         "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
                   "datasource": {"name": "${datasource}"},
-                  "spec": {"query": 'label_values(opnsense_firewall_in_ipv4_pass_packets{opnsense_instance=~"$opnsense_instance"}, interface)',
+                  "spec": {"query": 'label_values(opnsense_firewall_in_ipv4_pass_packets_total{opnsense_instance=~"$opnsense_instance"}, interface)',
                            "refId": "device"}},
         "refresh": "onTimeRangeChanged", "regex": "", "sort": "alphabeticalAsc",
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",

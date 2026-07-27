@@ -224,10 +224,60 @@ func TestFirewallCollector_PFCountersAreCounters(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 	assertMetricsAreCounters(t, metrics,
 		"opnsense_firewall_in_ipv4_pass_bytes_total",
-		"opnsense_firewall_in_ipv4_pass_packets",
+		"opnsense_firewall_in_ipv4_pass_packets_total",
 		"opnsense_firewall_out_ipv6_block_bytes_total",
-		"opnsense_firewall_out_ipv6_block_packets",
+		"opnsense_firewall_out_ipv6_block_packets_total",
 	)
+}
+
+// TestFirewallCollector_CounterMetricsEndInTotal guards #418: Prometheus/OTLP
+// convention is that a monotonic sum (COUNTER instrument type) exports with a
+// `_total` suffix. The live-supported backend is OTLP-fed, and OTLP->Prometheus
+// canonicalization appends `_total` to every counter regardless of what name the
+// Go code declared, so a counter declared WITHOUT `_total` produces two different
+// names depending on backend (direct /metrics vs OTLP-bridged Prometheus) and any
+// consumer written against the unsuffixed name returns no data on the supported
+// live backend. This asserts, for every metric this collector emits: emitted as
+// CounterValue implies the descriptor name ends in `_total`.
+func TestFirewallCollector_CounterMetricsEndInTotal(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/interfaces", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"interfaces":{"igb0":{"in4_pass_bytes":100,"in4_pass_packets":10,"out6_block_bytes":5,"out6_block_packets":1}}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/pf_states/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"current":"1","limit":"2"}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &firewallCollector{subsystem: FirewallSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	checked := 0
+	for _, m := range metrics {
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		if d.Counter == nil {
+			continue
+		}
+		checked++
+		name := descFQName(m.Desc().String())
+		if name == "" {
+			t.Fatalf("could not parse fqName from descriptor: %s", m.Desc().String())
+		}
+		if !strings.HasSuffix(name, "_total") {
+			t.Errorf("counter metric %q is emitted with CounterValue but its name does not end in _total", name)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected at least one CounterValue metric from the firewall collector")
+	}
 }
 
 func TestFirewallCollector_Name(t *testing.T) {
