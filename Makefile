@@ -156,7 +156,13 @@ rules:
 # generated section / the grafana-managed manifests are stale relative to their
 # builders, or if a manifest is malformed. sentinel-contract.json + the generated
 # AUTHORING.md region are the feature-sentinel documentation contract (#417).
-grafana-check: grafana-test
+#
+# NOT a prerequisite of grafana-test any more (#429): CI already runs `make grafana-test`
+# as its own named step and then runs this target, so the prerequisite ran the whole
+# 198-test suite twice per job. The named step is what a reader needs — a unit-test
+# failure reported as a "grafana check" failure reads as staleness — so the duplicate
+# was removed here rather than there. Run `make grafana-test` alongside this one locally.
+grafana-check:
 	cd grafana && python3 build_dashboard.py --check
 	cd grafana && python3 build_dashboard.py
 	cd grafana/alerts && python3 build_rules.py
@@ -164,10 +170,10 @@ grafana-check: grafana-test
 	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/sentinel-contract.json grafana/tabs/AUTHORING.md grafana/alerts/grafana-managed/
 	python3 grafana/alerts/validate_manifests.py
 
-# The grafana/ builders' own unit tests (stdlib unittest, no deps). A prerequisite
-# of grafana-check rather than a separate CI job so it cannot be forgotten: these
-# existed for weeks with nothing running them and three had rotted into failure,
-# which is the same as not having them.
+# The grafana/ builders' own unit tests (stdlib unittest, no deps). These existed for
+# weeks with nothing running them and three had rotted into failure, which is the same
+# as not having them — so CI runs this as its own explicitly named step, and that named
+# step is now the only thing that runs it (see grafana-check above).
 grafana-test:
 	cd grafana && python3 -m unittest discover -s tests -t . -q
 	go test -C tools/promqlcheck ./...
