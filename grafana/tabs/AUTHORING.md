@@ -82,6 +82,10 @@ map or the build fails as unassigned. The canonical worked examples are `build_o
   deliberate. `mappings=UPDOWN` etc. `thresholds=[{"color":"green","value":None},{"color":"red","value":90}]`.
 - `b.gauge(title, expr, unit="percent", w=4, h=6, mn=0, mx=100, thresholds=None)` — radial gauge.
 - `b.bargauge(title, series, unit="short", w=8, h=8, orient="horizontal", mx=None)` — per-series bars (instant).
+  Both `gauge()` and `bargauge()` render **neutrally** when `thresholds=` is omitted — neither invents
+  a severity boundary (#415, #467). Pass an explicit list only for a bounded scale where the boundary
+  means something, say what it means at the call site, and add the panel title to the matching
+  allowlist in `tests/test_threshold_defaults.py`, which fails otherwise.
 - `b.table(title, exprs, w=24, h=10, excludes=[...], renames={...}, unit_overrides={field:unit}, sort_by="Field", sort_desc=True)`
   — `exprs` is a list of instant PromQL strings; multiple are merged by labels.
 - `b.statetimeline(title, series, mappings, w=24, h=8, unit="short")` — discrete state over time

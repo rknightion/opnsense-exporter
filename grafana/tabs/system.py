@@ -151,6 +151,17 @@ def build(b: Builder):
         w=4,
         h=6,
         desc="Derived: used / total memory × 100.",
+        # Stated explicitly rather than inherited from the builder (#467). Values
+        # are unchanged from the default this panel used to pick up, so nothing
+        # renders differently; the boundary is now a decision. Meaning: a firewall
+        # steady above 70% has little headroom for a state-table or cache burst,
+        # and above 90% FreeBSD is close to swapping, which shows up as latency
+        # long before anything reports an error.
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 70},
+            {"color": "red", "value": 90},
+        ],
     )
 
     mem_ts = b.ts(

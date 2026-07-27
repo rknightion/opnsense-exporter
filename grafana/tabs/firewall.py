@@ -148,6 +148,10 @@ def build(b: Builder):
         f'clamp_min({sel("opnsense_firewall_pf_states_limit")}, 1)',
         unit="percent", mn=0, mx=100, w=6, h=8,
         desc="Current PF states as a percentage of the configured limit.",
+        # Already explicit before #467 — it merely happened to match the triple
+        # gauge() used to inject, so nothing here changes. Meaning: PF drops new
+        # connections outright once the state table is full, so 90% of the
+        # configured limit is a real cliff rather than a stylistic choice.
         thresholds=[
             {"color": "green", "value": None},
             {"color": "yellow", "value": 70},

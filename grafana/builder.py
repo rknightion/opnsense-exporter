@@ -294,12 +294,20 @@ class Builder:
 
     def gauge(self, title, expr, unit="short", desc="", w=4, h=6, mn=0, mx=None,
               thresholds=None, decimals=None, instant=True, dedupe=True) -> str:
+        """Radial gauge.
+
+        `thresholds` is neutral by default, for the same reason as `bargauge()`
+        (#415, extended here by #467): this helper used to inject a fabricated
+        green/yellow(70)/red(90) triple into every caller that omitted
+        `thresholds=`, so a gauge on a count, a byte figure or an unbounded rate
+        silently acquired a severity boundary nobody chose. Pass an explicit
+        `thresholds=` list for a panel that genuinely owns a bounded scale, and
+        say at the call site what the boundary means.
+        """
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "min": mn,
                     "thresholds": self._thresholds(
-                        thresholds or [{"color": "green", "value": None},
-                                       {"color": "yellow", "value": 70},
-                                       {"color": "red", "value": 90}])}
+                        thresholds or [{"color": "blue", "value": None}])}
         if mx is not None:
             defaults["max"] = mx
         if decimals is not None:
