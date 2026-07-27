@@ -19,8 +19,12 @@ datasource carrying the exporter's shipped logs is selected.
 ## Requirements
 
 - **Grafana 13+** (Grafana Cloud or self-hosted). The v2 schema with `TabsLayout` and
-  `conditionalRendering` is required for the show/hide behaviour. **Grafana 11/12 users import
-  `dashboard-compat.json`** — see *Grafana 11/12 compatibility* below.
+  `conditionalRendering` is required for the show/hide behaviour. **No schema-v1 / Grafana 11-12
+  build is shipped** — that behaviour is the point of the dashboard and classic schema cannot
+  express it, so a converted copy would show every plugin-gated tab permanently empty. Grafana
+  11.5 rejects the v2 file (`400 Dashboard title cannot be empty`, which points at the wrong
+  thing) and **Grafana 12.4 accepts it with 200 and renders nothing** — verified against pinned
+  containers, and worth knowing because neither says so usefully.
 - A Prometheus-compatible datasource scraping the exporter.
 - For the **Diagnostics** tab's *Build & Collectors* panels you need an exporter build that
   emits `opnsense_exporter_build_info` and `opnsense_exporter_collector_enabled` (added in this
@@ -74,8 +78,7 @@ tabs; OpenVPN / WireGuard-peer / IPsec-tunnel rows; CARP VIPs, SMART, ACME, DynD
 
 ### Deploy the dashboard
 
-**Grafana UI:** Dashboards → New → Import, and upload `dashboard.json` (Grafana 13+) or
-`dashboard-compat.json` (Grafana 11/12).
+**Grafana UI:** Dashboards → New → Import, and upload `dashboard.json` (Grafana 13+).
 
 **gcx (standalone / unmanaged dashboard only):**
 ```bash
@@ -219,42 +222,3 @@ so a leftover crash report now pages as a warning (`OPNsenseCrashReports`) inste
 `instance:opnsense_firewall_block_packets:rate5m`, `instance:opnsense_pf_state:utilization`,
 `instance:opnsense_unbound_cache:hit_ratio`, `instance:opnsense_unbound_queries:rate5m`,
 `instance:opnsense_gateway_loss:ratio`, `instance:opnsense_system_mem:utilization`.
-
-## Grafana 11/12 compatibility (`dashboard-compat.json`)
-
-Grafana 11 and 12 cannot read schema v2. Verified against pinned containers on 2026-07-27:
-Grafana 11.5.0 rejects `dashboard.json` with `400 Dashboard title cannot be empty` (v2 keeps the
-title under `spec`), and Grafana 12.4.0 accepts it with **200** and then renders **0 panels** —
-the v2 body is stored verbatim and ignored, which is worse than an error because nothing says so.
-Its CRD route fails honestly: `no kind "Dashboard" is registered for version
-"dashboard.grafana.app/v2"`.
-
-`dashboard-compat.json` is the supported route for those versions. It is **converted, never
-authored** — `build_compat.py` reads `dashboard.json` and emits classic schema, so there is no
-second panel source to keep in step:
-
-```bash
-make compat          # regenerate (grafana-check fails if it is stale)
-make compat-verify   # import into Grafana 11.5.0 + 12.4.0 containers and read back (needs docker)
-```
-
-Two deliberate degradations, both structural to classic schema rather than choices:
-
-- **No tabs.** Each tab's rows are flattened in order, with the tab name on the first row of the
-  group.
-- **No conditional rendering, therefore no plugin-gated content.** On Grafana 13 a tab whose
-  metrics your box does not emit is hidden. Classic cannot hide anything, so a gated tab would be
-  permanently visible and permanently empty — indistinguishable from a broken exporter. The
-  compat build carries only the **unconditional** panels: 187 of the canonical 738, across
-  Overview, System & Resources, Services/Cron/DynDNS, Certificates, Interfaces, Gateways & WAN,
-  Routing & Neighbors, Protocol Stats, Firewall & PF and Diagnostics.
-
-The boundary is recomputed at build time from the canonical artifact's own gating, so a tab that
-becomes gated leaves the compat build automatically and one that becomes unconditional joins it —
-there is no second list to update. `tests/test_compat_dashboard.py` asserts the artifact is
-classic, is derived from `dashboard.json` (every title and query must exist there), keeps every
-panel's targets and the ~100 hidden sentinels hidden, and that no gated panel leaked in. CI's
-`grafana-compat` job does the container import on every commit.
-
-It uses uid `opnsense-exporter-compat`, so it can sit alongside the canonical dashboard without
-overwriting it.
