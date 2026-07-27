@@ -102,6 +102,8 @@ var KnownAttributeKeys = []string{
 	"ja3",
 	"method",
 	"opnsense.action",
+	"opnsense.device_category",
+	"opnsense.interface",
 	"opnsense.subsystem",
 	"organization",
 	"policyid",

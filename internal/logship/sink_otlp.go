@@ -37,13 +37,27 @@ import (
 // maxLogResources bounds the number of distinct OTLP resources — and therefore
 // LoggerProviders — the sink will build.
 //
-// Both dimensions of the resource key are closed sets defined in OUR code: ~4
-// sources and ~22 subsystems. The cap is therefore unreachable in practice. It
-// exists so that a future Source which put something wire-derived behind
-// `subsystem` could not leak providers here, nor (once a tenant promotes the
-// attribute) explode Loki's label cardinality. Past the cap we degrade to the base
-// resource: records still ship, they just stop being partitioned.
-const maxLogResources = 64
+// Every dimension of the resource key is a closed set (see shape_attrs.go), so the
+// cap is not a cardinality control — it is a backstop against a future Source that
+// put something wire-derived behind one of the keys, which would otherwise leak
+// providers here and, once a tenant promotes the attribute, explode Loki's label
+// cardinality.
+//
+// It is NOT set by arithmetic over the vocabularies. The key count is the product of
+// five dimensions, but the OBSERVED product is far smaller than the theoretical one,
+// because most combinations never occur — a printer does not appear on the WAN, a
+// syslog record has no device at all. So the number is anchored to measurement: 79
+// distinct keys over an hour on the live box (#473), pinned as
+// observedResourceCombos, and the cap is 3x that. The headroom absorbs normal churn
+// — a new VLAN, a device category Zenarmor has not classified before — without
+// walking into the degrade path.
+//
+// That degrade path is why overshooting is worse than it sounds. Past the cap we
+// fall back to the BASE resource: records still ship, but with no opnsense.*
+// attributes at all. So a cap set too low does not merely fail to add the two new
+// labels, it destroys the three that already work. Raising this alongside a new key
+// is not optional; TestOTLPSink_ResourceKeyBudgetHasHeadroomOverObserved enforces it.
+const maxLogResources = 256
 
 // otlpSink ships records over OTLP logs. It reuses the exporter's --otlp.*
 // transport family. Each provider's syncBatchProcessor (#290) exports synchronously and
@@ -94,8 +108,10 @@ type otlpSink struct {
 	cappedOnce sync.Once
 }
 
-// resourceKey identifies one OTLP resource. All three fields are closed sets.
-type resourceKey struct{ source, subsystem, action string }
+// resourceKey identifies one OTLP resource. Every field is a closed set — see
+// AttrSubsystem, AttrAction and shape_attrs.go for what "closed" rests on in each
+// case. Adding a field multiplies the key count against maxLogResources.
+type resourceKey struct{ source, subsystem, action, deviceCategory, iface string }
 
 type resourceLogger struct {
 	provider *sdklog.LoggerProvider
@@ -217,9 +233,11 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 
 	for _, e := range batch {
 		rl, eff, err := s.loggerFor(ctx, resourceKey{
-			source:    e.Source,
-			subsystem: e.Record.Attributes[AttrSubsystem],
-			action:    e.Record.Attributes[AttrAction],
+			source:         e.Source,
+			subsystem:      e.Record.Attributes[AttrSubsystem],
+			action:         e.Record.Attributes[AttrAction],
+			deviceCategory: e.Record.Attributes[AttrDeviceCategory],
+			iface:          e.Record.Attributes[AttrInterface],
 		})
 		if err != nil {
 			// Building the resource failed locally — nothing reached the wire, so this
@@ -275,11 +293,14 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 			r.SetSeverity(otlpSeverity(e.Record.Severity))
 			r.SetSeverityText(otlpSeverityText(e.Record.Severity))
 			for k, v := range e.Record.Attributes {
-				// `opnsense.source`, `opnsense.subsystem` and `opnsense.action` live on the
-				// resource, not the record: emitting them here as well would duplicate them
-				// into structured metadata beside the label. (`source` was stripped from
-				// Attributes upstream anyway; the pipeline carries it in Entry.Source.)
-				if k == AttrSubsystem || k == attrSource || k == AttrAction {
+				// The hoisted keys live on the resource, not the record: emitting them here
+				// as well would duplicate them into structured metadata beside the label.
+				// (`source` was stripped from Attributes upstream anyway; the pipeline
+				// carries it in Entry.Source.) Each lane's OWN verbatim keys —
+				// `device.category`, `interface.name` — are a different key space and are
+				// deliberately left alone, so queries against them keep working.
+				if k == AttrSubsystem || k == attrSource || k == AttrAction ||
+					k == AttrDeviceCategory || k == AttrInterface {
 					continue
 				}
 				r.AddAttributes(otellog.String(k, v))
@@ -317,7 +338,13 @@ func sortResourceKeys(keys []resourceKey) {
 		if a.subsystem != b.subsystem {
 			return a.subsystem < b.subsystem
 		}
-		return a.action < b.action
+		if a.action != b.action {
+			return a.action < b.action
+		}
+		if a.deviceCategory != b.deviceCategory {
+			return a.deviceCategory < b.deviceCategory
+		}
+		return a.iface < b.iface
 	})
 }
 
@@ -424,7 +451,7 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (*resourceLog
 		}
 	}
 
-	attrs := make([]attribute.KeyValue, 0, len(s.base)+3)
+	attrs := make([]attribute.KeyValue, 0, len(s.base)+5)
 	attrs = append(attrs, s.base...)
 	if key.source != "" {
 		attrs = append(attrs, attribute.String(attrSource, key.source))
@@ -432,9 +459,20 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (*resourceLog
 	if key.subsystem != "" {
 		attrs = append(attrs, attribute.String(AttrSubsystem, key.subsystem))
 	}
-	// Only when set: an unknown disposition must not become opnsense.action="".
+	// Only when set, for all three below: an absent value must stay ABSENT rather
+	// than become opnsense.action="" / opnsense.interface="". An empty string reads
+	// as a real value in LogQL, so present-and-empty is a lie — an unknown firewall
+	// disposition would match {opnsense_action=""} as if it were a classification,
+	// and every syslog record (which has no device and no interface at all) would
+	// join one enormous empty-valued stream.
 	if key.action != "" {
 		attrs = append(attrs, attribute.String(AttrAction, key.action))
+	}
+	if key.deviceCategory != "" {
+		attrs = append(attrs, attribute.String(AttrDeviceCategory, key.deviceCategory))
+	}
+	if key.iface != "" {
+		attrs = append(attrs, attribute.String(AttrInterface, key.iface))
 	}
 	res, err := resource.New(ctx, resource.WithAttributes(attrs...))
 	if err != nil {

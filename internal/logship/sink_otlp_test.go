@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -370,6 +371,152 @@ func TestOTLPSink_PartitionsResourcesByAction(t *testing.T) {
 	}
 	if err := s.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown: %v", err)
+	}
+}
+
+// --- #473: device category and interface on the resource --------------------
+
+// Both new keys must be hoisted onto the RESOURCE (the only place Loki can promote
+// from) and must not also be duplicated into structured metadata under the same key.
+// The lane's own verbatim `device.category` / `interface.name` are a DIFFERENT key
+// space and must survive untouched, so queries written against them keep working
+// before — and after — the tenant opts into promotion.
+func TestOTLPSink_HoistsDeviceCategoryAndInterfaceOntoResource(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	shipAndDrain(t, s, []Entry{{Source: "zenarmor", Record: Record{
+		Body: "1",
+		Attributes: map[string]string{
+			AttrSubsystem:      "flow",
+			AttrAction:         ActionPass,
+			AttrDeviceCategory: "laptop",
+			AttrInterface:      "IOT",
+			"device.category":  "laptop",
+			"interface.name":   "IOT",
+			"device.name":      "some-host",
+		},
+	}}})
+
+	recs := exp.exported()
+	if len(recs) != 1 {
+		t.Fatalf("exported %d records, want 1", len(recs))
+	}
+	res, rec := resourceAttrs(recs[0]), recordAttrs(recs[0])
+
+	for key, want := range map[string]string{AttrDeviceCategory: "laptop", AttrInterface: "IOT"} {
+		if got := res[key]; got != want {
+			t.Errorf("resource %s = %q, want %q", key, got, want)
+		}
+		if _, present := rec[key]; present {
+			t.Errorf("%s leaked into structured metadata; it lives only on the resource", key)
+		}
+	}
+	// The lane's verbatim keys are untouched — this change is query-neutral.
+	for key, want := range map[string]string{
+		"device.category": "laptop",
+		"interface.name":  "IOT",
+		"device.name":     "some-host",
+	} {
+		if got := rec[key]; got != want {
+			t.Errorf("structured metadata %s = %q, want %q — existing queries must keep working", key, got, want)
+		}
+	}
+}
+
+// Absent, not present-and-empty. Syslog records carry neither field, and
+// opnsense_device_category="" reads as a real value in LogQL.
+func TestOTLPSink_UnsetDeviceCategoryAndInterfaceAreAbsent(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	shipAndDrain(t, s, []Entry{{Source: "syslog", Record: Record{
+		Body:       "1",
+		Attributes: map[string]string{AttrSubsystem: "firewall"},
+	}}})
+
+	recs := exp.exported()
+	if len(recs) != 1 {
+		t.Fatalf("exported %d records, want 1", len(recs))
+	}
+	for _, key := range []string{AttrDeviceCategory, AttrInterface} {
+		if v, present := resourceAttrs(recs[0])[key]; present {
+			t.Errorf("carried %s=%q; an unset field must be absent, not empty", key, v)
+		}
+	}
+}
+
+// Each new key partitions the resource independently of the others.
+func TestOTLPSink_PartitionsResourcesByDeviceCategoryAndInterface(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	attrs := func(cat, iface string) map[string]string {
+		return map[string]string{
+			AttrSubsystem: "flow", AttrAction: ActionPass,
+			AttrDeviceCategory: cat, AttrInterface: iface,
+		}
+	}
+	batch := []Entry{
+		{Source: "zenarmor", Record: Record{Body: "1", Attributes: attrs("laptop", "LAN")}},
+		{Source: "zenarmor", Record: Record{Body: "2", Attributes: attrs("laptop", "LAN")}},
+		{Source: "zenarmor", Record: Record{Body: "3", Attributes: attrs("laptop", "IOT")}},
+		{Source: "zenarmor", Record: Record{Body: "4", Attributes: attrs("camera", "IOT")}},
+	}
+	mustEmit(t, s, batch)
+	if n := len(s.providers); n != 3 {
+		t.Fatalf("built %d providers, want 3 (laptop/LAN, laptop/IOT, camera/IOT)", n)
+	}
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+}
+
+// observedResourceCombos is the number of DISTINCT resource keys measured on the
+// live box over one hour with both #473 fields on the key. The progression that
+// forced the cap change is on #473: 16 today, 37 with interface alone, 44 with
+// device category alone, 79 with both.
+//
+// It is pinned here rather than left implicit because the failure mode it guards is
+// silent: past maxLogResources the sink degrades to the base resource and the record
+// ships with NO opnsense.* labels at all, so overshooting the cap destroys the three
+// labels that already work instead of merely failing to add two. A future key with a
+// wider vocabulary must trip THIS test, in CI, rather than the live cap.
+const observedResourceCombos = 79
+
+func TestOTLPSink_ResourceKeyBudgetHasHeadroomOverObserved(t *testing.T) {
+	// 3x the measured steady state. Anything less and normal churn — a new VLAN, a
+	// device category Zenarmor has not classified before — walks into the cap.
+	if want := 3 * observedResourceCombos; maxLogResources < want {
+		t.Fatalf("maxLogResources = %d, want at least %d (3x the %d combinations measured live)",
+			maxLogResources, want, observedResourceCombos)
+	}
+
+	// And the measured shape must actually fit, undegraded: every key gets its own
+	// provider and nothing collapses onto the base resource.
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
+
+	batch := make([]Entry, 0, observedResourceCombos)
+	for i := range observedResourceCombos {
+		batch = append(batch, Entry{Source: "zenarmor", Record: Record{
+			Body: strconv.Itoa(i),
+			Attributes: map[string]string{
+				AttrSubsystem:      "flow",
+				AttrAction:         ActionPass,
+				AttrDeviceCategory: "cat-" + strconv.Itoa(i%9),
+				AttrInterface:      "if-" + strconv.Itoa(i/9),
+			},
+		}})
+	}
+	mustEmit(t, s, batch)
+	if n := len(s.providers); n != observedResourceCombos {
+		t.Fatalf("built %d providers for %d distinct keys — the measured live shape must fit undegraded",
+			n, observedResourceCombos)
+	}
+	if _, degraded := s.providers[resourceKey{}]; degraded {
+		t.Fatal("collapsed onto the base resource; every record would ship with no opnsense.* labels")
 	}
 }
 

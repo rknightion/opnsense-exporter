@@ -53,8 +53,10 @@ func attributeKeysSetByParser(t *testing.T) map[string]string {
 	// on any qualified key not listed — silence here would shrink the derived
 	// vocabulary and make the coverage check vacuously pass.
 	qualified := map[string]string{
-		"logship.AttrSubsystem": logship.AttrSubsystem,
-		"logship.AttrAction":    logship.AttrAction,
+		"logship.AttrSubsystem":      logship.AttrSubsystem,
+		"logship.AttrAction":         logship.AttrAction,
+		"logship.AttrDeviceCategory": logship.AttrDeviceCategory,
+		"logship.AttrInterface":      logship.AttrInterface,
 	}
 
 	// resolve turns a key expression into its string value. ok=false means "not a key

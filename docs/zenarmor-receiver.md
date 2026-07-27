@@ -262,17 +262,27 @@ dropped too. It requires the Zenarmor host specifically as the source
 
 ## Label model
 
-`opnsense.source=zenarmor`, `opnsense.subsystem=<family>` and `opnsense.action=pass|block`
-all live on the OTLP **resource**, which is what makes them promotable to Loki index
-labels - see the [Loki label model](log-shipping.md#loki-label-model). Everything else -
-IPs, ports, MACs, hostnames, `app_name`, `ja3`, `community_id`, `conn_uuid`, `query`,
-`uri`, and every other per-record field - is structured metadata: filterable with `|`,
-never a label, and never promotable regardless of tenant configuration.
+`opnsense.source=zenarmor`, `opnsense.subsystem=<family>`, `opnsense.action=pass|block`,
+`opnsense.device_category` and `opnsense.interface` all live on the OTLP **resource**,
+which is what makes them promotable to Loki index labels - see the
+[Loki label model](log-shipping.md#loki-label-model). Everything else - IPs, ports,
+MACs, hostnames, `app_name`, `ja3`, `community_id`, `conn_uuid`, `query`, `uri`,
+`device_name`, and every other per-record field - is structured metadata: filterable
+with `|`, never a label, and never promotable regardless of tenant configuration.
 
-Promoting `opnsense.action` needs the same tenant `otlp_config` change as
-`opnsense.source` and `opnsense.subsystem` - see
-[Promoting opnsense.source and opnsense.subsystem](log-shipping.md#promoting-opnsensesource-and-opnsensesubsystem)
-and add `opnsense.action` to the same `attributes` list.
+The last two are the dimensions an investigation usually starts from - *which kind of
+device*, *which segment* - which is why they are on the resource and `device_name`,
+`app_name` and `domain_category` are not. Those three measure in the hundreds and are
+still climbing, and `device_name` is not even a closed set: live values include
+Plex-generated DNS names. Use them with `|` instead.
+
+Zenarmor is the only source that sets either. The values are the clamped
+`device.category` and the resolved `interface.name`; both keys stay on the record
+verbatim as well, so existing `| device_category=…` and `| interface_name=…` filters
+keep working whether or not you promote.
+
+Promoting any of them needs the same tenant `otlp_config` change - see
+[Promoting the opnsense.* attributes](log-shipping.md#promoting-the-opnsense-attributes).
 
 ## Derived counters
 

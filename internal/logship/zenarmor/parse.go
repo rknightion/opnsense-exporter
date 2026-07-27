@@ -217,6 +217,10 @@ func parseDocFull(family string, doc []byte, snap *enrich.Snapshot) (logship.Rec
 		set("device.id", d.Device.ID)
 		set("device.name", d.Device.Name)
 		set("device.category", d.Device.Category)
+		// The clamped copy the OTLP sink hoists onto the resource (#473). Verbatim
+		// above, clamped here: the record keeps full fidelity, the label does not
+		// inherit whatever a push sender put on the wire.
+		set(logship.AttrDeviceCategory, clampDeviceCategory(d.Device.Category))
 		set("device.vendor", d.Device.Vendor)
 		set("device.os", d.Device.OS)
 		set("device.osver", d.Device.OSVer)
@@ -301,6 +305,11 @@ func parseDocFull(family string, doc []byte, snap *enrich.Snapshot) (logship.Rec
 	if snap != nil {
 		if name, ok := snap.InterfaceName(d.Interface); ok {
 			set(attrInterfaceName, name)
+			// The same value under the key the OTLP sink hoists onto the resource
+			// (#473). It is set HERE, inside the resolved branch, and nowhere else:
+			// that is what keeps the key closed without a clamp. An interface the box
+			// does not have never resolves, so the wire cannot introduce a value.
+			set(logship.AttrInterface, name)
 		}
 		if d.SrcIP != "" {
 			set("src.scope", snap.Scope(d.SrcIP))

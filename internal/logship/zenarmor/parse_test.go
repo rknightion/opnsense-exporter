@@ -425,3 +425,68 @@ func TestParseDoc_AlertSeverityClamped(t *testing.T) {
 		})
 	}
 }
+
+// --- #473: the two shape dimensions hoisted onto the OTLP resource ----------
+
+// device.category comes straight off the wire from a PUSH sender, and once promoted
+// it is a Loki index label — so an unrecognised value is not data, it is a sender
+// minting streams. It folds into Zenarmor's own `other` bucket. The record keeps the
+// raw value under device.category regardless, so nothing is actually lost.
+func TestParseDoc_DeviceCategoryPromotedAndClamped(t *testing.T) {
+	tests := []struct {
+		name, category, want string
+	}{
+		{"laptop", "laptop", "laptop"},
+		{"camera", "camera", "camera"},
+		{"iot", "iot", "iot"},
+		{"zenarmor's own unknown bucket", "other", "other"},
+		{"an unclassified category folds", "toaster", zenOther},
+		{"free text folds", "'; DROP TABLE devices; --", zenOther},
+		{"absent stays absent", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc, err := json.Marshal(map[string]any{"device": map[string]string{"category": tt.category}})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			rec, ok := buildRecord("flow", doc, nil)
+			if !ok {
+				t.Fatal("buildRecord returned !ok")
+			}
+			assertAttr(t, rec, logship.AttrDeviceCategory, tt.want)
+			// The lane's own key keeps full fidelity — clamping is for the label only.
+			assertAttr(t, rec, "device.category", tt.category)
+		})
+	}
+}
+
+// The promoted interface must be the DESCRIPTION space (LAN/IOT/MGMT), never the
+// kernel device space (ixl0) — the two are disjoint (#98), and a kernel name here
+// would produce a label that silently matches nothing on the dashboard.
+//
+// It is also the guard that makes the key closed WITHOUT a clamp: the value is
+// resolved from the exporter's own snapshot of the box's interface config, so a
+// sender naming an interface the box does not have gets no attribute at all.
+func TestParseDoc_InterfacePromotedFromEnrichmentOnly(t *testing.T) {
+	t.Run("resolved name is promoted", func(t *testing.T) {
+		rec, ok := buildRecord("flow", []byte(connDoc), enrichSnapshotForTest(t))
+		if !ok {
+			t.Fatal("buildRecord returned !ok")
+		}
+		assertAttr(t, rec, logship.AttrInterface, "LAN")
+		// The kernel device stays where it was, and stays OUT of the promoted key.
+		assertAttr(t, rec, attrInterfaceDev, "ixl0")
+	})
+
+	t.Run("an interface the box does not have is not promotable", func(t *testing.T) {
+		snap := &enrich.Snapshot{IfaceNames: map[string]string{"vtnet9": "WAN"}}
+		rec, _ := buildRecord("flow", []byte(connDoc), snap)
+		assertAttr(t, rec, logship.AttrInterface, "")
+	})
+
+	t.Run("no snapshot means no promotion", func(t *testing.T) {
+		rec, _ := buildRecord("flow", []byte(connDoc), nil)
+		assertAttr(t, rec, logship.AttrInterface, "")
+	})
+}

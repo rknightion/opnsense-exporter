@@ -241,6 +241,21 @@ them, whatever the tenant config says. Cardinality discipline therefore falls ou
 | `opnsense.source` | `syslog`, `unbound`, `ids`, `crowdsec`, `zenarmor` | no - opt in below |
 | `opnsense.subsystem` | `firewall`, `dns`, `auth`, `dhcp`, `vpn`, … (~22) | no - opt in below |
 | `opnsense.action` | `pass`, `block` | no - opt in below |
+| `opnsense.device_category` | `laptop`, `camera`, `iot`, `server`, … (9) | no - opt in below |
+| `opnsense.interface` | the interface *descriptions* - `LAN`, `IOT`, `MGMT` | no - opt in below |
+
+The last two are Zenarmor-only: they are absent on every other source's records, and
+absent rather than empty, so they never pool unrelated records into one empty-valued
+stream. `opnsense.device_category` is clamped to a code-defined vocabulary before it
+reaches the resource - the receiver is a push endpoint, so an unrecognised value is a
+sender minting streams rather than data, and it folds into Zenarmor's own `other`
+bucket. `opnsense.interface` needs no clamp because it is resolved from the exporter's
+own view of the firewall's interface config: an interface the box does not have simply
+does not resolve. Note it is the interface **description** space, not the kernel device
+space (`igb0`, `ixl0`) - the two are disjoint.
+
+Each lane's own verbatim keys (`device.category`, `interface.name`) stay on the record
+untouched, so queries already written against them keep working either way.
 
 `service.name` and `service.instance.id` are indexed because they are on Loki's
 [default promotion list][otlp-defaults]. No host or SDK resource detectors are
@@ -255,16 +270,20 @@ SIDs, `tcp_*`, `dhcp_*`, `auth_*`. Note `program` in particular: it comes off th
 syslog wire and *any* process on the firewall can pick its own tag with `logger(1)`,
 so it is deliberately kept where it cannot become a label.
 
-### Promoting `opnsense.source` and `opnsense.subsystem` (optional)
+### Promoting the `opnsense.*` attributes (optional)
 
-Out of the box both land in structured metadata, so you filter with `|`:
+Out of the box they all land in structured metadata, so you filter with `|`:
 
 ```logql
 {service_name="opnsense-exporter"} | opnsense_subsystem="firewall" | action="block"
 ```
 
 That scans every chunk for the instance. To turn it into a stream selection instead,
-promote the two on the Loki side. Self-hosted, put this in the Loki config:
+promote them on the Loki side. Promotion is a **tenant-side opt-in and costs the
+exporter nothing**: it changes nothing about what is shipped, only how Loki indexes
+what arrives. Promote none, some or all of them, in any combination.
+
+Self-hosted, put this in the Loki config:
 
 ```yaml
 limits_config:
@@ -273,7 +292,12 @@ limits_config:
       # leave ignore_defaults false, or service.name stops being a label too
       attributes_config:
         - action: index_label
-          attributes: [opnsense.subsystem, opnsense.source]
+          attributes:
+            - opnsense.source
+            - opnsense.subsystem
+            - opnsense.action
+            - opnsense.device_category
+            - opnsense.interface
 ```
 
 On **Grafana Cloud** there is no config file, but the same `otlp_config` is settable
@@ -288,10 +312,22 @@ Then the same query becomes:
 {service_name="opnsense-exporter", opnsense_subsystem="firewall"} | action="block"
 ```
 
-Cost: at most `sources × subsystems` ≈ **26 streams** per instance, because both are
-closed sets defined in the exporter's own code. A promoted attribute moves out of
-structured metadata and into the label, so `| opnsense_subsystem=…` stops matching once
-`{opnsense_subsystem=…}` starts - switch your queries when you switch the config.
+Cost: bounded, because every one of these is a closed set. The combinations are a
+product, but most never occur - a printer does not appear on the WAN, a syslog record
+has no device at all - so the real figure is far below the theoretical one: **79
+distinct streams** per instance measured over an hour on a live box with all five
+promoted. Promoting fewer costs proportionally less: 16 with the original three.
+
+Promotion does **not** reduce ingest cost. Loki bills on volume, and labels only change
+what a query has to scan.
+
+A promoted attribute moves out of structured metadata and into the label, so
+`| opnsense_subsystem=…` stops matching once `{opnsense_subsystem=…}` starts - switch
+your queries when you switch the config. This applies per attribute, so a partial
+promotion leaves the rest filterable with `|` exactly as before.
+
+On Grafana Cloud the promotion slots are shared across the **whole tenant** and keyed by
+attribute name, so count them against everything else writing to the same Loki.
 
 Do **not** promote anything else. `src_ip` as a label is one stream per address: the
 classic Loki cardinality footgun, and the reason the exporter keeps it out of reach.
