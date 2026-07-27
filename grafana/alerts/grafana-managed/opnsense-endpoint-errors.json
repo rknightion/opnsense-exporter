@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-endpoint-errors",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense-exporter-health-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense-exporter-health-alerts"
     }
   },
   "spec": {

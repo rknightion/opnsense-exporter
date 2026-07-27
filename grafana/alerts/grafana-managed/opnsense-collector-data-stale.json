@@ -4,10 +4,10 @@
   "metadata": {
     "name": "opnsense-collector-data-stale",
     "annotations": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense-exporter-health-alerts"
     },
     "labels": {
-      "grafana.app/folder": "opnsense-alerts"
+      "grafana.app/folder": "opnsense-exporter-health-alerts"
     }
   },
   "spec": {

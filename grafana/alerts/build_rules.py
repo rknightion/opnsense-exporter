@@ -19,6 +19,7 @@ Usage:
     python3 build_rules.py --stack               # add domain=infra (+page on critical)
     python3 build_rules.py --datasource <uid>    # datasource UID (default grafanacloud-prom)
     python3 build_rules.py --folder <name>       # grafana folder (default opnsense-alerts)
+    python3 build_rules.py --health-folder <name>  # exporter self-health folder (#431)
 
 Alerts are defined as a value-producing query `A` plus a threshold condition, rendered to the
 Grafana A→C query/threshold node pipeline.
@@ -26,6 +27,7 @@ Grafana A→C query/threshold node pipeline.
 import argparse
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +59,7 @@ SUMMARY_INSTANCE_EXEMPT = {
 # summary, description. op in {gt, lt, within_range, outside_range}.
 RULES = [
     dict(name="opnsense-exporter-down", title="OPNsenseExporterDown",
+         selfhealth=True,
          A="opnsense_up", op="lt", params=[1, 0], for_min=15, severity="critical",
          nodata="Alerting",
          summary="OPNsense exporter/box down ({{ $labels.opnsense_instance }})",
@@ -126,6 +129,7 @@ RULES = [
     # series for the one real instance, differing only by a service_version label that
     # had been removed earlier that day (#472).
     dict(name="opnsense-exporter-instance-missing", title="OPNsenseExporterInstanceMissing",
+         selfhealth=True,
          A="max by (opnsense_instance) (present_over_time(opnsense_up[1h])) "
            "unless on(opnsense_instance) opnsense_up",
          op="gt", params=[0, 0], for_min=10, severity="critical",
@@ -241,6 +245,7 @@ RULES = [
     # ~t=0..10m (<15m) → for:15m never elapses → no false page; genuinely sustained errors keep every
     # rolling 2m window non-empty, so the condition stays true past 15m and the alert fires.
     dict(name="opnsense-endpoint-errors", title="OPNsenseEndpointErrors",
+         selfhealth=True,
          A="sum by (opnsense_instance, endpoint) (increase(opnsense_exporter_endpoint_errors_total[2m]))",
          op="gt", params=[0, 0], for_min=15, severity="warning",
          summary="OPNsense exporter endpoint errors on {{ $labels.endpoint }} ({{ $labels.opnsense_instance }})",
@@ -312,6 +317,7 @@ RULES = [
     # Unlike an increase()-window rule this expression is monotone while the fault
     # persists, so the pending clock never resets between two once-per-tier attempts.
     dict(name="opnsense-collector-data-stale", title="OPNsenseCollectorDataStale",
+         selfhealth=True,
          A="(time() - opnsense_exporter_collector_snapshot_timestamp_seconds - 120) "
            "/ opnsense_exporter_collector_poll_interval_seconds",
          op="gt", params=[3, 0], for_min=5, severity="warning",
@@ -358,6 +364,7 @@ RULES = [
     # Tolerance is looser (6 missed intervals) and severity lower: data IS still
     # refreshing, so this is a degradation, not a freeze.
     dict(name="opnsense-collector-degraded", title="OPNsenseCollectorDegraded",
+         selfhealth=True,
          A="((time() - opnsense_exporter_collector_last_success_timestamp_seconds - 120) "
            "/ opnsense_exporter_collector_poll_interval_seconds) "
            "unless on(opnsense_instance, collector) "
@@ -403,6 +410,7 @@ RULES = [
     # startup (after up to 5s jitter), so last_poll appears within seconds on every
     # tier, making a fixed 30m pending period safe here rather than tier-scaled.
     dict(name="opnsense-collector-never-stored", title="OPNsenseCollectorNeverStoredData",
+         selfhealth=True,
          A="opnsense_exporter_collector_last_poll_timestamp_seconds "
            "unless on(opnsense_instance, collector) "
            "opnsense_exporter_collector_snapshot_timestamp_seconds",
@@ -839,6 +847,7 @@ RULES = [
     # close that gap for the log-shipping pipeline itself (sink health, backpressure, label loss,
     # source liveness).
     dict(name="opnsense-logship-sink-errors", title="OPNsenseLogShipSinkErrors",
+         selfhealth=True,
          A="sum by (opnsense_instance) (rate(opnsense_exporter_logs_ship_errors_total[5m]))",
          op="gt", params=[0, 0], for_min=10, severity="warning",
          summary="OPNsense log-shipping sink retrying ({{ $labels.opnsense_instance }})",
@@ -863,6 +872,7 @@ RULES = [
             ],
          )),
     dict(name="opnsense-logship-queue-near-capacity", title="OPNsenseLogShipQueueNearCapacity",
+         selfhealth=True,
          A="max by (opnsense_instance) ("
            "label_replace(opnsense_exporter_logs_queue_length / "
            "(opnsense_exporter_logs_queue_capacity > 0), \"bound\", \"count\", \"__name__\", \".*\") "
@@ -890,6 +900,7 @@ RULES = [
             ],
          )),
     dict(name="opnsense-logship-counted-loss", title="OPNsenseLogShipCountedLoss",
+         selfhealth=True,
          A="sum by (opnsense_instance, source, reason) "
            "(increase(opnsense_exporter_logs_dropped_total[15m]))",
          op="gt", params=[0, 0], for_min=0, severity="warning",
@@ -920,6 +931,7 @@ RULES = [
             ],
          )),
     dict(name="opnsense-logship-resource-capped", title="OPNsenseLogShipResourceCapped",
+         selfhealth=True,
          A="sum by (opnsense_instance) (increase(opnsense_exporter_logs_resource_capped_total[15m]))",
          op="gt", params=[0, 0], for_min=0, severity="warning",
          summary="OPNsense log-shipping records had labels dropped ({{ $labels.opnsense_instance }})",
@@ -945,6 +957,7 @@ RULES = [
     # genuine stall. A source that is legitimately quiet or not configured would false-fire if
     # included, so it is deliberately excluded rather than covered here.
     dict(name="opnsense-logship-cursor-stalled", title="OPNsenseLogShipCursorStalled",
+         selfhealth=True,
          A='time() - max by (opnsense_instance, source) (opnsense_exporter_logs_last_exported_timestamp_seconds{source=~"syslog|zenarmor"})',
          op="gt", params=[900, 0], for_min=0, severity="warning",
          summary="OPNsense log-shipping source {{ $labels.source }} stalled ({{ $labels.opnsense_instance }})",
@@ -979,6 +992,7 @@ RULES = [
     # period is ~15 consecutive failed exports, so a single backend blip or a rolling
     # restart of the collector endpoint does not fire.
     dict(name="opnsense-otlp-delivery-failing", title="OPNsenseOTLPDeliveryFailing",
+         selfhealth=True,
          A="opnsense_exporter_otlp_consecutive_failures", op="gt", params=[0, 0],
          for_min=15, severity="warning",
          summary="OPNsense exporter OTLP metric delivery failing",
@@ -1410,25 +1424,68 @@ def grafana_for(for_min: int) -> str:
     return "0s" if not for_min else f"{for_min}m0s"
 
 
-def emit_grafana_managed(ds: str, folder: str, stack: bool):
+# ---- self-health routing (#431 step 4) ------------------------------------
+# Exporter-health alerts land in their own Grafana folder so they cannot be
+# mistaken for firewall-operational ones. The difference matters at 3am: an
+# OPNsenseFirewallUnhealthy page means go look at the firewall, an
+# OPNsenseLogShipSinkErrors page means the firewall is probably fine and the
+# monitoring is not, and mixing them in one folder makes the responder read every
+# title to tell which they have.
+#
+# Membership is DECLARED per rule (`selfhealth=True`), not inferred, because two
+# members cannot be inferred: OPNsenseExporterDown and
+# OPNsenseExporterInstanceMissing both fire on `opnsense_up`, which is not an
+# `opnsense_exporter_*` metric but is entirely a statement about the exporter's
+# ability to see the box. `is_self_health_expr` below is the mechanical
+# cross-check — a rule built purely from self-metrics that FORGETS the flag fails
+# the tests, so the declaration cannot silently fall behind the expressions.
+SELF_METRIC_RE = re.compile(
+    r"\b(opnsense_exporter_[a-z0-9_]+|go_[a-z0-9_]+|process_[a-z0-9_]+)")
+# `opnsense_instance` is excluded explicitly: it is the LABEL every rule groups by,
+# not a firewall metric, and matching it would classify every self-health rule as
+# mixed.
+FIREWALL_METRIC_RE = re.compile(r"\bopnsense_(?!exporter_|instance\b)[a-z0-9_]+")
+
+
+def is_self_health_expr(expr: str) -> bool:
+    """True iff `expr` reads ONLY exporter self-metrics. Sufficient for membership,
+    not necessary — see the note above about `opnsense_up`."""
+    return bool(SELF_METRIC_RE.search(expr)) and not FIREWALL_METRIC_RE.search(expr)
+
+
+def rule_folder(rule, folder: str, health_folder: str) -> str:
+    """Which Grafana folder one alert or recording rule belongs in.
+
+    Recording rules carry no `selfhealth` flag and are sorted by expression alone:
+    all 14 bundled ones derive from firewall metrics, so the health folder holds no
+    recording rules today. That is the owner's per-rule sort, applied here rather
+    than assumed."""
+    if rule.get("selfhealth") or is_self_health_expr(rule.get("A") or rule.get("expr", "")):
+        return health_folder
+    return folder
+
+
+def emit_grafana_managed(ds: str, ops_folder: str, stack: bool, health_folder: str):
     outdir = os.path.join(HERE, "grafana-managed")
     os.makedirs(outdir, exist_ok=True)
     for stale in os.listdir(outdir):  # clear stale manifests so renames don't linger
         if stale.endswith(".json"):
             os.remove(os.path.join(outdir, stale))
     written = []
-    # Folder manifest (named so its UID == folder); pushed first so the rules resolve.
-    folder_manifest = {
-        "apiVersion": "folder.grafana.app/v1beta1", "kind": "Folder",
-        "metadata": {"name": folder},
-        "spec": {"title": "OPNsense Exporter Alerts"},
-    }
-    fp = os.path.join(outdir, "_folder.json")
-    with open(fp, "w") as f:
-        json.dump(folder_manifest, f, indent=2)
-        f.write("\n")
-    written.append(fp)
+    # Folder manifests (named so each UID == its folder); pushed first so the rules
+    # resolve. Two folders since #431: firewall-operational and exporter-health.
+    for slug, title, fname in (
+            (ops_folder, "OPNsense Exporter Alerts", "_folder.json"),
+            (health_folder, "OPNsense Exporter Health Alerts", "_folder-health.json")):
+        fp = os.path.join(outdir, fname)
+        with open(fp, "w") as f:
+            json.dump({"apiVersion": "folder.grafana.app/v1beta1", "kind": "Folder",
+                       "metadata": {"name": slug}, "spec": {"title": title}},
+                      f, indent=2)
+            f.write("\n")
+        written.append(fp)
     for r in RULES:
+        folder = rule_folder(r, ops_folder, health_folder)
         labels = {"severity": r["severity"]}
         if stack:
             labels["domain"] = "infra"
@@ -1469,6 +1526,7 @@ def emit_grafana_managed(ds: str, folder: str, stack: bool):
             f.write("\n")
         written.append(p)
     for r in RECORDING:
+        folder = rule_folder(r, ops_folder, health_folder)
         labels = {"domain": "infra"} if stack else {}
         # Grafana rule UIDs are capped at 40 chars; keep the slug compact.
         short = (r["metric"].replace("instance:opnsense_", "").replace("opnsense_", "")
@@ -1633,14 +1691,21 @@ def write_runbooks_md() -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--datasource", default="grafanacloud-prom")
-    ap.add_argument("--folder", default="opnsense-alerts")
+    ap.add_argument("--folder", default="opnsense-alerts",
+                    help="grafana folder for firewall-operational rules")
+    ap.add_argument("--health-folder", default="opnsense-exporter-health-alerts",
+                    help="grafana folder for exporter self-health rules (#431)")
     ap.add_argument("--stack", action="store_true",
                     help="add IRM label contract (domain=infra; page=true on critical)")
     args = ap.parse_args()
 
-    outdir, written = emit_grafana_managed(args.datasource, args.folder, args.stack)
+    outdir, written = emit_grafana_managed(args.datasource, args.folder, args.stack,
+                                          args.health_folder)
     print(f"wrote {len(written)} grafana-managed manifests to {outdir}")
-    print(f"alerts: {len(RULES)}  recording rules: {len(RECORDING)}  stack-labels: {args.stack}")
+    self_health = sum(1 for r in RULES
+                      if rule_folder(r, args.folder, args.health_folder) == args.health_folder)
+    print(f"alerts: {len(RULES)} ({self_health} exporter-health)  "
+          f"recording rules: {len(RECORDING)}  stack-labels: {args.stack}")
 
     runbooks_path = write_runbooks_md()
     print(f"wrote runbooks to {runbooks_path}")

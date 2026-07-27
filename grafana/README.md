@@ -9,7 +9,7 @@ OPNsense Exporter:
 | `dashboard-health.json` | The **self-observability companion** (UID `opnsense-exporter-health`): Diagnostics and Log Shipping — the exporter watching itself. Cross-linked with the operational dashboard, carrying the selected instance and time range. |
 | `build_dashboard.py` | Generator for BOTH dashboards. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
-| `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ a folder), pushable with `gcx`. |
+| `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ two folders), pushable with `gcx`. |
 | `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
 | `runbooks.md` | **Generated** - full per-alert runbook: what each rule measures, its threshold/window, absent/no-data semantics, first checks, likely causes, and recovery verification. Regenerate with `make rules`. |
 
@@ -285,17 +285,28 @@ convention.
 ### Grafana-managed format
 
 `alerts/grafana-managed/` holds one `rules.alerting.grafana.app/v0alpha1` manifest per rule
-plus a `_folder.json`. Push with gcx:
+plus two folder manifests. Rules are sorted into **two Grafana folders**: firewall-operational
+ones in `opnsense-alerts` (`_folder.json`) and exporter self-health ones in
+`opnsense-exporter-health-alerts` (`_folder-health.json`). The split is for the 3am read — an
+`OPNsenseFirewallUnhealthy` page means go look at the firewall, an `OPNsenseLogShipSinkErrors`
+page means the firewall is probably fine and the monitoring is not. Membership is declared per
+rule and cross-checked: a rule built purely from `opnsense_exporter_*` metrics that is not
+declared self-health fails the tests. Push with gcx:
 ```bash
 cd grafana/alerts
 python3 build_rules.py --datasource <your-prom-uid>   # default: grafanacloud-prom
-gcx resources push -p grafana-managed/_folder.json    # create the folder first
-gcx resources push -p grafana-managed/                # then the rules
+gcx resources push -p grafana-managed/_folder.json         # create the folders first
+gcx resources push -p grafana-managed/_folder-health.json
+gcx resources push -p grafana-managed/                    # then the rules
 ```
 
 Regenerate with `--stack` to attach an IRM label contract (`domain=infra`, plus `page=true` on
-critical rules) for routing through a notification policy / on-call. Use `--folder <uid>` to
-target a specific Grafana folder.
+critical rules) for routing through a notification policy / on-call. Use `--folder <uid>` and
+`--health-folder <uid>` to target specific Grafana folders.
+
+Regenerate under the same `--stack` setting you deploy with. `build_rules.py` without `--stack`
+emits no routing labels at all, so pushing that output over rules created with `--stack` strips
+their IRM routing labels.
 
 ### Alerts
 

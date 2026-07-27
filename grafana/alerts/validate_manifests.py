@@ -10,6 +10,7 @@ CI (#84, extended #429).
 
 Expected shapes:
   * _folder.json          -> folder.grafana.app/v1beta1, kind Folder
+  * _folder-health.json   -> folder.grafana.app/v1beta1, kind Folder
   * every other *.json     -> rules.alerting.grafana.app/v0alpha1,
                               kind AlertRule or RecordingRule
 """
@@ -31,6 +32,11 @@ sys.path.insert(0, os.path.dirname(HERE))
 from uids import REPO_BASE, github_heading_slug  # noqa: E402
 
 FOLDER_API = "folder.grafana.app/v1beta1"
+# Both folder manifests build_rules.py emits (#431): firewall-operational rules and
+# exporter self-health rules live in separate Grafana folders so a responder can tell
+# "go look at the firewall" from "the monitoring is broken" without reading titles.
+# Named rather than pattern-matched, so an unexpected `_folder-*.json` is still an error.
+FOLDER_MANIFESTS = ("_folder.json", "_folder-health.json")
 RULE_API = "rules.alerting.grafana.app/v0alpha1"
 RULE_KINDS = {"AlertRule", "RecordingRule"}
 
@@ -155,7 +161,7 @@ def validate_document(name: str, doc: dict) -> list:
     api = doc.get("apiVersion")
     kind = doc.get("kind")
 
-    if name == "_folder.json":
+    if name in FOLDER_MANIFESTS:
         if api != FOLDER_API or kind != "Folder":
             errors.append(f"{name}: expected {FOLDER_API}/Folder, got {api}/{kind}")
         return errors
@@ -272,7 +278,7 @@ def validate_dir(manifest_dir: str) -> list:
         return [f"no manifests found in {manifest_dir}"]
 
     errors = []
-    saw_folder = False
+    seen_folders = set()
     for p in paths:
         name = os.path.basename(p)
         try:
@@ -281,12 +287,14 @@ def validate_dir(manifest_dir: str) -> list:
         except (OSError, json.JSONDecodeError) as e:
             errors.append(f"{name}: not well-formed JSON: {e}")
             continue
-        if name == "_folder.json":
-            saw_folder = True
+        if name in FOLDER_MANIFESTS:
+            seen_folders.add(name)
         errors.extend(validate_document(name, doc))
 
-    if not saw_folder:
-        errors.append("_folder.json is missing (folder manifest must be present)")
+    for required in FOLDER_MANIFESTS:
+        if required not in seen_folders:
+            errors.append(f"{required} is missing (both folder manifests must be present; "
+                          "a rule whose folder has no manifest fails to resolve on push)")
 
     return errors
 

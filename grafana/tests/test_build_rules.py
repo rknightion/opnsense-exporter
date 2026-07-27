@@ -451,7 +451,8 @@ class GrafanaManagedRuleGenerationTest(unittest.TestCase):
             try:
                 build_rules.HERE = tmp
                 outdir, written = build_rules.emit_grafana_managed(
-                    "test-prometheus", "test-opnsense-alerts", stack=False
+                    "test-prometheus", "test-opnsense-alerts", stack=False,
+        health_folder="test-opnsense-health-alerts"
                 )
             finally:
                 build_rules.HERE = original_here
@@ -592,3 +593,77 @@ class ExporterDisappearanceTest(unittest.TestCase):
         self.assertIn(lookback, desc,
                       "the description must name the same lookback the expression uses, "
                       "so the decommission behaviour is discoverable without reading PromQL")
+
+
+class SelfHealthFolderRoutingTest(unittest.TestCase):
+    """#431 step 4: exporter-health rules live in their own Grafana folder.
+
+    The point is the 3am read. An `OPNsenseFirewallUnhealthy` page means go look at
+    the firewall; an `OPNsenseLogShipSinkErrors` page means the firewall is probably
+    fine and the monitoring is not. In one folder a responder has to read every
+    title to tell which they have.
+
+    Membership is declared per rule rather than inferred, because two members cannot
+    be inferred — `OPNsenseExporterDown` and `OPNsenseExporterInstanceMissing` fire
+    on `opnsense_up`, which is not an `opnsense_exporter_*` metric but is entirely a
+    statement about the exporter. The declaration is cross-checked below so it
+    cannot fall behind the expressions.
+    """
+
+    OPS = "opnsense-alerts"
+    HEALTH = "opnsense-exporter-health-alerts"
+
+    def _folder(self, rule):
+        return build_rules.rule_folder(rule, self.OPS, self.HEALTH)
+
+    def test_a_rule_built_only_from_self_metrics_must_be_declared_self_health(self):
+        """The cross-check that keeps the declaration honest."""
+        for rule in build_rules.RULES:
+            if build_rules.is_self_health_expr(rule["A"]):
+                with self.subTest(rule=rule["title"]):
+                    self.assertEqual(
+                        self._folder(rule), self.HEALTH,
+                        f"{rule['title']} reads only exporter self-metrics but is "
+                        "routed to the firewall folder")
+
+    def test_the_two_opnsense_up_rules_are_declared_self_health(self):
+        by_title = {r["title"]: r for r in build_rules.RULES}
+        for title in ("OPNsenseExporterDown", "OPNsenseExporterInstanceMissing"):
+            with self.subTest(title=title):
+                self.assertEqual(self._folder(by_title[title]), self.HEALTH,
+                                 f"{title} is about the exporter, not the firewall")
+
+    def test_firewall_rules_stay_in_the_firewall_folder(self):
+        """The control. Without it, a `rule_folder` that always returned HEALTH
+        would satisfy every assertion above."""
+        by_title = {r["title"]: r for r in build_rules.RULES}
+        for title in ("OPNsenseFirewallUnhealthy", "OPNsenseCrashReports"):
+            with self.subTest(title=title):
+                self.assertEqual(self._folder(by_title[title]), self.OPS)
+
+    def test_no_recording_rule_is_self_health_today(self):
+        """Recording rules are sorted by the same rule; all 14 derive from firewall
+        metrics, so the health folder holds none. If that changes, this fails and
+        the new rule needs a deliberate decision rather than a default."""
+        moved = [r["metric"] for r in build_rules.RECORDING
+                 if self._folder(r) == self.HEALTH]
+        self.assertEqual(moved, [])
+
+    def test_both_folders_are_emitted_and_every_rule_resolves_to_one(self):
+        import glob
+        import json
+        import os
+        manifest_dir = os.path.join(ALERTS_DIR, "grafana-managed")
+        folders, rule_folders = set(), set()
+        for path in glob.glob(os.path.join(manifest_dir, "*.json")):
+            with open(path) as f:
+                doc = json.load(f)
+            if doc["kind"] == "Folder":
+                folders.add(doc["metadata"]["name"])
+            else:
+                rule_folders.add(doc["metadata"]["labels"]["grafana.app/folder"])
+        self.assertEqual(folders, {self.OPS, self.HEALTH})
+        self.assertTrue(rule_folders <= folders,
+                        f"rules reference folders with no manifest: {rule_folders - folders}")
+        self.assertIn(self.HEALTH, rule_folders,
+                      "the health folder manifest ships but no rule is routed to it")
