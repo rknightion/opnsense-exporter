@@ -20,11 +20,11 @@ func TestAggregateSeverity(t *testing.T) {
 		{"mismatch is drift", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{Mismatches: []opnsense.Mismatch{{Path: "x"}}}}}, true, false},
 		{"missing is warning", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{Missing: []string{"x"}}}}, false, true},
 		{"unknown key is warning", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{UnknownTopKeys: []string{"x"}}}}, false, true},
-		// Report-only during the #376 baseline: nested extras render in full but
-		// must NOT raise a warning, or the 1003 paths the first live run found
-		// would keep the drift issue permanently open. #457 triages them and
-		// then flips this to (false, true).
-		{"unknown nested path is report-only, not a warning", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{UnknownPaths: []string{"rows[].x"}}}}, false, false},
+		// #376 shipped nested-key detection report-only, because the first live
+		// baseline (1003 paths) would have kept the drift issue permanently open
+		// before it was triaged. #457 triaged that baseline into
+		// knownExtraPaths, so an UNEXEMPTED nested extra is a real warning again.
+		{"unknown nested path is a warning", []probeResult{{Endpoint: "a", Res: opnsense.ValidationResult{UnknownPaths: []string{"rows[].x"}}}}, false, true},
 		{"core 404 is warning", []probeResult{{Endpoint: "a", Absent: true}}, false, true},
 		{"plugin-gated 404 is not a warning", []probeResult{{Endpoint: "siproxdRegistrations", Absent: true}}, false, false},
 		{"probe error is warning", []probeResult{{Endpoint: "a", ProbeErr: "boom"}}, false, true},

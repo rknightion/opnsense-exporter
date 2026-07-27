@@ -383,6 +383,23 @@ func TestValidateResponseSchemaUnknownNestedPaths(t *testing.T) {
 			raw:       `{"details":{"uptime":1,"zz":1},"rows":[{"name":"a","aa":1}],"byName":{"wg0":{"state":"up","mm":1}},"opaque":1,"sealed":{}}`,
 			wantPaths: []string{"byName.*.mm", "details.zz", "rows[].aa"},
 		},
+		{
+			// OPNsense's bootgrid UI convention emits a "%"-prefixed formatted
+			// twin alongside almost every raw row field (#457). The twin is
+			// protocol noise, not a second piece of information, so it is
+			// suppressed structurally rather than requiring its own
+			// knownExtraPaths entry — here the raw field ("aa") is itself
+			// unmodeled and still reports; only the "%aa" twin is dropped.
+			name:      "percent-prefixed twin of an unmodeled field is suppressed",
+			raw:       `{"details":{"uptime":1},"rows":[{"name":"a","aa":1,"%aa":"1"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+			wantPaths: []string{"rows[].aa"},
+		},
+		{
+			// Same suppression when the raw field IS modeled — the twin still
+			// carries no new information and must not surface on its own.
+			name: "percent-prefixed twin of a modeled field is suppressed",
+			raw:  `{"details":{"uptime":1},"rows":[{"name":"a","%name":"A"}],"byName":{"wg0":{"state":"up"}},"opaque":1,"sealed":{}}`,
+		},
 	}
 
 	for _, tc := range cases {

@@ -23,11 +23,11 @@ func pluginGatedSet() map[string]bool {
 
 // aggregate derives the two severity signals the workflow consumes: drift
 // (breaking — a type conflict the exporter would decode wrongly) and warnings
-// (missing paths, unexpected keys, an unresolved required coverage path, a
-// vanished CORE endpoint, probe problems). A plugin-gated endpoint answering 404
-// is expected (plugin not installed) and is NOT a warning — otherwise a box that
-// simply doesn't run every optional plugin would keep the drift issue open
-// forever.
+// (missing paths, unexpected keys, unexpected nested keys, an unresolved
+// required coverage path, a vanished CORE endpoint, probe problems). A
+// plugin-gated endpoint answering 404 is expected (plugin not installed) and is
+// NOT a warning — otherwise a box that simply doesn't run every optional
+// plugin would keep the drift issue open forever.
 //
 // Unverified paths are the same story one level down: only a path the coverage
 // ledger marks required-and-verifiable warns (#377). State-optional, unledgered
@@ -43,14 +43,15 @@ func aggregate(results []probeResult) (drift, warnings bool) {
 			drift = true
 		}
 		unexpectedAbsent := r.Absent && !gated[r.Endpoint]
-		// UnknownPaths is deliberately NOT a warning yet — see the report-only
-		// note in renderReport. The first live baseline (2026-07-25) surfaced
-		// 1003 unmodelled nested paths across 62 endpoints, so warning on them
-		// now would pin the drift issue open permanently and train everyone to
-		// ignore it, which is the exact risk #376 names. They still render in
-		// full, so discovery is unaffected. #457 triages the baseline into
-		// knownExtraPaths, and flipping this back is that issue's final step.
+		// UnknownPaths became a warning again in #457, which triaged the first
+		// live baseline (#376, 2026-07-25: 1003 unmodelled nested paths across
+		// 62 endpoints) into opnsense/testdata/schemas/exemptions.json's
+		// knownExtraPaths. An UNEXEMPTED nested extra is exactly as actionable
+		// as an unexpected top-level key — the caller either exempts it (with a
+		// reason and prune trigger) or files it as a modeling opportunity, the
+		// same as every other warning class here.
 		if len(r.Res.Missing) > 0 || len(r.Res.UnknownTopKeys) > 0 ||
+			len(r.Res.UnknownPaths) > 0 ||
 			unexpectedAbsent || r.ProbeErr != "" || r.SkippedParam {
 			warnings = true
 		}
@@ -154,10 +155,11 @@ func renderReport(results []probeResult, exempt map[string]string) string {
 		}
 	})
 
-	// Nested extras (#376). Paths are normalized by the validator: array
-	// elements are "[]" and dynamic map identities are "*", so a hostname, peer
-	// identity or interface name can never reach this public report.
-	section("ℹ️ Unexpected nested keys — REPORT-ONLY baseline, not a warning (data we do not model; exempt in `opnsense/testdata/schemas/exemptions.json` under `knownExtraPaths` once triaged — see #457)", func() {
+	// Nested extras (#376, warning since #457). Paths are normalized by the
+	// validator: array elements are "[]" and dynamic map identities are "*", so
+	// a hostname, peer identity or interface name can never reach this public
+	// report.
+	section("🟡 Unexpected nested keys (data we do not model — exempt in `opnsense/testdata/schemas/exemptions.json` under `knownExtraPaths` if legitimate)", func() {
 		for _, r := range results {
 			for _, p := range r.Res.UnknownPaths {
 				fmt.Fprintf(&b, "- `%s` `%s`\n", r.Endpoint, p)

@@ -184,6 +184,14 @@ func buildKnownKeyTrie(s EndpointSchema) *knownKeyNode {
 	return root
 }
 
+// isBootgridFormattedTwin reports whether a live object key is the
+// "%"-prefixed formatted-value companion bootgrid emits alongside a raw row
+// field ("action" / "%action", "priv" / "%priv"). It is a UI-rendering
+// convention, not a second piece of data, so it is never itself drift (#457).
+func isBootgridFormattedTwin(key string) bool {
+	return strings.HasPrefix(key, "%") && key != "%"
+}
+
 // collectUnknownPaths walks the decoded response alongside the trie and records
 // every key the schema does not model, as a normalized path.
 //
@@ -212,6 +220,17 @@ func collectUnknownPaths(n *knownKeyNode, v any, prefix string, extra pathSet, o
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
+			if isBootgridFormattedTwin(k) {
+				// OPNsense's bootgrid UI convention emits a "%"-prefixed
+				// formatted-value twin alongside almost every raw row field
+				// (e.g. "action" / "%action"). It carries no information the
+				// raw field doesn't already, so it is suppressed here
+				// structurally rather than needing its own knownExtraPaths
+				// entry per field (#457) — the raw field's own presence or
+				// absence in this map still reports (or doesn't) on its own
+				// merits via the next iteration.
+				continue
+			}
 			c := n.child(k)
 			if c == nil {
 				c = n.dynamic // a struct+map hybrid cannot arise today; tolerate it
