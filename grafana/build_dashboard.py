@@ -16,6 +16,7 @@ import re
 import sys
 
 import sentinel_contract
+import uids
 from annotations import add_annotations
 from builder import (INSTANCE_SEL, Builder, sel, grp, RATE, ENABLED, UPDOWN, OKERR,
                      YESNO, GW_STATUS)
@@ -228,6 +229,26 @@ def add_core_variables(b: Builder):
         "sort": "alphabeticalAsc",
         "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
         "allowCustomValue": True, "skipUrlSync": False}})
+
+
+def add_navigation(b: Builder):
+    """Dashboard-level links, from the frozen registry in uids.py (#419).
+
+    Deliberately only the two destinations that EXIST. The self-observability
+    dashboard's UID is frozen (`uids.HEALTH_UID`) but reserved until #431 generates
+    it, and `uids.dash_url()` refuses a reserved destination — so the main-to-self
+    link is added by flipping one `exists` flag in that commit, not by remembering to
+    come back here. Emitting it now would ship a link that 404s, which is the failure
+    #419's own acceptance criteria call broken navigation.
+    """
+    b.dashboard_links([
+        uids.external_link(
+            "Documentation", uids.DOCS_BASE,
+            tooltip="Metric reference, collector reference and configuration"),
+        uids.external_link(
+            "Alert runbooks", uids.RUNBOOK_URL,
+            tooltip="What each generated alert means and what to do about it"),
+    ])
 
 
 def build_overview(b: Builder):
@@ -657,6 +678,7 @@ def leaf_tab_titles(b: Builder) -> list[str]:
 def build_all() -> Builder:
     b = Builder()
     add_core_variables(b)
+    add_navigation(b)            # dashboard-level links (#419)
     add_annotations(b)           # shared event timeline (#421)
     # Leaf order is local to each domain after organize_tabs().
     build_overview(b)

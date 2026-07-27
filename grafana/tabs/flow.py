@@ -22,6 +22,7 @@ themselves rather than only here:
 """
 
 from builder import Builder, sel, grp, RATE
+from uids import focus_interface, to_tab
 
 # Aggregating by source rather than over it is the whole point — see the module
 # docstring. Adding this to a `sum by (...)` costs one extra legend field and makes
@@ -403,6 +404,19 @@ def build(b: Builder):
              "only where both lanes run and correlate (--flow.log-mode=per_flow); absent otherwise, "
              "since there is no disagreement to measure.",
     )
+
+    # ---- drilldowns (#419) ------------------------------------------------
+    # Flow's `interface` label is description space, not device space: live values on
+    # 2026-07-27 were AAISP, CAM, IOT, LAN, MGMT, VIRGIN — the same set
+    # opnsense_interfaces_link_state carries — plus unresolved device names and the
+    # synthetic `locally-originated`/`__other__` keys, which simply select nothing.
+    # So $interface is the right variable here and $device is not.
+    for panel in (iface, packets):
+        b.field_links(panel, [focus_interface()])
+        b.panel_links(panel, [
+            to_tab("Interface counters for this selection", "Network", "Interfaces"),
+            to_tab("Firewall verdicts for this selection", "Security", "Firewall & PF"),
+        ])
 
     b.tab("Flow Volume", [
         b.row("Volume", [iface, direction], present="has_flow_volume"),

@@ -169,6 +169,45 @@ upstream-authored timestamps (ClamAV's signature *build* date) are the recurring
   device-bearing collector, so disabling any one of them (firewall, NetFlow, vnStat, interfaces,
   flow) leaves the picker populated.
 
+### Navigation: dashboard UIDs, links and drilldowns
+
+Every link is generated from `uids.py`, which is the single source of truth for dashboard
+UIDs (#419). A UID is never typed at a call site, and `tests/test_links.py` fails the build on
+any link that breaks the contract below.
+
+**Destinations.** `opnsense-exporter` is this dashboard. `opnsense-exporter-health` is
+**reserved** for the self-observability dashboard (#431): the UID is frozen so work can be built
+against it, but it carries `exists=False`, so `dash_url()` refuses it and **no link to it is
+emitted until the dashboard exists**. A link to a UID that 404s is worse than no link, which is
+why the flag exists rather than a plain list. Three retired companion UIDs (`rovp4pp`,
+`opnsense-network-activity`, `ddfj9vprnpio74a`) are recorded as never-reuse; a test asserts they
+appear nowhere in the generated manifest. The Zenarmor companion is deliberately not a
+destination — Zenarmor is a sentinel-gated tab in this dashboard (#435), and an in-dashboard tab
+needs no link.
+
+**Context that travels.** Each internal link is a relative `/d/<uid>?…` URL carrying
+`${__url_time_range}`, `${opnsense_instance:queryparam}` and `${datasource:queryparam}` (plus
+`${loki_datasource:queryparam}` for log-facing destinations). Grafana's `keepTime`/`includeVars`
+booleans are deliberately unused: `includeVars` would propagate all ~100 hidden presence
+sentinels, and a panel-level data link has no such booleans at all.
+
+**What a drilldown does.**
+
+- *Field links* (click a series) re-scope the dashboard to that series: `$interface` on the
+  interface, flow and firewall-log panels, `$device` on the pf/device-space panels. The two
+  label spaces are disjoint (#98), so the helper — `focus_interface()` or `focus_device()` — is
+  chosen per metric family, and a test rejects a link templating a label its own panel never
+  returns.
+- *Panel links* (panel header) jump to the tab that answers the next question, keeping the
+  instance and window: interfaces → firewall/flow, firewall → log-derived events, gateway/CARP →
+  syslog stream, log shipping → diagnostics.
+
+**Tab targeting degrades, never breaks.** A tab link adds `dtab=<domain>` and
+`<domain>-dtab=<leaf>`, Grafana's own tab URL-sync keys. A Grafana build that does not honour
+them opens the dashboard on its default tab with the time range and instance still correct, and
+a tab hidden by its presence sentinel behaves the same way. Slugs are derived from the tab titles
+of the build itself, so renaming a tab fails the build rather than silently mis-targeting.
+
 ### Deploy the dashboard
 
 **Grafana UI:** Dashboards → New → Import, and upload `dashboard.json` (Grafana 13+).

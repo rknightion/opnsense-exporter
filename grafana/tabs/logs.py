@@ -16,6 +16,7 @@ self-metrics.
 """
 
 from builder import Builder, grp, RATE
+from uids import to_tab
 
 
 def build(b: Builder):
@@ -175,6 +176,22 @@ def build(b: Builder):
              "60s, interfaces every 5m, leases every 60s -- a value climbing far past those means "
              "the API is failing and enrichment is silently going stale.",
     )
+
+    # ---- drilldowns (#419) ------------------------------------------------
+    # This tab is the pipeline's own health; the two questions it raises point
+    # elsewhere. "Is anything arriving?" is the Loki-backed syslog stream, and "is the
+    # exporter itself healthy?" is Diagnostics. Shipping errors specifically implicate
+    # the sink, which is the same OTLP/endpoint story Diagnostics carries.
+    b.panel_links(shipped, [
+        to_tab("Shipped lines in Loki for this window", "Services", "Syslog", loki=True),
+        to_tab("Log-derived event metrics", "Observability", "Log-derived Events"),
+    ])
+    b.panel_links(ship_errors, [
+        to_tab("Exporter delivery health for this window", "Observability", "Diagnostics"),
+    ])
+    b.panel_links(dropped, [
+        to_tab("Exporter delivery health for this window", "Observability", "Diagnostics"),
+    ])
 
     b.tab("Log Shipping", [
         b.row("Throughput", [shipped, dropped], present="has_logs"),

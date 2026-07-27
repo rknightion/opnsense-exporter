@@ -11,6 +11,7 @@ Covers:
 """
 
 from builder import Builder, sel, grp, epoch_ms, RATE
+from uids import focus_device, focus_interface, to_tab
 
 # The pf-traffic and netflow metrics label `interface` with the kernel DEVICE name
 # (igb0, ixl0_vlan25, pppoe0), NOT the configured description that the $interface
@@ -411,6 +412,26 @@ def build(b: Builder):
     # ══════════════════════════════════════════════════════════════════════
     # Assemble tab
     # ══════════════════════════════════════════════════════════════════════
+    # ---- drilldowns (#419) ------------------------------------------------
+    # The pf families label `interface` with the kernel DEVICE name, so the field
+    # link sets $device — NOT $interface. Getting that backwards would silently
+    # navigate to a selection that matches nothing, which is precisely the #98 trap
+    # this module's DEV constant exists for. The log-entries panel is the one panel
+    # here in description space, so it gets the other one.
+    for panel in (pkt_pass_in, pkt_block_in, pkt_pass_out, pkt_block_out,
+                  bw_pass_in, bw_block_in, bw_pass_out, bw_block_out):
+        b.field_links(panel, [focus_device("interface")])
+    b.field_links(iface_hits, [focus_interface()])
+    for panel in (pkt_pass_in, pkt_block_out):
+        b.panel_links(panel, [
+            to_tab("Interface counters for this selection", "Network", "Interfaces"),
+        ])
+    for panel in (pkt_block_in, iface_hits):
+        b.panel_links(panel, [
+            to_tab("Firewall log events (per rule, per action)",
+                   "Observability", "Log-derived Events"),
+        ])
+
     b.tab("Firewall & PF", [
         b.row("Traffic — Inbound Pass/Block (packets/s)",
               [pkt_pass_in, pkt_block_in]),

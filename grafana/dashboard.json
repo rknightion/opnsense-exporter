@@ -34,7 +34,32 @@
       "fiscalYearStartMonth": 0,
       "hideTimepicker": false
     },
-    "links": [],
+    "links": [
+      {
+        "title": "Documentation",
+        "type": "link",
+        "url": "https://m7kni.io/opnsense-exporter/",
+        "icon": "external link",
+        "tooltip": "Metric reference, collector reference and configuration",
+        "tags": [],
+        "asDropdown": false,
+        "targetBlank": true,
+        "includeVars": false,
+        "keepTime": false
+      },
+      {
+        "title": "Alert runbooks",
+        "type": "link",
+        "url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts",
+        "icon": "external link",
+        "tooltip": "What each generated alert means and what to do about it",
+        "tags": [],
+        "asDropdown": false,
+        "targetBlank": true,
+        "includeVars": false,
+        "keepTime": false
+      }
+    ],
     "annotations": [
       {
         "kind": "AnnotationQuery",
@@ -12443,7 +12468,16 @@
           "id": 85,
           "title": "Interface RX Throughput",
           "description": "Bytes received per second \u00d7 8 = bits per second.",
-          "links": [],
+          "links": [
+            {
+              "title": "Firewall traffic for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Security&Security-dtab=Firewall-%26-PF"
+            },
+            {
+              "title": "Flow volume for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Flow-Volume"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -12503,7 +12537,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -12532,7 +12572,16 @@
           "id": 86,
           "title": "Interface TX Throughput",
           "description": "Bytes transmitted per second \u00d7 8 = bits per second. Shown as negative-Y by convention.",
-          "links": [],
+          "links": [
+            {
+              "title": "Firewall traffic for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Security&Security-dtab=Firewall-%26-PF"
+            },
+            {
+              "title": "Flow volume for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Flow-Volume"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -12592,7 +12641,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": [
                   {
@@ -12927,7 +12982,12 @@
           "id": 90,
           "title": "Interface Errors",
           "description": "Input and output errors per second.",
-          "links": [],
+          "links": [
+            {
+              "title": "Interface reset / attach events",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Log-derived-Events"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -13013,7 +13073,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -13361,7 +13427,12 @@
           "id": 94,
           "title": "Link State",
           "description": "1 = Up (green), 0 = Down (red), 2 = Unknown (yellow). Unknown is reported by the kernel for carrier-less pseudo-devices (PPPoE, tun/tailscale) and is not a fault - alert on Down (0), not not-Up.",
-          "links": [],
+          "links": [
+            {
+              "title": "Gateway state over the same window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Network&Network-dtab=Gateways-%26-WAN"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -13445,7 +13516,13 @@
                         "value": 1
                       }
                     ]
-                  }
+                  },
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -15518,7 +15595,12 @@
           "id": 114,
           "title": "Inbound Pass Packets/s",
           "description": "Rate of inbound IPv4/IPv6 packets permitted by the firewall, per interface.",
-          "links": [],
+          "links": [
+            {
+              "title": "Interface counters for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Network&Network-dtab=Interfaces"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -15604,7 +15686,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -15633,7 +15721,12 @@
           "id": 115,
           "title": "Inbound Block Packets/s",
           "description": "Rate of inbound IPv4/IPv6 packets blocked by the firewall, per interface.",
-          "links": [],
+          "links": [
+            {
+              "title": "Firewall log events (per rule, per action)",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Log-derived-Events"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -15719,7 +15812,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -15834,7 +15933,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -15863,7 +15968,12 @@
           "id": 117,
           "title": "Outbound Block Packets/s",
           "description": "Rate of outbound IPv4/IPv6 packets blocked by the firewall, per interface.",
-          "links": [],
+          "links": [
+            {
+              "title": "Interface counters for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Network&Network-dtab=Interfaces"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -15949,7 +16059,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -16064,7 +16180,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -16179,7 +16301,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -16294,7 +16422,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -16409,7 +16543,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this device across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-device=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -16438,7 +16578,12 @@
           "id": 122,
           "title": "Recent Firewall Log Entries per Interface",
           "description": "Firewall log entries per interface in the most recent ~5000-record log window. This is a sliding-window gauge (not a counter): plotted directly, never rate()d. interface=\"other\" aggregates interfaces beyond the top 10.",
-          "links": [],
+          "links": [
+            {
+              "title": "Firewall log events (per rule, per action)",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Log-derived-Events"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -16498,7 +16643,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -19693,7 +19844,16 @@
           "id": 155,
           "title": "Gateway Status",
           "description": "0=Offline, 1=Online, 2=Unknown, 3=Pending, 4=Packetloss, 5=Latency, 6=Offline (forced). Label default_gateway is included in series.",
-          "links": [],
+          "links": [
+            {
+              "title": "Gateway alarm events (log-derived)",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Log-derived-Events"
+            },
+            {
+              "title": "Raw syslog for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&${loki_datasource:queryparam}&dtab=Services&Services-dtab=Syslog"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -19915,7 +20075,12 @@
           "id": 157,
           "title": "Gateway RTT",
           "description": "Average RTT and RTT standard deviation (RTTd) in milliseconds.",
-          "links": [],
+          "links": [
+            {
+              "title": "Interface counters for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Network&Network-dtab=Interfaces"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -20195,7 +20360,12 @@
           "id": 159,
           "title": "Packet Loss %",
           "description": "Current packet loss percentage per gateway.",
-          "links": [],
+          "links": [
+            {
+              "title": "Gateway alarm events (log-derived)",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Log-derived-Events"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -47341,7 +47511,16 @@
           "id": 417,
           "title": "CARP VIP Status",
           "description": "CARP VIP state over time: MASTER, BACKUP, INIT, or Unknown.",
-          "links": [],
+          "links": [
+            {
+              "title": "HA sync state for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=System&System-dtab=HA-Sync"
+            },
+            {
+              "title": "Raw syslog for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&${loki_datasource:queryparam}&dtab=Services&Services-dtab=Syslog"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -47600,7 +47779,12 @@
           "id": 419,
           "title": "CARP Transition Events",
           "description": "Rate of FreeBSD kernel CARP transitions parsed from received syslog. event is state_changed (a MASTER/BACKUP/INIT move), demoted or promoted; demoted and promoted are the same kernel line distinguished by the SIGN of its demotion delta. from/to/interface/vhid are empty on a demotion, which is global to the node and names neither. Read it beside the CARP VIP Status timeline above: that shows the state now, this shows the transitions that produced it - a VIP sitting on MASTER while this stays busy is a flapping pair. The kernel's CAUSE is deliberately not a label (it is open-ended free text across FreeBSD versions); it ships on the log record as carp.reason, with carp.demotion.delta and carp.demotion.total. Absent until syslog shipping sees a kernel CARP line.",
-          "links": [],
+          "links": [
+            {
+              "title": "Raw syslog for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&${loki_datasource:queryparam}&dtab=Services&Services-dtab=Syslog"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -71076,7 +71260,16 @@
           "id": 649,
           "title": "Throughput by Interface (bits/sec)",
           "description": "opnsense_flow_bytes_total: flow bytes per second by interface, x8 for bits. interface is the DEVICE-derived name with VLAN children split out (ixl0_vlan50 -> IOT), so VLAN traffic is attributed to its own interface rather than to the parent LAN. An interface of __other__ is the folded remainder, not a real interface. Summed BY source: the two flow sources measure the same traffic at different points and must never be added together.",
-          "links": [],
+          "links": [
+            {
+              "title": "Interface counters for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Network&Network-dtab=Interfaces"
+            },
+            {
+              "title": "Firewall verdicts for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Security&Security-dtab=Firewall-%26-PF"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -71136,7 +71329,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -71594,7 +71793,16 @@
           "id": 655,
           "title": "Packet Rate by Interface & Direction",
           "description": "opnsense_flow_packets_total: packets per second. Divided into the byte rate this gives mean packet size, which is a cheap way to spot a flood (small packets, high rate) against a bulk transfer.",
-          "links": [],
+          "links": [
+            {
+              "title": "Interface counters for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Network&Network-dtab=Interfaces"
+            },
+            {
+              "title": "Firewall verdicts for this selection",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Security&Security-dtab=Firewall-%26-PF"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -71654,7 +71862,13 @@
                       "mode": "none"
                     }
                   },
-                  "min": 0
+                  "min": 0,
+                  "links": [
+                    {
+                      "title": "Focus this interface across the dashboard",
+                      "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&var-interface=${__field.labels.interface}"
+                    }
+                  ]
                 },
                 "overrides": []
               },
@@ -75170,7 +75384,16 @@
           "id": 686,
           "title": "Records Shipped (rate)",
           "description": "opnsense_exporter_logs_shipped_total: records successfully handed to the sink per second, by source. This is the primary throughput signal.",
-          "links": [],
+          "links": [
+            {
+              "title": "Shipped lines in Loki for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&${loki_datasource:queryparam}&dtab=Services&Services-dtab=Syslog"
+            },
+            {
+              "title": "Log-derived event metrics",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Log-derived-Events"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -75259,7 +75482,12 @@
           "id": 687,
           "title": "Records Dropped (rate)",
           "description": "opnsense_exporter_logs_dropped_total: records dropped before delivery, by source and reason (reason=overflow means the backpressure queue was full and the oldest record was evicted). Sustained drops mean the sink cannot keep up.",
-          "links": [],
+          "links": [
+            {
+              "title": "Exporter delivery health for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Diagnostics"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {
@@ -75578,7 +75806,12 @@
           "id": 690,
           "title": "Sink Errors (rate)",
           "description": "opnsense_exporter_logs_ship_errors_total: sink Emit attempts that did not fully deliver per second. The pipeline retries their unacknowledged remainder, so this is a retry/degradation signal, not a record-loss counter. A dead OTLP endpoint shows up here.",
-          "links": [],
+          "links": [
+            {
+              "title": "Exporter delivery health for this window",
+              "url": "/d/opnsense-exporter?${__url_time_range}&${opnsense_instance:queryparam}&${datasource:queryparam}&dtab=Observability&Observability-dtab=Diagnostics"
+            }
+          ],
           "data": {
             "kind": "QueryGroup",
             "spec": {

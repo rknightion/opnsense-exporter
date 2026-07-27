@@ -189,6 +189,7 @@ class Builder:
         self.tabs: list = []
         self.variables: list = []
         self.annotations: list = []            # v2 AnnotationQuery envelopes (#421)
+        self.links: list = []                  # dashboard-level DashboardLinks (#419)
         self._sentinels: set = set()          # every claimed sentinel name (both datasources)
         self._sentinel_scopes: dict = {}      # prometheus sentinel name -> declared scope mode
         self._id = 0
@@ -631,6 +632,44 @@ class Builder:
         self.size[name] = (w, h)
         return name
 
+    # ---- navigation (#419) ----------------------------------------------
+    # Links are attached AFTER a panel is built rather than passed through every
+    # viz helper's signature: a drilldown is a property of what the panel means,
+    # not of how it is drawn, and threading a `links=` parameter through eleven
+    # helpers would put the same optional argument on panels that can never use
+    # one (a text panel has no field context). Both setters take the element name
+    # a viz helper returned, so a typo is an immediate KeyError.
+    #
+    # The two are NOT interchangeable, and choosing wrong is a silent failure:
+    #
+    #   panel_links()  -> spec.links, the panel header menu. No field context, so
+    #                     `${__field.labels.x}` interpolates to nothing here.
+    #   field_links()  -> fieldConfig.defaults.links, reached by clicking a series
+    #                     or a table cell. This is the only place a label-scoped
+    #                     drilldown works.
+    def panel_links(self, name: str, links: list) -> str:
+        """Attach header links to a panel (no field/series context available)."""
+        spec = self.elements[name]["spec"]
+        for link in links:
+            if "${__field." in link["url"]:
+                raise ValueError(
+                    f"panel link {link['title']!r} on {spec['title']!r} templates a "
+                    "field value, which a panel-header link has no context for — use "
+                    "field_links()")
+        spec["links"] = spec.get("links", []) + links
+        return name
+
+    def field_links(self, name: str, links: list) -> str:
+        """Attach data links to a panel's fields (clicking a series or cell)."""
+        viz = self.elements[name]["spec"]["vizConfig"]["spec"]
+        defaults = viz.setdefault("fieldConfig", {"defaults": {}, "overrides": []})["defaults"]
+        defaults["links"] = defaults.get("links", []) + links
+        return name
+
+    def dashboard_links(self, links: list) -> None:
+        """Append dashboard-level links (rendered above the tab bar)."""
+        self.links.extend(links)
+
     # ---- variables / sentinels ------------------------------------------
     def _claim_sentinel_name(self, name: str):
         """Reserve a sentinel name, or raise if it is already taken.
@@ -837,7 +876,7 @@ class Builder:
                                  "autoRefreshIntervals": ["30s", "1m", "5m", "15m", "30m", "1h"],
                                  "timezone": "browser", "fiscalYearStartMonth": 0,
                                  "hideTimepicker": False},
-                "links": [], "annotations": self.annotations,
+                "links": self.links, "annotations": self.annotations,
                 "variables": self.variables,
                 "elements": self.elements,
                 "layout": {"kind": "TabsLayout", "spec": {"tabs": self.tabs}},

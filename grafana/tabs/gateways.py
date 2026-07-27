@@ -10,6 +10,7 @@ Rows:
 """
 
 from builder import Builder, RATE, sel, GW_STATUS
+from uids import to_tab
 
 
 def build(b: Builder):
@@ -172,6 +173,22 @@ def build(b: Builder):
         sort_by="Gateway",
         desc="ICMP probe timing configuration per gateway.",
     )
+
+    # ---- drilldowns (#419) ------------------------------------------------
+    # A gateway name is not a dashboard variable, so there is no field link to make
+    # here: the useful jump is sideways, to the two places that say WHY a gateway
+    # changed state. Both carry the instance and window, which is the whole point —
+    # a raw syslog stream read at the wrong window is worse than no link.
+    b.panel_links(gw_status, [
+        to_tab("Gateway alarm events (log-derived)", "Observability", "Log-derived Events"),
+        to_tab("Raw syslog for this window", "Services", "Syslog", loki=True),
+    ])
+    b.panel_links(rtt, [
+        to_tab("Interface counters for this window", "Network", "Interfaces"),
+    ])
+    b.panel_links(loss, [
+        to_tab("Gateway alarm events (log-derived)", "Observability", "Log-derived Events"),
+    ])
 
     b.tab("Gateways & WAN", [
         b.row("Status & Alarm Events", [gw_status, gateway_alarms]),

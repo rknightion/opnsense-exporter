@@ -41,6 +41,7 @@ $device, not $interface, same as the LAGG/bridge/SFP rows above.
 """
 
 from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
+from uids import focus_interface, to_tab
 
 
 def build(b: Builder):
@@ -391,6 +392,25 @@ def build(b: Builder):
              "month — the figure to alert on against an ISP data cap. Resets monthly "
              "(gauge, not counter).",
     )
+
+    # ---- drilldowns (#419) ------------------------------------------------
+    # These four panels are per-description-interface (`$interface`: LAN, IOT), so a
+    # clicked series can re-scope the whole dashboard to that one interface. The
+    # cross-tab links answer the two questions this tab cannot: what the firewall did
+    # with that traffic, and what the flow records say it was.
+    for panel in (rx_bps, tx_bps, errors, link_state):
+        b.field_links(panel, [focus_interface()])
+    for panel in (rx_bps, tx_bps):
+        b.panel_links(panel, [
+            to_tab("Firewall traffic for this selection", "Security", "Firewall & PF"),
+            to_tab("Flow volume for this selection", "Observability", "Flow Volume"),
+        ])
+    b.panel_links(errors, [
+        to_tab("Interface reset / attach events", "Observability", "Log-derived Events"),
+    ])
+    b.panel_links(link_state, [
+        to_tab("Gateway state over the same window", "Network", "Gateways & WAN"),
+    ])
 
     b.tab("Interfaces", [
         b.row("Throughput", [rx_bps, tx_bps]),

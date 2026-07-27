@@ -186,6 +186,30 @@ render-check is MANDATORY, `gcx resources validate` does not catch them): (1) tr
 reducer id; (3) `reduce` needs `mode:"seriesToRows"`; (4) a stat over a Loki query needs
 `noValue:"0"`. `b.loki_table`/`b.loki_stat` bake all four in — use the helpers, don't hand-roll.
 
+## Links and drilldowns (import from uids)
+
+Never write a URL or a dashboard UID at a call site — `uids.py` owns both (#419), and
+`tests/test_links.py` fails the build on a link that drops context, targets a reserved or
+retired UID, or templates a label the panel does not return.
+
+```python
+from uids import focus_device, focus_interface, to_tab
+
+b.field_links(panel, [focus_interface()])          # click a series -> set $interface
+b.field_links(panel, [focus_device("interface")])  # pf/device-space label -> set $device
+b.panel_links(panel, [to_tab("Firewall verdicts for this selection",
+                             "Security", "Firewall & PF")])
+b.panel_links(panel, [to_tab("Raw syslog", "Services", "Syslog", loki=True)])
+```
+
+Two rules that are easy to get wrong:
+
+* `field_links` is the ONLY place `${__field.labels.x}` resolves — a panel-header link has no
+  series context, so `panel_links` raises if you pass one.
+* `$interface` (LAN, IOT) and `$device` (igb0, ixl0_vlan25) are disjoint label spaces (#98).
+  Pick the helper that matches the metric family the panel queries, or the link navigates to a
+  selection matching nothing.
+
 ## Value-mapping constants (import from builder)
 
 `UPDOWN` {0:Down/red,1:Up/green} · `RUNSTOP` {0:Stopped,1:Running} · `OKERR` {0:Error,1:OK} ·

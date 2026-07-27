@@ -18,6 +18,7 @@ on has_carp_vips, and the transition-event row on has_log_events_carp.
 """
 
 from builder import Builder, RATE, sel, YESNO
+from uids import to_tab
 
 
 # Custom mappings for CARP allow and VIP status.
@@ -157,6 +158,19 @@ def build(b: Builder):
     # ══════════════════════════════════════════════════════════════════════
     # Assemble tab (gated on has_carp)
     # ══════════════════════════════════════════════════════════════════════
+    # ---- drilldowns (#419) ------------------------------------------------
+    # A failover is only half a story on this tab: the kernel's reason ships on the
+    # syslog record (carp.reason), and whether the peer pair is actually in sync is
+    # the HA Sync tab. Both links keep the window, which is what makes them useful
+    # during an incident rather than after it.
+    b.panel_links(vip_status, [
+        to_tab("HA sync state for this window", "System", "HA Sync"),
+        to_tab("Raw syslog for this window", "Services", "Syslog", loki=True),
+    ])
+    b.panel_links(carp_events, [
+        to_tab("Raw syslog for this window", "Services", "Syslog", loki=True),
+    ])
+
     b.tab("CARP / HA", [
         b.row("CARP Global State",
               [demotion, allow, maintenance, vips_total]),

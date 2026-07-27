@@ -26,8 +26,14 @@ Grafana A→C query/threshold node pipeline.
 import argparse
 import json
 import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The runbook URL is shared with the dashboard's own "Alert runbooks" link (#419):
+# one registry, so an alert notification and the dashboard can never point at two
+# different pages.
+sys.path.insert(0, os.path.dirname(HERE))
+from uids import RUNBOOK_URL  # noqa: E402
 
 # Each alert: name(slug), title, A (value query), cond (op, params), for_min, severity,
 # summary, description. op in {gt, lt, within_range, outside_range}.
@@ -624,7 +630,7 @@ def emit_grafana_managed(ds: str, folder: str, stack: bool):
                 "execErrState": "Error", "for": grafana_for(r["for_min"]),
                 "trigger": {"interval": "1m"}, "labels": labels,
                 "annotations": {"summary": r["summary"], "description": r["description"],
-                                "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"},
+                                "runbook_url": RUNBOOK_URL},
                 "expressions": {
                     "A": {"datasourceUID": ds,
                           "relativeTimeRange": {"from": "15m0s", "to": "0s"},
