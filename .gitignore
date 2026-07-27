@@ -64,3 +64,7 @@ docs/superpowers/
 # Review one (it may contain host/network data) and promote it into a curated
 # fixture (opnsense/testdata/health/...) to make it a permanent CI gate.
 /opnsense/testdata/captures/
+
+# Claude Code local session state (settings.local.json, agent scratch). Nothing here
+# is shared configuration — the repo's committed guidance lives in CLAUDE.md.
+/.claude/

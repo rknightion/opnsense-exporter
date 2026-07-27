@@ -1,3 +1,10 @@
+# Pinned rather than derived. GoReleaser defaults project_name to the repository
+# directory name, and scripts/docgen reads this key to build the release-asset names
+# it documents — so without it, running `make docs` from a git worktree derives the
+# asset name from the worktree directory and hard-fails. A no-op for real releases:
+# CI checks out into `opnsense-exporter`, which is the value derived today.
+project_name: opnsense-exporter
+
 before:
   hooks:
     - go mod tidy
