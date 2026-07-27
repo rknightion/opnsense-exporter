@@ -16,7 +16,11 @@
       "kind": "object"
     },
     {
-      "path": "rows[].type",
+      "path": "rows[].destinationType",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].pathType",
       "kind": "any"
     }
   ]

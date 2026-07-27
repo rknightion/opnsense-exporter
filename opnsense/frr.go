@@ -981,15 +981,50 @@ type frrGeneralRouteSearch struct {
 	Rows []frrGeneralRouteRow `json:"rows"`
 }
 
-// frrOSPFRouteRow is one row from search_ospfroute/search_ospfv3route (OSPF
-// route tables).
+// frrOSPFRouteRow is one row from search_ospfroute (OSPFv2 route table).
+// FRR's composed route code (e.g. "N E2", "R ") lives directly under "type".
 type frrOSPFRouteRow struct {
 	Type flexString `json:"type"`
 }
 
-// frrOSPFRouteSearch is the bootgrid envelope for search_ospfroute/search_ospfv3route.
+// frrOSPFRouteSearch is the bootgrid envelope for search_ospfroute.
 type frrOSPFRouteSearch struct {
 	Rows []frrOSPFRouteRow `json:"rows"`
+}
+
+// frrOSPFv3RouteRow is one row from search_ospfv3route (OSPFv3 route table).
+// Verified live 2026-07-25 against a real Full-adjacency OSPFv3 box (#458):
+// unlike v2, v3 rows carry NO "type" key at all — the same information v2
+// packs into one composed "type" string is split across two fields,
+// destinationType (e.g. "N") and pathType (e.g. "IA").
+type frrOSPFv3RouteRow struct {
+	DestinationType flexString `json:"destinationType"`
+	PathType        flexString `json:"pathType"`
+}
+
+// resolvedType composes v3's split destinationType/pathType into the same
+// notation v2's single "type" field uses (destinationType + " " + pathType,
+// e.g. "N" + "IA" -> "N IA" — the live-captured pair from #458). Falls back
+// to whichever single field is non-empty, and "" when both are empty (the
+// caller must not turn that into a type="" series — see countOSPFv3Routes).
+func (r frrOSPFv3RouteRow) resolvedType() string {
+	dst := strings.TrimSpace(r.DestinationType.String())
+	path := strings.TrimSpace(r.PathType.String())
+	switch {
+	case dst != "" && path != "":
+		return dst + " " + path
+	case dst != "":
+		return dst
+	case path != "":
+		return path
+	default:
+		return ""
+	}
+}
+
+// frrOSPFv3RouteSearch is the bootgrid envelope for search_ospfv3route.
+type frrOSPFv3RouteSearch struct {
+	Rows []frrOSPFv3RouteRow `json:"rows"`
 }
 
 // frrOSPFDatabaseAreaEntry holds one area's per-LSA-type counts from
@@ -1145,6 +1180,46 @@ func (c *Client) countOSPFRoutes(endpointName EndpointName) ([]FRRRouteTypeCount
 	return result, nil
 }
 
+// countOSPFv3Routes fetches quaggaOspfv3Route and returns a row count per
+// route type, resolved via frrOSPFv3RouteRow.resolvedType (#458). A row
+// resolving to "" (neither destinationType nor pathType present) is dropped
+// rather than counted under an empty-string type label — see the
+// resolvedType doc comment and #458's acceptance criteria. A nil, nil result
+// means the endpoint 404'd (plugin absent); a non-nil, possibly empty, slice
+// means the request succeeded.
+func (c *Client) countOSPFv3Routes(endpointName EndpointName) ([]FRRRouteTypeCount, *APICallError) {
+	endpointURL, ok := c.endpoints[endpointName]
+	if !ok {
+		return nil, &APICallError{Endpoint: string(endpointName), Message: "endpoint not found in client endpoints", StatusCode: 0}
+	}
+
+	var search frrOSPFv3RouteSearch
+	if err := c.do("GET", endpointURL, nil, &search); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	counts := map[string]float64{}
+	var order []string
+	for _, row := range search.Rows {
+		t := row.resolvedType()
+		if t == "" {
+			continue
+		}
+		if _, ok := counts[t]; !ok {
+			order = append(order, t)
+		}
+		counts[t]++
+	}
+	result := make([]FRRRouteTypeCount, 0, len(order))
+	for _, t := range order {
+		result = append(result, FRRRouteTypeCount{Type: t, Count: counts[t]})
+	}
+	return result, nil
+}
+
 // fetchOSPFDatabaseCounts fetches quaggaOspfDatabase and returns an LSA count
 // per (area, lsa_type) pair, plus a synthetic area="" lsa_type="external" row
 // for the domain-wide (not area-scoped) AS-external LSA count. A nil, nil
@@ -1275,7 +1350,7 @@ func (c *Client) FetchFRRRouteVolumes() (FRRRouteVolumes, *APICallError) {
 		data.OSPFRoutes = ospfRoutes
 	}
 
-	if ospfv3Routes, err := c.countOSPFRoutes("quaggaOspfv3Route"); err != nil {
+	if ospfv3Routes, err := c.countOSPFv3Routes("quaggaOspfv3Route"); err != nil {
 		return data, err
 	} else if ospfv3Routes != nil {
 		sawAny = true

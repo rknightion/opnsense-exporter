@@ -1282,3 +1282,100 @@ func TestFetchFRRRouteVolumes_PartialAbsent(t *testing.T) {
 		t.Error("expected no OSPF route counts when search_ospfroute 404s")
 	}
 }
+
+// --- OSPFv3 route "type" label (#458): search_ospfv3route has no "type" key
+// at all; it splits the same information v2 packs into one "type" string
+// across destinationType + pathType. countOSPFv3Routes must compose those
+// into v2's notation rather than bucket every v3 row under type="". ---
+
+// ospfv3RouteFixture mirrors the live dev-box capture (26.7.r_35, #458): two
+// rows, both destinationType "N" pathType "IA" ("N" + "IA" composes to the
+// same "N IA" notation FRR's own v2 "type" field would use).
+const ospfv3RouteFixture = `{
+  "total": 2,
+  "rowCount": 2,
+  "current": 1,
+  "rows": [
+    {"destinationType": "N", "pathType": "IA", "network": "172.16.31.0/24"},
+    {"destinationType": "N", "pathType": "IA", "network": "172.16.32.0/24"}
+  ]
+}`
+
+func TestFetchFRRRouteVolumes_OSPFv3Routes_ComposesTypeFromDestinationAndPathType(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/search_ospfv3route", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(ospfv3RouteFixture))
+	})
+	// search_generalroute4/6, search_ospfroute, ospfdatabase, search_ospfv3database
+	// left unregistered -> 404, only the v3 route slice is under test here.
+
+	data, err := client.FetchFRRRouteVolumes()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.OSPFv3Routes) != 1 {
+		t.Fatalf("expected 1 distinct OSPFv3 route type, got %d: %+v", len(data.OSPFv3Routes), data.OSPFv3Routes)
+	}
+	got := data.OSPFv3Routes[0]
+	if got.Type != "N IA" {
+		t.Errorf(`Type: want "N IA" (destinationType+pathType composed), got %q`, got.Type)
+	}
+	if got.Count != 2 {
+		t.Errorf("Count: want 2, got %v", got.Count)
+	}
+}
+
+// TestFetchFRRRouteVolumes_OSPFv2Routes_TrailingSpacePreserved locks in the
+// pre-existing v2 behaviour the issue requires stay unchanged: FRR's "R "
+// (Router, no path-type suffix) trims to "R", not "R " or "".
+func TestFetchFRRRouteVolumes_OSPFv2Routes_TrailingSpacePreserved(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/search_ospfroute", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":[
+			{"type": "R ", "network": "172.16.9.1/32"}
+		]}`))
+	})
+
+	data, err := client.FetchFRRRouteVolumes()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.OSPFRoutes) != 1 {
+		t.Fatalf("expected 1 OSPF route type, got %d: %+v", len(data.OSPFRoutes), data.OSPFRoutes)
+	}
+	if data.OSPFRoutes[0].Type != "R" {
+		t.Errorf(`Type: want "R" (trailing space trimmed), got %q`, data.OSPFRoutes[0].Type)
+	}
+}
+
+// TestFetchFRRRouteVolumes_OSPFv3Routes_MissingBothFields_NoEmptyLabel covers
+// a row with neither destinationType nor pathType. This shape is NOT from a
+// live capture — FRR's ospf6 route dump always sends at least one of the two
+// on every row observed so far — it deliberately pins the parser's tolerance
+// for the acceptance criterion "a row with none of the fields does not
+// silently produce an empty-string label" per #458. The row is dropped from
+// the result rather than counted under type="".
+func TestFetchFRRRouteVolumes_OSPFv3Routes_MissingBothFields_NoEmptyLabel(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/search_ospfv3route", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total":1,"rowCount":1,"current":1,"rows":[
+			{"network": "172.16.33.0/24"}
+		]}`))
+	})
+
+	data, err := client.FetchFRRRouteVolumes()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, rt := range data.OSPFv3Routes {
+		if rt.Type == "" {
+			t.Errorf("expected no type=\"\" series for a row with neither destinationType nor pathType, got %+v", data.OSPFv3Routes)
+		}
+	}
+}

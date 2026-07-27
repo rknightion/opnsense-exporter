@@ -154,7 +154,7 @@ var schemaRegistry = map[EndpointName]any{
 	"quaggaOspfv3Database":          frrOSPFv3DatabaseSearch{},
 	"quaggaOspfv3Interface":         frrOSPFv3InterfaceEnvelope{},
 	"quaggaOspfv3Overview":          frrOSPFv3OverviewEnvelope{},
-	"quaggaOspfv3Route":             frrOSPFRouteSearch{},
+	"quaggaOspfv3Route":             frrOSPFv3RouteSearch{},
 	"socketStatistics": struct {
 		Statistics map[string]json.RawMessage `json:"statistics"`
 	}{},
