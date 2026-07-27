@@ -77,6 +77,23 @@ type RepairStats struct {
 	// attribution fix doing anything on this box"; a de-dup that drops the right
 	// COUNT while keeping the wrong COPY is exactly the failure that went unnoticed.
 	VLANChildPreferred uint64
+	// VLANSubnetAttributed counts trunk-named records moved onto the VLAN child that
+	// owns the address's subnet — mechanism A' (#465). It is the number that says
+	// whether subnet evidence is doing the work: unlike VLANChildPreferred it also
+	// counts records with NO second copy at all, which #403 measured at 247,105 over
+	// 18h35m and which no hold window of any size could ever have attributed.
+	VLANSubnetAttributed uint64
+	// VLANLateChildCopies counts the RESIDUAL: a proven duplicate that arrived MORE
+	// SPECIFIC than the copy already emitted, and therefore too late to correct
+	// anything. It is the one case the stage still resolves by arrival order.
+	//
+	// It exists because the alternative is silence. An emitted record has been counted
+	// in the rollup and shipped, so it cannot be taken back, and re-emitting the better
+	// copy would double-count real bytes. Counting the case instead makes the residual
+	// observable: it was ~29% of pairs before #465 (108,678 of 372,109, every one of
+	// them trunk-first), and it should now be near zero, moving only for the ambiguous
+	// addresses subnet evidence legitimately refuses.
+	VLANLateChildCopies uint64
 
 	// HeldEntries is how many records are parked in the hold buffer right now,
 	// waiting out vlanHoldWindow. It is a gauge of the latency this repair costs and
@@ -116,6 +133,10 @@ type ifTopology interface {
 	// HasVLANChildren reports whether a device is a trunk, i.e. whether a more
 	// specific copy of a record naming it could still exist.
 	HasVLANChildren(device string) bool
+	// VLANChildFor resolves an address to the VLAN child of parent whose configured
+	// subnet contains it, and answers ONLY when exactly one child owns it. This is the
+	// evidence mechanism A' acts on; see IfMap.VLANChildFor for the three refusals.
+	VLANChildFor(parent string, addr netip.Addr) (Iface, bool)
 }
 
 // wanKnower answers the one topology question rule 3 needs and WANFor cannot: is
@@ -249,6 +270,8 @@ type Repairer struct {
 	capped          uint64
 	childPreferred  uint64
 	holdOverflow    uint64
+	subnetAttrib    uint64
+	lateChildCopies uint64
 }
 
 // RepairVerdict is what the repair stage decided about one record. It is NOT
@@ -405,6 +428,8 @@ func (r *Repairer) Stats() RepairStats {
 		VLANDuplicatesDropped: r.vlanDropped,
 		EgressCorrected:       r.egressCorrected,
 		VLANChildPreferred:    r.childPreferred,
+		VLANSubnetAttributed:  r.subnetAttrib,
+		VLANLateChildCopies:   r.lateChildCopies,
 		// dueEarly counts as held: those records have left the buffer but not yet the
 		// stage, and a gauge that dropped them would make the accounting look short for
 		// as long as they sat there.
@@ -461,6 +486,18 @@ func (r *Repairer) Stats() RepairStats {
 // happen for two copies of one expiry sweep.
 func (r *Repairer) admit(rec *Record, m ifTopology, snap *enrich.Snapshot, now time.Time) RepairVerdict {
 	parentCopy := isVLANParentCopy(rec, m)
+	attributed := false
+	if !parentCopy {
+		// A' runs BEFORE the tables are consulted, so the record is compared and stored
+		// under the interfaces it should have named all along. That is what makes the
+		// outcome identical in both arrival orders: whichever copy lands first, the one
+		// the de-dup table remembers names the child.
+		//
+		// After A, because A is strictly better where it applies: a tagged parent copy is
+		// PROOF that a child copy exists, so dropping it costs nothing, while relabelling
+		// it would leave two identical records to be deduped.
+		attributed = attributeBySubnet(rec, m)
+	}
 	key := keyOf(rec)
 	in, out := rec.In.Device, rec.Out.Device
 
@@ -471,6 +508,9 @@ func (r *Repairer) admit(rec *Record, m ifTopology, snap *enrich.Snapshot, now t
 	if parentCopy {
 		r.vlanDropped++
 		return RepairDrop
+	}
+	if attributed {
+		r.subnetAttrib++
 	}
 
 	// Mechanism B's contest. A held copy has not been emitted, so unlike everything
@@ -495,6 +535,20 @@ func (r *Repairer) admit(rec *Record, m ifTopology, snap *enrich.Snapshot, now t
 	if prev, ok := r.seen[key]; ok {
 		if isDuplicateOf(prev.in, prev.out, in, out, m) {
 			r.vlanDropped++
+			if moreSpecific(in, out, prev.in, prev.out, m) {
+				// THE RESIDUAL, AND WHY IT IS COUNTED RATHER THAN FIXED HERE. This copy
+				// attributes the flow better than the one already in the table — but that one
+				// has been EMITTED: it is through the rollup, counted, and shipped. Taking it
+				// back is not possible, and emitting this copy as well would double-count real
+				// bytes, which is a worse failure than a misattributed one because it is
+				// invisible in the totals.
+				//
+				// So the honest fix is upstream, in A' above, which makes the incumbent
+				// already-correct on first sight. This counter is what proves that: it was
+				// ~29% of pairs before A' existed and should now move only for the addresses
+				// subnet evidence legitimately refuses to resolve.
+				r.lateChildCopies++
+			}
 			return RepairDrop
 		}
 		// Same instance, unrelated interfaces: not proven a duplicate. Keep it, and
@@ -508,6 +562,73 @@ func (r *Repairer) admit(rec *Record, m ifTopology, snap *enrich.Snapshot, now t
 	}
 	r.insert(key, in, out, now)
 	return RepairEmit
+}
+
+// attributeBySubnet is mechanism A' (#465): when a record names a TRUNK on a side, and
+// the address belonging to that side falls inside exactly one of the trunk's VLAN
+// children's subnets, the record is relabelled onto that child immediately.
+//
+// WHY THIS EXISTS AT ALL. The hold contest (B) can only prefer the better copy when both
+// copies are in flight inside vlanHoldWindow. #403's production measurement says that is
+// true for 70.8% of real pairs: p50 gap 953.7ms, but p95 5.7s, p99 31.2s and a maximum
+// of 108.5s. For the other 29.2% the trunk copy had already been released and the child
+// copy was dropped as a duplicate — all 108,678 of them trunk-first, so the
+// misattribution was systematic rather than a coin flip. Enlarging the window is not the
+// lever: covering p99 needs ~31s, whose projected hold occupancy is far past maxHeld
+// (measured peak was 2,115 of 10,000 at 2s), and past the cap the buffer degrades to
+// first-seen-wins anyway; the observed max gap is also 90% of dedupeTTL, so a window
+// pushed into the tail starts double-counting instead. Subnet evidence resolves on FIRST
+// SIGHT, which removes the dependency on arrival order rather than improving the odds of
+// beating it — 362,678 agreements with the hold contest's winner and ZERO disagreements
+// across the whole unambiguous population.
+//
+// THE SIDE PAIRING IS PHYSICAL, not a choice. A record whose INGRESS is the trunk
+// entered from the VLAN, so its SOURCE address is the VLAN host's; one whose EGRESS is
+// the trunk is leaving toward the VLAN, so its DESTINATION is. Resolving a side from the
+// other end's address would attribute the flow to whichever VLAN the far end sat on.
+//
+// A plain function, not a method: it touches only the record and the immutable topology,
+// so it runs BEFORE admit takes the mutex and cannot contend with a concurrent copy. The
+// counter it feeds is incremented inside the lock, with the rest of the accounting.
+//
+// It never drops, never guesses, and leaves the record untouched unless the evidence is
+// unambiguous — VLANChildFor refuses anything matching zero or several children, and
+// #403's scope is explicit that uncertain records are never dropped. What it cannot
+// place keeps flowing into B exactly as before.
+func attributeBySubnet(rec *Record, m ifTopology) bool {
+	if m == nil {
+		return false
+	}
+	// Both sides are attempted, and both may fire on one record: an inter-VLAN flow
+	// reads in=trunk out=trunk, and its two ends belong to two different children.
+	ingress := attributeSide(rec, &rec.In, rec.SrcAddr, m)
+	egress := attributeSide(rec, &rec.Out, rec.DstAddr, m)
+	return ingress || egress
+}
+
+// attributeSide relabels one side of the record, if the evidence names a child of the
+// device that side currently claims.
+//
+// The HasVLANChildren gate is what stops this touching anything else: a side already
+// naming a VLAN child is left alone (the child copy is ground truth, and re-resolving
+// could only move it to a different child), and so is a WAN, a loopback, or any device
+// on a box with no VLANs at all.
+func attributeSide(rec *Record, side *Iface, addr netip.Addr, m ifTopology) bool {
+	if side.Device == "" || !addr.IsValid() || !m.HasVLANChildren(side.Device) {
+		return false
+	}
+	child, ok := m.VLANChildFor(side.Device, addr)
+	if !ok || child.Device == side.Device {
+		return false
+	}
+	// Corrected is deliberately NOT set. ifaceIsWAN reads it as proof that an interface
+	// IS a WAN ("only repair 2 sets this, and only from the WAN table"), so setting it
+	// on a VLAN child would make the direction rules treat an IOT interface as an
+	// uplink. The relabel is recorded on the RECORD instead, which is a log attribute
+	// and cannot be mistaken for topology.
+	*side = child
+	rec.Repairs.VLANSubnetAttributed = true
+	return true
 }
 
 // canBeBeaten reports whether a more specific copy of this record could still exist —

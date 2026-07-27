@@ -347,6 +347,56 @@ func TestDoRefreshIfacesPopulatesIfacesInAPIOrder(t *testing.T) {
 	}
 }
 
+// #465: the per-interface SUBNET must survive. doRefreshIfaces computed it and threw
+// it away, merging only into the flat interface-less LocalNets — which answers "is this
+// address local" but not "WHICH interface owns it", and the latter is what lets a
+// trunk-captured NetFlow record be attributed to the right VLAN child.
+func TestDoRefreshIfacesRetainsPerInterfacePrefixes(t *testing.T) {
+	r := newFixtureRefresher(t, ifaceOverviewFixture)
+	if err := r.doRefreshIfaces(); err != nil {
+		t.Fatalf("doRefreshIfaces: %v", err)
+	}
+
+	want := map[string][]string{
+		// MASKED, not the held address with a length: netip.Prefix.Contains returns false
+		// for an unmasked prefix, so an unmasked value here would make every subnet test
+		// silently miss.
+		"ixl0":        {"10.0.0.0/24", "fe80::/64"},
+		"igb0":        {"203.0.113.8/29"},
+		"lo0":         {"127.0.0.0/8"},
+		"ixl0_vlan50": {"192.168.50.0/24"},
+		"ixl0_vlan60": {"203.0.113.128/29"},
+		"pppoe0":      {"198.51.100.42/32"},
+	}
+	byDevice := map[string]IfaceInfo{}
+	for _, i := range r.cache.Load().Ifaces {
+		byDevice[i.Device] = i
+	}
+	for device, wantNets := range want {
+		info, ok := byDevice[device]
+		if !ok {
+			t.Errorf("%s missing from Ifaces", device)
+			continue
+		}
+		if len(info.Prefixes) != len(wantNets) {
+			t.Errorf("%s Prefixes = %v, want %v", device, info.Prefixes, wantNets)
+			continue
+		}
+		for i, want := range wantNets {
+			if got := info.Prefixes[i].String(); got != want {
+				t.Errorf("%s Prefixes[%d] = %s, want %s", device, i, got, want)
+			}
+		}
+		// The whole point of retaining these: a host address inside the subnet resolves
+		// to this interface, which an unmasked prefix would not do.
+		for _, pfx := range info.Prefixes {
+			if !pfx.Contains(pfx.Addr()) {
+				t.Errorf("%s prefix %s does not contain its own network address; it is not masked", device, pfx)
+			}
+		}
+	}
+}
+
 // IsWAN is a heuristic and its failure modes are deliberate. Pin them, so a later
 // change to the signal is a decision rather than an accident.
 func TestDoRefreshIfacesIsWANHeuristic(t *testing.T) {

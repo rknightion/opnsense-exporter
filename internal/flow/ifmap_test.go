@@ -50,6 +50,148 @@ func liveIfaces() []enrich.IfaceInfo {
 	}
 }
 
+// liveVLANIfaces is liveIfaces with the per-interface SUBNETS retained, which is
+// what #465 added to enrich.IfaceInfo. The addresses are the same; only Prefixes is
+// new, so a fixture without it exercises the "no subnet evidence at all" path.
+func liveVLANIfaces() []enrich.IfaceInfo {
+	ifaces := liveIfaces()
+	for i := range ifaces {
+		switch ifaces[i].Device {
+		case "ixl0":
+			ifaces[i].Prefixes = nets("10.0.0.0/24")
+		case "ixl0_vlan100":
+			ifaces[i].Prefixes = nets("10.100.0.0/24")
+		case "ixl0_vlan25":
+			ifaces[i].Prefixes = nets("10.25.0.0/24")
+		case "ixl0_vlan50":
+			ifaces[i].Prefixes = nets("10.50.0.0/24")
+		case "pppoe0":
+			ifaces[i].Prefixes = nets("198.51.100.42/32")
+		case "igb0":
+			ifaces[i].Prefixes = nets("203.0.113.0/24")
+		}
+	}
+	return ifaces
+}
+
+func nets(ss ...string) []netip.Prefix {
+	out := make([]netip.Prefix, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, netip.MustParsePrefix(s).Masked())
+	}
+	return out
+}
+
+// #465: address -> the ONE VLAN child that owns it, which is the evidence that lets a
+// trunk-captured record be attributed on FIRST SIGHT instead of by arrival order.
+func TestIfMap_VLANChildFor(t *testing.T) {
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveVLANIfaces()), Ifaces: liveVLANIfaces()})
+
+	tests := []struct {
+		name       string
+		parent     string
+		addr       string
+		wantOK     bool
+		wantDevice string
+	}{
+		{"host on a child subnet", "ixl0", "10.50.0.4", true, "ixl0_vlan50"},
+		{"another child of the same trunk", "ixl0", "10.25.0.99", true, "ixl0_vlan25"},
+		{"the child's own address", "ixl0", "10.100.0.1", true, "ixl0_vlan100"},
+		// The v4-mapped form of the same address must resolve identically; netip
+		// compares the two as different Addrs.
+		{"v4-mapped form", "ixl0", "::ffff:10.50.0.4", true, "ixl0_vlan50"},
+		// The trunk's OWN subnet is not a child subnet: a host on 10.0.0.0/24 really is
+		// on the trunk, and relabelling it would invent VLAN traffic.
+		{"trunk's own subnet", "ixl0", "10.0.0.5", false, ""},
+		// No child prefix contains it. This is the fallback-to-hold population.
+		{"address on no child subnet", "ixl0", "8.8.8.8", false, ""},
+		// Right address, WRONG trunk: the evidence is about a child of ixl0, so it says
+		// nothing about a record naming igb1. Relabelling here would move the flow to a
+		// different physical interface entirely.
+		{"child of a different parent", "igb1", "10.50.0.4", false, ""},
+		{"empty parent", "", "10.50.0.4", false, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := m.VLANChildFor(tc.parent, netip.MustParseAddr(tc.addr))
+			if ok != tc.wantOK {
+				t.Fatalf("VLANChildFor(%q, %s) ok = %v, want %v (got %+v)", tc.parent, tc.addr, ok, tc.wantOK, got)
+			}
+			if got.Device != tc.wantDevice {
+				t.Errorf("VLANChildFor(%q, %s).Device = %q, want %q", tc.parent, tc.addr, got.Device, tc.wantDevice)
+			}
+		})
+	}
+	if _, ok := m.VLANChildFor("ixl0", netip.Addr{}); ok {
+		t.Error("VLANChildFor(invalid addr) must miss")
+	}
+	if _, ok := (*IfMap)(nil).VLANChildFor("ixl0", netip.MustParseAddr("10.50.0.4")); ok {
+		t.Error("VLANChildFor on a nil map must miss")
+	}
+}
+
+// The resolved child must carry its NAME and ifIndex, not just the device: the repair
+// stage writes this straight onto the record's interface attribution, and a device
+// without its friendly name would relabel the metric from "LAN" to "ixl0_vlan50"
+// instead of to "IOT".
+func TestIfMap_VLANChildForCarriesNameAndIndex(t *testing.T) {
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveVLANIfaces()), Ifaces: liveVLANIfaces()})
+	got, ok := m.VLANChildFor("ixl0", netip.MustParseAddr("10.50.0.4"))
+	if !ok || got.Name != "IOT" || got.Index != 13 {
+		t.Errorf("VLANChildFor = %+v, %v; want IOT at ifIndex 13", got, ok)
+	}
+}
+
+// AMBIGUOUS EVIDENCE MUST MISS, never pick. #403 measured 9,431 of 372,109 pairs as
+// ambiguous, and those are exactly the population that must keep falling back to the
+// hold contest. Two children whose prefixes both contain the address is not a
+// tie-break to be won by prefix length or map order — Go randomises map iteration, so
+// "most specific wins" would still have to be a deliberate decision, and no capture
+// supports one.
+func TestIfMap_VLANChildForRefusesOverlappingChildren(t *testing.T) {
+	ifaces := []enrich.IfaceInfo{
+		{Device: "ixl0", Name: "LAN", Prefixes: nets("10.0.0.0/24")},
+		{Device: "ixl0_vlan50", Name: "IOT", VlanParent: "ixl0", Prefixes: nets("10.50.0.0/24")},
+		{Device: "ixl0_vlan51", Name: "IOT2", VlanParent: "ixl0", Prefixes: nets("10.50.0.0/25")},
+	}
+	m := BuildIfMap(IfMapInput{Order: devicesOf(ifaces), Ifaces: ifaces})
+
+	if got, ok := m.VLANChildFor("ixl0", netip.MustParseAddr("10.50.0.4")); ok {
+		t.Errorf("VLANChildFor resolved an address matching TWO children to %+v; it must miss", got)
+	}
+	// An address inside only the wider prefix is unambiguous and must still resolve.
+	if got, ok := m.VLANChildFor("ixl0", netip.MustParseAddr("10.50.0.200")); !ok || got.Device != "ixl0_vlan50" {
+		t.Errorf("VLANChildFor(10.50.0.200) = %+v, %v; want ixl0_vlan50", got, ok)
+	}
+}
+
+// A child holding two subnets is ONE owning interface, not an ambiguity. The rule is
+// "exactly one child DEVICE owns this address", not "exactly one prefix matches".
+func TestIfMap_VLANChildForMultiSubnetChild(t *testing.T) {
+	ifaces := []enrich.IfaceInfo{
+		{Device: "ixl0", Name: "LAN", Prefixes: nets("10.0.0.0/24")},
+		{Device: "ixl0_vlan50", Name: "IOT", VlanParent: "ixl0",
+			Prefixes: nets("10.50.0.0/24", "10.50.0.0/25", "10.51.0.0/24")},
+	}
+	m := BuildIfMap(IfMapInput{Order: devicesOf(ifaces), Ifaces: ifaces})
+
+	for _, addr := range []string{"10.50.0.4", "10.51.0.9"} {
+		if got, ok := m.VLANChildFor("ixl0", netip.MustParseAddr(addr)); !ok || got.Device != "ixl0_vlan50" {
+			t.Errorf("VLANChildFor(%s) = %+v, %v; want ixl0_vlan50", addr, got, ok)
+		}
+	}
+}
+
+// A fixture with no Prefixes at all — the shape of every interface list before #465,
+// and of a box whose API rows carry no CIDR — must simply have no evidence, not panic
+// and not resolve.
+func TestIfMap_VLANChildForWithoutPrefixes(t *testing.T) {
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces()})
+	if got, ok := m.VLANChildFor("ixl0", netip.MustParseAddr("10.50.0.4")); ok {
+		t.Errorf("VLANChildFor resolved %+v with no per-interface prefixes; it must miss", got)
+	}
+}
+
 func addrs(ss ...string) []netip.Addr {
 	out := make([]netip.Addr, 0, len(ss))
 	for _, s := range ss {

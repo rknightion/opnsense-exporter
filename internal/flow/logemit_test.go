@@ -52,6 +52,22 @@ func TestLogAttributes_CarriesBothSourcesUnsummed(t *testing.T) {
 	}
 }
 
+// #465: a record whose interface was deduced from the address's subnet says so, for the
+// same reason the egress correction does — an operator comparing this against a switch
+// port needs to know the exporter deduced it rather than ng_netflow reporting it. And
+// the flag must be ABSENT, not "false", on a record nothing was deduced for.
+func TestLogAttributes_RecordsVLANSubnetAttribution(t *testing.T) {
+	r := sampleMerged()
+	if _, present := r.LogAttributes()["flow.vlan_subnet_attributed"]; present {
+		t.Error("flow.vlan_subnet_attributed present on a record that was not reattributed")
+	}
+
+	r.Repairs.VLANSubnetAttributed = true
+	if got := r.LogAttributes()["flow.vlan_subnet_attributed"]; got != "true" {
+		t.Errorf("flow.vlan_subnet_attributed = %q, want true", got)
+	}
+}
+
 // Absent information must not appear as an empty attribute: a NetFlow-only record has
 // no L7 and no Zenarmor counters, and shipping empty keys would misread in Loki.
 func TestLogAttributes_OmitsAbsentFields(t *testing.T) {

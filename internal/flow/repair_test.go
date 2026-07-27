@@ -37,6 +37,15 @@ type rpIfMap struct {
 	parents map[string]string // VLAN child -> parent device
 	wans    map[string]Iface  // firewall-held address -> the WAN holding it
 	wanDevs map[string]bool
+	// childNets is #465's subnet evidence, in the same shape *IfMap holds it: a
+	// containment scan, because the question is which prefixes CONTAIN an address.
+	childNets []rpChildNet
+}
+
+type rpChildNet struct {
+	prefix netip.Prefix
+	iface  Iface
+	parent string
 }
 
 func rpBox() *rpIfMap {
@@ -51,7 +60,43 @@ func rpBox() *rpIfMap {
 			rpWAN2Addr: rpIfWAN2,
 		},
 		wanDevs: map[string]bool{"pppoe0": true, "igb0": true},
+		// The IOT subnet, matching rpSnapshot's LocalNets and the addresses in
+		// rpVLANPair. ixl0_vlan25 and ixl0_vlan100 deliberately have NO subnet here:
+		// a box whose API rows carry no CIDR for an interface must simply have no
+		// evidence for it, and the fallback path needs a child in that state.
+		childNets: []rpChildNet{
+			{netip.MustParsePrefix("10.0.50.0/24"), rpIfIOT, "ixl0"},
+		},
 	}
+}
+
+// VLANChildFor mirrors *IfMap's contract: exactly one owning child device, hanging off
+// the named parent, or nothing at all.
+func (f *rpIfMap) VLANChildFor(parent string, addr netip.Addr) (Iface, bool) {
+	if parent == "" || !addr.IsValid() {
+		return Iface{}, false
+	}
+	addr = addr.Unmap()
+	var (
+		found  Iface
+		device string
+	)
+	for _, cn := range f.childNets {
+		if !cn.prefix.Contains(addr) {
+			continue
+		}
+		if device != "" && cn.iface.Device != device {
+			return Iface{}, false
+		}
+		found, device = cn.iface, cn.iface.Device
+		if cn.parent != parent {
+			found = Iface{}
+		}
+	}
+	if found.Device == "" {
+		return Iface{}, false
+	}
+	return found, true
 }
 
 func (f *rpIfMap) Iface(uint32) Iface { return Iface{} }
@@ -89,6 +134,9 @@ type rpBlindBox struct{ inner *rpIfMap }
 func (f rpBlindBox) WANFor(a netip.Addr) (Iface, bool)  { return f.inner.WANFor(a) }
 func (f rpBlindBox) ParentOf(d string) (string, bool)   { return f.inner.ParentOf(d) }
 func (f rpBlindBox) HasVLANChildren(device string) bool { return f.inner.HasVLANChildren(device) }
+func (f rpBlindBox) VLANChildFor(p string, a netip.Addr) (Iface, bool) {
+	return f.inner.VLANChildFor(p, a)
+}
 
 func rpSnapshot() *enrich.Snapshot {
 	return &enrich.Snapshot{
@@ -131,6 +179,18 @@ func rpVLANPair() (parent, child Record) {
 	return parent, child
 }
 
+// rpVLANPairUntagged is rpVLANPair with NO 802.1Q tag, which is the shape that
+// actually arrives: 0 of the 131 records in the golden capture carry SRC_VLAN/DST_VLAN,
+// so mechanism A never fires on the reference box and the pair has to be resolved
+// without it. Every #465 test uses this rather than the tagged fixture, because a
+// tagged pair is dropped on sight by mechanism A and would prove nothing about the
+// subnet evidence.
+func rpVLANPairUntagged() (parent, child Record) {
+	parent, child = rpVLANPair()
+	parent.VLANID, child.VLANID = "", ""
+	return parent, child
+}
+
 // rpRun feeds records through the repairer in order and returns the ones kept.
 //
 // It runs the lane to COMPLETION: records the stage parks are collected from the
@@ -170,6 +230,351 @@ func rpFeed(r *Repairer, m ifTopology, snap *enrich.Snapshot, now time.Time, rec
 	v := r.repairWith(&rec, m, snap, now)
 	r.Flush()
 	return v
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// #465 — mechanism A', subnet evidence
+// ════════════════════════════════════════════════════════════════════════════
+
+// THE DEFECT-1 REGRESSION TEST. #403 measured 108,678 pairs whose inter-arrival gap
+// exceeded vlanHoldWindow, and ALL 108,678 were trunk-first: the trunk copy was held,
+// released after 2s, inserted into the de-dup table, and the child copy that arrived
+// afterwards was dropped by mechanism C — attributing the flow to the trunk, which is
+// exactly what the repair stage exists to prevent.
+//
+// Subnet evidence resolves it on FIRST SIGHT, so the gap stops mattering.
+func TestRepairer_AboveWindowPairIsAttributedToTheVLANChild(t *testing.T) {
+	parent, child := rpVLANPairUntagged()
+	// Comfortably past the 2s window, and past the p99 gap of 31.2s measured in #403.
+	const gap = 40 * time.Second
+
+	tests := []struct {
+		name          string
+		first, second Record
+	}{
+		{"trunk copy first (the measured case: 108,678 of 108,678)", parent, child},
+		{"child copy first", child, parent},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewRepairer(1000, 1000)
+			m, snap := rpBox(), rpSnapshot()
+
+			kept := rpRun(r, m, snap, rpT0, tc.first)
+			kept = append(kept, rpRun(r, m, snap, rpT0.Add(gap), tc.second)...)
+
+			if len(kept) != 1 {
+				t.Fatalf("kept %d records across a %s gap, want exactly 1", len(kept), gap)
+			}
+			if kept[0].In.Device != "ixl0_vlan50" {
+				t.Errorf("survivor In.Device = %q, want ixl0_vlan50 — a gap wider than "+
+					"vlanHoldWindow must not send the flow back to the trunk", kept[0].In.Device)
+			}
+			if kept[0].In.Name != "IOT" {
+				t.Errorf("survivor In.Name = %q, want IOT: the label follows the device", kept[0].In.Name)
+			}
+		})
+	}
+}
+
+// ORDER-INDEPENDENCE, pinned across the whole matrix #465 asks for: both arrival
+// orders, at gaps inside and outside the hold window. The winner must be byte-for-byte
+// identical in every cell — that is the property, not "usually the child".
+func TestRepairer_SubnetEvidenceIsOrderIndependentAtEveryGap(t *testing.T) {
+	parent, child := rpVLANPairUntagged()
+	gaps := []time.Duration{0, 500 * time.Millisecond, vlanHoldWindow - time.Millisecond,
+		vlanHoldWindow + time.Millisecond, 40 * time.Second, 108 * time.Second}
+
+	for _, gap := range gaps {
+		t.Run(gap.String(), func(t *testing.T) {
+			winners := map[string]Record{}
+			for _, order := range []struct {
+				name          string
+				first, second Record
+			}{
+				{"trunk-first", parent, child},
+				{"child-first", child, parent},
+			} {
+				r := NewRepairer(1000, 1000)
+				m, snap := rpBox(), rpSnapshot()
+				kept := rpRun(r, m, snap, rpT0, order.first)
+				kept = append(kept, rpRun(r, m, snap, rpT0.Add(gap), order.second)...)
+				if len(kept) != 1 {
+					t.Fatalf("%s: kept %d records, want exactly 1", order.name, len(kept))
+				}
+				winners[order.name] = kept[0]
+			}
+			a, b := winners["trunk-first"], winners["child-first"]
+			if a.In != b.In || a.Out != b.Out {
+				t.Errorf("arrival order changed the winner: trunk-first %+v/%+v, child-first %+v/%+v",
+					a.In, a.Out, b.In, b.Out)
+			}
+			if a.In.Device != "ixl0_vlan50" {
+				t.Errorf("winner In.Device = %q, want ixl0_vlan50 in both orders", a.In.Device)
+			}
+		})
+	}
+}
+
+// THE 247,105 RECORDS NO HOLD WINDOW OF ANY SIZE COULD HAVE FIXED. #403 found that
+// many trunk-touching records matched exactly one VLAN child prefix and had NO child
+// copy anywhere in the 18h35m capture. There is no second copy to prefer, so only
+// subnet evidence can attribute them.
+func TestRepairer_LoneTrunkRecordIsAttributedToTheVLANChild(t *testing.T) {
+	parent, _ := rpVLANPairUntagged()
+
+	r := NewRepairer(1000, 1000)
+	got := rpOne(t, r, rpBox(), rpSnapshot(), rpT0, parent)
+
+	if got.In.Device != "ixl0_vlan50" || got.In.Name != "IOT" {
+		t.Errorf("In = %+v, want ixl0_vlan50/IOT: a lone trunk copy with subnet evidence "+
+			"has no partner to lose to, so the evidence is all there is", got.In)
+	}
+	if n := r.Stats().VLANSubnetAttributed; n != 1 {
+		t.Errorf("VLANSubnetAttributed = %d, want 1", n)
+	}
+}
+
+// It must not enter the hold buffer at all: bypassing the hold is what removes the
+// arrival-order dependency AND what keeps occupancy from growing, which is #465's
+// occupancy criterion.
+func TestRepairer_SubnetEvidenceBypassesTheHoldBuffer(t *testing.T) {
+	base, _ := rpVLANPairUntagged()
+	// The bulk shape: an IOT host talking to the internet, so the ONLY trunk-named side
+	// is the one the evidence resolves. Once it names the child, no side can be beaten,
+	// so there is nothing to wait for.
+	rec := base
+	rec.DstAddr = netip.MustParseAddr("8.8.8.8")
+	rec.In, rec.Out = rpIfLAN, rpIfWAN1
+
+	r := NewRepairer(1000, 1000)
+	if v := r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0); v != RepairEmit {
+		t.Fatalf("verdict = %v, want RepairEmit: an unambiguously attributed record must "+
+			"not wait out the hold window", v)
+	}
+	if got := r.Stats().HeldEntries; got != 0 {
+		t.Errorf("HeldEntries = %d, want 0", got)
+	}
+	if got := r.Stats().VLANSubnetAttributed; got != 1 {
+		t.Errorf("VLANSubnetAttributed = %d, want 1", got)
+	}
+}
+
+// THE OCCUPANCY CRITERION, and the conservative limit of the bypass. A side that still
+// names a TRUNK the evidence could not resolve is still holdable — a more specific copy
+// of THAT side may genuinely exist, and #465 is explicit that the 2-second hold stays as
+// the fallback. So the bypass is not "attributed records never hold", it is "a record
+// with no unresolved trunk side never holds".
+//
+// This is what makes the occupancy win real without making it a guess: the LAN-to-WAN
+// and WAN-to-LAN flows that dominate real traffic name one trunk, which A' resolves, so
+// they stop entering the buffer; a LAN-to-LAN flow whose far end sits on the trunk's own
+// subnet keeps its trunk egress and still holds.
+func TestRepairer_HoldStillCoversAnUnresolvedTrunkSide(t *testing.T) {
+	parent, _ := rpVLANPairUntagged() // in=ixl0 out=ixl0, dst on the trunk's own subnet
+
+	r := NewRepairer(1000, 1000)
+	rec := parent
+	if v := r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0); v != RepairHold {
+		t.Fatalf("verdict = %v, want RepairHold: the EGRESS still names a trunk that no "+
+			"subnet evidence resolved, so a more specific copy of that side may exist", v)
+	}
+	// The ingress was still relabelled — a partial resolution is kept, not discarded.
+	if got := r.Stats().VLANSubnetAttributed; got != 1 {
+		t.Errorf("VLANSubnetAttributed = %d, want 1", got)
+	}
+	out := r.Flush()
+	if len(out) != 1 || out[0].In.Device != "ixl0_vlan50" {
+		t.Fatalf("released %d records, first In = %+v; want one record on ixl0_vlan50", len(out), out[0].In)
+	}
+}
+
+// The EGRESS side resolves from the DESTINATION address, not the source. The pairing is
+// physical: a record whose INGRESS is the trunk entered from the VLAN, so its SOURCE is
+// the VLAN host; one whose EGRESS is the trunk is leaving toward the VLAN, so its
+// DESTINATION is. Using the wrong address would attribute a flow to whichever VLAN the
+// other end happened to sit on.
+func TestRepairer_SubnetEvidenceResolvesEachSideFromItsOwnAddress(t *testing.T) {
+	base, _ := rpVLANPairUntagged()
+
+	t.Run("egress trunk resolves from the destination", func(t *testing.T) {
+		rec := base
+		// Inbound: from the internet to the IOT host, leaving by the trunk.
+		rec.SrcAddr = netip.MustParseAddr("8.8.8.8")
+		rec.DstAddr = netip.MustParseAddr("10.0.50.4")
+		rec.In, rec.Out = rpIfWAN1, rpIfLAN
+
+		got := rpOne(t, NewRepairer(1000, 1000), rpBox(), rpSnapshot(), rpT0, rec)
+		if got.Out.Device != "ixl0_vlan50" {
+			t.Errorf("Out.Device = %q, want ixl0_vlan50", got.Out.Device)
+		}
+		if got.In.Device != rpIfWAN1.Device {
+			t.Errorf("In.Device = %q, want it untouched at %q", got.In.Device, rpIfWAN1.Device)
+		}
+	})
+
+	t.Run("ingress trunk is not resolved from the destination", func(t *testing.T) {
+		rec := base
+		// The IOT address is the DESTINATION while the trunk is the INGRESS: the traffic
+		// came in on the trunk from somewhere else entirely. There is no evidence about
+		// the ingress here, so it must be left alone.
+		rec.SrcAddr = netip.MustParseAddr("10.0.0.5")
+		rec.DstAddr = netip.MustParseAddr("10.0.50.4")
+		rec.In, rec.Out = rpIfLAN, rpIfWAN1
+
+		got := rpOne(t, NewRepairer(1000, 1000), rpBox(), rpSnapshot(), rpT0, rec)
+		if got.In.Device != "ixl0" {
+			t.Errorf("In.Device = %q, want ixl0 untouched: the destination says nothing "+
+				"about which interface the traffic ARRIVED on", got.In.Device)
+		}
+	})
+}
+
+// AMBIGUOUS OR ABSENT EVIDENCE MUST FALL BACK TO THE HOLD, unchanged. #403 measured
+// 9,431 ambiguous pairs of 372,109, and #465 is explicit that the 2-second hold stays
+// for them: subnet evidence is not total.
+func TestRepairer_WithoutSubnetEvidenceTheHoldContestStillDecides(t *testing.T) {
+	parent, child := rpVLANPairUntagged()
+	// An address on no child subnet at all — the trunk's own subnet on both ends.
+	for _, rec := range []*Record{&parent, &child} {
+		rec.SrcAddr = netip.MustParseAddr("10.0.0.7")
+		rec.DstAddr = netip.MustParseAddr("10.0.0.5")
+	}
+
+	t.Run("no evidence still holds", func(t *testing.T) {
+		r := NewRepairer(1000, 1000)
+		rec := parent
+		if v := r.repairWith(&rec, rpBox(), rpSnapshot(), rpT0); v != RepairHold {
+			t.Fatalf("verdict = %v, want RepairHold: with no subnet evidence the contest "+
+				"is the only thing that can decide", v)
+		}
+		if got := r.Stats().VLANSubnetAttributed; got != 0 {
+			t.Errorf("VLANSubnetAttributed = %d, want 0", got)
+		}
+	})
+
+	// And the contest still produces the child, in both orders, exactly as before #465.
+	for _, tc := range []struct {
+		name string
+		in   []Record
+	}{
+		{"trunk first", []Record{parent, child}},
+		{"child first", []Record{child, parent}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewRepairer(1000, 1000)
+			kept := rpRun(r, rpBox(), rpSnapshot(), rpT0, tc.in...)
+			if len(kept) != 1 {
+				t.Fatalf("kept %d records, want 1", len(kept))
+			}
+			if kept[0].In.Device != "ixl0_vlan50" {
+				t.Errorf("survivor In.Device = %q, want ixl0_vlan50 from the hold contest", kept[0].In.Device)
+			}
+		})
+	}
+}
+
+// NEVER DROP AN UNCERTAIN RECORD — #403's scope says so outright. A record the
+// evidence cannot place must still be emitted, on the trunk, rather than withheld.
+func TestRepairer_UnresolvableRecordIsStillEmitted(t *testing.T) {
+	parent, _ := rpVLANPairUntagged()
+	parent.SrcAddr = netip.MustParseAddr("10.0.0.7") // no child subnet contains it
+	parent.DstAddr = netip.MustParseAddr("10.0.0.5")
+
+	got := rpOne(t, NewRepairer(1000, 1000), rpBox(), rpSnapshot(), rpT0, parent)
+	if got.In.Device != "ixl0" {
+		t.Errorf("In.Device = %q, want the trunk ixl0: unresolved means unchanged, not dropped", got.In.Device)
+	}
+}
+
+// A record already naming a VLAN child is left completely alone. Re-resolving it could
+// only ever move it to a different child, and the child copy is the ground truth.
+func TestRepairer_ChildCopyIsNotReattributed(t *testing.T) {
+	_, child := rpVLANPairUntagged()
+
+	r := NewRepairer(1000, 1000)
+	got := rpOne(t, r, rpBox(), rpSnapshot(), rpT0, child)
+	if got.In != rpIfIOT {
+		t.Errorf("In = %+v, want it untouched at %+v", got.In, rpIfIOT)
+	}
+	if n := r.Stats().VLANSubnetAttributed; n != 0 {
+		t.Errorf("VLANSubnetAttributed = %d, want 0 — nothing was reattributed", n)
+	}
+}
+
+// The relabel is recorded ON THE RECORD, not only in a counter, for the same reason the
+// egress correction is: the counter says how often, this says which one. And it must be
+// a LOG attribute, never Iface.Corrected — ifaceIsWAN treats Corrected as proof of a
+// WAN by construction, so setting it on a VLAN child would make the direction rules
+// call an IOT interface an uplink.
+func TestRepairer_SubnetAttributionIsObservableWithoutClaimingAWAN(t *testing.T) {
+	parent, _ := rpVLANPairUntagged()
+
+	got := rpOne(t, NewRepairer(1000, 1000), rpBox(), rpSnapshot(), rpT0, parent)
+	if !got.Repairs.VLANSubnetAttributed {
+		t.Error("Repairs.VLANSubnetAttributed = false; a repair nobody can observe is a repair nobody will trust")
+	}
+	if got.In.Corrected {
+		t.Error("In.Corrected = true; only the WAN-egress repair may set that — ifaceIsWAN " +
+			"reads it as proof the interface IS a WAN")
+	}
+	if got.Direction == DirectionOutbound {
+		t.Errorf("Direction = %v; a LAN-to-LAN flow relabelled onto a VLAN child must not "+
+			"become outbound", got.Direction)
+	}
+}
+
+// MECHANISM C'S RESIDUAL IS COUNTED RATHER THAN SILENTLY CORRECTED. An
+// already-EMITTED record cannot be taken back — it has been counted in the rollup and
+// shipped — so a later, more specific copy must still be dropped. What changes is that
+// this is no longer invisible: the case is counted, so the residual is observable and
+// the fix can be shown to have removed it.
+func TestRepairer_LateMoreSpecificCopyIsCounted(t *testing.T) {
+	parent, child := rpVLANPairUntagged()
+	// Strip the evidence so A' cannot fire and the trunk copy really is admitted first.
+	for _, rec := range []*Record{&parent, &child} {
+		rec.SrcAddr = netip.MustParseAddr("10.0.0.7")
+		rec.DstAddr = netip.MustParseAddr("10.0.0.5")
+	}
+
+	r := NewRepairer(1000, 1000)
+	m, snap := rpBox(), rpSnapshot()
+	// The trunk copy is held, then released into the de-dup table.
+	if v := rpFeed(r, m, snap, rpT0, parent); v != RepairHold {
+		t.Fatalf("first verdict = %v, want RepairHold", v)
+	}
+	// The child copy arrives after the window: proven duplicate, more specific, too late.
+	rec := child
+	if v := r.repairWith(&rec, m, snap, rpT0.Add(40*time.Second)); v != RepairDrop {
+		t.Fatalf("second verdict = %v, want RepairDrop: the trunk copy has already been "+
+			"emitted and counted, so re-emitting would double-count", v)
+	}
+	if n := r.Stats().VLANLateChildCopies; n != 1 {
+		t.Errorf("VLANLateChildCopies = %d, want 1 — the residual must be observable", n)
+	}
+}
+
+// The residual counter must NOT fire on an ordinary duplicate that is no more specific
+// than the copy already admitted, or it would report a misattribution on every VLAN
+// duplicate the stage resolves correctly.
+func TestRepairer_LateCopyCounterIgnoresEquallySpecificDuplicates(t *testing.T) {
+	_, child := rpVLANPairUntagged()
+
+	r := NewRepairer(1000, 1000)
+	m, snap := rpBox(), rpSnapshot()
+	// The child copy's EGRESS still names the trunk, so it is held and then released
+	// into the de-dup table by the flush rpFeed performs. Either way it is admitted.
+	rpFeed(r, m, snap, rpT0, child)
+	if got := r.Stats().DedupeEntries; got != 1 {
+		t.Fatalf("DedupeEntries = %d after the flush, want 1", got)
+	}
+	rec := child
+	if v := r.repairWith(&rec, m, snap, rpT0.Add(40*time.Second)); v != RepairDrop {
+		t.Fatalf("second verdict = %v, want RepairDrop", v)
+	}
+	if n := r.Stats().VLANLateChildCopies; n != 0 {
+		t.Errorf("VLANLateChildCopies = %d, want 0: an identical copy is not a misattribution", n)
+	}
 }
 
 // The control for repair 1. The two copies arrive in different datagrams and
@@ -220,22 +625,26 @@ func TestRepairer_VLANDuplicateCollapsesToTheVLANCopyInBothArrivalOrders(t *test
 //
 // So this is the case #357 is about, and holding the parent copy is what fixes it:
 // BOTH orders must collapse to the VLAN child, not merely to one record.
+//
+// SINCE #465 THE PARENT COPY IS RELABELLED BEFORE IT IS EVER HELD, so the hold contest
+// has nothing left to win — the held record already names the child, and
+// VLANChildPreferred stays at 0 in both orders. The OUTCOME asserted below is unchanged,
+// which is the point: subnet evidence resolves this pair earlier, not differently.
+// VLANSubnetAttributed is now the counter that moves. #403 measured 0 disagreements
+// between the two mechanisms across 362,678 pairs, and this is one of them.
 func TestRepairer_UntaggedVLANDuplicateStillResolvesToTheChildInBothOrders(t *testing.T) {
-	parent, child := rpVLANPair()
-	parent.VLANID, child.VLANID = "", ""
+	parent, child := rpVLANPairUntagged()
 
 	tests := []struct {
 		name               string
 		in                 []Record
 		wantChildPreferred uint64
 	}{
-		// The child arrives first, so it is admitted on its own merits and the parent
-		// copy loses to the table. Nothing had to be replaced.
 		{"vlan copy first", []Record{child, parent}, 0},
-		// The parent copy arrives first — the production order. It is HELD rather than
-		// emitted, because ixl0 is a trunk with VLAN children and a better copy could
-		// still exist; the child then takes its place.
-		{"parent copy first", []Record{parent, child}, 1},
+		// The production order. Before #465 the parent copy was held and the child took
+		// its place (VLANChildPreferred = 1); now A' relabels the parent copy onto the
+		// child on sight, so the two copies are identical by the time they meet.
+		{"parent copy first", []Record{parent, child}, 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -258,6 +667,13 @@ func TestRepairer_UntaggedVLANDuplicateStillResolvesToTheChildInBothOrders(t *te
 			}
 			if st.VLANChildPreferred != tc.wantChildPreferred {
 				t.Errorf("VLANChildPreferred = %d, want %d", st.VLANChildPreferred, tc.wantChildPreferred)
+			}
+			if st.VLANSubnetAttributed == 0 {
+				t.Error("VLANSubnetAttributed = 0; the trunk copy carries a source address " +
+					"inside the IOT subnet, so A' must be what resolved this")
+			}
+			if st.VLANLateChildCopies != 0 {
+				t.Errorf("VLANLateChildCopies = %d, want 0: nothing was misattributed here", st.VLANLateChildCopies)
 			}
 			if st.HeldEntries != 0 {
 				t.Errorf("HeldEntries = %d after the flush, want 0", st.HeldEntries)

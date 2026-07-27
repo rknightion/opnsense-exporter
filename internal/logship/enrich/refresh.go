@@ -346,6 +346,15 @@ func (r *Refresher) doRefreshIfaces() error {
 			}
 			selfIPs[addr] = true
 			info.Addrs = append(info.Addrs, addr)
+			// pfx is already masked by parseAddrPrefix, so it is the SUBNET rather than
+			// the held address with a length — which matters because Prefix.Contains
+			// returns false for an unmasked prefix, and every per-interface subnet test
+			// would silently miss. Deduped per interface: two addresses on one subnet
+			// (a v4 address and a second alias, or an interface holding both ends of a
+			// /31) must not enter the list twice.
+			if !containsPrefix(info.Prefixes, pfx) {
+				info.Prefixes = append(info.Prefixes, pfx)
+			}
 			if !seenNet[pfx] {
 				seenNet[pfx] = true
 				localNets = append(localNets, pfx)
@@ -619,6 +628,18 @@ func skipAbsent(err *opnsense.APICallError) error {
 		return nil
 	}
 	return err
+}
+
+// containsPrefix reports whether prefixes already holds p. A linear scan, because an
+// interface holds a handful of addresses at most and a map here would cost more than
+// it saves.
+func containsPrefix(prefixes []netip.Prefix, p netip.Prefix) bool {
+	for _, existing := range prefixes {
+		if existing == p {
+			return true
+		}
+	}
+	return false
 }
 
 // parseAddrPrefix splits an interface CIDR ("10.0.0.114/24") into the address the

@@ -166,6 +166,15 @@ type Repairs struct {
 	// only starts accumulating wire bytes once it has tracked a flow past its first
 	// packets, which leaves 27.6% of flow-sides at zero (#346).
 	PayloadByteFallback bool
+	// VLANSubnetAttributed is set when the repair stage moved this record from a TRUNK
+	// onto the VLAN child whose configured subnet owns the relevant address (mechanism
+	// A', #465). The record's In and/or Out therefore name an interface the exporter
+	// deduced rather than one ng_netflow reported.
+	//
+	// It lives here and NOT on Iface.Corrected, which ifaceIsWAN reads as proof that an
+	// interface is a WAN by construction — setting that on a VLAN child would make the
+	// direction rules treat an IOT interface as an uplink.
+	VLANSubnetAttributed bool
 }
 
 // Record is one normalized flow. Both lanes produce it; the rollup, the correlator

@@ -86,7 +86,15 @@ type IfaceInfo struct {
 	VlanTag    string       // 802.1q tag; empty for a non-VLAN interface
 	VlanParent string       // parent device for a VLAN child; empty otherwise
 	Addrs      []netip.Addr // every configured address, Unmap()ed
-	IsWAN      bool         // see isWANIface in refresh.go for the heuristic and its limits
+	// Prefixes is every configured SUBNET on this interface, masked to its network
+	// address. Kept PER INTERFACE, unlike Snapshot.LocalNets which merges every
+	// interface's subnets into one flat list: the flat form answers "is this address
+	// local", which is all Scope needs, but it cannot answer "WHICH interface owns this
+	// address" — and that is the question the NetFlow repair stage needs in order to
+	// attribute a trunk-captured record to the VLAN child the traffic actually belongs
+	// to (#465). doRefreshIfaces used to compute this and throw it away.
+	Prefixes []netip.Prefix
+	IsWAN    bool // see isWANIface in refresh.go for the heuristic and its limits
 }
 
 // IsVLAN reports whether this interface is an 802.1q child of another.

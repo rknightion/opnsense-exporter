@@ -40,6 +40,24 @@ migrating from the upstream AthennaMind exporter. Full details for every release
   not trigger `restart:`; process exit or an external unhealthy-container
   remediation mechanism is still required for automatic replacement.
 
+- **VLAN traffic on a trunk is now attributed by subnet, so interface labels move** -
+  a NetFlow record captured on a trunk whose address falls inside exactly one VLAN
+  child's configured subnet is now attributed to that child immediately, instead of
+  waiting up to two seconds for the child's own copy to arrive and win. Nothing is
+  dropped and no metric is renamed, but **per-interface flow volume shifts off the
+  trunk and onto the VLAN children**, which is the correction: a production
+  measurement found 29.2% of trunk/child pairs had a gap wider than the two-second
+  window, and every one of those flows was being counted against the trunk. A further
+  247,105 trunk-captured records over 18h35m had no child copy at all and could never
+  have been attributed by timing. If you have dashboards or alerts with a hard-coded
+  trunk interface name, or thresholds calibrated on trunk volume, expect both to
+  change on upgrade. Two new counters make it observable:
+  `opnsense_flow_vlan_subnet_attributed_total` counts the attributions and
+  `opnsense_flow_vlan_late_child_copies_total` counts the residual that arrived too
+  late to correct. The two-second hold remains for addresses that match no child
+  subnet or several of them, so a VLAN with no configured subnet behaves exactly as
+  before.
+
 - **PF packet counters renamed with a `_total` suffix** - the eight
   `opnsense_firewall_{in,out}_{ipv4,ipv6}_{pass,block}_packets` series are now
   `..._packets_total`. They were always emitted as Prometheus counters, but the

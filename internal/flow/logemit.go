@@ -64,6 +64,12 @@ func (r Record) LogAttributes() map[string]string {
 	if r.Out.Corrected {
 		a["flow.egress_corrected"] = "true"
 	}
+	// Same reasoning for the VLAN-child attribution (#465): the interface on this record
+	// is one the exporter deduced from the address's subnet, not one ng_netflow reported,
+	// and an operator comparing it against a switch port needs to know that.
+	if r.Repairs.VLANSubnetAttributed {
+		a["flow.vlan_subnet_attributed"] = "true"
+	}
 	if r.Fragments > 1 {
 		a["flow.fragments"] = strconv.Itoa(r.Fragments)
 	}

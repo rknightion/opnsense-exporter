@@ -82,16 +82,38 @@ network means the de-dup is not firing and your volume is double-counted.
 Which copy survives is not a detail. The box flushes the trunk hook's records and
 the child hook's records in separate consecutive datagrams, trunk first, so keeping
 whichever arrived first keeps the trunk copy every time and collapses every VLAN
-onto the parent interface. A record that could still be beaten by a copy on one of
-its trunk's children is therefore held for up to two seconds before it is emitted,
-and a better copy arriving inside that window takes its place. Only records naming a
-trunk that actually has VLAN children wait; a box without VLANs holds nothing.
-`opnsense_flow_vlan_child_preferred_total` counts the swaps and is the number that
-says the attribution is right - a flat zero on a box with VLAN interfaces means it is
-not. `opnsense_flow_repair_held_records` is the queue itself: it should track the
-record rate and never grow without bound, and
-`records_dropped_total{reason="hold_overflow"}` means the buffer filled and those
-records fell back to first-arrival.
+onto the parent interface.
+
+**The subnet is the evidence that settles it.** A trunk-named record whose relevant
+address falls inside exactly one VLAN child's configured subnet is moved onto that
+child immediately, so which copy the exporter flushed first stops mattering at all.
+The address pairing is physical: a record that ARRIVED on the trunk came from the
+VLAN, so its source address is the VLAN host's, while one LEAVING by the trunk is
+heading toward the VLAN, so its destination is. `opnsense_flow_vlan_subnet_attributed_total`
+counts it. This also reaches something no timing could: records with no second copy
+anywhere - 247,105 of them in an 18h35m measurement, which no hold window of any size
+could have attributed, because there is nothing to prefer.
+
+The two-second hold remains as the fallback for an address that matches no child
+subnet or several of them, and a record with a trunk-named side the evidence could not
+place still waits for a better copy. `opnsense_flow_vlan_child_preferred_total` counts
+the swaps the hold contest wins; on a box whose VLANs have configured subnets, expect
+subnet attribution to carry the work and this to sit near zero.
+`opnsense_flow_repair_held_records` is the queue itself: it should track the record
+rate and never grow without bound, and `records_dropped_total{reason="hold_overflow"}`
+means the buffer filled and those records fell back to first-arrival.
+
+Timing alone could never have been enough, and the measurement says why: the pair-gap
+p50 is 954 ms but p95 is 5.7 s, p99 is 31.2 s and the observed maximum is 108.5 s, so
+a two-second window covers 70.8% of real pairs. Enlarging it is not the lever either -
+covering p99 projects to several times the hold buffer's capacity, past which it
+degrades to first-arrival anyway, and the widest observed gap is already 90% of the
+de-duplication TTL, so a window reaching into that tail starts double-counting instead
+of misattributing. What remains is counted rather than hidden:
+`opnsense_flow_vlan_late_child_copies_total` is a better copy that arrived after the
+first was already emitted and counted, which cannot be corrected without
+double-counting real bytes. A sustained non-zero rate there means a VLAN is missing a
+configured subnet, or two children's subnets overlap.
 
 **Policy-routed egress is mislabelled - the big one.** ng_netflow derives the egress
 interface from a FIB route lookup, but OPNsense multi-WAN policy routing happens in

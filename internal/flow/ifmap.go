@@ -76,6 +76,16 @@ type IfMap struct {
 	// name a parent the interface list itself never contained.
 	trunks map[string]bool
 
+	// childNets is every configured subnet of every VLAN CHILD, paired with the child
+	// it belongs to. It backs VLANChildFor, i.e. #465's subnet evidence.
+	//
+	// A slice rather than a map keyed by prefix, because the question is not "is this
+	// exact prefix configured" but "which prefixes CONTAIN this address" — a
+	// containment test over every entry, which no hash key can shortcut. It is a
+	// handful of entries on any real box (three on the reference one), scanned once
+	// per trunk-touching record, so linear is the right shape.
+	childNets []childNet
+
 	// stated is the ifIndex the API states per device, and overriddenIdx is the
 	// set of indices the operator pinned. Both exist for Entries — the operator
 	// console has to show WHERE an entry came from, because this bug survived
@@ -93,6 +103,19 @@ type IfMap struct {
 	// cold-start path before a Processor exists.
 	ownCounters IfMapCounters
 	counters    *IfMapCounters
+}
+
+// childNet is one VLAN child's subnet, with the child and the trunk it hangs off.
+//
+// parent is stored alongside rather than looked up through parents at query time
+// because the query is "does THIS trunk own the interface this address belongs to" —
+// evidence about a child of some other trunk must not move a record onto a different
+// physical interface, and keeping the parent here makes that check a field comparison
+// instead of a second map read.
+type childNet struct {
+	prefix netip.Prefix
+	iface  Iface
+	parent string
 }
 
 // IfMapCounters holds the counters whose lifetime must OUTLIVE any one IfMap.
@@ -294,6 +317,35 @@ func BuildIfMap(in IfMapInput) *IfMap {
 		}
 	}
 
+	// Subnet evidence (#465). Built from in.Ifaces rather than the meta map so the
+	// order is deterministic — Go randomises map iteration, and while VLANChildFor's
+	// answer is order-independent by construction (it refuses anything ambiguous), a
+	// table whose contents shuffle between builds is a poor thing to debug.
+	//
+	// A child the ORDERING does not list is still included: it can never be reached
+	// from an ifIndex, but it is still the interface that owns its subnet, and naming
+	// it (with Index 0) attributes the flow better than leaving it on the trunk. That
+	// case is already counted as UnlistedDevices.
+	for _, info := range in.Ifaces {
+		if info.Device == "" || len(info.Prefixes) == 0 {
+			continue
+		}
+		parent := m.parents[info.Device]
+		if parent == "" {
+			continue // not a VLAN child; its subnets are not evidence of a VLAN
+		}
+		iface, ok := byDevice[info.Device]
+		if !ok {
+			iface = Iface{Device: info.Device, Name: info.Name}
+		}
+		for _, pfx := range info.Prefixes {
+			if !pfx.IsValid() {
+				continue
+			}
+			m.childNets = append(m.childNets, childNet{prefix: pfx.Masked(), iface: iface, parent: parent})
+		}
+	}
+
 	for idx, raw := range in.Override {
 		value := strings.TrimSpace(raw)
 		if value == "" {
@@ -432,6 +484,63 @@ func (m *IfMap) HasVLANChildren(device string) bool {
 		return false
 	}
 	return m.trunks[device]
+}
+
+// VLANChildFor resolves an address to the VLAN CHILD of parent that owns its subnet.
+// This is #465's subnet evidence, and it is what lets the repair stage attribute a
+// trunk-captured record on FIRST SIGHT rather than by which copy the exporter flushed
+// first.
+//
+// It answers only when the evidence is UNAMBIGUOUS: exactly one child DEVICE has a
+// configured subnet containing addr, and that child hangs off parent. Everything else
+// misses, and a miss means "fall back to the hold contest", never "pick the likeliest".
+//
+// Three refusals, each deliberate:
+//
+//   - ZERO matches. The address is on the trunk's own subnet, or on nothing this box
+//     knows. Relabelling either would invent VLAN traffic.
+//   - TWO OR MORE matching devices. #403 measured 9,431 of 372,109 pairs as ambiguous,
+//     and this is that population. Resolving it by longest prefix would be a tie-break
+//     no capture supports, and resolving it by map order would not even be
+//     deterministic.
+//   - A single match whose parent is a DIFFERENT trunk. The evidence is real but it is
+//     about another interface, and acting on it would move the flow onto a physical
+//     interface it never crossed.
+//
+// Counting distinct DEVICES, not matching prefixes, is why a child holding several
+// subnets (or a wide and a narrow prefix on one interface) is one owner rather than an
+// ambiguity.
+func (m *IfMap) VLANChildFor(parent string, addr netip.Addr) (Iface, bool) {
+	if m == nil || parent == "" || !addr.IsValid() {
+		return Iface{}, false
+	}
+	// Unmap for the same reason WANFor does: netip treats 10.0.0.1 and ::ffff:10.0.0.1
+	// as different Addrs, and a v4-mapped address would miss every v4 prefix.
+	addr = addr.Unmap()
+
+	var (
+		found  Iface
+		device string
+	)
+	for _, cn := range m.childNets {
+		if !cn.prefix.Contains(addr) {
+			continue
+		}
+		if device != "" && cn.iface.Device != device {
+			return Iface{}, false // two children own it: ambiguous, so say nothing
+		}
+		found, device = cn.iface, cn.iface.Device
+		if cn.parent != parent {
+			// Keep scanning rather than returning here: another child of the RIGHT parent
+			// matching the same address would still be an ambiguity, and returning early
+			// would hide it.
+			found = Iface{}
+		}
+	}
+	if found.Device == "" {
+		return Iface{}, false
+	}
+	return found, true
 }
 
 // Age reports how stale the map is. It returns 0 for an unstamped map and clamps a
