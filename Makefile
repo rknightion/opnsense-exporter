@@ -159,8 +159,8 @@ rules:
 grafana-check: grafana-test
 	cd grafana && python3 build_dashboard.py --check
 	cd grafana && python3 build_dashboard.py
-	go run -C tools/promqlcheck . ../../grafana/dashboard.json
 	cd grafana/alerts && python3 build_rules.py
+	cd tools/promqlcheck && go run . ../../grafana/dashboard.json ../../grafana/alerts/grafana-managed/*.json
 	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/sentinel-contract.json grafana/tabs/AUTHORING.md grafana/alerts/grafana-managed/
 	python3 grafana/alerts/validate_manifests.py
 

@@ -333,9 +333,13 @@ func validateDashboard(data []byte) (int, int, int, error) {
 	return prometheusTargets, prometheusVariables, prometheusAnnotations, nil
 }
 
+// Rule manifest paths are optional and additive (#429): the tool still works exactly
+// as before against a dashboard alone, and gains rule-expression coverage only when
+// grafana/alerts/grafana-managed/*.json is passed too - the shell expands that glob
+// into the argument list, so this program never needs to know the directory itself.
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: promqlcheck <dashboard.json>")
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: promqlcheck <dashboard.json> [rule-manifest.json ...]")
 		os.Exit(2)
 	}
 
@@ -349,6 +353,27 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Printf("validated %d Prometheus targets, %d variable queries and %d annotation queries\n",
-		targets, variables, annotations)
+
+	ruleExpressions := 0
+	var diagnostics validationErrors
+	for _, path := range os.Args[2:] {
+		ruleData, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read rule manifest %s: %v\n", path, err)
+			os.Exit(1)
+		}
+		count, errs := validateRuleManifest(ruleData)
+		ruleExpressions += count
+		for _, e := range errs {
+			diagnostics = append(diagnostics, fmt.Sprintf("%s: %s", path, e))
+		}
+	}
+	if len(diagnostics) > 0 {
+		fmt.Fprintln(os.Stderr, diagnostics.Error())
+		os.Exit(1)
+	}
+
+	fmt.Printf(
+		"validated %d Prometheus targets, %d variable queries, %d annotation queries and %d rule expressions\n",
+		targets, variables, annotations, ruleExpressions)
 }
