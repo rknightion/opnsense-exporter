@@ -107,5 +107,42 @@ class SelfMetricGateFailsOnUncoveredMetricTest(unittest.TestCase):
                          "an exempted self-metric still failed the gate")
 
 
+class CoverageIsUnionAcrossBuildersTest(unittest.TestCase):
+    """#431 step 1: the gate spans the dashboard FAMILY, not one file.
+
+    Scoped to a single Builder, the gate made the self-observability split
+    structurally impossible — moving a panel to a second dashboard made its metric
+    read as MISSING on the first, so the split could not land without weakening the
+    gate or exempting every metric it moved. These tests pin the union semantics
+    while there is still only one dashboard, so the behaviour is already proven when
+    the second one arrives.
+    """
+
+    @staticmethod
+    def _builder_charting(metric: str):
+        b = build_dashboard.Builder()
+        b.ts("probe", [(metric, "x")])
+        return b
+
+    def test_a_metric_charted_on_another_builder_counts_as_covered(self):
+        metric = "opnsense_exporter_logs_shipped_total"
+        empty = build_dashboard.Builder()
+        charted = self._builder_charting(metric)
+
+        self.assertIn(metric, build_dashboard.coverage(empty),
+                      "control: an empty builder must report the metric missing, or the "
+                      "test below proves nothing")
+        self.assertNotIn(metric, build_dashboard.coverage(empty, charted),
+                         "a metric charted on a SECOND builder still read as missing; "
+                         "coverage() is not taking the union and the #431 split cannot land")
+
+    def test_a_metric_on_no_builder_is_still_missing(self):
+        """The union must not become a way to pass by supplying more builders."""
+        metric = "opnsense_exporter_logs_shipped_total"
+        two_empties = build_dashboard.coverage(build_dashboard.Builder(),
+                                               build_dashboard.Builder())
+        self.assertIn(metric, two_empties)
+
+
 if __name__ == "__main__":
     unittest.main()

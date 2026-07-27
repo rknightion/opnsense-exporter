@@ -764,8 +764,18 @@ def load_catalogue() -> list:
     return sorted(set(names))
 
 
-def coverage(b: Builder) -> list:
-    blob = "\n".join(b._exprs)
+def coverage(*builders: Builder) -> list:
+    """Catalogue metrics referenced by NO panel across the whole dashboard family.
+
+    Variadic rather than single-Builder because the gate asks "is this metric
+    visible to an operator anywhere", not "is it on this particular file" (#431).
+    Scoping it to one Builder made splitting content structurally impossible: the
+    moment a panel moved to a second dashboard its metric read as MISSING on the
+    first, so the self-observability split could not land without either weakening
+    the gate or exempting every metric it moved. Taking the union costs nothing
+    while there is one dashboard and is the whole unblock once there are two.
+    """
+    blob = "\n".join(expr for b in builders for expr in b._exprs)
     missing = []
     for n in load_catalogue():
         if n in COVERAGE_EXEMPT:
