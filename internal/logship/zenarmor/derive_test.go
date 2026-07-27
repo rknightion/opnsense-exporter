@@ -30,6 +30,7 @@ func (s *captureSink) ObserveGateway(_, _ string) bool           { return true }
 func (s *captureSink) ObserveRADIUS(_, _, _ string) bool         { return true }
 func (s *captureSink) ObserveVPN(_, _, _, _ string) bool         { return true }
 func (s *captureSink) ObserveCARP(_, _, _, _, _ string) bool     { return true }
+func (s *captureSink) ObserveUPnP(_, _, _ string) bool           { return true }
 
 var _ logship.MetricSink = (*captureSink)(nil)
 

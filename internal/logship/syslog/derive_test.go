@@ -68,6 +68,11 @@ func (f *fakeSink) ObserveCARP(event, from, to, iface, vhid string) bool {
 	return true
 }
 
+func (f *fakeSink) ObserveUPnP(event, result, protocol string) bool {
+	f.calls = append(f.calls, fakeCall{"upnp", []string{event, result, protocol}})
+	return true
+}
+
 func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
 	return true

@@ -228,6 +228,7 @@ var subsystems = map[string]string{
 	"kernel":          "kernel",
 	"acme.sh":         "certificates",
 	"squid":           "proxy",
+	"miniupnpd":       "upnp",
 	"unbound-control": "dns",
 }
 

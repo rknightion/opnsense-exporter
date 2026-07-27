@@ -142,6 +142,7 @@ all:
 | `opnsense_log_events_radius_total` | `event`, `result`, `client_scope` |
 | `opnsense_log_events_vpn_total` | `backend`, `event`, `result`, `connection` |
 | `opnsense_log_events_carp_total` | `event`, `from`, `to`, `interface`, `vhid` |
+| `opnsense_log_events_upnp_total` | `event`, `result`, `protocol` |
 
 No IP, port, SID, hostname, username, MAC, NAS/client identity, certificate subject or
 serial, IKE identity, SPI, reply text, credential or signature text becomes a label.
@@ -212,6 +213,64 @@ OPNsense's own CARP syshook also logs transitions under APP-NAME `opnsense`, car
 the admin's VIP description. That source is deliberately not parsed: `opnsense` is the
 catch-all app-name for every `log_msg()` call on the box, so claiming it would put an
 unbounded variety of unrelated lines through a CARP matcher.
+
+### UPnP / NAT-PMP mapping events (`miniupnpd`)
+
+The `os-upnp` plugin's daemon logs under the RFC5424 APP-NAME `miniupnpd`. Five forms
+are recognised, and all five are **failures or expiries** - see the warning below about
+what is *not* here:
+
+```text
+<PRI>1 <timestamp> <host> miniupnpd <pid> - [meta sequenceId="<sequence>"] remove port mapping <external_port> UDP because it has expired
+<PRI>1 <timestamp> <host> miniupnpd <pid> - [meta sequenceId="<sequence>"] could not find nat rule to delete iport=<internal_port> addr=<token>
+<PRI>1 <timestamp> <host> miniupnpd <pid> - [meta sequenceId="<sequence>"] could not find redirect rule to delete eport=<external_port>
+<PRI>1 <timestamp> <host> miniupnpd <pid> - [meta sequenceId="<sequence>"] Unauthorized to remove PCP mapping internal port <internal_port>, protocol UDP
+<PRI>1 <timestamp> <host> miniupnpd <pid> - [meta sequenceId="<sequence>"] could not open lease file: <path>
+```
+
+They map onto `opnsense_log_events_upnp_total{event,result,protocol}` (plus the standard
+`opnsense_instance` label) with fully closed values:
+
+| Attribute | Closed values |
+| --- | --- |
+| `upnp.event` | `expired`, `cleanup_failed`, `unauthorized`, `lease_file_error` |
+| `upnp.result` | `ok` (only for `expired`), `failure` |
+| `upnp.protocol` | `tcp`, `udp`, or **empty** on the three forms that name no protocol |
+
+`expired` is a mapping reaching the end of its lease and being torn down - the
+lifecycle working. `cleanup_failed` means the daemon and pf disagree about which rules
+exist. `unauthorized` is a PCP client trying to remove a mapping it does not own, which
+the plugin's default `secure_mode` refuses.
+
+!!! warning "There is no active-mapping count, and no successful add or delete"
+
+    **No gauge of currently-active mappings is exported and none can be derived from
+    this family.** The plugin's own status page lists mappings by running `pfctl`
+    rather than exposing them through an API; an event stream cannot see mappings that
+    already existed, and it cannot survive a daemon restart. `expired` is a decrement
+    with no matching increment, so anything gauge-shaped built from it would drift
+    negative without bound.
+
+    **A successful add and a successful delete are also absent.** `miniupnpd` logs
+    those at a verbosity `os-upnp` does not expose a setting for, so no captured
+    grammar proves one. The daemon's request lines (`AddPortMapping:`, `redirecting
+    port`, `DeletePortMapping:`, `removing redirect rule port`) and its
+    `Returning UPnPError <code>: <text>` responses are deliberately **not** parsed: a
+    request is not an outcome, and in a live capture a real add logged
+    `AddPortMapping`, then `redirecting port`, then `Returning UPnPError 501: Action
+    Failed`, having created no rule at all. `shutting down MiniUPnPd` and `Listening
+    for NAT-PMP/PCP traffic on port <n>` are not parsed either - daemon lifecycle, not
+    mapping lifecycle. All of them still ship as generic records with the body verbatim.
+
+Ports ship on the record as `upnp.port.external` and `upnp.port.internal` alongside
+`upnp.event`, `upnp.result` and `upnp.protocol`, and are deliberately **not** metric
+labels - an ephemeral client port is unbounded and would mint a series per mapping. The
+raw record is therefore the only place the *specific* mapping behind a failure can be
+identified. The daemon's opaque `addr=` token and the lease-file path are not even
+attributes: they stay in the message body.
+
+Recognised on OPNsense `26.7.1_1` and `27.1.a_40` with `miniupnpd 2.3.9_2,1` /
+`os-upnp 1.9`.
 
 ### FreeRADIUS access outcomes and credential handling
 
@@ -427,11 +486,12 @@ record with its message body verbatim and its envelope as metadata.
 | `dpinger` | Gateway monitor transitions `none -> down` and `down -> none`, with the observed address, alarm state and probe values. Nonmatching `dpinger` lines remain generic records. |
 | `radiusd` | FreeRADIUS access accepted/rejected with closed non-PII attributes. Every unsupported or malformed recognizable `radiusd` form is sanitized before it becomes a generic record or debug capture. |
 | `kernel` | FreeBSD CARP transitions only: `carp.event`, `carp.state.previous`, `carp.state.current`, `carp.interface`, `carp.vhid`, `carp.reason`, `carp.demotion.delta`, `carp.demotion.total`. **Every other kernel line stays a generic record** - link state, watchdogs, ZFS, USB and the rest are not claimed. |
+| `miniupnpd` | UPnP/NAT-PMP mapping expiries and failures: `upnp.event`, `upnp.result`, `upnp.protocol`, `upnp.port.external`, `upnp.port.internal`. **No successful add or delete, and no active-mapping count** - see above. Request, response and daemon-lifecycle lines stay generic records. |
 | `charon`, `openvpn_*` | IPsec and OpenVPN tunnel lifecycle: `vpn.backend`, `vpn.event`, `vpn.result` and nothing else - no username, certificate subject, IKE identity, address or port is extracted. `openvpn_*` is matched by PREFIX because OPNsense names one program per configured instance. Only the captured grammar above is parsed; everything else stays a generic record. |
 
 **Every record**, structured or generic, also gets:
 
-- an `opnsense.subsystem` attribute (`opnsense_subsystem` in Loki) with a value like `firewall`, `auth`, `dhcp`, `ipsec`, `vpn`, `proxy`, `routing` or `ups`, so you can select a whole class of events without enumerating program names;
+- an `opnsense.subsystem` attribute (`opnsense_subsystem` in Loki) with a value like `firewall`, `auth`, `dhcp`, `ipsec`, `vpn`, `upnp`, `proxy`, `routing` or `ups`, so you can select a whole class of events without enumerating program names;
 - any **IP address** mentioned anywhere in the message resolved to a hostname, MAC and scope (`self`/`local`/`remote`);
 - any **interface device** resolved to its friendly name (`vtnet0` → `LAN`);
 - for IPsec and OpenVPN, the **tunnel UUID resolved to its name** - `charon` logs `<5e891b0c-…|8> sending DPD request`, which is unreadable; the exporter turns it into `ipsec.connection: "site-to-site"` because it already has the API.

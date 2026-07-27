@@ -261,6 +261,38 @@ func TestLogEventStore_ObserveCARP(t *testing.T) {
 	}
 }
 
+func TestLogEventStore_ObserveUPnP(t *testing.T) {
+	s := newTestLogEventStore(t)
+	if !s.ObserveUPnP("expired", "ok", "udp") {
+		t.Fatal("first observation was refused")
+	}
+	if !s.ObserveUPnP("expired", "ok", "udp") {
+		t.Fatal("second observation was refused")
+	}
+	// Three of the five grammars name no protocol, so an empty protocol is a real,
+	// distinct series rather than a degenerate one that should collapse into another.
+	if !s.ObserveUPnP("cleanup_failed", "failure", "") {
+		t.Fatal("cleanup_failed observation was refused")
+	}
+	if !s.ObserveUPnP("lease_file_error", "failure", "") {
+		t.Fatal("lease_file_error observation was refused")
+	}
+	s.sync()
+
+	if got := s.upnp.m[upnpKey{event: "expired", result: "ok", protocol: "udp"}]; got != 2 {
+		t.Errorf("expired count = %v, want 2", got)
+	}
+	if got := s.upnp.m[upnpKey{event: "cleanup_failed", result: "failure"}]; got != 1 {
+		t.Errorf("cleanup_failed count = %v, want 1", got)
+	}
+	if got := s.upnp.m[upnpKey{event: "lease_file_error", result: "failure"}]; got != 1 {
+		t.Errorf("lease_file_error count = %v, want 1", got)
+	}
+	if got := s.upnp.len(); got != 3 {
+		t.Errorf("distinct keys = %d, want 3", got)
+	}
+}
+
 func TestLogEventStore_ObserveRADIUS(t *testing.T) {
 	s := newTestLogEventStore(t)
 	if !s.ObserveRADIUS("access", "accepted", "configured") {
@@ -612,11 +644,15 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	if len(capped) != 11 {
-		t.Errorf("capped families emitted = %d, want 11: %v", len(capped), capped)
+	// 12 families: firewall, haproxy, sshd, dhcp, audit, ids, gateway, radius, vpn,
+	// carp, upnp, zenarmor. Bump it when a family is added — the point of the count is
+	// that EVERY family publishes its saturation pair from zero, so a family wired into
+	// the store without a saturation entry fails here rather than going unmonitored.
+	if len(capped) != 12 {
+		t.Errorf("capped families emitted = %d, want 12: %v", len(capped), capped)
 	}
-	if len(keys) != 11 {
-		t.Errorf("keys families emitted = %d, want 11: %v", len(keys), keys)
+	if len(keys) != 12 {
+		t.Errorf("keys families emitted = %d, want 12: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])
@@ -644,6 +680,12 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 	}
 	if keys[logFamilyCARP] != 0 {
 		t.Errorf("carp keys = %v, want 0 published from zero", keys[logFamilyCARP])
+	}
+	if capped[logFamilyUPnP] != 0 {
+		t.Errorf("upnp capped = %v, want 0 published from zero", capped[logFamilyUPnP])
+	}
+	if keys[logFamilyUPnP] != 0 {
+		t.Errorf("upnp keys = %v, want 0 published from zero", keys[logFamilyUPnP])
 	}
 	assertMetricsAreCounters(t, metrics, "opnsense_log_events_cardinality_capped_total")
 }
@@ -738,6 +780,74 @@ func TestLogEventsCollector_EmitsCARPDemotionWithEmptyStateLabels(t *testing.T) 
 		return
 	}
 	t.Fatal("carp_total was not emitted for a demotion record")
+}
+
+// The frozen #409 metric contract: exactly event, result, protocol and the standard
+// opnsense_instance. A PORT LABEL MUST NEVER APPEAR — an ephemeral client port is
+// unbounded and would mint a series per mapping — and neither may the daemon's opaque
+// addr= token, a lease-file path, a mapping description or any client identity. Nor
+// may a mapping COUNT: #409 forbids an active-mapping gauge, so a `mappings` or
+// `active` label (or any gauge-shaped series in this family) must fail here.
+func TestLogEventsCollector_EmitsUPnPCounter(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveUPnP("expired", "ok", "udp")
+	c.store.ObserveUPnP("expired", "ok", "udp")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_upnp_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if len(labels) != 4 {
+			t.Fatalf("upnp labels = %v, want only event, result, protocol and opnsense_instance", labels)
+		}
+		for _, forbidden := range []string{
+			"port", "iport", "eport", "internal_port", "external_port",
+			"addr", "address", "client", "description", "lease_file", "mappings", "active",
+		} {
+			if _, present := labels[forbidden]; present {
+				t.Errorf("upnp carries a %q label; ports, client identity and mapping counts must never be labels", forbidden)
+			}
+		}
+		if labels["event"] != "expired" ||
+			labels["result"] != "ok" ||
+			labels["protocol"] != "udp" ||
+			labels["opnsense_instance"] != "opnsense.example.com" {
+			t.Fatalf("upnp labels = %v, want expired/ok/udp/opnsense.example.com", labels)
+		}
+		if got := getMetricValue(m); got != 2 {
+			t.Errorf("upnp counter = %v, want 2", got)
+		}
+		return
+	}
+	t.Fatal("upnp_total was not emitted")
+}
+
+// A cleanup failure and a lease-file error name no protocol, so they must emit with
+// that label EMPTY rather than being dropped or given a placeholder. The dominant
+// production record (1,527 of 1,598) is exactly this shape.
+func TestLogEventsCollector_EmitsUPnPWithEmptyProtocol(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveUPnP("cleanup_failed", "failure", "")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_upnp_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if labels["event"] != "cleanup_failed" || labels["result"] != "failure" {
+			t.Fatalf("upnp labels = %v, want cleanup_failed/failure", labels)
+		}
+		if labels["protocol"] != "" {
+			t.Errorf("upnp protocol = %q on a cleanup failure, want empty", labels["protocol"])
+		}
+		return
+	}
+	t.Fatal("upnp_total was not emitted for a cleanup failure")
 }
 
 // The frozen #406 metric contract: exactly backend, event, result, connection and

@@ -86,6 +86,24 @@ type MetricSink interface {
 	// are likewise never passed: they are unbounded integers. All three stay as
 	// structured attributes on the shipped log record, where they are still queryable.
 	ObserveCARP(event, from, to, iface, vhid string) bool
+	// ObserveUPnP counts one miniupnpd mapping event (#409). All three values are
+	// CLOSED code-defined vocabularies resolved by the parser and deriver: event =
+	// expired|cleanup_failed|unauthorized|lease_file_error; result = ok (expired only)
+	// |failure; protocol = tcp|udp|"". protocol is EMPTY on the two cleanup-failure
+	// grammars and the lease-file error, which name none — the honest answer, not a
+	// missing one.
+	//
+	// Port numbers are NEVER passed here and must never be added: an ephemeral client
+	// port is unbounded and would multiply a series per mapping. Neither is the
+	// daemon's opaque `addr=` token, the lease-file path, a mapping description or any
+	// client identity; those stay in the shipped log line's body.
+	//
+	// There is deliberately NO mapping-count observation of any kind. An event stream
+	// cannot reconstruct authoritative active-mapping state (the plugin's own status
+	// page runs pfctl for it, restarts and pre-existing mappings are invisible), and
+	// `expired` is a decrement with no matching increment, so anything gauge-shaped
+	// built from this family would drift negative without bound.
+	ObserveUPnP(event, result, protocol string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation) bool
 }
@@ -138,4 +156,5 @@ func (NopMetricSink) ObserveGateway(_, _ string) bool            { return true }
 func (NopMetricSink) ObserveRADIUS(_, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveVPN(_, _, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveCARP(_, _, _, _, _ string) bool      { return true }
+func (NopMetricSink) ObserveUPnP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

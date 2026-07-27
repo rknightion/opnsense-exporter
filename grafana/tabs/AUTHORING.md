@@ -239,7 +239,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 98 total (collector 95 / self_labeled 1 / target_join 2 / global 0)
+### Prometheus sentinels — 99 total (collector 96 / self_labeled 1 / target_join 2 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -299,6 +299,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_log_events_ids` | `collector` | existence (series presence) | Observability > Log-derived Events > IDS / IPS | `label_values(opnsense_log_events_ids_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_radius` | `collector` | existence (series presence) | Observability > Log-derived Events > RADIUS Authentication | `label_values(opnsense_log_events_radius_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_sshd` | `collector` | existence (series presence) | Observability > Log-derived Events > SSH Authentication | `label_values(opnsense_log_events_sshd_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_upnp` | `collector` | existence (series presence) | Observability > Log-derived Events > UPnP / NAT-PMP Mappings | `label_values(opnsense_log_events_upnp_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_vpn` | `collector` | existence (series presence) | Observability > Log-derived Events > VPN Lifecycle (IPsec / OpenVPN) | `label_values(opnsense_log_events_vpn_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_logs` | `self_labeled` | existence (series presence) | Observability > Log Shipping; Observability > Log Shipping > Cursor; Observability > Log Shipping > Enrichment; Observability > Log Shipping > Queue & Errors; Observability > Log Shipping > Receivers; Observability > Log Shipping > Throughput | `label_values(opnsense_exporter_logs_queue_capacity{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_monit` | `collector` | existence (series presence) | System > Monit; System > Monit > Check Status Detail; System > Monit > Filesystem Check Resources; System > Monit > Host Check Resources; System > Monit > Monit Overview; System > Monit > Process Check Resources; System > Monit > System Check Resources | `label_values(opnsense_monit_status_ok{opnsense_instance=~"$opnsense_instance"}, __name__)` |

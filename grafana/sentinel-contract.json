@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 98,
+    "total": 99,
     "by_scope": {
-      "collector": 95,
+      "collector": 96,
       "self_labeled": 1,
       "target_join": 2,
       "global": 0
@@ -609,6 +609,16 @@
         "query": "label_values(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "Observability > Log-derived Events > SSH Authentication"
+        ]
+      },
+      {
+        "name": "has_log_events_upnp",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_upnp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "Observability > Log-derived Events > UPnP / NAT-PMP Mappings"
         ]
       },
       {

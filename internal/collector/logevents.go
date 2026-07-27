@@ -63,6 +63,19 @@ type (
 	// reason - unbounded integers. All three remain structured fields on the shipped
 	// log record.
 	carpKey struct{ event, from, to, iface, vhid string }
+	// upnpKey is the frozen #409 tuple, and all three dimensions are CLOSED
+	// code-defined vocabularies (event = expired|cleanup_failed|unauthorized|
+	// lease_file_error; result = ok on expired, failure otherwise; protocol = tcp|udp|"",
+	// empty on the grammars that name none). It is the only family here whose key cannot
+	// grow past its own vocabulary, so the key budget never binds on it.
+	//
+	// PORT NUMBERS ARE DELIBERATELY ABSENT AND MUST STAY ABSENT: an ephemeral client
+	// port is unbounded and would mint a series per mapping. So are the daemon's opaque
+	// addr= token, the lease-file path, mapping descriptions and client identities - all
+	// of which remain on the shipped log record. There is likewise no mapping COUNT of
+	// any kind: an event stream cannot reconstruct authoritative active-mapping state,
+	// and expired is a decrement with no matching increment.
+	upnpKey struct{ event, result, protocol string }
 	// zenKey is Zenarmor's tuple, and Zenarmor is the highest-cardinality data this
 	// exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
@@ -85,6 +98,7 @@ const (
 	logFamilyRADIUS   = "radius"
 	logFamilyVPN      = "vpn"
 	logFamilyCARP     = "carp"
+	logFamilyUPnP     = "upnp"
 	logFamilyZenarmor = "zenarmor"
 
 	// logEventObservationDropReasonHandoffFull is deliberately code-defined: it
@@ -118,6 +132,7 @@ const (
 	logEventObserveRADIUS
 	logEventObserveVPN
 	logEventObserveCARP
+	logEventObserveUPnP
 	logEventObserveZenarmor
 	logEventSetMaxKeys
 	logEventTakeSnapshot
@@ -143,6 +158,7 @@ type logEventSnapshot struct {
 	radius  []keyed[radiusKey]
 	vpn     []keyed[vpnKey]
 	carp    []keyed[carpKey]
+	upnp    []keyed[upnpKey]
 	zen     []keyed[zenKey]
 	sat     []familySaturation
 	dropped uint64
@@ -186,6 +202,7 @@ type LogEventStore struct {
 	radius           *cappedCounter[radiusKey]
 	vpn              *cappedCounter[vpnKey]
 	carp             *cappedCounter[carpKey]
+	upnp             *cappedCounter[upnpKey]
 	zen              *cappedCounter[zenKey]
 }
 
@@ -209,6 +226,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		radius:         newCappedCounter[radiusKey](defaultMaxLogEventKeys),
 		vpn:            newCappedCounter[vpnKey](defaultMaxLogEventKeys),
 		carp:           newCappedCounter[carpKey](defaultMaxLogEventKeys),
+		upnp:           newCappedCounter[upnpKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 	}
 	go s.run()
@@ -307,6 +325,11 @@ func (s *LogEventStore) ObserveCARP(event, from, to, iface, vhid string) bool {
 	return s.observe(logEventCommand{kind: logEventObserveCARP, values: [7]string{event, from, to, iface, vhid}})
 }
 
+// ObserveUPnP implements logship.MetricSink.
+func (s *LogEventStore) ObserveUPnP(event, result, protocol string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveUPnP, values: [7]string{event, result, protocol}})
+}
+
 // ObserveZenarmor implements logship.MetricSink.
 func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
@@ -347,6 +370,8 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.vpn.inc(vpnKey{v[0], v[1], v[2], v[3]})
 	case logEventObserveCARP:
 		s.carp.inc(carpKey{v[0], v[1], v[2], v[3], v[4]})
+	case logEventObserveUPnP:
+		s.upnp.inc(upnpKey{v[0], v[1], v[2]})
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventSetMaxKeys:
@@ -360,6 +385,7 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.radius.setMax(cmd.maxKeys)
 		s.vpn.setMax(cmd.maxKeys)
 		s.carp.setMax(cmd.maxKeys)
+		s.upnp.setMax(cmd.maxKeys)
 		s.zen.setMax(cmd.maxKeys)
 		close(cmd.ack)
 	case logEventTakeSnapshot:
@@ -394,6 +420,8 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.vpn, sat = drainFamily(logFamilyVPN, s.vpn)
 	snap.sat = append(snap.sat, sat)
 	snap.carp, sat = drainFamily(logFamilyCARP, s.carp)
+	snap.sat = append(snap.sat, sat)
+	snap.upnp, sat = drainFamily(logFamilyUPnP, s.upnp)
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
@@ -451,6 +479,7 @@ type logEventsCollector struct {
 	radius   *prometheus.Desc
 	vpn      *prometheus.Desc
 	carp     *prometheus.Desc
+	upnp     *prometheus.Desc
 	zenarmor *prometheus.Desc
 
 	capped  *prometheus.Desc
@@ -542,6 +571,28 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"counted as an inferred transition.",
 		[]string{"event", "from", "to", "interface", "vhid"},
 	)
+	c.upnp = buildPrometheusDesc(c.subsystem, "upnp_total",
+		"miniupnpd UPnP IGD / NAT-PMP / PCP mapping events derived from received syslog, by "+
+			"closed event, result and protocol. event is one of expired (a mapping reached the "+
+			"end of its lease and was torn down - the only event whose result is ok), "+
+			"cleanup_failed (the daemon could not find the pf nat or redirect rule it was "+
+			"deleting), unauthorized (a PCP client asked to remove a mapping it does not own) "+
+			"or lease_file_error. protocol is tcp or udp, and EMPTY on the two cleanup-failure "+
+			"grammars and the lease-file error, which name none. Port numbers, the daemon's "+
+			"opaque addr= token, lease-file paths, mapping descriptions and client identities "+
+			"are deliberately NOT labels - an ephemeral port would mint a series per mapping - "+
+			"and ship as upnp.port.external / upnp.port.internal or inside the log record's "+
+			"body. THERE IS NO ACTIVE-MAPPING GAUGE and none can be derived from this: the "+
+			"plugin's own status page runs pfctl to list mappings rather than exposing them "+
+			"through an API, an event stream cannot see pre-existing mappings or survive a "+
+			"daemon restart, and expired is a decrement with no matching increment. A "+
+			"SUCCESSFUL add or delete is likewise absent - miniupnpd logs those at a verbosity "+
+			"OPNsense's os-upnp plugin does not expose, and no attempt line is treated as proof "+
+			"of success. Only the grammar captured on OPNsense 26.7.1_1 and 27.1.a_40 "+
+			"(miniupnpd 2.3.9_2,1) is counted; any other miniupnpd line still ships as a log "+
+			"record but is never counted.",
+		[]string{"event", "result", "protocol"},
+	)
 	c.zenarmor = buildPrometheusDesc(c.subsystem, "zenarmor_total",
 		"Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), "+
 			"action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do "+
@@ -586,6 +637,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.radius
 	ch <- c.vpn
 	ch <- c.carp
+	ch <- c.upnp
 	ch <- c.zenarmor
 	ch <- c.capped
 	ch <- c.keys
@@ -675,6 +727,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range snap.carp {
 		ch <- prometheus.MustNewConstMetric(c.carp, prometheus.CounterValue, p.v,
 			p.k.event, p.k.from, p.k.to, p.k.iface, p.k.vhid, c.instance)
+	}
+	for _, p := range snap.upnp {
+		ch <- prometheus.MustNewConstMetric(c.upnp, prometheus.CounterValue, p.v,
+			p.k.event, p.k.result, p.k.protocol, c.instance)
 	}
 	for _, p := range snap.zen {
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,

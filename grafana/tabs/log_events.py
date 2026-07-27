@@ -4,7 +4,8 @@ Log-derived Events tab — Prometheus counters derived from received syslog line
 
 These describe OPNsense activity (firewall blocks, HAProxy state changes, sshd
 and RADIUS auth outcomes, DHCP leases, config/audit events, IDS alerts, IPsec and
-OpenVPN tunnel lifecycle) extracted from the syslog the receiver ingests — NOT the
+OpenVPN tunnel lifecycle, UPnP/NAT-PMP mapping events) extracted from the syslog the
+receiver ingests — NOT the
 pipeline self-metrics on the Log Shipping tab. They exist so a busy box can graph
 rates cheaply and sample the raw lines away (--logs.syslog.sample) without losing
 the aggregate.
@@ -30,6 +31,7 @@ def build(b: Builder):
     b.sentinel("has_log_events_ids", metric="opnsense_log_events_ids_total")
     b.sentinel("has_log_events_radius", metric="opnsense_log_events_radius_total")
     b.sentinel("has_log_events_vpn", metric="opnsense_log_events_vpn_total")
+    b.sentinel("has_log_events_upnp", metric="opnsense_log_events_upnp_total")
 
     fw_action = b.ts(
         "Firewall Events by Action & Scope (rate)",
@@ -155,6 +157,31 @@ def build(b: Builder):
              "after retransmits; OpenVPN certificate_failed is a rejected client certificate.",
     )
 
+    upnp = b.ts(
+        "UPnP / NAT-PMP Mapping Events by Event & Result (rate)",
+        [(f'sum by (event, result, protocol) (rate({sel("opnsense_log_events_upnp_total")}[{RATE}]))',
+          "{{event}} / {{result}} / {{protocol}}")],
+        unit="short",
+        desc="opnsense_log_events_upnp_total: miniupnpd mapping events per second. The vocabulary "
+             "is closed and code-defined: event=expired (a mapping reached the end of its lease "
+             "and was torn down, the only ok result), cleanup_failed (the daemon could not find "
+             "the pf nat or redirect rule it was deleting), unauthorized (a PCP client asked to "
+             "remove a mapping it does not own) or lease_file_error; protocol=tcp, udp, or empty "
+             "on the grammars that name none. THERE IS NO ACTIVE-MAPPING COUNT here and none can "
+             "be derived: the plugin's status page runs pfctl to list mappings rather than "
+             "exposing them through an API, an event stream cannot see pre-existing mappings or "
+             "survive a daemon restart, and expired is a decrement with no matching increment. A "
+             "successful add or delete is absent too - miniupnpd logs those at a verbosity "
+             "os-upnp does not expose, and no attempt line is treated as proof of success. So "
+             "read this as a health signal, not an inventory: a steady cleanup_failed rate means "
+             "the daemon and pf disagree about which rules exist, and unauthorized means a client "
+             "is trying to remove somebody else's mapping. Ports, the daemon's opaque addr= "
+             "token, lease-file paths, mapping descriptions and client identities are never "
+             "labels; the ports ship on the log record as upnp.port.external / "
+             "upnp.port.internal, which is the only place the specific failing mapping can be "
+             "identified.",
+    )
+
     cardinality_keys = b.ts(
         "Derived Metric Label Tuples in Use",
         [(f'sum by (family) ({sel("opnsense_log_events_cardinality_keys")})',
@@ -200,5 +227,6 @@ def build(b: Builder):
         b.row("IDS / IPS", [ids], present="has_log_events_ids"),
         b.row("RADIUS Authentication", [radius], present="has_log_events_radius"),
         b.row("VPN Lifecycle (IPsec / OpenVPN)", [vpn, vpn_by_connection], present="has_log_events_vpn"),
+        b.row("UPnP / NAT-PMP Mappings", [upnp], present="has_log_events_upnp"),
         b.row("Collector Pressure", [cardinality_keys, cardinality_capped, observation_dropped]),
     ], present="has_log_events")

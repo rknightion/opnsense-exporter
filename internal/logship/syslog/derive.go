@@ -83,6 +83,41 @@ const (
 	carpStateInit   = "init"
 )
 
+// The `upnp` family's attribute keys and its three CLOSED, code-defined
+// vocabularies (#409). miniupnpd.go writes them; observeDerived below reads them.
+// Same reason they live here as the two blocks above: a parser and its deriver
+// spelling one key two different ways fails silently into an empty label.
+//
+// THE PORT NUMBERS ARE ATTRIBUTES AND NEVER LABELS. An ephemeral client port is
+// unbounded, and a per-port series would multiply with every mapping a client makes,
+// so they stay on the shipped record where they are still queryable. The `addr=`
+// token and the lease-file path are not even attributes — see miniupnpd.go.
+//
+// There is deliberately NO mapping-count value of any kind here: #409 forbids an
+// active-mapping gauge, and `expired` is a decrement with no matching increment.
+const (
+	attrUPnPEvent        = "upnp.event"
+	attrUPnPResult       = "upnp.result"
+	attrUPnPProtocol     = "upnp.protocol"
+	attrUPnPPortExternal = "upnp.port.external"
+	attrUPnPPortInternal = "upnp.port.internal"
+
+	// upnpEventExpired is the ONE event whose result is ok: a mapping reached the end
+	// of its lease and the daemon tore it down, which is the lifecycle working. The
+	// other three are failures. A successful ADD or DELETE is absent because no
+	// captured grammar proves one — see miniupnpd.go.
+	upnpEventExpired        = "expired"
+	upnpEventCleanupFailed  = "cleanup_failed"
+	upnpEventUnauthorized   = "unauthorized"
+	upnpEventLeaseFileError = "lease_file_error"
+
+	upnpResultOK      = "ok"
+	upnpResultFailure = "failure"
+
+	upnpProtocolTCP = "tcp"
+	upnpProtocolUDP = "udp"
+)
+
 // family is the derived metric family a syslog program belongs to (#258).
 // familyUnknown is the zero value: a program not in programFamily below.
 type family int
@@ -99,6 +134,7 @@ const (
 	familyRADIUS
 	familyVPN
 	familyCARP
+	familyUPnP
 )
 
 // programFamily maps every program name a parser in this package registers
@@ -147,6 +183,8 @@ var programFamily = map[string]family{
 	// the familyCARP case below refuses to count it. If that parser is ever loosened,
 	// this entry becomes a way to count link-state changes as CARP transitions.
 	"kernel": familyCARP,
+
+	"miniupnpd": familyUPnP,
 }
 
 // programPrefixFamily is programFamily for PREFIX registrations
@@ -347,6 +385,26 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 			attrs[attrCARPInterface],
 			attrs[attrCARPVHID],
 		)
+
+	case familyUPnP:
+		// event and result are both required: they are the two closed dimensions the
+		// parser always sets together, so a partial tuple would mean the parser matched a
+		// grammar and then failed to classify it. Their absence is also what keeps the
+		// EXCLUDED lines uncounted — an `AddPortMapping:` attempt or a `Returning
+		// UPnPError` response arrives here as a generic record with no upnp.event.
+		event := attrs[attrUPnPEvent]
+		result := attrs[attrUPnPResult]
+		if event == "" || result == "" {
+			return false
+		}
+		// protocol is LEGITIMATELY EMPTY on three of the five grammars — the two cleanup
+		// failures and the lease-file error name no protocol — so it must not gate the
+		// observation. Requiring it would refuse the 1,527-occurrence dominant record.
+		//
+		// The port numbers are deliberately NOT passed: an ephemeral port is unbounded,
+		// and they stay on the shipped record. Nor is any mapping count, which #409
+		// forbids.
+		return sink.ObserveUPnP(event, result, attrs[attrUPnPProtocol])
 	}
 
 	return false
