@@ -11,7 +11,7 @@ netbirdio/netbird's client/status/status.go — no enrolled netbird network was
 available to observe them live (#211).
 """
 
-from builder import Builder, sel, epoch_ms, RATE, RUNSTOP
+from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP
 
 
 def build(b: Builder):
@@ -46,9 +46,9 @@ def build(b: Builder):
                    renames={"cli_version": "CLI Version", "daemon_version": "Daemon Version"})
 
     peer_traffic = b.ts("Per-Peer Traffic",
-                        [(f'topk(20, rate({sel("opnsense_netbird_peer_received_bytes_total")}[{RATE}]))*8',
+                        [(f'topk {grp()} (20, rate({sel("opnsense_netbird_peer_received_bytes_total")}[{RATE}]))*8',
                           "rx {{fqdn}}"),
-                         (f'topk(20, rate({sel("opnsense_netbird_peer_transmitted_bytes_total")}[{RATE}]))*8',
+                         (f'topk {grp()} (20, rate({sel("opnsense_netbird_peer_transmitted_bytes_total")}[{RATE}]))*8',
                           "tx {{fqdn}}")],
                         unit="bps", w=12, h=9)
     peer_connected_tl = b.statetimeline("Peer Connection State",

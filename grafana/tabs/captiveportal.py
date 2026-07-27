@@ -110,14 +110,16 @@ def build(b: Builder):
             {"color": "yellow", "value": 1},
             {"color": "green", "value": 10},
         ],
-        desc="Total unused (not yet redeemed) vouchers across every provider/group. "
-             "A low or falling count is a run-out signal for guest network access.",
+        desc=("Total unused (not yet redeemed) vouchers across every provider/group. "
+             "A low or falling count is a run-out signal for guest network access."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     valid_stat = b.stat(
         "Valid (Active) Vouchers",
         f"sum({sel('opnsense_captiveportal_vouchers', 'state=\"valid\"')})",
         unit="short", w=4, h=4,
-        desc="Total vouchers currently redeemed and within their validity window.",
+        desc=("Total vouchers currently redeemed and within their validity window."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     expired_stat = b.stat(
         "Expired Vouchers",
@@ -128,8 +130,9 @@ def build(b: Builder):
             {"color": "yellow", "value": 50},
             {"color": "orange", "value": 200},
         ],
-        desc="Total expired vouchers across every provider/group — "
-             "a large or growing count suggests the group needs cleanup.",
+        desc=("Total expired vouchers across every provider/group — "
+             "a large or growing count suggests the group needs cleanup."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     voucher_table = b.table(
         "Vouchers by Provider / Group / State",

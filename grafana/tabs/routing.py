@@ -41,7 +41,7 @@ Coverage:
   opnsense_network_diag_pfsync_node_info
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, grp, RATE
 
 
 def build(b: Builder):
@@ -66,7 +66,7 @@ def build(b: Builder):
     )
     arp_by_iface = b.bargauge(
         "ARP Entries by Interface",
-        [(f'count by (interface_description)({sel("opnsense_arp_table_entries")})',
+        [(f'count {grp("interface_description")}({sel("opnsense_arp_table_entries")})',
           "{{interface_description}}")],
         unit="short",
         w=8, h=8,
@@ -78,7 +78,7 @@ def build(b: Builder):
         "ARP Table Detail",
         [sel("opnsense_arp_table_entries")],
         w=24, h=12,
-        excludes=["Value", "__name__", "job", "instance", "env", "opnsense_instance"],
+        excludes=["Value", "__name__", "job", "instance", "env"],
         renames={
             "ip": "IP",
             "mac": "MAC",
@@ -86,8 +86,7 @@ def build(b: Builder):
             "interface_description": "Interface",
             "type": "Type",
             "expired": "Expired",
-            "permanent": "Permanent",
-        },
+            "permanent": "Permanent", "opnsense_instance": "Instance"},
         sort_by="Interface",
         desc="Full ARP table — all entries with their IP, MAC, hostname, interface, and flags.",
     )
@@ -106,7 +105,7 @@ def build(b: Builder):
     )
     ndp_by_iface = b.bargauge(
         "NDP Entries by Interface",
-        [(f'count by (interface_description)({sel("opnsense_ndp_entries")})',
+        [(f'count {grp("interface_description")}({sel("opnsense_ndp_entries")})',
           "{{interface_description}}")],
         unit="short",
         w=8, h=8,
@@ -118,13 +117,12 @@ def build(b: Builder):
         "NDP Table Detail",
         [sel("opnsense_ndp_entries")],
         w=24, h=12,
-        excludes=["Value", "__name__", "job", "instance", "env", "opnsense_instance"],
+        excludes=["Value", "__name__", "job", "instance", "env"],
         renames={
             "ip": "IP",
             "mac": "MAC",
             "interface_description": "Interface",
-            "type": "Type",
-        },
+            "type": "Type", "opnsense_instance": "Instance"},
         sort_by="Interface",
         desc="Full NDP (IPv6 neighbor discovery) table — all entries with IP, MAC, interface, and type.",
     )
@@ -147,13 +145,12 @@ def build(b: Builder):
         "LLDP Neighbor Detail",
         [sel("opnsense_lldp_neighbor_info")],
         w=24, h=12,
-        excludes=["Value", "__name__", "job", "instance", "env", "opnsense_instance"],
+        excludes=["Value", "__name__", "job", "instance", "env"],
         renames={
             "interface": "Local Interface",
             "chassis_name": "Neighbor",
             "port_id": "Neighbor Port ID",
-            "port_descr": "Neighbor Port Description",
-        },
+            "port_descr": "Neighbor Port Description", "opnsense_instance": "Instance"},
         sort_by="Local Interface",
         desc="Full LLDP neighbor table — local interface paired with the remote device's "
              "SysName, PortID, and PortDescr. A topology sensor: alert on an expected "
@@ -282,11 +279,10 @@ def build(b: Builder):
         "pfsync Node Info",
         [sel("opnsense_network_diag_pfsync_node_info")],
         w=20, h=8,
-        excludes=["Value", "__name__", "job", "instance", "env", "opnsense_instance"],
+        excludes=["Value", "__name__", "job", "instance", "env"],
         renames={
             "creatorid": "Creator ID",
-            "is_local": "Local",
-        },
+            "is_local": "Local", "opnsense_instance": "Instance"},
         sort_by="Creator ID",
         desc="pfsync node detail — creator ID and whether the node is local.",
     )

@@ -15,7 +15,7 @@ so b.sel_pipeline keeps the dashboard's box picker in step with the pipeline
 self-metrics.
 """
 
-from builder import Builder, RATE
+from builder import Builder, grp, RATE
 
 
 def build(b: Builder):
@@ -29,14 +29,14 @@ def build(b: Builder):
 
     shipped = b.ts(
         "Records Shipped (rate)",
-        [(f'sum by (source) (rate({b.sel_pipeline("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum {grp("source")} (rate({b.sel_pipeline("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_shipped_total: records successfully handed to the "
              "sink per second, by source. This is the primary throughput signal.",
     )
     dropped = b.ts(
         "Records Dropped (rate)",
-        [(f'sum by (source, reason) (rate({b.sel_pipeline("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
+        [(f'sum {grp("source", "reason")} (rate({b.sel_pipeline("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_dropped_total: records dropped before delivery, by "
@@ -73,7 +73,7 @@ def build(b: Builder):
     )
     poll_errors = b.ts(
         "Source Poll Errors (rate)",
-        [(f'sum by (source) (rate({b.sel_pipeline("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum {grp("source")} (rate({b.sel_pipeline("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by "
              "source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
@@ -96,7 +96,7 @@ def build(b: Builder):
     )
     possible_gaps = b.ts(
         "Possible Sampling Gaps (rate)",
-        [(f'sum by (source) (rate({b.sel_pipeline("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum {grp("source")} (rate({b.sel_pipeline("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a "
              "source whose only view of its data is a bounded window (e.g. the unbound source's "
@@ -114,7 +114,7 @@ def build(b: Builder):
 
     parse_errors = b.ts(
         "Parse Errors (rate)",
-        [(f'sum by (source, stage) (rate({b.sel_pipeline("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
+        [(f'sum {grp("source", "stage")} (rate({b.sel_pipeline("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
           "{{source}} / {{stage}}")],
         unit="short",
         desc="opnsense_exporter_logs_parse_errors_total: received records that failed to parse, "
@@ -125,7 +125,7 @@ def build(b: Builder):
     )
     rejected = b.ts(
         "Input Rejected (rate)",
-        [(f'sum by (source, reason) (rate({b.sel_pipeline("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
+        [(f'sum {grp("source", "reason")} (rate({b.sel_pipeline("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_rejected_total: receiver input refused rather than shipped. "
@@ -150,7 +150,7 @@ def build(b: Builder):
     )
     enrich_misses = b.ts(
         "Enrichment Misses (rate)",
-        [(f'sum by (table) (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
+        [(f'sum {grp("table")} (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
         unit="short",
         desc="opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by "
              "table. A sustained rate on table=rules means the rule snapshot is behind the box's "
@@ -159,7 +159,7 @@ def build(b: Builder):
     )
     enrich_errors = b.ts(
         "Enrichment Refresh Errors (rate)",
-        [(f'sum by (table) (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
+        [(f'sum {grp("table")} (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
           "{{table}}")],
         unit="short",
         desc="opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes "

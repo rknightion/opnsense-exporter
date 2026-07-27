@@ -4,7 +4,7 @@ Default row always present (core feature); pf-counter row gated on the
 opt-in details flag.
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, grp, RATE
 
 
 def build(b: Builder):
@@ -24,22 +24,22 @@ def build(b: Builder):
                                {"color": "orange", "value": 70},
                                {"color": "red", "value": 90}])
     top_tables = b.bargauge("Largest Tables",
-                            [(f'topk(20, {sel("opnsense_alias_table_entries")})', "{{table}}")],
+                            [(f'topk {grp()} (20, {sel("opnsense_alias_table_entries")})', "{{table}}")],
                             unit="short", w=8, h=8)
     entries_ts = b.ts("Table Entries Over Time",
-                      [(f'topk(20, {sel("opnsense_alias_table_entries")})', "{{table}}")],
+                      [(f'topk {grp()} (20, {sel("opnsense_alias_table_entries")})', "{{table}}")],
                       unit="short", w=24, h=8)
 
     eval_rate = b.ts("Evaluation Rate (match vs nomatch)",
-                     [(f'topk(20, rate({sel("opnsense_alias_table_evaluations_total")}[{RATE}]))',
+                     [(f'topk {grp()} (20, rate({sel("opnsense_alias_table_evaluations_total")}[{RATE}]))',
                        "{{table}} {{result}}")],
                      unit="short", w=12, h=8)
     pkt_rate = b.ts("Packet Rate by Table",
-                    [(f'topk(20, rate({sel("opnsense_alias_table_packets_total")}[{RATE}]))',
+                    [(f'topk {grp()} (20, rate({sel("opnsense_alias_table_packets_total")}[{RATE}]))',
                       "{{table}} {{direction}}/{{action}}")],
                     unit="pps", w=12, h=8)
     byte_rate = b.ts("Throughput by Table",
-                     [(f'topk(20, rate({sel("opnsense_alias_table_bytes_total")}[{RATE}]))*8',
+                     [(f'topk {grp()} (20, rate({sel("opnsense_alias_table_bytes_total")}[{RATE}]))*8',
                        "{{table}} {{direction}}/{{action}}")],
                      unit="bps", w=24, h=8)
 

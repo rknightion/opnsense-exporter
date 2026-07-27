@@ -25,14 +25,16 @@ from __future__ import annotations
 
 import re
 
-INSTANCE_SEL = 'opnsense_instance=~"$opnsense_instance"'
+INSTANCE_LABEL = "opnsense_instance"
+INSTANCE_SEL = f'{INSTANCE_LABEL}=~"$opnsense_instance"'
 # Loki's equivalent of INSTANCE_SEL. A shipped log stream carries NO
 # `opnsense_instance` label — its complete label set is opnsense_action,
 # opnsense_source, opnsense_subsystem, service_instance_id, service_name — and
 # `service_instance_id` holds the SAME value space as Prometheus
 # `opnsense_instance` (both verified live, 2026-07-26). So `$opnsense_instance`
 # selects correctly on either side, and multi-select/All stay regex-based.
-LOKI_INSTANCE_SEL = 'service_instance_id=~"$opnsense_instance"'
+LOKI_INSTANCE_LABEL = "service_instance_id"
+LOKI_INSTANCE_SEL = f'{LOKI_INSTANCE_LABEL}=~"$opnsense_instance"'
 RATE = "$__rate_interval"
 DS = {"name": "${datasource}"}
 LOKI_DS = {"name": "${loki_datasource}"}
@@ -71,6 +73,40 @@ def sel(metric: str, more: str = "") -> str:
     return f"{metric}{{{inner}}}"
 
 
+def grp(*labels: str) -> str:
+    """Render a group-by clause that always retains exporter-instance identity.
+
+    `sum by (protocol) (...)` fuses two firewalls' protocol counts into one number
+    the moment `$opnsense_instance` selects more than one box, and NOTHING on the
+    panel says so: the legend still reads "tcp", the axis still has a unit, and the
+    value is simply the sum of two unrelated appliances (#468, from #425's audit).
+
+    So the group-by is built rather than written. `f'sum {grp("protocol")} (...)'`
+    yields `sum by (opnsense_instance, protocol) (...)`, and the instance label
+    cannot be forgotten because the helper is the only way to write the clause.
+    `tests/test_instance_identity.py` fails on any built query whose aggregation
+    drops it without an allowlist entry, so the correct form is also the easy one.
+
+    Duplicates are collapsed, so `grp("opnsense_instance", "x")` is safe — a few
+    call sites (carp, gateways, netflow) already wrote the label by hand.
+    """
+    out = [INSTANCE_LABEL]
+    for label in labels:
+        label = label.strip()
+        if label and label not in out:
+            out.append(label)
+    return "by (" + ", ".join(out) + ")"
+
+
+# Ranking needs the clause for a DIFFERENT and worse reason than a `sum` does. An
+# unqualified `topk(20, ...)` ranks every selected appliance's series in one pool, so
+# if one firewall's series dominate, the other firewall's rows are not merged into the
+# result — they are ABSENT from it, with nothing on screen suggesting a second box
+# exists (#425). Write it as `topk {grp()} (20, <expr>)`; where the ranked expression
+# is itself an aggregation, ITS clause needs the label too, because an inner
+# `sum by (host)` has already fused the two boxes before `topk` ever runs.
+
+
 def loki_sel(matchers: str = "") -> str:
     """Return the Loki stream selector {service_instance_id=~"$opnsense_instance"<,matchers>}.
 
@@ -87,6 +123,29 @@ def loki_sel(matchers: str = "") -> str:
     """
     inner = LOKI_INSTANCE_SEL + (("," + matchers) if matchers else "")
     return f"{{{inner}}}"
+
+
+def loki_grp(*labels: str) -> str:
+    """`grp()` for LogQL, whose instance label is `service_instance_id` (#468).
+
+    A shipped log stream carries no `opnsense_instance` label — see LOKI_INSTANCE_SEL
+    — so the Prometheus helper would name a label that does not exist and group
+    everything into one empty-valued series, which looks correct and is not.
+
+    #413 scoped the stream SELECTORS, so the lines reaching these aggregations are
+    already the right lines; the merge this fixes happens after that filter.
+
+    The prefix form (`sum by (...) (expr)`) is live-verified against the deployed
+    Loki, including on `topk`, whose reference syntax documents only the postfix
+    form: `topk by (service_instance_id) (5, sum by (service_instance_id, ...) (...))`
+    returned correctly-labelled per-instance series on 2026-07-27.
+    """
+    out = [LOKI_INSTANCE_LABEL]
+    for label in labels:
+        label = label.strip()
+        if label and label not in out:
+            out.append(label)
+    return "by (" + ", ".join(out) + ")"
 
 
 def epoch_ms(expr: str) -> str:
@@ -293,7 +352,8 @@ class Builder:
         return n
 
     def gauge(self, title, expr, unit="short", desc="", w=4, h=6, mn=0, mx=None,
-              thresholds=None, decimals=None, instant=True, dedupe=True) -> str:
+              thresholds=None, decimals=None, instant=True, legend=None,
+              dedupe=True) -> str:
         """Radial gauge.
 
         `thresholds` is neutral by default, for the same reason as `bargauge()`
@@ -303,6 +363,10 @@ class Builder:
         silently acquired a severity boundary nobody chose. Pass an explicit
         `thresholds=` list for a panel that genuinely owns a bounded scale, and
         say at the call site what the boundary means.
+
+        `legend` exists for the same reason `stat()` has one: a gauge grouped by
+        `opnsense_instance` (#468) renders one dial per box, and without a legend
+        template the dials are unlabelled.
         """
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "min": mn,
@@ -317,7 +381,8 @@ class Builder:
                             "showThresholdMarkers": True,
                             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
         n = self._panel(title, "gauge", spec,
-                        [self._query(expr, instant=instant, dedupe=dedupe)], desc=desc)
+                        [self._query(expr, instant=instant, legend=legend,
+                                     dedupe=dedupe)], desc=desc)
         self.size[n] = (w, h)
         return n
 

@@ -48,13 +48,15 @@ def build(b: Builder):
             {"color": "red", "value": None},
             {"color": "green", "value": 1},
         ],
-        desc="Number of monit checks currently in OK state (status field == 0).",
+        desc=("Number of monit checks currently in OK state (status field == 0)."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     checks_monitored = b.stat(
         "Checks Monitored",
         f'sum({sel("opnsense_monit_check_monitored")})',
         unit="short", w=4, h=4,
-        desc="Number of monit checks actively being monitored (monitor != 0).",
+        desc=("Number of monit checks actively being monitored (monitor != 0)."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
 
     # ------------------------------------------------------------------ #

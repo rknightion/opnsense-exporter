@@ -14,7 +14,7 @@ Gauges (never rate): control_port_up, circuits, circuits_by_purpose,
 streams, hidden_services, hidden_service_hostname_available.
 """
 
-from builder import Builder, sel, RUNSTOP
+from builder import Builder, sel, grp, RUNSTOP
 
 
 def build(b: Builder):
@@ -47,23 +47,26 @@ def build(b: Builder):
             {"color": "green", "value": 1},
         ],
         color_mode="background",
-        desc="Number of fully-built (3-hop, BUILT) circuits. Zero while the "
+        desc=("Number of fully-built (3-hop, BUILT) circuits. Zero while the "
              "control port is up is the actual wedged-Tor signal — a running "
-             "service with no usable circuits.",
+             "service with no usable circuits."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     circuits_total = b.stat(
         "Total Circuits",
         f'sum({t("circuits")}) or vector(0)',
         unit="short", w=4, h=4,
-        desc="Total circuits across every build status (LAUNCHED/BUILT/"
-             "GUARD_WAIT/EXTENDED/FAILED/CLOSED/other).",
+        desc=("Total circuits across every build status (LAUNCHED/BUILT/"
+             "GUARD_WAIT/EXTENDED/FAILED/CLOSED/other)."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     streams_total = b.stat(
         "Total Streams",
         f'sum({t("streams")}) or vector(0)',
         unit="short", w=4, h=4,
-        desc="Total streams across every status (NEW/SUCCEEDED/FAILED/"
-             "CLOSED/other). Never labeled by destination.",
+        desc=("Total streams across every status (NEW/SUCCEEDED/FAILED/"
+             "CLOSED/other). Never labeled by destination."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     hidden_services_total = b.stat(
         "Hidden Services",
@@ -78,7 +81,7 @@ def build(b: Builder):
     # ------------------------------------------------------------------ #
     circuits_by_status = b.bargauge(
         "Circuits by Status",
-        [(f'sum by (status) ({t("circuits")})', "{{status}}")],
+        [(f'sum {grp("status")} ({t("circuits")})', "{{status}}")],
         unit="short", w=12, h=8,
         orient="horizontal",
         desc="opnsense_tor_circuits: circuit counts by build status. An "
@@ -87,7 +90,7 @@ def build(b: Builder):
     )
     circuits_by_purpose = b.bargauge(
         "Circuits by Purpose",
-        [(f'sum by (purpose) ({t("circuits_by_purpose")})', "{{purpose}}")],
+        [(f'sum {grp("purpose")} ({t("circuits_by_purpose")})', "{{purpose}}")],
         unit="short", w=12, h=8,
         orient="horizontal",
         desc="opnsense_tor_circuits_by_purpose: circuit counts by purpose "
@@ -100,7 +103,7 @@ def build(b: Builder):
     # ------------------------------------------------------------------ #
     streams_by_status = b.bargauge(
         "Streams by Status",
-        [(f'sum by (status) ({t("streams")})', "{{status}}")],
+        [(f'sum {grp("status")} ({t("streams")})', "{{status}}")],
         unit="short", w=24, h=8,
         orient="horizontal",
         desc="opnsense_tor_streams: stream counts by status (NEW/SUCCEEDED/"

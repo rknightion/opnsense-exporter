@@ -267,7 +267,7 @@ class RadiusOperationalEventSemanticsTest(unittest.TestCase):
         panel = panel_for_metric(builder, "opnsense_log_events_radius_total")
         self.assertEqual(panel["spec"]["title"], "RADIUS Access Events by Result (rate)")
         self.assertIn(
-            'sum by (event, result, client_scope) '
+            'sum by (opnsense_instance, event, result, client_scope) '
             '(rate(opnsense_log_events_radius_total{'
             'opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
             builder._exprs,
@@ -311,7 +311,7 @@ class VPNLifecycleEventSemanticsTest(unittest.TestCase):
         panel = panel_for_metric(builder, "opnsense_log_events_vpn_total")
         self.assertEqual(panel["spec"]["title"], "VPN Lifecycle Events by Backend & Event (rate)")
         self.assertIn(
-            'sum by (backend, event, result) '
+            'sum by (opnsense_instance, backend, event, result) '
             '(rate(opnsense_log_events_vpn_total{'
             'opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
             builder._exprs,
@@ -332,7 +332,7 @@ class VPNLifecycleEventSemanticsTest(unittest.TestCase):
 
         panel = panel_for_title(builder, "VPN Lifecycle Failures by Connection (rate)")
         self.assertIn(
-            'topk(20, sum by (backend, event, connection) '
+            'topk by (opnsense_instance) (20, sum by (opnsense_instance, backend, event, connection) '
             '(rate(opnsense_log_events_vpn_total{'
             'opnsense_instance=~"$opnsense_instance",'
             'result="failure"}[$__rate_interval])))',
@@ -433,7 +433,7 @@ class IngestPanelUnitSplitTest(unittest.TestCase):
         self.assertIn("not a datagram count", desc)
 
         for raw in (
-            'sum by (result) (rate(opnsense_flow_netflow_datagrams_total'
+            'sum by (opnsense_instance, result) (rate(opnsense_flow_netflow_datagrams_total'
             '{opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
             'rate(opnsense_flow_netflow_bytes_received_total{opnsense_instance=~"$opnsense_instance"}'
             '[$__rate_interval])',

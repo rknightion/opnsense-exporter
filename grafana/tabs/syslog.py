@@ -5,7 +5,7 @@ Counters (processed/dropped/written/truncated) are cumulative -> rate().
 queued / memory_usage / eps / message_size are instantaneous -> RAW.
 """
 
-from builder import Builder, sel, loki_sel, RATE, RUNSTOP
+from builder import Builder, sel, grp, loki_sel, loki_grp, RATE, RUNSTOP
 
 SYSLOG_STREAM = loki_sel('opnsense_source="syslog"')
 
@@ -29,7 +29,7 @@ def build(b: Builder):
                   unit="short", w=10, h=8)
 
     processed = b.ts("Processed Rate by Destination",
-                     [(f'topk(20, rate({sel("opnsense_syslog_processed_total")}[{RATE}]))',
+                     [(f'topk {grp()} (20, rate({sel("opnsense_syslog_processed_total")}[{RATE}]))',
                        "{{source_name}}/{{source_id}}")],
                      unit="short", w=12, h=8)
     # #416: dropped/truncated MESSAGE counts and truncated BYTE volume used to
@@ -75,7 +75,7 @@ def build(b: Builder):
     raw_logs = b.logs("Raw syslog stream", SYSLOG_STREAM)
     lines_by_subsystem = b.loki_ts(
         "Syslog lines/s by subsystem",
-        [(f'sum by (opnsense_subsystem) (rate({SYSLOG_STREAM} [$__auto]))',
+        [(f'sum {loki_grp("opnsense_subsystem")} (rate({SYSLOG_STREAM} [$__auto]))',
           "{{opnsense_subsystem}}")])
 
     b.tab("Syslog", [

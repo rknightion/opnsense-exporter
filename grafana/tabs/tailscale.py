@@ -6,7 +6,7 @@ Complementary to tailscale2otel (fleet/control-plane — including peer
 from local WireGuard handshakes.
 """
 
-from builder import Builder, sel, epoch_ms, RATE, RUNSTOP
+from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP
 
 
 def build(b: Builder):
@@ -36,9 +36,9 @@ def build(b: Builder):
                    renames={"version": "Version", "relay": "DERP Relay"})
 
     peer_traffic = b.ts("Per-Peer Traffic (from this node)",
-                        [(f'topk(20, rate({sel("opnsense_tailscale_peer_rx_bytes_total")}[{RATE}]))*8',
+                        [(f'topk {grp()} (20, rate({sel("opnsense_tailscale_peer_rx_bytes_total")}[{RATE}]))*8',
                           "rx {{peer}}"),
-                         (f'topk(20, rate({sel("opnsense_tailscale_peer_tx_bytes_total")}[{RATE}]))*8',
+                         (f'topk {grp()} (20, rate({sel("opnsense_tailscale_peer_tx_bytes_total")}[{RATE}]))*8',
                           "tx {{peer}}")],
                         unit="bps", w=12, h=9)
     peer_session = b.statetimeline("Peer WireGuard Session (node-local)",

@@ -21,7 +21,7 @@ Rows:
                          buffer size gauges ts (always visible — core endpoint)
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, grp, RATE
 
 
 def build(b: Builder):
@@ -238,10 +238,9 @@ def build(b: Builder):
     udp_drops = b.table(
         "UDP Dropped by Reason",
         [
-            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_udp_dropped_by_reason_total")}[5m])))',
+            f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_udp_dropped_by_reason_total")}[5m])))',
         ],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)",
         w=12, h=8,
@@ -284,10 +283,9 @@ def build(b: Builder):
     ip_drops = b.table(
         "IP Dropped by Reason",
         [
-            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_ip_dropped_by_reason_total")}[5m])))',
+            f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_ip_dropped_by_reason_total")}[5m])))',
         ],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)",
         w=24, h=8,
@@ -318,9 +316,8 @@ def build(b: Builder):
     )
     ip6_drops = b.table(
         "IPv6 Dropped by Reason",
-        [f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_ip6_dropped_by_reason_total")}[5m])))'],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        [f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_ip6_dropped_by_reason_total")}[5m])))'],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)", w=12, h=8,
         desc="IPv6 drops broken down by reason (5-minute average rate).",
@@ -332,9 +329,8 @@ def build(b: Builder):
     )
     icmp6_drops = b.table(
         "ICMPv6 Dropped by Reason",
-        [f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_icmp6_dropped_by_reason_total")}[5m])))'],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        [f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_icmp6_dropped_by_reason_total")}[5m])))'],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)", w=12, h=8,
         desc="ICMPv6 drops broken down by reason (5-minute average rate).",
@@ -398,10 +394,9 @@ def build(b: Builder):
     icmp_drops = b.table(
         "ICMP Dropped by Reason",
         [
-            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_icmp_dropped_by_reason_total")}[5m])))',
+            f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_icmp_dropped_by_reason_total")}[5m])))',
         ],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)",
         w=12, h=8,
@@ -427,10 +422,9 @@ def build(b: Builder):
     carp_drops = b.table(
         "CARP Dropped by Reason",
         [
-            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_carp_dropped_by_reason_total")}[5m])))',
+            f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_carp_dropped_by_reason_total")}[5m])))',
         ],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)",
         w=12, h=8,
@@ -467,10 +461,9 @@ def build(b: Builder):
     pfsync_drops = b.table(
         "pfsync Dropped by Reason",
         [
-            f'sort_desc(sum by (reason) (rate({sel("opnsense_protocol_pfsync_dropped_by_reason_total")}[5m])))',
+            f'sort_desc(sum {grp("reason")} (rate({sel("opnsense_protocol_pfsync_dropped_by_reason_total")}[5m])))',
         ],
-        renames={"Value": "Drop rate (5m avg)", "reason": "Reason"},
-        excludes=["opnsense_instance"],
+        renames={"Value": "Drop rate (5m avg)", "reason": "Reason", "opnsense_instance": "Instance"},
         unit_overrides={"Drop rate (5m avg)": "pps"},
         sort_by="Drop rate (5m avg)",
         w=16, h=8,

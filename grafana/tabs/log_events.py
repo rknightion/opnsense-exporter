@@ -18,7 +18,7 @@ Each family's row is gated on its own sentinel so a box that only emits some of
 the programs shows only those rows; the tab itself is gated on any of them.
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, grp, RATE
 
 
 def build(b: Builder):
@@ -35,7 +35,7 @@ def build(b: Builder):
 
     fw_action = b.ts(
         "Firewall Events by Action & Scope (rate)",
-        [(f'sum by (action, scope) (rate({sel("opnsense_log_events_firewall_total")}[{RATE}]))',
+        [(f'sum {grp("action", "scope")} (rate({sel("opnsense_log_events_firewall_total")}[{RATE}]))',
           "{{action}} / {{scope}}")],
         unit="short",
         desc="opnsense_log_events_firewall_total: filterlog events per second by action and "
@@ -46,7 +46,7 @@ def build(b: Builder):
     blocks = sel("opnsense_log_events_firewall_total", 'action!="pass"')
     fw_rule = b.ts(
         "Top Firewall Rules by Block Rate",
-        [(f'topk(20, sum by (rule_name, rule_id, interface) (rate({blocks}[{RATE}])))',
+        [(f'topk {grp()} (20, sum {grp("rule_name", "rule_id", "interface")} (rate({blocks}[{RATE}])))',
           "{{rule_name}} ({{interface}})")],
         unit="short",
         desc="opnsense_log_events_firewall_total (action != pass): the busiest blocking rules by "
@@ -56,7 +56,7 @@ def build(b: Builder):
 
     haproxy = b.ts(
         "HAProxy Events by Event, State & Status (rate)",
-        [(f'sum by (event, state, status_class) (rate({sel("opnsense_log_events_haproxy_total")}[{RATE}]))',
+        [(f'sum {grp("event", "state", "status_class")} (rate({sel("opnsense_log_events_haproxy_total")}[{RATE}]))',
           "{{event}} / {{state}} / {{status_class}}")],
         unit="short",
         desc="opnsense_log_events_haproxy_total: HAProxy events per second. event=server_state with "
@@ -65,7 +65,7 @@ def build(b: Builder):
     )
     haproxy_backend = b.ts(
         "HAProxy Events by Backend/Server (rate)",
-        [(f'topk(20, sum by (backend, server) (rate({sel("opnsense_log_events_haproxy_total")}[{RATE}])))',
+        [(f'topk {grp()} (20, sum {grp("backend", "server")} (rate({sel("opnsense_log_events_haproxy_total")}[{RATE}])))',
           "{{backend}} / {{server}}")],
         unit="short",
         desc="opnsense_log_events_haproxy_total by backend and server — where the HAProxy activity is.",
@@ -73,7 +73,7 @@ def build(b: Builder):
 
     sshd = b.ts(
         "sshd Auth Events by Result (rate)",
-        [(f'sum by (result, method, scope) (rate({sel("opnsense_log_events_sshd_total")}[{RATE}]))',
+        [(f'sum {grp("result", "method", "scope")} (rate({sel("opnsense_log_events_sshd_total")}[{RATE}]))',
           "{{result}} / {{method}} / {{scope}}")],
         unit="short",
         desc="opnsense_log_events_sshd_total: firewall sshd authentication outcomes per second. "
@@ -83,7 +83,7 @@ def build(b: Builder):
 
     dhcp = b.ts(
         "DHCP Lease Events by Action (rate)",
-        [(f'sum by (action, interface) (rate({sel("opnsense_log_events_dhcp_total")}[{RATE}]))',
+        [(f'sum {grp("action", "interface")} (rate({sel("opnsense_log_events_dhcp_total")}[{RATE}]))',
           "{{action}} / {{interface}}")],
         unit="short",
         desc="opnsense_log_events_dhcp_total: DHCP lease events per second by action (ack/nak/offer/…) "
@@ -92,7 +92,7 @@ def build(b: Builder):
 
     audit = b.ts(
         "Config / Audit Events by Type & Result (rate)",
-        [(f'sum by (event, result) (rate({sel("opnsense_log_events_audit_total")}[{RATE}]))',
+        [(f'sum {grp("event", "result")} (rate({sel("opnsense_log_events_audit_total")}[{RATE}]))',
           "{{event}} / {{result}}")],
         unit="short",
         desc="opnsense_log_events_audit_total: audit events per second — event=config_change tracks "
@@ -101,7 +101,7 @@ def build(b: Builder):
 
     ids = b.ts(
         "IDS Events by Action & Severity (rate)",
-        [(f'sum by (event_type, action, severity) (rate({sel("opnsense_log_events_ids_total")}[{RATE}]))',
+        [(f'sum {grp("event_type", "action", "severity")} (rate({sel("opnsense_log_events_ids_total")}[{RATE}]))',
           "{{event_type}} / {{action}} / sev {{severity}}")],
         unit="short",
         desc="opnsense_log_events_ids_total: Suricata EVE events per second by type, action and "
@@ -111,7 +111,7 @@ def build(b: Builder):
 
     radius = b.ts(
         "RADIUS Access Events by Result (rate)",
-        [(f'sum by (event, result, client_scope) (rate({sel("opnsense_log_events_radius_total")}[{RATE}]))',
+        [(f'sum {grp("event", "result", "client_scope")} (rate({sel("opnsense_log_events_radius_total")}[{RATE}]))',
           "{{event}} / {{result}} / {{client_scope}}")],
         unit="short",
         desc="opnsense_log_events_radius_total: FreeRADIUS access outcomes per second. The closed "
@@ -124,7 +124,7 @@ def build(b: Builder):
 
     vpn = b.ts(
         "VPN Lifecycle Events by Backend & Event (rate)",
-        [(f'sum by (backend, event, result) (rate({sel("opnsense_log_events_vpn_total")}[{RATE}]))',
+        [(f'sum {grp("backend", "event", "result")} (rate({sel("opnsense_log_events_vpn_total")}[{RATE}]))',
           "{{backend}} / {{event}} / {{result}}")],
         unit="short",
         desc="opnsense_log_events_vpn_total: IPsec (charon) and OpenVPN tunnel lifecycle "
@@ -142,7 +142,7 @@ def build(b: Builder):
     vpn_failures = sel("opnsense_log_events_vpn_total", 'result="failure"')
     vpn_by_connection = b.ts(
         "VPN Lifecycle Failures by Connection (rate)",
-        [(f'topk(20, sum by (backend, event, connection) (rate({vpn_failures}[{RATE}])))',
+        [(f'topk {grp()} (20, sum {grp("backend", "event", "connection")} (rate({vpn_failures}[{RATE}])))',
           "{{connection}} / {{backend}} / {{event}}")],
         unit="short",
         desc="opnsense_log_events_vpn_total (result=failure): which tunnels are failing, by the "
@@ -159,7 +159,7 @@ def build(b: Builder):
 
     upnp = b.ts(
         "UPnP / NAT-PMP Mapping Events by Event & Result (rate)",
-        [(f'sum by (event, result, protocol) (rate({sel("opnsense_log_events_upnp_total")}[{RATE}]))',
+        [(f'sum {grp("event", "result", "protocol")} (rate({sel("opnsense_log_events_upnp_total")}[{RATE}]))',
           "{{event}} / {{result}} / {{protocol}}")],
         unit="short",
         desc="opnsense_log_events_upnp_total: miniupnpd mapping events per second. The vocabulary "
@@ -184,7 +184,7 @@ def build(b: Builder):
 
     cardinality_keys = b.ts(
         "Derived Metric Label Tuples in Use",
-        [(f'sum by (family) ({sel("opnsense_log_events_cardinality_keys")})',
+        [(f'sum {grp("family")} ({sel("opnsense_log_events_cardinality_keys")})',
           "{{family}}")],
         unit="short",
         desc="opnsense_log_events_cardinality_keys: distinct label tuples currently retained per "
@@ -196,7 +196,7 @@ def build(b: Builder):
 
     cardinality_capped = b.ts(
         "Derived Metric Tuples Folded Into Overflow (rate)",
-        [(f'sum by (family) (rate({sel("opnsense_log_events_cardinality_capped_total")}[{RATE}]))',
+        [(f'sum {grp("family")} (rate({sel("opnsense_log_events_cardinality_capped_total")}[{RATE}]))',
           "{{family}}")],
         unit="short",
         desc="opnsense_log_events_cardinality_capped_total: observations per second whose label "
@@ -209,7 +209,7 @@ def build(b: Builder):
 
     observation_dropped = b.ts(
         "Derived Metric Observation Drops (rate)",
-        [(f'sum by (reason) (rate({sel("opnsense_log_events_observation_dropped_total")}[{RATE}]))',
+        [(f'sum {grp("reason")} (rate({sel("opnsense_log_events_observation_dropped_total")}[{RATE}]))',
           "{{reason}}")],
         unit="short",
         desc="opnsense_log_events_observation_dropped_total: derived observations refused before "

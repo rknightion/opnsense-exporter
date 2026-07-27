@@ -10,7 +10,7 @@ Covers:
  - NAT rule inventory counts (opt-in detail flag, #221)
 """
 
-from builder import Builder, sel, epoch_ms, RATE
+from builder import Builder, sel, grp, epoch_ms, RATE
 
 # The pf-traffic and netflow metrics label `interface` with the kernel DEVICE name
 # (igb0, ixl0_vlan25, pppoe0), NOT the configured description that the $interface
@@ -207,9 +207,9 @@ def build(b: Builder):
 
     pf_counters_tbl = b.table(
         "PF Counters (total)",
-        [f'sort_desc(sum by (counter) ({sel("opnsense_pf_stats_counter_total")}))'],
-        renames={"counter": "Counter", "Value": "Total"},
-        excludes=["opnsense_instance", "Time"],
+        [f'sort_desc(sum {grp("counter")} ({sel("opnsense_pf_stats_counter_total")}))'],
+        renames={"counter": "Counter", "Value": "Total", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="Total", sort_desc=True,
         w=8, h=8,
         desc="Cumulative totals for all named PF counters.",
@@ -217,9 +217,9 @@ def build(b: Builder):
 
     pf_limit_tbl = b.table(
         "PF Limit Counters",
-        [f'sort_desc(sum by (counter) ({sel("opnsense_pf_stats_limit_counter_total")}))'],
-        renames={"counter": "Counter", "Value": "Total"},
-        excludes=["opnsense_instance", "Time"],
+        [f'sort_desc(sum {grp("counter")} ({sel("opnsense_pf_stats_limit_counter_total")}))'],
+        renames={"counter": "Counter", "Value": "Total", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="Total", sort_desc=True,
         w=24, h=8,
         desc="Cumulative totals for PF limit counters (memory, state-limit, etc.).",
@@ -240,8 +240,8 @@ def build(b: Builder):
     pf_timeouts = b.table(
         "PF Timeouts",
         [sel("opnsense_pf_stats_timeout_seconds")],
-        renames={"name": "Timeout Name", "Value": "Seconds"},
-        excludes=["opnsense_instance", "Time"],
+        renames={"name": "Timeout Name", "Value": "Seconds", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="Timeout Name", sort_desc=False,
         w=12, h=8,
         desc="PF timeout values in seconds, by name.",
@@ -266,12 +266,12 @@ def build(b: Builder):
     fw_rule_evals = b.table(
         "Top 20 Rules — Evaluations/s",
         [
-            f'topk(20, sum by (description, action, interface, direction)'
+            f'topk {grp()} (20, sum {grp("description", "action", "interface", "direction")}'
             f'(rate({sel("opnsense_firewall_rule_evaluations_total")}[{RATE}])))',
         ],
         renames={"description": "Rule", "action": "Action",
-                 "interface": "Interface", "direction": "Direction", "Value": "Evals/s"},
-        excludes=["opnsense_instance", "Time"],
+                 "interface": "Interface", "direction": "Direction", "Value": "Evals/s", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="Evals/s", sort_desc=True,
         w=24, h=10,
         desc="Top 20 rules by evaluation rate. UUID labels are dropped to reduce cardinality.",
@@ -280,12 +280,12 @@ def build(b: Builder):
     fw_rule_pkts = b.table(
         "Top 20 Rules — Packets/s",
         [
-            f'topk(20, sum by (description, action, interface, direction)'
+            f'topk {grp()} (20, sum {grp("description", "action", "interface", "direction")}'
             f'(rate({sel("opnsense_firewall_rule_packets_total")}[{RATE}])))',
         ],
         renames={"description": "Rule", "action": "Action",
-                 "interface": "Interface", "direction": "Direction", "Value": "Pkts/s"},
-        excludes=["opnsense_instance", "Time"],
+                 "interface": "Interface", "direction": "Direction", "Value": "Pkts/s", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="Pkts/s", sort_desc=True,
         w=12, h=10,
         desc="Top 20 rules by matched packet rate.",
@@ -294,12 +294,12 @@ def build(b: Builder):
     fw_rule_bytes = b.table(
         "Top 20 Rules — Bytes/s",
         [
-            f'topk(20, sum by (description, action, interface, direction)'
+            f'topk {grp()} (20, sum {grp("description", "action", "interface", "direction")}'
             f'(rate({sel("opnsense_firewall_rule_bytes_total")}[{RATE}])))',
         ],
         renames={"description": "Rule", "action": "Action",
-                 "interface": "Interface", "direction": "Direction", "Value": "Bps"},
-        excludes=["opnsense_instance", "Time"],
+                 "interface": "Interface", "direction": "Direction", "Value": "Bps", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         unit_overrides={"Bps": "Bps"},
         sort_by="Bps", sort_desc=True,
         w=12, h=10,
@@ -309,12 +309,12 @@ def build(b: Builder):
     fw_rule_states = b.table(
         "Top 20 Rules — Active States",
         [
-            f'topk(20, sum by (description, action, interface, direction)'
+            f'topk {grp()} (20, sum {grp("description", "action", "interface", "direction")}'
             f'({sel("opnsense_firewall_rule_states")}))',
         ],
         renames={"description": "Rule", "action": "Action",
-                 "interface": "Interface", "direction": "Direction", "Value": "States"},
-        excludes=["opnsense_instance", "Time"],
+                 "interface": "Interface", "direction": "Direction", "Value": "States", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="States", sort_desc=True,
         w=12, h=10,
         desc="Top 20 rules by current active state count.",
@@ -323,12 +323,12 @@ def build(b: Builder):
     fw_rule_pf = b.table(
         "Top 20 Rules — PF Rules Generated",
         [
-            f'topk(20, sum by (description, action, interface, direction)'
+            f'topk {grp()} (20, sum {grp("description", "action", "interface", "direction")}'
             f'({sel("opnsense_firewall_rule_pf_rules")}))',
         ],
         renames={"description": "Rule", "action": "Action",
-                 "interface": "Interface", "direction": "Direction", "Value": "PF Rules"},
-        excludes=["opnsense_instance", "Time"],
+                 "interface": "Interface", "direction": "Direction", "Value": "PF Rules", "opnsense_instance": "Instance"},
+        excludes=["Time"],
         sort_by="PF Rules", sort_desc=True,
         w=12, h=10,
         desc="Top 20 rules by number of PF rules generated.",
@@ -387,7 +387,7 @@ def build(b: Builder):
     # ══════════════════════════════════════════════════════════════════════
     nat_rules = b.bargauge(
         "NAT Rules by Type",
-        [(f'sum by (type, enabled) ({sel("opnsense_firewall_nat_rules")})',
+        [(f'sum {grp("type", "enabled")} ({sel("opnsense_firewall_nat_rules")})',
           "{{type}} enabled={{enabled}}")],
         unit="short", w=12, h=8,
         desc=(

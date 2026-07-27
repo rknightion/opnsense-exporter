@@ -19,7 +19,7 @@ Rows:
   6. IPsec Pools           gated has_ipsec_pools: mode-cfg pool utilization
 """
 
-from builder import Builder, sel, epoch_ms, RATE, RUNSTOP, UPDOWN
+from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP, UPDOWN
 
 
 # Custom peer-status mapping: 0=Down, 1=Up, 2=Unknown
@@ -62,10 +62,9 @@ def build(b: Builder):
         "OpenVPN Instances Enabled",
         f'count({sel("opnsense_openvpn_instances")} == 1)',
         unit="short", w=4, h=4,
-        desc=(
-            "Number of OpenVPN instances currently enabled. "
+        desc=("Number of OpenVPN instances currently enabled. "
             "Derived from opnsense_openvpn_instances == 1."
-        ),
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
 
     # ================================================================
@@ -121,8 +120,8 @@ def build(b: Builder):
     )
     wg_handshake_age = b.stat(
         "Handshake Age (max)",
-        f'max({sel("opnsense_wireguard_peer_handshake_age_seconds")})',
-        unit="s", w=8, h=8,
+        f'max {grp()} ({sel("opnsense_wireguard_peer_handshake_age_seconds")})',
+        unit="s", w=8, h=8, legend="{{opnsense_instance}}",
         thresholds=[
             {"color": "green", "value": None},
             {"color": "orange", "value": 90},
@@ -130,7 +129,7 @@ def build(b: Builder):
         ],
         color_mode="background",
         desc=(
-            "Maximum seconds since any peer's last handshake. "
+            "Maximum seconds since any peer's last handshake, per firewall. "
             "WireGuard re-keys every ~180 s; red > 180 s suggests a stale peer."
         ),
     )

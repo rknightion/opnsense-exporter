@@ -4531,8 +4531,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (100 * max(opnsense_system_disk_usage_ratio{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (100 * max by (opnsense_instance) (opnsense_system_disk_usage_ratio{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
                         "format": "table"
@@ -4625,8 +4626,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (max(opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (max by (opnsense_instance) (opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
                         "format": "table"
@@ -5733,7 +5735,7 @@
         "spec": {
           "id": 24,
           "title": "Unhealthy Subsystems",
-          "description": "Count of health-check subsystems currently NOT OK (opnsense_system_subsystem_status_code < 2). 0 when every subsystem is healthy \u2014 OPNsense omits healthy subsystems from the payload.",
+          "description": "Count of health-check subsystems currently NOT OK (opnsense_system_subsystem_status_code < 2). 0 when every subsystem is healthy \u2014 OPNsense omits healthy subsystems from the payload.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -6936,8 +6938,7 @@
                         "__name__": true,
                         "Value": true,
                         "job": true,
-                        "instance": true,
-                        "opnsense_instance": true
+                        "instance": true
                       },
                       "renameByName": {
                         "device": "Device",
@@ -6945,7 +6946,8 @@
                         "mountpoint": "Mountpoint",
                         "Value #A": "Total",
                         "Value #B": "Used",
-                        "Value #C": "Usage Ratio"
+                        "Value #C": "Usage Ratio",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -9248,8 +9250,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (max(opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (max by (opnsense_instance) (opnsense_temperature_celsius{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -16613,7 +16616,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (counter) (opnsense_pf_stats_counter_total{opnsense_instance=~\"$opnsense_instance\"})))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, counter) (opnsense_pf_stats_counter_total{opnsense_instance=~\"$opnsense_instance\"})))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -16641,12 +16644,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "counter": "Counter",
-                        "Value": "Total"
+                        "Value": "Total",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -16723,7 +16726,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (counter) (opnsense_pf_stats_limit_counter_total{opnsense_instance=~\"$opnsense_instance\"})))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, counter) (opnsense_pf_stats_limit_counter_total{opnsense_instance=~\"$opnsense_instance\"})))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -16751,12 +16754,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "counter": "Counter",
-                        "Value": "Total"
+                        "Value": "Total",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -16945,12 +16948,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "name": "Timeout Name",
-                        "Value": "Seconds"
+                        "Value": "Seconds",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -17193,7 +17196,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (description, action, interface, direction)(rate(opnsense_firewall_rule_evaluations_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, description, action, interface, direction)(rate(opnsense_firewall_rule_evaluations_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -17221,15 +17224,15 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "description": "Rule",
                         "action": "Action",
                         "interface": "Interface",
                         "direction": "Direction",
-                        "Value": "Evals/s"
+                        "Value": "Evals/s",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -17306,7 +17309,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (description, action, interface, direction)(rate(opnsense_firewall_rule_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, description, action, interface, direction)(rate(opnsense_firewall_rule_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -17334,15 +17337,15 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "description": "Rule",
                         "action": "Action",
                         "interface": "Interface",
                         "direction": "Direction",
-                        "Value": "Pkts/s"
+                        "Value": "Pkts/s",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -17419,7 +17422,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (description, action, interface, direction)(rate(opnsense_firewall_rule_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, description, action, interface, direction)(rate(opnsense_firewall_rule_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -17447,15 +17450,15 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "description": "Rule",
                         "action": "Action",
                         "interface": "Interface",
                         "direction": "Direction",
-                        "Value": "Bps"
+                        "Value": "Bps",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -17545,7 +17548,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (description, action, interface, direction)(opnsense_firewall_rule_states{opnsense_instance=~\"$opnsense_instance\"})))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, description, action, interface, direction)(opnsense_firewall_rule_states{opnsense_instance=~\"$opnsense_instance\"})))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -17573,15 +17576,15 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "description": "Rule",
                         "action": "Action",
                         "interface": "Interface",
                         "direction": "Direction",
-                        "Value": "States"
+                        "Value": "States",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -17658,7 +17661,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (description, action, interface, direction)(opnsense_firewall_rule_pf_rules{opnsense_instance=~\"$opnsense_instance\"})))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, description, action, interface, direction)(opnsense_firewall_rule_pf_rules{opnsense_instance=~\"$opnsense_instance\"})))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -17686,15 +17689,15 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "description": "Rule",
                         "action": "Action",
                         "interface": "Interface",
                         "direction": "Direction",
-                        "Value": "PF Rules"
+                        "Value": "PF Rules",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -18242,7 +18245,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (type, enabled) (opnsense_firewall_nat_rules{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, type, enabled) (opnsense_firewall_nat_rules{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{type}} enabled={{enabled}}",
                         "instant": true,
@@ -18786,7 +18789,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, opnsense_alias_table_entries{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, opnsense_alias_table_entries{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{table}}",
                         "instant": true,
@@ -18870,7 +18873,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, opnsense_alias_table_entries{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, opnsense_alias_table_entries{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{table}}",
                         "instant": false,
@@ -18959,7 +18962,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_alias_table_evaluations_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_alias_table_evaluations_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{table}} {{result}}",
                         "instant": false,
@@ -19048,7 +19051,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_alias_table_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{table}} {{direction}}/{{action}}",
                         "instant": false,
@@ -19137,7 +19140,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_alias_table_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_alias_table_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
                         "refId": "A",
                         "legendFormat": "{{table}} {{direction}}/{{action}}",
                         "instant": false,
@@ -22094,7 +22097,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(15, sum by (type) (rate(opnsense_unbound_dns_queries_by_type_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (15, sum by (opnsense_instance, type) (rate(opnsense_unbound_dns_queries_by_type_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "legendFormat": "{{type}}",
                         "instant": true,
@@ -22175,7 +22178,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (protocol) (rate(opnsense_unbound_dns_queries_by_protocol_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, protocol) (rate(opnsense_unbound_dns_queries_by_protocol_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{protocol}}",
                         "instant": true,
@@ -22256,7 +22259,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (rcode) (rate(opnsense_unbound_dns_answers_by_rcode_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, rcode) (rate(opnsense_unbound_dns_answers_by_rcode_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{rcode}}",
                         "instant": true,
@@ -22337,7 +22340,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (flag) (rate(opnsense_unbound_dns_query_flags_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, flag) (rate(opnsense_unbound_dns_query_flags_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{flag}}",
                         "instant": true,
@@ -22421,7 +22424,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (type) (rate(opnsense_unbound_dns_edns_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, type) (rate(opnsense_unbound_dns_edns_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{type}}",
                         "instant": true,
@@ -22505,7 +22508,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (cache) (opnsense_unbound_dns_cache_count{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, cache) (opnsense_unbound_dns_cache_count{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{cache}}",
                         "instant": true,
@@ -22589,7 +22592,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (component) (opnsense_unbound_dns_memory_bytes{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, component) (opnsense_unbound_dns_memory_bytes{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{component}}",
                         "instant": true,
@@ -22766,7 +22769,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, opnsense_unbound_dns_infra_rtt_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{ip}} {{host}}",
                         "instant": false,
@@ -22855,7 +22858,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, opnsense_unbound_dns_infra_rto_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, opnsense_unbound_dns_infra_rto_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{ip}} {{host}}",
                         "instant": false,
@@ -23305,7 +23308,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (result) (opnsense_unbound_dns_qstats_queries_7d{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, result) (opnsense_unbound_dns_qstats_queries_7d{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{result}}",
                         "instant": true,
@@ -23386,7 +23389,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (type) (opnsense_unbound_dns_local_zones{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, type) (opnsense_unbound_dns_local_zones{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{type}}",
                         "instant": true,
@@ -27596,7 +27599,7 @@
         "spec": {
           "id": 236,
           "title": "OpenVPN Instances Enabled",
-          "description": "Number of OpenVPN instances currently enabled. Derived from opnsense_openvpn_instances == 1.",
+          "description": "Number of OpenVPN instances currently enabled. Derived from opnsense_openvpn_instances == 1.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -28212,7 +28215,7 @@
         "spec": {
           "id": 242,
           "title": "Handshake Age (max)",
-          "description": "Maximum seconds since any peer's last handshake. WireGuard re-keys every ~180 s; red > 180 s suggests a stale peer.",
+          "description": "Maximum seconds since any peer's last handshake, per firewall. WireGuard re-keys every ~180 s; red > 180 s suggests a stale peer.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -28235,8 +28238,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (max(opnsense_wireguard_peer_handshake_age_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (max by (opnsense_instance) (opnsense_wireguard_peer_handshake_age_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -31543,7 +31547,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_tailscale_peer_rx_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_tailscale_peer_rx_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
                         "refId": "A",
                         "legendFormat": "rx {{peer}}",
                         "instant": false,
@@ -31569,7 +31573,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_tailscale_peer_tx_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_tailscale_peer_tx_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
                         "refId": "B",
                         "legendFormat": "tx {{peer}}",
                         "instant": false,
@@ -32749,7 +32753,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_netbird_peer_received_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_netbird_peer_received_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
                         "refId": "A",
                         "legendFormat": "rx {{fqdn}}",
                         "instant": false,
@@ -32775,7 +32779,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_netbird_peer_transmitted_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_netbird_peer_transmitted_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))*8)",
                         "refId": "B",
                         "legendFormat": "tx {{fqdn}}",
                         "instant": false,
@@ -33378,7 +33382,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (count by (interface_description)(opnsense_arp_table_entries{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (count by (opnsense_instance, interface_description)(opnsense_arp_table_entries{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{interface_description}}",
                         "instant": true,
@@ -33494,8 +33498,7 @@
                         "Value": true,
                         "job": true,
                         "instance": true,
-                        "env": true,
-                        "opnsense_instance": true
+                        "env": true
                       },
                       "renameByName": {
                         "ip": "IP",
@@ -33504,7 +33507,8 @@
                         "interface_description": "Interface",
                         "type": "Type",
                         "expired": "Expired",
-                        "permanent": "Permanent"
+                        "permanent": "Permanent",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -33667,7 +33671,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (count by (interface_description)(opnsense_ndp_entries{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (count by (opnsense_instance, interface_description)(opnsense_ndp_entries{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{interface_description}}",
                         "instant": true,
@@ -33783,14 +33787,14 @@
                         "Value": true,
                         "job": true,
                         "instance": true,
-                        "env": true,
-                        "opnsense_instance": true
+                        "env": true
                       },
                       "renameByName": {
                         "ip": "IP",
                         "mac": "MAC",
                         "interface_description": "Interface",
-                        "type": "Type"
+                        "type": "Type",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -33983,14 +33987,14 @@
                         "Value": true,
                         "job": true,
                         "instance": true,
-                        "env": true,
-                        "opnsense_instance": true
+                        "env": true
                       },
                       "renameByName": {
                         "interface": "Local Interface",
                         "chassis_name": "Neighbor",
                         "port_id": "Neighbor Port ID",
-                        "port_descr": "Neighbor Port Description"
+                        "port_descr": "Neighbor Port Description",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -35004,12 +35008,12 @@
                         "Value": true,
                         "job": true,
                         "instance": true,
-                        "env": true,
-                        "opnsense_instance": true
+                        "env": true
                       },
                       "renameByName": {
                         "creatorid": "Creator ID",
-                        "is_local": "Local"
+                        "is_local": "Local",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -36685,7 +36689,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_udp_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_udp_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -36713,12 +36717,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -37090,7 +37094,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_ip_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_ip_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -37118,12 +37122,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -37469,7 +37473,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_ip6_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_ip6_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -37497,12 +37501,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -37681,7 +37685,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_icmp6_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_icmp6_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -37709,12 +37713,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -38279,7 +38283,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_icmp_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_icmp_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -38307,12 +38311,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -38517,7 +38521,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_carp_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_carp_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -38545,12 +38549,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -38844,7 +38848,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (reason) (rate(opnsense_protocol_pfsync_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, reason) (rate(opnsense_protocol_pfsync_dropped_by_reason_total{opnsense_instance=~\"$opnsense_instance\"}[5m]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -38872,12 +38876,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Drop rate (5m avg)",
-                        "reason": "Reason"
+                        "reason": "Reason",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -39535,8 +39539,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (max(opnsense_ntp_peer_reach{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (max by (opnsense_instance) (opnsense_ntp_peer_reach{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": true,
                         "range": false,
                         "format": "table"
@@ -39628,8 +39633,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (100 * max(opnsense_ntp_peer_reach{opnsense_instance=~\"$opnsense_instance\"}) / 255)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (100 * max by (opnsense_instance) (opnsense_ntp_peer_reach{opnsense_instance=~\"$opnsense_instance\"}) / 255)",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -39923,7 +39929,7 @@
         "spec": {
           "id": 348,
           "title": "Last Response (max)",
-          "description": "Seconds since the most-recent NTP peer last responded (worst peer shown).",
+          "description": "Seconds since the most-recent NTP peer last responded (worst peer on each selected firewall \u2014 #468: this used to be the worst peer across every selected box, which read identically and meant something else).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -39946,8 +39952,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (max(opnsense_ntp_peer_when_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (max by (opnsense_instance) (opnsense_ntp_peer_when_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -40016,7 +40023,7 @@
         "spec": {
           "id": 349,
           "title": "Poll Interval (max)",
-          "description": "Maximum poll interval in seconds across all peers.",
+          "description": "Maximum poll interval in seconds across a firewall's own peers.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -40039,8 +40046,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (max(opnsense_ntp_peer_poll_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (max by (opnsense_instance) (opnsense_ntp_peer_poll_seconds{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -43641,7 +43649,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, rate(opnsense_syslog_processed_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, rate(opnsense_syslog_processed_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source_name}}/{{source_id}}",
                         "instant": false,
@@ -44273,7 +44281,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"} [$__auto]))",
+                        "expr": "sum by (service_instance_id, opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"syslog\"} [$__auto]))",
                         "refId": "A",
                         "legendFormat": "{{opnsense_subsystem}}",
                         "queryType": "range",
@@ -47042,7 +47050,6 @@
                       "excludeByName": {
                         "Time": true,
                         "__name__": true,
-                        "opnsense_instance": true,
                         "job": true,
                         "instance": true
                       },
@@ -47051,7 +47058,8 @@
                         "vhid": "VHID",
                         "vip": "VIP",
                         "Value #A": "Advbase (s)",
-                        "Value #B": "Advskew"
+                        "Value #B": "Advskew",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -50916,7 +50924,7 @@
         "spec": {
           "id": 451,
           "title": "Virtual Servers Active",
-          "description": "Number of relayd redirects/relays currently active.",
+          "description": "Number of relayd redirects/relays currently active.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -51001,7 +51009,7 @@
         "spec": {
           "id": 452,
           "title": "Tables Active",
-          "description": "Number of relayd tables currently active (have at least one host).",
+          "description": "Number of relayd tables currently active (have at least one host).Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -51086,7 +51094,7 @@
         "spec": {
           "id": 453,
           "title": "Hosts Up",
-          "description": "Number of table member hosts currently passing health checks.",
+          "description": "Number of table member hosts currently passing health checks.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -51175,7 +51183,7 @@
         "spec": {
           "id": 454,
           "title": "Hosts Configured",
-          "description": "Total number of table member hosts relayd is tracking.",
+          "description": "Total number of table member hosts relayd is tracking.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -58463,7 +58471,7 @@
         "spec": {
           "id": 529,
           "title": "Checks OK",
-          "description": "Number of monit checks currently in OK state (status field == 0).",
+          "description": "Number of monit checks currently in OK state (status field == 0).Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -58552,7 +58560,7 @@
         "spec": {
           "id": 530,
           "title": "Checks Monitored",
-          "description": "Number of monit checks actively being monitored (monitor != 0).",
+          "description": "Number of monit checks actively being monitored (monitor != 0).Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -60885,7 +60893,7 @@
         "spec": {
           "id": 553,
           "title": "Tainted Hub Items",
-          "description": "Total installed hub items (any component) whose status includes \"tainted\" \u2014 locally modified since install.",
+          "description": "Total installed hub items (any component) whose status includes \"tainted\" \u2014 locally modified since install. Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -60974,7 +60982,7 @@
         "spec": {
           "id": 554,
           "title": "Outdated Hub Items",
-          "description": "Total installed hub items (any component) whose status includes \"outdated\" \u2014 a newer hub version is available.",
+          "description": "Total installed hub items (any component) whose status includes \"outdated\" \u2014 a newer hub version is available. Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -64767,7 +64775,7 @@
         "spec": {
           "id": 590,
           "title": "Unused Vouchers",
-          "description": "Total unused (not yet redeemed) vouchers across every provider/group. A low or falling count is a run-out signal for guest network access.",
+          "description": "Total unused (not yet redeemed) vouchers across every provider/group. A low or falling count is a run-out signal for guest network access.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -64860,7 +64868,7 @@
         "spec": {
           "id": 591,
           "title": "Valid (Active) Vouchers",
-          "description": "Total vouchers currently redeemed and within their validity window.",
+          "description": "Total vouchers currently redeemed and within their validity window.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -64945,7 +64953,7 @@
         "spec": {
           "id": 592,
           "title": "Expired Vouchers",
-          "description": "Total expired vouchers across every provider/group \u2014 a large or growing count suggests the group needs cleanup.",
+          "description": "Total expired vouchers across every provider/group \u2014 a large or growing count suggests the group needs cleanup.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -68460,7 +68468,7 @@
         "spec": {
           "id": 624,
           "title": "Built Circuits",
-          "description": "Number of fully-built (3-hop, BUILT) circuits. Zero while the control port is up is the actual wedged-Tor signal \u2014 a running service with no usable circuits.",
+          "description": "Number of fully-built (3-hop, BUILT) circuits. Zero while the control port is up is the actual wedged-Tor signal \u2014 a running service with no usable circuits.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -68549,7 +68557,7 @@
         "spec": {
           "id": 625,
           "title": "Total Circuits",
-          "description": "Total circuits across every build status (LAUNCHED/BUILT/GUARD_WAIT/EXTENDED/FAILED/CLOSED/other).",
+          "description": "Total circuits across every build status (LAUNCHED/BUILT/GUARD_WAIT/EXTENDED/FAILED/CLOSED/other).Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -68634,7 +68642,7 @@
         "spec": {
           "id": 626,
           "title": "Total Streams",
-          "description": "Total streams across every status (NEW/SUCCEEDED/FAILED/CLOSED/other). Never labeled by destination.",
+          "description": "Total streams across every status (NEW/SUCCEEDED/FAILED/CLOSED/other). Never labeled by destination.Fleet total: this is a deliberate sum across every selected firewall (#468) \u2014 with two boxes picked, the number is both boxes' together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -68827,7 +68835,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (status) (opnsense_tor_circuits{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, status) (opnsense_tor_circuits{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{status}}",
                         "instant": true,
@@ -68911,7 +68919,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (purpose) (opnsense_tor_circuits_by_purpose{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, purpose) (opnsense_tor_circuits_by_purpose{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{purpose}}",
                         "instant": true,
@@ -68995,7 +69003,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (status) (opnsense_tor_streams{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, status) (opnsense_tor_streams{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{status}}",
                         "instant": true,
@@ -69269,7 +69277,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (action, scope) (rate(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, action, scope) (rate(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{action}} / {{scope}}",
                         "instant": false,
@@ -69358,7 +69366,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (rule_name, rule_id, interface) (rate(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\",action!=\"pass\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, rule_name, rule_id, interface) (rate(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\",action!=\"pass\"}[$__rate_interval]))))",
                         "refId": "A",
                         "legendFormat": "{{rule_name}} ({{interface}})",
                         "instant": false,
@@ -69447,7 +69455,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (event, state, status_class) (rate(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, event, state, status_class) (rate(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{event}} / {{state}} / {{status_class}}",
                         "instant": false,
@@ -69536,7 +69544,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (backend, server) (rate(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, backend, server) (rate(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "legendFormat": "{{backend}} / {{server}}",
                         "instant": false,
@@ -69625,7 +69633,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (result, method, scope) (rate(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, result, method, scope) (rate(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{result}} / {{method}} / {{scope}}",
                         "instant": false,
@@ -69714,7 +69722,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (action, interface) (rate(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, action, interface) (rate(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{action}} / {{interface}}",
                         "instant": false,
@@ -69803,7 +69811,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (event, result) (rate(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, event, result) (rate(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{event}} / {{result}}",
                         "instant": false,
@@ -69892,7 +69900,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (event_type, action, severity) (rate(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, event_type, action, severity) (rate(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{event_type}} / {{action}} / sev {{severity}}",
                         "instant": false,
@@ -69981,7 +69989,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (event, result, client_scope) (rate(opnsense_log_events_radius_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, event, result, client_scope) (rate(opnsense_log_events_radius_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{event}} / {{result}} / {{client_scope}}",
                         "instant": false,
@@ -70070,7 +70078,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (backend, event, result) (rate(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, backend, event, result) (rate(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{backend}} / {{event}} / {{result}}",
                         "instant": false,
@@ -70159,7 +70167,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (backend, event, connection) (rate(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\",result=\"failure\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, backend, event, connection) (rate(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\",result=\"failure\"}[$__rate_interval]))))",
                         "refId": "A",
                         "legendFormat": "{{connection}} / {{backend}} / {{event}}",
                         "instant": false,
@@ -70248,7 +70256,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (event, result, protocol) (rate(opnsense_log_events_upnp_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, event, result, protocol) (rate(opnsense_log_events_upnp_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{event}} / {{result}} / {{protocol}}",
                         "instant": false,
@@ -70337,7 +70345,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (family) (opnsense_log_events_cardinality_keys{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, family) (opnsense_log_events_cardinality_keys{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{family}}",
                         "instant": false,
@@ -70426,7 +70434,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (family) (rate(opnsense_log_events_cardinality_capped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, family) (rate(opnsense_log_events_cardinality_capped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{family}}",
                         "instant": false,
@@ -70515,7 +70523,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (reason) (rate(opnsense_log_events_observation_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, reason) (rate(opnsense_log_events_observation_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{reason}}",
                         "instant": false,
@@ -70604,7 +70612,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, interface) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) * 8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, interface) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) * 8)",
                         "refId": "A",
                         "legendFormat": "{{interface}} ({{source}})",
                         "instant": false,
@@ -70693,7 +70701,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, direction) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) * 8)",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, direction) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) * 8)",
                         "refId": "A",
                         "legendFormat": "{{direction}} ({{source}})",
                         "instant": false,
@@ -70782,7 +70790,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(20, sum by (source, category) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) * 8))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (20, sum by (opnsense_instance, source, category) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) * 8))",
                         "refId": "A",
                         "legendFormat": "{{category}} ({{source}})",
                         "instant": false,
@@ -70871,7 +70879,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (transport) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, transport) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{transport}}",
                         "instant": true,
@@ -70952,7 +70960,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (scope) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, scope) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{scope}}",
                         "instant": true,
@@ -71033,7 +71041,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, action) (rate(opnsense_flow_records_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, action) (rate(opnsense_flow_records_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{action}} ({{source}})",
                         "instant": false,
@@ -71122,7 +71130,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, interface, direction) (rate(opnsense_flow_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, interface, direction) (rate(opnsense_flow_packets_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{interface}} / {{direction}} ({{source}})",
                         "instant": false,
@@ -71211,7 +71219,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=\"__other__\"}[$__rate_interval])) / clamp_min(sum by (source) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])), 1))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\",interface=\"__other__\"}[$__rate_interval])) / clamp_min(sum by (opnsense_instance, source) (rate(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])), 1))",
                         "refId": "A",
                         "legendFormat": "{{source}}",
                         "instant": false,
@@ -71467,7 +71475,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source) (rate(opnsense_flow_rollup_capped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source) (rate(opnsense_flow_rollup_capped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "records lost to the max-keys cap",
                         "instant": false,
@@ -71582,7 +71590,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (result) (rate(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, result) (rate(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{result}}",
                         "instant": false,
@@ -71812,7 +71820,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (reason) (rate(opnsense_flow_netflow_records_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, reason) (rate(opnsense_flow_netflow_records_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "C",
                         "legendFormat": "dropped: {{reason}}",
                         "instant": false,
@@ -71901,7 +71909,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (result) (rate(opnsense_flow_netflow_templates_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, result) (rate(opnsense_flow_netflow_templates_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "templates {{result}}",
                         "instant": false,
@@ -71927,7 +71935,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (field) (rate(opnsense_flow_netflow_unexpected_field_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, field) (rate(opnsense_flow_netflow_unexpected_field_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "B",
                         "legendFormat": "unexpected {{field}}",
                         "instant": false,
@@ -71953,7 +71961,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (kind) (rate(opnsense_flow_netflow_unidentified_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, kind) (rate(opnsense_flow_netflow_unidentified_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "C",
                         "legendFormat": "unidentified {{kind}}",
                         "instant": false,
@@ -72198,7 +72206,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (reason) (rate(opnsense_flow_dedupe_entries_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, reason) (rate(opnsense_flow_dedupe_entries_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "G",
                         "legendFormat": "dedupe dropped: {{reason}}",
                         "instant": false,
@@ -73096,7 +73104,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk(25, sum by (host, direction) (rate(opnsense_flow_top_talker_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (topk by (opnsense_instance) (25, sum by (opnsense_instance, host, direction) (rate(opnsense_flow_top_talker_bytes_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -73126,7 +73134,12 @@
                         "Time": true,
                         "__name__": true
                       },
-                      "renameByName": {},
+                      "renameByName": {
+                        "opnsense_instance": "Instance",
+                        "host": "Host",
+                        "direction": "Direction",
+                        "Value": "Bytes/s"
+                      },
                       "indexByName": {}
                     }
                   }
@@ -73196,7 +73209,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.5, sum by (le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.5, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "legendFormat": "p50 {{interface}}",
                         "instant": false,
@@ -73222,7 +73235,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.9, sum by (le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.9, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "B",
                         "legendFormat": "p90 {{interface}}",
                         "instant": false,
@@ -73248,7 +73261,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.99, sum by (le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.99, sum by (opnsense_instance, le, interface) (rate(opnsense_flow_source_byte_delta_ratio_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "C",
                         "legendFormat": "p99 {{interface}}",
                         "instant": false,
@@ -73337,7 +73350,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (family, action) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, family, action) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{family}} / {{action}}",
                         "instant": false,
@@ -73426,7 +73439,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (category) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\",action=\"block\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, category) (rate(opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\",action=\"block\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{category}}",
                         "instant": false,
@@ -73693,7 +73706,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (rule) (rate(opnsense_exporter_logs_zenarmor_excluded_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, rule) (rate(opnsense_exporter_logs_zenarmor_excluded_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{rule}}",
                         "instant": false,
@@ -73871,7 +73884,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (family) (opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, family) (opnsense_log_events_zenarmor_total{opnsense_instance=~\"$opnsense_instance\"}))",
                         "refId": "A",
                         "legendFormat": "{{family}}",
                         "instant": true,
@@ -74113,7 +74126,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"} [$__auto]))",
+                        "expr": "sum by (service_instance_id, opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\"} [$__auto]))",
                         "refId": "A",
                         "legendFormat": "{{opnsense_subsystem}}",
                         "queryType": "range",
@@ -74203,7 +74216,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "sum by (opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} [$__auto]))",
+                        "expr": "sum by (service_instance_id, opnsense_subsystem) (rate({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} [$__auto]))",
                         "refId": "A",
                         "legendFormat": "{{opnsense_subsystem}}",
                         "queryType": "range",
@@ -74293,7 +74306,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | server_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | server_name!=\"\" [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74393,7 +74406,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (device_name) (sum_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name!=\"\" | unwrap dst_nbytes [$__auto])))",
+                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, device_name) (sum_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name!=\"\" | unwrap dst_nbytes [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74493,7 +74506,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | dst_geoip_country_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | dst_geoip_country_name!=\"\" [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74593,7 +74606,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk(20, sum by (ja3) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | ja3!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, ja3) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | ja3!=\"\" [$__auto])))",
                         "refId": "A",
                         "queryType": "range",
                         "instant": false,
@@ -74693,7 +74706,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source) (rate(opnsense_exporter_logs_shipped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source) (rate(opnsense_exporter_logs_shipped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source}}",
                         "instant": false,
@@ -74782,7 +74795,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, reason) (rate(opnsense_exporter_logs_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, reason) (rate(opnsense_exporter_logs_dropped_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source}} / {{reason}}",
                         "instant": false,
@@ -75190,7 +75203,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source) (rate(opnsense_exporter_logs_poll_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source) (rate(opnsense_exporter_logs_poll_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source}}",
                         "instant": false,
@@ -75457,7 +75470,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source) (rate(opnsense_exporter_logs_possible_gap_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source) (rate(opnsense_exporter_logs_possible_gap_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source}}",
                         "instant": false,
@@ -75546,7 +75559,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, stage) (rate(opnsense_exporter_logs_parse_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, stage) (rate(opnsense_exporter_logs_parse_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source}} / {{stage}}",
                         "instant": false,
@@ -75635,7 +75648,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (source, reason) (rate(opnsense_exporter_logs_rejected_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, source, reason) (rate(opnsense_exporter_logs_rejected_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{source}} / {{reason}}",
                         "instant": false,
@@ -75813,7 +75826,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (table) (rate(opnsense_exporter_logs_enrich_misses_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, table) (rate(opnsense_exporter_logs_enrich_misses_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{table}}",
                         "instant": false,
@@ -75902,7 +75915,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (table) (rate(opnsense_exporter_logs_enrich_refresh_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, table) (rate(opnsense_exporter_logs_enrich_refresh_errors_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{table}}",
                         "instant": false,
@@ -77699,7 +77712,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (endpoint) (opnsense_exporter_endpoint_errors_total{opnsense_instance=~\"$opnsense_instance\"})))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, endpoint) (opnsense_exporter_endpoint_errors_total{opnsense_instance=~\"$opnsense_instance\"})))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -77727,12 +77740,12 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Errors",
-                        "endpoint": "Endpoint"
+                        "endpoint": "Endpoint",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -78244,13 +78257,13 @@
                       "excludeByName": {
                         "Time": true,
                         "__name__": true,
-                        "opnsense_instance": true,
                         "job": true,
                         "instance": true
                       },
                       "renameByName": {
                         "Value": "Interval (s)",
-                        "collector": "Collector"
+                        "collector": "Collector",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -78967,7 +78980,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (result) (rate(opnsense_exporter_otlp_exports_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, result) (rate(opnsense_exporter_otlp_exports_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{result}}",
                         "instant": false,
@@ -79349,7 +79362,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (endpoint) (rate(opnsense_exporter_api_requests_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, endpoint) (rate(opnsense_exporter_api_requests_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{endpoint}}",
                         "instant": false,
@@ -79438,7 +79451,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.95, sum by (le, endpoint) (rate(opnsense_exporter_api_request_duration_seconds_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (histogram_quantile(0.95, sum by (opnsense_instance, le, endpoint) (rate(opnsense_exporter_api_request_duration_seconds_bucket{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
                         "legendFormat": "{{endpoint}}",
                         "instant": false,
@@ -79527,8 +79540,9 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum(rate(opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) / (sum(rate(opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) + sum(rate(opnsense_exporter_api_cache_misses_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance) (rate(opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) / (sum by (opnsense_instance) (rate(opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])) + sum by (opnsense_instance) (rate(opnsense_exporter_api_cache_misses_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))))",
                         "refId": "A",
+                        "legendFormat": "{{opnsense_instance}}",
                         "instant": false,
                         "range": true
                       }
@@ -79612,7 +79626,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (kind) (rate(opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sum by (opnsense_instance, kind) (rate(opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval])))",
                         "refId": "A",
                         "legendFormat": "{{kind}}",
                         "instant": false,
@@ -79701,7 +79715,7 @@
                         "name": "${datasource}"
                       },
                       "spec": {
-                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (endpoint, kind) (opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"})))",
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (sort_desc(sum by (opnsense_instance, endpoint, kind) (opnsense_exporter_api_cache_hits_total{opnsense_instance=~\"$opnsense_instance\"})))",
                         "refId": "A",
                         "instant": true,
                         "range": false,
@@ -79729,13 +79743,13 @@
                     "options": {
                       "excludeByName": {
                         "Time": true,
-                        "__name__": true,
-                        "opnsense_instance": true
+                        "__name__": true
                       },
                       "renameByName": {
                         "Value": "Hits",
                         "endpoint": "Endpoint",
-                        "kind": "Kind"
+                        "kind": "Kind",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }

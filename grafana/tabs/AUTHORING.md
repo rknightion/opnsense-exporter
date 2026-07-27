@@ -26,6 +26,19 @@ map or the build fails as unassigned. The canonical worked examples are `build_o
    `sel("opnsense_x", 'interface=~"$interface"')`. Never write a bare metric without `sel`
    (except `go_*`/`process_*`, which carry no appliance label and use `{job=~"opnsense.*"}`).
    On the Loki side the equivalent chokepoint is `loki_sel(matchers)` — see *Loki panels*.
+   **Instance identity must also survive every aggregation (#468).** `sel()` decides which
+   data enters a panel; this decides whether the panel can still tell two firewalls apart.
+   Build the group-by clause, never write it: `f'sum {grp("protocol")} (...)'` →
+   `sum by (opnsense_instance, protocol)`, and `f'topk {grp()} (20, ...)'` →
+   `topk by (opnsense_instance) (20, ...)`. On the Loki side use `loki_grp()`, which names
+   `service_instance_id` instead.
+   - Where `topk` wraps an inner aggregation, **both** clauses need the label: the inner one
+     has already fused the boxes before `topk` ranks them.
+   - `topk` without a clause does not merge rows, it **drops** them — one firewall's series can
+     push another's out of the panel entirely, with nothing on screen to say so.
+   - Tables **rename** `opnsense_instance` to `"Instance"`; never `excludes` it.
+   - A panel that is genuinely a fleet total must say so in its description and be listed in
+     `tests/test_instance_identity.py`, which fails on any unlisted merge.
 2. **Datasource** is always `${datasource}` — handled by the helpers, never hard-code a UID.
 3. **conditionalRendering is TAB/ROW level only** (never per-panel). Gate a tab with
    `b.tab(..., present="sentinel")`; gate a row with `b.row(..., present="sentinel")`.
@@ -64,12 +77,13 @@ map or the build fails as unassigned. The canonical worked examples are `build_o
    label — that is how the picker survives a disabled firewall collector — but every *consumer*
    still filters `interface=~"$device"`. A panel filtering `device=~"$device"` is a bug, and
    `grafana/tests/test_device_variable.py` fails on it.
-6. **Cardinality.** For high-series metrics use `topk(20, ...)` in tables/timeseries and put
+6. **Cardinality.** For high-series metrics use `topk {grp()} (20, ...)` in tables/timeseries and put
    detail tables in their own row gated behind a `*_details`/presence sentinel. Known big ones:
    arp_table (~106), ndp (~67), firewall_rule (~129), dnsmasq lease_info (~91). For "count"
-   stats use `count by (label)(sel("..."))`, NOT the raw info-metric value.
+   stats use `count {grp("label")} (sel("..."))`, NOT the raw info-metric value.
 7. **info metrics** (`*_info`, value always 1) → `table` with `excludes=["Value","__name__","job","instance"]`
-   and friendly `renames`. Never put them on a timeseries.
+   and friendly `renames` including `"opnsense_instance": "Instance"`. Never put them on a
+   timeseries, and never exclude the instance column (#468).
 8. **Coverage.** Every metric assigned to your tab MUST appear in at least one panel query.
    The orchestrator's coverage gate fails if any catalogue metric is unreferenced.
 

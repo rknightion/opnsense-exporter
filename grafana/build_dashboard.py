@@ -16,7 +16,8 @@ import re
 import sys
 
 import sentinel_contract
-from builder import INSTANCE_SEL, Builder, sel, RATE, ENABLED, UPDOWN, OKERR, YESNO, GW_STATUS
+from builder import (INSTANCE_SEL, Builder, sel, grp, RATE, ENABLED, UPDOWN, OKERR,
+                     YESNO, GW_STATUS)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -279,13 +280,22 @@ def build_overview(b: Builder):
                 thresholds=pressure_thresholds, desc="Current PF state-table utilisation.")
     load = b.stat("Load (1m)", sel("opnsense_system_load_average", 'interval="1"'),
                   decimals=2, w=4, h=5, graph="none", desc="One-minute system load average.")
-    disk = b.stat("Highest disk use", f'100 * max({sel("opnsense_system_disk_usage_ratio")})',
+    # `max by (opnsense_instance)`, not a bare `max` (#468). "Highest" and "worst"
+    # meant one box's filesystems when these were written; a bare max silently
+    # redefines them as worst-across-the-selection without a word of the
+    # description becoming false, so a second firewall's full disk can be
+    # attributed to the first. The stat panel renders one tile per series, so a
+    # single-instance selection looks exactly as it did.
+    disk = b.stat("Highest disk use",
+                  f'100 * max {grp()} ({sel("opnsense_system_disk_usage_ratio")})',
                   unit="percent", w=4, h=5, graph="none", color_mode="background",
+                  legend="{{opnsense_instance}}",
                   thresholds=pressure_thresholds, desc="Highest current utilisation across mounted filesystems.")
-    temp = b.stat("Max Temp", f'max({sel("opnsense_temperature_celsius")})', unit="celsius",
+    temp = b.stat("Max Temp", f'max {grp()} ({sel("opnsense_temperature_celsius")})', unit="celsius",
                   w=4, h=5, graph="none", thresholds=[{"color": "green", "value": None},
                                         {"color": "yellow", "value": 70}, {"color": "red", "value": 85}],
-                  color="thresholds", color_mode="background", desc="Highest reported hardware temperature.")
+                  color="thresholds", color_mode="background", legend="{{opnsense_instance}}",
+                  desc="Highest reported hardware temperature.")
     cpu = b.stat("CPU Busy %", f'100 - {sel("opnsense_activity_cpu_idle_percent")}',
                  unit="percent", w=4, h=5, graph="none", color_mode="background",
                  thresholds=pressure_thresholds, desc="Current non-idle CPU percentage.")
@@ -345,9 +355,9 @@ def build_diagnostics(b: Builder):
     errs_ts = b.ts("Endpoint Errors (rate)", [(f'rate({sel("opnsense_exporter_endpoint_errors_total")}[{RATE}])',
                    "{{endpoint}}")], unit="errps", w=12, h=7)
     errs_tbl = b.table("Endpoint Errors (total)",
-                       [f'sort_desc(sum by (endpoint) ({sel("opnsense_exporter_endpoint_errors_total")}))'],
-                       renames={"Value": "Errors", "endpoint": "Endpoint"},
-                       excludes=["opnsense_instance"], w=12, h=7)
+                       [f'sort_desc(sum {grp("endpoint")} ({sel("opnsense_exporter_endpoint_errors_total")}))'],
+                       renames={"Value": "Errors", "endpoint": "Endpoint", "opnsense_instance": "Instance"},
+                       w=12, h=7)
     build = b.table("Build Info", [sel("opnsense_exporter_build_info")],
                     excludes=["Value", "__name__", "job", "instance"],
                     renames={"version": "Version", "goversion": "Go", "opnsense_instance": "Instance"},
@@ -375,8 +385,8 @@ def build_diagnostics(b: Builder):
     # countdown to the next poll — the same data the operator console shows.
     poll_interval = b.table("Collector Poll Interval",
                             [sel("opnsense_exporter_collector_poll_interval_seconds")],
-                            renames={"Value": "Interval (s)", "collector": "Collector"},
-                            excludes=["opnsense_instance", "__name__", "job", "instance"], w=8, h=8,
+                            renames={"Value": "Interval (s)", "collector": "Collector", "opnsense_instance": "Instance"},
+                            excludes=["__name__", "job", "instance"], w=8, h=8,
                             desc="Configured poll interval per collector (#336): fast 15s / medium 60s / "
                                  "slow 5m / cold 15m, overridable via --collector.poll-interval-override.")
     # #382: this panel used to be titled "Collector Poll Age (freshness)" and told the
@@ -480,7 +490,7 @@ def build_diagnostics(b: Builder):
                            "landed. No-data plus a rising consecutive-failure count is the "
                            "never-worked-since-boot case (wrong endpoint / bad credential).")
     otlp_rate = b.ts("OTLP Export Rate (by result)",
-                     [(f'sum by (result) (rate({b.sel_pipeline("opnsense_exporter_otlp_exports_total")}[{RATE}]))',
+                     [(f'sum {grp("result")} (rate({b.sel_pipeline("opnsense_exporter_otlp_exports_total")}[{RATE}]))',
                        "{{result}}")],
                      unit="reqps", w=10, h=7,
                      desc="Export calls per second by outcome, counted once per export call and never per "
@@ -500,10 +510,10 @@ def build_diagnostics(b: Builder):
     # error rate; the duration histogram shows which endpoint regressed when a
     # collector's background poll duration spikes.
     api_rate = b.ts("API Request Rate (by endpoint)",
-                    [(f'sum by (endpoint) (rate({sel("opnsense_exporter_api_requests_total")}[{RATE}]))',
+                    [(f'sum {grp("endpoint")} (rate({sel("opnsense_exporter_api_requests_total")}[{RATE}]))',
                       "{{endpoint}}")], unit="reqps", w=12, h=7)
     api_p95 = b.ts("API Request p95 Latency (by endpoint)",
-                   [(f'histogram_quantile(0.95, sum by (le, endpoint) '
+                   [(f'histogram_quantile(0.95, sum {grp("le", "endpoint")} '
                      f'(rate(opnsense_exporter_api_request_duration_seconds_bucket'
                      f'{{opnsense_instance=~"$opnsense_instance"}}[{RATE}])))', "{{endpoint}}")],
                    unit="s", w=12, h=7,
@@ -515,17 +525,22 @@ def build_diagnostics(b: Builder):
     # collector. These panels make the cache observable directly.
     cache_hit_ratio = b.stat(
         "API Cache Hit Rate",
-        f'sum(rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) / '
-        f'(sum(rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) + '
-        f'sum(rate({sel("opnsense_exporter_api_cache_misses_total")}[{RATE}])))',
-        unit="percentunit", w=6, h=7,
+        # Per instance, NOT a blended fleet ratio (#468). A ratio is the one shape
+        # where merging actively misleads rather than merely fusing: sum/sum weights
+        # the answer by call volume, so one exporter with a broken cache drags the
+        # figure down and a healthy one hides it — and neither box's real hit rate
+        # appears anywhere on the panel.
+        f'sum {grp()} (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) / '
+        f'(sum {grp()} (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) + '
+        f'sum {grp()} (rate({sel("opnsense_exporter_api_cache_misses_total")}[{RATE}])))',
+        unit="percentunit", w=6, h=7, legend="{{opnsense_instance}}",
         desc="Share of calls to cacheable endpoints served from cache rather than the "
              "firewall. Endpoints with no TTL are not counted, so this describes the cache "
              "itself. Expect a high steady-state value: slow-moving endpoints are re-fetched "
              "only once per --exporter.cache-ttl / --exporter.firmware-cache-ttl.")
     cache_hits = b.ts(
         "API Cache Hits (by kind)",
-        [(f'sum by (kind) (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}]))', "{{kind}}")],
+        [(f'sum {grp("kind")} (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}]))', "{{kind}}")],
         unit="reqps", w=9, h=7,
         desc='kind="body": a replayed payload from a slow-moving endpoint (firmware status, '
              'certificate inventory, CPU/system identity). kind="absent": a replayed 404 from a '
@@ -533,9 +548,9 @@ def build_diagnostics(b: Builder):
              'exporter is no longer re-asking on every scheduled poll.')
     cache_by_ep = b.table(
         "API Cache Hits (by endpoint)",
-        [f'sort_desc(sum by (endpoint, kind) ({sel("opnsense_exporter_api_cache_hits_total")}))'],
-        renames={"Value": "Hits", "endpoint": "Endpoint", "kind": "Kind"},
-        excludes=["opnsense_instance"], w=9, h=7,
+        [f'sort_desc(sum {grp("endpoint", "kind")} ({sel("opnsense_exporter_api_cache_hits_total")}))'],
+        renames={"Value": "Hits", "endpoint": "Endpoint", "kind": "Kind", "opnsense_instance": "Instance"},
+        w=9, h=7,
         desc="Which endpoints the cache is actually saving calls on. An endpoint with a "
              "configured TTL and no hits (see opnsense_exporter_api_cache_misses_total) has an "
              "ineffective TTL.")

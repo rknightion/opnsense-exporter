@@ -125,9 +125,8 @@ def build(b: Builder):
             "vhid":      "VHID",
             "vip":       "VIP",
             "Value #A":  "Advbase (s)",
-            "Value #B":  "Advskew",
-        },
-        excludes=["opnsense_instance", "Time", "__name__", "job", "instance"],
+            "Value #B":  "Advskew", "opnsense_instance": "Instance"},
+        excludes=["Time", "__name__", "job", "instance"],
         sort_by="Interface", sort_desc=False,
         w=24, h=10,
         desc="CARP VIP advertisement base interval (advbase) and advertisement skew (advskew) "

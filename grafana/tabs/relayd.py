@@ -22,26 +22,30 @@ def build(b: Builder):
         "Virtual Servers Active",
         f'sum({sel("opnsense_relayd_virtualserver_status")})',
         unit="short", w=6, h=4,
-        desc="Number of relayd redirects/relays currently active.",
+        desc=("Number of relayd redirects/relays currently active."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     tables_active = b.stat(
         "Tables Active",
         f'sum({sel("opnsense_relayd_table_active")})',
         unit="short", w=6, h=4,
-        desc="Number of relayd tables currently active (have at least one host).",
+        desc=("Number of relayd tables currently active (have at least one host)."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     hosts_up = b.stat(
         "Hosts Up",
         f'sum({sel("opnsense_relayd_host_up")})',
         unit="short", w=6, h=4,
         thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
-        desc="Number of table member hosts currently passing health checks.",
+        desc=("Number of table member hosts currently passing health checks."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     hosts_total = b.stat(
         "Hosts Configured",
         f'count({sel("opnsense_relayd_host_up")})',
         unit="short", w=6, h=4,
-        desc="Total number of table member hosts relayd is tracking.",
+        desc=("Total number of table member hosts relayd is tracking."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
 
     # ------------------------------------------------------------------ #

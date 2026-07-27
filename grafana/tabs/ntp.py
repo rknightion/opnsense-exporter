@@ -9,7 +9,7 @@ Covers all 11 opnsense_ntp_* metrics across three rows:
                absent entirely on the vast majority of boxes with no GPS refclock)
 """
 
-from builder import Builder, sel
+from builder import Builder, sel, grp
 
 
 def build(b: Builder):
@@ -54,8 +54,9 @@ def build(b: Builder):
     # Reachability register gauge 0-255 (8-bit shift register; 255 = all 8 polls answered)
     reach_gauge = b.gauge(
         "Peer Reachability Register",
-        f"max({sel('opnsense_ntp_peer_reach')})",
+        f"max {grp()} ({sel('opnsense_ntp_peer_reach')})",
         unit="short",
+        legend="{{opnsense_instance}}",
         mn=0,
         mx=255,
         w=4, h=8,
@@ -73,7 +74,8 @@ def build(b: Builder):
     # Derived reachability percentage stat: 100 * reach / 255
     reach_pct = b.stat(
         "Peer Reachability %",
-        f"100 * max({sel('opnsense_ntp_peer_reach')}) / 255",
+        f"100 * max {grp()} ({sel('opnsense_ntp_peer_reach')}) / 255",
+        legend="{{opnsense_instance}}",
         unit="percent",
         w=4, h=4,
         thresholds=[
@@ -125,7 +127,8 @@ def build(b: Builder):
     # Seconds since last response (when)
     when_stat = b.stat(
         "Last Response (max)",
-        f"max({sel('opnsense_ntp_peer_when_seconds')})",
+        f"max {grp()} ({sel('opnsense_ntp_peer_when_seconds')})",
+        legend="{{opnsense_instance}}",
         unit="s",
         w=4, h=4,
         thresholds=[
@@ -135,19 +138,20 @@ def build(b: Builder):
         ],
         color_mode="value",
         instant=False,
-        desc="Seconds since the most-recent NTP peer last responded (worst peer shown).",
+        desc="Seconds since the most-recent NTP peer last responded (worst peer on each selected firewall — #468: this used to be the worst peer across every selected box, which read identically and meant something else).",
     )
 
     # Poll interval stat
     poll_stat = b.stat(
         "Poll Interval (max)",
-        f"max({sel('opnsense_ntp_peer_poll_seconds')})",
+        f"max {grp()} ({sel('opnsense_ntp_peer_poll_seconds')})",
+        legend="{{opnsense_instance}}",
         unit="s",
         w=4, h=4,
         thresholds=[{"color": "blue", "value": None}],
         color_mode="value",
         instant=False,
-        desc="Maximum poll interval in seconds across all peers.",
+        desc="Maximum poll interval in seconds across a firewall's own peers.",
     )
 
     row_timing = b.row(

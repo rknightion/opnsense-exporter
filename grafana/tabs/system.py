@@ -15,7 +15,7 @@ Covers:
   - Auth subsystem (6 metrics) — local user/group/API-key security posture (aggregate counts only)
 """
 
-from builder import Builder, sel, epoch_ms, RATE, YESNO, UPDOWN, OKERR
+from builder import Builder, sel, grp, epoch_ms, RATE, YESNO, UPDOWN, OKERR
 
 # opnsense_system_subsystem_status_code value -> (display text, colour). OPNsense's
 # SystemStatusCode enum: 2=OK, 1=NOTICE, 0=WARNING, -1=ERROR. OK is included for
@@ -122,8 +122,9 @@ def build(b: Builder):
         color_mode="background",
         w=4,
         h=6,
-        desc="Count of health-check subsystems currently NOT OK (opnsense_system_subsystem_status_code < 2). "
-             "0 when every subsystem is healthy — OPNsense omits healthy subsystems from the payload.",
+        desc=("Count of health-check subsystems currently NOT OK (opnsense_system_subsystem_status_code < 2). "
+             "0 when every subsystem is healthy — OPNsense omits healthy subsystems from the payload."
+             "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
 
     subsys_timeline = b.statetimeline(
@@ -255,15 +256,14 @@ def build(b: Builder):
             sel("opnsense_system_disk_used_bytes"),
             sel("opnsense_system_disk_usage_ratio"),
         ],
-        excludes=["Value", "__name__", "job", "instance", "opnsense_instance"],
+        excludes=["Value", "__name__", "job", "instance"],
         renames={
             "device": "Device",
             "type": "Type",
             "mountpoint": "Mountpoint",
             "Value #A": "Total",
             "Value #B": "Used",
-            "Value #C": "Usage Ratio",
-        },
+            "Value #C": "Usage Ratio", "opnsense_instance": "Instance"},
         unit_overrides={
             "Total": "bytes",
             "Used": "bytes",
@@ -588,8 +588,9 @@ def build(b: Builder):
 
     temp_max = b.stat(
         "Max Temperature",
-        f'max({sel("opnsense_temperature_celsius")})',
+        f'max {grp()} ({sel("opnsense_temperature_celsius")})',
         unit="celsius",
+        legend="{{opnsense_instance}}",
         w=8,
         h=8,
         thresholds=[

@@ -11,7 +11,7 @@ Covers all opnsense_unbound_dns_* metrics across seven rows:
   7. DNSBL / Query Stats (opt-in)  — qstats totals, blocklist size, local zones/data/insecure domains
 """
 
-from builder import Builder, sel, RATE, RUNSTOP, ENABLED
+from builder import Builder, sel, grp, RATE, RUNSTOP, ENABLED
 
 
 def build(b: Builder):
@@ -165,7 +165,7 @@ def build(b: Builder):
     by_type = b.piechart(
         "Queries by Type",
         [(
-            f"topk(15, sum by (type) ({r('queries_by_type_total')}))",
+            f"topk {grp()} (15, sum {grp('type')} ({r('queries_by_type_total')}))",
             "{{type}}",
         )],
         unit="reqps", w=8, h=8,
@@ -174,7 +174,7 @@ def build(b: Builder):
     by_protocol = b.piechart(
         "Queries by Protocol",
         [(
-            f"sum by (protocol) ({r('queries_by_protocol_total')})",
+            f"sum {grp('protocol')} ({r('queries_by_protocol_total')})",
             "{{protocol}}",
         )],
         unit="reqps", w=8, h=8,
@@ -183,7 +183,7 @@ def build(b: Builder):
     by_rcode = b.piechart(
         "Answers by RCode",
         [(
-            f"sum by (rcode) ({r('answers_by_rcode_total')})",
+            f"sum {grp('rcode')} ({r('answers_by_rcode_total')})",
             "{{rcode}}",
         )],
         unit="reqps", w=8, h=8,
@@ -192,7 +192,7 @@ def build(b: Builder):
     query_flags = b.bargauge(
         "Query Flags",
         [(
-            f"sum by (flag) ({r('query_flags_total')})",
+            f"sum {grp('flag')} ({r('query_flags_total')})",
             "{{flag}}",
         )],
         unit="reqps", w=12, h=8,
@@ -202,7 +202,7 @@ def build(b: Builder):
     edns = b.bargauge(
         "EDNS",
         [(
-            f"sum by (type) ({r('edns_total')})",
+            f"sum {grp('type')} ({r('edns_total')})",
             "{{type}}",
         )],
         unit="reqps", w=12, h=8,
@@ -218,7 +218,7 @@ def build(b: Builder):
     cache_count = b.bargauge(
         "Cache Entries",
         [(
-            f"sum by (cache) ({u('cache_count')})",
+            f"sum {grp('cache')} ({u('cache_count')})",
             "{{cache}}",
         )],
         unit="short", w=8, h=8,
@@ -228,7 +228,7 @@ def build(b: Builder):
     memory_bytes = b.bargauge(
         "Memory Usage",
         [(
-            f"sum by (component) ({u('memory_bytes')})",
+            f"sum {grp('component')} ({u('memory_bytes')})",
             "{{component}}",
         )],
         unit="bytes", w=8, h=8,
@@ -254,14 +254,14 @@ def build(b: Builder):
     # =====================================================================
     infra_rtt = b.ts(
         "Upstream RTT (infra cache, top 20)",
-        [(f'topk(20, {u("infra_rtt_seconds")})', "{{ip}} {{host}}")],
+        [(f'topk {grp()} (20, {u("infra_rtt_seconds")})', "{{ip}} {{host}}")],
         unit="s", w=12, h=8,
         desc="opnsense_unbound_dns_infra_rtt_seconds: smoothed RTT per upstream "
              "server/zone from Unbound's infra cache (requires --exporter.enable-unbound-infra).",
     )
     infra_rto = b.ts(
         "Upstream RTO (infra cache, top 20)",
-        [(f'topk(20, {u("infra_rto_seconds")})', "{{ip}} {{host}}")],
+        [(f'topk {grp()} (20, {u("infra_rto_seconds")})', "{{ip}} {{host}}")],
         unit="s", w=12, h=8,
         desc="opnsense_unbound_dns_infra_rto_seconds: retransmission timeout per "
              "upstream server/zone.",
@@ -315,7 +315,7 @@ def build(b: Builder):
     queries_by_result = b.piechart(
         "Queries by Result (7d window)",
         [(
-            f"sum by (result) ({u('qstats_queries_7d')})",
+            f"sum {grp('result')} ({u('qstats_queries_7d')})",
             "{{result}}",
         )],
         unit="short", w=10, h=8,
@@ -325,7 +325,7 @@ def build(b: Builder):
     local_zones = b.bargauge(
         "Local Zones by Type",
         [(
-            f"sum by (type) ({u('local_zones')})",
+            f"sum {grp('type')} ({u('local_zones')})",
             "{{type}}",
         )],
         unit="short", w=8, h=8,

@@ -144,7 +144,8 @@ def build(b: Builder):
             {"color": "red", "value": 1},
         ],
         color_mode="background",
-        desc='Total installed hub items (any component) whose status includes "tainted" — locally modified since install.',
+        desc=('Total installed hub items (any component) whose status includes "tainted" '
+              '— locally modified since install. ' + "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     hub_outdated = b.stat(
         "Outdated Hub Items",
@@ -155,7 +156,8 @@ def build(b: Builder):
             {"color": "orange", "value": 1},
         ],
         color_mode="background",
-        desc='Total installed hub items (any component) whose status includes "outdated" — a newer hub version is available.',
+        desc=('Total installed hub items (any component) whose status includes "outdated" '
+              '— a newer hub version is available. ' + "Fleet total: this is a deliberate sum across every selected firewall (#468) — with two boxes picked, the number is both boxes' together."),
     )
     hub_items_table = b.table(
         "Hub Component Health",

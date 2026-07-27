@@ -21,7 +21,7 @@ themselves rather than only here:
     when the second source appears.
 """
 
-from builder import Builder, sel, RATE
+from builder import Builder, sel, grp, RATE
 
 # Aggregating by source rather than over it is the whole point — see the module
 # docstring. Adding this to a `sum by (...)` costs one extra legend field and makes
@@ -57,7 +57,7 @@ def build(b: Builder):
 
     iface = b.ts(
         "Throughput by Interface (bits/sec)",
-        [(f'sum by ({BY_SOURCE}, interface) (rate({sel("opnsense_flow_bytes_total")}[{RATE}])) * 8',
+        [(f'sum {grp(BY_SOURCE, "interface")} (rate({sel("opnsense_flow_bytes_total")}[{RATE}])) * 8',
           "{{interface}} ({{source}})")],
         unit="bps",
         desc="opnsense_flow_bytes_total: flow bytes per second by interface, x8 for bits. "
@@ -70,7 +70,7 @@ def build(b: Builder):
 
     direction = b.ts(
         "Throughput by Direction (bits/sec)",
-        [(f'sum by ({BY_SOURCE}, direction) (rate({sel("opnsense_flow_bytes_total")}[{RATE}])) * 8',
+        [(f'sum {grp(BY_SOURCE, "direction")} (rate({sel("opnsense_flow_bytes_total")}[{RATE}])) * 8',
           "{{direction}} ({{source}})")],
         unit="bps",
         desc="opnsense_flow_bytes_total by direction. internal is LAN-to-LAN traffic (including "
@@ -82,7 +82,7 @@ def build(b: Builder):
 
     category = b.ts(
         "Top Application Categories by Throughput",
-        [(f'topk(20, sum by ({BY_SOURCE}, category) (rate({sel("opnsense_flow_bytes_total")}[{RATE}])) * 8)',
+        [(f'topk {grp()} (20, sum {grp(BY_SOURCE, "category")} (rate({sel("opnsense_flow_bytes_total")}[{RATE}])) * 8)',
           "{{category}} ({{source}})")],
         unit="bps",
         desc="opnsense_flow_bytes_total by Zenarmor application category — a bounded 24-value "
@@ -92,7 +92,7 @@ def build(b: Builder):
 
     transport = b.piechart(
         "Bytes by Transport",
-        [(f'sum by (transport) (rate({sel("opnsense_flow_bytes_total")}[{RATE}]))', "{{transport}}")],
+        [(f'sum {grp("transport")} (rate({sel("opnsense_flow_bytes_total")}[{RATE}]))', "{{transport}}")],
         unit="Bps",
         desc="opnsense_flow_bytes_total by transport protocol. A protocol the exporter does not "
              "name folds to 'other' rather than appearing as a raw number, so a misbehaving "
@@ -101,7 +101,7 @@ def build(b: Builder):
 
     scope = b.piechart(
         "Bytes by Destination Scope",
-        [(f'sum by (scope) (rate({sel("opnsense_flow_bytes_total")}[{RATE}]))', "{{scope}}")],
+        [(f'sum {grp("scope")} (rate({sel("opnsense_flow_bytes_total")}[{RATE}]))', "{{scope}}")],
         unit="Bps",
         desc="opnsense_flow_bytes_total by destination scope, resolved from the firewall's own "
              "configured subnets: self is the firewall, local is an attached subnet, remote is "
@@ -111,7 +111,7 @@ def build(b: Builder):
 
     action = b.ts(
         "Flow Records by Verdict (rate)",
-        [(f'sum by ({BY_SOURCE}, action) (rate({sel("opnsense_flow_records_total")}[{RATE}]))',
+        [(f'sum {grp(BY_SOURCE, "action")} (rate({sel("opnsense_flow_records_total")}[{RATE}]))',
           "{{action}} ({{source}})")],
         unit="short",
         desc="opnsense_flow_records_total by firewall verdict. An empty action means the source "
@@ -122,7 +122,7 @@ def build(b: Builder):
 
     packets = b.ts(
         "Packet Rate by Interface & Direction",
-        [(f'sum by ({BY_SOURCE}, interface, direction) (rate({sel("opnsense_flow_packets_total")}[{RATE}]))',
+        [(f'sum {grp(BY_SOURCE, "interface", "direction")} (rate({sel("opnsense_flow_packets_total")}[{RATE}]))',
           "{{interface}} / {{direction}} ({{source}})")],
         unit="pps",
         desc="opnsense_flow_packets_total: packets per second. Divided into the byte rate this "
@@ -134,8 +134,8 @@ def build(b: Builder):
     all_bytes = sel("opnsense_flow_bytes_total")
     other_share = b.ts(
         "__other__ Share of Total Bytes",
-        [(f'sum by ({BY_SOURCE}) (rate({other_bytes}[{RATE}])) '
-          f'/ clamp_min(sum by ({BY_SOURCE}) (rate({all_bytes}[{RATE}])), 1)',
+        [(f'sum {grp(BY_SOURCE)} (rate({other_bytes}[{RATE}])) '
+          f'/ clamp_min(sum {grp(BY_SOURCE)} (rate({all_bytes}[{RATE}])), 1)',
           "{{source}}")],
         unit="percentunit",
         desc="How much of the traffic is landing in the folded remainder rather than in a named "
@@ -162,7 +162,7 @@ def build(b: Builder):
 
     capped = b.ts(
         "Rollup Saturation & Byte-field Repairs (rate)",
-        [(f'sum by ({BY_SOURCE}) (rate({sel("opnsense_flow_rollup_capped_total")}[{RATE}]))',
+        [(f'sum {grp(BY_SOURCE)} (rate({sel("opnsense_flow_rollup_capped_total")}[{RATE}]))',
           "records lost to the max-keys cap"),
          (f'rate({sel("opnsense_flow_payload_byte_fallback_total")}[{RATE}])',
           "records using the payload-byte fallback")],
@@ -187,7 +187,7 @@ def build(b: Builder):
     # dedicated byte-rate panel (unit="Bps"); both queries are unchanged.
     ingest = b.ts(
         "NetFlow Ingest (datagrams/sec)",
-        [(f'sum by (result) (rate({sel("opnsense_flow_netflow_datagrams_total")}[{RATE}]))', "{{result}}")],
+        [(f'sum {grp("result")} (rate({sel("opnsense_flow_netflow_datagrams_total")}[{RATE}]))', "{{result}}")],
         unit="short",
         desc="Datagrams per second by outcome (datagrams/sec, not bytes). result=\"accepted\" "
              "passed the peer allowlist; \"peer_rejected\" came from outside "
@@ -212,7 +212,7 @@ def build(b: Builder):
         "NetFlow Record Funnel (records/sec)",
         [(f'rate({sel("opnsense_flow_netflow_records_decoded_total")}[{RATE}])', "decoded"),
          (f'rate({sel("opnsense_flow_netflow_records_emitted_total")}[{RATE}])', "emitted to rollup"),
-         (f'sum by (reason) (rate({sel("opnsense_flow_netflow_records_dropped_total")}[{RATE}]))',
+         (f'sum {grp("reason")} (rate({sel("opnsense_flow_netflow_records_dropped_total")}[{RATE}]))',
           "dropped: {{reason}}")],
         unit="short",
         desc="decoded = emitted + dropped. reason=\"vlan_duplicate\" is the parent-interface copy of a "
@@ -225,11 +225,11 @@ def build(b: Builder):
 
     decoder = b.ts(
         "NetFlow Decoder Health",
-        [(f'sum by (result) (rate({sel("opnsense_flow_netflow_templates_total")}[{RATE}]))',
+        [(f'sum {grp("result")} (rate({sel("opnsense_flow_netflow_templates_total")}[{RATE}]))',
           "templates {{result}}"),
-         (f'sum by (field) (rate({sel("opnsense_flow_netflow_unexpected_field_total")}[{RATE}]))',
+         (f'sum {grp("field")} (rate({sel("opnsense_flow_netflow_unexpected_field_total")}[{RATE}]))',
           "unexpected {{field}}"),
-         (f'sum by (kind) (rate({sel("opnsense_flow_netflow_unidentified_total")}[{RATE}]))',
+         (f'sum {grp("kind")} (rate({sel("opnsense_flow_netflow_unidentified_total")}[{RATE}]))',
           "unidentified {{kind}}")],
         unit="short",
         desc="templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the "
@@ -255,7 +255,7 @@ def build(b: Builder):
          (f'rate({sel("opnsense_flow_vlan_late_child_copies_total")}[{RATE}])', "late child copies/sec"),
          (f'{sel("opnsense_flow_dedupe_entries")}', "dedupe table entries"),
          (f'{sel("opnsense_flow_repair_held_records")}', "records held"),
-         (f'sum by (reason) (rate({sel("opnsense_flow_dedupe_entries_dropped_total")}[{RATE}]))',
+         (f'sum {grp("reason")} (rate({sel("opnsense_flow_dedupe_entries_dropped_total")}[{RATE}]))',
           "dedupe dropped: {{reason}}")],
         unit="short",
         desc="egress_corrected counts flows whose egress was corrected from the WAN the FIB lookup "
@@ -372,7 +372,14 @@ def build(b: Builder):
 
     toptalkers = b.table(
         "Top Talkers by Bytes (host, direction)",
-        [f'topk(25, sum by (host, direction) (rate({sel("opnsense_flow_top_talker_bytes_total")}[{RATE}])))'],
+        [f'topk {grp()} (25, sum {grp("host", "direction")} (rate({sel("opnsense_flow_top_talker_bytes_total")}[{RATE}])))'],
+        # The instance column is RENAMED rather than left as a raw label name, matching
+        # the Build Info / NTP peer convention. #425 called this the worst panel in the
+        # dashboard: `host` is a raw IP, so two firewalls both NATing 192.168.1.0/24 had
+        # their top talkers fused under one address, and the table had no instance column
+        # to give the merge away because the inner `sum` had already destroyed it (#468).
+        renames={"opnsense_instance": "Instance", "host": "Host",
+                 "direction": "Direction", "Value": "Bytes/s"},
         desc="opnsense_flow_top_talker_bytes_total: byte rate per internal host and direction. OPT-IN "
              "behind --flow.top-talkers because the host label is unbounded cardinality; empty unless "
              "enabled. Bounded by top-N with an __other__ remainder per direction, so a host that "
@@ -382,11 +389,11 @@ def build(b: Builder):
 
     delta = b.ts(
         "Source Byte-Delta Ratio (NetFlow / Zenarmor)",
-        [(f'histogram_quantile(0.5, sum by (le, interface) '
+        [(f'histogram_quantile(0.5, sum {grp("le", "interface")} '
           f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p50 {{interface}}"),
-         (f'histogram_quantile(0.9, sum by (le, interface) '
+         (f'histogram_quantile(0.9, sum {grp("le", "interface")} '
           f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p90 {{interface}}"),
-         (f'histogram_quantile(0.99, sum by (le, interface) '
+         (f'histogram_quantile(0.99, sum {grp("le", "interface")} '
           f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p99 {{interface}}")],
         unit="short",
         desc="Distribution of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — "
