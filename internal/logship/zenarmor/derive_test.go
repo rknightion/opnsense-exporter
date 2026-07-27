@@ -368,9 +368,16 @@ func TestObserveDerived_SkipsRecordsWithNoDevice(t *testing.T) {
 	}
 }
 
-// The inventory takes the DESCRIPTION-space interface, same as everything else that
-// reaches a label — the kernel device (ixl0) is a disjoint space (#98) and would make
-// the picker's rows disagree with every other interface selector on the dashboard.
+// An unenriched record still names its device, so it still belongs in the inventory —
+// the interface just falls back to the kernel device until enrichment resolves it.
+//
+// This fallback is only safe because the inventory is keyed on the device NAME, with
+// the interface as a value (#476). It used to be part of the key, which forked one
+// device into two rows — `jules/ixl0` and `jules/LAN` — with the stale one sitting out
+// its full 24h TTL. Now the later sighting overwrites the earlier one.
+//
+// Skipping unenriched records instead would be worse: if the enrichment snapshot never
+// loaded, the inventory would stay empty and the picker would silently show nothing.
 func TestObserveDerived_DeviceInventoryFallsBackToTheRawDevice(t *testing.T) {
 	sink := &captureSink{}
 	observeDerived(sink, "flow", map[string]string{

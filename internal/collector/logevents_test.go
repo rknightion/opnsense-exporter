@@ -1046,3 +1046,45 @@ func TestLogEventStore_ZenarmorDeviceCapIsCountedNotSilent(t *testing.T) {
 	}
 	t.Fatalf("no saturation entry for family %q", logFamilyZenarmorDevice)
 }
+
+// #476, end to end: a device seen before the enrichment snapshot loaded and again
+// afterwards is ONE row, carrying the resolved interface. It used to be two — one
+// naming the kernel device, one the description-space name — because the interface
+// was part of the inventory key, and the stale row then sat out its full 24h TTL.
+func TestLogEventsCollector_ZenarmorDeviceIsOneRowAcrossEnrichment(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveZenarmorDevice("jules", "camera", "ixl0") // pre-enrichment
+	c.store.ObserveZenarmorDevice("jules", "camera", "LAN")  // enrichment resolved
+
+	var rows []map[string]string
+	for _, m := range collectMetrics(t, c, nil) {
+		if hasFqName(m, "opnsense_log_events_zenarmor_device_info") {
+			rows = append(rows, getMetricLabels(m))
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("emitted %d rows for one device, want 1: %v", len(rows), rows)
+	}
+	if rows[0]["interface"] != "LAN" {
+		t.Errorf("interface = %q, want LAN — the most recent sighting wins", rows[0]["interface"])
+	}
+}
+
+// A device that genuinely changes category is still one row, for the same reason.
+func TestLogEventStore_ZenarmorDeviceCategoryIsLastWriteWins(t *testing.T) {
+	s := newTestLogEventStore(t)
+	s.ObserveZenarmorDevice("thing", "other", "LAN")
+	s.ObserveZenarmorDevice("thing", "iot", "LAN")
+	s.sync()
+	snap, ok := s.snapshot()
+	if !ok {
+		t.Fatal("snapshot failed")
+	}
+	if len(snap.zenDevs) != 1 {
+		t.Fatalf("inventory = %v, want one entry", snap.zenDevs)
+	}
+	if snap.zenDevs[0].val.category != "iot" {
+		t.Errorf("category = %q, want iot", snap.zenDevs[0].val.category)
+	}
+}

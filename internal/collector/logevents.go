@@ -82,26 +82,18 @@ type (
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
 	// category and iface are the free-form pair the key budget exists for.
 	zenKey struct{ family, action, category, iface, rcode, severity, statusClass string }
-	// zenDeviceKey is the #474 device-inventory tuple, and it is the one key here
-	// that deliberately carries a NAME. That is not a relaxation of the rule the rest
-	// of this block states — it is a different metric with a different shape.
+	// The Zenarmor device inventory is deliberately NOT in this block. It is keyed on
+	// the device name alone with its attributes as a VALUE (see zenDeviceAttrs in
+	// boundedinventory.go), because it is an inventory rather than a counter: an
+	// attribute that changes must update the device's row, not fork a second one (#476).
 	//
-	// device_name is unbounded on the wire (live values include Plex-generated DNS
-	// names like 10-0-0-5.<hash>.plex.direct), which is exactly why promoting it to a
-	// Loki index label was rejected in #473: 273 stream combinations at 1h. But the
-	// dashboard still has to let an operator PICK a device, and Loki cannot enumerate
-	// structured metadata at all. Prometheus can, at a bounded cost: one series per
-	// live device, measured at 154 over 24h and saturating.
-	//
-	// So it is safe here and not there, for two reasons that both have to hold: this
-	// is an inventory rather than a cumulative counter, so entries EXPIRE
-	// (boundedInventory, unlike cappedCounter) and a name seen once does not persist
-	// forever; and it is a single info metric rather than a dimension multiplied
-	// across every other label, so the cost is additive, not a product.
-	//
-	// It must stay off zenKey. Adding device_name there would multiply it through
-	// family x action x category x iface x rcode x severity x status_class.
-	zenDeviceKey struct{ name, category, iface string }
+	// device_name is the one unbounded value that reaches a metric anywhere here, and it
+	// is safe only in that shape — entries expire, so a name seen once does not persist
+	// forever, and it is a single info metric rather than a dimension multiplied across
+	// every other label. It must stay off zenKey, where it would multiply through
+	// family x action x category x iface x rcode x severity x status_class. Promoting it
+	// to a Loki index label was rejected in #473 for the same unboundedness: 273 stream
+	// combinations at 1h, with live values like 10-0-0-5.<hash>.plex.direct.
 )
 
 // Family label values for the saturation metrics below. CODE-DEFINED constants, one
@@ -208,7 +200,7 @@ type logEventSnapshot struct {
 	carp    []keyed[carpKey]
 	upnp    []keyed[upnpKey]
 	zen     []keyed[zenKey]
-	zenDevs []zenDeviceKey
+	zenDevs []inventoryEntry[string, zenDeviceAttrs]
 	sat     []familySaturation
 	dropped uint64
 }
@@ -253,7 +245,7 @@ type LogEventStore struct {
 	carp             *cappedCounter[carpKey]
 	upnp             *cappedCounter[upnpKey]
 	zen              *cappedCounter[zenKey]
-	zenDevs          *boundedInventory[zenDeviceKey]
+	zenDevs          *boundedInventory[string, zenDeviceAttrs]
 	// now is the inventory clock, a test seam. Production stores leave it nil and
 	// fall back to time.Now.
 	now func() time.Time
@@ -281,7 +273,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		carp:           newCappedCounter[carpKey](defaultMaxLogEventKeys),
 		upnp:           newCappedCounter[upnpKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
-		zenDevs:        newBoundedInventory(maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceKey),
+		zenDevs:        newBoundedInventory[string, zenDeviceAttrs](maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceName),
 	}
 	go s.run()
 	return s
@@ -395,7 +387,7 @@ func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 // label tuple and carries an explicit "never add device_name here" rule, which a
 // third field on it would quietly erode. This feeds the inventory instead — a
 // different metric, a different bound, and no multiplication through the counter's
-// seven dimensions. See zenDeviceKey.
+// seven dimensions. See zenDeviceAttrs.
 func (s *LogEventStore) ObserveZenarmorDevice(name, category, iface string) bool {
 	if name == "" {
 		return false
@@ -452,7 +444,7 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventObserveZenarmorDevice:
-		s.zenDevs.seen(zenDeviceKey{v[0], v[1], v[2]}, s.clock())
+		s.zenDevs.seen(v[0], zenDeviceAttrs{category: v[1], iface: v[2]}, s.clock())
 	case logEventSetMaxKeys:
 		s.fw.setMax(cmd.maxKeys)
 		s.ha.setMax(cmd.maxKeys)
@@ -856,10 +848,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 			p.k.family, p.k.action, p.k.category, p.k.iface, p.k.rcode, p.k.severity,
 			p.k.statusClass, c.instance)
 	}
-	for _, k := range snap.zenDevs {
+	for _, d := range snap.zenDevs {
 		// An info metric: the labels are the payload, the value is always 1.
 		ch <- prometheus.MustNewConstMetric(c.zenarmorDev, prometheus.GaugeValue, 1,
-			k.name, k.category, k.iface, c.instance)
+			d.key, d.val.category, d.val.iface, c.instance)
 	}
 	return nil
 }
