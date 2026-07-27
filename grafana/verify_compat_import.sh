@@ -4,8 +4,9 @@
 # nothing about whether Grafana 11/12 will accept it — the #22 report was exactly a
 # file that looked fine and 422'd on import.
 #
-# Used by `make compat-verify` and by .github/workflows/grafana-compat.yml. Needs
-# docker. Takes the versions as arguments, defaulting to the supported pair.
+# Used by `make compat-verify` and by the `grafana-compat` job in ci.yml, which is in
+# the required ci-success gate. Needs docker. Takes the versions as arguments,
+# defaulting to the supported pair.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,14 +45,20 @@ for version in "${VERSIONS[@]}"; do
   health=$(curl -fsS "http://127.0.0.1:$port/api/health")
   echo "  health: $health"
 
-  body=$(python3 -c '
+  # Write the request body to a FILE and post it with `@` rather than passing it as
+  # an argument. The artifact is ~2 MB, which is under macOS's ARG_MAX and over
+  # Linux's: `curl --data-binary "$body"` worked locally and failed in CI with
+  # "Argument list too long" (exit 126), which looks like a Grafana rejection and is
+  # not one.
+  python3 -c '
 import json, sys
 dash = json.load(open(sys.argv[1]))
-print(json.dumps({"dashboard": dash, "overwrite": True, "folderUid": ""}))' "$DASHBOARD")
+json.dump({"dashboard": dash, "overwrite": True, "folderUid": ""}, open(sys.argv[2], "w"))' \
+    "$DASHBOARD" /tmp/compat-body.json
 
   code=$(curl -s -o /tmp/compat-import.json -w '%{http_code}' \
     -u admin:admin -H 'Content-Type: application/json' \
-    -X POST "http://127.0.0.1:$port/api/dashboards/db" --data-binary "$body")
+    -X POST "http://127.0.0.1:$port/api/dashboards/db" --data-binary @/tmp/compat-body.json)
   echo "  POST /api/dashboards/db -> $code"
   if [[ "$code" != "200" ]]; then
     echo "  IMPORT FAILED:"; cat /tmp/compat-import.json; echo
@@ -65,7 +72,10 @@ print(json.dumps({"dashboard": dash, "overwrite": True, "folderUid": ""}))' "$DA
   # write and come back mangled.
   curl -fsS -u admin:admin \
     "http://127.0.0.1:$port/api/dashboards/uid/$EXPECTED_UID" -o /tmp/compat-readback.json
-  python3 - "$EXPECTED_UID" "$EXPECTED_TITLE" "$EXPECTED_PANELS" "$EXPECTED_VARS" "$version" <<'PY'
+  # `if !` rather than checking $? afterwards: under `set -e` a failing heredoc would
+  # abort the script, so the FAILED summary never printed and the second version was
+  # never tested.
+  if ! python3 - "$EXPECTED_UID" "$EXPECTED_TITLE" "$EXPECTED_PANELS" "$EXPECTED_VARS" "$version" <<'PY'
 import json, sys
 uid, title, panels, variables, version = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
 got = json.load(open("/tmp/compat-readback.json"))["dashboard"]
@@ -94,8 +104,9 @@ if problems:
 print(f"  read back OK on Grafana {version}: "
       f"schemaVersion {got.get('schemaVersion')}, {panels} panels, {variables} variables")
 PY
-  # shellcheck disable=SC2181
-  if [[ $? -ne 0 ]]; then fail=1; fi
+  then
+    fail=1
+  fi
   docker rm -f "$name" >/dev/null 2>&1 || true
   trap - EXIT
 done
