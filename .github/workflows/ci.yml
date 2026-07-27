@@ -97,6 +97,14 @@ jobs:
 
       # This is a deterministic blocking smoke gate. Longer corpus-retaining runs
       # live in fuzz.yml so normal CI neither restores nor publishes mutable corpus.
+      #
+      # `-timeout` is NOT the fuzz duration (#469): it bounds the whole test binary,
+      # including compilation and baseline-corpus coverage gathering, both of which
+      # grow as the parser surface does. At 45s a cold-cache build left under 8s of
+      # the budget and the job failed with "context deadline exceeded" and no
+      # crashing input — a red REQUIRED check for a reason unrelated to the commit,
+      # which teaches everyone to re-run red CI without reading it. `-fuzztime` stays
+      # at 10s; only the ceiling moved.
       - name: Run bounded fuzz target
         env:
           FUZZ_PACKAGE: ${{ matrix.package }}
@@ -107,7 +115,10 @@ jobs:
           -fuzz="^${FUZZ_TARGET}$"
           -fuzztime=10s
           -parallel=1
-          -timeout=45s
+          # 3m, not 5m: the job's own timeout-minutes is 5, and go test's timeout must
+          # fire FIRST so the log says which target hung instead of the runner killing
+          # the step with no attribution.
+          -timeout=3m
 
   docs:
     name: Generated docs up-to-date
