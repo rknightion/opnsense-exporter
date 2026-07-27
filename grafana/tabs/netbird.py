@@ -50,19 +50,36 @@ def build(b: Builder):
                           "rx {{fqdn}}"),
                          (f'topk {grp()} (20, rate({sel("opnsense_netbird_peer_transmitted_bytes_total")}[{RATE}]))*8',
                           "tx {{fqdn}}")],
-                        unit="bps", w=12, h=9)
+                        unit="bps", w=12, h=9,
+                        desc=(
+                             "Bits per second received from and transmitted to each peer (byte "
+                             "counters ×8), as measured by this node. Shows the top 20 per "
+                             "firewall, not the top 20 overall. A series outside the top 20 is "
+                             "ABSENT rather than zero, and one that leaves and re-enters reads "
+                             "as a counter reset on that one series."
+                        ))
     peer_connected_tl = b.statetimeline("Peer Connection State",
                                         [(sel("opnsense_netbird_peer_connected"), "{{fqdn}}")],
                                         mappings={"0": ("Not connected", "blue"),
                                                   "1": ("Connected", "green")},
-                                        w=12, h=9)
+                                        w=12, h=9,
+                                        desc=(
+                                             "Whether each peer is currently connected, as the "
+                                             "local NetBird client reports it. A peer the client "
+                                             "has never seen has no series at all."
+                                        ))
     # peer_direct is only emitted for peers WITH an active connection, so
     # "Relayed" here never mislabels a peer with no session at all.
     peer_direct = b.statetimeline("Connection Path (direct vs relayed)",
                                   [(sel("opnsense_netbird_peer_direct"), "{{fqdn}}")],
                                   mappings={"0": ("Relayed", "orange"),
                                             "1": ("Direct (P2P)", "green")},
-                                  w=12, h=8)
+                                  w=12, h=8,
+                                  desc=(
+                                       "1 = direct path, 0 = relayed. Emitted only for connected "
+                                       "peers, so a missing row means disconnected rather than "
+                                       "relayed."
+                                  ))
     peer_latency = b.ts("Per-Peer Latency",
                         [(sel("opnsense_netbird_peer_latency_seconds"), "{{fqdn}}")],
                         unit="s", w=12, h=8)
@@ -72,7 +89,12 @@ def build(b: Builder):
                              excludes=["__name__", "job", "instance"],
                              renames={"fqdn": "Peer"},
                              unit_overrides={"Value": "dateTimeAsIso"},
-                             sort_by="Value", sort_desc=True)
+                             sort_by="Value", sort_desc=True,
+                             desc=(
+                                  "Wall-clock time of the last handshake with each peer. Epoch "
+                                  "seconds scaled to milliseconds for display, so a peer that "
+                                  "has never handshaked reads as 1970."
+                             ))
 
     b.tab("NetBird", [
         b.row("NetBird Node",

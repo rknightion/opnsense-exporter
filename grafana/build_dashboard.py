@@ -301,7 +301,13 @@ def build_overview(b: Builder):
                  thresholds=pressure_thresholds, desc="Current non-idle CPU percentage.")
 
     gw_status = b.statetimeline("Gateway Status", [(sel("opnsense_gateways_status"),
-                                "{{name}} ({{address}})")], GW_STATUS, w=12, h=7)
+                                "{{name}} ({{address}})")], GW_STATUS, w=12, h=7,
+                                desc=(
+                                     "Per-gateway state over time from OPNsense's own dpinger "
+                                     "monitoring — up, down, or a loss/latency warning. A "
+                                     "gateway with no monitoring IP configured reports no state "
+                                     "and so has no row."
+                                ))
     wan_rtt = b.ts("Gateway RTT", [(sel("opnsense_gateways_rtt_milliseconds"), "{{name}} rtt"),
                                    (sel("opnsense_gateways_rttd_milliseconds"), "{{name}} stddev")],
                    unit="ms", w=12, h=7)
@@ -309,7 +315,13 @@ def build_overview(b: Builder):
                                   [(sel("opnsense_up"), "up"),
                                    (sel("opnsense_firewall_status"), "firewall"),
                                    (sel("opnsense_crash_reporter_status"), "crash-free")],
-                                  OKERR, w=24, h=5)
+                                  OKERR, w=24, h=5,
+                                  desc=(
+                                       "Three independent signals over time: exporter "
+                                       "reachability (opnsense_up), the firewall's own health "
+                                       "status, and the crash reporter. As above, a gap means no "
+                                       "scrape, which is a different fault from a red square."
+                                  ))
 
     b.tab("Overview", [
         b.row("Health", [up, fw, crash, reboot, syscode, pkgs, uptime, svc]),
@@ -329,7 +341,13 @@ def build_diagnostics(b: Builder):
     b.sentinel("has_go_runtime", metric="go_goroutines", more=JOB,
                scope="target_join")
     up = b.statushistory("Scrape Success (opnsense_up)", [(sel("opnsense_up"), "{{opnsense_instance}}")],
-                         UPDOWN, w=12, h=6)
+                         UPDOWN, w=12, h=6,
+                         desc=(
+                              "1 = the exporter reached the firewall on its last poll. A GAP is "
+                              "not a zero: zero means the exporter answered and reported the "
+                              "firewall unreachable, while a gap means Prometheus got nothing "
+                              "from the exporter at all."
+                         ))
     # #439: this panel used to plot opnsense_exporter_scrapes_total against
     # opnsense_exporter_scrape_skips_total and diagnose "mutex pile-up in front of a
     # slow firewall". The skip counter had no increment site after #336 — serving is a
@@ -353,11 +371,22 @@ def build_diagnostics(b: Builder):
                         "climbing on its own is not. Serving backpressure, if you are hunting it, shows up as "
                         "HTTP 503s from the exporter's in-flight cap, not on this panel.")
     errs_ts = b.ts("Endpoint Errors (rate)", [(f'rate({sel("opnsense_exporter_endpoint_errors_total")}[{RATE}])',
-                   "{{endpoint}}")], unit="errps", w=12, h=7)
+                   "{{endpoint}}")], unit="errps", w=12, h=7,
+                   desc=(
+                        "OPNsense API errors per second, per endpoint. A plugin-gated endpoint "
+                        "that 404s is NOT counted here — the client treats that as "
+                        "feature-absent — so anything on this panel is a real failure: auth, "
+                        "TLS, timeout or a 5xx."
+                   ))
     errs_tbl = b.table("Endpoint Errors (total)",
                        [f'sort_desc(sum {grp("endpoint")} ({sel("opnsense_exporter_endpoint_errors_total")}))'],
                        renames={"Value": "Errors", "endpoint": "Endpoint", "opnsense_instance": "Instance"},
-                       w=12, h=7)
+                       w=12, h=7,
+                       desc=(
+                            "Cumulative API errors per endpoint since the exporter started. A "
+                            "large total with a flat rate panel beside it is history, not a live "
+                            "problem; the two are meant to be read together."
+                       ))
     build = b.table("Build Info", [sel("opnsense_exporter_build_info")],
                     excludes=["Value", "__name__", "job", "instance"],
                     renames={"version": "Version", "goversion": "Go", "opnsense_instance": "Instance"},
@@ -498,12 +527,29 @@ def build_diagnostics(b: Builder):
                           "shows a flat zero error line rather than an absent series.")
 
     go_goro = b.ts("Exporter Goroutines", [(f"go_goroutines{{{JOB}}}", "goroutines")],
-                   w=8, h=6)
+                   w=8, h=6,
+                   desc=(
+                        "Go runtime goroutines in the exporter process. NOTE: go_* metrics carry "
+                        "no opnsense_instance label, so this panel is scoped by scrape job and "
+                        "does NOT follow the $opnsense_instance picker — with two exporters "
+                        "scraped it shows both."
+                   ))
     go_mem = b.ts("Exporter Memory", [(f"process_resident_memory_bytes{{{JOB}}}", "RSS"),
                   (f"go_memstats_heap_inuse_bytes{{{JOB}}}", "heap inuse")],
-                  unit="bytes", w=8, h=6)
+                  unit="bytes", w=8, h=6,
+                  desc=(
+                       "Exporter process RSS and Go heap in use. Like the other two process "
+                       "panels this is scoped by scrape job, not by $opnsense_instance, because "
+                       "process_*/go_* metrics carry no appliance label. RSS above heap is "
+                       "normal — it includes the Go runtime's arenas."
+                  ))
     go_cpu = b.ts("Exporter CPU", [(f"rate(process_cpu_seconds_total{{{JOB}}}[{RATE}])",
-                  "cpu")], unit="percentunit", w=8, h=6)
+                  "cpu")], unit="percentunit", w=8, h=6,
+                  desc=(
+                       "CPU seconds per second consumed by the exporter process: 1.0 means one "
+                       "core saturated. Scoped by scrape job rather than by $opnsense_instance, "
+                       "since process_* metrics carry no appliance label."
+                  ))
 
     # Per-endpoint API request rate + p95 latency, sourced from the client choke-point
     # self-metrics (#126). api_requests_total gives the denominator for a per-endpoint

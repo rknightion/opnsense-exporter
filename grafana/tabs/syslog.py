@@ -26,12 +26,25 @@ def build(b: Builder):
     queued = b.ts("Queued Messages",
                   [(f'{sel("opnsense_syslog_queued")}',
                     "{{source_name}}/{{source_id}}")],
-                  unit="short", w=10, h=8)
+                  unit="short", w=10, h=8,
+                  desc=(
+                       "Messages currently held in each syslog-ng object's queue. A queue that "
+                       "climbs and does not drain means the destination is unreachable or too "
+                       "slow; syslog-ng drops once the queue is full."
+                  ))
 
     processed = b.ts("Processed Rate by Destination",
                      [(f'topk {grp()} (20, rate({sel("opnsense_syslog_processed_total")}[{RATE}]))',
                        "{{source_name}}/{{source_id}}")],
-                     unit="short", w=12, h=8)
+                     unit="short", w=12, h=8,
+                     desc=(
+                          "Messages per second processed by each syslog-ng object (source, "
+                          "destination or filter), from the box's own syslog-ng statistics — NOT "
+                          "the exporter's syslog receiver. Counters reset when syslog-ng stats "
+                          "are reset. Shows the top 20 per firewall, not the top 20 overall. A "
+                          "series outside the top 20 is ABSENT rather than zero, and one that "
+                          "leaves and re-enters reads as a counter reset on that one series."
+                     ))
     # #416: dropped/truncated MESSAGE counts and truncated BYTE volume used to
     # share one "short" field unit on a single panel. The byte series' magnitude
     # flattened the message-rate series it was meant to sit next to, and the
@@ -62,7 +75,12 @@ def build(b: Builder):
     written = b.ts("Written Rate",
                    [(f'rate({sel("opnsense_syslog_written_total")}[{RATE}])',
                      "{{source_name}}/{{source_id}}")],
-                   unit="short", w=8, h=8)
+                   unit="short", w=8, h=8,
+                   desc=(
+                        "Messages per second written by each syslog-ng object. Written well "
+                        "below processed for a destination means syslog-ng is dropping or "
+                        "queueing, so read it against Queued Messages."
+                   ))
     memory = b.ts("Memory Usage",
                   [(f'{sel("opnsense_syslog_memory_usage_bytes")}',
                     "{{source_name}}/{{source_id}}")],
@@ -72,11 +90,22 @@ def build(b: Builder):
                      "{{source_id}} {{stat}}")],
                    unit="bytes", w=8, h=8)
 
-    raw_logs = b.logs("Raw syslog stream", SYSLOG_STREAM)
+    raw_logs = b.logs("Raw syslog stream", SYSLOG_STREAM,
+                   desc=(
+                        "The live shipped log lines from Loki, scoped to the selected firewall "
+                        "via service_instance_id (a shipped stream carries no opnsense_instance "
+                        "label). Loki returns NO SERIES rather than zero when nothing matched, "
+                        "so an empty panel means no lines in the window, not a broken receiver."
+                   ))
     lines_by_subsystem = b.loki_ts(
         "Syslog lines/s by subsystem",
         [(f'sum {loki_grp("opnsense_subsystem")} (rate({SYSLOG_STREAM} [$__auto]))',
-          "{{opnsense_subsystem}}")])
+          "{{opnsense_subsystem}}")],
+        desc=(
+            "Shipped log lines per second by subsystem, counted in Loki rather than from a "
+            "metric. Uses $__auto for the range so the step follows the picked window; "
+            "absence of a subsystem means no lines, not zero."
+        ))
 
     b.tab("Syslog", [
         b.row("Syslog-ng Overview", [svc, eps, queued], present="has_syslog"),

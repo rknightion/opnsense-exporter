@@ -40,26 +40,52 @@ def build(b: Builder):
                           "rx {{peer}}"),
                          (f'topk {grp()} (20, rate({sel("opnsense_tailscale_peer_tx_bytes_total")}[{RATE}]))*8',
                           "tx {{peer}}")],
-                        unit="bps", w=12, h=9)
+                        unit="bps", w=12, h=9,
+                        desc=(
+                             "Bits per second to and from each peer as measured BY THIS NODE "
+                             "(byte counters ×8), since tailscaled start. Shows the top 20 per "
+                             "firewall, not the top 20 overall. A series outside the top 20 is "
+                             "ABSENT rather than zero, and one that leaves and re-enters reads "
+                             "as a counter reset on that one series."
+                        ))
     peer_session = b.statetimeline("Peer WireGuard Session (node-local)",
                                    [(sel("opnsense_tailscale_peer_session_active"), "{{peer}}")],
                                    mappings={"0": ("No session", "blue"),
                                              "1": ("Active", "green")},
-                                   w=12, h=9)
+                                   w=12, h=9,
+                                   desc=(
+                                        "Whether this node has an established WireGuard session "
+                                        "with each peer — derived from a local handshake having "
+                                        "been recorded since tailscaled started, deliberately "
+                                        "NOT the coordination server's online flag. A peer with "
+                                        "no session has no series."
+                                   ))
     # peer_direct is only emitted for peers WITH a session, so "Relayed" here
     # never mislabels idle peers.
     peer_direct = b.statetimeline("Session Path (direct vs DERP-relayed)",
                                   [(sel("opnsense_tailscale_peer_direct"), "{{peer}}")],
                                   mappings={"0": ("Relayed", "orange"),
                                             "1": ("Direct", "green")},
-                                  w=12, h=8)
+                                  w=12, h=8,
+                                  desc=(
+                                       "1 = direct path, 0 = relayed through DERP. Emitted only "
+                                       "for peers that have a session, so a missing row means no "
+                                       "session rather than a relayed one. Sustained relaying is "
+                                       "a NAT-traversal problem, not an outage."
+                                  ))
     peer_handshake = b.table("Last Handshake",
                              [epoch_ms(sel("opnsense_tailscale_peer_last_handshake_timestamp_seconds"))],
                              w=12, h=8,
                              excludes=["__name__", "job", "instance"],
                              renames={"peer": "Peer"},
                              unit_overrides={"Value": "dateTimeAsIso"},
-                             sort_by="Value", sort_desc=True)
+                             sort_by="Value", sort_desc=True,
+                             desc=(
+                                  "Wall-clock time of the last WireGuard handshake with each "
+                                  "peer, from this node. The metric is epoch seconds scaled to "
+                                  "milliseconds for display: a peer that has never handshaked "
+                                  "reads as 1970, not as empty."
+                             ))
 
     b.tab("Tailscale", [
         b.row("Tailscale Node", [svc, backend, total, sessions, health, info],

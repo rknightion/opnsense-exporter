@@ -701,7 +701,11 @@ def build(b: Builder):
             {"color": "yellow", "value": 10},
             {"color": "green", "value": 50},
         ],
-    )
+        desc=(
+             "Remaining spare blocks as a percentage — LOW IS BAD, which is why this gauge's "
+             "colours run the opposite way to NVMe Life Used next to it. Below 10% the drive is "
+             "close to read-only."
+        ))
     nvme_used = b.gauge(
         "NVMe Life Used",
         sel("opnsense_smart_nvme_percentage_used"),
@@ -711,7 +715,11 @@ def build(b: Builder):
             {"color": "yellow", "value": 80},
             {"color": "red", "value": 100},
         ],
-    )
+        desc=(
+             "Vendor wear estimate as a percentage of rated endurance — HIGH IS BAD, the "
+             "opposite polarity to Available Spare. 100% is the rating, not a failure; drives "
+             "usually run past it."
+        ))
     nvme_errors = b.ts(
         "NVMe Errors & Unsafe Shutdowns",
         [

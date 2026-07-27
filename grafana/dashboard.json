@@ -4792,7 +4792,7 @@
         "spec": {
           "id": 15,
           "title": "Gateway Status",
-          "description": "",
+          "description": "Per-gateway state over time from OPNsense's own dpinger monitoring \u2014 up, down, or a loss/latency warning. A gateway with no monitoring IP configured reports no state and so has no row.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -5040,7 +5040,7 @@
         "spec": {
           "id": 17,
           "title": "Health History",
-          "description": "",
+          "description": "Three independent signals over time: exporter reachability (opnsense_up), the firewall's own health status, and the crash reporter. As above, a gap means no scrape, which is a different fault from a red square.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -9975,7 +9975,7 @@
         "spec": {
           "id": 65,
           "title": "NVMe Available Spare",
-          "description": "",
+          "description": "Remaining spare blocks as a percentage \u2014 LOW IS BAD, which is why this gauge's colours run the opposite way to NVMe Life Used next to it. Below 10% the drive is close to read-only.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -10067,7 +10067,7 @@
         "spec": {
           "id": 66,
           "title": "NVMe Life Used",
-          "description": "",
+          "description": "Vendor wear estimate as a percentage of rated endurance \u2014 HIGH IS BAD, the opposite polarity to Available Spare. 100% is the rating, not a failure; drives usually run past it.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18504,7 +18504,7 @@
         "spec": {
           "id": 146,
           "title": "Table Entries Used",
-          "description": "",
+          "description": "pf table-entry slots in use across EVERY table on this firewall \u2014 the pf limit is global, not per table, so one oversized alias can starve the rest.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18589,7 +18589,7 @@
         "spec": {
           "id": 147,
           "title": "Table Entries Limit",
-          "description": "",
+          "description": "The firewall's global pf table-entries limit (net.pf.request_maxcount), the denominator for Table Utilization. Not a per-table cap.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18674,7 +18674,7 @@
         "spec": {
           "id": 148,
           "title": "Table Utilization",
-          "description": "",
+          "description": "Global pf table-entry slots in use as a percentage of the global limit. Filling this stops new alias entries loading, which fails silently at ruleset reload.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18766,7 +18766,7 @@
         "spec": {
           "id": 149,
           "title": "Largest Tables",
-          "description": "",
+          "description": "Entry count per alias table. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18850,7 +18850,7 @@
         "spec": {
           "id": 150,
           "title": "Table Entries Over Time",
-          "description": "",
+          "description": "Entry count per alias table over time. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -18939,7 +18939,7 @@
         "spec": {
           "id": 151,
           "title": "Evaluation Rate (match vs nomatch)",
-          "description": "",
+          "description": "Packet evaluations per second against each alias table, split by whether the packet matched. A table with evaluations and no matches is dead weight in the ruleset. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -19028,7 +19028,7 @@
         "spec": {
           "id": 152,
           "title": "Packet Rate by Table",
-          "description": "",
+          "description": "Packets per second matched by each alias table. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -19117,7 +19117,7 @@
         "spec": {
           "id": 153,
           "title": "Throughput by Table",
-          "description": "",
+          "description": "Bits per second matched by each alias table \u2014 the underlying counter is BYTES, multiplied by 8 here, so this reads in the same units as an interface graph. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -31524,7 +31524,7 @@
         "spec": {
           "id": 273,
           "title": "Per-Peer Traffic (from this node)",
-          "description": "",
+          "description": "Bits per second to and from each peer as measured BY THIS NODE (byte counters \u00d78), since tailscaled start. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -31639,7 +31639,7 @@
         "spec": {
           "id": 274,
           "title": "Peer WireGuard Session (node-local)",
-          "description": "",
+          "description": "Whether this node has an established WireGuard session with each peer \u2014 derived from a local handshake having been recorded since tailscaled started, deliberately NOT the coordination server's online flag. A peer with no session has no series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -31747,7 +31747,7 @@
         "spec": {
           "id": 275,
           "title": "Session Path (direct vs DERP-relayed)",
-          "description": "",
+          "description": "1 = direct path, 0 = relayed through DERP. Emitted only for peers that have a session, so a missing row means no session rather than a relayed one. Sustained relaying is a NAT-traversal problem, not an outage.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -31855,7 +31855,7 @@
         "spec": {
           "id": 276,
           "title": "Last Handshake",
-          "description": "",
+          "description": "Wall-clock time of the last WireGuard handshake with each peer, from this node. The metric is epoch seconds scaled to milliseconds for display: a peer that has never handshaked reads as 1970, not as empty.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -32730,7 +32730,7 @@
         "spec": {
           "id": 285,
           "title": "Per-Peer Traffic",
-          "description": "",
+          "description": "Bits per second received from and transmitted to each peer (byte counters \u00d78), as measured by this node. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -32845,7 +32845,7 @@
         "spec": {
           "id": 286,
           "title": "Peer Connection State",
-          "description": "",
+          "description": "Whether each peer is currently connected, as the local NetBird client reports it. A peer the client has never seen has no series at all.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -32953,7 +32953,7 @@
         "spec": {
           "id": 287,
           "title": "Connection Path (direct vs relayed)",
-          "description": "",
+          "description": "1 = direct path, 0 = relayed. Emitted only for connected peers, so a missing row means disconnected rather than relayed.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -33150,7 +33150,7 @@
         "spec": {
           "id": 289,
           "title": "Last Handshake",
-          "description": "",
+          "description": "Wall-clock time of the last handshake with each peer. Epoch seconds scaled to milliseconds for display, so a peer that has never handshaked reads as 1970.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -43537,7 +43537,7 @@
         "spec": {
           "id": 382,
           "title": "Queued Messages",
-          "description": "",
+          "description": "Messages currently held in each syslog-ng object's queue. A queue that climbs and does not drain means the destination is unreachable or too slow; syslog-ng drops once the queue is full.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -43626,7 +43626,7 @@
         "spec": {
           "id": 383,
           "title": "Processed Rate by Destination",
-          "description": "",
+          "description": "Messages per second processed by each syslog-ng object (source, destination or filter), from the box's own syslog-ng statistics \u2014 NOT the exporter's syslog receiver. Counters reset when syslog-ng stats are reset. Shows the top 20 per firewall, not the top 20 overall. A series outside the top 20 is ABSENT rather than zero, and one that leaves and re-enters reads as a counter reset on that one series.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -43919,7 +43919,7 @@
         "spec": {
           "id": 386,
           "title": "Written Rate",
-          "description": "",
+          "description": "Messages per second written by each syslog-ng object. Written well below processed for a destination means syslog-ng is dropping or queueing, so read it against Queued Messages.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -44186,7 +44186,7 @@
         "spec": {
           "id": 389,
           "title": "Raw syslog stream",
-          "description": "",
+          "description": "The live shipped log lines from Loki, scoped to the selected firewall via service_instance_id (a shipped stream carries no opnsense_instance label). Loki returns NO SERIES rather than zero when nothing matched, so an empty panel means no lines in the window, not a broken receiver.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -44258,7 +44258,7 @@
         "spec": {
           "id": 390,
           "title": "Syslog lines/s by subsystem",
-          "description": "",
+          "description": "Shipped log lines per second by subsystem, counted in Loki rather than from a metric. Uses $__auto for the range so the step follows the picked window; absence of a subsystem means no lines, not zero.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -44603,7 +44603,7 @@
         "spec": {
           "id": 394,
           "title": "License Days Left",
-          "description": "",
+          "description": "Days until the feed licence expires, derived as (expiry \u2212 now) / 86400 \u2014 it goes NEGATIVE once expired rather than stopping at zero, and feeds stop updating from that point.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -44802,7 +44802,7 @@
         "spec": {
           "id": 396,
           "title": "Blocked Packet Rate",
-          "description": "",
+          "description": "Packets per second dropped by the feed ruleset, in total and per feed. The per-feed counters attribute a drop to the feed that supplied the address, so they sum to the total only while no address appears in two feeds.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -44917,7 +44917,7 @@
         "spec": {
           "id": 397,
           "title": "Blocked Byte Rate",
-          "description": "",
+          "description": "Bits per second dropped by the feed ruleset, in total and per feed \u2014 the underlying counters are BYTES, multiplied by 8 here.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -45147,7 +45147,7 @@
         "spec": {
           "id": 399,
           "title": "Feed Update Schedule",
-          "description": "",
+          "description": "Last and next scheduled update per feed. Epoch seconds scaled to milliseconds for display; a next-update time in the past means the scheduler is not running, which no other panel here shows.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77384,7 +77384,7 @@
         "spec": {
           "id": 714,
           "title": "Scrape Success (opnsense_up)",
-          "description": "",
+          "description": "1 = the exporter reached the firewall on its last poll. A GAP is not a zero: zero means the exporter answered and reported the firewall unreachable, while a gap means Prometheus got nothing from the exporter at all.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77600,7 +77600,7 @@
         "spec": {
           "id": 716,
           "title": "Endpoint Errors (rate)",
-          "description": "",
+          "description": "OPNsense API errors per second, per endpoint. A plugin-gated endpoint that 404s is NOT counted here \u2014 the client treats that as feature-absent \u2014 so anything on this panel is a real failure: auth, TLS, timeout or a 5xx.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77689,7 +77689,7 @@
         "spec": {
           "id": 717,
           "title": "Endpoint Errors (total)",
-          "description": "",
+          "description": "Cumulative API errors per endpoint since the exporter started. A large total with a flat rate panel beside it is history, not a live problem; the two are meant to be read together.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -79046,7 +79046,7 @@
         "spec": {
           "id": 731,
           "title": "Exporter Goroutines",
-          "description": "",
+          "description": "Go runtime goroutines in the exporter process. NOTE: go_* metrics carry no opnsense_instance label, so this panel is scoped by scrape job and does NOT follow the $opnsense_instance picker \u2014 with two exporters scraped it shows both.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -79135,7 +79135,7 @@
         "spec": {
           "id": 732,
           "title": "Exporter Memory",
-          "description": "",
+          "description": "Exporter process RSS and Go heap in use. Like the other two process panels this is scoped by scrape job, not by $opnsense_instance, because process_*/go_* metrics carry no appliance label. RSS above heap is normal \u2014 it includes the Go runtime's arenas.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -79250,7 +79250,7 @@
         "spec": {
           "id": 733,
           "title": "Exporter CPU",
-          "description": "",
+          "description": "CPU seconds per second consumed by the exporter process: 1.0 means one core saturated. Scoped by scrape job rather than by $opnsense_instance, since process_* metrics carry no appliance label.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
