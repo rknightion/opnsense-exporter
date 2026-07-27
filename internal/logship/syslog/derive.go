@@ -47,6 +47,42 @@ const (
 	vpnResultFailure = "failure"
 )
 
+// The `carp` family's attribute keys and its two CLOSED, code-defined vocabularies
+// (#405). carp.go writes them; observeDerived below reads them. They live here for
+// the same reason the vpn block above does: a parser and its deriver spelling one
+// key two different ways fails silently into an empty label, and the whole point of
+// this family is that its label values are closed.
+//
+// The kernel's CAUSE string is deliberately absent from these constants and from
+// the label tuple. It is free text from FreeBSD's carp.c (`initialization
+// complete`, `master timed out`, `hardware interface up`, `pfsync bulk start`,
+// `pfsync bulk fail`, and whatever a future release adds), so it is an open-ended
+// vocabulary no capture can close. It ships as attrCARPReason on the record and
+// must never become a metric label, nor be bucketed into a reason_class — that
+// would be inventing a taxonomy the evidence does not support.
+const (
+	attrCARPEvent         = "carp.event"
+	attrCARPStatePrevious = "carp.state.previous"
+	attrCARPStateCurrent  = "carp.state.current"
+	attrCARPInterface     = "carp.interface"
+	attrCARPVHID          = "carp.vhid"
+	attrCARPReason        = "carp.reason"
+	attrCARPDemotionDelta = "carp.demotion.delta"
+	attrCARPDemotionTotal = "carp.demotion.total"
+
+	// carpEventDemoted / carpEventPromoted are decided by the SIGN of the kernel's
+	// demotion delta: positive raises the demotion total (this node is less willing
+	// to be master), negative lowers it. There is no separate "promoted" line in
+	// FreeBSD — a promotion is a negative `demoted by`.
+	carpEventStateChanged = "state_changed"
+	carpEventDemoted      = "demoted"
+	carpEventPromoted     = "promoted"
+
+	carpStateMaster = "master"
+	carpStateBackup = "backup"
+	carpStateInit   = "init"
+)
+
 // family is the derived metric family a syslog program belongs to (#258).
 // familyUnknown is the zero value: a program not in programFamily below.
 type family int
@@ -62,6 +98,7 @@ const (
 	familyGateway
 	familyRADIUS
 	familyVPN
+	familyCARP
 )
 
 // programFamily maps every program name a parser in this package registers
@@ -101,6 +138,15 @@ var programFamily = map[string]family{
 	"radiusd": familyRADIUS,
 
 	"charon": familyVPN,
+
+	// `kernel` is the FreeBSD CARP source (#405), and it is the ONE entry in this map
+	// whose program is a catch-all: every kernel line on the box lands on
+	// familyCARP, not just the CARP ones. That is safe only because carp.go returns
+	// ok=false for everything that is not one of the two captured CARP shapes, so an
+	// unrelated kernel line arrives here as a GENERIC record with no carp.event, and
+	// the familyCARP case below refuses to count it. If that parser is ever loosened,
+	// this entry becomes a way to count link-state changes as CARP transitions.
+	"kernel": familyCARP,
 }
 
 // programPrefixFamily is programFamily for PREFIX registrations
@@ -274,6 +320,33 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		// internal object id into a metric that outlives the object.
 		connection := firstNonEmpty(attrs["ipsec.connection"], attrs["openvpn.instance"])
 		return sink.ObserveVPN(backend, event, result, connection)
+
+	case familyCARP:
+		// carp.event is the ONLY gate, and it carries the whole weight of the `kernel`
+		// program being a catch-all: every kernel line on the box reaches this case, and
+		// the ones carp.go declined to parse have no carp.event, so they are not counted.
+		// Its presence is therefore the proof that a captured CARP shape matched.
+		event := attrs[attrCARPEvent]
+		if event == "" {
+			return false
+		}
+		// from/to/interface/vhid are LEGITIMATELY EMPTY on a demotion record —
+		// FreeBSD's carp_demote_adj is global to the node and names neither an
+		// interface nor a vhid — so unlike the vpn case above, they must NOT gate the
+		// observation. Requiring them would silently drop half the captured evidence.
+		//
+		// attrCARPReason, attrCARPDemotionDelta and attrCARPDemotionTotal are
+		// deliberately NOT passed. The cause is open-ended free text from the kernel
+		// across FreeBSD versions, and the delta/total are unbounded integers; all
+		// three stay on the shipped record. Bucketing the cause into a reason_class
+		// would invent a taxonomy no capture supports.
+		return sink.ObserveCARP(
+			event,
+			attrs[attrCARPStatePrevious],
+			attrs[attrCARPStateCurrent],
+			attrs[attrCARPInterface],
+			attrs[attrCARPVHID],
+		)
 	}
 
 	return false

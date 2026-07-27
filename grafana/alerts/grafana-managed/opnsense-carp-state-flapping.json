@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-carp-state-flapping",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseCARPStateFlapping",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense CARP vhid {{ $labels.vhid }} is flapping on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+      "description": "Four or more CARP state changes for vhid {{ $labels.vhid }} on interface {{ $labels.interface }} in 15m. A boot sequence is two changes (INIT -> BACKUP -> MASTER) and a single failover is one, so neither fires. This is transition evidence from syslog, not an assertion about the current state; read the kernel's cause from the carp.reason field on the shipped log records, and check OPNsenseCARPVIPFault and the CARP VIP Status panel for where the VIP actually sits now.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (opnsense_instance, interface, vhid) (increase(opnsense_log_events_carp_total{event=\"state_changed\"}[15m]))",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  3,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

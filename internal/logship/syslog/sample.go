@@ -29,12 +29,18 @@ func sampleKeep(program string, rec logship.Record, counted bool) bool {
 		// 2xx/3xx traffic are dropped once counted.
 		return rec.Severity >= logship.SeverityWarn
 	default:
-		// sshd, dhcp, audit, ids, gateway, radius and vpn: low-volume
+		// sshd, dhcp, audit, ids, gateway, radius, vpn and carp: low-volume
 		// security/operational trails, keep all of them — the counters capture
-		// totals, but every line still matters here. It matters most for vpn: the
-		// counter deliberately carries no identity, so the raw line is the ONLY
-		// place the IKE identity, username or certificate subject behind a failure
-		// can be read.
+		// totals, but every line still matters here. It matters most for vpn and
+		// carp: those counters deliberately carry no identity and no cause, so the
+		// raw line is the ONLY place the IKE identity, username or certificate
+		// subject behind a VPN failure — or the kernel's reason for a CARP
+		// transition — can be read.
+		//
+		// familyCARP reaching here is ALWAYS a genuine CARP transition, never one of
+		// the many unrelated kernel lines that share its family: an uncounted line
+		// returned true at the top of this function, and carp.go only lets a captured
+		// CARP shape be counted.
 		return true
 	}
 }

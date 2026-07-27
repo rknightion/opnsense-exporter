@@ -63,6 +63,11 @@ func (f *fakeSink) ObserveVPN(backend, event, result, connection string) bool {
 	return true
 }
 
+func (f *fakeSink) ObserveCARP(event, from, to, iface, vhid string) bool {
+	f.calls = append(f.calls, fakeCall{"carp", []string{event, from, to, iface, vhid}})
+	return true
+}
+
 func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
 	return true
@@ -98,6 +103,7 @@ func TestDeriveFamily(t *testing.T) {
 		{"dpinger", familyGateway, true},
 		{"radiusd", familyRADIUS, true},
 		{"charon", familyVPN, true},
+		{"kernel", familyCARP, true},
 		// Resolved through the PREFIX table: OPNsense names one openvpn program per
 		// configured instance, so none of these can be an exact entry.
 		{"openvpn_server40", familyVPN, true},

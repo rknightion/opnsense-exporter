@@ -141,6 +141,7 @@ all:
 | `opnsense_log_events_gateway_total` | `event`, `gateway` |
 | `opnsense_log_events_radius_total` | `event`, `result`, `client_scope` |
 | `opnsense_log_events_vpn_total` | `backend`, `event`, `result`, `connection` |
+| `opnsense_log_events_carp_total` | `event`, `from`, `to`, `interface`, `vhid` |
 
 No IP, port, SID, hostname, username, MAC, NAS/client identity, certificate subject or
 serial, IKE identity, SPI, reply text, credential or signature text becomes a label.
@@ -168,6 +169,49 @@ Matching lines are enriched with `gateway.event`, `gateway.name`, `gateway.addre
 `gateway.rttd_ms` and `gateway.loss_percent`. A `dpinger` line that does not match
 this grammar still ships as a generic record; it is not counted as an inferred
 gateway transition.
+
+### CARP state changes and demotion (kernel)
+
+CARP transitions come from the **FreeBSD kernel**, not from OPNsense, under the
+RFC5424 APP-NAME `kernel`. They require `net.inet.carp.log=1`, which is the FreeBSD
+default. On OPNsense `27.1.a_40` (FreeBSD 15) the two recognised forms are:
+
+```text
+<PRI>1 <timestamp> <host> kernel - - [meta sequenceId="<sequence>"] <<kpri>>[<kuptime>] carp: <vhid>@<device>: INIT -> BACKUP (initialization complete)
+<PRI>1 <timestamp> <host> kernel - - [meta sequenceId="<sequence>"] <<kpri>>[<kuptime>] carp: demoted by <delta> to <total> (pfsync bulk start)
+```
+
+The `<6>[754] ` prefix ahead of `carp:` is the kernel's own priority and monotonic
+counter. It is part of the message, both numbers vary freely, and the receiver
+tolerates it being absent.
+
+`event` is closed to three values. A `<FROM> -> <TO>` line is `state_changed`, with
+`from` and `to` closed to `master`, `backup` or `init` (lowercased) and the OS device
+and VHID in `interface` and `vhid`. A `demoted by` line is `demoted` when the delta is
+positive and `promoted` when it is negative — FreeBSD has no separate promotion line,
+so the **sign of the delta** is the whole distinction. A demotion is global to the
+node and names neither an interface nor a VHID, so `from`, `to`, `interface` and
+`vhid` are all **empty** on those series.
+
+The kernel's **cause** — `initialization complete`, `master timed out`, `hardware
+interface up`, `pfsync bulk start`, `pfsync bulk fail`, `service disruption`, and
+whatever a future FreeBSD adds — is deliberately **not a metric label**, and is not
+bucketed into a `reason_class` either: it is open-ended free text across FreeBSD
+versions. It ships on the record as `carp.reason`, alongside `carp.event`,
+`carp.state.previous`, `carp.state.current`, `carp.interface`, `carp.vhid`,
+`carp.demotion.delta` and `carp.demotion.total`. Those last two are the numbers that
+explain *why* a node demoted, which the `opnsense_carp_demotion` current-state gauge
+cannot retain.
+
+Because this parser claims `kernel`, it sees every kernel line on the box. Anything
+that is not one of the two forms above — link-state changes, watchdog resets, ZFS,
+USB, arp — is **not** claimed: it ships as a generic record exactly as it did before,
+and is never counted as an inferred CARP transition.
+
+OPNsense's own CARP syshook also logs transitions under APP-NAME `opnsense`, carrying
+the admin's VIP description. That source is deliberately not parsed: `opnsense` is the
+catch-all app-name for every `log_msg()` call on the box, so claiming it would put an
+unbounded variety of unrelated lines through a CARP matcher.
 
 ### FreeRADIUS access outcomes and credential handling
 
@@ -382,6 +426,7 @@ record with its message body verbatim and its envelope as metadata.
 | `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode. HTTP fields use OTel semconv names: `http.request.method`, `http.response.status_code`, `url.path`, `network.protocol.version`. |
 | `dpinger` | Gateway monitor transitions `none -> down` and `down -> none`, with the observed address, alarm state and probe values. Nonmatching `dpinger` lines remain generic records. |
 | `radiusd` | FreeRADIUS access accepted/rejected with closed non-PII attributes. Every unsupported or malformed recognizable `radiusd` form is sanitized before it becomes a generic record or debug capture. |
+| `kernel` | FreeBSD CARP transitions only: `carp.event`, `carp.state.previous`, `carp.state.current`, `carp.interface`, `carp.vhid`, `carp.reason`, `carp.demotion.delta`, `carp.demotion.total`. **Every other kernel line stays a generic record** - link state, watchdogs, ZFS, USB and the rest are not claimed. |
 | `charon`, `openvpn_*` | IPsec and OpenVPN tunnel lifecycle: `vpn.backend`, `vpn.event`, `vpn.result` and nothing else - no username, certificate subject, IKE identity, address or port is extracted. `openvpn_*` is matched by PREFIX because OPNsense names one program per configured instance. Only the captured grammar above is parsed; everything else stays a generic record. |
 
 **Every record**, structured or generic, also gets:

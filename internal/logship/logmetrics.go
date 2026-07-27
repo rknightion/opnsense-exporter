@@ -68,6 +68,24 @@ type MetricSink interface {
 	// ports, SPIs and daemon error text are NEVER passed here and must never be
 	// added; they stay in the shipped log line's body.
 	ObserveVPN(backend, event, result, connection string) bool
+	// ObserveCARP counts one FreeBSD kernel CARP transition (#405). event, from and to
+	// are CLOSED code-defined vocabularies resolved by the parser and deriver
+	// (event = state_changed|demoted|promoted; from/to = master|backup|init,
+	// lowercased). iface is the OS device (vtnet2) and vhid the configured VHID as a
+	// string; both are configuration-scale and bounded by the implementation's
+	// per-family key budget.
+	//
+	// from, to, iface and vhid are ALL EMPTY on a demotion record: FreeBSD's
+	// carp_demote_adj is global to the node and names neither an interface nor a vhid,
+	// so an empty value there is the honest answer, not a missing one.
+	//
+	// The kernel's CAUSE string is NEVER passed here and must never be added — not
+	// even bucketed into a reason_class. It is open-ended free text across FreeBSD
+	// versions, so any label built from it is unbounded and any bucketing of it is a
+	// taxonomy no capture supports. The signed demotion delta and the resulting total
+	// are likewise never passed: they are unbounded integers. All three stay as
+	// structured attributes on the shipped log record, where they are still queryable.
+	ObserveCARP(event, from, to, iface, vhid string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation) bool
 }
@@ -119,4 +137,5 @@ func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveGateway(_, _ string) bool            { return true }
 func (NopMetricSink) ObserveRADIUS(_, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveVPN(_, _, _, _ string) bool          { return true }
+func (NopMetricSink) ObserveCARP(_, _, _, _, _ string) bool      { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

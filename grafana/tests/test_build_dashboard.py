@@ -199,6 +199,46 @@ class LogShippingSemanticsTest(unittest.TestCase):
         self.assertIn("handoff_full", observation_dropped["spec"]["description"])
 
 
+class CARPOperationalEventSemanticsTest(unittest.TestCase):
+    """#405 requires Grafana to show present CARP state BESIDE the event rate and the
+    cause. The panel therefore belongs on the CARP / HA tab next to the VIP state
+    timeline, not off on the Log-derived Events tab: the whole point is reading the
+    transitions that produced the state you are looking at."""
+
+    def test_carp_transition_rate_is_shown_on_the_carp_tab(self):
+        builder = build_dashboard.build_all()
+
+        state = panel_for_metric(builder, "opnsense_carp_vip_status")
+        events = panel_for_metric(builder, "opnsense_log_events_carp_total")
+
+        self.assertEqual(state["spec"]["title"], "CARP VIP Status")
+        self.assertEqual(events["spec"]["title"], "CARP Transition Events")
+        self.assertIn(
+            'sum by (opnsense_instance, event, from, to, interface, vhid) '
+            '(rate(opnsense_log_events_carp_total{'
+            'opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
+            builder._exprs,
+        )
+
+    def test_carp_panel_names_the_closed_vocabulary_and_where_the_cause_lives(self):
+        builder = build_dashboard.build_all()
+        description = panel_for_metric(builder, "opnsense_log_events_carp_total")["spec"]["description"]
+
+        for value in ("state_changed", "demoted", "promoted"):
+            self.assertIn(value, description)
+        # The operator has to be told where the cause went, or the panel looks like it
+        # lost data the issue explicitly asked to keep.
+        self.assertIn("carp.reason", description)
+
+    def test_carp_event_panel_has_its_own_presence_sentinel(self):
+        """The counter only exists once syslog shipping has actually seen a kernel CARP
+        line, which is rarer than CARP itself being configured — so the row must not be
+        gated on has_carp alone or it renders permanently empty on a working HA pair."""
+        builder = build_dashboard.build_all()
+        names = [v["spec"]["name"] for v in builder.variables]
+        self.assertIn("has_log_events_carp", names)
+
+
 class GatewayOperationalEventSemanticsTest(unittest.TestCase):
     def test_gateway_alarm_event_rate_is_shown_next_to_current_gateway_state(self):
         builder = build_dashboard.build_all()

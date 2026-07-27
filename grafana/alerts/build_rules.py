@@ -405,6 +405,64 @@ RULES = [
                      "MASTER(1)/BACKUP(0) range for 5m — status 2 (INIT) or -1 (unknown). BACKUP is a "
                      "normal, healthy state and does not fire; this only fires on INIT/unknown. "
                      "Suppressed while opnsense_carp_maintenance_mode is 1."),
+    # #405: kernel CARP transitions are EVENTS, and these two rules complement
+    # OPNsenseCARPVIPFault above rather than replacing it — that one reads the
+    # current-state gauge, these read the transitions the gauge cannot retain.
+    # Grouped by interface AND vhid because a vhid is only unique within an interface.
+    #
+    # THRESHOLD: strict >3, i.e. four or more changes in the window. A boot/init
+    # sequence is INIT -> BACKUP -> MASTER (two changes) and a single failover is one,
+    # so four-or-more sits above one planned event with margin.
+    #
+    # This DELIBERATELY DIVERGES from the dpinger sibling OPNsenseGatewayAlarmFlapping
+    # below, which uses >2 — do not "fix" the two to match. They are different event
+    # shapes: dpinger emits alarm/clear PAIRS for one gateway, so >2 there is calibrated
+    # against a pair count, whereas CARP emits one record per state edge and a normal
+    # boot already spends two of them. Matching the numbers for symmetry would make this
+    # rule page on every planned failover.
+    dict(name="opnsense-carp-state-flapping", title="OPNsenseCARPStateFlapping",
+         A='sum by (opnsense_instance, interface, vhid) '
+           '(increase(opnsense_log_events_carp_total{event="state_changed"}[15m]))',
+         op="gt", params=[3, 0], for_min=0, severity="warning",
+         summary="OPNsense CARP vhid {{ $labels.vhid }} is flapping on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="Four or more CARP state changes for vhid {{ $labels.vhid }} on interface "
+                     "{{ $labels.interface }} in 15m. A boot sequence is two changes "
+                     "(INIT -> BACKUP -> MASTER) and a single failover is one, so neither fires. "
+                     "This is transition evidence from "
+                     "syslog, not an assertion about the current state; read the kernel's cause from "
+                     "the carp.reason field on the shipped log records, and check OPNsenseCARPVIPFault "
+                     "and the CARP VIP Status panel for where the VIP actually sits now."),
+    # Demotion is how a node steps back from being master: pfsync bulk transfer, a
+    # service disruption, or an interface being taken down.
+    #
+    # THRESHOLD: strict >3, i.e. four or more demotions in the window. DO NOT "tighten"
+    # this to >0 for sensitivity — that is the trap, and the #405 capture proves it.
+    # The evidence window recorded 11 `demoted by 240 (pfsync bulk start)` and 11
+    # `demoted by -240 (pfsync bulk fail)` records: demotion during pfsync bulk transfer
+    # is ROUTINE OPERATION, so >0 pages on a healthy cluster doing exactly what it is
+    # supposed to do, and an alert that fires on normal behaviour trains people to
+    # ignore it. One bulk cycle is one `demoted` plus one `promoted`, so this is
+    # effectively a bulk-cycle counter; four or more in fifteen minutes is churn rather
+    # than routine sync.
+    #
+    # increase(), NOT rate(): the threshold is a COUNT OVER THE WINDOW. rate() is
+    # per-second, so four events in 15m is 0.0044/s and any threshold >=1 on a rate()
+    # could never fire — a silently dead alert. increase() is still rate-derived rather
+    # than a bare cumulative total, which is what matters here.
+    dict(name="opnsense-carp-unexpected-demotion", title="OPNsenseCARPUnexpectedDemotion",
+         A='sum by (opnsense_instance) '
+           '(increase(opnsense_log_events_carp_total{event="demoted"}[15m]))',
+         op="gt", params=[3, 0], for_min=0, severity="warning",
+         summary="OPNsense CARP node is demoting itself ({{ $labels.opnsense_instance }})",
+         description="Four or more positive CARP demotion adjustments in 15m — this node keeps making "
+                     "itself less willing to be master. A single pfsync bulk transfer demotes and then "
+                     "promotes once and does NOT fire; this threshold sits above routine sync so it "
+                     "means churn. Common causes are repeated pfsync bulk "
+                     "transfers, a service disruption, or an interface flapping; the kernel states "
+                     "which on the shipped log record as carp.reason, with the signed adjustment in "
+                     "carp.demotion.delta and the resulting level in carp.demotion.total. Neither the "
+                     "cause nor those numbers is a metric label. Compare opnsense_carp_demotion for the "
+                     "current level, and note the matching promoted event when the demotion is released."),
     # Threshold and lookback are deployment-specific: tune --exporter.ids-alert-lookback and the 50
     # threshold per site, same tone as opnsense-unbound-dnssec-bogus above. Verified: action is only
     # ever allowed/blocked — no drop/reject values exist.

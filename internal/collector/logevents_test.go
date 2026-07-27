@@ -229,6 +229,38 @@ func TestLogEventStore_ObserveGateway(t *testing.T) {
 	}
 }
 
+func TestLogEventStore_ObserveCARP(t *testing.T) {
+	s := newTestLogEventStore(t)
+	if !s.ObserveCARP("state_changed", "backup", "master", "vtnet2", "9") {
+		t.Fatal("first observation was refused")
+	}
+	if !s.ObserveCARP("state_changed", "backup", "master", "vtnet2", "9") {
+		t.Fatal("second observation was refused")
+	}
+	// A demotion names no state, interface or vhid — an all-empty tail is a real,
+	// distinct series, not a degenerate one that should collapse into another.
+	if !s.ObserveCARP("demoted", "", "", "", "") {
+		t.Fatal("demotion observation was refused")
+	}
+	if !s.ObserveCARP("promoted", "", "", "", "") {
+		t.Fatal("promotion observation was refused")
+	}
+	s.sync()
+
+	if got := s.carp.m[carpKey{event: "state_changed", from: "backup", to: "master", iface: "vtnet2", vhid: "9"}]; got != 2 {
+		t.Errorf("state_changed count = %v, want 2", got)
+	}
+	if got := s.carp.m[carpKey{event: "demoted"}]; got != 1 {
+		t.Errorf("demoted count = %v, want 1", got)
+	}
+	if got := s.carp.m[carpKey{event: "promoted"}]; got != 1 {
+		t.Errorf("promoted count = %v, want 1", got)
+	}
+	if got := s.carp.len(); got != 3 {
+		t.Errorf("distinct keys = %d, want 3", got)
+	}
+}
+
 func TestLogEventStore_ObserveRADIUS(t *testing.T) {
 	s := newTestLogEventStore(t)
 	if !s.ObserveRADIUS("access", "accepted", "configured") {
@@ -580,11 +612,11 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	if len(capped) != 10 {
-		t.Errorf("capped families emitted = %d, want 10: %v", len(capped), capped)
+	if len(capped) != 11 {
+		t.Errorf("capped families emitted = %d, want 11: %v", len(capped), capped)
 	}
-	if len(keys) != 10 {
-		t.Errorf("keys families emitted = %d, want 10: %v", len(keys), keys)
+	if len(keys) != 11 {
+		t.Errorf("keys families emitted = %d, want 11: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])
@@ -606,6 +638,12 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 	}
 	if keys[logFamilyRADIUS] != 0 {
 		t.Errorf("radius keys = %v, want 0 published from zero", keys[logFamilyRADIUS])
+	}
+	if capped[logFamilyCARP] != 0 {
+		t.Errorf("carp capped = %v, want 0 published from zero", capped[logFamilyCARP])
+	}
+	if keys[logFamilyCARP] != 0 {
+		t.Errorf("carp keys = %v, want 0 published from zero", keys[logFamilyCARP])
 	}
 	assertMetricsAreCounters(t, metrics, "opnsense_log_events_cardinality_capped_total")
 }
@@ -634,6 +672,72 @@ func TestLogEventsCollector_EmitsGatewayCounter(t *testing.T) {
 		return
 	}
 	t.Fatal("gateway_total was not emitted")
+}
+
+// The frozen #405 metric contract: exactly event, from, to, interface, vhid and the
+// standard opnsense_instance. THE KERNEL'S CAUSE MUST NEVER BE A LABEL, and neither
+// may the signed demotion delta or the resulting total — a reason, reason_class,
+// delta or total label must fail this test on the label count alone.
+func TestLogEventsCollector_EmitsCARPCounter(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveCARP("state_changed", "backup", "master", "vtnet2", "9")
+	c.store.ObserveCARP("state_changed", "backup", "master", "vtnet2", "9")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_carp_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if len(labels) != 6 {
+			t.Fatalf("carp labels = %v, want only event, from, to, interface, vhid and opnsense_instance", labels)
+		}
+		for _, forbidden := range []string{"reason", "reason_class", "cause", "delta", "total", "demotion"} {
+			if _, present := labels[forbidden]; present {
+				t.Errorf("carp carries a %q label; the kernel cause and demotion values must stay log attributes", forbidden)
+			}
+		}
+		if labels["event"] != "state_changed" ||
+			labels["from"] != "backup" ||
+			labels["to"] != "master" ||
+			labels["interface"] != "vtnet2" ||
+			labels["vhid"] != "9" ||
+			labels["opnsense_instance"] != "opnsense.example.com" {
+			t.Fatalf("carp labels = %v, want state_changed/backup/master/vtnet2/9/opnsense.example.com", labels)
+		}
+		if got := getMetricValue(m); got != 2 {
+			t.Errorf("carp counter = %v, want 2", got)
+		}
+		return
+	}
+	t.Fatal("carp_total was not emitted")
+}
+
+// A demotion record names neither an interface nor a VHID, so it must emit with those
+// four label values EMPTY rather than being dropped or given placeholder values.
+func TestLogEventsCollector_EmitsCARPDemotionWithEmptyStateLabels(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveCARP("promoted", "", "", "", "")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_carp_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if labels["event"] != "promoted" {
+			t.Fatalf("carp labels = %v, want event/promoted", labels)
+		}
+		for _, empty := range []string{"from", "to", "interface", "vhid"} {
+			if labels[empty] != "" {
+				t.Errorf("carp %s = %q on a demotion record, want empty", empty, labels[empty])
+			}
+		}
+		return
+	}
+	t.Fatal("carp_total was not emitted for a demotion record")
 }
 
 // The frozen #406 metric contract: exactly backend, event, result, connection and

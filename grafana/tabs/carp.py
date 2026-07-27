@@ -10,11 +10,14 @@ Covers the seven CARP metrics:
  - opnsense_carp_vip_advbase_seconds (table)
  - opnsense_carp_vip_advskew      (table)
 
+plus the syslog-derived transition counter:
+ - opnsense_log_events_carp_total  (timeseries, #405)
+
 The tab itself is gated on has_carp; the VIP detail row is additionally gated
-on has_carp_vips.
+on has_carp_vips, and the transition-event row on has_log_events_carp.
 """
 
-from builder import Builder, sel, YESNO
+from builder import Builder, RATE, sel, YESNO
 
 
 # Custom mappings for CARP allow and VIP status.
@@ -50,6 +53,12 @@ def build(b: Builder):
     # metric every box emits. Contrast opnsense_captiveportal_zones_total in
     # captiveportal.py, which is plugin-gated and so uses existence.
     b.sentinel("has_carp_vips", metric="opnsense_carp_vips_total", nonzero=True)
+    # #405. Plain existence, and NOT nonzero: unlike vips_total above, this counter is
+    # absent entirely until syslog shipping sees a kernel CARP line, so the series IS
+    # the presence signal. Deliberately its own sentinel rather than has_carp — a box
+    # can have CARP configured and running while shipping no syslog to the exporter,
+    # and gating on has_carp would render this row permanently empty there.
+    b.sentinel("has_log_events_carp", metric="opnsense_log_events_carp_total")
 
     # ══════════════════════════════════════════════════════════════════════
     # ROW 1 — CARP global state
@@ -126,6 +135,27 @@ def build(b: Builder):
     )
 
     # ══════════════════════════════════════════════════════════════════════
+    # ROW 3 — kernel CARP transition events (#405, gated on has_log_events_carp)
+    # ══════════════════════════════════════════════════════════════════════
+    carp_events = b.ts(
+        "CARP Transition Events",
+        [(f'sum by (opnsense_instance, event, from, to, interface, vhid) '
+          f'(rate({sel("opnsense_log_events_carp_total")}[{RATE}]))',
+          "{{event}} {{from}}->{{to}} {{interface}} vhid={{vhid}}")],
+        unit="ops", w=24, h=8,
+        desc="Rate of FreeBSD kernel CARP transitions parsed from received syslog. event is "
+             "state_changed (a MASTER/BACKUP/INIT move), demoted or promoted; demoted and "
+             "promoted are the same kernel line distinguished by the SIGN of its demotion "
+             "delta. from/to/interface/vhid are empty on a demotion, which is global to the "
+             "node and names neither. Read it beside the CARP VIP Status timeline above: that "
+             "shows the state now, this shows the transitions that produced it - a VIP sitting "
+             "on MASTER while this stays busy is a flapping pair. The kernel's CAUSE is "
+             "deliberately not a label (it is open-ended free text across FreeBSD versions); "
+             "it ships on the log record as carp.reason, with carp.demotion.delta and "
+             "carp.demotion.total. Absent until syslog shipping sees a kernel CARP line.",
+    )
+
+    # ══════════════════════════════════════════════════════════════════════
     # Assemble tab (gated on has_carp)
     # ══════════════════════════════════════════════════════════════════════
     b.tab("CARP / HA", [
@@ -134,4 +164,7 @@ def build(b: Builder):
         b.row("VIP Status & Advertisement",
               [vip_status, vip_adv_table],
               present="has_carp_vips"),
+        b.row("Transition Events (from syslog)",
+              [carp_events],
+              present="has_log_events_carp"),
     ], present="has_carp")

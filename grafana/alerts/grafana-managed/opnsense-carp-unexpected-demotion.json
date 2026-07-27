@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-carp-unexpected-demotion",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseCARPUnexpectedDemotion",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense CARP node is demoting itself ({{ $labels.opnsense_instance }})",
+      "description": "Four or more positive CARP demotion adjustments in 15m \u2014 this node keeps making itself less willing to be master. A single pfsync bulk transfer demotes and then promotes once and does NOT fire; this threshold sits above routine sync so it means churn. Common causes are repeated pfsync bulk transfers, a service disruption, or an interface flapping; the kernel states which on the shipped log record as carp.reason, with the signed adjustment in carp.demotion.delta and the resulting level in carp.demotion.total. Neither the cause nor those numbers is a metric label. Compare opnsense_carp_demotion for the current level, and note the matching promoted event when the demotion is released.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "sum by (opnsense_instance) (increase(opnsense_log_events_carp_total{event=\"demoted\"}[15m]))",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  3,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

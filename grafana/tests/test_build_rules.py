@@ -160,6 +160,83 @@ class LogShippingAlertTest(unittest.TestCase):
         self.assertNotIn("records are being lost", sink["description"].lower())
 
 
+class CARPTransitionAlertTest(unittest.TestCase):
+    """#405's acceptance requires alerting on repeated CARP state changes for one vhid
+    and on unexpected demotion. Both are TRANSITION evidence from syslog, so both are
+    window-relative (increase / rate) and never a bare cumulative total."""
+
+    def test_repeated_state_changes_alert_per_vhid(self):
+        rule = rule_by_title("OPNsenseCARPStateFlapping")
+
+        # Grouped by vhid AND interface: a vhid number is only unique within an
+        # interface, so grouping by vhid alone would merge two independent VIPs.
+        self.assertEqual(
+            rule["A"],
+            'sum by (opnsense_instance, interface, vhid) '
+            '(increase(opnsense_log_events_carp_total{event="state_changed"}[15m]))',
+        )
+        # Strict >3 means four or more state changes in the window. A single clean
+        # failover is INIT->BACKUP->MASTER, i.e. two changes, so the threshold has to
+        # sit above that or every planned failover pages.
+        self.assertEqual(rule["op"], "gt")
+        self.assertEqual(rule["params"], [3, 0])
+        self.assertEqual(rule["for_min"], 0)
+        self.assertEqual(rule["severity"], "warning")
+        self.assertIn("four or more", rule["description"].lower())
+        self.assertIn("15m", rule["description"])
+
+    def test_unexpected_demotion_alerts_above_routine_pfsync_churn(self):
+        rule = rule_by_title("OPNsenseCARPUnexpectedDemotion")
+
+        self.assertEqual(
+            rule["A"],
+            'sum by (opnsense_instance) '
+            '(increase(opnsense_log_events_carp_total{event="demoted"}[15m]))',
+        )
+        # Strict >3 means four or more demotions in the window. NOT >0: the #405 capture
+        # recorded 11 pfsync-bulk-start demotions, so demotion during bulk transfer is
+        # routine and >0 would page on a healthy cluster.
+        self.assertEqual(rule["op"], "gt")
+        self.assertEqual(rule["params"], [3, 0])
+        self.assertEqual(rule["for_min"], 0)
+        self.assertEqual(rule["severity"], "warning")
+        self.assertIn("pfsync", rule["description"])
+
+    def test_a_count_threshold_is_never_applied_to_a_per_second_rate(self):
+        """THE DEAD-ALERT TRAP. rate() is per-second, so four events in 15m is 0.0044/s;
+        any threshold >= 1 on a bare rate() of a rare transition event can never fire and
+        the alert is silently dead forever. A count-over-window threshold must therefore
+        use increase(). Guards both CARP rules and the dpinger sibling they were modelled on."""
+        for title in ("OPNsenseCARPStateFlapping",
+                      "OPNsenseCARPUnexpectedDemotion",
+                      "OPNsenseGatewayAlarmFlapping"):
+            rule = rule_by_title(title)
+            if rule["params"][0] >= 1:
+                self.assertIn(
+                    "increase(", rule["A"],
+                    f"{title} applies a threshold of {rule['params'][0]} to an expression "
+                    "that is not an increase() over the window; a per-second rate of a rare "
+                    "event never reaches 1, so this alert could never fire",
+                )
+
+    def test_neither_carp_rule_uses_a_bare_cumulative_total(self):
+        for title in ("OPNsenseCARPStateFlapping", "OPNsenseCARPUnexpectedDemotion"):
+            expr = rule_by_title(title)["A"]
+            self.assertTrue(
+                "rate(" in expr or "increase(" in expr,
+                f"{title} reads opnsense_log_events_carp_total without rate()/increase(); "
+                "a bare counter total only ever grows and would latch on forever",
+            )
+
+    def test_neither_carp_rule_selects_on_the_kernel_cause(self):
+        """The cause is never a label, so no rule may match on one. A rule written
+        against reason=/reason_class= would silently never fire."""
+        for title in ("OPNsenseCARPStateFlapping", "OPNsenseCARPUnexpectedDemotion"):
+            expr = rule_by_title(title)["A"]
+            for forbidden in ("reason", "reason_class", "cause", "delta"):
+                self.assertNotIn(f'{forbidden}=', expr)
+
+
 class GatewayAlarmFlapAlertTest(unittest.TestCase):
     def test_repeated_dpinger_alarm_starts_alert_per_gateway(self):
         rule = rule_by_title("OPNsenseGatewayAlarmFlapping")

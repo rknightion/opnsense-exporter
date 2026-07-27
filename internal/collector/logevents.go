@@ -50,6 +50,19 @@ type (
 	// error text are deliberately absent and must stay absent; they remain on the
 	// shipped log line.
 	vpnKey struct{ backend, event, result, connection string }
+	// carpKey is the frozen #405 tuple. event, from and to are closed code-defined
+	// vocabularies (event = state_changed|demoted|promoted; from/to =
+	// master|backup|init, lowercased); iface is the OS device and vhid the configured
+	// VHID, the configuration-scale pair the key budget exists for. All four of from,
+	// to, iface and vhid are EMPTY on a demotion record, which names none of them.
+	//
+	// The kernel's CAUSE string is deliberately absent and must stay absent: it is
+	// open-ended free text across FreeBSD versions, so it would be an unbounded label,
+	// and bucketing it into a reason_class would invent a taxonomy no capture
+	// supports. The signed demotion delta and resulting total are absent for the same
+	// reason - unbounded integers. All three remain structured fields on the shipped
+	// log record.
+	carpKey struct{ event, from, to, iface, vhid string }
 	// zenKey is Zenarmor's tuple, and Zenarmor is the highest-cardinality data this
 	// exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
@@ -71,6 +84,7 @@ const (
 	logFamilyGateway  = "gateway"
 	logFamilyRADIUS   = "radius"
 	logFamilyVPN      = "vpn"
+	logFamilyCARP     = "carp"
 	logFamilyZenarmor = "zenarmor"
 
 	// logEventObservationDropReasonHandoffFull is deliberately code-defined: it
@@ -103,6 +117,7 @@ const (
 	logEventObserveGateway
 	logEventObserveRADIUS
 	logEventObserveVPN
+	logEventObserveCARP
 	logEventObserveZenarmor
 	logEventSetMaxKeys
 	logEventTakeSnapshot
@@ -127,6 +142,7 @@ type logEventSnapshot struct {
 	gateway []keyed[gatewayKey]
 	radius  []keyed[radiusKey]
 	vpn     []keyed[vpnKey]
+	carp    []keyed[carpKey]
 	zen     []keyed[zenKey]
 	sat     []familySaturation
 	dropped uint64
@@ -169,6 +185,7 @@ type LogEventStore struct {
 	gateway          *cappedCounter[gatewayKey]
 	radius           *cappedCounter[radiusKey]
 	vpn              *cappedCounter[vpnKey]
+	carp             *cappedCounter[carpKey]
 	zen              *cappedCounter[zenKey]
 }
 
@@ -191,6 +208,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		gateway:        newCappedCounter[gatewayKey](defaultMaxLogEventKeys),
 		radius:         newCappedCounter[radiusKey](defaultMaxLogEventKeys),
 		vpn:            newCappedCounter[vpnKey](defaultMaxLogEventKeys),
+		carp:           newCappedCounter[carpKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 	}
 	go s.run()
@@ -284,6 +302,11 @@ func (s *LogEventStore) ObserveVPN(backend, event, result, connection string) bo
 	return s.observe(logEventCommand{kind: logEventObserveVPN, values: [7]string{backend, event, result, connection}})
 }
 
+// ObserveCARP implements logship.MetricSink.
+func (s *LogEventStore) ObserveCARP(event, from, to, iface, vhid string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveCARP, values: [7]string{event, from, to, iface, vhid}})
+}
+
 // ObserveZenarmor implements logship.MetricSink.
 func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
@@ -322,6 +345,8 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.radius.inc(radiusKey{v[0], v[1], v[2]})
 	case logEventObserveVPN:
 		s.vpn.inc(vpnKey{v[0], v[1], v[2], v[3]})
+	case logEventObserveCARP:
+		s.carp.inc(carpKey{v[0], v[1], v[2], v[3], v[4]})
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventSetMaxKeys:
@@ -334,6 +359,7 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.gateway.setMax(cmd.maxKeys)
 		s.radius.setMax(cmd.maxKeys)
 		s.vpn.setMax(cmd.maxKeys)
+		s.carp.setMax(cmd.maxKeys)
 		s.zen.setMax(cmd.maxKeys)
 		close(cmd.ack)
 	case logEventTakeSnapshot:
@@ -366,6 +392,8 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.radius, sat = drainFamily(logFamilyRADIUS, s.radius)
 	snap.sat = append(snap.sat, sat)
 	snap.vpn, sat = drainFamily(logFamilyVPN, s.vpn)
+	snap.sat = append(snap.sat, sat)
+	snap.carp, sat = drainFamily(logFamilyCARP, s.carp)
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
@@ -422,6 +450,7 @@ type logEventsCollector struct {
 	gateway  *prometheus.Desc
 	radius   *prometheus.Desc
 	vpn      *prometheus.Desc
+	carp     *prometheus.Desc
 	zenarmor *prometheus.Desc
 
 	capped  *prometheus.Desc
@@ -492,6 +521,27 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"any other line still ships as a log record but is not counted as an inferred transition.",
 		[]string{"backend", "event", "result", "connection"},
 	)
+	c.carp = buildPrometheusDesc(c.subsystem, "carp_total",
+		"FreeBSD kernel CARP transitions derived from received syslog, by closed event, "+
+			"previous and current state, OS interface device and VHID. event is one of "+
+			"state_changed, demoted or promoted; from and to are master, backup or init, "+
+			"lowercased. A demotion record leaves from, to, interface and vhid EMPTY - the "+
+			"kernel's demotion adjustment is global to the node and names neither an "+
+			"interface nor a VHID. demoted and promoted are distinguished by the SIGN of the "+
+			"kernel's demotion delta: positive raises the node's demotion total, negative "+
+			"lowers it. The kernel's CAUSE for the transition (initialization complete, "+
+			"master timed out, hardware interface up, pfsync bulk start, pfsync bulk fail, "+
+			"service disruption, ...) is deliberately NOT a label: it is open-ended free "+
+			"text across FreeBSD versions. It ships as carp.reason on the log record, "+
+			"alongside carp.demotion.delta and carp.demotion.total - which are the numbers "+
+			"explaining WHY a node demoted, and which opnsense_carp_demotion (a current-state "+
+			"gauge) does not retain. Read this beside the CARP VIP Status timeline: that shows "+
+			"what state the node is in now, this shows the transitions that got it there. "+
+			"Only the grammar captured on OPNsense 27.1.a_40 (FreeBSD 15, net.inet.carp.log=1) "+
+			"is counted - any other kernel line still ships as a log record but is never "+
+			"counted as an inferred transition.",
+		[]string{"event", "from", "to", "interface", "vhid"},
+	)
 	c.zenarmor = buildPrometheusDesc(c.subsystem, "zenarmor_total",
 		"Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), "+
 			"action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do "+
@@ -535,6 +585,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.gateway
 	ch <- c.radius
 	ch <- c.vpn
+	ch <- c.carp
 	ch <- c.zenarmor
 	ch <- c.capped
 	ch <- c.keys
@@ -620,6 +671,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range snap.vpn {
 		ch <- prometheus.MustNewConstMetric(c.vpn, prometheus.CounterValue, p.v,
 			p.k.backend, p.k.event, p.k.result, p.k.connection, c.instance)
+	}
+	for _, p := range snap.carp {
+		ch <- prometheus.MustNewConstMetric(c.carp, prometheus.CounterValue, p.v,
+			p.k.event, p.k.from, p.k.to, p.k.iface, p.k.vhid, c.instance)
 	}
 	for _, p := range snap.zen {
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,

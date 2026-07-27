@@ -56,7 +56,7 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 !!! warning "Minimum Grafana version: 13+"
     The dashboard uses the v2 dynamic schema (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`, which require **Grafana 13 or later**.
 
-A single comprehensive Grafana dashboard covers **all 832 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
+A single comprehensive Grafana dashboard covers **all 833 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
 Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 
@@ -92,6 +92,26 @@ timeline. `event` is closed to `alarm_started` (`none -> down`) and
 The Grafana-managed `OPNsenseGatewayAlarmFlapping` warning alerts when one gateway
 has three or more `alarm_started` events in 15 minutes. It is transition evidence,
 not a claim that the gateway is currently down.
+
+**CARP transitions from the FreeBSD kernel:**
+
+```promql
+sum by (opnsense_instance, event, from, to, interface, vhid) (
+  rate(opnsense_log_events_carp_total[5m])
+)
+```
+
+The CARP / HA tab puts this beside the CARP VIP Status timeline: that shows the state
+now, this shows the transitions that produced it. `event` is closed to `state_changed`,
+`demoted` and `promoted`; `from` and `to` are closed to `master`, `backup` and `init`.
+A demotion names neither an interface nor a VHID, so `from`, `to`, `interface` and
+`vhid` are empty on those series, and `demoted` versus `promoted` is decided by the
+sign of the kernel's demotion delta. The kernel's **cause** is not a label — read it
+from `carp.reason` on the shipped log record, with `carp.demotion.delta` and
+`carp.demotion.total`. Two Grafana-managed warnings cover it:
+`OPNsenseCARPStateFlapping` on four or more state changes for one vhid in 15 minutes
+(a clean failover is two, and does not fire), and `OPNsenseCARPUnexpectedDemotion` on
+any sustained rate of `event="demoted"`.
 
 **Average RTT per gateway over 5 minutes:**
 
