@@ -48,6 +48,61 @@ RULES = [
                      "covered by the lower-severity OPNsenseCrashReports / OPNsenseFirewallUnhealthy alerts, "
                      "so this critical/page fires on genuine unreachability only. The 15m window tolerates a "
                      "router reboot (typically <10m) without paging."),
+    # #427. The rule above cannot detect a PARTIAL fleet loss, and the reason is a
+    # Grafana distinction that is easy to miss:
+    #
+    #   No Data      - the query returns no series AT ALL. noDataState governs it,
+    #                  which is why the rule above sets Alerting: total loss pages.
+    #   MissingSeries - the query still returns series, but one dimension has gone.
+    #                  Grafana retains that alert instance briefly, then EVICTS it as
+    #                  stale. It never passes through noDataState.
+    #
+    # So with edge-a and edge-b, losing edge-a entirely leaves opnsense_up{edge-b}
+    # returning happily; the edge-a instance is quietly evicted and nothing pages.
+    # A bare `opnsense_up` cannot detect its own absence — a series that does not
+    # exist cannot match a selector. Something has to assert what SHOULD be there.
+    #
+    # present_over_time gives one series per instance that reported at any point in
+    # the lookback; `unless` removes the ones still reporting. What survives is
+    # exactly the set that has vanished, still labelled with opnsense_instance so the
+    # page can name the box.
+    #
+    # The baseline is HISTORICAL, not a configured inventory. That is a deliberate
+    # trade: it is self-contained (nothing to maintain, a new exporter protects
+    # itself the moment it has been up an hour) at the cost of alerting for up to the
+    # lookback after a planned decommission. One hour is short enough to wait out and
+    # long enough to survive a slow reboot, a Prometheus restart, or a brief scrape
+    # outage without a false page. A configured expected-instance list would avoid
+    # the decommission noise but silently protects nothing when someone forgets to
+    # add a box — failing open on the exact event this rule exists to catch.
+    #
+    # noDataState stays Ok on purpose: when the whole fleet disappears THIS query
+    # returns nothing too, and OPNsenseExporterDown already pages for that. Alerting
+    # here would double-page one event.
+    #
+    # The `max by (opnsense_instance)` is load-bearing, not tidiness. present_over_time
+    # yields one series per distinct LABEL SET, not per instance, so any label churn
+    # inside the lookback — a version label changing, a relabel, a scrape-config edit —
+    # leaves several historical series for one box. Without the aggregation a single
+    # missing exporter would raise one alert instance per historical label set, paging
+    # repeatedly for one event. Verified live 2026-07-27: the raw form returned two
+    # series for the one real instance, differing only by a service_version label that
+    # had been removed earlier that day (#472).
+    dict(name="opnsense-exporter-instance-missing", title="OPNsenseExporterInstanceMissing",
+         A="max by (opnsense_instance) (present_over_time(opnsense_up[1h])) "
+           "unless on(opnsense_instance) opnsense_up",
+         op="gt", params=[0, 0], for_min=10, severity="critical",
+         summary="OPNsense exporter {{ $labels.opnsense_instance }} has stopped reporting",
+         description="opnsense_up reported for {{ $labels.opnsense_instance }} at some point in the last "
+                     "1h and is now absent entirely, while at least one other exporter is still "
+                     "reporting. That is Grafana's MissingSeries case, NOT NoData: the vanished alert "
+                     "instance is evicted as stale rather than passing through noDataState, so "
+                     "OPNsenseExporterDown cannot see it. Causes: the exporter process died, its host "
+                     "went away, or Prometheus stopped scraping that target — note this fires when the "
+                     "series is GONE, whereas OPNsenseExporterDown fires when the exporter is alive and "
+                     "reporting opnsense_up=0. Check the scrape target's health first, then the "
+                     "exporter process. If the instance was decommissioned deliberately, this "
+                     "self-resolves once it has been absent for 1h; silence it until then."),
     dict(name="opnsense-firewall-unhealthy", title="OPNsenseFirewallUnhealthy",
          A="opnsense_firewall_status", op="lt", params=[1, 0], for_min=10, severity="warning",
          summary="OPNsense firewall health check failing ({{ $labels.opnsense_instance }})",

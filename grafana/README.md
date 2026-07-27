@@ -249,7 +249,7 @@ Set `DASH_NAME=<slug>` to override `metadata.name` (used for scratch/validation 
 
 ## Alerts & recording rules
 
-`alerts/` contains **41 alert rules** and **14 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **42 alert rules** and **14 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format - it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
@@ -273,9 +273,31 @@ target a specific Grafana folder.
 
 ### Alerts
 
+**Two rules cover an exporter going away, and they are not interchangeable.** Grafana
+treats a query that returns *nothing* differently from a query that still returns series
+with one dimension missing:
+
+- **No Data** — the rule's query returns no series at all. `noDataState` governs it, so
+  `OPNsenseExporterDown` (`noDataState: Alerting`) pages when the whole fleet is gone.
+- **MissingSeries** — the query still returns series, but one has disappeared from the
+  result. Grafana retains that alert instance briefly and then **evicts it as stale**. It
+  never passes through `noDataState`.
+
+So on a multi-exporter setup, losing one box entirely is MissingSeries, not No Data, and
+`OPNsenseExporterDown` alone would silently lose that alert instance while the surviving
+exporters kept it Normal. `OPNsenseExporterInstanceMissing` closes that: it compares the
+last hour's `present_over_time` baseline against what is reporting now, so an instance
+that stops reporting is named rather than evicted.
+
+The baseline is historical rather than a configured inventory — nothing to maintain, and a
+new exporter protects itself once it has been up an hour. The cost is that a **deliberately
+decommissioned instance keeps alerting until it has been absent for 1h**; silence it until
+then, or wait it out.
+
 | Alert | Severity | Fires when |
 |-------|----------|-----------|
 | OPNsenseExporterDown | critical | `opnsense_up` 0 (API unreachable / scrape failed) or NoData for 15m |
+| OPNsenseExporterInstanceMissing | critical | an exporter that reported within the last 1h has vanished entirely while others still report |
 | OPNsenseFirewallUnhealthy | warning | firewall health check reports errors for 10m |
 | OPNsenseCrashReports | warning | crash reports present |
 | OPNsenseEndpointErrors | warning | an API endpoint returned errors in 15m (fast/medium tiers - see below) |

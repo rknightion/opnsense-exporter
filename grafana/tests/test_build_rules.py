@@ -507,3 +507,88 @@ class GrafanaManagedRuleGenerationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExporterDisappearanceTest(unittest.TestCase):
+    """#427: one exporter vanishing while others still report must still page.
+
+    Grafana treats these as two different situations, and the distinction is the
+    whole issue:
+
+    - **No Data** — the rule's query returns no series at all. `noDataState` governs
+      it, so `OPNsenseExporterDown` with `noDataState: Alerting` covers a total
+      fleet loss.
+    - **MissingSeries** — the query still returns series, but one dimension has
+      disappeared from the result. Grafana retains that alert instance briefly and
+      then *evicts* it as stale. It never passes through `noDataState`.
+
+    So with exporters `edge-a` and `edge-b`, losing `edge-a` entirely leaves
+    `opnsense_up{opnsense_instance="edge-b"}` returning happily, the `edge-a` alert
+    instance is quietly evicted, and nothing pages. The bare `opnsense_up` vector
+    cannot detect its own absence — something has to assert what SHOULD be there.
+    """
+
+    def test_a_missing_instance_rule_exists(self):
+        rule = rule_by_title("OPNsenseExporterInstanceMissing")
+        self.assertEqual(rule["name"], "opnsense-exporter-instance-missing")
+
+    def test_it_compares_recent_history_against_the_present(self):
+        """The detector must name instances seen recently but absent NOW.
+
+        `present_over_time` over a lookback yields one series per instance that
+        reported at any point in the window; `unless` removes the ones still
+        reporting. What survives is exactly the set that has vanished — which a bare
+        `opnsense_up` selector can never produce, because a series that does not
+        exist cannot match.
+        """
+        expr = rule_by_title("OPNsenseExporterInstanceMissing")["A"]
+        self.assertIn("present_over_time(opnsense_up[", expr)
+        self.assertIn("unless", expr)
+        self.assertIn("opnsense_instance", expr,
+                      "the surviving series must be keyed on instance, or the alert "
+                      "cannot say WHICH exporter went away")
+
+    def test_it_raises_one_alert_per_instance_not_per_historical_label_set(self):
+        """present_over_time yields one series per distinct LABEL SET, not per
+        instance. Any label churn inside the lookback — a version label removed, a
+        relabel, a scrape-config edit — therefore leaves several historical series
+        for one box, and without aggregation one missing exporter would page once
+        per label set.
+
+        Not hypothetical: verified live 2026-07-27, the unaggregated form returned
+        two series for the single real instance, differing only by a service_version
+        label removed earlier that day (#472).
+        """
+        expr = rule_by_title("OPNsenseExporterInstanceMissing")["A"]
+        self.assertIn("max by (opnsense_instance) (present_over_time(opnsense_up[", expr)
+
+    def test_it_does_not_duplicate_the_total_loss_rule(self):
+        """Total fleet loss belongs to OPNsenseExporterDown, not here.
+
+        If every exporter disappears, this rule's own query returns nothing, so it
+        would be NoData — and if it were `Alerting` on NoData, both rules would fire
+        for the same event. `OPNsenseExporterDown` already carries
+        `noDataState: Alerting` for exactly that case, so this one must not.
+        """
+        rule = rule_by_title("OPNsenseExporterInstanceMissing")
+        self.assertEqual(rule.get("nodata", "Ok"), "Ok")
+        self.assertEqual(rule_by_title("OPNsenseExporterDown")["nodata"], "Alerting")
+
+    def test_it_pages(self):
+        """A firewall that has silently stopped reporting is a critical event."""
+        self.assertEqual(rule_by_title("OPNsenseExporterInstanceMissing")["severity"], "critical")
+
+    def test_the_summary_names_the_missing_instance(self):
+        rule = rule_by_title("OPNsenseExporterInstanceMissing")
+        self.assertIn("$labels.opnsense_instance", rule["summary"])
+
+    def test_the_decommission_horizon_is_stated(self):
+        """A historical baseline necessarily alerts for a while after a planned
+        removal. That is a real operational cost, so the description must state the
+        window rather than leaving an operator to discover it from a page."""
+        desc = rule_by_title("OPNsenseExporterInstanceMissing")["description"]
+        lookback = re.search(r"present_over_time\(opnsense_up\[(\w+)\]", 
+                             rule_by_title("OPNsenseExporterInstanceMissing")["A"]).group(1)
+        self.assertIn(lookback, desc,
+                      "the description must name the same lookback the expression uses, "
+                      "so the decommission behaviour is discoverable without reading PromQL")

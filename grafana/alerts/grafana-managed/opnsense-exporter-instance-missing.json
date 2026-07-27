@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-exporter-instance-missing",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseExporterInstanceMissing",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "10m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "critical"
+    },
+    "annotations": {
+      "summary": "OPNsense exporter {{ $labels.opnsense_instance }} has stopped reporting",
+      "description": "opnsense_up reported for {{ $labels.opnsense_instance }} at some point in the last 1h and is now absent entirely, while at least one other exporter is still reporting. That is Grafana's MissingSeries case, NOT NoData: the vanished alert instance is evicted as stale rather than passing through noDataState, so OPNsenseExporterDown cannot see it. Causes: the exporter process died, its host went away, or Prometheus stopped scraping that target \u2014 note this fires when the series is GONE, whereas OPNsenseExporterDown fires when the exporter is alive and reporting opnsense_up=0. Check the scrape target's health first, then the exporter process. If the instance was decommissioned deliberately, this self-resolves once it has been absent for 1h; silence it until then.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/README.md#alerts"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "max by (opnsense_instance) (present_over_time(opnsense_up[1h])) unless on(opnsense_instance) opnsense_up",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  0,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}
