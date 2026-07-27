@@ -32,7 +32,7 @@ export PATH := $(TOOLS_DIR):$(PATH)
 # .goreleaser.yml. A future Go that removes the experiment fails the build loudly.
 GOEXPERIMENT ?= goroutineleakprofile
 
-.PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
+.PHONY: default docgen docs docs-check dashboard rules compat compat-verify grafana-check grafana-test install-hooks capture \
         schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
         print-go-licenses-module tools-kubeconform deployment-test
 default:
@@ -150,6 +150,17 @@ dashboard:
 rules:
 	cd grafana/alerts && python3 build_rules.py
 
+# The Grafana 11/12 compatibility artifact (#420, from the #22 report). CONVERTED
+# from dashboard.json, never authored — see grafana/build_compat.py. `compat-verify`
+# imports it into pinned Grafana containers and reads it back; it needs docker, so it
+# is deliberately NOT part of grafana-check (which must run without one) and is
+# enforced by .github/workflows/grafana-compat.yml instead.
+compat:
+	cd grafana && python3 build_compat.py
+
+compat-verify: compat
+	grafana/verify_compat_import.sh
+
 # CI gate for the generated grafana/ artifacts (#84): coverage gate + regeneration
 # staleness + manifest validity. Fails if any catalogue metric is off the dashboard,
 # if dashboard.json / dashboard-stats.json / sentinel-contract.json / AUTHORING.md's
@@ -161,7 +172,8 @@ grafana-check: grafana-test
 	cd grafana && python3 build_dashboard.py
 	go run -C tools/promqlcheck . ../../grafana/dashboard.json
 	cd grafana/alerts && python3 build_rules.py
-	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/sentinel-contract.json grafana/tabs/AUTHORING.md grafana/alerts/grafana-managed/
+	cd grafana && python3 build_compat.py
+	git diff --exit-code -- grafana/dashboard.json grafana/dashboard-stats.json grafana/sentinel-contract.json grafana/tabs/AUTHORING.md grafana/alerts/grafana-managed/ grafana/dashboard-compat.json
 	python3 grafana/alerts/validate_manifests.py
 
 # The grafana/ builders' own unit tests (stdlib unittest, no deps). A prerequisite

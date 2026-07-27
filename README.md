@@ -119,7 +119,10 @@ The generated flag and collector reference lives in the
 ## Grafana dashboard
 
 > **Minimum Grafana version: 13+** - the dashboard uses the v2 dynamic schema
-> (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`.
+> (`dashboard.grafana.app/v2`) with `TabsLayout` and `conditionalRendering`. On Grafana 11 or 12,
+> import [`grafana/dashboard-compat.json`](./grafana/dashboard-compat.json) instead - generated from
+> the same source, carrying the 187 panels that are unconditional on every box, and import-tested
+> against Grafana 11.5.0 and 12.4.0 in CI.
 
 A single dynamic dashboard covers all 836 metrics across 41 tabs, auto-hiding tabs and rows for
 collectors and OPNsense plugins you don't run. Import

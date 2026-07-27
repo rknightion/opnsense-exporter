@@ -169,6 +169,28 @@ jobs:
       - name: Verify dashboard coverage, regeneration freshness and manifest validity
         run: make grafana-check
 
+  grafana-compat:
+    # The Grafana 11/12 compatibility artifact (#420, from the #22 user report). Its
+    # own job because it needs docker to be worth anything: local JSON validity proves
+    # nothing about whether an older Grafana accepts the file, which is exactly what
+    # #22 hit. The script imports `grafana/dashboard-compat.json` into each pinned
+    # container through /api/dashboards/db and READS IT BACK — an accepted POST is not
+    # proof, since Grafana migrates on save and can store a panel it cannot render.
+    name: Grafana 11/12 compatibility import
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Regenerate first: verifying a stale committed artifact would pass while the
+      # generator is broken. `make grafana-check` separately fails on staleness.
+      - name: Regenerate the compatibility artifact
+        run: make compat
+
+      - name: Import into pinned Grafana versions and read back
+        run: grafana/verify_compat_import.sh
+
   docker-build-verify:
     runs-on: ubuntu-24.04
     steps:
@@ -363,7 +385,7 @@ jobs:
     name: ci-success
     runs-on: ubuntu-24.04
     if: always()
-    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, docker-build-verify]
+    needs: [repo-meta, tests, race, fuzz-smoke, docs, deployment-contracts, grafana, grafana-compat, docker-build-verify]
     steps:
       - name: Fail if any required job did not pass
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
