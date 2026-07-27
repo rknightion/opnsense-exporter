@@ -180,18 +180,32 @@ def build(b: Builder):
     # These are all "what did we refuse to trust" counters. On an unauthenticated UDP
     # ingress that distinction is the whole security story, so none of them is allowed
     # to be silent.
+    # #416: datagram counts and the export's byte volume used to share one
+    # "short" field unit on a single panel, so the byte series' magnitude
+    # flattened the per-outcome datagram-rate series and the axis mislabelled
+    # a byte rate as a unitless count. Split into a datagram-rate panel and a
+    # dedicated byte-rate panel (unit="Bps"); both queries are unchanged.
     ingest = b.ts(
         "NetFlow Ingest (datagrams/sec)",
-        [(f'sum by (result) (rate({sel("opnsense_flow_netflow_datagrams_total")}[{RATE}]))', "{{result}}"),
-         (f'rate({sel("opnsense_flow_netflow_bytes_received_total")}[{RATE}])', "bytes/sec received")],
+        [(f'sum by (result) (rate({sel("opnsense_flow_netflow_datagrams_total")}[{RATE}]))', "{{result}}")],
         unit="short",
-        desc="Datagrams by outcome. result=\"accepted\" passed the peer allowlist; \"peer_rejected\" "
-             "came from outside --flow.netflow.allowed-peers and is the signal that something else on "
-             "the network is pointed here; \"queue_dropped\" arrived faster than the decoders drained "
-             "them, which is real data loss and means raising the worker count or the queue. The "
-             "decode outcomes (malformed, unsupported_version, varlen_rejected) are a SUBSET of "
-             "accepted, not additional to it. bytes_received is the wire volume of the export itself, "
-             "not the traffic it describes.",
+        desc="Datagrams per second by outcome (datagrams/sec, not bytes). result=\"accepted\" "
+             "passed the peer allowlist; \"peer_rejected\" came from outside "
+             "--flow.netflow.allowed-peers and is the signal that something else on the network is "
+             "pointed here; \"queue_dropped\" arrived faster than the decoders drained them, which is "
+             "real data loss and means raising the worker count or the queue. The decode outcomes "
+             "(malformed, unsupported_version, varlen_rejected) are a SUBSET of accepted, not "
+             "additional to it. See 'NetFlow Ingest Bytes' for the wire byte volume of the export "
+             "itself: it used to share this axis, where its magnitude flattened this datagram-rate "
+             "series.",
+    )
+    ingest_bytes = b.ts(
+        "NetFlow Ingest Bytes (bytes/sec)",
+        [(f'rate({sel("opnsense_flow_netflow_bytes_received_total")}[{RATE}])', "bytes/sec received")],
+        unit="Bps",
+        desc="Wire byte volume of the NetFlow export itself, per second (bytes/sec) -- not a "
+             "datagram count, and not the traffic the export describes. Pairs with 'NetFlow Ingest "
+             "(datagrams/sec)' for the per-outcome breakdown of the same datagrams.",
     )
 
     funnel = b.ts(
@@ -376,7 +390,7 @@ def build(b: Builder):
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("Domain, Talkers & Source Delta", [dnscache, uniquedest, toptalkers, delta], present="has_flow"),
-        b.row("NetFlow Receiver", [ingest, funnel, decoder], present="has_flow_netflow"),
+        b.row("NetFlow Receiver", [ingest, ingest_bytes, funnel, decoder], present="has_flow_netflow"),
         b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs], present="has_flow"),
     ], present="has_flow")

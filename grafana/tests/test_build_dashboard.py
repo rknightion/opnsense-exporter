@@ -316,5 +316,120 @@ class VPNLifecycleEventSemanticsTest(unittest.TestCase):
                 self.assertNotIn(token, expression.lower(), expression)
 
 
+def panel_unit(panel):
+    return panel["spec"]["vizConfig"]["spec"]["fieldConfig"]["defaults"]["unit"]
+
+
+def panel_exprs(panel):
+    return [
+        query["spec"]["query"]["spec"]["expr"]
+        for query in panel["spec"]["data"]["spec"]["queries"]
+    ]
+
+
+class IngestPanelUnitSplitTest(unittest.TestCase):
+    """#416: three generated panels put a byte-rate series on the same field
+    unit as an event/request/datagram-rate series ("short"), so the byte
+    series' magnitude flattened the lower-volume rate series it was meant to
+    be compared against. Each mixed panel is split into a dedicated byte-rate
+    panel (unit="Bps") and a dedicated event/request-rate panel, with every
+    original query expression preserved verbatim (checked against
+    `builder._exprs`, the pre-`stable()` raw strings passed to `b.ts()`)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.builder = build_dashboard.build_all()
+
+    def test_syslog_dropped_truncated_rates_split_into_message_and_byte_panels(self):
+        builder = self.builder
+
+        messages = panel_for_title(builder, "Dropped / Truncated Message Rate (msgs/sec)")
+        self.assertEqual(panel_unit(messages), "short")
+        message_exprs = panel_exprs(messages)
+        self.assertFalse(any("truncated_bytes" in e for e in message_exprs))
+        desc = messages["spec"]["description"].lower()
+        self.assertIn("messages/sec", desc)
+        self.assertIn("not bytes", desc)
+
+        byte_rate = panel_for_title(builder, "Truncated Bytes Rate (bytes/sec)")
+        self.assertEqual(panel_unit(byte_rate), "Bps")
+        byte_exprs = panel_exprs(byte_rate)
+        self.assertTrue(any("opnsense_syslog_truncated_bytes_total" in e for e in byte_exprs))
+        self.assertFalse(any("dropped_total" in e or "truncated_messages" in e for e in byte_exprs))
+        desc = byte_rate["spec"]["description"].lower()
+        self.assertIn("bytes/sec", desc)
+        self.assertIn("not a message count", desc)
+
+        for raw in (
+            'rate(opnsense_syslog_dropped_total{opnsense_instance=~"$opnsense_instance"}'
+            '[$__rate_interval])',
+            'rate(opnsense_syslog_truncated_messages_total{opnsense_instance=~"$opnsense_instance"}'
+            '[$__rate_interval])',
+            'rate(opnsense_syslog_truncated_bytes_total{opnsense_instance=~"$opnsense_instance"}'
+            '[$__rate_interval])',
+        ):
+            self.assertIn(raw, builder._exprs)
+
+    def test_netflow_ingest_rate_splits_into_datagram_and_byte_panels(self):
+        builder = self.builder
+
+        datagrams = panel_for_title(builder, "NetFlow Ingest (datagrams/sec)")
+        self.assertEqual(panel_unit(datagrams), "short")
+        datagram_exprs = panel_exprs(datagrams)
+        self.assertFalse(any("bytes_received" in e for e in datagram_exprs))
+        desc = datagrams["spec"]["description"].lower()
+        self.assertIn("datagrams/sec", desc)
+        self.assertIn("not bytes", desc)
+
+        byte_rate = panel_for_title(builder, "NetFlow Ingest Bytes (bytes/sec)")
+        self.assertEqual(panel_unit(byte_rate), "Bps")
+        byte_exprs = panel_exprs(byte_rate)
+        self.assertTrue(
+            any("opnsense_flow_netflow_bytes_received_total" in e for e in byte_exprs)
+        )
+        self.assertFalse(any("datagrams_total" in e for e in byte_exprs))
+        desc = byte_rate["spec"]["description"].lower()
+        self.assertIn("bytes/sec", desc)
+        self.assertIn("not a datagram count", desc)
+
+        for raw in (
+            'sum by (result) (rate(opnsense_flow_netflow_datagrams_total'
+            '{opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
+            'rate(opnsense_flow_netflow_bytes_received_total{opnsense_instance=~"$opnsense_instance"}'
+            '[$__rate_interval])',
+        ):
+            self.assertIn(raw, builder._exprs)
+
+    def test_zenarmor_bulk_ingest_rate_splits_into_request_and_byte_panels(self):
+        builder = self.builder
+
+        requests = panel_for_title(builder, "Zenarmor Bulk Ingest Requests (requests/sec)")
+        self.assertEqual(panel_unit(requests), "reqps")
+        request_exprs = panel_exprs(requests)
+        self.assertFalse(any("bulk_bytes" in e for e in request_exprs))
+        desc = requests["spec"]["description"].lower()
+        self.assertIn("requests/sec", desc)
+        self.assertIn("not bytes", desc)
+
+        byte_rate = panel_for_title(builder, "Zenarmor Bulk Ingest Bytes (bytes/sec)")
+        self.assertEqual(panel_unit(byte_rate), "Bps")
+        byte_exprs = panel_exprs(byte_rate)
+        self.assertTrue(
+            any("opnsense_exporter_logs_zenarmor_bulk_bytes_total" in e for e in byte_exprs)
+        )
+        self.assertFalse(any("bulk_requests" in e for e in byte_exprs))
+        desc = byte_rate["spec"]["description"].lower()
+        self.assertIn("bytes/sec", desc)
+        self.assertIn("not a request count", desc)
+
+        for raw in (
+            'rate(opnsense_exporter_logs_zenarmor_bulk_requests_total'
+            '{opnsense_instance=~"$opnsense_instance"}[$__rate_interval])',
+            'rate(opnsense_exporter_logs_zenarmor_bulk_bytes_total'
+            '{opnsense_instance=~"$opnsense_instance"}[$__rate_interval])',
+        ):
+            self.assertIn(raw, builder._exprs)
+
+
 if __name__ == "__main__":
     unittest.main()

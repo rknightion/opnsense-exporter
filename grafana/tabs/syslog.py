@@ -32,14 +32,33 @@ def build(b: Builder):
                      [(f'topk(20, rate({sel("opnsense_syslog_processed_total")}[{RATE}]))',
                        "{{source_name}}/{{source_id}}")],
                      unit="short", w=12, h=8)
-    dropped = b.ts("Dropped / Truncated Rates",
+    # #416: dropped/truncated MESSAGE counts and truncated BYTE volume used to
+    # share one "short" field unit on a single panel. The byte series' magnitude
+    # flattened the message-rate series it was meant to sit next to, and the
+    # axis mislabelled a byte rate as a unitless count. Split into a
+    # message-rate panel and a dedicated byte-rate panel (unit="Bps") instead
+    # of forcing two incompatible quantities onto one axis; the underlying
+    # queries are unchanged.
+    dropped = b.ts("Dropped / Truncated Message Rate (msgs/sec)",
                    [(f'rate({sel("opnsense_syslog_dropped_total")}[{RATE}])',
-                     "dropped {{source_name}}/{{source_id}}"),
+                     "dropped msgs/s {{source_name}}/{{source_id}}"),
                     (f'rate({sel("opnsense_syslog_truncated_messages_total")}[{RATE}])',
-                     "truncated msgs {{source_name}}/{{source_id}}"),
-                    (f'rate({sel("opnsense_syslog_truncated_bytes_total")}[{RATE}])',
-                     "truncated bytes {{source_name}}/{{source_id}}")],
-                   unit="short", w=12, h=8)
+                     "truncated msgs/s {{source_name}}/{{source_id}}")],
+                   unit="short", w=6, h=8,
+                   desc="syslog-ng dropped and truncated MESSAGE counts per second "
+                        "(messages/sec), by destination -- not bytes. dropped = messages "
+                        "discarded outright; truncated = messages shortened rather than "
+                        "dropped. See 'Truncated Bytes Rate' for the separate BYTE-volume "
+                        "view of the same truncation events: it used to share this axis, "
+                        "where its magnitude flattened this message-rate series.")
+    truncated_bytes = b.ts("Truncated Bytes Rate (bytes/sec)",
+                   [(f'rate({sel("opnsense_syslog_truncated_bytes_total")}[{RATE}])',
+                     "truncated bytes/s {{source_name}}/{{source_id}}")],
+                   unit="Bps", w=6, h=8,
+                   desc="Bytes of syslog-ng message content cut per second by truncation "
+                        "(bytes/sec) -- not a message count. Pairs with 'Dropped / "
+                        "Truncated Message Rate' for how many messages that byte volume "
+                        "represents.")
     written = b.ts("Written Rate",
                    [(f'rate({sel("opnsense_syslog_written_total")}[{RATE}])',
                      "{{source_name}}/{{source_id}}")],
@@ -61,7 +80,8 @@ def build(b: Builder):
 
     b.tab("Syslog", [
         b.row("Syslog-ng Overview", [svc, eps, queued], present="has_syslog"),
-        b.row("Syslog-ng Throughput", [processed, dropped, written, memory, msgsize],
+        b.row("Syslog-ng Throughput",
+              [processed, dropped, truncated_bytes, written, memory, msgsize],
               present="has_syslog"),
         b.row("Shipped Syslog Logs", [raw_logs, lines_by_subsystem],
               present="has_syslog_logs"),

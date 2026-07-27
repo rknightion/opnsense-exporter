@@ -59,16 +59,33 @@ def build(b: Builder):
              "flows, domain category for DNS/TLS, alert category for threats. Application "
              "names, IPs and hostnames are never labels; query the log stream for those.",
     )
-    zen_bulk = b.ts(
-        "Zenarmor Bulk Ingest (rate)",
-        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_bulk_requests_total")}[{RATE}])', "requests/s"),
-         (f'rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_bulk_bytes_total")}[{RATE}])', "bytes/s")],
-        unit="short",
-        desc="Elasticsearch _bulk requests and bytes Zenarmor pushes per second. Bytes is the "
-             "one to watch: a live box measured ~70 KB/s sustained, which is ~4-6 GB/day of raw "
-             "JSON into Loki. Cut families at the Zenarmor end (its own indexes setting) rather "
-             "than here -- data cut at source never crosses the wire. Self-metric: aggregates "
-             "across exporter instances on a multi-box setup (no opnsense_instance label).",
+    # #416: the _bulk request rate and the _bulk byte rate used to share one
+    # "short" field unit on a single panel, so the byte series' magnitude
+    # flattened the request-rate series and the axis mislabelled a byte rate
+    # as a unitless count. Split into a request-rate panel (unit="reqps",
+    # matching the reqps convention already used for request rates elsewhere,
+    # e.g. grafana/tabs/dns_unbound.py) and a dedicated byte-rate panel
+    # (unit="Bps"); both queries are unchanged.
+    zen_bulk_requests = b.ts(
+        "Zenarmor Bulk Ingest Requests (requests/sec)",
+        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_bulk_requests_total")}[{RATE}])', "requests/s")],
+        unit="reqps",
+        desc="Elasticsearch _bulk requests Zenarmor pushes per second (requests/sec, not "
+             "bytes). See 'Zenarmor Bulk Ingest Bytes' for the payload volume of those same "
+             "requests: it used to share this axis, where its magnitude flattened this "
+             "request-rate series. Self-metric: aggregates across exporter instances on a "
+             "multi-box setup (no opnsense_instance label).",
+    )
+    zen_bulk_bytes = b.ts(
+        "Zenarmor Bulk Ingest Bytes (bytes/sec)",
+        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_bulk_bytes_total")}[{RATE}])', "bytes/s")],
+        unit="Bps",
+        desc="Elasticsearch _bulk payload bytes Zenarmor pushes per second (bytes/sec, not a "
+             "request count). A live box measured ~70 KB/s sustained, which is ~4-6 GB/day of "
+             "raw JSON into Loki. Cut families at the Zenarmor end (its own indexes setting) "
+             "rather than here -- data cut at source never crosses the wire. Self-metric: "
+             "aggregates across exporter instances on a multi-box setup (no opnsense_instance "
+             "label).",
     )
     zen_excluded = b.ts(
         "Zenarmor Records Excluded (rate)",
@@ -168,7 +185,7 @@ def build(b: Builder):
 
     b.tab("Zenarmor", [
         b.row("Overview", [zen_events, zen_blocked, zen_block_ratio, zen_family_pie,
-                           zen_bulk, zen_excluded, zen_self_traffic],
+                           zen_bulk_requests, zen_bulk_bytes, zen_excluded, zen_self_traffic],
               present="has_zenarmor_metrics"),
         b.row("Live Records & Rates", [zen_raw_logs, zen_records_rate, zen_blocked_rate],
               present="has_zenarmor_logs"),
