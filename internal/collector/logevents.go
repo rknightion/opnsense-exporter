@@ -42,6 +42,14 @@ type (
 	// message text remain structured log fields, never labels.
 	gatewayKey struct{ event, gateway string }
 	radiusKey  struct{ event, result, clientScope string }
+	// vpnKey is the frozen #406 tuple. backend, event and result are closed
+	// code-defined vocabularies; connection is the API-RESOLVED configured tunnel or
+	// instance name, empty when unresolved and NEVER a raw UUID — it is the one
+	// deployment-scale dimension the key budget exists for. Usernames, certificate
+	// subjects/CNs/serials, IKE identities, peer addresses and ports, SPIs and daemon
+	// error text are deliberately absent and must stay absent; they remain on the
+	// shipped log line.
+	vpnKey struct{ backend, event, result, connection string }
 	// zenKey is Zenarmor's tuple, and Zenarmor is the highest-cardinality data this
 	// exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
@@ -62,6 +70,7 @@ const (
 	logFamilyIDS      = "ids"
 	logFamilyGateway  = "gateway"
 	logFamilyRADIUS   = "radius"
+	logFamilyVPN      = "vpn"
 	logFamilyZenarmor = "zenarmor"
 
 	// logEventObservationDropReasonHandoffFull is deliberately code-defined: it
@@ -93,6 +102,7 @@ const (
 	logEventObserveIDS
 	logEventObserveGateway
 	logEventObserveRADIUS
+	logEventObserveVPN
 	logEventObserveZenarmor
 	logEventSetMaxKeys
 	logEventTakeSnapshot
@@ -116,6 +126,7 @@ type logEventSnapshot struct {
 	ids     []keyed[idsKey]
 	gateway []keyed[gatewayKey]
 	radius  []keyed[radiusKey]
+	vpn     []keyed[vpnKey]
 	zen     []keyed[zenKey]
 	sat     []familySaturation
 	dropped uint64
@@ -157,6 +168,7 @@ type LogEventStore struct {
 	ids              *cappedCounter[idsKey]
 	gateway          *cappedCounter[gatewayKey]
 	radius           *cappedCounter[radiusKey]
+	vpn              *cappedCounter[vpnKey]
 	zen              *cappedCounter[zenKey]
 }
 
@@ -178,6 +190,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		ids:            newCappedCounter[idsKey](defaultMaxLogEventKeys),
 		gateway:        newCappedCounter[gatewayKey](defaultMaxLogEventKeys),
 		radius:         newCappedCounter[radiusKey](defaultMaxLogEventKeys),
+		vpn:            newCappedCounter[vpnKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 	}
 	go s.run()
@@ -266,6 +279,11 @@ func (s *LogEventStore) ObserveRADIUS(event, result, clientScope string) bool {
 	return s.observe(logEventCommand{kind: logEventObserveRADIUS, values: [7]string{event, result, clientScope}})
 }
 
+// ObserveVPN implements logship.MetricSink.
+func (s *LogEventStore) ObserveVPN(backend, event, result, connection string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveVPN, values: [7]string{backend, event, result, connection}})
+}
+
 // ObserveZenarmor implements logship.MetricSink.
 func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
@@ -302,6 +320,8 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.gateway.inc(gatewayKey{v[0], v[1]})
 	case logEventObserveRADIUS:
 		s.radius.inc(radiusKey{v[0], v[1], v[2]})
+	case logEventObserveVPN:
+		s.vpn.inc(vpnKey{v[0], v[1], v[2], v[3]})
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventSetMaxKeys:
@@ -313,6 +333,7 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.ids.setMax(cmd.maxKeys)
 		s.gateway.setMax(cmd.maxKeys)
 		s.radius.setMax(cmd.maxKeys)
+		s.vpn.setMax(cmd.maxKeys)
 		s.zen.setMax(cmd.maxKeys)
 		close(cmd.ack)
 	case logEventTakeSnapshot:
@@ -343,6 +364,8 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.gateway, sat = drainFamily(logFamilyGateway, s.gateway)
 	snap.sat = append(snap.sat, sat)
 	snap.radius, sat = drainFamily(logFamilyRADIUS, s.radius)
+	snap.sat = append(snap.sat, sat)
+	snap.vpn, sat = drainFamily(logFamilyVPN, s.vpn)
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
@@ -398,6 +421,7 @@ type logEventsCollector struct {
 	ids      *prometheus.Desc
 	gateway  *prometheus.Desc
 	radius   *prometheus.Desc
+	vpn      *prometheus.Desc
 	zenarmor *prometheus.Desc
 
 	capped  *prometheus.Desc
@@ -455,6 +479,19 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 		"FreeRADIUS access decisions derived from received syslog, by event, result and client scope.",
 		[]string{"event", "result", "client_scope"},
 	)
+	c.vpn = buildPrometheusDesc(c.subsystem, "vpn_total",
+		"IPsec (charon) and OpenVPN tunnel lifecycle transitions derived from received syslog, by "+
+			"backend, closed event, result and configured connection name. event is one of "+
+			"established, terminated, authentication_failed, liveness_failed or certificate_failed; "+
+			"result is success for the first two and failure for the other three. connection is the "+
+			"name configured on the firewall, resolved from the IPsec connection or OpenVPN instance "+
+			"id, and is EMPTY when the id could not be resolved - never a raw UUID. Usernames, "+
+			"certificate subjects and serials, IKE identities, peer addresses and ports, SPIs and "+
+			"daemon error text are never labels; they stay on the shipped log record. Only the "+
+			"grammar captured on OPNsense 27.1.a_40 (strongSwan 6.0.7, OpenVPN 2.7.5) is counted - "+
+			"any other line still ships as a log record but is not counted as an inferred transition.",
+		[]string{"backend", "event", "result", "connection"},
+	)
 	c.zenarmor = buildPrometheusDesc(c.subsystem, "zenarmor_total",
 		"Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), "+
 			"action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do "+
@@ -497,6 +534,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.ids
 	ch <- c.gateway
 	ch <- c.radius
+	ch <- c.vpn
 	ch <- c.zenarmor
 	ch <- c.capped
 	ch <- c.keys
@@ -578,6 +616,10 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range snap.radius {
 		ch <- prometheus.MustNewConstMetric(c.radius, prometheus.CounterValue, p.v,
 			p.k.event, p.k.result, p.k.clientScope, c.instance)
+	}
+	for _, p := range snap.vpn {
+		ch <- prometheus.MustNewConstMetric(c.vpn, prometheus.CounterValue, p.v,
+			p.k.backend, p.k.event, p.k.result, p.k.connection, c.instance)
 	}
 	for _, p := range snap.zen {
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,

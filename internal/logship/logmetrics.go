@@ -1,6 +1,6 @@
 package logship
 
-// MetricSink receives one call per parsed log record from the nine derived
+// MetricSink receives one call per parsed log record from the derived
 // metric families (#258). It is the seam between the
 // syslog receiver goroutine (which knows each program's attribute keys) and the
 // `log_events` collector (which owns the metric definitions and running totals).
@@ -56,6 +56,18 @@ type MetricSink interface {
 	ObserveGateway(event, gateway string) bool
 	// ObserveRADIUS counts one FreeRADIUS access decision.
 	ObserveRADIUS(event, result, clientScope string) bool
+	// ObserveVPN counts one IPsec or OpenVPN lifecycle transition (#406). backend,
+	// event and result are CLOSED code-defined vocabularies resolved by the deriver
+	// (backend = ipsec|openvpn; event = established|terminated|
+	// authentication_failed|liveness_failed|certificate_failed; result =
+	// success|failure). connection is the API-resolved CONFIGURED tunnel or instance
+	// name, EMPTY when unresolved and NEVER a raw UUID — it is bounded by the
+	// implementation's per-family key budget.
+	//
+	// Usernames, certificate subjects/CNs/serials, IKE identities, peer addresses and
+	// ports, SPIs and daemon error text are NEVER passed here and must never be
+	// added; they stay in the shipped log line's body.
+	ObserveVPN(backend, event, result, connection string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation) bool
 }
@@ -106,4 +118,5 @@ func (NopMetricSink) ObserveAudit(_, _ string) bool              { return true }
 func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveGateway(_, _ string) bool            { return true }
 func (NopMetricSink) ObserveRADIUS(_, _, _ string) bool          { return true }
+func (NopMetricSink) ObserveVPN(_, _, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

@@ -264,5 +264,57 @@ class ZenarmorQuerySemanticsTest(unittest.TestCase):
         )
 
 
+class VPNLifecycleEventSemanticsTest(unittest.TestCase):
+    def test_vpn_lifecycle_rate_uses_only_the_closed_non_pii_dimensions(self):
+        builder = build_dashboard.build_all()
+
+        panel = panel_for_metric(builder, "opnsense_log_events_vpn_total")
+        self.assertEqual(panel["spec"]["title"], "VPN Lifecycle Events by Backend & Event (rate)")
+        self.assertIn(
+            'sum by (backend, event, result) '
+            '(rate(opnsense_log_events_vpn_total{'
+            'opnsense_instance=~"$opnsense_instance"}[$__rate_interval]))',
+            builder._exprs,
+        )
+        for token in (
+            "backend=ipsec",
+            "openvpn",
+            "established",
+            "terminated",
+            "authentication_failed",
+            "liveness_failed",
+            "certificate_failed",
+        ):
+            self.assertIn(token, panel["spec"]["description"])
+
+    def test_vpn_failure_panel_breaks_down_by_configured_connection_only(self):
+        builder = build_dashboard.build_all()
+
+        panel = panel_for_title(builder, "VPN Lifecycle Failures by Connection (rate)")
+        self.assertIn(
+            'topk(20, sum by (backend, event, connection) '
+            '(rate(opnsense_log_events_vpn_total{'
+            'opnsense_instance=~"$opnsense_instance",'
+            'result="failure"}[$__rate_interval])))',
+            builder._exprs,
+        )
+        self.assertIn("configured", panel["spec"]["description"])
+        self.assertIn("empty", panel["spec"]["description"].lower())
+
+    # The dashboard is the other place a forbidden dimension could reappear: a
+    # `sum by (...)` naming a label the exporter never emits is silently harmless
+    # today and silently wrong the day someone adds it.
+    def test_no_vpn_panel_query_can_reference_an_identity_dimension(self):
+        builder = build_dashboard.build_all()
+
+        forbidden = ("username", "user_name", "common_name", "serial", "identity",
+                     "peer_address", "spi", "connection_id", "instance_id")
+        for expression in builder._exprs:
+            if "opnsense_log_events_vpn_total" not in expression:
+                continue
+            for token in forbidden:
+                self.assertNotIn(token, expression.lower(), expression)
+
+
 if __name__ == "__main__":
     unittest.main()

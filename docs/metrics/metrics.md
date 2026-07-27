@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 831
+- **Total metrics:** 832
 - **Gauges:** 550
-- **Counters:** 281
+- **Counters:** 282
 
 ## General
 
@@ -658,6 +658,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_log_events_ids_total | Counter | event_type, action, category, severity | Suricata IDS/IPS events derived from received syslog, by event type, action, category and severity. Signature text and SID are never labels. | --exporter.disable-log-events |
 | opnsense_log_events_gateway_total | Counter | event, gateway | dpinger gateway alarm transitions derived from received syslog, by closed event and configured gateway monitor name. Address, alarm state, RTT and loss stay on the structured log record and are never labels. | --exporter.disable-log-events |
 | opnsense_log_events_radius_total | Counter | event, result, client_scope | FreeRADIUS access decisions derived from received syslog, by event, result and client scope. | --exporter.disable-log-events |
+| opnsense_log_events_vpn_total | Counter | backend, event, result, connection | IPsec (charon) and OpenVPN tunnel lifecycle transitions derived from received syslog, by backend, closed event, result and configured connection name. event is one of established, terminated, authentication_failed, liveness_failed or certificate_failed; result is success for the first two and failure for the other three. connection is the name configured on the firewall, resolved from the IPsec connection or OpenVPN instance id, and is EMPTY when the id could not be resolved - never a raw UUID. Usernames, certificate subjects and serials, IKE identities, peer addresses and ports, SPIs and daemon error text are never labels; they stay on the shipped log record. Only the grammar captured on OPNsense 27.1.a_40 (strongSwan 6.0.7, OpenVPN 2.7.5) is counted - any other line still ships as a log record but is not counted as an inferred transition. | --exporter.disable-log-events |
 | opnsense_log_events_zenarmor_total | Counter | family, action, category, interface, rcode, severity, status_class | Zenarmor events received over the Elasticsearch receiver, by family (flow/dns/tls/web/ids/voip), action, category, interface, DNS rcode, alert severity and HTTP status class. Fields that do not apply to a family are empty. Zenarmor ships ~2.5-3.3M records/day, so these counters are the way to ask rate questions without querying the raw log stream - and they outlive Loki's retention. Application name, IPs, ports, hostnames, MACs, JA3, session/community/connection ids, URIs and DNS queries are never labels; they stay as structured metadata on the record. | --exporter.disable-log-events |
 | opnsense_log_events_cardinality_capped_total | Counter | family | Log events counted into a family's overflow total instead of their own series, because the label tuple was new and the family already held --logs.max-metric-keys distinct tuples. Both receivers are push-based (and syslog over UDP has a spoofable source), so tuple values are sender-controlled and the budget is what stops one sender growing metric state for the life of the process. Nothing is lost: this plus the family's own series is the true event count. Non-zero and rising means the family is saturated and new tuples are no longer individually visible - raise the budget or find what is minting them. | --exporter.disable-log-events |
 | opnsense_log_events_cardinality_keys | Gauge | family | Distinct label tuples currently tracked for each log_events family. Compare against --logs.max-metric-keys to see saturation coming before opnsense_log_events_cardinality_capped_total starts rising. Tuples are never evicted, so this only grows within a process lifetime. | --exporter.disable-log-events |

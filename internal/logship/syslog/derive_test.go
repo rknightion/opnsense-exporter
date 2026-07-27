@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rknightion/opnsense-exporter/internal/logship"
@@ -57,6 +58,11 @@ func (f *fakeSink) ObserveRADIUS(event, result, clientScope string) bool {
 	return true
 }
 
+func (f *fakeSink) ObserveVPN(backend, event, result, connection string) bool {
+	f.calls = append(f.calls, fakeCall{"vpn", []string{backend, event, result, connection}})
+	return true
+}
+
 func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	f.calls = append(f.calls, fakeCall{"zenarmor", []string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
 	return true
@@ -91,7 +97,14 @@ func TestDeriveFamily(t *testing.T) {
 		{"suricata", familyIDS, true},
 		{"dpinger", familyGateway, true},
 		{"radiusd", familyRADIUS, true},
+		{"charon", familyVPN, true},
+		// Resolved through the PREFIX table: OPNsense names one openvpn program per
+		// configured instance, so none of these can be an exact entry.
+		{"openvpn_server40", familyVPN, true},
+		{"openvpn_client2", familyVPN, true},
+		{"openvpn", familyVPN, true},
 		{"unbound", familyUnknown, false},
+		{"wireguard", familyUnknown, false},
 		{"", familyUnknown, false},
 	}
 	for _, tt := range tests {
@@ -244,6 +257,153 @@ func TestObserveDerived_GatewayWithNopSink(t *testing.T) {
 	}
 }
 
+// The vpn family's backend/event/result are closed code-defined vocabularies from
+// the parser; connection is the API-RESOLVED configured tunnel or instance name
+// from the #255 enrichment, empty when unresolved and NEVER a raw UUID. A change
+// that derives a label from an IKE identity, a username, a certificate subject, an
+// address, a port or daemon error text must fail this test.
+func TestObserveDerived_VPN(t *testing.T) {
+	tests := []struct {
+		name        string
+		program     string
+		attrs       map[string]string
+		wantCounted bool
+		wantArgs    []string
+	}{
+		{
+			name:    "ipsec established with a resolved connection name",
+			program: "charon",
+			attrs: map[string]string{
+				"vpn.backend":              "ipsec",
+				"vpn.event":                "established",
+				"vpn.result":               "success",
+				"ipsec.connection":         "TESTLAN to LXC105",
+				"ipsec.connection_id":      "5e891b0c-ca13-4e38-a7c0-a2aa891c30b4",
+				logship.AttrSubsystem:      "ipsec",
+				"peer.ip":                  "192.0.2.2",
+				"openvpn.instance_id":      "6f86d5cd-0000-4000-8000-000000000000",
+				"gateway.name":             "must-not-be-a-label",
+				attrHTTPResponseStatusCode: "500",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"ipsec", "established", "success", "TESTLAN to LXC105"},
+		},
+		{
+			name:    "ipsec authentication failure with an unresolved connection",
+			program: "charon",
+			attrs: map[string]string{
+				"vpn.backend": "ipsec",
+				"vpn.event":   "authentication_failed",
+				"vpn.result":  "failure",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"ipsec", "authentication_failed", "failure", ""},
+		},
+		{
+			name:    "openvpn terminated resolves through the instance attribute",
+			program: "openvpn_server40",
+			attrs: map[string]string{
+				"vpn.backend":      "openvpn",
+				"vpn.event":        "terminated",
+				"vpn.result":       "success",
+				"openvpn.instance": "TESTLAN roadwarrior",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"openvpn", "terminated", "success", "TESTLAN roadwarrior"},
+		},
+		{
+			name:    "openvpn certificate failure with no resolved instance",
+			program: "openvpn_client2",
+			attrs: map[string]string{
+				"vpn.backend": "openvpn",
+				"vpn.event":   "certificate_failed",
+				"vpn.result":  "failure",
+			},
+			wantCounted: true,
+			wantArgs:    []string{"openvpn", "certificate_failed", "failure", ""},
+		},
+		{
+			name:        "missing backend is not counted",
+			program:     "charon",
+			attrs:       map[string]string{"vpn.event": "established", "vpn.result": "success"},
+			wantCounted: false,
+		},
+		{
+			name:        "missing event is not counted",
+			program:     "charon",
+			attrs:       map[string]string{"vpn.backend": "ipsec", "vpn.result": "success"},
+			wantCounted: false,
+		},
+		{
+			name:        "missing result is not counted",
+			program:     "openvpn_server40",
+			attrs:       map[string]string{"vpn.backend": "openvpn", "vpn.event": "established"},
+			wantCounted: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sink := &fakeSink{}
+			counted := observeDerived(sink, tt.program, tt.attrs)
+			if counted != tt.wantCounted {
+				t.Fatalf("counted = %v, want %v", counted, tt.wantCounted)
+			}
+			if !tt.wantCounted {
+				if len(sink.calls) != 0 {
+					t.Errorf("calls = %+v, want none", sink.calls)
+				}
+				return
+			}
+			if len(sink.calls) != 1 || sink.calls[0].method != "vpn" {
+				t.Fatalf("calls = %+v, want one vpn call", sink.calls)
+			}
+			assertArgs(t, sink.calls[0].args, tt.wantArgs)
+		})
+	}
+}
+
+// The connection label must never be a raw UUID. `ipsec.connection_id` and
+// `openvpn.instance_id` exist on the record (they are the #255 enrichment's own
+// attributes) precisely so an operator can still see the id on the log line — and
+// they must stay off the metric even when the resolvable name is absent.
+func TestObserveDerived_VPNNeverLabelsARawUUID(t *testing.T) {
+	const uuid = "5e891b0c-ca13-4e38-a7c0-a2aa891c30b4"
+	for _, attrs := range []map[string]string{
+		{
+			"vpn.backend":         "ipsec",
+			"vpn.event":           "established",
+			"vpn.result":          "success",
+			"ipsec.connection_id": uuid,
+		},
+		{
+			"vpn.backend":         "openvpn",
+			"vpn.event":           "established",
+			"vpn.result":          "success",
+			"openvpn.instance_id": uuid,
+		},
+	} {
+		sink := &fakeSink{}
+		if !observeDerived(sink, "charon", attrs) {
+			t.Fatal("a well-formed vpn observation was not counted")
+		}
+		for _, arg := range sink.calls[0].args {
+			if strings.Contains(arg, uuid) {
+				t.Errorf("label value %q carries the raw UUID", arg)
+			}
+		}
+	}
+}
+
+func TestObserveDerived_VPNWithNopSink(t *testing.T) {
+	if !observeDerived(logship.NopMetricSink{}, "openvpn_server40", map[string]string{
+		"vpn.backend": "openvpn",
+		"vpn.event":   "established",
+		"vpn.result":  "success",
+	}) {
+		t.Fatal("NopMetricSink rejected a valid VPN observation")
+	}
+}
+
 // TestEveryParserProgramHasAFamilyDecision replaces the "two parallel lists that
 // should mirror each other" comment derive.go used to carry with an actual check:
 // every program a Parser is registered for (the `parsers` map, populated by the
@@ -269,6 +429,30 @@ func TestEveryParserProgramHasAFamilyDecision(t *testing.T) {
 			t.Errorf("program %q is registered as a parser but has no derived-family decision: "+
 				"add it to programFamily (it should derive a metric) or nonDerivedPrograms "+
 				"(it deliberately should not)", prog)
+		}
+	}
+}
+
+// A PREFIX registration (RegisterParserPrefix, #406) needs the same total family
+// decision as an exact program name, and for exactly the same reason: a parser
+// whose program names are dynamic — openvpn_server40, openvpn_client2 — cannot
+// appear in programFamily by name, so without this check the prefix families would
+// be the one lane that could parse-and-ship while never counting, which is #396
+// all over again with a different key type.
+func TestEveryParserPrefixHasAFamilyDecision(t *testing.T) {
+	if len(parserPrefixes) == 0 {
+		t.Fatal("parserPrefixes is empty; init() prefix registrations did not run")
+	}
+	for prefix := range parserPrefixes {
+		_, derived := programPrefixFamily[prefix]
+		_, exempted := nonDerivedProgramPrefixes[prefix]
+		switch {
+		case derived && exempted:
+			t.Errorf("prefix %q is in BOTH programPrefixFamily and nonDerivedProgramPrefixes; pick one", prefix)
+		case !derived && !exempted:
+			t.Errorf("prefix %q is registered as a parser prefix but has no derived-family decision: "+
+				"add it to programPrefixFamily (it should derive a metric) or "+
+				"nonDerivedProgramPrefixes (it deliberately should not)", prefix)
 		}
 	}
 }

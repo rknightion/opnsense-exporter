@@ -19,6 +19,34 @@ import (
 // cannot drift again.
 const attrHTTPResponseStatusCode = "http.response.status_code"
 
+// The `vpn` family's attribute keys and its three CLOSED, code-defined
+// vocabularies (#406). charon.go and openvpn.go write them; observeDerived below
+// reads them; nothing on the wire can add a value. They live here, beside the
+// family decision that consumes them, for the same reason
+// attrHTTPResponseStatusCode does: a parser and its deriver spelling the same key
+// two different ways is a bug that fails silently into an empty label.
+//
+// A wire-derived value must NEVER be added to any of these vocabularies. The
+// connection dimension is the one deployment-scale label, and it is the
+// API-RESOLVED configured name only (see observeDerived's familyVPN case).
+const (
+	attrVPNBackend = "vpn.backend"
+	attrVPNEvent   = "vpn.event"
+	attrVPNResult  = "vpn.result"
+
+	vpnBackendIPsec   = "ipsec"
+	vpnBackendOpenVPN = "openvpn"
+
+	vpnEventEstablished          = "established"
+	vpnEventTerminated           = "terminated"
+	vpnEventAuthenticationFailed = "authentication_failed"
+	vpnEventLivenessFailed       = "liveness_failed"
+	vpnEventCertificateFailed    = "certificate_failed"
+
+	vpnResultSuccess = "success"
+	vpnResultFailure = "failure"
+)
+
 // family is the derived metric family a syslog program belongs to (#258).
 // familyUnknown is the zero value: a program not in programFamily below.
 type family int
@@ -33,12 +61,14 @@ const (
 	familyIDS
 	familyGateway
 	familyRADIUS
+	familyVPN
 )
 
 // programFamily maps every program name a parser in this package registers
 // (see the RegisterParser calls in filterlog.go, haproxy.go, sshd.go, dhcp.go,
-// audit.go, suricata.go, dpinger.go and freeradius.go) onto its derived metric
-// family. It is built from
+// audit.go, suricata.go, dpinger.go, freeradius.go and charon.go) onto its derived
+// metric family. Dynamic program names go in programPrefixFamily below instead.
+// It is built from
 // explicit program lists mirroring those calls, on purpose, so it stays in
 // lockstep with the parsers: a program registered there without a matching
 // entry here — or in nonDerivedPrograms below — fails
@@ -69,11 +99,33 @@ var programFamily = map[string]family{
 	"dpinger": familyGateway,
 
 	"radiusd": familyRADIUS,
+
+	"charon": familyVPN,
 }
+
+// programPrefixFamily is programFamily for PREFIX registrations
+// (RegisterParserPrefix, registry.go). OpenVPN needs it because OPNsense names one
+// syslog program per configured instance — openvpn_server40, openvpn_client2 — so
+// no exact entry above can ever reach them.
+//
+// It gets the same totality guard as programFamily: a registered prefix missing
+// from both this map and nonDerivedProgramPrefixes below fails
+// TestEveryParserPrefixHasAFamilyDecision (derive_test.go). Without that, a
+// dynamic-program family would be the one lane able to parse-and-ship while never
+// counting — #396 with a different key type.
+var programPrefixFamily = map[string]family{
+	"openvpn": familyVPN,
+}
+
+// nonDerivedProgramPrefixes is nonDerivedPrograms for PREFIX registrations: an
+// explicit, test-pinned decision that a prefix-registered parser deliberately
+// derives no metric. Empty today, and that is fine — the guard test requires a
+// decision to EXIST, and the only prefix registered so far derives one.
+var nonDerivedProgramPrefixes = map[string]bool{}
 
 // nonDerivedPrograms is the explicit, test-pinned allowlist of programs this
 // package parses (each has a RegisterParser call of its own) that deliberately
-// do NOT belong to any of the eight derived metric families. A program earns a
+// do NOT belong to any derived metric family. A program earns a
 // place here, not by omission: cron/radvd/unbound lines are structured and
 // shipped as records, but there is no derived counter family for "a cron job
 // ran" or "a router advertisement went out", so observeDerived has nothing to
@@ -90,10 +142,21 @@ var nonDerivedPrograms = map[string]bool{
 }
 
 // deriveFamily reports the derived metric family for a syslog program name.
-// ok is false for anything outside the eight derived families.
+// ok is false for anything outside the derived families.
+//
+// Resolution mirrors parserFor exactly — exact name first, then the LONGEST
+// matching prefix — because the two must never disagree: a program routed to a
+// parser by prefix but to familyUnknown by name would parse, ship, and silently
+// never count.
 func deriveFamily(program string) (family, bool) {
-	f, ok := programFamily[program]
-	return f, ok
+	if f, ok := programFamily[program]; ok {
+		return f, true
+	}
+	_, f, ok := longestPrefixMatch(programPrefixFamily, program)
+	if !ok {
+		return familyUnknown, false
+	}
+	return f, true
 }
 
 // observeDerived counts one record's attributes against sink, if program
@@ -191,6 +254,26 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 			return false
 		}
 		return sink.ObserveRADIUS(event, result, clientScope)
+
+	case familyVPN:
+		// backend/event/result are the parser's closed, code-defined vocabularies
+		// (charon.go, openvpn.go). All three are required: a partial tuple would put a
+		// blank value on a dimension that is supposed to be closed.
+		backend := attrs[attrVPNBackend]
+		event := attrs[attrVPNEvent]
+		result := attrs[attrVPNResult]
+		if backend == "" || event == "" || result == "" {
+			return false
+		}
+		// connection is the ONE deployment-scale dimension, and it is the API-RESOLVED
+		// CONFIGURED NAME only — the #255 tunnel enrichment (tunnels.go) resolving the
+		// ikeid / instance UUID against the inventory the metrics collectors already
+		// fetch. EMPTY when unresolved, and never the raw UUID: ipsec.connection_id and
+		// openvpn.instance_id are deliberately NOT read here. A UUID label would be
+		// unbounded (a rebuilt tunnel mints a new one), unreadable, and would leak an
+		// internal object id into a metric that outlives the object.
+		connection := firstNonEmpty(attrs["ipsec.connection"], attrs["openvpn.instance"])
+		return sink.ObserveVPN(backend, event, result, connection)
 	}
 
 	return false

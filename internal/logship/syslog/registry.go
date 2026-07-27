@@ -29,6 +29,38 @@ type Parser func(env Envelope, snap *enrich.Snapshot, miss func(table string)) (
 // table.
 var parsers = map[string]Parser{}
 
+// parserPrefixes maps a program-name PREFIX to its parser, for the families whose
+// program name is not a fixed string. OpenVPN is the reason it exists: OPNsense
+// names one syslog program per configured instance — openvpn_server40,
+// openvpn_client2 — so an exact-match table can never reach any of them, exactly
+// as subsystemFor already had to special-case (#406).
+//
+// Deliberately separate from `parsers` rather than folded into it: prefix matching
+// is a fallback, and a table that mixes the two makes "which registration won"
+// unanswerable by reading the call sites.
+var parserPrefixes = map[string]Parser{}
+
+// bodyEnrichedPrograms and bodyEnrichedPrefixes are the NARROW opt-in list of
+// parsers that keep the generic body scan (enrichMessage) instead of the
+// parsed-record default of skipping it.
+//
+// The default exists because a parser that already emitted its own POSITIONAL
+// addresses would otherwise emit them a second time under peer.* — filterlog's
+// src.*/dst.* is the case it was written for, and that double-emit hazard is real
+// and must not be reintroduced. But the rationale is about parsers that extract
+// addresses, and charon/openvpn extract NONE: their whole contract is
+// backend/event/result. Suppressing the scan for them would silently drop the
+// peer.* attributes those programs' lines have carried since #250, the moment their
+// parsers start matching — an operator-visible regression in any existing Loki query,
+// with no double-emit being prevented in exchange.
+//
+// So this is opt-in, not a changed default: no existing parser's behaviour moves.
+// A parser belongs here ONLY if it emits no positional address of its own.
+var (
+	bodyEnrichedPrograms = map[string]bool{}
+	bodyEnrichedPrefixes = map[string]bool{}
+)
+
 // RegisterParser binds a parser to one or more program names. Panics on a
 // duplicate registration: two parsers claiming the same program is a programming
 // error that must surface at startup, not silently let one win.
@@ -41,10 +73,95 @@ func RegisterParser(p Parser, programs ...string) {
 	}
 }
 
+// RegisterParserPrefix binds a parser to every program name starting with one of
+// the given prefixes. Panics on a duplicate prefix, mirroring RegisterParser, and
+// on an empty prefix — an empty string is a prefix of everything, so it would
+// silently claim every unparsed program on the box.
+func RegisterParserPrefix(p Parser, prefixes ...string) {
+	for _, prefix := range prefixes {
+		if prefix == "" {
+			panic("syslog: parser registered for an empty program prefix")
+		}
+		if _, dup := parserPrefixes[prefix]; dup {
+			panic("syslog: duplicate parser registered for program prefix " + prefix)
+		}
+		parserPrefixes[prefix] = p
+	}
+}
+
+// RegisterParserWithBodyEnrichment is RegisterParser for a parser that extracts NO
+// positional address of its own and therefore keeps the generic body scan. See
+// bodyEnrichedPrograms for why that is opt-in rather than the default.
+func RegisterParserWithBodyEnrichment(p Parser, programs ...string) {
+	RegisterParser(p, programs...)
+	for _, prog := range programs {
+		bodyEnrichedPrograms[prog] = true
+	}
+}
+
+// RegisterParserPrefixWithBodyEnrichment is RegisterParserPrefix for a parser that
+// extracts no positional address of its own. Same opt-in, for dynamic program names.
+func RegisterParserPrefixWithBodyEnrichment(p Parser, prefixes ...string) {
+	RegisterParserPrefix(p, prefixes...)
+	for _, prefix := range prefixes {
+		bodyEnrichedPrefixes[prefix] = true
+	}
+}
+
 // parserFor returns the parser for a program, if any.
+//
+// An EXACT registration always wins; only then do the prefixes get a look, and
+// among those the LONGEST match wins. Longest-match is what makes dispatch
+// deterministic: Go randomises map iteration, so "first prefix that matches" would
+// pick differently between runs the moment two prefixes overlap.
 func parserFor(program string) (Parser, bool) {
-	p, ok := parsers[program]
+	if p, ok := parsers[program]; ok {
+		return p, true
+	}
+	_, p, ok := longestPrefixMatch(parserPrefixes, program)
 	return p, ok
+}
+
+// parserEnrichesBody reports whether the parser that ACTUALLY HANDLES program opted
+// in to the generic body scan.
+//
+// It resolves through the dispatch tables (`parsers`, `parserPrefixes`) and only then
+// asks the opt-in tables, rather than prefix-matching the opt-in table directly. That
+// is not a stylistic choice — the direct version is WRONG and a test caught it: with
+// an opted prefix "testprog" and a plain exact "testprog_exact", the exact parser wins
+// dispatch while the opt-in table's prefix still matched, so a parser that owns its
+// own addresses would have been handed body enrichment it never asked for. The same
+// trap exists between a short opted prefix and a longer plain one. Resolving the
+// WINNER first and then asking about it cannot diverge from dispatch.
+func parserEnrichesBody(program string) bool {
+	if _, exact := parsers[program]; exact {
+		return bodyEnrichedPrograms[program]
+	}
+	prefix, _, ok := longestPrefixMatch(parserPrefixes, program)
+	return ok && bodyEnrichedPrefixes[prefix]
+}
+
+// longestPrefixMatch returns the KEY and value of the entry whose key is the longest
+// prefix of s.
+//
+// One helper rather than copies of the loop: parserFor, parserEnrichesBody and
+// deriveFamily must all resolve a dynamic program name the SAME way, and separate
+// hand-rolled loops are separate chances for one of them to disagree with the others —
+// which would route a line to a parser while denying it a family or a body scan. It
+// returns the key as well as the value precisely so a caller can resolve the winner in
+// the dispatch table and then look THAT up in a side table.
+func longestPrefixMatch[T any](table map[string]T, s string) (string, T, bool) {
+	var (
+		bestKey string
+		best    T
+		bestN   int
+	)
+	for prefix, v := range table {
+		if len(prefix) > bestN && hasPrefix(s, prefix) {
+			bestKey, best, bestN = prefix, v, len(prefix)
+		}
+	}
+	return bestKey, best, bestN > 0
 }
 
 // subsystems maps a program to a coarse subsystem, so a Loki query can select

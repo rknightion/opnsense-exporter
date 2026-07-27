@@ -35,7 +35,12 @@ func BuildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) l
 func buildRecord(env Envelope, snap *enrich.Snapshot, miss func(table string)) (logship.Record, bool) {
 	if p, ok := parserFor(env.Program); ok {
 		if rec, ok := p(env, snap, miss); ok {
-			addCommon(&rec, env, snap, false)
+			// Body enrichment is off for a parsed record by default and opt-in per parser:
+			// a parser that emitted its own positional addresses must not have them
+			// re-emitted under peer.*, but one that extracts no address at all (charon,
+			// openvpn — #406) would otherwise silently LOSE the peer.* attributes its
+			// program's lines carried while they were generic. See bodyEnrichedPrograms.
+			addCommon(&rec, env, snap, parserEnrichesBody(env.Program))
 			return rec, true
 		}
 		// A line the parser could not make sense of degrades to generic, carrying the

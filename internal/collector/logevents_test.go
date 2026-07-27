@@ -250,6 +250,74 @@ func TestLogEventStore_ObserveRADIUS(t *testing.T) {
 	}
 }
 
+func TestLogEventStore_ObserveVPN(t *testing.T) {
+	s := newTestLogEventStore(t)
+	if !s.ObserveVPN("ipsec", "established", "success", "TESTLAN to LXC105") {
+		t.Fatal("first ipsec observation was refused")
+	}
+	if !s.ObserveVPN("ipsec", "established", "success", "TESTLAN to LXC105") {
+		t.Fatal("second ipsec observation was refused")
+	}
+	if !s.ObserveVPN("openvpn", "authentication_failed", "failure", "") {
+		t.Fatal("openvpn observation with an unresolved connection was refused")
+	}
+	s.sync()
+
+	if got := s.vpn.m[vpnKey{backend: "ipsec", event: "established", result: "success", connection: "TESTLAN to LXC105"}]; got != 2 {
+		t.Errorf("ipsec established count = %v, want 2", got)
+	}
+	// An unresolved connection is a legitimate, expected series — not a reason to
+	// refuse the observation or to substitute a placeholder.
+	if got := s.vpn.m[vpnKey{backend: "openvpn", event: "authentication_failed", result: "failure"}]; got != 1 {
+		t.Errorf("openvpn authentication_failed count = %v, want 1", got)
+	}
+}
+
+func TestLogEventStore_VPNObservationReturnsImmediatelyWhenSnapshotIsStalled(t *testing.T) {
+	s, releaseSnapshot := newStalledSnapshotStore(t, 1)
+
+	returned := make(chan bool, 1)
+	go func() {
+		returned <- s.ObserveVPN("ipsec", "established", "success", "TESTLAN to LXC105")
+	}()
+
+	select {
+	case accepted := <-returned:
+		if !accepted {
+			t.Fatal("accepted = false with free handoff capacity")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("ObserveVPN blocked behind a stalled snapshot")
+	}
+	releaseSnapshot()
+}
+
+// connection is the one deployment-scale dimension on the vpn tuple, so it is what
+// the per-family budget has to bound.
+func TestLogEventStore_VPNKeysAreCappedWithoutLoss(t *testing.T) {
+	s := newTestLogEventStore(t)
+	s.SetMaxKeys(1)
+	for _, connection := range []string{"TESTLAN to LXC105", "BRANCH to HQ"} {
+		for range 2 {
+			if !s.ObserveVPN("ipsec", "established", "success", connection) {
+				t.Fatalf("observation for %s was refused", connection)
+			}
+		}
+	}
+	s.sync()
+
+	if got := s.vpn.len(); got != 1 {
+		t.Errorf("live keys = %d, want 1", got)
+	}
+	live, overflow := s.vpn.snapshot()
+	if got := live[vpnKey{backend: "ipsec", event: "established", result: "success", connection: "TESTLAN to LXC105"}]; got != 2 {
+		t.Errorf("first connection count = %v, want 2", got)
+	}
+	if overflow != 2 {
+		t.Errorf("overflow = %v, want 2", overflow)
+	}
+}
+
 func TestLogEventStore_GatewayObservationReturnsImmediatelyWhenSnapshotIsStalled(t *testing.T) {
 	s, releaseSnapshot := newStalledSnapshotStore(t, 1)
 
@@ -512,11 +580,11 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	if len(capped) != 9 {
-		t.Errorf("capped families emitted = %d, want 9: %v", len(capped), capped)
+	if len(capped) != 10 {
+		t.Errorf("capped families emitted = %d, want 10: %v", len(capped), capped)
 	}
-	if len(keys) != 9 {
-		t.Errorf("keys families emitted = %d, want 9: %v", len(keys), keys)
+	if len(keys) != 10 {
+		t.Errorf("keys families emitted = %d, want 10: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])
@@ -529,6 +597,9 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 	}
 	if capped[logFamilyGateway] != 0 {
 		t.Errorf("gateway capped = %v, want 0 published from zero", capped[logFamilyGateway])
+	}
+	if capped[logFamilyVPN] != 0 {
+		t.Errorf("vpn capped = %v, want 0 published from zero", capped[logFamilyVPN])
 	}
 	if capped[logFamilyRADIUS] != 0 {
 		t.Errorf("radius capped = %v, want 0 published from zero", capped[logFamilyRADIUS])
@@ -563,6 +634,64 @@ func TestLogEventsCollector_EmitsGatewayCounter(t *testing.T) {
 		return
 	}
 	t.Fatal("gateway_total was not emitted")
+}
+
+// The frozen #406 metric contract: exactly backend, event, result, connection and
+// the standard opnsense_instance. A username, certificate CN/serial, IKE identity,
+// peer address, port, SPI or error-text label must fail this test on the label
+// count alone.
+func TestLogEventsCollector_EmitsVPNCounter(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveVPN("ipsec", "established", "success", "TESTLAN to LXC105")
+	c.store.ObserveVPN("ipsec", "established", "success", "TESTLAN to LXC105")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_vpn_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if len(labels) != 5 {
+			t.Fatalf("vpn labels = %v, want only backend, event, result, connection and opnsense_instance", labels)
+		}
+		if labels["backend"] != "ipsec" ||
+			labels["event"] != "established" ||
+			labels["result"] != "success" ||
+			labels["connection"] != "TESTLAN to LXC105" ||
+			labels["opnsense_instance"] != "opnsense.example.com" {
+			t.Fatalf("vpn labels = %v, want ipsec/established/success/TESTLAN to LXC105/opnsense.example.com", labels)
+		}
+		if got := getMetricValue(m); got != 2 {
+			t.Errorf("vpn counter = %v, want 2", got)
+		}
+		return
+	}
+	t.Fatal("vpn_total was not emitted")
+}
+
+// An unresolved connection ships as an EMPTY label, never a placeholder and never
+// the raw UUID the log line carried.
+func TestLogEventsCollector_EmitsVPNCounterWithAnEmptyConnection(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveVPN("openvpn", "certificate_failed", "failure", "")
+
+	metrics := collectMetrics(t, c, nil)
+	for _, m := range metrics {
+		if !hasFqName(m, "opnsense_log_events_vpn_total") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if labels["connection"] != "" {
+			t.Fatalf("connection = %q, want empty for an unresolved tunnel", labels["connection"])
+		}
+		if labels["backend"] != "openvpn" || labels["event"] != "certificate_failed" || labels["result"] != "failure" {
+			t.Fatalf("vpn labels = %v, want openvpn/certificate_failed/failure", labels)
+		}
+		return
+	}
+	t.Fatal("vpn_total was not emitted")
 }
 
 func TestLogEventsCollector_EmitsRADIUSCounter(t *testing.T) {

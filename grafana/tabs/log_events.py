@@ -3,13 +3,15 @@ Log-derived Events tab — Prometheus counters derived from received syslog line
 (opnsense_log_events_*, the log_events collector, #258).
 
 These describe OPNsense activity (firewall blocks, HAProxy state changes, sshd
-and RADIUS auth outcomes, DHCP leases, config/audit events, IDS alerts) extracted
-from the syslog the receiver ingests — NOT the pipeline self-metrics on the Log
-Shipping tab. They exist so a busy box can graph rates cheaply and sample the raw
-lines away (--logs.syslog.sample) without losing the aggregate.
+and RADIUS auth outcomes, DHCP leases, config/audit events, IDS alerts, IPsec and
+OpenVPN tunnel lifecycle) extracted from the syslog the receiver ingests — NOT the
+pipeline self-metrics on the Log Shipping tab. They exist so a busy box can graph
+rates cheaply and sample the raw lines away (--logs.syslog.sample) without losing
+the aggregate.
 
-All are true cumulative counters → rate(). IPs, ports, SIDs, MACs and free-text
-rule descriptions are never labels here (they stay as log-line metadata).
+All are true cumulative counters → rate(). IPs, ports, SIDs, MACs, usernames,
+certificate subjects, IKE identities and free-text rule descriptions are never
+labels here (they stay as log-line metadata).
 
 Each family's row is gated on its own sentinel so a box that only emits some of
 the programs shows only those rows; the tab itself is gated on any of them.
@@ -27,6 +29,7 @@ def build(b: Builder):
     b.sentinel("has_log_events_audit", "label_values(opnsense_log_events_audit_total, __name__)")
     b.sentinel("has_log_events_ids", "label_values(opnsense_log_events_ids_total, __name__)")
     b.sentinel("has_log_events_radius", "label_values(opnsense_log_events_radius_total, __name__)")
+    b.sentinel("has_log_events_vpn", "label_values(opnsense_log_events_vpn_total, __name__)")
 
     fw_action = b.ts(
         "Firewall Events by Action & Scope (rate)",
@@ -117,6 +120,41 @@ def build(b: Builder):
              "and credentials are never labels.",
     )
 
+    vpn = b.ts(
+        "VPN Lifecycle Events by Backend & Event (rate)",
+        [(f'sum by (backend, event, result) (rate({sel("opnsense_log_events_vpn_total")}[{RATE}]))',
+          "{{backend}} / {{event}} / {{result}}")],
+        unit="short",
+        desc="opnsense_log_events_vpn_total: IPsec (charon) and OpenVPN tunnel lifecycle "
+             "transitions per second. The vocabulary is closed and code-defined: backend=ipsec or "
+             "openvpn; event=established, terminated, authentication_failed, liveness_failed or "
+             "certificate_failed; result=success for the first two and failure for the other "
+             "three. Read it beside the IPsec Phase 1/2 and OpenVPN session-state panels on the "
+             "VPN tab: those show what is up NOW, this shows the transitions that got it there - "
+             "a tunnel that is up but flapping shows a steady established/terminated rate here "
+             "while the state gauge looks healthy. Only the grammar captured on OPNsense "
+             "27.1.a_40 (strongSwan 6.0.7, OpenVPN 2.7.5) is counted; other lines still ship as "
+             "log records. Usernames, certificate subjects and serials, IKE identities, peer "
+             "addresses and ports, SPIs and daemon error text are never labels.",
+    )
+    vpn_failures = sel("opnsense_log_events_vpn_total", 'result="failure"')
+    vpn_by_connection = b.ts(
+        "VPN Lifecycle Failures by Connection (rate)",
+        [(f'topk(20, sum by (backend, event, connection) (rate({vpn_failures}[{RATE}])))',
+          "{{connection}} / {{backend}} / {{event}}")],
+        unit="short",
+        desc="opnsense_log_events_vpn_total (result=failure): which tunnels are failing, by the "
+             "connection name configured on the firewall. connection is resolved from the IPsec "
+             "connection or OpenVPN instance id against the inventory the exporter already "
+             "fetches - never a raw UUID - and is empty when it could not be resolved. It is "
+             "ALWAYS empty for backend=openvpn, by design: the captured OpenVPN lifecycle lines "
+             "carry no instance id (OpenVPN prints it only on its MANAGEMENT socket-path line), "
+             "so attribute those events using the program attribute on the raw log record "
+             "(openvpn_server40) instead. IPsec "
+             "authentication_failed is a wrong PSK or identity; liveness_failed is DPD giving up "
+             "after retransmits; OpenVPN certificate_failed is a rejected client certificate.",
+    )
+
     cardinality_keys = b.ts(
         "Derived Metric Label Tuples in Use",
         [(f'sum by (family) ({sel("opnsense_log_events_cardinality_keys")})',
@@ -161,5 +199,6 @@ def build(b: Builder):
         b.row("Config / Audit", [audit], present="has_log_events_audit"),
         b.row("IDS / IPS", [ids], present="has_log_events_ids"),
         b.row("RADIUS Authentication", [radius], present="has_log_events_radius"),
+        b.row("VPN Lifecycle (IPsec / OpenVPN)", [vpn, vpn_by_connection], present="has_log_events_vpn"),
         b.row("Collector Pressure", [cardinality_keys, cardinality_capped, observation_dropped]),
     ], present="has_log_events")

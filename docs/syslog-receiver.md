@@ -126,8 +126,9 @@ you might change your mind about, since it needs no firewall config edit.
 ## Derived metrics and sampling
 
 The receiver counts what it parses. Every firewall, HAProxy, sshd, DHCP, audit, IDS,
-gateway and supported FreeRADIUS access line it recognises increments a Prometheus
-counter at `/metrics`, so you get rates and totals without querying Loki at all:
+gateway, VPN lifecycle and supported FreeRADIUS access line it recognises increments a
+Prometheus counter at `/metrics`, so you get rates and totals without querying Loki at
+all:
 
 | Metric | Labels |
 | --- | --- |
@@ -139,12 +140,13 @@ counter at `/metrics`, so you get rates and totals without querying Loki at all:
 | `opnsense_log_events_ids_total` | `event_type`, `action`, `category`, `severity` |
 | `opnsense_log_events_gateway_total` | `event`, `gateway` |
 | `opnsense_log_events_radius_total` | `event`, `result`, `client_scope` |
+| `opnsense_log_events_vpn_total` | `backend`, `event`, `result`, `connection` |
 
-No IP, port, SID, hostname, username, MAC, NAS/client identity, reply text,
-credential or signature text becomes a label. Configuration-scale values such as
-gateway, interface, rule, backend and server names are protected by the per-family
-`--logs.max-metric-keys` budget. This is on by default; turn it off with
-`--exporter.disable-log-events`.
+No IP, port, SID, hostname, username, MAC, NAS/client identity, certificate subject or
+serial, IKE identity, SPI, reply text, credential or signature text becomes a label.
+Configuration-scale values such as gateway, interface, rule, backend, server and VPN
+connection names are protected by the per-family `--logs.max-metric-keys` budget. This
+is on by default; turn it off with `--exporter.disable-log-events`.
 
 ### Gateway monitor (`dpinger`) alarms
 
@@ -210,6 +212,119 @@ Normal Accounting Start, Interim-Update and Stop requests returned
 Accounting-Response in the capture but emitted no syslog records. Accounting
 therefore remains unsupported and is not inferred from request traffic.
 
+### IPsec and OpenVPN tunnel lifecycle events
+
+The `vpn` family counts tunnel lifecycle transitions for both VPN backends, from
+`charon` (IPsec) and from the per-instance `openvpn_*` programs. Its vocabularies are
+closed and resolved in code:
+
+| Label | Closed values |
+| --- | --- |
+| `backend` | `ipsec`, `openvpn` |
+| `event` | `established`, `terminated`, `authentication_failed`, `liveness_failed`, `certificate_failed` |
+| `result` | `success` (established, terminated), `failure` (the three failure events) |
+
+`connection` is the fourth label and the only one that is not code-defined. It is the
+**configured name** of the IPsec connection or OpenVPN instance, resolved from the id
+in the log line against the inventory the exporter already fetches for its IPsec and
+OpenVPN collectors (the same enrichment that adds `ipsec.connection` /
+`openvpn.instance` to every record). It is **empty when the id could not be resolved**,
+and it is never the raw UUID.
+
+**`connection` is populated for IPsec and is ALWAYS EMPTY for OpenVPN. That is by
+design, not a fault.** Read this before reporting an empty label as a bug:
+
+- **IPsec: populated.** Every captured `charon` line carries the connection id, so the
+  label resolves whenever the tunnel is still in the fetched inventory. It is empty
+  only for a tunnel deleted since the last inventory refresh, or before the first
+  refresh completes.
+- **OpenVPN: always empty.** None of the four captured OpenVPN lines contains the
+  instance id — OpenVPN prints it only on its `MANAGEMENT: Client connected from
+  /var/etc/openvpn/instance-<uuid>.sock` line, which is not one of the four shapes
+  this family parses. There is therefore nothing on those lines to resolve, and the
+  label will never populate.
+  **Operator workaround:** attribute those events using the `program` attribute on the
+  raw log record (`openvpn_server40`, `openvpn_client2`), which names the instance.
+  Nothing is inferred from the program-name suffix: the exporter's OpenVPN instance
+  inventory has no numeric key to match `40` against, so guessing would be a
+  fabrication rather than a resolution.
+
+#### Recognised grammar
+
+Only the grammar captured on an isolated testbed running OPNsense `27.1.a_40` with
+strongSwan `6.0.7` and the OpenVPN **server** package `2.7.5` is counted. The shapes,
+with every value replaced by a placeholder:
+
+```text
+charon:  <thread>[<tag>] <<connection-id>|<n>> generating IKE_AUTH response <n> [ N(AUTH_FAILED) ]
+charon:  <thread>[<tag>] <<connection-id>|<n>> IKE_SA <id>[<n>] established between <local>[<local-id>]...<remote>[<remote-id>]
+charon:  <thread>[<tag>] <<connection-id>|<n>> giving up after <n> retransmits
+charon:  <thread>[<tag>] <<connection-id>|<n>> IKE_SA deleted
+
+openvpn: <peer-context> [<common-name>] Peer Connection Initiated with [AF_INET]<address>:<port>
+openvpn: <peer-context> SENT CONTROL [<common-name>]: 'AUTH_FAILED' (status=<n>)
+openvpn: <peer-context> VERIFY ERROR: depth=<n>, error=<error text>
+openvpn: <peer-context> SIGUSR1[soft,ping-restart] received, client-instance restarting
+```
+
+The strongSwan `<thread>` number and `<tag>` subsystem vary line to line and are not
+anchored on. Mapping: `N(AUTH_FAILED)` in a **generated** `IKE_AUTH` response is
+`authentication_failed`; `IKE_SA … established between …` is `established`; `giving up
+after N retransmits` is `liveness_failed`; `IKE_SA deleted` is `terminated`. On the
+OpenVPN side `Peer Connection Initiated with` is `established`, `'AUTH_FAILED'` is
+`authentication_failed`, a `VERIFY ERROR:` in OpenVPN's `depth=<n>, error=<text>` form
+is `certificate_failed`, and the `ping-restart` SIGUSR1 is `terminated`.
+
+Three points of tolerance, so the recognised set is neither narrower nor wider than it
+looks:
+
+- `N(AUTH_FAILED)` is counted wherever it appears in the response's payload list, not
+  only when it is the sole notify. Only **generated** responses count — the box
+  rejecting a peer. The initiator-side `parsed IKE_AUTH response … N(AUTH_FAILED)`
+  (the far end rejecting *our* credentials) is a different event, was not captured, and
+  is deliberately not counted.
+- `certificate_failed` matches OpenVPN's format string, so expired, revoked and
+  depth-N rejections all count as the same event class. A line that merely mentions
+  the words does not.
+- `[AF_INET6]` is accepted alongside the captured `[AF_INET]`, derived from OpenVPN's
+  own address-family tag rather than from a capture, so an IPv6 peer's establishment is
+  not silently uncounted.
+
+#### What is deliberately not counted
+
+**Anything else, including every stable-release form.** A read-only search of a
+production OPNsense `26.7.1_1`'s retained logs found zero usable lifecycle or failure
+records, so no stable-release grammar exists to parse and none is inferred from the
+development formats. Unmatched and version-new lines still **ship in full as generic
+records with the body verbatim**, and still appear in the debug capture as unmodelled
+signal — they are simply not counted as a transition the exporter did not witness.
+
+These lines were captured for real and are deliberately left generic:
+
+| Line | Why it is not an event |
+| --- | --- |
+| `SIGUSR1[soft,tls-error] received, client-instance restarting` | A control-channel failure, often for a session that never established. Counting it as `terminated` would mint terminations with no matching `established`. |
+| `SIGTERM[soft,delayed-exit] received, client-instance exiting` | The instance being shut down by an administrator, not the peer going away. |
+| `TLS Error: TLS handshake failed` / `TLS Error: TLS object -> incoming plaintext read error` | Companions to the rejection `VERIFY ERROR:` already counts; counting them too would report three failures for one rejected client. |
+| `Inactivity timeout (--ping-restart), restarting` | The first of the two lines OpenVPN logs for one ping-restart. The SIGUSR1 line is the second, and exactly one of the pair may be counted. |
+| IPsec CHILD_SA establishment, rekeys, DPD probes, individual retransmits, `deleting IKE_SA` | Not part of the captured lifecycle vocabulary; rekey and daemon shutdown were explicitly excluded from it. |
+
+#### Identity handling
+
+The captured lines carry usernames, certificate subjects and serials, IKE identities,
+peer addresses and ports. The parsers extract **none** of them: the only attributes
+they add are `vpn.backend`, `vpn.event` and `vpn.result`. Those values stay in the
+record **body**, which ships verbatim exactly as it did before this family existed, so
+an investigation still has the detail while the metric stays bounded and non-identifying.
+
+A matched line keeps everything it had while it was generic: the `peer.*` address
+resolution, the interface resolution, the tunnel-id resolution and the verbatim body
+are all still there, with the VPN attributes added on top. Structured parsers normally
+skip the address scan — a parser that reports its own source and destination would
+otherwise report them twice — but these two extract no address at all, so the scan
+still runs for them and no existing query on `peer.*` for `charon` or `openvpn_*` lines
+changes behaviour.
+
 Because the counters already carry the totals, you can **stop shipping the raw lines
 they count** and keep only the ones worth reading. That is `--logs.syslog.sample` (off
 by default):
@@ -220,7 +335,8 @@ by default):
 
 With sampling on, the receiver keeps firewall `block`/`reject` lines and drops the
 passes, keeps HAProxy state changes and errors and drops per-connection noise, and
-keeps every low-volume program (sshd, DHCP, audit, IDS, gateway and RADIUS) in full.
+keeps every low-volume program (sshd, DHCP, audit, IDS, gateway, RADIUS and the VPN
+lifecycle events) in full.
 A line is only ever dropped **after** its metric has been counted, so the counters
 stay complete even though the log stream is not. Sampling requires the `log_events`
 collector to be on (the exporter refuses to start otherwise), because counting first
@@ -266,6 +382,7 @@ record with its message body verbatim and its envelope as metadata.
 | `haproxy` | Server **UP/DOWN** health transitions and "backend has no server available" (severity-mapped), plus per-connection frontend/mode. HTTP fields use OTel semconv names: `http.request.method`, `http.response.status_code`, `url.path`, `network.protocol.version`. |
 | `dpinger` | Gateway monitor transitions `none -> down` and `down -> none`, with the observed address, alarm state and probe values. Nonmatching `dpinger` lines remain generic records. |
 | `radiusd` | FreeRADIUS access accepted/rejected with closed non-PII attributes. Every unsupported or malformed recognizable `radiusd` form is sanitized before it becomes a generic record or debug capture. |
+| `charon`, `openvpn_*` | IPsec and OpenVPN tunnel lifecycle: `vpn.backend`, `vpn.event`, `vpn.result` and nothing else - no username, certificate subject, IKE identity, address or port is extracted. `openvpn_*` is matched by PREFIX because OPNsense names one program per configured instance. Only the captured grammar above is parsed; everything else stays a generic record. |
 
 **Every record**, structured or generic, also gets:
 

@@ -102,6 +102,28 @@ func TestSampleKeep(t *testing.T) {
 			counted: true,
 			want:    true,
 		},
+		{
+			name:    "counted ipsec lifecycle event is retained by default",
+			program: "charon",
+			rec: logship.Record{Attributes: map[string]string{
+				"vpn.backend": "ipsec",
+				"vpn.event":   "authentication_failed",
+				"vpn.result":  "failure",
+			}},
+			counted: true,
+			want:    true,
+		},
+		{
+			name:    "counted openvpn lifecycle event is retained by default",
+			program: "openvpn_server40",
+			rec: logship.Record{Attributes: map[string]string{
+				"vpn.backend": "openvpn",
+				"vpn.event":   "certificate_failed",
+				"vpn.result":  "failure",
+			}},
+			counted: true,
+			want:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
