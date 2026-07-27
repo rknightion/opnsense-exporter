@@ -503,3 +503,38 @@ func assertTags(t *testing.T, tags []string, want ...string) {
 		}
 	}
 }
+
+// TestWatcherPrunesTheDedupeSet guards against the dedupe map growing for the life
+// of the process. Pruning is safe only because detect() refuses an instant older
+// than the lookback, so a pruned entry can never be proposed a second time — and
+// this test asserts both halves of that: the entry goes, and no annotation follows.
+func TestWatcherPrunesTheDedupeSet(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	at := now.Add(-2 * time.Hour).Truncate(time.Second)
+
+	w := newTestWatcher(t, f, now, series{
+		name:   "opnsense_system_config_last_change",
+		labels: map[string]string{instanceLabel: "fw-a"},
+		value:  float64(at.Unix()),
+	})
+	w.cfg.Lookback = 3 * time.Hour
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	if len(w.seen) != 1 {
+		t.Fatalf("expected 1 dedupe entry, got %d", len(w.seen))
+	}
+
+	// Four hours later the event is outside the lookback: the entry is dropped and
+	// the event stays unwritten, because detect() no longer proposes it.
+	w.now = func() time.Time { return now.Add(4 * time.Hour) }
+	w.tick(context.Background())
+
+	if len(w.seen) != 0 {
+		t.Errorf("aged-out dedupe entries not pruned: %d remain", len(w.seen))
+	}
+	if got := len(f.writes()); got != 1 {
+		t.Errorf("pruning must not let the event be rewritten: %d writes", got)
+	}
+}

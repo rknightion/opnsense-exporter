@@ -35,8 +35,12 @@ type Watcher struct {
 
 	// seen is the dedupe set, keyed by series identity AND instant, so an event
 	// is written once while a value that flaps between two instants still
-	// produces one annotation per distinct instant.
-	seen map[string]struct{}
+	// produces one annotation per distinct instant. Values are the instant, so
+	// entries can be pruned once they fall out of the lookback window — safe
+	// because detect() refuses an instant that old, so a pruned entry can never
+	// be proposed again. Without the prune this map grows for the life of the
+	// process.
+	seen map[string]int64
 	// reconciled records whether the startup read-back against Grafana succeeded.
 	// It did not, on a Grafana outage — and in that case the first pass seeds
 	// silently instead of posting, because duplicating the whole recent timeline
@@ -56,7 +60,7 @@ func New(cfg Config, gatherer prometheus.Gatherer, registerer prometheus.Registe
 		client:   newClient(cfg),
 		log:      log,
 		metrics:  newSelfMetrics(registerer),
-		seen:     map[string]struct{}{},
+		seen:     map[string]int64{},
 		now:      time.Now,
 	}
 }
@@ -90,7 +94,7 @@ func (w *Watcher) reconcile(ctx context.Context) {
 		if kind == "" {
 			continue
 		}
-		w.seen[dedupeKey(kind, instance, detail, annotation.Time)] = struct{}{}
+		w.seen[dedupeKey(kind, instance, detail, annotation.Time)] = annotation.Time
 	}
 	w.reconciled = true
 	w.log.Debug("annotation reconciliation complete",
@@ -99,6 +103,8 @@ func (w *Watcher) reconcile(ctx context.Context) {
 
 // tick performs one detection pass.
 func (w *Watcher) tick(ctx context.Context) {
+	w.prune(w.now())
+
 	events, err := w.detect()
 	if err != nil {
 		w.log.Warn("annotation detection failed", "err", err)
@@ -225,7 +231,17 @@ func (w *Watcher) detect() ([]Event, error) {
 
 func (w *Watcher) markSeen(event Event) {
 	kind, instance, detail := decodeTags(event.Tags)
-	w.seen[dedupeKey(kind, instance, detail, event.At.UnixMilli())] = struct{}{}
+	w.seen[dedupeKey(kind, instance, detail, event.At.UnixMilli())] = event.At.UnixMilli()
+}
+
+// prune drops dedupe entries that have aged out of the lookback window.
+func (w *Watcher) prune(now time.Time) {
+	cutoff := now.Add(-w.cfg.Lookback).UnixMilli()
+	for key, at := range w.seen {
+		if at < cutoff {
+			delete(w.seen, key)
+		}
+	}
 }
 
 // tags builds the annotation's tag set. Every tag here is either a closed
