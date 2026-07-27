@@ -120,7 +120,7 @@ func Start(
 		))
 	}
 
-	res, rerr := buildResource(ctx, cfg, version, instance)
+	res, rerr := buildResource(ctx, cfg, version, instance, metricsResourceIncludesServiceVersion)
 	if rerr != nil {
 		// resource.New can return a usable resource alongside a partial/schema
 		// warning. Treat a nil resource as fatal; otherwise log and proceed. The

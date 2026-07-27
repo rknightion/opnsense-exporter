@@ -19,31 +19,54 @@ import (
 // series. Version is exposed the Prometheus-native way instead, as a label on the
 // opnsense_exporter_build_info gauge (see collector.collectExporterInfo).
 //
-// What a backend then does with the resource is out of our hands, and Grafana
-// Cloud does NOT follow that convention: its OTLP gateway promotes a fixed list of
-// resource attributes — service.version among them — to a label on every series,
-// which no exporter-side change can prevent (#270). Do not read a `service_version`
-// label in a Grafana Cloud query as evidence that this package emits one; verify
-// against a second, unrelated app on the same tenant before going looking for a bug
-// here. Changing that list requires contacting Grafana Support:
+// Grafana Cloud does NOT follow that convention: its OTLP gateway promotes a fixed
+// list of resource attributes — service.version among them — to a label on every
+// series. Changing that list would require contacting Grafana Support:
 // https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#metrics
+//
+// #270 CONCLUDED THIS WAS UNFIXABLE HERE. THAT WAS WRONG (#472). The gateway can only
+// promote an attribute the resource actually carries, so omitting service.version from
+// the METRICS resource prevents the label outright — no Support request, no tenant
+// change. Measured before the fix: `service_version` was a label on 552 metric names,
+// including every go_* runtime metric, so every redeploy minted a fresh series set and
+// any sum-style panel double-counted for the query-lookback window. The sibling
+// exporters were already doing this (rknightion/graph2otel#104, which measures 0
+// affected metric names, and rknightion/tailscale2otel#187).
+//
+// So the split is deliberate and asymmetric — see buildResource's includeServiceVersion:
+// OFF for metrics (a per-series label surface), ON for logs, whose resource is built
+// separately in internal/logship/sink_otlp.go. Log records are never summed and have no
+// per-series label surface, so version there is free and lands in structured metadata.
 const (
 	keyServiceName       = "service.name"
 	keyServiceVersion    = "service.version"
 	keyServiceInstanceID = "service.instance.id"
 )
 
+// metricsResourceIncludesServiceVersion is the one place the metrics lane's answer to
+// includeServiceVersion is written down. It is a named constant rather than a literal
+// `false` at the call site so the #472 regression guard can assert the wiring, not just
+// buildResource's behaviour in isolation — passing `true` in provider.go would otherwise
+// restore the 552-metric label with every unit test still green.
+const metricsResourceIncludesServiceVersion = false
+
 // buildResource composes the OTLP resource. Explicit configuration (service name,
 // build version, the resolved instance label) is applied last so it takes
 // precedence over OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES read by WithFromEnv.
 // resource.New may return a non-nil resource alongside a partial/schema error; the
 // caller decides whether that is fatal.
-func buildResource(ctx context.Context, cfg *options.OTLPConfig, version, instance string) (*resource.Resource, error) {
+//
+// includeServiceVersion must be FALSE for any resource feeding a MeterProvider: see the
+// const block above for why (#472). It is a parameter rather than an unconditional
+// omission so the decision stays visible at the call site, and so a future traces
+// resource — which, like logs, has no per-series label surface — can opt back in.
+func buildResource(ctx context.Context, cfg *options.OTLPConfig, version, instance string,
+	includeServiceVersion bool) (*resource.Resource, error) {
 	attrs := make([]attribute.KeyValue, 0, 3)
 	if cfg.ServiceName != "" {
 		attrs = append(attrs, attribute.String(keyServiceName, cfg.ServiceName))
 	}
-	if version != "" {
+	if includeServiceVersion && version != "" {
 		attrs = append(attrs, attribute.String(keyServiceVersion, version))
 	}
 	if instance != "" {

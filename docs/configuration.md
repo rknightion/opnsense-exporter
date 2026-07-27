@@ -363,41 +363,46 @@ producer-supplied metrics, so no delta option is offered.
 
 ### Resource attributes and `service_version`
 
-The exporter puts `service.name`, `service.version` (the build) and
-`service.instance.id` on the OTLP **resource**, alongside whatever the SDK's
-detectors and `OTEL_RESOURCE_ATTRIBUTES` contribute. None of them are copied onto
-individual datapoints: under the OTLP→Prometheus convention a resource attribute
-stays on the resource, and the backend decides what to make of it. Conventionally
-that means `service.name`(+`service.namespace`) becomes `job`,
-`service.instance.id` becomes `instance`, and everything else lands on the
-`target_info` series.
+The exporter puts `service.name` and `service.instance.id` on the OTLP **resource**
+for metrics, alongside whatever the SDK's detectors and `OTEL_RESOURCE_ATTRIBUTES`
+contribute. None of them are copied onto individual datapoints: under the
+OTLP→Prometheus convention a resource attribute stays on the resource, and the
+backend decides what to make of it. Conventionally that means
+`service.name`(+`service.namespace`) becomes `job`, `service.instance.id` becomes
+`instance`, and everything else lands on the `target_info` series.
 
-Backends deviate, though, and Grafana Cloud in particular **promotes a fixed list
-of resource attributes to a label on every series** - `service.version` among
-them, so metrics pushed there carry `service_version="<build>"` on each series as
-well as on `target_info`. That is the gateway's behaviour rather than the
-exporter's, and it cannot be switched off from this side; changing the list means
-[asking Grafana Support](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#metrics).
+**`service.version` is deliberately left off the metrics resource.** Backends
+deviate from that convention, and Grafana Cloud in particular promotes a fixed list
+of resource attributes to a label on *every series* - `service.version` among them.
+An attribute that is absent cannot be promoted, so omitting it is what keeps
+`service_version` off the metric surface; the alternative would be
+[asking Grafana Support](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#metrics)
+to change the list per tenant.
 
-That matters if you run per-commit builds rather than release tags.
-Each version is then a distinct series, so for a few minutes after a redeploy a
-rate-based aggregation sees the old build's series decaying alongside the new
-one's and over-reports. Aggregating the label away does not help - that sums both
-series, which is the same thing - so give alerts a `for:` window longer than the
-overlap, or deploy release tags.
+The consequence being avoided: with the label present, every build is a distinct
+series, so for a few minutes after each redeploy a rate-based aggregation sees the
+old build's series decaying alongside the new one's and over-reports. Aggregating
+the label away does not help - that sums both series, which is the same thing. It
+bites hardest on per-commit builds, but it also grows active-series cardinality by
+the number of versions ever seen. Because the attribute is now absent, `target_info`
+carries no `service_version` either.
 
-Reading the version back does not depend on any of that. The exporter's own info
-metric carries it on every backend, pull or push:
+Shipped **logs** keep `service.version` on their resource, which is a different
+trade: log records are never summed and have no per-series label surface, so the
+version is free there and (unless a tenant promotes it) arrives as structured
+metadata for per-record version attribution.
+
+Read the version back from the exporter's own info metric, which carries it on every
+backend, pull or push:
 
 ```promql
 opnsense_exporter_build_info{opnsense_instance="my-firewall"}
 ```
 
-On a backend that leaves resource attributes on `target_info` instead of
-promoting them, join it in:
+Attribute other series to a build by joining against it:
 
 ```promql
-opnsense_up * on(job, instance) group_left(service_version) target_info
+opnsense_up * on(opnsense_instance) group_left(version) opnsense_exporter_build_info
 ```
 
 ## Collector switches

@@ -238,25 +238,11 @@ func TestNewExporter_ProtocolSelection(t *testing.T) {
 	}
 }
 
-func TestBuildResource(t *testing.T) {
-	res, err := buildResource(context.Background(), &options.OTLPConfig{ServiceName: "svc"}, "1.2.3", "fw1")
-	if err != nil && res == nil {
-		t.Fatalf("buildResource: %v", err)
-	}
-	got := map[string]string{}
-	for _, kv := range res.Attributes() {
-		got[string(kv.Key)] = kv.Value.AsString()
-	}
-	if got[keyServiceName] != "svc" {
-		t.Errorf("service.name = %q, want svc", got[keyServiceName])
-	}
-	if got[keyServiceVersion] != "1.2.3" {
-		t.Errorf("service.version = %q, want 1.2.3", got[keyServiceVersion])
-	}
-	if got[keyServiceInstanceID] != "fw1" {
-		t.Errorf("service.instance.id = %q, want fw1", got[keyServiceInstanceID])
-	}
-}
+// TestBuildResource moved to resource_test.go when service.version became
+// conditional (#472). It is not merely relocated: it used to assert that the metrics
+// resource CARRIES service.version, which is now the exact regression being guarded
+// against, so keeping it here would have pinned the bug. resource_test.go covers the
+// identity attributes plus both sides of the includeServiceVersion switch.
 
 func TestStart_BuildsProviderAndShutdown(t *testing.T) {
 	reg := prometheus.NewRegistry()
