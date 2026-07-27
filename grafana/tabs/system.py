@@ -278,6 +278,14 @@ def build(b: Builder):
         mx=100,
         w=8,
         h=8,
+        # Explicit boundary (#415): this is the one omitted-percentage bar gauge
+        # with a defensible 0-100 utilization scale (mx=100), so it states its
+        # own 70/90 fill-warning contract rather than inheriting a builder default.
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 70},
+            {"color": "red", "value": 90},
+        ],
         desc="Disk fill % per mountpoint (100 × opnsense_system_disk_usage_ratio).",
     )
 

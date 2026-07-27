@@ -316,14 +316,22 @@ class Builder:
     def bargauge(self, title, series, unit="short", desc="", w=8, h=8,
                  mode="gradient", orient="horizontal", thresholds=None,
                  instant=True, mx=None, dedupe=True) -> str:
+        """Per-series bar gauge.
+
+        `thresholds` is neutral by default (#415): most bar gauges are counts,
+        bytes, rates, versions, or categorical values with no severity boundary,
+        so an omitted `thresholds=` renders as a single, un-colored step rather
+        than inheriting a fabricated 0-100-style 70/90 boundary. Pass an explicit
+        `thresholds=` list only for a panel that genuinely owns a normalized
+        percentage/ratio scale with a defensible boundary (e.g. a percent
+        utilization gauge with `mx=100`), and document why at the call site.
+        """
         queries = [self._query(e, ref=chr(65 + i), instant=instant, legend=lg,
                                dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
                     "thresholds": self._thresholds(
-                        thresholds or [{"color": "green", "value": None},
-                                       {"color": "yellow", "value": 70},
-                                       {"color": "red", "value": 90}])}
+                        thresholds or [{"color": "blue", "value": None}])}
         if mx is not None:
             defaults["max"] = mx
         spec = {"fieldConfig": {"defaults": defaults, "overrides": []},
