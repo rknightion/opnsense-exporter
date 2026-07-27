@@ -22,11 +22,25 @@ func observeDerived(sink logship.MetricSink, family string, attrs map[string]str
 	if sink == nil {
 		return false
 	}
+	iface := firstNonEmpty(attrs[attrInterfaceName], attrs[attrInterfaceDev])
+
+	// The device INVENTORY (#474), fed alongside the counter but through its own sink
+	// method and its own bound. device_name is the one unbounded value that reaches a
+	// metric anywhere in this package, and it is safe only because the inventory
+	// expires and caps its entries — it must never be folded into the observation
+	// below, where it would multiply through all seven counter dimensions.
+	//
+	// An empty name is not a device: attributing one would mint a permanent
+	// empty-named series that reads as a real device on the picker.
+	if name := attrs["device.name"]; name != "" {
+		sink.ObserveZenarmorDevice(name, attrs["device.category"], iface)
+	}
+
 	o := logship.ZenarmorObservation{
 		Family: family,
 		Action: attrs[logship.AttrAction],
 		// The friendly name when enrichment resolved it, else the raw device (ixl0).
-		Interface: firstNonEmpty(attrs[attrInterfaceName], attrs[attrInterfaceDev]),
+		Interface: iface,
 	}
 	switch family {
 	case "flow":

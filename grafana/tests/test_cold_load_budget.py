@@ -18,7 +18,8 @@ The census at the time these budgets were set:
 
 * 102 variables refreshing `onDashboardLoad` (100 presence sentinels + the instance
   picker), plus `$interface` and `$device` which refresh on time-range change and so
-  also run on the initial load;
+  also run on the initial load. #474 later added `$zenarmor_client` as a third
+  `onDashboardLoad` query variable (103 total), re-measured the same day;
 * 12 of 16 annotation layers enabled by default (8 Prometheus, 2 Loki, 2 built-in
   store); the other 4 are default-off and cost nothing until enabled;
 * 20 panel queries on the Overview tab. The other 984 panel queries across the 41
@@ -49,10 +50,15 @@ import build_dashboard  # noqa: E402
 
 # Ceilings, measured 2026-07-27 (see module docstring). Raise only with a fresh
 # measurement, and say in the commit what it showed.
-MAX_LOAD_VARIABLES = 112          # measured 104 (102 onDashboardLoad + 2 onTimeRangeChanged)
+#
+# Re-measured 2026-07-27 (#474): converting $zenarmor_client from a TextVariable to a
+# QueryVariable added one onDashboardLoad round trip (104 -> 105); annotations and the
+# cold-tab query count are unchanged. All figures still fit the existing ceilings, so
+# only the measured comments move, not the budgets themselves.
+MAX_LOAD_VARIABLES = 112          # measured 105 (103 onDashboardLoad + 2 onTimeRangeChanged)
 MAX_ENABLED_ANNOTATIONS = 16      # measured 12 enabled of 16 layers
 MAX_COLD_TAB_QUERIES = 26         # measured 20 on Overview
-MAX_COLD_LOAD_QUERIES = 145       # measured 136 in total
+MAX_COLD_LOAD_QUERIES = 145       # measured 137 in total
 
 # Panel queries that are deliberately issued twice on the cold tab. Each entry is
 # (panel title, panel title, metric) — the pair of panels that share one query.

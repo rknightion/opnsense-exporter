@@ -120,15 +120,22 @@ class ZenarmorMergeTest(unittest.TestCase):
                 self.assertTrue(rows[title].get("conditionalRendering"),
                                 f"row {title!r} must hide when Zenarmor logs are absent")
 
-    def test_the_client_filter_is_a_textbox_because_the_field_cannot_be_enumerated(self):
-        """`device_name` is Loki structured metadata, not an indexed label, so
-        `label_values()` returns null for it (verified live 2026-07-27). The companion
-        shipped a query variable over a bare stream selector, which cannot have populated
-        anything. A textbox is the honest form — and it costs no cold-load query."""
+    def test_the_client_picker_is_a_query_variable_over_the_bounded_device_info_metric(self):
+        """#474: `device_name` is still Loki structured metadata and still cannot be
+        enumerated from Loki (`label_values()` returns null for it, verified live
+        2026-07-27) — but it is also a label on the new bounded Prometheus info metric
+        `opnsense_log_events_zenarmor_device_info`, so the picker can be populated from
+        there instead. The Loki filter stays on structured metadata unchanged: this
+        only fixes enumeration, it does not promote a Loki label (#473 rejected that)."""
         by_name = {v["spec"]["name"]: v for v in self.spec["variables"]}
         self.assertIn(zenarmor.CLIENT_VAR, by_name)
-        self.assertEqual(by_name[zenarmor.CLIENT_VAR]["kind"], "TextVariable")
-        self.assertEqual(by_name[zenarmor.CLIENT_VAR]["spec"]["query"], ".*",
+        variable = by_name[zenarmor.CLIENT_VAR]
+        self.assertEqual(variable["kind"], "QueryVariable")
+        query = variable["spec"]["query"]["spec"]["query"]
+        self.assertEqual(
+            query,
+            'label_values(opnsense_log_events_zenarmor_device_info{opnsense_instance=~"$opnsense_instance"}, device_name)')
+        self.assertEqual(variable["spec"]["allValue"], ".+",
                          "an untouched dashboard must filter nothing")
         for title in MERGED_FROM_COMPANION:
             _, panel = self.panels[title]

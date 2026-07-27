@@ -294,6 +294,29 @@ never will. Because Loki's retention is finite and this is the highest-volume st
 exporter handles, this counter - not the raw log stream - is how you ask rate questions
 that need to outlive 31 days.
 
+### The device inventory
+
+`opnsense_log_events_zenarmor_device_info{device_name,device_category,interface}` is a
+different shape: one series per device, value always 1, labels as the payload. It exists
+so a dashboard can **enumerate** devices. `device_name` lives in Loki as structured
+metadata, which `label_values()` cannot list, and it is not a closed set - live values
+include Plex-generated DNS names like `10-0-0-5.<hash>.plex.direct` - so it was rejected
+as a Loki index label. Prometheus can enumerate it at a bounded cost instead.
+
+Bounded on both axes, and both bounds matter:
+
+- **At most 512 devices tracked.** A novel device past that is refused and counted under
+  `opnsense_log_events_cardinality_capped_total{family="zenarmor_device"}`, so a
+  truncated inventory is visible rather than looking like a small network.
+- **A device is retired 24h after it was last seen.** So this is recent activity, not an
+  all-time list, and a device that visited once does not read as present forever. Expiry
+  also returns its slot, so a burst of churn cannot wedge the inventory permanently.
+
+`device_name` is deliberately **not** on `opnsense_log_events_zenarmor_total`. There it
+would multiply through all seven of that counter's dimensions; here it costs one series
+per live device. Filter the log stream itself on the `device_name` structured-metadata
+field, not on this metric.
+
 The receiver's own health is on `/metrics` too:
 
 - `opnsense_exporter_logs_zenarmor_bulk_requests_total` / `..._bulk_bytes_total` -

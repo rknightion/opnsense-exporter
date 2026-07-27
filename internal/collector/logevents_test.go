@@ -644,15 +644,18 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	// 12 families: firewall, haproxy, sshd, dhcp, audit, ids, gateway, radius, vpn,
-	// carp, upnp, zenarmor. Bump it when a family is added — the point of the count is
-	// that EVERY family publishes its saturation pair from zero, so a family wired into
-	// the store without a saturation entry fails here rather than going unmonitored.
-	if len(capped) != 12 {
-		t.Errorf("capped families emitted = %d, want 12: %v", len(capped), capped)
+	// 13 families: firewall, haproxy, sshd, dhcp, audit, ids, gateway, radius, vpn,
+	// carp, upnp, zenarmor, and the zenarmor_device INVENTORY (#474) — which is not a
+	// counter family but reports saturation through the same pair, because a truncated
+	// device inventory is exactly as invisible as a truncated counter. Bump it when a
+	// family is added — the point of the count is that EVERY family publishes its
+	// saturation pair from zero, so a family wired into the store without a saturation
+	// entry fails here rather than going unmonitored.
+	if len(capped) != 13 {
+		t.Errorf("capped families emitted = %d, want 13: %v", len(capped), capped)
 	}
-	if len(keys) != 12 {
-		t.Errorf("keys families emitted = %d, want 12: %v", len(keys), keys)
+	if len(keys) != 13 {
+		t.Errorf("keys families emitted = %d, want 13: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])
@@ -935,4 +938,111 @@ func TestLogEventsCollector_EmitsRADIUSCounter(t *testing.T) {
 		return
 	}
 	t.Fatal("radius_total was not emitted")
+}
+
+// --- #474: the bounded Zenarmor device inventory ----------------------------
+
+// The picker's whole reason for existing: one series per live device, value 1, with
+// the name as a LABEL so label_values() can enumerate it. Loki cannot do this at all
+// — device_name is structured metadata there — which is why the metric is here and
+// not a promoted Loki label (#473).
+func TestLogEventsCollector_EmitsZenarmorDeviceInfo(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveZenarmorDevice("robs-laptop", "laptop", "IOT")
+	c.store.ObserveZenarmorDevice("robs-laptop", "laptop", "IOT") // a repeat is one series
+	c.store.ObserveZenarmorDevice("hallway-cam", "camera", "IOT")
+
+	var seen []map[string]string
+	for _, m := range collectMetrics(t, c, nil) {
+		if !hasFqName(m, "opnsense_log_events_zenarmor_device_info") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if len(labels) != 4 {
+			t.Fatalf("device_info labels = %v, want device_name, device_category, interface and opnsense_instance", labels)
+		}
+		if got := getMetricValue(m); got != 1 {
+			t.Errorf("device_info value = %v, want 1 — an info metric's payload is its labels", got)
+		}
+		if labels["opnsense_instance"] != "opnsense.example.com" {
+			t.Errorf("device_info instance = %q", labels["opnsense_instance"])
+		}
+		seen = append(seen, labels)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("emitted %d device series, want 2 (the repeat must not duplicate): %v", len(seen), seen)
+	}
+	// Sorted by name, so a scrape diff shows real changes only.
+	if seen[0]["device_name"] != "hallway-cam" || seen[1]["device_name"] != "robs-laptop" {
+		t.Errorf("device series out of order: %v", seen)
+	}
+}
+
+// An empty name is not a device. Left in, it would be a permanent empty-named series
+// that reads as a real entry on the picker.
+func TestLogEventStore_ZenarmorDeviceIgnoresAnEmptyName(t *testing.T) {
+	s := newTestLogEventStore(t)
+	if s.ObserveZenarmorDevice("", "laptop", "LAN") {
+		t.Error("ObserveZenarmorDevice accepted an empty name")
+	}
+	s.sync()
+	snap, ok := s.snapshot()
+	if !ok {
+		t.Fatal("snapshot failed")
+	}
+	if len(snap.zenDevs) != 0 {
+		t.Fatalf("inventory = %v, want empty", snap.zenDevs)
+	}
+}
+
+// The TTL is what stops a device that visited once from reading as present forever —
+// the failure mode a plain capped map cannot fix, because a cap alone never shrinks.
+func TestLogEventStore_ZenarmorDeviceExpires(t *testing.T) {
+	s := newTestLogEventStore(t)
+	now := time.Unix(0, 0).UTC()
+	s.setClock(func() time.Time { return now })
+
+	s.ObserveZenarmorDevice("visitor", "mobile", "GUEST")
+	s.sync()
+	if snap, _ := s.snapshot(); len(snap.zenDevs) != 1 {
+		t.Fatalf("inventory = %v, want the device present while fresh", snap.zenDevs)
+	}
+
+	now = now.Add(zenarmorDeviceTTL + time.Second)
+	snap, _ := s.snapshot()
+	if len(snap.zenDevs) != 0 {
+		t.Fatalf("inventory = %v, want empty once the device is a TTL stale", snap.zenDevs)
+	}
+}
+
+// The cap is the guard against the churning DNS-derived names that made device_name
+// unpromotable in #473. Refusals must be COUNTED, under the inventory's own family,
+// so a truncated picker is visible rather than looking like a small network.
+func TestLogEventStore_ZenarmorDeviceCapIsCountedNotSilent(t *testing.T) {
+	s := newTestLogEventStore(t)
+	for i := range maxZenarmorDevices + 10 {
+		s.ObserveZenarmorDevice("dev-"+strconv.Itoa(i), "other", "LAN")
+	}
+	s.sync()
+	snap, ok := s.snapshot()
+	if !ok {
+		t.Fatal("snapshot failed")
+	}
+	if n := len(snap.zenDevs); n != maxZenarmorDevices {
+		t.Fatalf("inventory holds %d devices, want the cap of %d", n, maxZenarmorDevices)
+	}
+	for _, sat := range snap.sat {
+		if sat.family != logFamilyZenarmorDevice {
+			continue
+		}
+		if sat.capped != 10 {
+			t.Errorf("capped = %v, want the 10 refused devices", sat.capped)
+		}
+		if sat.keys != float64(maxZenarmorDevices) {
+			t.Errorf("keys = %v, want %d", sat.keys, maxZenarmorDevices)
+		}
+		return
+	}
+	t.Fatalf("no saturation entry for family %q", logFamilyZenarmorDevice)
 }

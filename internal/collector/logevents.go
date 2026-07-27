@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
@@ -81,6 +82,26 @@ type (
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
 	// category and iface are the free-form pair the key budget exists for.
 	zenKey struct{ family, action, category, iface, rcode, severity, statusClass string }
+	// zenDeviceKey is the #474 device-inventory tuple, and it is the one key here
+	// that deliberately carries a NAME. That is not a relaxation of the rule the rest
+	// of this block states — it is a different metric with a different shape.
+	//
+	// device_name is unbounded on the wire (live values include Plex-generated DNS
+	// names like 10-0-0-5.<hash>.plex.direct), which is exactly why promoting it to a
+	// Loki index label was rejected in #473: 273 stream combinations at 1h. But the
+	// dashboard still has to let an operator PICK a device, and Loki cannot enumerate
+	// structured metadata at all. Prometheus can, at a bounded cost: one series per
+	// live device, measured at 154 over 24h and saturating.
+	//
+	// So it is safe here and not there, for two reasons that both have to hold: this
+	// is an inventory rather than a cumulative counter, so entries EXPIRE
+	// (boundedInventory, unlike cappedCounter) and a name seen once does not persist
+	// forever; and it is a single info metric rather than a dimension multiplied
+	// across every other label, so the cost is additive, not a product.
+	//
+	// It must stay off zenKey. Adding device_name there would multiply it through
+	// family x action x category x iface x rcode x severity x status_class.
+	zenDeviceKey struct{ name, category, iface string }
 )
 
 // Family label values for the saturation metrics below. CODE-DEFINED constants, one
@@ -100,6 +121,10 @@ const (
 	logFamilyCARP     = "carp"
 	logFamilyUPnP     = "upnp"
 	logFamilyZenarmor = "zenarmor"
+	// logFamilyZenarmorDevice reports the device inventory's saturation through the
+	// same cardinality_capped/keys metrics as every counter family, so a truncated
+	// inventory is visible without a metric of its own.
+	logFamilyZenarmorDevice = "zenarmor_device"
 
 	// logEventObservationDropReasonHandoffFull is deliberately code-defined: it
 	// describes the only possible receiver-side refusal, never an unbounded value
@@ -119,6 +144,26 @@ const (
 	logEventHandoffCapacity = 65536
 )
 
+// The device inventory's two bounds (#474). Both are stated here rather than derived
+// from --logs.max-metric-keys because they answer a different question: that budget
+// is per-family cardinality for cumulative counters, this is "how many devices can
+// plausibly be on one network, and how long after a device goes quiet should the
+// dashboard still offer it".
+const (
+	// maxZenarmorDevices caps the tracked device set. device_name measured 154
+	// distinct over 24h on the live box and was saturating (119 -> 145 -> 154), so
+	// this is ~3x the observed steady state — enough headroom for a larger network,
+	// low enough that a churning DNS-derived name cannot grow the series set without
+	// limit. Refusals are counted under logFamilyZenarmorDevice.
+	maxZenarmorDevices = 512
+	// zenarmorDeviceTTL retires a device that has not been seen for a day. It is
+	// deliberately long: the picker's job is to list devices an operator might want
+	// to investigate, and a laptop that was on the network this morning is still
+	// worth offering this evening. Shorter and the dropdown empties overnight;
+	// unbounded and a device that visited once reads as present forever.
+	zenarmorDeviceTTL = 24 * time.Hour
+)
+
 type logEventCommandKind uint8
 
 const (
@@ -134,7 +179,9 @@ const (
 	logEventObserveCARP
 	logEventObserveUPnP
 	logEventObserveZenarmor
+	logEventObserveZenarmorDevice
 	logEventSetMaxKeys
+	logEventSetClock
 	logEventTakeSnapshot
 	logEventSync
 )
@@ -143,6 +190,7 @@ type logEventCommand struct {
 	kind     logEventCommandKind
 	values   [7]string
 	maxKeys  int
+	clock    func() time.Time
 	snapshot chan<- logEventSnapshot
 	ack      chan<- struct{}
 }
@@ -160,6 +208,7 @@ type logEventSnapshot struct {
 	carp    []keyed[carpKey]
 	upnp    []keyed[upnpKey]
 	zen     []keyed[zenKey]
+	zenDevs []zenDeviceKey
 	sat     []familySaturation
 	dropped uint64
 }
@@ -204,6 +253,10 @@ type LogEventStore struct {
 	carp             *cappedCounter[carpKey]
 	upnp             *cappedCounter[upnpKey]
 	zen              *cappedCounter[zenKey]
+	zenDevs          *boundedInventory[zenDeviceKey]
+	// now is the inventory clock, a test seam. Production stores leave it nil and
+	// fall back to time.Now.
+	now func() time.Time
 }
 
 func newLogEventStore() *LogEventStore {
@@ -228,6 +281,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		carp:           newCappedCounter[carpKey](defaultMaxLogEventKeys),
 		upnp:           newCappedCounter[upnpKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
+		zenDevs:        newBoundedInventory(maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceKey),
 	}
 	go s.run()
 	return s
@@ -335,6 +389,29 @@ func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
 }
 
+// ObserveZenarmorDevice implements logship.MetricSink.
+//
+// Separate from ObserveZenarmor on purpose: ZenarmorObservation is the COUNTER's
+// label tuple and carries an explicit "never add device_name here" rule, which a
+// third field on it would quietly erode. This feeds the inventory instead — a
+// different metric, a different bound, and no multiplication through the counter's
+// seven dimensions. See zenDeviceKey.
+func (s *LogEventStore) ObserveZenarmorDevice(name, category, iface string) bool {
+	if name == "" {
+		return false
+	}
+	return s.observe(logEventCommand{kind: logEventObserveZenarmorDevice, values: [7]string{name, category, iface}})
+}
+
+// clock reads the inventory clock. It is only ever called from the map-owning
+// goroutine, so the seam needs no synchronisation.
+func (s *LogEventStore) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
 func (s *LogEventStore) run() {
 	defer close(s.done)
 	for {
@@ -374,6 +451,8 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.upnp.inc(upnpKey{v[0], v[1], v[2]})
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
+	case logEventObserveZenarmorDevice:
+		s.zenDevs.seen(zenDeviceKey{v[0], v[1], v[2]}, s.clock())
 	case logEventSetMaxKeys:
 		s.fw.setMax(cmd.maxKeys)
 		s.ha.setMax(cmd.maxKeys)
@@ -393,6 +472,9 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 			s.beforeSnapshot()
 		}
 		cmd.snapshot <- s.buildSnapshot()
+	case logEventSetClock:
+		s.now = cmd.clock
+		close(cmd.ack)
 	case logEventSync:
 		close(cmd.ack)
 	}
@@ -425,6 +507,14 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
+	// The inventory is NOT drained: it is current state, not a cumulative total, so
+	// live() prunes what has expired and leaves the rest in place for the next scrape.
+	snap.zenDevs = s.zenDevs.live(s.clock())
+	snap.sat = append(snap.sat, familySaturation{
+		family: logFamilyZenarmorDevice,
+		capped: s.zenDevs.refused(),
+		keys:   float64(len(snap.zenDevs)),
+	})
 	snap.dropped = s.observationDrops.Load()
 	return snap
 }
@@ -439,6 +529,21 @@ func (s *LogEventStore) snapshot() (logEventSnapshot, bool) {
 		return snap, true
 	case <-s.stop:
 		return logEventSnapshot{}, false
+	}
+}
+
+// setClock installs the inventory clock through the command queue, so the field is
+// only ever written on the map-owning goroutine — the same reason SetMaxKeys is a
+// command rather than a plain assignment. Test-only; production stores leave it nil
+// and clock() falls back to time.Now.
+func (s *LogEventStore) setClock(now func() time.Time) {
+	ack := make(chan struct{})
+	if !s.sendControl(logEventCommand{kind: logEventSetClock, clock: now, ack: ack}) {
+		return
+	}
+	select {
+	case <-ack:
+	case <-s.stop:
 	}
 }
 
@@ -469,18 +574,19 @@ type logEventsCollector struct {
 	subsystem string
 	instance  string
 
-	firewall *prometheus.Desc
-	haproxy  *prometheus.Desc
-	sshd     *prometheus.Desc
-	dhcp     *prometheus.Desc
-	audit    *prometheus.Desc
-	ids      *prometheus.Desc
-	gateway  *prometheus.Desc
-	radius   *prometheus.Desc
-	vpn      *prometheus.Desc
-	carp     *prometheus.Desc
-	upnp     *prometheus.Desc
-	zenarmor *prometheus.Desc
+	firewall    *prometheus.Desc
+	haproxy     *prometheus.Desc
+	sshd        *prometheus.Desc
+	dhcp        *prometheus.Desc
+	audit       *prometheus.Desc
+	ids         *prometheus.Desc
+	gateway     *prometheus.Desc
+	radius      *prometheus.Desc
+	vpn         *prometheus.Desc
+	carp        *prometheus.Desc
+	upnp        *prometheus.Desc
+	zenarmor    *prometheus.Desc
+	zenarmorDev *prometheus.Desc
 
 	capped  *prometheus.Desc
 	keys    *prometheus.Desc
@@ -603,6 +709,18 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 		[]string{"family", "action", "category", "interface", "rcode", "severity", "status_class"},
 	)
 
+	c.zenarmorDev = buildPrometheusDesc(c.subsystem, "zenarmor_device_info",
+		"Client devices Zenarmor has attributed traffic to recently, one series per device with a "+
+			"constant value of 1. It exists so a dashboard can ENUMERATE devices: device_name is Loki "+
+			"structured metadata, which label_values() cannot list and which was rejected as a Loki index "+
+			"label in #473 because it is not a closed set (live values include Plex-generated DNS names). "+
+			"Bounded on both axes - at most 512 devices tracked, and a device is retired 24h after it was "+
+			"last seen - so a churning name cannot grow the series set without limit; refusals surface as "+
+			"cardinality_capped_total{family=\"zenarmor_device\"}. Filter the log stream itself on the "+
+			"device_name structured metadata field, not on this metric.",
+		[]string{"device_name", "device_category", "interface"},
+	)
+
 	c.capped = buildPrometheusDesc(c.subsystem, "cardinality_capped_total",
 		"Log events counted into a family's overflow total instead of their own series, because the "+
 			"label tuple was new and the family already held --logs.max-metric-keys distinct tuples. "+
@@ -639,6 +757,7 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.carp
 	ch <- c.upnp
 	ch <- c.zenarmor
+	ch <- c.zenarmorDev
 	ch <- c.capped
 	ch <- c.keys
 	ch <- c.dropped
@@ -736,6 +855,11 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,
 			p.k.family, p.k.action, p.k.category, p.k.iface, p.k.rcode, p.k.severity,
 			p.k.statusClass, c.instance)
+	}
+	for _, k := range snap.zenDevs {
+		// An info metric: the labels are the payload, the value is always 1.
+		ch <- prometheus.MustNewConstMetric(c.zenarmorDev, prometheus.GaugeValue, 1,
+			k.name, k.category, k.iface, c.instance)
 	}
 	return nil
 }

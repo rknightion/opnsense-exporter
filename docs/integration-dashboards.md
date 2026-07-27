@@ -66,7 +66,7 @@ See the [Kubernetes deployment guide](deployment/kubernetes.md) for `ScrapeConfi
 
     An empty dashboard on Grafana 12 is not a broken export; it is the version. Upgrade to Grafana 13.
 
-A single comprehensive Grafana dashboard covers **all 837 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
+A single comprehensive Grafana dashboard covers **all 838 metrics across 41 tabs** (<!-- docgen:begin:dashboard-tabs -->
 Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Log Shipping, Recording rules, Diagnostics
 <!-- docgen:end:dashboard-tabs -->). Tabs and rows auto show/hide based on which metrics your exporter emits, so unused collectors and absent OPNsense plugins disappear automatically.
 

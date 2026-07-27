@@ -41,15 +41,26 @@ ZEN_WEB = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="web"')
 # ixl0_vlan25) — the same disjointness that #98 is about, one level further out. So it
 # gets its own variable rather than reusing either existing picker (#435).
 #
-# It is a TEXTBOX, not a query variable, and that is a finding rather than a shortcut:
-# `device_name` is structured metadata, so it is NOT an indexed Loki label, and
-# `label_values(..., device_name)` returns null (verified live 2026-07-27 — the label
-# does not appear in the datasource's 44 label names). The retired companion dashboard
-# tried a query variable whose query was a bare stream selector, which cannot have
-# populated anything. A textbox says so honestly, costs no cold-load query, and takes a
-# regex, so `phone|laptop` works.
+# It is a QUERY VARIABLE now, not a textbox (#474), but the underlying finding from
+# #435 still holds: `device_name` is Loki structured metadata, so it is NOT an indexed
+# Loki label, and `label_values(..., device_name)` against Loki still returns null
+# (verified live 2026-07-27 — the label does not appear in the datasource's 44 label
+# names). The retired companion dashboard tried a query variable whose query was a
+# bare Loki stream selector, which cannot have populated anything.
+#
+# What changed is where the picker is populated FROM. #474 adds a bounded Prometheus
+# info metric, opnsense_log_events_zenarmor_device_info{device_name, device_category,
+# interface}, alongside the log_events collector's existing Zenarmor counters — a
+# separate, closed label space from Loki's. The picker now enumerates that metric's
+# device_name label via label_values(), while the Loki filter below is UNCHANGED: it
+# still matches structured metadata with a `|` filter, never a stream-selector label.
+# So this is fixing enumeration, not promoting a Loki label — #473 assessed and
+# rejected promoting device_name itself (not a closed set; live values include DNS
+# names like Plex's).
 CLIENT_VAR = "zenarmor_client"
 CLIENT_FILTER = f'| device_name=~"${CLIENT_VAR}"'
+CLIENT_VAR_QUERY = ('label_values(opnsense_log_events_zenarmor_device_info'
+                    '{opnsense_instance=~"$opnsense_instance"}, device_name)')
 
 # Zenarmor delivers its records to the exporter over HTTP, so its own bulk-ingest
 # requests appear in the WEB family as requests to our own endpoint. Left in, they are
@@ -63,16 +74,28 @@ def build(b: Builder):
     b.sentinel("has_zenarmor_metrics", metric="opnsense_log_events_zenarmor_total")
     b.loki_sentinel("has_zenarmor_logs", matchers='opnsense_source="zenarmor"',
                     label="opnsense_source")
-    b.textbox(CLIENT_VAR, label="Zenarmor client device", default=".*",
-              description=(
-                  "Filter the Zenarmor log panels to the client device Zenarmor "
-                  "attributed the traffic to (its own identification, not the "
-                  "exporter's). A regex: 'phone|laptop' works, '.*' is everything. "
-                  "This is Zenarmor's device_name, NOT the kernel interface names in "
-                  "the Device picker."),
-              # In the controls menu (#470): it applies to one tab of 41, so it does not
-              # earn a permanent toolbar slot on every other tab.
-              placement=CONTROLS_MENU)
+    # Query variable, not b.textbox() (#474): populated from the bounded Prometheus
+    # info metric opnsense_log_events_zenarmor_device_info, instance-scoped the same
+    # way $interface is in build_dashboard.py::add_core_variables. allValue=".+" keeps
+    # an untouched dashboard filtering nothing, matching the old textbox default.
+    b.variables.append({"kind": "QueryVariable", "spec": {
+        "name": CLIENT_VAR, "label": "Zenarmor client device",
+        "current": {"text": "All", "value": "$__all"}, "options": [],
+        "query": {"kind": "DataQuery", "version": "v0", "group": "prometheus",
+                  "datasource": {"name": "${datasource}"},
+                  "spec": {"query": CLIENT_VAR_QUERY, "refId": CLIENT_VAR}},
+        "refresh": "onDashboardLoad", "regex": "", "sort": "alphabeticalAsc",
+        "hide": "dontHide", "includeAll": True, "multi": True, "allValue": ".+",
+        "allowCustomValue": True, "skipUrlSync": False,
+        "description": (
+            "Filter the Zenarmor log panels to the client device Zenarmor "
+            "attributed the traffic to (its own identification, not the "
+            "exporter's). This is Zenarmor's device_name, NOT the kernel interface "
+            "names in the Device picker. Multi-select or 'All'; the Loki panels "
+            "below still filter on device_name as structured metadata."),
+        # In the controls menu (#470): it applies to one tab of 41, so it does not
+        # earn a permanent toolbar slot on every other tab.
+        "placement": CONTROLS_MENU}})
 
     # --- Row A: Overview (Prometheus-derived counters) --------------------
 
@@ -151,6 +174,28 @@ def build(b: Builder):
         [(f'sum {grp("family")} ({sel("opnsense_log_events_zenarmor_total")})', "{{family}}")],
         unit="short",
         desc="Current distribution of Zenarmor records across family (flow/dns/tls/web/ids/voip).",
+    )
+    # Info metric (#474): value always 1, table viz with the Value/__name__/job/instance
+    # columns excluded per AUTHORING.md rule 7. This is also what makes $zenarmor_client
+    # enumerable (see CLIENT_VAR above) -- the table doubles as a device inventory.
+    zen_device_info = b.table(
+        "Zenarmor Devices",
+        [sel("opnsense_log_events_zenarmor_device_info")],
+        w=24, h=8,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "device_name": "Device",
+            "device_category": "Category",
+            "interface": "Interface",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="Device",
+        desc="Device inventory backing the $zenarmor_client picker: every device "
+             "Zenarmor has attributed traffic to, its category and the interface it "
+             "was seen on (info metric -- value is always 1; use labels). Bounded at "
+             "512 devices, and a device drops off 24h after it was last seen, so this "
+             "is recent activity rather than an all-time list. Refusals past the cap "
+             "show up as cardinality_capped_total{family=\"zenarmor_device\"}.",
     )
     zen_self_traffic = b.ts(
         "Self-Traffic Drop Rate",
@@ -321,7 +366,8 @@ def build(b: Builder):
 
     b.tab("Zenarmor", [
         b.row("Overview", [zen_events, zen_blocked, zen_block_ratio, zen_family_pie,
-                           zen_bulk_requests, zen_bulk_bytes, zen_excluded, zen_self_traffic],
+                           zen_bulk_requests, zen_bulk_bytes, zen_excluded, zen_self_traffic,
+                           zen_device_info],
               present="has_zenarmor_metrics"),
         b.row("Live Records & Rates", [zen_raw_logs, zen_records_rate, zen_blocked_rate],
               present="has_zenarmor_logs"),

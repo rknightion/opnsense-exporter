@@ -106,6 +106,18 @@ type MetricSink interface {
 	ObserveUPnP(event, result, protocol string) bool
 	// ObserveZenarmor counts one Zenarmor record, from any of its families.
 	ObserveZenarmor(o ZenarmorObservation) bool
+	// ObserveZenarmorDevice records a sighting of one client device Zenarmor
+	// attributed traffic to, for the bounded device INVENTORY (#474) — a distinct
+	// metric from the counter above, not an extra dimension on it.
+	//
+	// It is a separate method precisely so device_name stays off ZenarmorObservation.
+	// That struct is the counter's label tuple and carries an explicit rule that
+	// device_name must never join it; a third field there would multiply an unbounded
+	// name through all seven counter dimensions. Here it costs one series per live
+	// device, expired and capped by the implementation.
+	//
+	// An empty name is not a device and must be ignored by implementations.
+	ObserveZenarmorDevice(name, category, iface string) bool
 }
 
 // ZenarmorObservation carries the seven dimensions of one Zenarmor record that may
@@ -158,3 +170,4 @@ func (NopMetricSink) ObserveVPN(_, _, _, _ string) bool          { return true }
 func (NopMetricSink) ObserveCARP(_, _, _, _, _ string) bool      { return true }
 func (NopMetricSink) ObserveUPnP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }
+func (NopMetricSink) ObserveZenarmorDevice(_, _, _ string) bool  { return true }

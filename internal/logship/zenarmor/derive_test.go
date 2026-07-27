@@ -11,8 +11,14 @@ import (
 // captureSink records the observations handed to it. Only ObserveZenarmor is
 // exercised here; the rest satisfy the interface.
 type captureSink struct {
-	got    []logship.ZenarmorObservation
-	reject bool
+	got     []logship.ZenarmorObservation
+	devices [][3]string
+	reject  bool
+}
+
+func (s *captureSink) ObserveZenarmorDevice(name, category, iface string) bool {
+	s.devices = append(s.devices, [3]string{name, category, iface})
+	return !s.reject
 }
 
 func (s *captureSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
@@ -324,5 +330,55 @@ func TestCategoryValuesLookBounded(t *testing.T) {
 				t.Errorf("family %q category %q looks like a URL or address, not a taxonomy value", family, cat)
 			}
 		}
+	}
+}
+
+// --- #474: the bounded device inventory -------------------------------------
+
+// The inventory is fed from the SAME parsed record as the counter, but through its
+// own sink method, so device_name never reaches the counter's label tuple.
+func TestObserveDerived_FeedsTheDeviceInventory(t *testing.T) {
+	sink := &captureSink{}
+	attrs := map[string]string{
+		"device.name":     "robs-laptop",
+		"device.category": "laptop",
+		attrInterfaceName: "IOT",
+	}
+	observeDerived(sink, "flow", attrs)
+
+	want := [][3]string{{"robs-laptop", "laptop", "IOT"}}
+	if !reflect.DeepEqual(sink.devices, want) {
+		t.Fatalf("devices = %v, want %v", sink.devices, want)
+	}
+	// And it must not have leaked into the counter's tuple.
+	for _, o := range sink.got {
+		if strings.Contains(o.Category, "robs-laptop") || o.Interface == "robs-laptop" {
+			t.Fatalf("device name leaked into the counter observation: %+v", o)
+		}
+	}
+}
+
+// A record with no device attributed is not a device. Observing it would mint a
+// permanent empty-named series that reads as a real device on the picker.
+func TestObserveDerived_SkipsRecordsWithNoDevice(t *testing.T) {
+	sink := &captureSink{}
+	observeDerived(sink, "dns", map[string]string{attrRCode: "0"})
+	if len(sink.devices) != 0 {
+		t.Fatalf("devices = %v, want none for a record carrying no device", sink.devices)
+	}
+}
+
+// The inventory takes the DESCRIPTION-space interface, same as everything else that
+// reaches a label — the kernel device (ixl0) is a disjoint space (#98) and would make
+// the picker's rows disagree with every other interface selector on the dashboard.
+func TestObserveDerived_DeviceInventoryFallsBackToTheRawDevice(t *testing.T) {
+	sink := &captureSink{}
+	observeDerived(sink, "flow", map[string]string{
+		"device.name":    "printer-1",
+		attrInterfaceDev: "ixl0",
+	})
+	want := [][3]string{{"printer-1", "", "ixl0"}}
+	if !reflect.DeepEqual(sink.devices, want) {
+		t.Fatalf("devices = %v, want %v — unenriched records still belong in the inventory", sink.devices, want)
 	}
 }

@@ -78,6 +78,11 @@ func (f *fakeSink) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return true
 }
 
+func (f *fakeSink) ObserveZenarmorDevice(name, category, iface string) bool {
+	f.calls = append(f.calls, fakeCall{"zenarmor_device", []string{name, category, iface}})
+	return true
+}
+
 var _ logship.MetricSink = (*fakeSink)(nil)
 
 type rejectFirewallSink struct{ fakeSink }
