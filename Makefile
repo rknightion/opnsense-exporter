@@ -175,6 +175,9 @@ grafana-check:
 # weeks with nothing running them and three had rotted into failure, which is the same
 # as not having them — so CI runs this as its own explicitly named step, and that named
 # step is now the only thing that runs it (see grafana-check above).
+# `test_rule_behaviour.py` reads the GENERATED manifests, so it must run after
+# `make rules` has written them — `grafana-check` regenerates and diffs, and this
+# target asserts how what it wrote actually behaves under Grafana's state machine.
 grafana-test:
 	cd grafana && python3 -m unittest discover -s tests -t . -q
 	go test -C tools/promqlcheck ./...

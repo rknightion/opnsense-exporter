@@ -11,6 +11,7 @@ OPNsense Exporter:
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ two folders), pushable with `gcx`. |
 | `alerts/build_rules.py` | Generator for the Grafana-managed rule manifests from a single source. |
+| `alerts/ruleeval.py` | A model of Grafana's alert-rule state machine (pending period, `noDataState`, `execErrState`, MissingSeries eviction), run against the generated manifests by `tests/test_rule_behaviour.py`. Not a PromQL evaluator — see its module docstring. |
 | `runbooks.md` | **Generated** - full per-alert runbook: what each rule measures, its threshold/window, absent/no-data semantics, first checks, likely causes, and recovery verification. Regenerate with `make rules`. |
 
 The dashboard is **mixed-datasource**: Prometheus metrics plus opt-in **Loki** log panels
