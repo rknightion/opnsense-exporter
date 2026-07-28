@@ -176,6 +176,41 @@ func TestFetchNetflowCacheStats_Empty(t *testing.T) {
 	}
 }
 
+// TestFetchNetflowCacheStats_EmptyArray pins the shape a box with a genuinely
+// empty netflow cache sends: PHP's json_encode renders an empty associative
+// array as [], not {}. Captured live from the devel testbed (VM 102, OPNsense
+// 27.1.a_40) on 2026-07-28, where it was the only failing collector in an
+// otherwise clean scrape (#499).
+func TestFetchNetflowCacheStats_EmptyArray(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchNetflowCacheStats()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(data))
+	}
+}
+
+// A populated array has no upstream encoding path — cache entries are always
+// keyed by node name, never by index — so it must surface as drift rather than
+// be silently absorbed into an empty result.
+func TestFetchNetflowCacheStats_NonEmptyArrayIsAnError(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"Pkts": 1, "if": "igb0", "SrcIPaddresses": 1, "DstIPaddresses": 1}]`))
+	})
+	defer server.Close()
+
+	_, err := client.FetchNetflowCacheStats()
+	if err == nil {
+		t.Fatal("expected an error for a populated array payload")
+	}
+}
+
 func TestFetchNetflowCacheStats_ServerError(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

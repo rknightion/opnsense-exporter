@@ -246,6 +246,42 @@ func TestValidateResponseSchemaTopLevelMismatch(t *testing.T) {
 	}
 }
 
+// An empty top-level array where the schema expects an object is the PHP
+// empty-map quirk, not a container-type flip: json_encode renders an empty
+// associative array as []. The nested-path walker has always tolerated it; the
+// top-level gate did not, so an endpoint whose WHOLE body is a PHP map read as
+// breaking drift on any box with nothing to report (#499, netflowCacheStats on
+// a box with an empty netflow cache). A POPULATED array is still a real flip.
+func TestValidateResponseSchemaTopLevelPHPEmptyObject(t *testing.T) {
+	s := EndpointSchema{
+		Endpoint:     "dyn",
+		TopLevelKind: KindObject,
+		Fields: []SchemaField{
+			{Path: "*", Kind: KindObject},
+			{Path: "*.Pkts", Kind: KindNumber},
+		},
+	}
+	res, err := ValidateResponseSchema(s, []byte(`[]`), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	if len(res.Mismatches) != 0 {
+		t.Errorf("empty array top level should not mismatch, got %+v", res.Mismatches)
+	}
+	if len(res.Missing) != 0 {
+		t.Errorf("an empty container proves nothing about its paths, so nothing is Missing; got %+v", res.Missing)
+	}
+
+	res, err = ValidateResponseSchema(s, []byte(`[{"Pkts":1}]`), SchemaExemption{})
+	if err != nil {
+		t.Fatalf("ValidateResponseSchema: %v", err)
+	}
+	want := []Mismatch{{Path: "", Expected: KindObject, Got: "array"}}
+	if !reflect.DeepEqual(res.Mismatches, want) {
+		t.Errorf("populated array Mismatches = %v, want %v", res.Mismatches, want)
+	}
+}
+
 // Dynamic top-level keys (map schema): no KnownTopLevelKeys check, wildcard
 // paths traverse every value.
 func TestValidateResponseSchemaDynamicTopLevel(t *testing.T) {

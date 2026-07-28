@@ -1,6 +1,9 @@
 package opnsense
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +26,47 @@ type netflowCacheEntry struct {
 	Interface      string `json:"if"`
 	SrcIPAddresses int    `json:"SrcIPaddresses"`
 	DstIPAddresses int    `json:"DstIPaddresses"`
+}
+
+// netflowCacheEntryMap decodes the whole api/diagnostics/netflow/cacheStats
+// body. PHP builds it as an associative array keyed by netgraph node name, so
+// json_encode renders it as a JSON object ({...}) when the cache holds
+// anything but as an empty JSON array ([]) when it does not — a box that has
+// just started capturing, or one carrying no traffic. A plain map field cannot
+// unmarshal "[]", which failed the whole fetch and killed the collector rather
+// than reporting an empty cache (#499). Captured live on OPNsense 27.1.a_40.
+//
+// Same PHP empty-map-vs-empty-array shape as firewallRuleStatMap, and treated
+// the same way: a NON-empty array is an error, not something to absorb. Cache
+// entries are always keyed by node name (netflow_igb0, ksocket_netflow_igb0),
+// never by sequential index, so upstream has no encoding path that produces a
+// populated array here — one would be genuine drift and must surface as such.
+type netflowCacheEntryMap map[string]netflowCacheEntry
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (m *netflowCacheEntryMap) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		*m = nil
+		return nil
+	}
+	if trimmed[0] == '[' {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(trimmed, &arr); err != nil {
+			return fmt.Errorf("netflowCacheEntryMap array: %w", err)
+		}
+		if len(arr) > 0 {
+			return fmt.Errorf("netflowCacheEntryMap: unexpected non-empty array with %d elements", len(arr))
+		}
+		*m = nil
+		return nil
+	}
+	var raw map[string]netflowCacheEntry
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return fmt.Errorf("netflowCacheEntryMap object: %w", err)
+	}
+	*m = raw
+	return nil
 }
 
 // netflowSelectOption is one entry of an OPNsense "field with options" map. The
@@ -152,7 +196,7 @@ func (c *Client) FetchNetflowStatus() (NetflowStatus, *APICallError) {
 // Only entries with the "netflow_" prefix are returned; "ksocket_" entries
 // (export sockets with typically zero values) are filtered out.
 func (c *Client) FetchNetflowCacheStats() ([]NetflowCacheStats, *APICallError) {
-	var resp map[string]netflowCacheEntry
+	var resp netflowCacheEntryMap
 	var data []NetflowCacheStats
 
 	url, ok := c.endpoints["netflowCacheStats"]

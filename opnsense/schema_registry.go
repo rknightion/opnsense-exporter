@@ -225,6 +225,13 @@ var schemaRegistry = map[EndpointName]any{
 	"ndpTable":                []ndpEntry{},
 	"netbirdServiceStatus":    serviceStatusResponse{},
 	"netbirdStatus":           netbirdStatusObject{},
+	// The plain map, not the tolerant netflowCacheEntryMap the client actually
+	// decodes into (#499): the tolerant alias carries a custom UnmarshalJSON, so
+	// walkType would stop at KindAny and every consumed field (*.Pkts, *.if,
+	// *.SrcIPaddresses, *.DstIPaddresses) would go permanently invisible to the
+	// live canary. The two have the same underlying type, so this describes the
+	// populated shape exactly; the empty-cache "[]" form is handled by the
+	// validator's PHP-empty-object rule rather than by widening the schema.
 	"netflowCacheStats":       map[string]netflowCacheEntry{},
 	"netflowGetConfig":        netflowGetConfigResponse{},
 	"netflowIsEnabled":        netflowIsEnabledResponse{},

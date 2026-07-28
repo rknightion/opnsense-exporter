@@ -270,6 +270,16 @@ func ValidateResponseSchema(s EndpointSchema, raw []byte, ex SchemaExemption) (V
 		return res, fmt.Errorf("response is not valid JSON: %w", err)
 	}
 
+	// An EMPTY top-level array where an object is expected is the same PHP
+	// empty-map quirk the nested walker already tolerates, one level up: an
+	// endpoint whose whole body is an associative array (netflowCacheStats)
+	// serialises to [] when it has nothing to report. That is box state, not
+	// drift, and there is nothing below it to traverse (#499). A POPULATED
+	// array still falls through to the gate as a genuine container flip.
+	if isPHPEmptyObject(s.TopLevelKind, root) {
+		return res, nil
+	}
+
 	// Top-level kind gate: a container-type flip is breaking on its own, and
 	// deeper traversal would be meaningless.
 	if got := jsonKindName(root); !kindMatches(s.TopLevelKind, root) {
