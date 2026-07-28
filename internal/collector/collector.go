@@ -1194,7 +1194,7 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 	c.isUp = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "up",
-		Help:      "Whether the OPNsense API was reachable on the last scrape (1 = reachable, 0 = unreachable/scrape failed). A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics.",
+		Help:      "Whether the OPNsense API was reachable on the last health poll (1 = reachable, 0 = unreachable), updated on --collector.poll-interval independently of scrapes. A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics.",
 		ConstLabels: prometheus.Labels{
 			instanceLabelName: instanceName,
 		},

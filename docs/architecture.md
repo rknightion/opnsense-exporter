@@ -22,12 +22,23 @@ graph TD
     A --> D[internal/collector]
     A --> E[prometheus registry]
     A --> F[HTTP server]
+    A --> G[internal/logship]
+    A --> N[internal/flow]
+    A --> W[internal/webui]
+
+    Push[OPNsense syslog / Zenarmor / NetFlow] -.push.-> G
+    Push -.push.-> N
 
     B -->|OPNSenseConfig| C
     B -->|CollectorsSwitches| D
     C -->|*opnsense.Client| D
     D -->|prometheus.Collector| E
     E -->|promhttp.Handler| F
+    E -->|Tee| M[internal/metricsnap]
+    M -->|Capture| W
+    N -->|Tee: rollup metrics| D
+    N -->|Tee: correlated flow logs| G
+    G -->|OTLP logs, own export path| O[OTLP log collector]
 
     subgraph "opnsense/"
         C
@@ -55,9 +66,32 @@ graph TD
         B2[exporter.go]
         B3[collectors.go]
     end
+
+    subgraph "internal/logship/"
+        G
+        G1[pipeline.go]
+        G2[syslog/]
+        G3[zenarmor/]
+        G4[enrich/]
+        G5[sink_otlp.go]
+    end
+
+    subgraph "internal/flow/"
+        N
+        N1[netflow/]
+        N2[correlate.go]
+        N3[rollup.go]
+    end
+
+    subgraph "internal/webui/"
+        W
+        W1[server.go]
+        W2[status.go]
+        W3[... per-tab]
+    end
 ```
 
-## Three main packages
+## Seven packages
 
 ### `opnsense/` - API client
 
@@ -102,6 +136,29 @@ type CollectorInstance interface {
 - **`collectors.go`** - Per-collector disable/enable switches
 
 All environment variables use the `OPNSENSE_EXPORTER_` prefix, except for `OPS_API_KEY_FILE` and `OPS_API_SECRET_FILE`.
+
+### `internal/logship/` - Log shipping
+
+Backs the README's syslog and Zenarmor receiver rows. Unlike the packages above, this one is **push-based**: OPNsense (and, separately, Zenarmor) send data to the exporter over the network; the exporter never polls for it. Its subpackages:
+
+- **`syslog/`** — a UDP/TLS syslog listener (`listener.go`, `framing.go`) plus a per-program parser registry (one file per program: `filterlog.go`, `dhcp.go`, `sshd.go`, `haproxy.go`, `suricata.go`, `audit.go`, and more), each turning a raw syslog line into a structured record.
+- **`zenarmor/`** — a dedicated HTTP receiver (`server.go`) for Zenarmor's own event stream, with its own parsing and derived metrics.
+- **`enrich/`** — attaches device/service context (MAC, hostname, service name) to log records from a periodically refreshed snapshot, independent of the collector snapshot in `internal/collector`.
+- **`capture/`** — optional raw-line capture for debugging, with de-duplication.
+- **`flowlog/`** — the sink that `internal/flow`'s correlator writes merged flow logs into, so flow logs travel the same pipeline and OTLP sink as syslog-derived logs.
+- Top-level files (`pipeline.go`, `queue.go`, `sink.go`, `sink_otlp.go`, `sink_stdout.go`) run the receive → parse → enrich → queue → ship loop and hand records to the configured `Sink`, most commonly the OTLP log sink (`sink_otlp.go`), which exports over `otlploggrpc`/`otlploghttp` independently of the metrics path.
+
+### `internal/flow/` - NetFlow processing
+
+Backs the README's NetFlow/flow-volume row (#346). Also push-based: OPNsense's `ng_netflow` exports NetFlow datagrams to a UDP listener here, rather than being polled. `netflow/` decodes the wire format; `processor.go` runs each datagram through normalize → repair → enrich → rollup, in that order (repair must run before enrich so a de-duplicated VLAN copy is dropped before it would be double-named and double-counted). `rollup.go` turns records into the `netflow_*` Prometheus metrics collected via `internal/collector`. `correlate.go` separately collapses NetFlow's 1:N fragmentation into one flow record per connection-window, merging in Zenarmor's L7 classification when a matching conn document arrives, and emits the merged record as a flow log into `internal/logship/flowlog` on window expiry — never a live metric, and never a second copy of the Zenarmor-only side.
+
+### `internal/webui/` - Operator console
+
+Backs the README's operator console row (#302): a single server-rendered page at `/` (Overview / Collectors / API / Cardinality / Devices / Config tabs), self-registering routes via `init()`. **No console request may call `Gather()` on the live Prometheus registry** — that would mean a page load in a browser tab silently triggers a firewall scrape. Instead every tab renders from already-passive sources: the `internal/metricsnap` capture, `collector.StatusTracker`, and the API-client cache view. The Devices tab is the one deliberate exception (it hits ARP/DHCP directly on tab-open), and the Config tab reads secret files from disk once per page load — neither touches the collector/metric path.
+
+### `internal/metricsnap/` - Passive metric capture
+
+A single `Recorder` that wraps a `prometheus.Gatherer` via `Tee`, transparently recording whatever families a real gather already produced. It is teed at both places a real gather happens — the `/metrics` handler and the OTLP export path — so `internal/webui` can read a `Capture` (families, capture time, and whether it arrived with a gather error) of the last actual scrape without ever issuing a `Gather()` of its own. This is the mechanism, not a policy choice per caller: it exists specifically so the webui constraint above is enforced structurally rather than by convention.
 
 ## Data flow
 

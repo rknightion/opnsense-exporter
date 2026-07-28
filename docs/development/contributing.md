@@ -134,9 +134,25 @@ required before opening a PR.
 |   |   +-- gateways.go
 |   |   +-- ...
 |   +-- options/                 # CLI flags and configuration
-|       +-- ops.go               # OPNsense connection config
-|       +-- exporter.go          # Server config
-|       +-- collectors.go        # Collector enable/disable switches
+|   |   +-- ops.go               # OPNsense connection config
+|   |   +-- exporter.go          # Server config
+|   |   +-- collectors.go        # Collector enable/disable switches
+|   +-- logship/                 # Syslog + Zenarmor receivers, log enrichment, OTLP log sink
+|   |   +-- syslog/              # Per-program syslog parsers
+|   |   +-- zenarmor/            # Zenarmor HTTP receiver
+|   |   +-- enrich/              # Device/service enrichment
+|   |   +-- flowlog/             # Sink for internal/flow's correlated flow logs
+|   |   +-- ...
+|   +-- flow/                    # NetFlow receiver, rollup, correlator
+|   |   +-- netflow/             # NetFlow wire decode + listener
+|   |   +-- correlate.go         # NetFlow + Zenarmor conn merge
+|   |   +-- ...
+|   +-- webui/                   # Operator console served at /
+|   |   +-- server.go            # Route registration, self-registering tabs
+|   |   +-- status.go
+|   |   +-- ...
+|   +-- metricsnap/              # Passive metric capture, teed at both scrape sites
+|       +-- recorder.go
 +-- opnsense/                    # API client
 |   +-- client.go                # HTTP client, TLS, retries
 |   +-- gateways.go              # Per-subsystem Fetch methods

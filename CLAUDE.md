@@ -22,15 +22,23 @@ go test ./opnsense/ -run TestFetchGateways
 
 ## Architecture
 
-This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST APIs and exposes metrics at `/metrics`.
+This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST APIs and exposes metrics at `/metrics`, and also *receives* pushed telemetry — syslog, Zenarmor and NetFlow — which it ships as OTLP logs.
 
-**Three main packages:**
+**Seven packages:**
 
 - **`opnsense/`** — API client. Each subsystem has a dedicated `Fetch*()` method (e.g., `FetchGateways()`, `FetchWireguardConfig()`). The client handles TLS, basic auth, retries (max 3), and gzip decompression. Data structs for JSON unmarshaling live here too.
 
 - **`internal/collector/`** — Prometheus collector implementations. `collector.go` holds the top-level `Collector` struct. An internal **poll scheduler** (`scheduler.go`, #336) runs each of the 62 sub-collectors' `Update()` on its own interval — its data-volatility tier (`interval_tiers.go`: fast 15s / medium 60s / slow 5m / cold 15m) — into an in-memory **snapshot** (`snapshot.go`). Serving `/metrics` (`ScrapeView`) and the OTLP bridge both **replay that snapshot**: the request path makes no live API call. Each sub-collector (one file per subsystem) implements `CollectorInstance` with `Name()`, `Register()`, `Describe()`, and `Update()`. **Sub-collectors register themselves via `init()` functions** appending to the global `collectorInstances` slice — adding a new collector requires only creating the file with an `init()` function.
 
 - **`internal/options/`** — Configuration via kingpin CLI flags and env vars. `ops.go` handles OPNsense connection config; `exporter.go` handles server config; `collectors.go` has per-collector disable switches; `otlp.go` and `pyroscope.go` configure the opt-in OTLP-tracing and Pyroscope-profiling telemetry families; `log.go` handles logging config and `init.go` wires the flag registration. All env vars are prefixed `OPNSENSE_EXPORTER_`; the `*_FILE` secret vars also accept legacy unprefixed aliases (`OPS_API_KEY_FILE`, `OPS_API_SECRET_FILE`, `PYROSCOPE_AUTH_USER_FILE`, `PYROSCOPE_AUTH_PASSWORD_FILE`) for backwards compatibility, with the prefixed form taking precedence.
+
+- **`internal/logship/`** — the syslog receiver (#248), the Zenarmor receiver, per-program parser registry (`syslog/`), enrichment (`enrich/`), and the OTLP log sink. Push-based, not polled: OPNsense/Zenarmor send us data, we don't fetch it.
+
+- **`internal/flow/`** — the NetFlow receiver (`netflow/`), flow rollup, and the correlator that merges NetFlow fragments with Zenarmor conn documents into one flow log per connection-window (#346). Also push-based.
+
+- **`internal/webui/`** — the operator console served at `/` (#302). Renders only from `internal/metricsnap`, `collector.StatusTracker`, and the API-client cache view; handlers must never call `Gather()` on the live registry, since that would trigger a firewall scrape from an unrelated page load.
+
+- **`internal/metricsnap/`** — passively records the metric families produced by real scrapes (teed at both the `/metrics` handler and the OTLP bridge), so the webui console can read a last-scrape snapshot without ever gathering on its own.
 
 **Data flow:** `main.go` → builds API client + options → creates `Collector` → `StartPolling` launches per-collector poll goroutines that fill the snapshot on their own intervals → registers with Prometheus registry → serves HTTP. On each scrape (and on each OTLP export), `Collector.Collect()` **replays the latest snapshot** — collection is decoupled from the scrape (#336). `--collector.poll-interval` sets the global default; `--collector.poll-interval-override=<collector>=<dur>` overrides one; the code tier lives in `collectorTiers` (`interval_tiers.go`).
 
