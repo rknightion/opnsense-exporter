@@ -597,16 +597,101 @@ class Builder:
         self.size[n] = (w, h)
         return n
 
-    def loki_table(self, title, exprs, desc="", w=24, h=10, sort_by="Total",
-                   sort_desc=True) -> str:
-        """exprs = list of LogQL strings, queried as RANGE queries and reduced
-        (sum, seriesToRows) into table rows — the standard "topk over range"
-        shape for high-cardinality log fields. `queryOptions.interval="5m"` is a
-        cardinality guard on wide time ranges."""
+    # The column name every Loki table gives the appliance-identity label, matching
+    # the project's convention on the Prometheus tables (Build Info, NTP peers).
+    LOKI_TABLE_INSTANCE_COLUMN = "Instance"
+    # The column name for the ranked value. `sort_by` defaults to it.
+    LOKI_TABLE_VALUE_COLUMN = "Total"
+
+    @staticmethod
+    def _ranked_loki_label(expr: str, title: str) -> str:
+        """The label a `loki_table()` query ranks by, read out of the query itself.
+
+        DERIVED rather than passed in on purpose (#471). The call site already
+        names the label once, inside `loki_grp("app_name")`; taking it a second
+        time as an argument lets the column key drift away from what is actually
+        ranked, and a mislabelled key column is exactly the class of bug this
+        helper is being fixed for. Reading it back from the built expression makes
+        that drift impossible.
+
+        Every clause is unioned, so the outer `topk by (service_instance_id)` and
+        the inner `sum by (service_instance_id, app_name)` both contribute; the
+        instance label is then dropped because it gets its own column. Anything
+        other than exactly one remaining label is refused — a two-label ranking
+        has no single key column, and picking one silently would mislabel rows.
+        """
+        labels = set()
+        for match in re.finditer(r"\bby\s*\(([^)]*)\)", expr):
+            labels.update(x.strip() for x in match.group(1).split(",") if x.strip())
+        labels.discard(LOKI_INSTANCE_LABEL)
+        if len(labels) != 1:
+            raise ValueError(
+                f"loki_table {title!r}: expected exactly one ranked label besides "
+                f"{LOKI_INSTANCE_LABEL}, found {sorted(labels) or 'none'} — a table "
+                "keyed on none or several has no single key column; build the "
+                "group-by with loki_grp(\"<label>\")")
+        return labels.pop()
+
+    def loki_table(self, title, exprs, field_title, desc="", w=24, h=10,
+                   sort_by="Total", sort_desc=True) -> str:
+        """exprs = a one-element list holding the LogQL string, queried as a RANGE
+        query — the standard "topk over range" shape for high-cardinality log
+        fields. `queryOptions.interval="5m"` is a cardinality guard on wide time
+        ranges. `field_title` titles the ranked-label column ("Application",
+        "DNS Query", ...).
+
+        The transform chain, and why it is not the obvious one (#471):
+
+        A LogQL metric query returns one frame per output series, and the series'
+        labels sit on the value FIELD, not in the rows. `reduce{seriesToRows}` —
+        what this helper used to do — therefore names each row after the frame's
+        display name, which for such a frame is the serialised label set. Every
+        table shipped `{app_name="STUN", service_instance_id="opnsense"}` as its
+        key column: correct data, unreadable, and with the instance repeated
+        inside every key rather than standing as a column of its own.
+
+        So instead:
+
+        1. `labelsToFields` (mode: columns) turns each frame's labels into real
+           string fields and merges the frames into one table.
+        2. `merge` is belt-and-braces: labelsToFields documents an internal merge,
+           and this is a no-op on the single frame that leaves it. Without a merge
+           a per-frame `groupBy` would emit 20 one-row frames.
+        3. `groupBy` re-does the sum the reduce was doing, now keyed on the ranked
+           label and the instance. PRESENTATION-ONLY: the query still ranks and
+           aggregates exactly what it did before; this only decides which cells
+           the same numbers land in.
+        4. `organize` titles the three columns and fixes their order.
+        """
+        if len(exprs) != 1:
+            raise ValueError(
+                f"loki_table {title!r}: takes exactly one expression, got {len(exprs)} "
+                "— the label-to-field split merges every query's frames into one "
+                "table, so a second query's values would be summed into the first "
+                "query's rows without saying so")
+        label = self._ranked_loki_label(exprs[0], title)
         queries = [self._loki_query(e, ref=chr(65 + i), instant=False)
                    for i, e in enumerate(exprs)]
-        transformations = [{"kind": "Transformation", "group": "reduce", "spec": {"options": {
-            "reducers": ["sum"], "mode": "seriesToRows"}}}]
+        value_out = "Value (sum)"
+        transformations = [
+            {"kind": "Transformation", "group": "labelsToFields",
+             "spec": {"options": {"mode": "columns"}}},
+            {"kind": "Transformation", "group": "merge", "spec": {"options": {}}},
+            {"kind": "Transformation", "group": "groupBy", "spec": {"options": {"fields": {
+                label: {"aggregations": [], "operation": "groupby"},
+                LOKI_INSTANCE_LABEL: {"aggregations": [], "operation": "groupby"},
+                "Value": {"aggregations": ["sum"], "operation": "aggregate"},
+            }}}},
+            {"kind": "Transformation", "group": "organize", "spec": {"options": {
+                "excludeByName": {},
+                "renameByName": {
+                    label: field_title,
+                    LOKI_INSTANCE_LABEL: self.LOKI_TABLE_INSTANCE_COLUMN,
+                    value_out: self.LOKI_TABLE_VALUE_COLUMN,
+                },
+                "indexByName": {label: 0, LOKI_INSTANCE_LABEL: 1, value_out: 2},
+            }}},
+        ]
         opts = {"showHeader": True, "cellHeight": "sm",
                 "footer": {"show": False, "reducer": ["sum"], "countRows": False, "fields": ""},
                 "sortBy": [{"displayName": sort_by, "desc": sort_desc}]}

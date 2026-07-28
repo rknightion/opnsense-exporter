@@ -239,14 +239,16 @@ def build(b: Builder):
         "Top Blocked Servers",
         [f'topk {loki_grp()} (20, sum {loki_grp("server_name")} (count_over_time({ZEN_BLOCKED} '
          '| server_name!="" [$__auto])))'],
+        field_title="Server Name",
         desc="Top 20 server names (TLS SNI / DNS query name) appearing in blocked Zenarmor "
              "records, over the selected range. server_name is structured metadata, so this "
-             "MUST go through a range+reduce table rather than an instant/timeseries query.",
+             "MUST go through a range-query table rather than an instant/timeseries query.",
     )
     zen_top_talkers = b.loki_table(
         "Top Talkers by Bytes",
         [f'topk {loki_grp()} (20, sum {loki_grp("device_name")} (sum_over_time({ZEN_FLOW} '
          '| device_name!="" | unwrap dst_nbytes [$__auto])))'],
+        field_title="Device",
         desc="Top 20 devices by inbound flow bytes (dst_nbytes), flow family only. Value column "
              "is raw bytes. device_name and dst_nbytes are structured metadata on the flow record.",
     )
@@ -254,12 +256,14 @@ def build(b: Builder):
         "Blocked by Country",
         [f'topk {loki_grp()} (20, sum {loki_grp("dst_geoip_country_name")} (count_over_time({ZEN_BLOCKED} '
          '| dst_geoip_country_name!="" [$__auto])))'],
+        field_title="Country",
         desc="Top 20 destination countries (GeoIP) for blocked Zenarmor records.",
     )
     zen_top_ja3 = b.loki_table(
         "Top JA3 Fingerprints",
         [f'topk {loki_grp()} (20, sum {loki_grp("ja3")} (count_over_time({ZEN_TLS} '
          '| ja3!="" [$__auto])))'],
+        field_title="JA3 Fingerprint",
         desc="Top 20 TLS client fingerprints (JA3) seen, tls family only. JA3 identifies the "
              "TLS client implementation, not the endpoint -- many distinct devices sharing a "
              "library/browser will share a fingerprint, so this is a coarse grouping, not a "
@@ -278,8 +282,9 @@ def build(b: Builder):
         "Top DNS Queries",
         [f'topk {loki_grp()} (25, sum {loki_grp("query")} (count_over_time({ZEN_DNS} '
          f'{CLIENT_FILTER} | query!="" [$__auto])))'],
+        field_title="Query",
         desc="Top 25 DNS query names Zenarmor saw, over the selected range. `query` is "
-             "structured metadata, so this is a range+reduce table rather than an instant "
+             "structured metadata, so this is a range-query table rather than an instant "
              "query. High cardinality by nature — this is why it is not a metric.",
     )
     zen_dns_rcodes = b.loki_ts(
@@ -295,6 +300,7 @@ def build(b: Builder):
         "Top DNS Domain Categories",
         [f'topk {loki_grp()} (15, sum {loki_grp("domain_category")} (count_over_time({ZEN_DNS} '
          f'{CLIENT_FILTER} | domain_category!="" [$__auto])))'],
+        field_title="Category",
         desc="Top 15 domain categories for DNS records, Zenarmor's own classification. "
              "Unlike Blocks by Category above this counts ALL records, not just blocked "
              "ones, so it describes what the network asks for rather than what policy "
@@ -306,6 +312,7 @@ def build(b: Builder):
         "Top HTTP Hosts",
         [f'topk {loki_grp()} (25, sum {loki_grp("host")} (count_over_time({ZEN_WEB} '
          f'{CLIENT_FILTER} {NOT_SELF} | host!="" [$__auto])))'],
+        field_title="Host",
         desc="Top 25 plaintext-HTTP hosts. Zenarmor's own bulk-ingest requests to the "
              "exporter are excluded, or they would be the top host and the panel would "
              "mostly describe this exporter. HTTPS hosts are not here — they appear as TLS "
@@ -315,6 +322,7 @@ def build(b: Builder):
         "Top URIs",
         [f'topk {loki_grp()} (25, sum {loki_grp("uri")} (count_over_time({ZEN_WEB} '
          f'{CLIENT_FILTER} {NOT_SELF} | uri!="" [$__auto])))'],
+        field_title="URI",
         desc="Top 25 request URIs on plaintext HTTP, excluding the exporter's own ingest "
              "endpoint. Only unencrypted traffic can be seen at this level.",
     )
@@ -322,6 +330,7 @@ def build(b: Builder):
         "Top User Agents",
         [f'topk {loki_grp()} (15, sum {loki_grp("user_agent")} (count_over_time({ZEN_WEB} '
          f'{CLIENT_FILTER} {NOT_SELF} | user_agent!="" [$__auto])))'],
+        field_title="User Agent",
         desc="Top 15 user agents on plaintext HTTP. Useful for spotting an unexpected "
              "device class or an automated client; it is self-reported, so treat it as a "
              "hint rather than identification.",
@@ -344,6 +353,7 @@ def build(b: Builder):
         "Top Applications",
         [f'topk {loki_grp()} (25, sum {loki_grp("app_name")} (count_over_time({ZEN_FLOW} '
          f'{CLIENT_FILTER} | app_name!="" [$__auto])))'],
+        field_title="Application",
         desc="Top 25 applications Zenarmor identified on flow records, all verdicts. "
              "Application NAMES are deliberately not a metric label (cardinality), so this "
              "is the only place they appear; the Flow Volume tab has the same shape by "
@@ -353,6 +363,7 @@ def build(b: Builder):
         "Top TLS Server Names (SNI)",
         [f'topk {loki_grp()} (25, sum {loki_grp("server_name")} (count_over_time({ZEN_TLS} '
          f'{CLIENT_FILTER} | server_name!="" [$__auto])))'],
+        field_title="Server Name",
         desc="Top 25 TLS server names (SNI) across ALL verdicts — where the network goes, "
              "not what policy stopped. Top Blocked Servers above is the blocked-only "
              "counterpart; a name high here and absent there is simply allowed traffic.",
@@ -362,6 +373,7 @@ def build(b: Builder):
         [f'topk {loki_grp()} (15, sum {loki_grp("dst_geoip_country_name")} '
          f'(count_over_time({ZEN_TLS} {CLIENT_FILTER} | dst_geoip_country_name!="" '
          '[$__auto])))'],
+        field_title="Country",
         desc="Top 15 destination countries (GeoIP) for TLS records, all verdicts. Blocked "
              "by Country above is the blocked-only counterpart.",
     )

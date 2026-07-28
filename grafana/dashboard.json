@@ -75462,7 +75462,7 @@
         "spec": {
           "id": 687,
           "title": "Top Blocked Servers",
-          "description": "Top 20 server names (TLS SNI / DNS query name) appearing in blocked Zenarmor records, over the selected range. server_name is structured metadata, so this MUST go through a range+reduce table rather than an instant/timeseries query.",
+          "description": "Top 20 server names (TLS SNI / DNS query name) appearing in blocked Zenarmor records, over the selected range. server_name is structured metadata, so this MUST go through a range-query table rather than an instant/timeseries query.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75501,13 +75501,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "server_name": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "server_name": "Server Name",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "server_name": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -75601,13 +75648,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "device_name": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "device_name": "Device",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "device_name": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -75701,13 +75795,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "dst_geoip_country_name": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "dst_geoip_country_name": "Country",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "dst_geoip_country_name": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -75801,13 +75942,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "ja3": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "ja3": "JA3 Fingerprint",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "ja3": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -75862,7 +76050,7 @@
         "spec": {
           "id": 691,
           "title": "Top DNS Queries",
-          "description": "Top 25 DNS query names Zenarmor saw, over the selected range. `query` is structured metadata, so this is a range+reduce table rather than an instant query. High cardinality by nature \u2014 this is why it is not a metric.",
+          "description": "Top 25 DNS query names Zenarmor saw, over the selected range. `query` is structured metadata, so this is a range-query table rather than an instant query. High cardinality by nature \u2014 this is why it is not a metric.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75901,13 +76089,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "query": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "query": "Query",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "query": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76091,13 +76326,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "domain_category": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "domain_category": "Category",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "domain_category": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76191,13 +76473,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "host": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "host": "Host",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "host": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76291,13 +76620,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "uri": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "uri": "URI",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "uri": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76391,13 +76767,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "user_agent": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "user_agent": "User Agent",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "user_agent": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76581,13 +77004,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "app_name": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "app_name": "Application",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "app_name": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76681,13 +77151,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "server_name": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "server_name": "Server Name",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "server_name": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }
@@ -76781,13 +77298,60 @@
               "transformations": [
                 {
                   "kind": "Transformation",
-                  "group": "reduce",
+                  "group": "labelsToFields",
                   "spec": {
                     "options": {
-                      "reducers": [
-                        "sum"
-                      ],
-                      "mode": "seriesToRows"
+                      "mode": "columns"
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "merge",
+                  "spec": {
+                    "options": {}
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "groupBy",
+                  "spec": {
+                    "options": {
+                      "fields": {
+                        "dst_geoip_country_name": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "service_instance_id": {
+                          "aggregations": [],
+                          "operation": "groupby"
+                        },
+                        "Value": {
+                          "aggregations": [
+                            "sum"
+                          ],
+                          "operation": "aggregate"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "Transformation",
+                  "group": "organize",
+                  "spec": {
+                    "options": {
+                      "excludeByName": {},
+                      "renameByName": {
+                        "dst_geoip_country_name": "Country",
+                        "service_instance_id": "Instance",
+                        "Value (sum)": "Total"
+                      },
+                      "indexByName": {
+                        "dst_geoip_country_name": 0,
+                        "service_instance_id": 1,
+                        "Value (sum)": 2
+                      }
                     }
                   }
                 }

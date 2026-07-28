@@ -154,8 +154,15 @@ would still have summed every appliance's records before ranking them.
   `series=[(logql, legend)]`, e.g. `f'sum by (opnsense_subsystem) (rate({SYSLOG_STREAM} [$__auto]))'`.
 - `b.loki_stat(title, expr, ...)` — single stat; sets `noValue:"0"` (Loki returns no series,
   not a zero series, so an un-annotated stat reads "No data" when the answer is 0).
-- `b.loki_table(title, exprs, sort_by="Total", ...)` — top-N tables. THE cardinality-safe
-  path: range query + reduce(sum, seriesToRows) + 5m interval. Column display name is `Total`.
+- `b.loki_table(title, exprs, field_title, sort_by="Total", ...)` — top-N tables. THE
+  cardinality-safe path: range query + 5m interval. `exprs` is a ONE-element list (a second
+  query would have its values summed into the first one's rows without saying so, so the
+  helper refuses it). Renders exactly three columns: the ranked label titled `field_title`
+  (`"Application"`, `"Query"`, `"Host"`, …), `Instance`, and `Total`.
+  **You do not name the ranked label** — the helper reads it back out of the query's own
+  `loki_grp("app_name")` clause, so the key column cannot drift away from what is actually
+  ranked (#471); a query whose group-by leaves none or several labels besides
+  `service_instance_id` is refused rather than guessed at.
 - `b.loki_sentinel(name, matchers=..., label=...)` — hidden Loki presence variable, scoped
   through `loki_sel()`; gate a row/tab with `present=name`, exactly like `b.sentinel`.
 **Self-metric selectors.** Use the ordinary `sel()` for any `opnsense_exporter_*` family
@@ -180,13 +187,18 @@ Everything else (`device_name`, `server_name`, `ja3`, `dst_nbytes`, `dst_geoip_*
 
 **Cardinality guard (hard):** never `topk(N, sum by (<structured-metadata-key>) (...))` as an
 instant query — it materializes one series per distinct value before `topk` and blows Loki's
-~500-series cap. Always use `b.loki_table` (range + reduce + 5m interval).
+~500-series cap. Always use `b.loki_table` (range query + 5m interval).
 
 **Four v2 Loki render traps** (validate clean, render wrong — a `gcx dashboards snapshot`
 render-check is MANDATORY, `gcx resources validate` does not catch them): (1) transforms use
-`{kind:"Transformation", group:"reduce", spec:{options}}`, not the v1 `{id, options}` shape;
-(2) table `sortBy.displayName` is the DISPLAY name (`Total` for a reduced sum), never the
-reducer id; (3) `reduce` needs `mode:"seriesToRows"`; (4) a stat over a Loki query needs
+`{kind:"Transformation", group:"<id>", spec:{options}}`, not the v1 `{id, options}` shape;
+(2) table `sortBy.displayName` is the DISPLAY name (`Total`), never the reducer id or the
+raw field name; (3) **never reduce a LogQL metric query with `mode:"seriesToRows"`** — a Loki
+metric frame carries its labels on the value FIELD, so the reduce names every row after the
+serialised label set and the table ships `{app_name="STUN", service_instance_id="opnsense"}`
+as its key column (#471). Split the labels out instead:
+`labelsToFields{mode:"columns"}` → `merge` → `groupBy{<label>,service_instance_id: groupby;
+Value: sum}` → `organize` to title and order the columns; (4) a stat over a Loki query needs
 `noValue:"0"`. `b.loki_table`/`b.loki_stat` bake all four in — use the helpers, don't hand-roll.
 
 ## Links and drilldowns (import from uids)
