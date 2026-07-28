@@ -54,10 +54,17 @@ This is a Prometheus exporter for OPNsense firewalls. It polls OPNsense REST API
     `opnsense/contract_test.go`. GET endpoints need no change — the contract manifest derives them
     automatically. The `cmd/apicontract` canary cross-checks every endpoint against OPNsense source.
 2b. If the new endpoint is plugin-gated (its `Fetch*` treats 404 as "feature absent" per step 2), add
-    its endpoint name to `PluginGatedEndpoints()` in `opnsense/cache.go` — GET **or** POST. Its 404 is
-    then cached (`--exporter.cache-ttl`), so boxes without the plugin stop re-asking on every scrape.
-    Never list a core endpoint there (a cached 404 on `healthCheck` would keep reporting a recovered
-    firewall as down) — `TestPluginGatedEndpoints` enforces this.
+    its endpoint name to `NegativeCacheable404Endpoints()` in `opnsense/cache.go` — GET **or** POST. Its
+    404 is then cached (`--exporter.cache-ttl`), so boxes without the plugin stop re-asking on every
+    scrape. Never list a core endpoint there (a cached 404 on `healthCheck` would keep reporting a
+    recovered firewall as down) — `TestPluginGatedEndpoints` enforces this.
+    **Two lists, two questions (#495):** `NegativeCacheable404Endpoints()` answers "may this 404 be
+    cached?", `PluginGatedEndpoints()` answers "does this 404 mean a plugin is absent?". The second is a
+    superset and is what the canary and `acl.go` read. They differ when an endpoint's real request path
+    carries a query string the cache key does not (`vnstatGetJsonData`'s `?iface=`), making a TTL a
+    no-op while the 404 is still plugin-absence. If your endpoint is in that shape, add it to
+    `PluginGatedEndpoints()` only — otherwise the canary files its 404 under "core route vanished
+    upstream".
 2c. Add the endpoint's response struct to `schemaRegistry` in `opnsense/schema_registry.go` and run
     `make schemas` (`TestSchemaRegistryComplete` / `TestSchemasUpToDate` fail otherwise). If the
     endpoint is POST, also add its request body to `captureRequests` in `opnsense/capture_requests.go`

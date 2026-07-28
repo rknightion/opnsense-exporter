@@ -443,11 +443,11 @@ func main() {
 	// every scrape. Only the 404 is cached: where these endpoints do answer, their
 	// payload is live data and still fetched every scrape.
 	if absentTTL := cfg.AbsentCacheTTL; absentTTL > 0 {
-		for _, endpoint := range opnsense.PluginGatedEndpoints() {
+		for _, endpoint := range opnsense.NegativeCacheable404Endpoints() {
 			opnsenseClient.SetEndpointAbsentTTL(endpoint, absentTTL)
 		}
 		logger.Info("caching plugin-absent (404) endpoint responses",
-			"endpoints", len(opnsense.PluginGatedEndpoints()), "ttl", absentTTL)
+			"endpoints", len(opnsense.NegativeCacheable404Endpoints()), "ttl", absentTTL)
 	}
 
 	// selfMetricsRegistry holds exporter self-metrics (process_*, go_*). It is

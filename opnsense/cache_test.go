@@ -334,3 +334,41 @@ func TestClient_CacheIsConcurrencySafe(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestPluginGatedIncludesVnstatGetJsonData pins the semantic set against the
+// negative-cacheable one (#495). vnstatGetJsonData is an os-vnstat route and
+// 404s exactly when the plugin is absent, so a 404 there is NOT a vanished core
+// route — but it must stay OUT of the cacheable set, because the cache keys on
+// the registered query-less path while the real request always carries
+// "?iface=", so a TTL on it would never match.
+//
+// The canary (cmd/apidrift) and acl.go ask the semantic question; only main.go's
+// TTL wiring asks the cacheable one. Conflating them made a box WITHOUT os-vnstat
+// report the endpoint in the report's highest-signal "core route vanished
+// upstream" section - found on the first canary run against the production
+// release box, and invisible on the nightly testbed, which has the plugin.
+func TestPluginGatedIncludesVnstatGetJsonData(t *testing.T) {
+	gated := map[EndpointName]bool{}
+	for _, n := range PluginGatedEndpoints() {
+		gated[n] = true
+	}
+	if !gated["vnstatGetJsonData"] {
+		t.Error("vnstatGetJsonData must be in PluginGatedEndpoints: its 404 means os-vnstat is absent")
+	}
+
+	cacheable := map[EndpointName]bool{}
+	for _, n := range NegativeCacheable404Endpoints() {
+		cacheable[n] = true
+	}
+	if cacheable["vnstatGetJsonData"] {
+		t.Error("vnstatGetJsonData must NOT be negative-cacheable: the cache key omits its ?iface= query string")
+	}
+
+	// The cacheable set must stay a SUBSET of the gated set, or the two lists can
+	// drift into contradicting each other about what a 404 on an endpoint means.
+	for n := range cacheable {
+		if !gated[n] {
+			t.Errorf("%s is negative-cacheable but not plugin-gated; cacheable must be a subset of gated", n)
+		}
+	}
+}

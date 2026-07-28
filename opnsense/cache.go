@@ -207,7 +207,13 @@ func (c *Client) SetEndpointAbsentTTL(name EndpointName, ttl time.Duration) {
 // When adding a plugin-gated collector whose Fetch treats 404 as feature-absent,
 // add its endpoint(s) here so boxes without the plugin stop paying for it on every
 // scrape.
-func PluginGatedEndpoints() []EndpointName {
+//
+// #495: this is the NEGATIVE-CACHEABLE set, which is narrower than the set of
+// endpoints whose 404 means "plugin absent". Those are two different questions and
+// they were one list until a canary run against a box without os-vnstat reported
+// vnstatGetJsonData as a vanished core route. Ask the semantic question through
+// PluginGatedEndpoints below; ask the caching question here.
+func NegativeCacheable404Endpoints() []EndpointName {
 	return []EndpointName{
 		// Per-plugin service status. The 200 body ({"status":"running"}) is live
 		// state and is never cached — only the 404 is.
@@ -261,6 +267,27 @@ func PluginGatedEndpoints() []EndpointName {
 		// FetchVnstat doc comment in vnstat.go.
 		"vnstatInterfaceList",
 	}
+}
+
+// PluginGatedEndpoints returns every endpoint whose 404 means "the plugin is not
+// installed" rather than "this route vanished upstream". It is the SEMANTIC set,
+// and a superset of NegativeCacheable404Endpoints.
+//
+// The two differ by exactly one entry today, and the reason is worth keeping (#495).
+// vnstatGetJsonData is unambiguously plugin-gated - it is an os-vnstat route and
+// 404s precisely when os-vnstat is absent - but it cannot be negative-cached,
+// because the cache keys on the registered query-less path while every real request
+// carries "?iface=<device>", so a TTL on it would never match. Reading the caching
+// list as an answer to the semantic question made the canary file it under "core
+// route absent - investigate", its highest-signal section, on any box without the
+// plugin. The nightly testbed has os-vnstat installed, so only the production
+// release box surfaced it.
+//
+// Consumers: cmd/apidrift (is this 404 expected?) and acl.go. main.go's TTL wiring
+// wants NegativeCacheable404Endpoints instead. TestPluginGatedIncludesVnstatGetJsonData
+// enforces that cacheable stays a subset of this.
+func PluginGatedEndpoints() []EndpointName {
+	return append(NegativeCacheable404Endpoints(), "vnstatGetJsonData")
 }
 
 // CacheEntryView is a read-only snapshot of one held response-cache entry,
