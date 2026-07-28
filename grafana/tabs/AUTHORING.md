@@ -158,15 +158,18 @@ would still have summed every appliance's records before ranking them.
   path: range query + reduce(sum, seriesToRows) + 5m interval. Column display name is `Total`.
 - `b.loki_sentinel(name, matchers=..., label=...)` — hidden Loki presence variable, scoped
   through `loki_sel()`; gate a row/tab with `present=name`, exactly like `b.sentinel`.
-- `b.sel_pipeline(metric, more="")` — a pure **alias of `sel()`**, kept for the log-pipeline
-  panels. **It is NOT a bare selector**, despite its name and a long-standing comment in
-  `build_dashboard.py` that claimed otherwise: it injects `opnsense_instance` exactly like
-  `sel()`. Correct for the `opnsense_exporter_logs_*` (internal/logship) family, which DOES
-  carry that label via `SelfMetricsRegisterer` — but **wrong for anything on the raw
-  self-metrics registry**, which is why the four `opnsense_exporter_otlp_*` delivery panels
-  are currently always empty (**tracked in #466** — do not fix in passing). For a self-metric
-  with no appliance label, scope the *sentinel* with `scope="target_join"` and give the panel
-  a genuinely bare selector.
+**Self-metric selectors.** Use the ordinary `sel()` for any `opnsense_exporter_*` family
+registered through the instance-stamping wrapper (`logship.SelfMetricsRegisterer`) — logs,
+annotations, the `/metrics` handler and, since #466, OTLP delivery. There is no separate
+`sel_pipeline()` helper: it existed as a pure alias of `sel()` and expressed an intent it did
+not implement, so #466 deleted it.
+
+The failure it was meant to prevent is real and is now caught in Go instead: registering a
+family **bare** onto the self-metrics registry and then filtering on `opnsense_instance`
+anyway gives panels that are structurally empty, because `=~` never matches an absent label.
+`main_test.go`'s `TestSelfMetricsRegistryIsNeverRegisteredOnBare` fails on that shape. The one
+family that genuinely cannot carry an appliance label is the client library's `go_*`/`process_*`,
+which is scoped with `scope="target_join"` and a bare selector.
 
 **LogQL label rule (load-bearing):** ONLY these labels are indexed and may appear inside `{}` —
 `opnsense_source`, `opnsense_subsystem`, `opnsense_action`, `service_name`, `service_instance_id`.
@@ -288,7 +291,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 101 total (collector 96 / self_labeled 3 / target_join 2 / global 0)
+### Prometheus sentinels — 101 total (collector 96 / self_labeled 4 / target_join 1 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -364,7 +367,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_ntp_gps` | `collector` | existence (series presence) | OPNsense Exporter > Network > NTP > GPS (experimental) | `label_values(opnsense_ntp_gps_ok{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_nut` | `collector` | existence (series presence) | OPNsense Exporter > System > UPS; OPNsense Exporter > System > UPS > NUT (Network UPS Tools) | `label_values(opnsense_nut_ups_info{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_openvpn` | `collector` | existence (series presence) | OPNsense Exporter > VPN & remote access; OPNsense Exporter > VPN & remote access > VPN; OPNsense Exporter > VPN & remote access > VPN > OpenVPN | `label_values(opnsense_openvpn_instances{opnsense_instance=~"$opnsense_instance"}, __name__)` |
-| `has_otlp` | `target_join` | existence (series presence) | OPNsense Exporter Health > Diagnostics > OTLP Delivery Health | `query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~"$opnsense_instance"}))` |
+| `has_otlp` | `self_labeled` | existence (series presence) | OPNsense Exporter Health > Diagnostics > OTLP Delivery Health | `label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_qfeeds` | `collector` | existence (series presence) | OPNsense Exporter > Security > Q-Feeds; OPNsense Exporter > Security > Q-Feeds > Q-Feeds Activity; OPNsense Exporter > Security > Q-Feeds > Q-Feeds Overview | `label_values(opnsense_qfeeds_feeds_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_recording_flow` | `collector` | existence (series presence) | OPNsense Exporter > Observability > Recording rules > Flow Volume | `label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_recording_gateway_loss` | `collector` | existence (series presence) | OPNsense Exporter > Observability > Recording rules > Gateway Health | `label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~"$opnsense_instance"}, __name__)` |

@@ -593,24 +593,24 @@ def build_diagnostics(b: Builder):
     # pure-OTLP backend while the OTLP path is down; read them at /metrics or on the
     # operator console during an outage, and as historical evidence after recovery.
     #
-    # ⚠ THE FOUR PANELS BELOW ARE CURRENTLY ALWAYS EMPTY — owned by #466, do not fix
-    # here. The claim that used to sit in this comment was INVERTED: it said the
-    # otlp_* family "uses sel_pipeline() (bare selector), never sel(), because sel()
-    # would render every panel here permanently empty". sel_pipeline() is a pure ALIAS
-    # of sel() (see builder.py) — it injects opnsense_instance just the same. So the
-    # premise is right and the conclusion is backwards: the family really does carry
-    # NO opnsense_instance (telemetry.Start receives the RAW selfMetricsRegistry at
-    # main.go:1016, unlike logship which wraps its registerer at main.go:896), and
-    # because sel_pipeline() filters on that absent label anyway, all four panels are
-    # structurally empty. #466 carries both candidate fixes; #414 deliberately left
-    # the panels untouched and only scoped the sentinel.
+    # These four panels were structurally empty for every instance selection until
+    # #466: `telemetry.Start` received the RAW self-metrics registry, so the otlp_*
+    # family carried no opnsense_instance, while the panels filtered on it with `=~`
+    # — and `=~` never matches an absent label. The fix gave the family identity
+    # (main.go now passes logSelfMetricsRegisterer) rather than removing the filter,
+    # because "which firewall's exporter failed to deliver" is the whole question
+    # these panels answer. `main_test.go`'s
+    # TestSelfMetricsRegistryIsNeverRegisteredOnBare fails if any future family is
+    # registered bare the same way.
     #
-    # scope="target_join" for the same reason as has_go_runtime: the otlp_* family is
-    # on the RAW self-metrics registry, so it carries no opnsense_instance — but it
-    # is served from the same target as opnsense_up, so (job, instance) scopes it.
+    # scope="self_labeled", not "target_join": the family now carries
+    # opnsense_instance for the same reason logship's does — it is registered through
+    # the instance-stamping wrapper. `has_go_runtime` stays target_join because
+    # go_*/process_* come from the client library and genuinely cannot carry an
+    # appliance label.
     b.sentinel("has_otlp", metric="opnsense_exporter_otlp_enabled",
-               scope="target_join")
-    otlp_on = b.stat("OTLP Export Enabled", b.sel_pipeline("opnsense_exporter_otlp_enabled"),
+               scope="self_labeled")
+    otlp_on = b.stat("OTLP Export Enabled", sel("opnsense_exporter_otlp_enabled"),
                      mappings=ENABLED, color_mode="background", graph="none", w=4, h=7,
                      thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
                      desc="1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery is "
@@ -619,14 +619,14 @@ def build_diagnostics(b: Builder):
                           "right. Construction failure is fatal at startup, so there is no "
                           "configured-but-inactive state — the metric is either 1 or absent.")
     otlp_fails = b.stat("OTLP Consecutive Failures",
-                        b.sel_pipeline("opnsense_exporter_otlp_consecutive_failures"),
+                        sel("opnsense_exporter_otlp_consecutive_failures"),
                         w=5, h=7, color_mode="background",
                         thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
                         desc="Exports that have failed back-to-back. Reset to 0 by the next success, so any "
                              "sustained non-zero value is an ongoing delivery outage rather than a blip. "
                              "OPNsenseOTLPDeliveryFailing alerts on this.")
     otlp_age = b.stat("Time Since Last Successful OTLP Export",
-                      f'time() - ({b.sel_pipeline("opnsense_exporter_otlp_last_success_timestamp_seconds")} > 0)',
+                      f'time() - ({sel("opnsense_exporter_otlp_last_success_timestamp_seconds")} > 0)',
                       unit="s", w=5, h=7, graph="none", color_mode="background",
                       thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 300},
                                   {"color": "red", "value": 900}],
@@ -637,7 +637,7 @@ def build_diagnostics(b: Builder):
                            "landed. No-data plus a rising consecutive-failure count is the "
                            "never-worked-since-boot case (wrong endpoint / bad credential).")
     otlp_rate = b.ts("OTLP Export Rate (by result)",
-                     [(f'sum {grp("result")} (rate({b.sel_pipeline("opnsense_exporter_otlp_exports_total")}[{RATE}]))',
+                     [(f'sum {grp("result")} (rate({sel("opnsense_exporter_otlp_exports_total")}[{RATE}]))',
                        "{{result}}")],
                      unit="reqps", w=10, h=7,
                      desc="Export calls per second by outcome, counted once per export call and never per "
@@ -760,9 +760,9 @@ def build_diagnostics(b: Builder):
     # family registers through the SAME instance-stamping wrapper as the
     # annotation writer (main.go passes logSelfMetricsRegisterer, reused
     # rather than duplicated), so it carries opnsense_instance and is scoped
-    # here with the ordinary sel() instance matcher (scope="self_labeled") —
-    # not sel_pipeline()/target_join, and not the #466 mistake of assuming
-    # opnsense_instance where it doesn't exist.
+    # here with the ordinary sel() instance matcher (scope="self_labeled"), not
+    # target_join. Registering bare and then filtering on opnsense_instance anyway
+    # is the #466 mistake, and main_test.go now fails on it.
     server_inflight = b.stat(
         "Metrics Handler In-Flight Requests",
         sel("opnsense_exporter_server_metrics_requests_in_flight"),

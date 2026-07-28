@@ -11,9 +11,11 @@ nowhere for the raw stream at all.
 
 Label rules (verified live against the real Zenarmor stream, 2026-07-18):
 - opnsense_log_events_zenarmor_total carries opnsense_instance -> sel().
-- opnsense_exporter_logs_zenarmor_* self-metrics carry NO opnsense_instance
-  -> sel_pipeline(); these aggregate across exporter instances on a
-  multi-box setup, since there's no instance label to split by.
+- opnsense_exporter_logs_zenarmor_* self-metrics ALSO carry opnsense_instance
+  -> sel(). They are registered through logship's SelfMetricsRegisterer like the
+  rest of the pipeline family. This note previously claimed they carried no
+  instance label and used a `sel_pipeline()` alias to say so; the alias was a
+  pure alias of `sel()` and the claim was wrong, both removed by #466.
 - LogQL stream selectors {} may ONLY use the three indexed labels
   (opnsense_source, opnsense_subsystem, opnsense_action) plus the transport's
   own service_instance_id. Every other field seen on the wire (device_name,
@@ -127,7 +129,7 @@ def build(b: Builder):
     # (unit="Bps"); both queries are unchanged.
     zen_bulk_requests = b.ts(
         "Zenarmor Bulk Ingest Requests (requests/sec)",
-        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_bulk_requests_total")}[{RATE}])', "requests/s")],
+        [(f'rate({sel("opnsense_exporter_logs_zenarmor_bulk_requests_total")}[{RATE}])', "requests/s")],
         unit="reqps",
         desc="Elasticsearch _bulk requests Zenarmor pushes per second (requests/sec, not "
              "bytes). See 'Zenarmor Bulk Ingest Bytes' for the payload volume of those same "
@@ -137,7 +139,7 @@ def build(b: Builder):
     )
     zen_bulk_bytes = b.ts(
         "Zenarmor Bulk Ingest Bytes (bytes/sec)",
-        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_bulk_bytes_total")}[{RATE}])', "bytes/s")],
+        [(f'rate({sel("opnsense_exporter_logs_zenarmor_bulk_bytes_total")}[{RATE}])', "bytes/s")],
         unit="Bps",
         desc="Elasticsearch _bulk payload bytes Zenarmor pushes per second (bytes/sec, not a "
              "request count). A live box measured ~70 KB/s sustained, which is ~4-6 GB/day of "
@@ -148,7 +150,7 @@ def build(b: Builder):
     )
     zen_excluded = b.ts(
         "Zenarmor Records Excluded (rate)",
-        [(f'sum {grp("rule")} (rate({b.sel_pipeline("opnsense_exporter_logs_zenarmor_excluded_total")}[{RATE}]))',
+        [(f'sum {grp("rule")} (rate({sel("opnsense_exporter_logs_zenarmor_excluded_total")}[{RATE}]))',
           "{{rule}}")],
         unit="short",
         desc="opnsense_exporter_logs_zenarmor_excluded_total: records dropped per second by a "
@@ -199,7 +201,7 @@ def build(b: Builder):
     )
     zen_self_traffic = b.ts(
         "Self-Traffic Drop Rate",
-        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_rejected_total", "reason=\"self_traffic\",source=\"zenarmor\"")}[{RATE}])',
+        [(f'rate({sel("opnsense_exporter_logs_rejected_total", "reason=\"self_traffic\",source=\"zenarmor\"")}[{RATE}])',
           "self-traffic drops")],
         unit="short",
         desc="opnsense_exporter_logs_rejected_total{reason=\"self_traffic\",source=\"zenarmor\"}: "

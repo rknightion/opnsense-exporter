@@ -954,8 +954,6 @@ opnsense_exporter_otlp_consecutive_failures
 - opnsense_exporter_otlp_consecutive_failures returns to 0
 - opnsense_exporter_otlp_last_success_timestamp_seconds advances to a recent time
 
-**Instance identity:** this alert's summary does not carry `opnsense_instance` - opnsense_exporter_otlp_consecutive_failures is a bare process-wide prometheus.Gauge registered directly against telemetry.Start's raw registry (internal/telemetry/delivery.go:77), never wrapped by logship.SelfMetricsRegisterer the way opnsense_exporter_logs_* is (internal/logship/pipeline.go:88-89) - so it carries no opnsense_instance label to put in the summary at all. This is the same identity gap #466 tracks for the OTLP dashboard panels; fixing the summary would require the same registry-wrapping fix as that issue, not a runbook-side change.
-
 ## OPNsenseIPsecTunnelDown
 
 **Severity:** warning  

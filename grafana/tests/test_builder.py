@@ -7,7 +7,7 @@ from pathlib import Path
 GRAFANA_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(GRAFANA_DIR))
 
-from builder import Builder  # noqa: E402
+from builder import Builder, sel  # noqa: E402
 
 
 STABLE_PREFIX = (
@@ -21,14 +21,17 @@ def query_model(panel):
 
 class QuerySemanticsTest(unittest.TestCase):
     def test_pipeline_queries_follow_the_stable_opnsense_instance_identity(self):
-        builder = Builder()
+        """The logship self-metric family carries opnsense_instance, so the ordinary
+        selector is correct for it. This used to assert the same thing about a
+        `sel_pipeline()` alias; #466 removed the alias, which was a pure alias of
+        `sel()` expressing an intent it did not implement."""
 
         self.assertEqual(
-            builder.sel_pipeline("opnsense_exporter_logs_queue_length"),
+            sel("opnsense_exporter_logs_queue_length"),
             'opnsense_exporter_logs_queue_length{opnsense_instance=~"$opnsense_instance"}',
         )
         self.assertEqual(
-            builder.sel_pipeline("opnsense_exporter_logs_dropped_total", 'reason="overflow"'),
+            sel("opnsense_exporter_logs_dropped_total", 'reason="overflow"'),
             'opnsense_exporter_logs_dropped_total{opnsense_instance=~"$opnsense_instance",reason="overflow"}',
         )
 

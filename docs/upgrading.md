@@ -14,6 +14,19 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 ## Upgrading to v4.0 from v3.x
 
+- **`opnsense_exporter_otlp_*` now carries the `opnsense_instance` label** -
+  the four OTLP delivery-health series (`otlp_enabled`,
+  `otlp_exports_total{result}`, `otlp_consecutive_failures`,
+  `otlp_last_success_timestamp_seconds`) were registered without appliance
+  identity, so on a multi-firewall stack there was no way to tell whose push
+  pipeline had stalled. They now carry `opnsense_instance` like every other
+  `opnsense_exporter_*` family. **A recording rule, alert or dashboard query that
+  aggregates these series without `by (opnsense_instance)` will now return one
+  series per exporter instead of one overall** - add the grouping, or use
+  `sum without (opnsense_instance) (...)` to keep the old shape. Single-instance
+  deployments see no change beyond the extra label. The bundled dashboard and
+  rules are already updated.
+
 - **Scrape deadline compatibility surfaces removed** -
   the `exporter.scrape-timeout-offset` option (formerly passed with two leading
   hyphens),

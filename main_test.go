@@ -717,3 +717,104 @@ func TestResolveInstanceLabel(t *testing.T) {
 		}
 	})
 }
+
+// selfMetricsRegistryAllowedUses records every call argument position in main.go
+// where the RAW `selfMetricsRegistry` may legitimately be passed, with the reason.
+// Anything else is a bare registration: the series registers with no
+// `opnsense_instance` label, so every dashboard panel that filters on that label
+// with `=~` matches nothing and renders permanently empty — a `=~` matcher never
+// matches an absent label. That is #466, and the four OTLP delivery panels sat
+// broken for months because nothing failed when it happened.
+//
+// Keyed by "<callee>#<arg index>". A callee that wraps internally is listed here
+// with that fact stated, so the next reader does not have to go and check.
+var selfMetricsRegistryAllowedUses = map[string]string{
+	"logship.SelfMetricsRegisterer#0": "the instance-stamping wrapper itself; this is " +
+		"the seam every other use is supposed to go through",
+	"server.NewMetricsHandler#1": "passed as a GATHERER to serve /metrics, not as a " +
+		"Registerer — nothing registers through it",
+	"logship.Start#6": "logship.Start wraps it with SelfMetricsRegisterer internally " +
+		"(pipeline.go), so the raw registry is correct at this call site",
+}
+
+// TestSelfMetricsRegistryIsNeverRegisteredOnBare is the generalisation of #466.
+//
+// Fixing four panels would have left the next self-metric family free to make the
+// same mistake, so this fails on the SHAPE of the mistake instead: parse main.go and
+// reject any call that hands the raw self-metrics registry somewhere that registers,
+// unless that position is allowlisted above with a reason.
+//
+// `selfMetricsRegistry.MustRegister(...)` is excluded by construction — a method call
+// ON the registry is the go_*/process_* client-library path, which deliberately
+// carries no appliance label and is scoped on the dashboard by a target join instead
+// (#414).
+func TestSelfMetricsRegistryIsNeverRegisteredOnBare(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "main.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse main.go: %v", err)
+	}
+
+	callee := func(expr ast.Expr) string {
+		switch fn := expr.(type) {
+		case *ast.Ident:
+			return fn.Name
+		case *ast.SelectorExpr:
+			if pkg, ok := fn.X.(*ast.Ident); ok {
+				return pkg.Name + "." + fn.Sel.Name
+			}
+			return fn.Sel.Name
+		}
+		return ""
+	}
+
+	var offenders []string
+	seen := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		name := callee(call.Fun)
+		// A method on the registry itself (MustRegister/Register/Gather) is not a
+		// hand-off; it is the deliberate unwrapped client-library path.
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "selfMetricsRegistry" {
+				return true
+			}
+		}
+		for i, arg := range call.Args {
+			ident, ok := arg.(*ast.Ident)
+			if !ok || ident.Name != "selfMetricsRegistry" {
+				continue
+			}
+			key := fmt.Sprintf("%s#%d", name, i)
+			seen[key] = true
+			if _, allowed := selfMetricsRegistryAllowedUses[key]; allowed {
+				continue
+			}
+			offenders = append(offenders, fmt.Sprintf(
+				"%s: %s receives the RAW selfMetricsRegistry as argument %d — if it "+
+					"registers through it, the series carry no opnsense_instance label "+
+					"and every panel filtering on that label renders empty (#466). Pass "+
+					"logSelfMetricsRegisterer, or add %q to "+
+					"selfMetricsRegistryAllowedUses with the reason it is safe",
+				fset.Position(call.Pos()), name, i, key))
+		}
+		return true
+	})
+
+	if len(offenders) > 0 {
+		t.Errorf("bare self-metrics registrations in main.go:\n  %s",
+			strings.Join(offenders, "\n  "))
+	}
+
+	// The allowlist must not outlive its call sites, or it silently permits a
+	// position that no longer exists while reading as deliberate.
+	for key := range selfMetricsRegistryAllowedUses {
+		if !seen[key] {
+			t.Errorf("selfMetricsRegistryAllowedUses has a stale entry %q: main.go no "+
+				"longer passes selfMetricsRegistry there", key)
+		}
+	}
+}

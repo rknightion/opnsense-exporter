@@ -10,12 +10,15 @@ There are deliberately no per-source label panels beyond the low-cardinality
 `source` dimension (one value per registered source, e.g. firewall/ids/audit) —
 the high-cardinality event data itself never becomes a metric.
 
-Every opnsense_exporter_logs_* metric carries the stable opnsense_instance label,
-so b.sel_pipeline keeps the dashboard's box picker in step with the pipeline
-self-metrics.
+Every opnsense_exporter_logs_* metric carries the stable opnsense_instance label
+(internal/logship wraps its registerer in SelfMetricsRegisterer), so the ordinary
+`sel()` selector keeps the dashboard's box picker in step with the pipeline
+self-metrics. There used to be a `sel_pipeline()` alias here saying so; it was a
+pure alias of `sel()` that expressed an intent it did not implement, and #466
+removed it.
 """
 
-from builder import Builder, grp, RATE
+from builder import Builder, grp, sel, RATE
 from uids import HEALTH_UID, to_tab
 
 
@@ -38,14 +41,14 @@ def build(b: Builder):
 
     shipped = b.ts(
         "Records Shipped (rate)",
-        [(f'sum {grp("source")} (rate({b.sel_pipeline("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum {grp("source")} (rate({sel("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_shipped_total: records successfully handed to the "
              "sink per second, by source. This is the primary throughput signal.",
     )
     dropped = b.ts(
         "Records Dropped (rate)",
-        [(f'sum {grp("source", "reason")} (rate({b.sel_pipeline("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
+        [(f'sum {grp("source", "reason")} (rate({sel("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_dropped_total: records dropped before delivery, by "
@@ -55,8 +58,8 @@ def build(b: Builder):
 
     queue_len = b.ts(
         "Queue Depth",
-        [(f'{b.sel_pipeline("opnsense_exporter_logs_queue_length")}', "depth"),
-         (f'{b.sel_pipeline("opnsense_exporter_logs_queue_capacity")}', "capacity")],
+        [(f'{sel("opnsense_exporter_logs_queue_length")}', "depth"),
+         (f'{sel("opnsense_exporter_logs_queue_capacity")}', "capacity")],
         unit="short",
         desc="opnsense_exporter_logs_queue_length vs opnsense_exporter_logs_queue_capacity: "
              "depth of the poller->emitter backpressure queue. Approaching capacity precedes "
@@ -64,8 +67,8 @@ def build(b: Builder):
     )
     queue_bytes = b.ts(
         "Queue Bytes",
-        [(f'{b.sel_pipeline("opnsense_exporter_logs_queue_bytes")}', "queued bytes"),
-         (f'{b.sel_pipeline("opnsense_exporter_logs_queue_max_bytes")}', "max bytes")],
+        [(f'{sel("opnsense_exporter_logs_queue_bytes")}', "queued bytes"),
+         (f'{sel("opnsense_exporter_logs_queue_max_bytes")}', "max bytes")],
         unit="bytes",
         desc="opnsense_exporter_logs_queue_bytes vs opnsense_exporter_logs_queue_max_bytes: "
              "estimated retained queue memory and its aggregate byte budget. A max of 0 disables "
@@ -74,7 +77,7 @@ def build(b: Builder):
 
     ship_errors = b.ts(
         "Sink Errors (rate)",
-        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_ship_errors_total")}[{RATE}])', "ship errors")],
+        [(f'rate({sel("opnsense_exporter_logs_ship_errors_total")}[{RATE}])', "ship errors")],
         unit="short",
         desc="opnsense_exporter_logs_ship_errors_total: sink Emit attempts that did not fully "
              "deliver per second. The pipeline retries their unacknowledged remainder, so this is "
@@ -82,14 +85,14 @@ def build(b: Builder):
     )
     poll_errors = b.ts(
         "Source Poll Errors (rate)",
-        [(f'sum {grp("source")} (rate({b.sel_pipeline("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum {grp("source")} (rate({sel("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by "
              "source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
     )
     received_lag = b.ts(
         "Source Input Lag",
-        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_last_received_timestamp_seconds")}', "{{source}}")],
+        [(f'time() - {sel("opnsense_exporter_logs_last_received_timestamp_seconds")}', "{{source}}")],
         unit="s",
         desc="Seconds since a source last admitted a record to the queue, derived from "
              "opnsense_exporter_logs_last_received_timestamp_seconds on the exporter clock. "
@@ -97,7 +100,7 @@ def build(b: Builder):
     )
     exported_lag = b.ts(
         "Delivery Lag",
-        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_last_exported_timestamp_seconds")}', "{{source}}")],
+        [(f'time() - {sel("opnsense_exporter_logs_last_exported_timestamp_seconds")}', "{{source}}")],
         unit="s",
         desc="Seconds since the sink last acknowledged a record from each source, derived from "
              "opnsense_exporter_logs_last_exported_timestamp_seconds on the exporter clock. A wide "
@@ -105,7 +108,7 @@ def build(b: Builder):
     )
     possible_gaps = b.ts(
         "Possible Sampling Gaps (rate)",
-        [(f'sum {grp("source")} (rate({b.sel_pipeline("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
+        [(f'sum {grp("source")} (rate({sel("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
         unit="short",
         desc="opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a "
              "source whose only view of its data is a bounded window (e.g. the unbound source's "
@@ -123,7 +126,7 @@ def build(b: Builder):
 
     parse_errors = b.ts(
         "Parse Errors (rate)",
-        [(f'sum {grp("source", "stage")} (rate({b.sel_pipeline("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
+        [(f'sum {grp("source", "stage")} (rate({sel("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
           "{{source}} / {{stage}}")],
         unit="short",
         desc="opnsense_exporter_logs_parse_errors_total: received records that failed to parse, "
@@ -134,7 +137,7 @@ def build(b: Builder):
     )
     rejected = b.ts(
         "Input Rejected (rate)",
-        [(f'sum {grp("source", "reason")} (rate({b.sel_pipeline("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
+        [(f'sum {grp("source", "reason")} (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_rejected_total: receiver input refused rather than shipped. "
@@ -148,7 +151,7 @@ def build(b: Builder):
     )
     resource_capped = b.ts(
         "Resource Label Cap Hit (rate)",
-        [(f'rate({b.sel_pipeline("opnsense_exporter_logs_resource_capped_total")}[{RATE}])', "capped")],
+        [(f'rate({sel("opnsense_exporter_logs_resource_capped_total")}[{RATE}])', "capped")],
         unit="short",
         desc="opnsense_exporter_logs_resource_capped_total: records shipped with their "
              "opnsense.* index labels DROPPED because the distinct (source, subsystem, action) "
@@ -159,7 +162,7 @@ def build(b: Builder):
     )
     enrich_misses = b.ts(
         "Enrichment Misses (rate)",
-        [(f'sum {grp("table")} (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
+        [(f'sum {grp("table")} (rate({sel("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
         unit="short",
         desc="opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by "
              "table. A sustained rate on table=rules means the rule snapshot is behind the box's "
@@ -168,7 +171,7 @@ def build(b: Builder):
     )
     enrich_errors = b.ts(
         "Enrichment Refresh Errors (rate)",
-        [(f'sum {grp("table")} (rate({b.sel_pipeline("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
+        [(f'sum {grp("table")} (rate({sel("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
           "{{table}}")],
         unit="short",
         desc="opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes "
@@ -177,7 +180,7 @@ def build(b: Builder):
     )
     enrich_stale = b.ts(
         "Enrichment Staleness",
-        [(f'time() - {b.sel_pipeline("opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds")}', "{{table}}")],
+        [(f'time() - {sel("opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds")}', "{{table}}")],
         unit="s",
         desc="Seconds since each enrichment table last refreshed successfully, derived from "
              "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds. Rules refresh every "
@@ -190,7 +193,7 @@ def build(b: Builder):
     # notice because it only ever read the collector catalogue.
     debug_captured = b.ts(
         "Debug Captures Written (rate)",
-        [(f'sum {grp("receiver", "kind")} (rate({b.sel_pipeline("opnsense_exporter_logs_debug_captured_total")}[{RATE}]))',
+        [(f'sum {grp("receiver", "kind")} (rate({sel("opnsense_exporter_logs_debug_captured_total")}[{RATE}]))',
           "{{receiver}} {{kind}}")],
         unit="short",
         desc="opnsense_exporter_logs_debug_captured_total: signals written to the debug-capture "
@@ -201,7 +204,7 @@ def build(b: Builder):
     )
     debug_dropped = b.ts(
         "Debug Captures Dropped (rate)",
-        [(f'sum {grp("receiver", "reason")} (rate({b.sel_pipeline("opnsense_exporter_logs_debug_capture_dropped_total")}[{RATE}]))',
+        [(f'sum {grp("receiver", "reason")} (rate({sel("opnsense_exporter_logs_debug_capture_dropped_total")}[{RATE}]))',
           "{{receiver}} {{reason}}")],
         unit="short",
         desc="opnsense_exporter_logs_debug_capture_dropped_total: capture entries dropped rather "

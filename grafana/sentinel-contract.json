@@ -3,8 +3,8 @@
     "total": 101,
     "by_scope": {
       "collector": 96,
-      "self_labeled": 3,
-      "target_join": 2,
+      "self_labeled": 4,
+      "target_join": 1,
       "global": 0
     },
     "sentinels": [
@@ -801,9 +801,9 @@
       {
         "name": "has_otlp",
         "datasource": "prometheus",
-        "scope": "target_join",
+        "scope": "self_labeled",
         "presence": "existence",
-        "query": "query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+        "query": "label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "OPNsense Exporter Health > Diagnostics > OTLP Delivery Health"
         ]

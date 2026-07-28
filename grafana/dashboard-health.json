@@ -738,7 +738,7 @@
               "name": "${datasource}"
             },
             "spec": {
-              "query": "query_result(opnsense_exporter_otlp_enabled * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
+              "query": "label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
               "refId": "has_otlp"
             }
           },

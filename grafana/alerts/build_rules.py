@@ -44,16 +44,14 @@ from uids import RUNBOOK_URL, runbook_url  # noqa: E402
 # than one firewall is scraped. This is the documented exception list (style matches
 # grafana/annotations.py's NOT_ANNOTATED): a rule goes here only when its own source
 # metric structurally cannot carry the label, never as a shortcut to skip writing it in.
-SUMMARY_INSTANCE_EXEMPT = {
-    "opnsense-otlp-delivery-failing":
-        "opnsense_exporter_otlp_consecutive_failures is a bare process-wide "
-        "prometheus.Gauge registered directly against telemetry.Start's raw registry "
-        "(internal/telemetry/delivery.go:77), never wrapped by logship.SelfMetricsRegisterer "
-        "the way opnsense_exporter_logs_* is (internal/logship/pipeline.go:88-89) - so it "
-        "carries no opnsense_instance label to put in the summary at all. This is the same "
-        "identity gap #466 tracks for the OTLP dashboard panels; fixing the summary would "
-        "require the same registry-wrapping fix as that issue, not a runbook-side change.",
-}
+#
+# EMPTY, and that is the finding. Its only entry was opnsense-otlp-delivery-failing,
+# exempted because opnsense_exporter_otlp_consecutive_failures was registered bare
+# against telemetry.Start's raw registry and carried no opnsense_instance to put in a
+# summary. #466 fixed the registration rather than the summary, so the exemption
+# became false and was removed. Keep the mechanism: the next family that genuinely
+# cannot carry the label needs somewhere to say so with a reason.
+SUMMARY_INSTANCE_EXEMPT: dict = {}
 
 # Each alert: name(slug), title, A (value query), cond (op, params), for_min, severity,
 # summary, description. op in {gt, lt, within_range, outside_range}.
@@ -995,7 +993,7 @@ RULES = [
          selfhealth=True,
          A="opnsense_exporter_otlp_consecutive_failures", op="gt", params=[0, 0],
          for_min=15, severity="warning",
-         summary="OPNsense exporter OTLP metric delivery failing",
+         summary="OPNsense exporter OTLP metric delivery failing ({{ $labels.opnsense_instance }})",
          description="Every OTLP metric export has failed back-to-back for 15m "
                      "({{ $values.A.Value | printf \"%.0f\" }} consecutive failures) — no metrics are "
                      "reaching the OTLP backend. READ THIS BEFORE RELYING ON IT: an exporter cannot ship "

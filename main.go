@@ -1014,10 +1014,20 @@ func main() {
 	// the export interval could bound the OTLP-bridge gather.)
 	var stopOTLP func()
 	if otlpEnabled {
-		// selfMetricsRegistry also receives the OTLP delivery-health series (#388):
-		// exports_total, consecutive_failures and last_success_timestamp. Those are
-		// the only local evidence that push is actually reaching the backend — Start
-		// performs no network I/O, so a successful Start proves nothing at all.
+		// The OTLP delivery-health series (#388) — exports_total,
+		// consecutive_failures, last_success_timestamp and enabled — are registered
+		// through logSelfMetricsRegisterer, NOT bare onto selfMetricsRegistry. They
+		// are the only local evidence that push is actually reaching the backend
+		// (Start performs no network I/O, so a successful Start proves nothing), and
+		// evidence with no instance identity is useless on a multi-firewall stack.
+		//
+		// This was the raw registry until #466. The family carried no
+		// opnsense_instance label, so the four OTLP delivery panels — which filter on
+		// it with `=~`, and `=~` never matches an absent label — were structurally
+		// guaranteed to render empty for every instance selection.
+		//
+		// selfMetricsRegistry itself is still the GATHERER below: gathering reads
+		// whatever was registered, wrapper or not.
 		// Default: one gatherer set, one reader, exactly as before.
 		otlpGatherers := []prometheus.Gatherer{selfMetricsRegistry, metricsRecorder.Tee(collectorRegistry)}
 		var fastGatherers []prometheus.Gatherer
@@ -1050,7 +1060,7 @@ func main() {
 			)
 		}
 
-		shutdown, terr := telemetry.Start(context.Background(), otlpGatherers, otlpCfg, version, instanceLabel, selfMetricsRegistry, logger, fastGatherers...)
+		shutdown, terr := telemetry.Start(context.Background(), otlpGatherers, otlpCfg, version, instanceLabel, logSelfMetricsRegisterer, logger, fastGatherers...)
 		if terr != nil {
 			// Fatal, not logged-and-continued (#388). The operator explicitly asked
 			// for OTLP; starting anyway would leave a permanently dead push pipeline

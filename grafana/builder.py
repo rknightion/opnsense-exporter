@@ -809,11 +809,6 @@ class Builder:
             spec["placement"] = placement
         self.variables.append({"kind": "TextVariable", "spec": spec})
 
-    @staticmethod
-    def sel_pipeline(metric: str, more: str = "") -> str:
-        """Return a log-pipeline selector scoped to the stable instance identity."""
-        return sel(metric, more)
-
     # ---- layout ----------------------------------------------------------
     def _place(self, names: list) -> dict:
         items, x, y, rowh = [], 0, 0, 0
