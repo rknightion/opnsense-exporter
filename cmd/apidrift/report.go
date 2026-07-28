@@ -71,9 +71,24 @@ func codeList(names []string) string {
 // renderReport builds the markdown drift report. It prints endpoint names,
 // key paths, JSON type names and HTTP statuses ONLY — never response values,
 // because the report lands in a public issue.
+// generation names the OPNsense release channel this run probed, e.g.
+// "devel 27.1.a_40" or "release 26.7.1_1". It is stamped into the report
+// heading so two boxes' findings are never confused for one another (#490).
+//
+// The support window is current + previous stable, so a key that is new on the
+// nightly box is NOT yet real for anyone on a release, and a key removed there
+// must still be tolerated while a release in the window sends it. Without the
+// stamp a reader cannot tell which of those they are looking at. Empty renders
+// the historical unlabelled heading.
+var generation string
+
 func renderReport(results []probeResult, exempt map[string]string) string {
 	var b strings.Builder
-	b.WriteString("## OPNsense live-box schema canary\n\n")
+	if generation != "" {
+		fmt.Fprintf(&b, "## OPNsense live-box schema canary — %s\n\n", generation)
+	} else {
+		b.WriteString("## OPNsense live-box schema canary\n\n")
+	}
 
 	var mismatched, missing, unknown, unknownNested, absentUnexpected, absentGated, errored, skipped, unverified, clean int
 	gated := pluginGatedSet()

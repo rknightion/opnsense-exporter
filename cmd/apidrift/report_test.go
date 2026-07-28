@@ -260,3 +260,37 @@ func TestRenderReportCleanRun(t *testing.T) {
 		t.Errorf("clean report should count clean endpoints:\n%s", report)
 	}
 }
+
+// TestRenderReport_GenerationStamp pins #490's core requirement: a report must
+// say which OPNsense generation produced it. Two boxes are probed — the nightly
+// testbed and the production release box — and their findings differ
+// structurally (the release box 404s ~56 endpoints the testbed answers, and
+// carries real SMART data the VM cannot). An unlabelled report leaves a reader
+// unable to tell "new upstream" from "new on nightlies only", which is the
+// distinction the support window turns on.
+func TestRenderReport_GenerationStamp(t *testing.T) {
+	t.Cleanup(func() { generation = "" })
+
+	generation = "release 26.7.1_1"
+	got := renderReport([]probeResult{{Endpoint: "healthCheck"}}, nil)
+	if !strings.Contains(got, "## OPNsense live-box schema canary — release 26.7.1_1") {
+		t.Errorf("heading missing the generation stamp:\n%s", firstLine(got))
+	}
+
+	// Unset must render the historical heading rather than a dangling separator.
+	generation = ""
+	got = renderReport([]probeResult{{Endpoint: "healthCheck"}}, nil)
+	if !strings.Contains(got, "## OPNsense live-box schema canary\n") {
+		t.Errorf("unlabelled heading not preserved:\n%s", firstLine(got))
+	}
+	if strings.Contains(got, "—") {
+		t.Errorf("unset generation left a separator in the heading:\n%s", firstLine(got))
+	}
+}
+
+func firstLine(s string) string {
+	if i := strings.Index(s, "\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}

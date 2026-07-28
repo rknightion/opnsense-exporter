@@ -32,7 +32,9 @@ func main() {
 	out := flag.String("out", "", "write the markdown report to this file as well as stdout")
 	captures := flag.String("captures", "", "runner-local scratch dir for raw captures (never commit or upload)")
 	exemptionsPath := flag.String("exemptions", "opnsense/testdata/schemas/exemptions.json", "committed known-optional-paths file")
+	gen := flag.String("generation", os.Getenv("OPNSENSE_CANARY_GENERATION"), "OPNsense generation label for the report heading, e.g. \"release 26.7.1_1\" (env OPNSENSE_CANARY_GENERATION)")
 	flag.Parse()
+	generation = *gen
 
 	resolvedKey, err := options.ResolveOPSAPIKey(*apiKey)
 	if err != nil {
