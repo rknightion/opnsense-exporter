@@ -10,8 +10,10 @@ the whole label set — the live dashboard rendered `Top Applications` as
 
 The value and the ordering were right; the key column was a truncated label dump
 with the instance repeated inside every row. The fix is a `labelsToFields` split
-(labels become real columns) followed by a `groupBy` that re-does the same sum
-the reduce was doing, then an `organize` that titles and orders the three columns.
+(labels become real columns) then an `organize` that titles and orders the three
+columns. #479 later made these queries INSTANT and removed the `groupBy` that sat
+between the two: it aggregated a range query's many points per series, which an
+instant query does not have, and it silently dropped the value column.
 
 What this file pins, in contract terms rather than by importing the builder's
 constants:
@@ -66,24 +68,24 @@ def transform(panel, group):
 def rendered_columns(panel):
     """The column names the table panel will show, in display order.
 
-    Derived the way Grafana derives them: groupBy emits one field per group-by
-    key plus `<field> (<agg>)` per aggregation, organize then renames and orders.
+    Derived the way Grafana derives them. `labelsToFields` (columns mode) turns
+    each frame's labels into fields and merges the frames, so the field set is
+    the ranked label, the instance label, and the datasource's own `Value` —
+    plus `Time`, which organize drops. organize then renames and orders.
+
+    There is deliberately no aggregation step to model (#479): an instant query
+    returns one point per series, so nothing needs summing.
     """
-    grouped = transform(panel, "groupBy")
     organize = transform(panel, "organize")
-    assert grouped is not None, "no groupBy transform"
+    assert transform(panel, "labelsToFields") is not None, "no labelsToFields transform"
     assert organize is not None, "no organize transform"
 
-    fields = []
-    for name, cfg in grouped["fields"].items():
-        if cfg.get("operation") == "groupby":
-            fields.append(name)
-        elif cfg.get("operation") == "aggregate":
-            fields.extend(f"{name} ({agg})" for agg in cfg["aggregations"])
-
-    excluded = organize.get("excludeByName", {})
-    fields = [f for f in fields if not excluded.get(f)]
     index = organize.get("indexByName", {})
+    excluded = organize.get("excludeByName", {})
+    # Only one of the two value spellings is ever a real field: `merge` emits
+    # "Value #A". Both are configured so neither can regress, so the unrendered
+    # one is dropped here rather than counted as a fourth column.
+    fields = [f for f in index if not excluded.get(f) and f != "Value"]
     fields.sort(key=lambda f: index.get(f, len(index)))
     return [organize.get("renameByName", {}).get(f, f) for f in fields]
 
@@ -132,19 +134,36 @@ class LokiTableHelperTest(unittest.TestCase):
         self.assertIsNone(transform(panel, "reduce"))
         self.assertNotIn("seriesToRows", str(transformations(panel)))
 
-    def test_labels_are_split_into_fields_before_grouping(self):
+    def test_labels_are_split_into_fields_before_organizing(self):
         panel = self._panel()
         groups = [t["group"] for t in transformations(panel)]
         self.assertIn("labelsToFields", groups)
-        self.assertLess(groups.index("labelsToFields"), groups.index("groupBy"))
-        self.assertLess(groups.index("groupBy"), groups.index("organize"))
+        self.assertLess(groups.index("labelsToFields"), groups.index("organize"))
 
-    def test_the_sum_the_reduce_used_to_do_is_still_done(self):
-        """Presentation-only: the total per row is still a sum over the range."""
-        grouped = transform(self._panel(), "groupBy")
-        aggregated = {n: c for n, c in grouped["fields"].items()
-                      if c.get("operation") == "aggregate"}
-        self.assertEqual([c["aggregations"] for c in aggregated.values()], [["sum"]])
+    def test_no_aggregation_step_survives(self):
+        """#479: `groupBy` here looked its target field up by DISPLAY name, and the
+        Loki datasource stamps displayNameFromDS with the serialised label set, so
+        it never found "Value" and silently dropped the value column — the table
+        rendered its key and instance columns with no number at all. An instant
+        query returns one point per series, so there is nothing to aggregate."""
+        panel = self._panel()
+        self.assertIsNone(transform(panel, "groupBy"))
+        self.assertIsNone(transform(panel, "reduce"))
+
+    def test_the_value_column_is_renamed_under_its_merged_field_name(self):
+        """`merge` suffixes the value field with its refId, so the field reaching
+        organize is "Value #A". Renaming only "Value" leaves the column titled
+        "Value #A" AND silently breaks the sort, which resolves "Total" by display
+        name and falls back to alphabetical order when it does not match — the
+        table then looks fine while no longer being ranked at all."""
+        organize = transform(self._panel(), "organize")
+        self.assertEqual(organize["renameByName"]["Value #A"], VALUE_COLUMN)
+        self.assertEqual(organize["renameByName"]["Value"], VALUE_COLUMN)
+
+    def test_the_time_column_is_dropped(self):
+        """One point per series, all stamped identically — a wasted column."""
+        organize = transform(self._panel(), "organize")
+        self.assertTrue(organize["excludeByName"]["Time"])
 
     def test_the_default_sort_column_exists(self):
         panel = self._panel()
@@ -270,3 +289,53 @@ class LokiTableIsAnInstantQueryTest(unittest.TestCase):
                     # passes on every input. Caught by mutation-testing this check.
                     for n in re.findall(r"topk(?:\s+by\s*\([^)]*\))?\s*\((\d+),", expr):
                         self.assertLessEqual(int(n), 250, f"{title} ranks {n}")
+
+
+class UnboundedLabelTablesPinTheirOwnWindowTest(unittest.TestCase):
+    """#479: the WINDOW is the cardinality lever, not `topk`.
+
+    Loki's max_query_series (500) is enforced on an intermediate of the query,
+    and `topk` prunes only the result — so the rank depth has no bearing on
+    whether the query fails. Measured through Grafana's own query path against
+    the live tenant, on the DNS-name table: N=25 and N=200 both return data at
+    1h and both fail at 3h and 6h. Only the range moves it.
+
+    A table ranking an unbounded label must therefore pin its own window, or it
+    breaks the moment the dashboard is set wider than the cliff — silently, as
+    "No data" with a query error rather than as a partial result.
+    """
+
+    UNBOUNDED = {
+        "Top DNS Queries",            # DNS names
+        "Top TLS Server Names (SNI)",  # SNI values
+        "Top JA3 Fingerprints",       # JA3 hashes
+        "Top URIs",                   # request paths
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panels = loki_table_panels(build_dashboard.build_all())
+
+    def test_every_unbounded_label_table_pins_a_window(self):
+        seen = set()
+        for title, panel in self.panels:
+            if title not in self.UNBOUNDED:
+                continue
+            seen.add(title)
+            with self.subTest(panel=title):
+                qopts = panel["spec"]["data"]["spec"]["queryOptions"]
+                self.assertIn("timeFrom", qopts,
+                              f"{title} ranks an unbounded label but follows the "
+                              "dashboard picker, so it breaks past the cliff")
+        self.assertEqual(seen, self.UNBOUNDED,
+                         "a pinned table was renamed — update UNBOUNDED, do not "
+                         "let this guard silently check nothing")
+
+    def test_bounded_label_tables_are_left_on_the_dashboard_picker(self):
+        """The pin is a cost, not a default: it decouples the panel from the time
+        picker, which is only worth paying where the query would otherwise fail."""
+        for title, panel in self.panels:
+            if title in self.UNBOUNDED:
+                continue
+            with self.subTest(panel=title):
+                self.assertNotIn("timeFrom", panel["spec"]["data"]["spec"]["queryOptions"])

@@ -59,6 +59,18 @@ ZEN_WEB = loki_sel('opnsense_source="zenarmor", opnsense_subsystem="web"')
 # So this is fixing enumeration, not promoting a Loki label — #473 assessed and
 # rejected promoting device_name itself (not a closed set; live values include DNS
 # names like Plex's).
+# Tables ranking an UNBOUNDED label pin their own window (#479). Loki's
+# max_query_series (500) is enforced on an intermediate of the query, so `topk`
+# does not bound it and the rank depth is irrelevant — measured identical at
+# N=25 and N=200. Only the RANGE moves it: the DNS-name table returns data at 1h
+# and fails at 3h and 6h, whichever N is used. These four therefore decouple from
+# the dashboard picker rather than break on it.
+#
+# 1h is a measured fit for this box's traffic, not a universal constant. If a
+# table starts returning "No data" with a query error, this is the number to
+# lower — the cliff moves with log volume, not with anything in the code.
+UNBOUNDED_LABEL_WINDOW = "1h"
+
 CLIENT_VAR = "zenarmor_client"
 CLIENT_FILTER = f'| device_name=~"${CLIENT_VAR}"'
 CLIENT_VAR_QUERY = ('label_values(opnsense_log_events_zenarmor_device_info'
@@ -264,10 +276,12 @@ def build(b: Builder):
         [f'topk {loki_grp()} (200, sum {loki_grp("ja3")} (count_over_time({ZEN_TLS} '
          '| ja3!="" [$__range])))'],
         field_title="JA3 Fingerprint",
-        desc="Top 200 TLS client fingerprints (JA3) seen, tls family only. JA3 identifies the "
+        desc="Top 200 TLS client fingerprints (JA3) seen over this panel's own 1h window, tls "
+             "family only. JA3 identifies the "
              "TLS client implementation, not the endpoint -- many distinct devices sharing a "
              "library/browser will share a fingerprint, so this is a coarse grouping, not a "
              "precise device count.",
+        time_from=UNBOUNDED_LABEL_WINDOW
     )
 
     # --- Row D: DNS (Loki, dns family) -------------------------------------
@@ -283,9 +297,10 @@ def build(b: Builder):
         [f'topk {loki_grp()} (200, sum {loki_grp("query")} (count_over_time({ZEN_DNS} '
          f'{CLIENT_FILTER} | query!="" [$__range])))'],
         field_title="Query",
-        desc="Top 200 DNS query names Zenarmor saw, over the selected range. `query` is "
+        desc="Top 200 DNS query names Zenarmor saw, over this panel's own 1h window. `query` is "
              "structured metadata, so this is a table rather than a metric. High cardinality "
              "by nature — this is why it is not a metric.",
+        time_from=UNBOUNDED_LABEL_WINDOW
     )
     zen_dns_rcodes = b.loki_ts(
         "DNS Response Codes",
@@ -323,8 +338,10 @@ def build(b: Builder):
         [f'topk {loki_grp()} (200, sum {loki_grp("uri")} (count_over_time({ZEN_WEB} '
          f'{CLIENT_FILTER} {NOT_SELF} | uri!="" [$__range])))'],
         field_title="URI",
-        desc="Top 200 request URIs on plaintext HTTP, excluding the exporter's own ingest "
+        desc="Top 200 request URIs on plaintext HTTP over this panel's own 1h window, "
+             "excluding the exporter's own ingest "
              "endpoint. Only unencrypted traffic can be seen at this level.",
+        time_from=UNBOUNDED_LABEL_WINDOW
     )
     zen_web_agents = b.loki_table(
         "Top User Agents",
@@ -364,9 +381,11 @@ def build(b: Builder):
         [f'topk {loki_grp()} (200, sum {loki_grp("server_name")} (count_over_time({ZEN_TLS} '
          f'{CLIENT_FILTER} | server_name!="" [$__range])))'],
         field_title="Server Name",
-        desc="Top 200 TLS server names (SNI) across ALL verdicts — where the network goes, "
+        desc="Top 200 TLS server names (SNI) across ALL verdicts, over this panel's own 1h "
+             "window — where the network goes, "
              "not what policy stopped. Top Blocked Servers above is the blocked-only "
              "counterpart; a name high here and absent there is simply allowed traffic.",
+        time_from=UNBOUNDED_LABEL_WINDOW
     )
     zen_dst_countries = b.loki_table(
         "Destination Countries",

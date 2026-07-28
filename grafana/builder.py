@@ -271,11 +271,14 @@ class Builder:
         }
 
     def _panel(self, title, group, viz_spec, queries, desc="",
-               transformations=None, interval="30s", max_dp=None) -> str:
+               transformations=None, interval="30s", max_dp=None,
+               time_from=None) -> str:
         name, pid = self._next()
         qopts = {"interval": interval}
         if max_dp:
             qopts["maxDataPoints"] = max_dp
+        if time_from:
+            qopts["timeFrom"] = time_from
         self.elements[name] = {
             "kind": "Panel",
             "spec": {
@@ -597,6 +600,11 @@ class Builder:
         self.size[n] = (w, h)
         return n
 
+    # The field `merge` produces for a one-query Loki table: the datasource names
+    # the value field "Value" and merge appends the refId, which loki_table pins to
+    # "A" by refusing more than one expression.
+    LOKI_TABLE_VALUE_FIELD = "Value #A"
+
     # The column name every Loki table gives the appliance-identity label, matching
     # the project's convention on the Prometheus tables (Build Info, NTP peers).
     LOKI_TABLE_INSTANCE_COLUMN = "Instance"
@@ -633,7 +641,7 @@ class Builder:
         return labels.pop()
 
     def loki_table(self, title, exprs, field_title, desc="", w=24, h=10,
-                   sort_by="Total", sort_desc=True) -> str:
+                   sort_by="Total", sort_desc=True, time_from=None) -> str:
         """exprs = a one-element list holding the LogQL string, queried as a RANGE
         query — the standard "topk over range" shape for high-cardinality log
         fields. `queryOptions.interval="5m"` is a cardinality guard on wide time
@@ -657,11 +665,16 @@ class Builder:
         2. `merge` is belt-and-braces: labelsToFields documents an internal merge,
            and this is a no-op on the single frame that leaves it. Without a merge
            a per-frame `groupBy` would emit 20 one-row frames.
-        3. `groupBy` re-does the sum the reduce was doing, now keyed on the ranked
-           label and the instance. PRESENTATION-ONLY: the query still ranks and
-           aggregates exactly what it did before; this only decides which cells
-           the same numbers land in.
-        4. `organize` titles the three columns and fixes their order.
+        3. `organize` titles the three columns, fixes their order, and drops Time.
+
+        There is deliberately NO aggregation step (#479). An earlier version ran
+        `groupBy` here to re-sum the value, which a RANGE query needed because it
+        returns many points per series. An instant query returns exactly one, so
+        the aggregation is redundant — and it actively broke the table: `groupBy`
+        looks its target field up by display name, and the Loki datasource stamps
+        `displayNameFromDS` with the serialised label set, so it found no field
+        called "Value" and silently dropped the value column. The table rendered
+        with its key and instance columns and no number at all.
         """
         if len(exprs) != 1:
             raise ValueError(
@@ -681,24 +694,27 @@ class Builder:
         # anyway: one aggregate over the selected range, not a time series.
         queries = [self._loki_query(e, ref=chr(65 + i), instant=True)
                    for i, e in enumerate(exprs)]
-        value_out = "Value (sum)"
         transformations = [
             {"kind": "Transformation", "group": "labelsToFields",
              "spec": {"options": {"mode": "columns"}}},
             {"kind": "Transformation", "group": "merge", "spec": {"options": {}}},
-            {"kind": "Transformation", "group": "groupBy", "spec": {"options": {"fields": {
-                label: {"aggregations": [], "operation": "groupby"},
-                LOKI_INSTANCE_LABEL: {"aggregations": [], "operation": "groupby"},
-                "Value": {"aggregations": ["sum"], "operation": "aggregate"},
-            }}}},
             {"kind": "Transformation", "group": "organize", "spec": {"options": {
-                "excludeByName": {},
+                # Time carries nothing for an instant query — one point per series,
+                # all stamped identically — and rendering it wastes a column.
+                "excludeByName": {"Time": True},
+                # `merge` suffixes the value field with its refId, so the field is
+                # "Value #A", not "Value" — renaming only "Value" leaves the column
+                # titled "Value #A" AND breaks the sort, which targets "Total" by
+                # display name and silently falls back to alphabetical when it does
+                # not resolve. Both spellings are listed so neither can regress.
                 "renameByName": {
                     label: field_title,
                     LOKI_INSTANCE_LABEL: self.LOKI_TABLE_INSTANCE_COLUMN,
-                    value_out: self.LOKI_TABLE_VALUE_COLUMN,
+                    self.LOKI_TABLE_VALUE_FIELD: self.LOKI_TABLE_VALUE_COLUMN,
+                    "Value": self.LOKI_TABLE_VALUE_COLUMN,
                 },
-                "indexByName": {label: 0, LOKI_INSTANCE_LABEL: 1, value_out: 2},
+                "indexByName": {label: 0, LOKI_INSTANCE_LABEL: 1,
+                                self.LOKI_TABLE_VALUE_FIELD: 2, "Value": 2},
             }}},
         ]
         opts = {"showHeader": True, "cellHeight": "sm",
@@ -711,7 +727,8 @@ class Builder:
                     "overrides": []},
                 "options": opts}
         n = self._panel(title, "table", spec, queries, desc=desc,
-                        transformations=transformations, interval="5m")
+                        transformations=transformations, interval="5m",
+                        time_from=time_from)
         self.size[n] = (w, h)
         return n
 

@@ -75517,43 +75517,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "server_name": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "server_name": "Server Name",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "server_name": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -75664,43 +75644,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "device_name": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "device_name": "Device",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "device_name": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -75811,43 +75771,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "dst_geoip_country_name": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "dst_geoip_country_name": "Country",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "dst_geoip_country_name": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -75903,7 +75843,7 @@
         "spec": {
           "id": 690,
           "title": "Top JA3 Fingerprints",
-          "description": "Top 200 TLS client fingerprints (JA3) seen, tls family only. JA3 identifies the TLS client implementation, not the endpoint -- many distinct devices sharing a library/browser will share a fingerprint, so this is a coarse grouping, not a precise device count.",
+          "description": "Top 200 TLS client fingerprints (JA3) seen over this panel's own 1h window, tls family only. JA3 identifies the TLS client implementation, not the endpoint -- many distinct devices sharing a library/browser will share a fingerprint, so this is a coarse grouping, not a precise device count.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75937,7 +75877,8 @@
                 }
               ],
               "queryOptions": {
-                "interval": "5m"
+                "interval": "5m",
+                "timeFrom": "1h"
               },
               "transformations": [
                 {
@@ -75958,43 +75899,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "ja3": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "ja3": "JA3 Fingerprint",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "ja3": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -76050,7 +75971,7 @@
         "spec": {
           "id": 691,
           "title": "Top DNS Queries",
-          "description": "Top 200 DNS query names Zenarmor saw, over the selected range. `query` is structured metadata, so this is a table rather than a metric. High cardinality by nature \u2014 this is why it is not a metric.",
+          "description": "Top 200 DNS query names Zenarmor saw, over this panel's own 1h window. `query` is structured metadata, so this is a table rather than a metric. High cardinality by nature \u2014 this is why it is not a metric.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76073,7 +75994,7 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (600, sum by (service_instance_id, query) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | query!=\"\" [$__range])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, query) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | query!=\"\" [$__range])))",
                         "refId": "A",
                         "queryType": "instant",
                         "instant": true,
@@ -76084,7 +76005,8 @@
                 }
               ],
               "queryOptions": {
-                "interval": "5m"
+                "interval": "5m",
+                "timeFrom": "1h"
               },
               "transformations": [
                 {
@@ -76105,43 +76027,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "query": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "query": "Query",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "query": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -76342,43 +76244,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "domain_category": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "domain_category": "Category",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "domain_category": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -76489,43 +76371,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "host": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "host": "Host",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "host": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -76581,7 +76443,7 @@
         "spec": {
           "id": 695,
           "title": "Top URIs",
-          "description": "Top 200 request URIs on plaintext HTTP, excluding the exporter's own ingest endpoint. Only unencrypted traffic can be seen at this level.",
+          "description": "Top 200 request URIs on plaintext HTTP over this panel's own 1h window, excluding the exporter's own ingest endpoint. Only unencrypted traffic can be seen at this level.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76615,7 +76477,8 @@
                 }
               ],
               "queryOptions": {
-                "interval": "5m"
+                "interval": "5m",
+                "timeFrom": "1h"
               },
               "transformations": [
                 {
@@ -76636,43 +76499,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "uri": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "uri": "URI",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "uri": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -76783,43 +76626,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "user_agent": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "user_agent": "User Agent",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "user_agent": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -77020,43 +76843,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "app_name": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "app_name": "Application",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "app_name": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -77112,7 +76915,7 @@
         "spec": {
           "id": 699,
           "title": "Top TLS Server Names (SNI)",
-          "description": "Top 200 TLS server names (SNI) across ALL verdicts \u2014 where the network goes, not what policy stopped. Top Blocked Servers above is the blocked-only counterpart; a name high here and absent there is simply allowed traffic.",
+          "description": "Top 200 TLS server names (SNI) across ALL verdicts, over this panel's own 1h window \u2014 where the network goes, not what policy stopped. Top Blocked Servers above is the blocked-only counterpart; a name high here and absent there is simply allowed traffic.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77146,7 +76949,8 @@
                 }
               ],
               "queryOptions": {
-                "interval": "5m"
+                "interval": "5m",
+                "timeFrom": "1h"
               },
               "transformations": [
                 {
@@ -77167,43 +76971,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "server_name": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "server_name": "Server Name",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "server_name": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
@@ -77314,43 +77098,23 @@
                 },
                 {
                   "kind": "Transformation",
-                  "group": "groupBy",
-                  "spec": {
-                    "options": {
-                      "fields": {
-                        "dst_geoip_country_name": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "service_instance_id": {
-                          "aggregations": [],
-                          "operation": "groupby"
-                        },
-                        "Value": {
-                          "aggregations": [
-                            "sum"
-                          ],
-                          "operation": "aggregate"
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "kind": "Transformation",
                   "group": "organize",
                   "spec": {
                     "options": {
-                      "excludeByName": {},
+                      "excludeByName": {
+                        "Time": true
+                      },
                       "renameByName": {
                         "dst_geoip_country_name": "Country",
                         "service_instance_id": "Instance",
-                        "Value (sum)": "Total"
+                        "Value #A": "Total",
+                        "Value": "Total"
                       },
                       "indexByName": {
                         "dst_geoip_country_name": 0,
                         "service_instance_id": 1,
-                        "Value (sum)": 2
+                        "Value #A": 2,
+                        "Value": 2
                       }
                     }
                   }
