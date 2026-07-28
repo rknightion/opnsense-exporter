@@ -1,6 +1,21 @@
 {
   "hasyncVersion": {
-    "note": "#459 audited every endpoint sharing OSPFv3's `Response json.RawMessage` envelope pattern and left this one unwrapped deliberately, not for lack of a body type to point at. hasyncVersionResponse.Response is genuinely polymorphic on the wire: an object ({\"firmware\":{...}}) only when HA is configured and the peer answers; a bare JSON boolean (`false`) on the overwhelming majority of installs (single-node, HA unconfigured — see HasyncStatusController.php's exception path); JSON null on some error paths. Reflecting through it as an object would misdescribe the common case as a schema conflict rather than widen an unverified path, which is the opposite of what #459 is for. PRUNE TRIGGER: if a future OPNsense release collapses this to one shape, or if per-field polymorphic kinds are ever supported by FieldKind, register an envelopeDescent here like the other FRR/Tor endpoints."
+    "note": "#459 audited every endpoint sharing OSPFv3's `Response json.RawMessage` envelope pattern and left this one unwrapped deliberately, not for lack of a body type to point at. hasyncVersionResponse.Response is genuinely polymorphic on the wire: an object ({\"firmware\":{...}}) only when HA is configured and the peer answers; a bare JSON boolean (`false`) on the overwhelming majority of installs (single-node, HA unconfigured — see HasyncStatusController.php's exception path); JSON null on some error paths. Reflecting through it as an object would misdescribe the common case as a schema conflict rather than widen an unverified path, which is the opposite of what #459 is for. PRUNE TRIGGER: if a future OPNsense release collapses this to one shape, or if per-field polymorphic kinds are ever supported by FieldKind, register an envelopeDescent here like the other FRR/Tor endpoints.",
+    "required": [
+      {
+        "path": "response",
+        "opaque": true,
+        "metrics": [
+          "opnsense_hasync_remote_reachable",
+          "opnsense_hasync_remote_version_match",
+          "opnsense_hasync_remote_version_info",
+          "opnsense_hasync_remote_services_total",
+          "opnsense_hasync_remote_service_running"
+        ],
+        "exercise": "Two OPNsense boxes on the isolated testbed bridge with hasync pointed at each other (System > High Availability > Settings: synchronize-to-IP = the peer, plus a shared XML-RPC account holding page-all on BOTH nodes - the account is authenticated on the box being CALLED, so it has to exist on both or the endpoint answers {\"response\":\"Authentication failed\"} rather than throwing). This endpoint makes a LIVE XML-RPC call to the peer on every poll, so the peer must be up: stop the second VM, or drop its bridge link, and \"response\" disappears entirely - the controller returns the exception envelope {\"status\":\"error\",\"message\":\"fetch error. remote host down? ...\"} instead. Boot the second VM before treating a regression here as drift.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460), the first time this endpoint has ever answered from a real HA peer. Both boxes returned a populated response object carrying base/firmware/kernel sub-objects, with firmware holding the peer's version and _my_version holding the local one. BOTH branches of the comparison were observed: the peer was first an identical clone (match) and was then switched to the previous stable release channel while the first box stayed on devel (mismatch), so opnsense_hasync_remote_version_match was seen as 1 and as 0. Stays flagged opaque because hasyncVersionResponse.Response is json.RawMessage -> KindAny and is deliberately NOT unwrapped (see the note below), so the canary can only ever prove the key exists - the inner field evidence is this note plus the hasync_test.go fixtures, not a machine assertion."
+      }
+    ]
   },
   "quaggaOspfInterface": {
     "note": "#459 audited every endpoint sharing OSPFv3's `Response json.RawMessage` envelope pattern; this one is deliberately left as a bare envelope rather than unwrapped. frr.go's FetchFRROSPFInterfaces decodes TWO candidate shapes for the same endpoint: FRR>=8 wraps per-interface data in {\"interfaces\": {...}} (frrOSPFInterfaceWrapped, confirmed live against this box's FRR 10.3), while older FRR returns the flat per-interface map directly at the top level (frrOSPFInterfaceEntry map) per the plugin's own doc comments — but that flat shape has never itself been confirmed live. Registering an envelopeDescent requires naming ONE Inner type; picking the wrapped shape would silently assert the flat shape doesn't exist, and picking the flat shape would misdescribe the one shape actually verified. PRUNE TRIGGER: confirm which shape(s) a live box in the support window actually sends (dev-box FRR is 10.3, already wrapped-only), then register an envelopeDescent — same treatment as quaggaOspfv3Interface below, which has no such ambiguity."
@@ -104,7 +119,7 @@
           "opnsense_netbird_peer_last_handshake_timestamp_seconds",
           "opnsense_netbird_peer_latency_seconds"
         ],
-        "exercise": "Requires the dev box enrolled into a NetBird tenant AND at least one OTHER peer visible to it \u2014 a peer never lists itself, so a single-peer tenant yields peers.total 0 and an empty details[]. A second netstack-mode peer runs on the dev box for this purpose (NB_USE_NETSTACK_MODE=true, state dir /var/db/netbird-canary2, its own daemon socket), which creates no host interface or routes. It is started BY HAND and does NOT survive a reboot: if these paths regress to unverified, restart that second peer before treating it as drift.",
+        "exercise": "Requires the dev box enrolled into a NetBird tenant AND at least one OTHER peer visible to it — a peer never lists itself, so a single-peer tenant yields peers.total 0 and an empty details[]. A second netstack-mode peer runs on the dev box for this purpose (NB_USE_NETSTACK_MODE=true, state dir /var/db/netbird-canary2, its own daemon socket), which creates no host interface or routes. It is started BY HAND and does NOT survive a reboot: if these paths regress to unverified, restart that second peer before treating it as drift.",
         "verified": "2026-07-25, live on the dev box in both the Connected and lazy-connection Idle states. The peer label on every netbird_peer_* series comes from this field. NOT REBOOT-DURABLE: the second peer that makes details[] non-empty is hand-started, so if these paths regress to unverified, restart it before treating it as drift - see the exercise recipe."
       },
       {
@@ -156,7 +171,7 @@
         "verified": "2026-07-25, live in both Connected and Idle states; the wire value is a plain integer nanosecond count, as netbird's uninstrumented time.Duration implied."
       }
     ],
-    "note": "RESOLVED 2026-07-25. Every field of netbirdPeerDetail was source-derived from netbirdio/netbird client/status/status.go and unobserved (#211); the dev box is now enrolled and all 22 paths in the netbirdStatus golden validated live (22 verified, 0 mismatch, 0 unverified) in both the Connected and Idle states, so every source-derived guess proved correct. The entries stay in the ledger as required BECAUSE the enrollment is not reboot-durable \u2014 a regression to unverified must read as \"restart the second canary peer\", not as drift. Never record the setup key, API token, tenant name, peer FQDNs, netbird IPs or public keys here: the recipe describes the required STATE only."
+    "note": "RESOLVED 2026-07-25. Every field of netbirdPeerDetail was source-derived from netbirdio/netbird client/status/status.go and unobserved (#211); the dev box is now enrolled and all 22 paths in the netbirdStatus golden validated live (22 verified, 0 mismatch, 0 unverified) in both the Connected and Idle states, so every source-derived guess proved correct. The entries stay in the ledger as required BECAUSE the enrollment is not reboot-durable — a regression to unverified must read as \"restart the second canary peer\", not as drift. Never record the setup key, API token, tenant name, peer FQDNs, netbird IPs or public keys here: the recipe describes the required STATE only."
   },
   "ntpGPS": {
     "stateOptional": [
@@ -234,5 +249,180 @@
         "pruneTrigger": "delete when the canary runs on real hardware, or when the hypervisor passes a thermal zone through to the guest"
       }
     ]
+  },
+  "hasyncServices": {
+    "required": [
+      {
+        "path": "rows[].name",
+        "opaque": true,
+        "metrics": [
+          "opnsense_hasync_remote_service_running",
+          "opnsense_hasync_remote_services_total"
+        ],
+        "exercise": "Two OPNsense boxes on the isolated testbed bridge with hasync pointed at each other (System > High Availability > Settings: synchronize-to-IP = the peer, plus a shared XML-RPC account holding page-all on BOTH nodes - the account is authenticated on the box being CALLED, so it has to exist on both or the endpoint answers {\"response\":\"Authentication failed\"} rather than throwing). This endpoint serves the CACHED remote service list, so it stays an empty bootgrid ({\"total\":0,\"rows\":[]}) until a peer is configured and has been contacted at least once. With a peer up it returns one row per service running on the OTHER node.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): 38 rows seen from one box and 48 from the other - the lists are legitimately different lengths because the two nodes run different plugin sets and different releases. First time this endpoint has ever returned a non-empty rows array on the testbed, so nothing under rows[] had previously been checked by the canary at all."
+      },
+      {
+        "path": "rows[].status",
+        "opaque": true,
+        "metrics": [
+          "opnsense_hasync_remote_service_running"
+        ],
+        "exercise": "Same HA pair as rows[].name. Both values occur naturally - a normal box has a handful of stopped services alongside the running ones - so no extra step is needed to exercise both branches of the running/stopped mapping.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): arrives as a NATIVE JSON boolean, not a string, with both true and false present in the same payload. That is exactly what flexBool was written to tolerate, and it is now proven rather than source-derived."
+      },
+      {
+        "path": "rows[].id",
+        "opaque": true,
+        "metrics": [
+          "opnsense_hasync_remote_service_running"
+        ],
+        "exercise": "Same HA pair as rows[].name, PLUS at least one multi-instance service on the peer - an OpenVPN instance, a dpinger gateway monitor, or the Kea control agent. id is absent on single-instance rows, so a peer running only single-instance services leaves this path unverified even with a fully populated endpoint.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): present on 6 of 38 rows - two OpenVPN instances keyed by config UUID, three dpinger rows keyed by gateway name, and the Kea control agent. It is the id label on opnsense_hasync_remote_service_running, and the real values are UUIDs and names, NOT the small integer the previous synthetic fixture implied."
+      }
+    ],
+    "note": "REACHED 2026-07-28 by #460, which built the second OPNsense this endpoint always needed (a clone of the devel box attached to the isolated host-internal bridge only, stripped of the cloned production-adjacent config and given its own identity and API credentials). rows[].description is decoded into hasyncServiceRow but backs no metric, so it is deliberately NOT ledgered as required - it is present on every row and would only add an entry nothing consumes. REGRESSION TRIGGER: the list is a CACHE of the peer's services, so stopping the second VM leaves these paths unverified rather than missing. KNOWN OPEN, and NOT drift - do not lab-chase either of these: with the endpoint finally populated the canary now reports (a) rows[].running as a MISSING path and (b) eight unmodelled nested keys (configd, dns_ports, locked, mwexec, nocheck, php, pidfile, uid). rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow that upstream has never emitted on any release - list_services_xmlrpc sets 'status' only - so it can never be present on any box and wants a missingOK entry in exemptions.json, not a testbed change. The eight extras are #457 baseline material."
+  },
+  "carpStatus": {
+    "required": [
+      {
+        "path": "rows[].status",
+        "metrics": [
+          "opnsense_carp_vip_status"
+        ],
+        "exercise": "Two OPNsense boxes sharing one L2 segment (the isolated testbed bridge), each carrying the SAME CARP VIP - same address, same vhid, same password - with DIFFERENT advskew so the split is deterministic rather than a race: the lower skew wins MASTER, the higher sits BACKUP. Flip them with POST api/diagnostics/interface/carp_status/maintenance on the master; it TOGGLES, so posting it once enters maintenance and fails over, and posting it again leaves maintenance and fails back. A single-node box can only ever report MASTER, so the BACKUP branch of parseCARPStatus needs the second box.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): MASTER on one box and BACKUP on the other simultaneously, swapped across a maintenance-mode failover, then swapped back on failback - so opnsense_carp_vip_status was observed as both 1 and 0 on both boxes. INIT (2) was NOT observed and is not ledgered: it is a sub-second transient a poll-interval scrape is unlikely to ever catch."
+      },
+      {
+        "path": "rows[].advskew",
+        "metrics": [
+          "opnsense_carp_vip_advskew"
+        ],
+        "exercise": "Same two-box CARP pair. A non-zero advskew is what makes the MASTER/BACKUP split deterministic, so this path only becomes meaningful once a second box exists - on a single node it is pinned at 0, where a parse bug and a missing field look identical.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): 0 on the master and a large non-zero skew on the backup, both served as strings."
+      },
+      {
+        "path": "rows[].advbase",
+        "metrics": [
+          "opnsense_carp_vip_advbase_seconds"
+        ],
+        "exercise": "Same two-box CARP pair; the default advertisement base of one second is served as a string.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460) on both boxes in every state."
+      },
+      {
+        "path": "rows[].interface",
+        "metrics": [
+          "opnsense_carp_vip_status",
+          "opnsense_carp_vip_advbase_seconds",
+          "opnsense_carp_vip_advskew"
+        ],
+        "exercise": "Same two-box CARP pair. This carries the interface DESCRIPTION, not the config key and not the device name - it is the interface label on every carp_vip_* series.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): the two boxes reach the shared segment on different config keys and different device names, yet both serve the same description here, which confirms the label is stable across an HA pair rather than per-box."
+      },
+      {
+        "path": "rows[].vhid",
+        "metrics": [
+          "opnsense_carp_vip_status",
+          "opnsense_carp_vip_advbase_seconds",
+          "opnsense_carp_vip_advskew"
+        ],
+        "exercise": "Same two-box CARP pair; both nodes must advertise the same vhid or they never contend for the VIP at all.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): identical on both boxes, served as a string."
+      },
+      {
+        "path": "rows[].subnet",
+        "metrics": [
+          "opnsense_carp_vip_status",
+          "opnsense_carp_vip_advbase_seconds",
+          "opnsense_carp_vip_advskew"
+        ],
+        "exercise": "Same two-box CARP pair. carp.go reads THIS field as the vip label because get_vip_status has no \"vip\" key at all, so a rename here silently empties the label instead of failing the scrape.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): identical on both boxes and equal to the shared VIP address."
+      },
+      {
+        "path": "carp.demotion",
+        "metrics": [
+          "opnsense_carp_demotion"
+        ],
+        "exercise": "Enter CARP maintenance mode on one box with POST api/diagnostics/interface/carp_status/maintenance. A healthy box reports \"0\"; the demoted box reports a large value. Toggling maintenance off returns it to \"0\".",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): \"0\" -> \"240\" -> \"0\" across a maintenance-mode failover and failback, so opnsense_carp_demotion carried a non-zero value for the first time. The peer's demotion stayed \"0\" throughout - demotion is local, not synchronised."
+      },
+      {
+        "path": "carp.maintenancemode",
+        "metrics": [
+          "opnsense_carp_maintenance_mode"
+        ],
+        "exercise": "Same maintenance toggle as carp.demotion. Note the endpoint TOGGLES rather than sets: the response says enter_maintenance the first time and leave_maintenance the second, so a script that posts it to 'ensure' maintenance will silently do the opposite on the second run.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): observed as both false and true, as a NATIVE JSON boolean, so opnsense_carp_maintenance_mode was seen as both 0 and 1."
+      },
+      {
+        "path": "carp.allow",
+        "metrics": [
+          "opnsense_carp_allow"
+        ],
+        "exercise": "Present on any box with CARP configured; served as a numeric string rather than a boolean.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): \"1\" on both boxes in every state INCLUDING while demoted - entering maintenance does not clear allow, so a dashboard cannot use carp_allow as a proxy for 'this node is serving'."
+      }
+    ],
+    "note": "REACHED 2026-07-28 by #460. The endpoint was always populated on the single-node testbed - one CARP VIP existed - but every interesting VALUE was pinned: status could only be MASTER, advskew could only be 0, demotion could only be 0 and maintenancemode could only be false. The second OPNsense makes all four vary, which is why these are ledgered now rather than when the endpoint first answered. LIVE ANSWER to the rows[].mode question the carpStatus note in exemptions.json parks for #457: mode is served as the string \"carp\" and is REDUNDANT, not a VIP-type discriminator. get_vip_status returns vhid-bearing CARP VIPs only - the devel box also carries an ipalias VIP on the loopback and it does NOT appear in rows at all - so mode is constant for every row this endpoint can ever emit, and belongs in carpStatus.knownExtraPaths beside vhid_txt. SECOND CORRECTION to that same note: it claims carp.status_msg \"only appears in the 'no CARP interfaces configured' case\". That is WRONG. status_msg was present as an empty string in all twelve captures taken across MASTER, BACKUP, maintenance and failback on two boxes that each had a configured VIP. It is always present, and merely empty when there is nothing to say. REGRESSION TRIGGER: stop the second VM and status pins back to MASTER and advskew to 0 on the survivor. The paths stay verified but stop VARYING, which no canary can detect - only this note."
+  },
+  "keaLeases4": {
+    "required": [
+      {
+        "path": "rows[].address",
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info",
+          "opnsense_kea_dhcp4_leases_total",
+          "opnsense_kea_dhcp4_leases_by_interface",
+          "opnsense_kea_dhcp4_pool_used"
+        ],
+        "exercise": "A DHCPv4 client on a Kea-served testbed VLAN. The traffgen LXC on the isolated bridge is that client: its primary interface is configured for DHCP and a Kea host RESERVATION pins it to the address the IPsec test peers hardcode, so the lease is deterministic and turning DHCP on does not break the tunnel.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): kea/leases4/search returns a populated rows array for the first time. This path had been recorded as empty since 2026-07-13."
+      },
+      {
+        "path": "rows[].hwaddr",
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info"
+        ],
+        "exercise": "Same as rows[].address.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460)."
+      },
+      {
+        "path": "rows[].hostname",
+        "metrics": [
+          "opnsense_kea_dhcp4_lease_info"
+        ],
+        "exercise": "Same as rows[].address, and the client must send a hostname option or the reservation must carry one - a bare DHCP client with no hostname leaves this an empty string.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): populated from the host reservation."
+      },
+      {
+        "path": "rows[].state",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp4_leases_by_state"
+        ],
+        "exercise": "Same as rows[].address. Only the default/active state occurs with a single well-behaved client; the declined and expired states would need a deliberately misbehaving one.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): arrives as a NUMBER, not a numeric string. Remains opaque because the field is a flex type, so this note is the evidence, not a canary assertion."
+      },
+      {
+        "path": "rows[].is_reserved",
+        "opaque": true,
+        "metrics": [
+          "opnsense_kea_dhcp4_leases_reserved_total",
+          "opnsense_kea_dhcp4_leases_dynamic_total"
+        ],
+        "exercise": "Same as rows[].address. Note the traffgen lease IS reserved, so it exercises the reserved branch only; the dynamic branch of the reserved/dynamic split still needs a second, unreserved DHCPv4 client.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): served as an ARRAY naming the matching criteria, NOT a boolean - so a reader that treats it as a bool would be wrong even though it reads truthy."
+      },
+      {
+        "path": "rows[].if_descr",
+        "metrics": [
+          "opnsense_kea_dhcp4_leases_by_interface"
+        ],
+        "exercise": "Same as rows[].address.",
+        "verified": "LIVE-VERIFIED 2026-07-28 (#460): the interface description, matching the label carp.go and kea.go both use."
+      }
+    ],
+    "note": "CLOSED 2026-07-28 by #460. ROOT CAUSE of the long-standing empty lease list, recorded so nobody re-investigates it: the traffgen LXC held a STATIC address, so nothing on the Kea-served VLAN ever asked for a lease. Switching it to DHCP was NOT sufficient on its own - the legacy ISC dhcpd had restarted and was wildcard-binding UDP/67, silently starving kea-dhcp4 of its socket, so DHCPDISCOVER drew no offers at all. Stopping dhcpd and restarting Kea produced an offer immediately. This is the same dhcpd-versus-Kea collision recorded on 2026-07-13, and it recurs because dhcpd is only STOPPED, never disabled in config. REGRESSION TRIGGERS, likeliest first: (1) the firewall reboots and brings dhcpd back, re-breaking Kea DHCPv4 - check that kea-dhcp4 and not dhcpd owns UDP/67 before calling this drift; (2) the lease expires if the traffgen LXC stops renewing."
   }
 }

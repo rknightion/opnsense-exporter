@@ -214,12 +214,18 @@
       "ids.general.verbosity"
     ]
   },
+  "hasyncServices": {
+    "missingOK": [
+      "rows[].running"
+    ],
+    "note": "rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow (opnsense/hasync.go) that upstream has never populated on any release, so it can never be present on any box - this is NOT box-state and NOT drift. Source: list_services_xmlrpc in the HA XML-RPC surface builds each row with 'status' and no 'running' key. #460 built a real HA peer (a second OPNsense on the isolated testbed bridge) and confirmed on 2026-07-28 against a live 38-row response that the key is absent from a configured, reachable, fully-populated payload - the strongest available evidence, because it excludes every other reason a path can be missing (no peer configured, peer unreachable, empty rows). Without this entry the canary reports it on every run forever. PRUNE TRIGGER: remove this entry when the 'running' alias is removed from hasyncServiceRow, OR if upstream ever starts emitting it - in which case the effective-running expression should prefer it and this entry becomes wrong in the other direction. TestFetchHasyncStatus_RunningAliasNeverOnTheWire pins the alias inert in the meantime: if that expression is ever 'simplified' to prefer running, every stopped service on every real box silently flips to 1."
+  },
   "hasyncVersion": {
     "missingOK": [
       "message",
       "status"
     ],
-    "note": "present only for some HA peer states; box has no HA peer"
+    "note": "KEPT, and its old note was MISLEADING. It read 'present only for some HA peer states; box has no HA peer', which implies a real peer would produce these keys. It does not. #460 built a real HA peer (a second OPNsense on the isolated testbed bridge) and confirmed on 2026-07-28 that 'status' and 'message' are absent from the configured-AND-reachable response too: they are the EXCEPTION envelope, not a peer state. Source, from the installed scripts/system/ha_xmlrpc_exec.php on the testbed and identical on master: the 'version' action echoes json_encode(['response' => $payload]) with no 'status' and no 'message' on every success path; the only branches that emit them are the catch(Exception) handler (['status'=>'error','message'=>$e->getMessage()]) and an unknown-action default the controller can never reach, since versionAction always passes 'version'. Both were observed live: with the peer's link down the endpoint returned exactly {\"status\":\"error\",\"message\":\"fetch error. remote host down? ...\"}. So these two keys are present ONLY when the XML-RPC call throws, which is the branch FetchHasyncStatus deliberately maps to Reachable=false. PRUNE TRIGGER: only if upstream moves the version payload onto the ['response'=>..., 'status'=>'ok'] shape the stop/start/restart actions already use - at which point 'status' becomes unconditional and this entry is wrong in the other direction. A third live shape belongs on the record here because no fixture had it before #460: when the peer is reachable but the XML-RPC credentials are wrong, the client does NOT throw - the endpoint answers {\"response\":\"Authentication failed\"}, a JSON STRING where the success path serves an object. That still carries neither 'status' nor 'message'."
   },
   "healthCheck": {
     "missingOK": [
@@ -1582,9 +1588,10 @@
   "carpStatus": {
     "knownExtraPaths": [
       "carp.status_msg",
+      "rows[].mode",
       "rows[].vhid_txt"
     ],
-    "note": "knownExtraPaths (#457): carpStatusResponse/CARPStatus (opnsense/carp.go) models Interface/VHID/Subnet(as VIP)/Status/Advbase/Advskew plus global Demotion/Allow/MaintenanceMode. rows[].vhid_txt is a display-string twin of the already-modeled numeric vhid - redundant. carp.status_msg only appears in the 'no CARP interfaces configured' case (confirmed in carp_test.go) - a human-readable echo of a state the empty rows/Allow already conveys. NOT triaged here (deliberately left OUT of this list, so it still surfaces as a warning after the flip): rows[].mode - get_vip_status can return non-CARP VIP types (IP alias, proxy-ARP) alongside CARP VIPs; mode may distinguish VIP type (a label candidate) or be something else entirely. Not in the current golden schema and not referenced anywhere in source comments - needs a live box check before ruling either way (#457)."
+    "note": "knownExtraPaths (#457): carpStatusResponse/CARPStatus (opnsense/carp.go) models Interface/VHID/Subnet(as VIP)/Status/Advbase/Advskew plus global Demotion/Allow/MaintenanceMode. rows[].vhid_txt is a display-string twin of the already-modeled numeric vhid - redundant. carp.status_msg only appears in the 'no CARP interfaces configured' case (confirmed in carp_test.go) - a human-readable echo of a state the empty rows/Allow already conveys. rows[].mode WAS parked here as 'needs a live box check', on the theory that get_vip_status might return non-CARP VIP types (IP alias, proxy-ARP) alongside CARP VIPs, which would make mode a VIP-type label candidate. #460 ANSWERED IT on 2026-07-28 against a real two-node CARP pair: mode is the constant string 'carp'. get_vip_status returns vhid-bearing CARP VIPs ONLY - the testbed box also carries an ipalias VIP on lo0 and it does NOT appear in rows[] at all - so mode cannot vary and is not a label candidate. Moved out of the not-triaged prose and into knownExtraPaths. PRUNE TRIGGER: only if upstream widens get_vip_status to emit non-CARP VIP types, at which point mode becomes meaningful and wants modelling."
   },
   "captivePortalVouchers": {
     "knownExtraPaths": [
