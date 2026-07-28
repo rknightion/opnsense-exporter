@@ -288,8 +288,22 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 				ts = observed
 			}
 			r.SetTimestamp(ts)
+			// #475 looked at dropping this: Loki renders it as an `observed_timestamp`
+			// structured-metadata key, 37 B on every line, distinct-per-line by
+			// construction so it never aggregates. It is NOT removable from this side.
+			// Loki emits it whenever both timestamps are set (otlplabels/labels.go), and
+			// the SDK stamps ObservedTimestamp itself at Emit when the caller leaves it
+			// zero — so the only way to suppress it is to stop setting the EVENT time,
+			// which would replace every Zenarmor flow's close time with our receive time.
+			// The lever for it is tenant-side, not here.
 			r.SetObservedTimestamp(observed)
 			r.SetBody(otellog.StringValue(e.Record.Body))
+			// Severity costs ~33 B/line as Loki's severity_number + severity_text, and it
+			// measured single-valued on the sampled Zenarmor streams — but that is the
+			// sample, not the field: SeverityWarn is what a blocked Zenarmor record and
+			// every syslog error carry, and it is what Loki's level detection reads to
+			// populate detected_level. Dropping it would flatten the one severity signal
+			// the whole log estate has, to save 0.4% of volume. Kept on purpose (#475).
 			r.SetSeverity(otlpSeverity(e.Record.Severity))
 			r.SetSeverityText(otlpSeverityText(e.Record.Severity))
 			for k, v := range e.Record.Attributes {
@@ -488,7 +502,19 @@ func (s *otlpSink) loggerFor(ctx context.Context, key resourceKey) (*resourceLog
 	)
 	rl := &resourceLogger{
 		provider: provider,
-		logger:   provider.Logger("github.com/rknightion/opnsense-exporter/logship"),
+		// EMPTY SCOPE NAME, DELIBERATELY (#475). Loki's OTLP handler appends the
+		// instrumentation scope name as structured metadata on EVERY record, gated only
+		// on it being non-empty (pkg/loghttp/push/otlplabels/labels.go: `if scopeName :=
+		// scope.Name(); scopeName != ""`), and structured metadata is billed as ingested
+		// volume. The old value, this module's import path, measured 57 B/line at exactly
+		// one distinct value across every family — ~140 MB/day of the same string on the
+		// Zenarmor stream alone, for a distinction that does not exist: this binary ships
+		// logs from one scope, and service.name already identifies the producer.
+		//
+		// Empty is the only value Loki treats as "omit"; shortening it just makes the
+		// repetition cheaper. Give it a name again only when a second scope appears and
+		// telling them apart is worth the bytes.
+		logger: provider.Logger(""),
 	}
 	s.providers[key] = rl
 	s.order = append(s.order, key)

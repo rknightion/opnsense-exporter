@@ -14,6 +14,21 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 ## Upgrading to v4.0 from v3.x
 
+- **Six redundant Zenarmor structured-metadata keys are no longer shipped** -
+  `organization`, `policyid`, `src_geoip.latitude`, `src_geoip.longitude`,
+  `dst_geoip.latitude` and `dst_geoip.longitude` are no longer attributed onto each
+  record, and the OTLP instrumentation scope name is now empty so Loki stops adding
+  `scope_name`. Structured metadata is billed as ingested volume, and these measured
+  ~231 bytes per line of pure repetition on the largest log source. **Every one of
+  them is still in the log body**, which is unchanged, so a line-level lookup still
+  has them; only the re-extracted copy is gone. A LogQL filter using
+  `| organization=`, `| policyid=`, `| scope_name=` or either coordinate pair will
+  stop matching - drop the filter, or read the value out of the body with `| json`.
+  Nothing in the bundled dashboard, alert rules or exported metrics consumed any of
+  them. **`--logs.zenarmor.exclude` rules naming `organization` or `policyid` now
+  fail at startup** as unknown fields; such a rule was always either a no-op or a
+  total drop, because both keys carry exactly one value per deployment.
+
 - **`opnsense_exporter_otlp_*` now carries the `opnsense_instance` label** -
   the four OTLP delivery-health series (`otlp_enabled`,
   `otlp_exports_total{result}`, `otlp_consecutive_failures`,

@@ -303,6 +303,35 @@ func TestBaseLogAttributesAreIdentityOnly(t *testing.T) {
 	}
 }
 
+// #475: the instrumentation scope name is a PER-LINE COST, not free metadata. Loki's
+// OTLP handler appends it as structured metadata verbatim on every record, gated only
+// on it being non-empty (pkg/loghttp/push/otlplabels/labels.go: `if scopeName :=
+// scope.Name(); scopeName != ""`). The old value —
+// "github.com/rknightion/opnsense-exporter/logship" — measured 57 B/line on the wire
+// at exactly one distinct value across every family, which on the Zenarmor stream
+// alone is ~140 MB/day of the same 46 bytes.
+//
+// It bought nothing: this binary ships logs from ONE scope, and service.name already
+// identifies the producer. Empty is the only value Loki treats as "omit".
+func TestOTLPSink_EmitsNoInstrumentationScopeName(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp)
+
+	shipAndDrain(t, s, []Entry{{
+		Source: "zenarmor",
+		Record: Record{Body: "{}", Attributes: map[string]string{"opnsense.subsystem": "flow"}},
+	}})
+
+	got := exp.exported()
+	if len(got) != 1 {
+		t.Fatalf("exported %d records, want 1", len(got))
+	}
+	if name := got[0].InstrumentationScope().Name; name != "" {
+		t.Errorf("instrumentation scope name = %q, want empty: Loki ships it as "+
+			"structured metadata on every single line (#475)", name)
+	}
+}
+
 // AttrAction must be hoisted onto the RESOURCE (so Loki can index it) and must not
 // also be duplicated into the record's structured metadata.
 func TestOTLPSink_HoistsActionOntoResource(t *testing.T) {

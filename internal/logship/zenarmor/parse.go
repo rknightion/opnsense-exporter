@@ -194,9 +194,18 @@ func parseDocFull(family string, doc []byte, snap *enrich.Snapshot) (logship.Rec
 	set("direction", d.Direction)
 	set("conn_uuid", d.ConnUUID)
 	set("community_id", d.CommunityID)
-	set("policyid", d.PolicyID)
-	set("organization", d.Organization)
 	set("encryption", d.Encryption)
+	// policyid and organization are DELIBERATELY not attributed (#475). Both measured
+	// exactly one distinct value over a 600-line live sample of every family, nothing
+	// reads them (no panel, no alert rule, no derived metric), and structured metadata
+	// is billed as ingested volume — so they were ~26 B/line of pure repetition on the
+	// largest log source in the estate. Both are still on the record: rec.Body is the
+	// document verbatim. Re-attribute either only with a consumer to point at.
+	//
+	// `interface` (the KERNEL device, ixl0) measured single-valued too and is kept on
+	// purpose: derive.go reads it as the fallback for the metric's interface label
+	// whenever enrichment could not resolve the friendly name, and its one value here
+	// is this box having one Zenarmor-facing NIC, not a property of the field.
 
 	set("ip_src_saddr", d.SrcIP)
 	set("ip_dst_saddr", d.DstIP)
@@ -363,10 +372,15 @@ func setGeo(set func(k, v string), prefix string, g *zenGeo) {
 	if g.ASN != "" && g.ASN != "0" {
 		set(prefix+".asn", g.ASN)
 	}
-	if g.Latitude != 0 || g.Longitude != 0 {
-		set(prefix+".latitude", strconv.FormatFloat(g.Latitude, 'f', -1, 64))
-		set(prefix+".longitude", strconv.FormatFloat(g.Longitude, 'f', -1, 64))
-	}
+	// Latitude/longitude are DELIBERATELY not attributed (#475). They were the most
+	// expensive geo keys on the wire — MaxMind returns ~17 significant figures, and
+	// four of them (src+dst) measured 145-149 B/line on the flow family — for a
+	// precision nothing consumes: every geo consumer ranks country or city
+	// (grafana/tabs/zenarmor.py "Blocked by Country" groups dst_geoip_country_name),
+	// and derive.go reads no geo at all. Zenarmor also sends the same pair twice per
+	// address, flat and as a nested location{lat,lon}, and rec.Body keeps both — so a
+	// line-level lookup still has the coordinates, they are just not re-extracted onto
+	// every one of ~2.5M records/day. Re-add them only for a map panel that plots them.
 }
 
 // zenDoc is the union of the fields worth modelling across the six families. They
@@ -386,10 +400,13 @@ type zenDoc struct {
 	Direction      string `json:"direction"`
 	ConnUUID       string `json:"conn_uuid"`
 	CommunityID    string `json:"community_id"`
-	PolicyID       string `json:"policyid"`
-	Organization   string `json:"organization"`
-	Encryption     string `json:"encryption"`
-	IsBlocked      *int   `json:"is_blocked"`
+	// Decoded but no longer attributed (#475) — kept so the struct still documents the
+	// envelope Zenarmor sends, and so re-attributing either is a one-line change rather
+	// than a re-derivation from a live capture.
+	PolicyID     string `json:"policyid"`
+	Organization string `json:"organization"`
+	Encryption   string `json:"encryption"`
+	IsBlocked    *int   `json:"is_blocked"`
 
 	SrcIP       string `json:"ip_src_saddr"`
 	SrcPort     int    `json:"ip_src_port"`

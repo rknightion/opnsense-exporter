@@ -166,8 +166,11 @@ func TestBuildRecordTLS(t *testing.T) {
 	if _, ok := rec.Attributes["dst_geoip.asn"]; ok {
 		t.Errorf(`asn "0" was shipped; it is Zenarmor's empty value, not AS0`)
 	}
-	if got := attr(t, rec, "dst_geoip.latitude"); got == "" {
-		t.Error("a located address must carry its latitude")
+	// ...and it does NOT carry coordinates: a located address is described by its
+	// country/city, which is all anything consumes. See
+	// TestGeoCoordinatesAreNotAttributed for the full statement of #475.
+	if got, present := rec.Attributes["dst_geoip.latitude"]; present {
+		t.Errorf("dst_geoip.latitude = %q was shipped; coordinates are pruned (#475)", got)
 	}
 }
 

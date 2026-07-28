@@ -105,8 +105,12 @@ var KnownAttributeKeys = []string{
 	"opnsense.device_category",
 	"opnsense.interface",
 	"opnsense.subsystem",
-	"organization",
-	"policyid",
+	// `organization` and `policyid` are absent on purpose: the parser stopped
+	// attributing them in #475, and this list is enforced BOTH ways — a name here the
+	// parser never sets would let an exclude rule start up and then silently match
+	// nothing, which is the failure mode this list exists to prevent. Excluding on
+	// either was never useful anyway: both are per-line constants, so any rule naming
+	// one either drops every record or none.
 	"qclass",
 	"qtype",
 	"query",
