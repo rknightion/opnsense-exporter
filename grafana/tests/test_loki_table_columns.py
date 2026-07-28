@@ -213,3 +213,60 @@ class BuiltDashboardLokiTablesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LokiTableIsAnInstantQueryTest(unittest.TestCase):
+    """#479: a top-N table must be an INSTANT query, not a range query.
+
+    Loki's `max_query_series` (default 500) is enforced on the number of distinct
+    series a query RETURNS. For a range query that is the UNION across every step,
+    so `topk(25, ...)` over 6h at 5m steps returns every name that entered the top
+    25 in ANY step — measured at 82 distinct over 1h for DNS names, and past 500
+    over 6h. Three panels therefore returned no data at all, with a query error.
+
+    `topk` cannot save a range query, because the union is taken after `topk` runs
+    per step. An instant query returns exactly N series regardless of the window,
+    which is also what a top-N table actually wants: one aggregate over the
+    selected range, not a time series. Verified live: instant `topk(200)` over 6h,
+    24h and 7d all return exactly 200 series, while the range form fails at 6h.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panels = loki_table_panels(build_dashboard.build_all())
+
+    def test_every_loki_table_is_an_instant_query(self):
+        for title, panel in self.panels:
+            with self.subTest(panel=title):
+                for query in panel["spec"]["data"]["spec"]["queries"]:
+                    spec = query["spec"]["query"]["spec"]
+                    self.assertTrue(spec["instant"], f"{title} is still a range query")
+                    self.assertFalse(spec["range"])
+                    self.assertEqual(spec["queryType"], "instant")
+
+    def test_no_loki_table_uses_the_step_derived_auto_interval(self):
+        # $__auto is derived from the query STEP, which an instant query does not
+        # have. The window must be the dashboard's selected range instead, or the
+        # table silently aggregates over an interval nobody chose.
+        for title, panel in self.panels:
+            with self.subTest(panel=title):
+                for query in panel["spec"]["data"]["spec"]["queries"]:
+                    expr = query["spec"]["query"]["spec"]["expr"]
+                    self.assertNotIn("$__auto", expr, f"{title} still uses $__auto")
+                    self.assertIn("[$__range]", expr)
+
+    def test_every_topk_stays_under_lokis_series_ceiling(self):
+        # 500 is the wall, not the target: instant topk(500) FAILS live, and
+        # topk(450) returned 465 series, so N is not an exact bound on the result.
+        # Anything at or near 500 has no headroom on a busier window.
+        for title, panel in self.panels:
+            with self.subTest(panel=title):
+                for query in panel["spec"]["data"]["spec"]["queries"]:
+                    expr = query["spec"]["query"]["spec"]["expr"]
+                    # The rendered form is `topk by (service_instance_id) (N, ...)`,
+                    # so the optional by-clause must be skipped explicitly. A pattern
+                    # of `topk[^(]*\(` matches only as far as `topk by (` and then
+                    # finds no digits — it silently matches nothing and the assertion
+                    # passes on every input. Caught by mutation-testing this check.
+                    for n in re.findall(r"topk(?:\s+by\s*\([^)]*\))?\s*\((\d+),", expr):
+                        self.assertLessEqual(int(n), 250, f"{title} ranks {n}")

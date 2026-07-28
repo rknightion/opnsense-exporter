@@ -670,7 +670,16 @@ class Builder:
                 "table, so a second query's values would be summed into the first "
                 "query's rows without saying so")
         label = self._ranked_loki_label(exprs[0], title)
-        queries = [self._loki_query(e, ref=chr(65 + i), instant=False)
+        # INSTANT, not range (#479). Loki enforces max_query_series (default 500)
+        # on the series a query RETURNS, and for a range query that is the UNION
+        # across every step — so `topk(N, ...)` returns every value that entered
+        # the top N in ANY step, not N. Measured at 82 distinct DNS names over 1h
+        # and past 500 over 6h, which is why three of these panels returned a
+        # query error and rendered "No data". `topk` cannot fix it, because the
+        # union is taken after topk has run per step. An instant query returns
+        # exactly N regardless of the window, and is what a top-N table wants
+        # anyway: one aggregate over the selected range, not a time series.
+        queries = [self._loki_query(e, ref=chr(65 + i), instant=True)
                    for i, e in enumerate(exprs)]
         value_out = "Value (sum)"
         transformations = [

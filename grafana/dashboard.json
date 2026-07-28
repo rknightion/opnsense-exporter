@@ -75462,7 +75462,7 @@
         "spec": {
           "id": 687,
           "title": "Top Blocked Servers",
-          "description": "Top 20 server names (TLS SNI / DNS query name) appearing in blocked Zenarmor records, over the selected range. server_name is structured metadata, so this MUST go through a range-query table rather than an instant/timeseries query.",
+          "description": "Top 200 server names (TLS SNI / DNS query name) appearing in blocked Zenarmor records, over the selected range. server_name is structured metadata, so this MUST go through a table rather than a timeseries query.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75485,11 +75485,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | server_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | server_name!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -75609,7 +75609,7 @@
         "spec": {
           "id": 688,
           "title": "Top Talkers by Bytes",
-          "description": "Top 20 devices by inbound flow bytes (dst_nbytes), flow family only. Value column is raw bytes. device_name and dst_nbytes are structured metadata on the flow record.",
+          "description": "Top 200 devices by inbound flow bytes (dst_nbytes), flow family only. Value column is raw bytes. device_name and dst_nbytes are structured metadata on the flow record.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75632,11 +75632,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, device_name) (sum_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name!=\"\" | unwrap dst_nbytes [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, device_name) (sum_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name!=\"\" | unwrap dst_nbytes [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -75756,7 +75756,7 @@
         "spec": {
           "id": 689,
           "title": "Blocked by Country",
-          "description": "Top 20 destination countries (GeoIP) for blocked Zenarmor records.",
+          "description": "Top 200 destination countries (GeoIP) for blocked Zenarmor records.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75779,11 +75779,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | dst_geoip_country_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_action=\"block\"} | dst_geoip_country_name!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -75903,7 +75903,7 @@
         "spec": {
           "id": 690,
           "title": "Top JA3 Fingerprints",
-          "description": "Top 20 TLS client fingerprints (JA3) seen, tls family only. JA3 identifies the TLS client implementation, not the endpoint -- many distinct devices sharing a library/browser will share a fingerprint, so this is a coarse grouping, not a precise device count.",
+          "description": "Top 200 TLS client fingerprints (JA3) seen, tls family only. JA3 identifies the TLS client implementation, not the endpoint -- many distinct devices sharing a library/browser will share a fingerprint, so this is a coarse grouping, not a precise device count.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -75926,11 +75926,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (20, sum by (service_instance_id, ja3) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | ja3!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, ja3) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | ja3!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -76050,7 +76050,7 @@
         "spec": {
           "id": 691,
           "title": "Top DNS Queries",
-          "description": "Top 25 DNS query names Zenarmor saw, over the selected range. `query` is structured metadata, so this is a range-query table rather than an instant query. High cardinality by nature \u2014 this is why it is not a metric.",
+          "description": "Top 200 DNS query names Zenarmor saw, over the selected range. `query` is structured metadata, so this is a table rather than a metric. High cardinality by nature \u2014 this is why it is not a metric.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76073,11 +76073,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, query) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | query!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (600, sum by (service_instance_id, query) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | query!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -76287,7 +76287,7 @@
         "spec": {
           "id": 693,
           "title": "Top DNS Domain Categories",
-          "description": "Top 15 domain categories for DNS records, Zenarmor's own classification. Unlike Blocks by Category above this counts ALL records, not just blocked ones, so it describes what the network asks for rather than what policy stopped.",
+          "description": "Top 200 domain categories for DNS records, Zenarmor's own classification. Unlike Blocks by Category above this counts ALL records, not just blocked ones, so it describes what the network asks for rather than what policy stopped.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76310,11 +76310,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (15, sum by (service_instance_id, domain_category) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | domain_category!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, domain_category) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"dns\"} | device_name=~\"$zenarmor_client\" | domain_category!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -76434,7 +76434,7 @@
         "spec": {
           "id": 694,
           "title": "Top HTTP Hosts",
-          "description": "Top 25 plaintext-HTTP hosts. Zenarmor's own bulk-ingest requests to the exporter are excluded, or they would be the top host and the panel would mostly describe this exporter. HTTPS hosts are not here \u2014 they appear as TLS SNI in Top TLS Server Names.",
+          "description": "Top 200 plaintext-HTTP hosts. Zenarmor's own bulk-ingest requests to the exporter are excluded, or they would be the top host and the panel would mostly describe this exporter. HTTPS hosts are not here \u2014 they appear as TLS SNI in Top TLS Server Names.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76457,11 +76457,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, host) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | host!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, host) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | host!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -76581,7 +76581,7 @@
         "spec": {
           "id": 695,
           "title": "Top URIs",
-          "description": "Top 25 request URIs on plaintext HTTP, excluding the exporter's own ingest endpoint. Only unencrypted traffic can be seen at this level.",
+          "description": "Top 200 request URIs on plaintext HTTP, excluding the exporter's own ingest endpoint. Only unencrypted traffic can be seen at this level.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76604,11 +76604,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, uri) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | uri!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, uri) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | uri!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -76728,7 +76728,7 @@
         "spec": {
           "id": 696,
           "title": "Top User Agents",
-          "description": "Top 15 user agents on plaintext HTTP. Useful for spotting an unexpected device class or an automated client; it is self-reported, so treat it as a hint rather than identification.",
+          "description": "Top 200 user agents on plaintext HTTP. Useful for spotting an unexpected device class or an automated client; it is self-reported, so treat it as a hint rather than identification.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76751,11 +76751,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (15, sum by (service_instance_id, user_agent) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | user_agent!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, user_agent) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"web\"} | device_name=~\"$zenarmor_client\" | uri!~\"/zenarmor_.*/_bulk\" | user_agent!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -76965,7 +76965,7 @@
         "spec": {
           "id": 698,
           "title": "Top Applications",
-          "description": "Top 25 applications Zenarmor identified on flow records, all verdicts. Application NAMES are deliberately not a metric label (cardinality), so this is the only place they appear; the Flow Volume tab has the same shape by application CATEGORY, from metrics, and is far cheaper to read.",
+          "description": "Top 200 applications Zenarmor identified on flow records, all verdicts. Application NAMES are deliberately not a metric label (cardinality), so this is the only place they appear; the Flow Volume tab has the same shape by application CATEGORY, from metrics, and is far cheaper to read.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -76988,11 +76988,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, app_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name=~\"$zenarmor_client\" | app_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, app_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"flow\"} | device_name=~\"$zenarmor_client\" | app_name!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -77112,7 +77112,7 @@
         "spec": {
           "id": 699,
           "title": "Top TLS Server Names (SNI)",
-          "description": "Top 25 TLS server names (SNI) across ALL verdicts \u2014 where the network goes, not what policy stopped. Top Blocked Servers above is the blocked-only counterpart; a name high here and absent there is simply allowed traffic.",
+          "description": "Top 200 TLS server names (SNI) across ALL verdicts \u2014 where the network goes, not what policy stopped. Top Blocked Servers above is the blocked-only counterpart; a name high here and absent there is simply allowed traffic.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77135,11 +77135,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (25, sum by (service_instance_id, server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | device_name=~\"$zenarmor_client\" | server_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, server_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | device_name=~\"$zenarmor_client\" | server_name!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
@@ -77259,7 +77259,7 @@
         "spec": {
           "id": 700,
           "title": "Destination Countries",
-          "description": "Top 15 destination countries (GeoIP) for TLS records, all verdicts. Blocked by Country above is the blocked-only counterpart.",
+          "description": "Top 200 destination countries (GeoIP) for TLS records, all verdicts. Blocked by Country above is the blocked-only counterpart.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -77282,11 +77282,11 @@
                         "name": "${loki_datasource}"
                       },
                       "spec": {
-                        "expr": "topk by (service_instance_id) (15, sum by (service_instance_id, dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | device_name=~\"$zenarmor_client\" | dst_geoip_country_name!=\"\" [$__auto])))",
+                        "expr": "topk by (service_instance_id) (200, sum by (service_instance_id, dst_geoip_country_name) (count_over_time({service_instance_id=~\"$opnsense_instance\",opnsense_source=\"zenarmor\", opnsense_subsystem=\"tls\"} | device_name=~\"$zenarmor_client\" | dst_geoip_country_name!=\"\" [$__range])))",
                         "refId": "A",
-                        "queryType": "range",
-                        "instant": false,
-                        "range": true
+                        "queryType": "instant",
+                        "instant": true,
+                        "range": false
                       }
                     }
                   }
