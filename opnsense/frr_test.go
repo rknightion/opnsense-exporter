@@ -260,8 +260,8 @@ const bfdCountersFixture = `{
       "control-packet-output": 990,
       "echo-packet-input": 0,
       "echo-packet-output": 0,
-      "session-up-events": 1,
-      "session-down-events": 0,
+      "session-up": 1,
+      "session-down": 0,
       "zebra-notifications": 3
     }
   }
@@ -637,6 +637,63 @@ func TestFetchFRRBFD_Normal(t *testing.T) {
 	}
 	if p2.HasCounters {
 		t.Error("peer 10.1.1.3: expected HasCounters=false (no counters entry)")
+	}
+}
+
+// bfdCountersFRRNamesFixture uses the field names FRR's bfdd actually emits.
+//
+// FRR builds this payload in bfdd/bfdd_vty.c with json_object_int_add(jo,
+// "session-up", ...) / "session-down" — NOT "session-up-events" /
+// "session-down-events", which appear nowhere in FRR on master or on any
+// release in the support window (checked against stable/8.5, 9.1, 10.0 and
+// 10.2). The OPNsense quagga plugin is a pure vtysh passthrough — actions_quagga.conf
+// runs `show bfd peers counters json` and DiagnosticsController only re-keys the
+// array by peer — so these are the names that arrive on the wire.
+//
+// Both counters are deliberately non-zero here: a zero expectation cannot tell a
+// correctly-decoded field from one whose json tag matches nothing at all.
+const bfdCountersFRRNamesFixture = `{
+  "response": {
+    "10.1.1.2": {
+      "peer": "10.1.1.2",
+      "control-packet-input": 1000,
+      "control-packet-output": 990,
+      "session-up": 7,
+      "session-down": 6
+    }
+  }
+}`
+
+func TestFetchFRRBFD_CounterTagsMatchFRRWireNames(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/bfdneighbors", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(bfdNeighborsFixture))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/bfdcounters", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(bfdCountersFRRNamesFixture))
+	})
+
+	data, err := client.FetchFRRBFD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var peer FRRBFDPeer
+	for _, p := range data.Peers {
+		if p.Peer == "10.1.1.2" {
+			peer = p
+		}
+	}
+	if !peer.HasCounters {
+		t.Fatal("peer 10.1.1.2: expected HasCounters=true")
+	}
+	if peer.SessionUpEvents != 7 {
+		t.Errorf("SessionUpEvents: want 7, got %v (json tag does not match FRR's \"session-up\")", peer.SessionUpEvents)
+	}
+	if peer.SessionDownEvents != 6 {
+		t.Errorf("SessionDownEvents: want 6, got %v (json tag does not match FRR's \"session-down\")", peer.SessionDownEvents)
 	}
 }
 

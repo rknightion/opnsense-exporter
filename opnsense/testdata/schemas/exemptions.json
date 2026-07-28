@@ -218,7 +218,17 @@
     "missingOK": [
       "rows[].running"
     ],
-    "note": "rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow (opnsense/hasync.go) that upstream has never populated on any release, so it can never be present on any box - this is NOT box-state and NOT drift. Source: list_services_xmlrpc in the HA XML-RPC surface builds each row with 'status' and no 'running' key. #460 built a real HA peer (a second OPNsense on the isolated testbed bridge) and confirmed on 2026-07-28 against a live 38-row response that the key is absent from a configured, reachable, fully-populated payload - the strongest available evidence, because it excludes every other reason a path can be missing (no peer configured, peer unreachable, empty rows). Without this entry the canary reports it on every run forever. PRUNE TRIGGER: remove this entry when the 'running' alias is removed from hasyncServiceRow, OR if upstream ever starts emitting it - in which case the effective-running expression should prefer it and this entry becomes wrong in the other direction. TestFetchHasyncStatus_RunningAliasNeverOnTheWire pins the alias inert in the meantime: if that expression is ever 'simplified' to prefer running, every stopped service on every real box silently flips to 1."
+    "knownExtraPaths": [
+      "rows[].configd",
+      "rows[].dns_ports",
+      "rows[].locked",
+      "rows[].mwexec",
+      "rows[].nocheck",
+      "rows[].php",
+      "rows[].pidfile",
+      "rows[].uid"
+    ],
+    "note": "rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow (opnsense/hasync.go) that upstream has never populated on any release, so it can never be present on any box - this is NOT box-state and NOT drift. Source: list_services_xmlrpc in the HA XML-RPC surface builds each row with 'status' and no 'running' key. #460 built a real HA peer (a second OPNsense on the isolated testbed bridge) and confirmed on 2026-07-28 against a live 38-row response that the key is absent from a configured, reachable, fully-populated payload - the strongest available evidence, because it excludes every other reason a path can be missing (no peer configured, peer unreachable, empty rows). Without this entry the canary reports it on every run forever. PRUNE TRIGGER: remove this entry when the 'running' alias is removed from hasyncServiceRow, OR if upstream ever starts emitting it - in which case the effective-running expression should prefer it and this entry becomes wrong in the other direction. TestFetchHasyncStatus_RunningAliasNeverOnTheWire pins the alias inert in the meantime: if that expression is ever 'simplified' to prefer running, every stopped service on every real box silently flips to 1. --- knownExtraPaths (#480): all eight are REDUNDANT, triaged per key against upstream source on 2026-07-28. They are new only because #460 gave the box a real HA peer, so rows[] was non-empty for the first time - upstream did not change. Chain: HasyncStatusController::servicesAction -> configd 'system ha services_cached' -> ha_xmlrpc_exec.php services -> XML-RPC opnsense.list_services -> list_services_xmlrpc (src/etc/inc/xmlrpc/service.inc), which iterates plugins_services() and adds only 'status' itself. configd/php/mwexec are the three ALTERNATIVE SERVICE-CONTROL DISPATCH TABLES (start/stop/restart command names, PHP callbacks, raw shell), consumed only by service_control_start/stop/restart in src/etc/inc/util.inc - internal wiring, and exposing raw command or PHP-function strings as label data would be an info leak with no operator value. pidfile is the INPUT to the liveness check (service_status reads isvalidpid($service['pidfile']), util.inc) whose OUTPUT is the 'status' we already model. nocheck short-circuits service_status to always-true (util.inc), so its effect is ALREADY BAKED INTO the running gauge we export - modelling it separately would double-count a static per-service definition. locked only gates whether the webConfigurator renders start/stop/restart buttons (hasync_status.volt) - UI permission, not health. dns_ports is a resolver-port-conflict input for service_by_filter, set only on the unbound/dnsmasq rows; if that data is ever wanted it belongs to the Unbound/Dnsmasq collectors reading their own config endpoints, not to a remote-peer HA service list. uid is synthesized by the controller itself as name[_id] (HasyncStatusController.php) purely as a bootgrid row key - it is exactly the name+id composite the exporter already derives for series identity. PRESENCE IS CONDITIONAL: only uid is on every row; the other seven are set only by the plugin _services() functions that declare them, so these paths are stable in shape but not in per-row presence. PRUNE TRIGGER: none of these becomes interesting unless upstream repurposes one to carry health state - re-triage if the note above stops matching the source."
   },
   "hasyncVersion": {
     "missingOK": [
@@ -613,6 +623,51 @@
       "statistics.tcp.sack.lost-retransmissions",
       "statistics.tcp.sack.tso-chunk-retransmits"
     ]
+  },
+  "quaggaBfdNeighbors": {
+    "missingOK": [
+      "response.*.uptime",
+      "response.*.interface",
+      "response.*.local"
+    ],
+    "knownExtraPaths": [
+      "response.*.detect-multiplier",
+      "response.*.detection-timeout",
+      "response.*.diagnostic",
+      "response.*.downtime",
+      "response.*.echo-receive-interval",
+      "response.*.echo-transmit-interval",
+      "response.*.id",
+      "response.*.log-session-changes",
+      "response.*.multihop",
+      "response.*.passive-mode",
+      "response.*.receive-interval",
+      "response.*.remote-detect-multiplier",
+      "response.*.remote-diagnostic",
+      "response.*.remote-echo-receive-interval",
+      "response.*.remote-id",
+      "response.*.remote-receive-interval",
+      "response.*.remote-transmit-interval",
+      "response.*.rtt-avg",
+      "response.*.rtt-max",
+      "response.*.rtt-min",
+      "response.*.transmit-interval",
+      "response.*.transmit-interval-actual",
+      "response.*.type",
+      "response.*.vrf"
+    ],
+    "note": "frrBFDNeighborEntry (opnsense/frr.go) models peer/local/interface/status/uptime. FIRST LEDGER ENTRY (#480) - this endpoint was previously unledgered, so it reported on every run. THE UPSTREAM FOR THIS ENDPOINT IS FRR, NOT OPNSENSE: actions_quagga.conf's [diagnostics.bfd_neighbors] runs `vtysh -c 'show bfd peers json'` and DiagnosticsController::bfdTreeFetch only re-keys the array by peer, so every field name here is FRR bfdd's own and a future 'did upstream change' question must be answered against FRR releases, not OPNsense ones. All three missingOK paths are BOX-STATE, verified directly in FRR's bfdd/bfdd_vty.c rather than inferred: 'uptime' is emitted only inside the PTM_BFD_UP branch of the session-state switch and 'downtime' only inside PTM_BFD_DOWN (they are mutually exclusive, and PTM_BFD_INIT/PTM_BFD_ADM_DOWN emit neither); 'local' is emitted only when the session's local address is not all-zero; 'interface' only when key.ifname is non-empty, which is the single-hop case (the 'multihop' extra key on this same response shows this box has multihop sessions). None of the three is drift and none is a code change. knownExtraPaths buckets: id/remote-id/vrf/multihop/type/log-session-changes/passive-mode are session identity and config bookkeeping; detect-multiplier/detection-timeout and the receive/transmit interval family (local and remote) are negotiated timer CONFIG that changes on reconfiguration, not on link health; the echo-*-interval family is inert unless BFD echo mode is enabled. OPPORTUNITIES, exempted here so the canary can go quiet but tracked as real modelling gaps: 'diagnostic'/'remote-diagnostic' carry FRR's bounded down-REASON enum (diag2str: 'Control Detection Time Expired', 'Echo Function Failed', ...), which is distinct from the up/down state we already export and is the single most useful field in this list; 'rtt-avg'/'rtt-min'/'rtt-max' are per-peer round-trip gauges, one series each on an already-modelled peer, zero unless both ends support FRR's RTT extension; 'downtime' is the Down-state counterpart of the modelled uptime, so a peer that is down currently reports no duration at all. PRUNE TRIGGER: drop diagnostic/remote-diagnostic, the rtt-* trio and downtime from this list once modelled. The other keys stay until FRR stops emitting them."
+  },
+  "quaggaBfdCounters": {
+    "knownExtraPaths": [
+      "response.*.echo-packet-input",
+      "response.*.echo-packet-output",
+      "response.*.id",
+      "response.*.multihop",
+      "response.*.vrf",
+      "response.*.zebra-notifications"
+    ],
+    "note": "frrBFDCounterEntry (opnsense/frr.go) models peer/control-packet-input/control-packet-output/session-up/session-down. FIRST LEDGER ENTRY (#480). Same vtysh-passthrough chain as quaggaBfdNeighbors - the names are FRR's own, from `show bfd peers counters json`. THIS ENDPOINT'S CANARY FINDING WAS A CODE BUG, NOT AN EXEMPTION, and the fix has landed: the struct tagged the last two fields 'session-up-events'/'session-down-events', which is why the canary reported those two as MISSING while reporting 'session-up'/'session-down' as unexpected EXTRAS on the same response. FRR emits json_object_int_add(jo, \"session-up\", ...) and \"session-down\" (bfdd/bfdd_vty.c); the -events spelling appears NOWHERE in FRR on master or on stable/8.5, 9.1, 10.0 or 10.2, so it was never a real name and no tolerant reader is warranted - it was simply wrong, and opnsense_frr_bfd_peer_session_up_events_total / _down_events_total read zero on every real box from the day the collector shipped until #480. The old hand-written fixture encoded the invented spelling, which is why the unit test passed throughout; TestFetchFRRBFD_CounterTagsMatchFRRWireNames now pins the wire names with deliberately non-zero values, because a zero expectation cannot distinguish a decoded field from one whose tag matches nothing. knownExtraPaths: id/vrf/multihop are session identity and topology bookkeeping, same bucket as the neighbors endpoint; echo-packet-input/echo-packet-output only move when BFD echo mode is configured; zebra-notifications is an internal FRR-to-zebra RIB-sync counter with no operator-facing use. PRUNE TRIGGER: the echo packet counters become worth modelling if echo mode is ever run on a monitored box; the rest stay."
   },
   "quaggaOspfNeighbors": {
     "missingOK": [
@@ -1468,14 +1523,16 @@
   "openVPNSessions": {
     "knownExtraPaths": [
       "rows[].client_id",
+      "rows[].connected_since",
       "rows[].data_channel_cipher",
       "rows[].id",
       "rows[].peer_id",
       "rows[].socket",
       "rows[].timestamp",
-      "rows[].type"
+      "rows[].type",
+      "rows[].virtual_ipv6_address"
     ],
-    "note": "knownExtraPaths (#457): openVPNSearchSessionsResponse/Sessions (opnsense/openvpn.go) models description/username/real_address/virtual_address/status/is_client/common_name/bytes_received/bytes_sent/connected_since__time_t_. The remaining fields are management-interface bookkeeping (client/peer/row IDs, socket path, generic timestamp/type) with no metric use - session identity and byte counters are already fully covered. NOT triaged here (deliberately left OUT of this list, so they still surface as warnings after the flip): rows[].connected_since - an alternate-format sibling of the already-modeled connected_since__time_t_; not confirmed whether it duplicates or carries distinct info. rows[].virtual_ipv6_address - same shape as the already-modeled virtual_address (v4) but for dual-stack sessions, a likely parity gap rather than a pure no-metric-use exemption. Both need a live-capture check before ledgering either way (#457)."
+    "note": "knownExtraPaths (#457): openVPNSearchSessionsResponse/Sessions (opnsense/openvpn.go) models description/username/real_address/virtual_address/status/is_client/common_name/bytes_received/bytes_sent/connected_since__time_t_. The remaining fields are management-interface bookkeeping (client/peer/row IDs, socket path, generic timestamp/type) with no metric use - session identity and byte counters are already fully covered. #457 PARKED TWO FIELDS PENDING A LIVE CHECK; #480 RESOLVED BOTH from upstream source and moved them into the list above, because leaving a known-triaged key out means the canary never goes quiet and real drift hides in the standing noise. rows[].connected_since is REDUNDANT: OpenVPN's own `status 3` CLIENT_LIST header carries both 'Connected Since' (a formatted date string) and 'Connected Since (time_t)' (unix epoch) for the identical instant, and scripts/openvpn/ovpn_status.py just zips the row against that header without renaming, so the string form adds nothing over the epoch form we already model - and only the epoch form is usable as a gauge value. rows[].virtual_ipv6_address is a genuine DUAL-STACK PARITY GAP, not a no-metric-use field: it is the v6 sibling of the modelled virtual_address on the same CLIENT_LIST row, and OPNsense's own scripts/filter/lib/alias/auth.py reads virtual_address and virtual_ipv6_address side by side with identical handling. A dual-stack client currently shows only its v4 tunnel address on the four detailsEnabled-gated per-session series in internal/collector/openvpn.go. It is exempted here so the report can go clean and tracked as a modelling issue instead. PRUNE TRIGGER: drop virtual_ipv6_address from this list once modelled; connected_since stays permanently - it is a format sibling by design of OpenVPN's status protocol and has no release-dependent trigger."
   },
   "wireguardClients": {
     "knownExtraPaths": [
@@ -1490,6 +1547,19 @@
     ],
     "note": "knownExtraPaths (#457): wireguardClientsResponse (opnsense/wireguard.go) already models latest-handshake, transfer-rx, transfer-tx, status, peer-status, consumed by the collector for peer up/down + traffic metrics. latest-handshake-age/-epoch are alternate representations of the already-modeled handshake timestamp; the rest (allowed-ips, endpoint, fwmark, listen-port, keepalive interval, public key) is peer identity/config, not operational state. PRUNE TRIGGER: none."
   },
+  "keaLeases4": {
+    "knownExtraPaths": [
+      "rows[].client_id",
+      "rows[].duid",
+      "rows[].iaid",
+      "rows[].if",
+      "rows[].if_name",
+      "rows[].mac_info",
+      "rows[].prefix_len",
+      "rows[].valid_lifetime"
+    ],
+    "note": "knownExtraPaths (#480): the SAME eight keys as keaLeases6, and they are new on the v4 endpoint only because #460 put the first DHCPv4 client on the testbed VLAN - upstream did not change. Both endpoints share one row-builder: actions_kea.conf's [list.leases4] and [list.leases6] both run scripts/kea/get_kea_leases.py, which emits all eight keys on EVERY row regardless of protocol, so these paths are unconditionally present on v4 (stable, not box-state). THREE OF THE EIGHT ARE DEAD ON V4 and this is where the v4 and v6 verdicts diverge: Kea's lease4-get-all returns no duid, no iaid and no prefix-len, so the script's defaults stand on every v4 row - duid and iaid are always the empty string and prefix_len is always the hardcoded literal 128 (get_kea_leases.py). prefix_len is the clearest opportunity on keaLeases6 (real IA_PD block size) and carries NOTHING on keaLeases4; do not model it here. if is the intermediate raw FreeBSD ifname the script derives by matching the lease address against ifconfig CIDR ranges, and if_name is the OPNsense config interface key (lan, opt3) resolved from it - both exist only so the controller can produce if_descr, which we already model and which is this exporter's interface-labelling convention everywhere else. CORRECTION TO THE keaLeases6 NOTE (#457): it says 'mac_info duplicates hwaddr'. It does NOT. mac_info is PHP-side enrichment in LeasesController.php - an offline IEEE OUI lookup of the first three octets against the DB from scripts/interfaces/list_macdb.py - so its value is a VENDOR NAME string ('Apple, Inc.'), empty when the OUI is unknown, which is common with MAC randomisation. It is not derivable from hwaddr without an OUI database the exporter does not ship. OPPORTUNITY: mac_info, client_id (genuine DHCPv4 option 61, and upstream's own alternate reservation-matching key) and valid_lifetime (Kea's valid-lft; NOT derivable from the modelled expire, because expire = cltt + valid-lft and cltt is never exposed) all belong as labels on the already-gated per-lease opnsense_kea_dhcp4_lease_info, which is one series per lease behind --exporter.enable-kea-details, so they add no new cardinality tier. PRUNE TRIGGER: drop client_id/mac_info/valid_lifetime from this list once modelled; duid/iaid/prefix_len/if/if_name stay until upstream stops emitting them on v4."
+  },
   "keaLeases6": {
     "knownExtraPaths": [
       "rows[].client_id",
@@ -1501,7 +1571,7 @@
       "rows[].prefix_len",
       "rows[].valid_lifetime"
     ],
-    "note": "knownExtraPaths (#457): keaLeaseRow (opnsense/kea.go) models 8 of 16 keys: address/hwaddr/hostname/expire/if_descr/is_reserved/type/state, consumed for per-lease and aggregate metrics. client_id/duid/iaid are DHCPv6 identity/association bookkeeping; if/if_name duplicate the already-modeled if_descr; mac_info duplicates hwaddr. OPPORTUNITY (this is the clearest opportunity in the whole #457 baseline, per the issue body): rows[].prefix_len is, for IA_PD (prefix-delegation) leases, the delegated prefix's block size - genuine per-lease state analogous to the already-modeled expire/state, currently invisible. rows[].valid_lifetime is the Kea-reported lease validity duration in seconds, directly comparable to the already-modeled expire field and arguably more precise for lease-expiry monitoring. PRUNE TRIGGER: remove prefix_len/valid_lifetime from this list once modeled (they apply to keaLeases4 too, where valid_lifetime would appear identically if Kea serves it there)."
+    "note": "knownExtraPaths (#457): keaLeaseRow (opnsense/kea.go) models 8 of 16 keys: address/hwaddr/hostname/expire/if_descr/is_reserved/type/state, consumed for per-lease and aggregate metrics. client_id/duid/iaid are DHCPv6 identity/association bookkeeping; if/if_name duplicate the already-modeled if_descr. CORRECTED 2026-07-28 (#480): this note originally said 'mac_info duplicates hwaddr' - it does NOT. mac_info is an offline IEEE OUI lookup done PHP-side in LeasesController.php against the DB from scripts/interfaces/list_macdb.py, so its value is a vendor-name string, empty when the OUI is unknown, and not derivable from hwaddr without an OUI database the exporter does not ship. See the keaLeases4 note for the full per-key triage; mac_info is an OPPORTUNITY on both endpoints, not a duplicate. OPPORTUNITY (this is the clearest opportunity in the whole #457 baseline, per the issue body): rows[].prefix_len is, for IA_PD (prefix-delegation) leases, the delegated prefix's block size - genuine per-lease state analogous to the already-modeled expire/state, currently invisible. rows[].valid_lifetime is the Kea-reported lease validity duration in seconds, directly comparable to the already-modeled expire field and arguably more precise for lease-expiry monitoring. PRUNE TRIGGER: remove prefix_len/valid_lifetime from this list once modeled (they apply to keaLeases4 too, where valid_lifetime would appear identically if Kea serves it there)."
   },
   "ipsecPhase1": {
     "knownExtraPaths": [

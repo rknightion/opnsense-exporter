@@ -28,11 +28,11 @@
       "kind": "string"
     },
     {
-      "path": "response.*.session-down-events",
+      "path": "response.*.session-down",
       "kind": "number"
     },
     {
-      "path": "response.*.session-up-events",
+      "path": "response.*.session-up",
       "kind": "number"
     }
   ]

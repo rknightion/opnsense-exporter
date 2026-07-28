@@ -48,6 +48,17 @@ import (
 //   - ospfv3overview/ospfv3interface: field names VERIFIED against a live v3 adjacency 2026-07-25 (#377); still opaque to the canary via the RawMessage envelope (#459)
 //   - searchOspfneighbor: old vs new field names (state/nbrState, address/ifaceAddress) — verified
 //   - bfdneighbors/bfdcounters: peer-keyed map structure, uptime field presence
+//
+// CORRECTION (#480, 2026-07-28): the "field names below match the live captures"
+// claim above did NOT hold for bfdcounters. Two of its five fields were tagged
+// "session-up-events"/"session-down-events", which FRR has never emitted on any
+// release, so they decoded to zero on every real box while the hand-written
+// fixture — which encoded the same invented names — kept the unit test green.
+// The live-box canary caught it only because it reported the two tagged names as
+// missing and FRR's real "session-up"/"session-down" as unexpected extras on the
+// same response. Verify BFD field names against FRR's bfdd/bfdd_vty.c, not
+// against OPNsense: the quagga plugin is a pure vtysh passthrough and renames
+// nothing.
 
 // --- BGP ---
 
@@ -394,11 +405,17 @@ type frrBFDNeighborEntry struct {
 
 // frrBFDCounterEntry holds a single BFD peer's counters from bfdcounters.
 type frrBFDCounterEntry struct {
-	Peer              string  `json:"peer"`
-	ControlIn         float64 `json:"control-packet-input"`
-	ControlOut        float64 `json:"control-packet-output"`
-	SessionUpEvents   float64 `json:"session-up-events"`
-	SessionDownEvents float64 `json:"session-down-events"`
+	Peer       string  `json:"peer"`
+	ControlIn  float64 `json:"control-packet-input"`
+	ControlOut float64 `json:"control-packet-output"`
+	// FRR names these "session-up"/"session-down" (bfdd/bfdd_vty.c). They were
+	// tagged "session-up-events"/"session-down-events" until #480 — names that
+	// exist nowhere in FRR on master or on any release in the support window, so
+	// both counters silently decoded to zero on every real box. Do not "restore"
+	// the -events suffix; the Go field names keep it only for continuity with the
+	// exported metric names.
+	SessionUpEvents   float64 `json:"session-up"`
+	SessionDownEvents float64 `json:"session-down"`
 }
 
 // frrBFDNeighborsEnvelope wraps the bfdneighbors `{"response": {...}}`.
