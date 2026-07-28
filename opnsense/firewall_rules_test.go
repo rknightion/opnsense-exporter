@@ -1,9 +1,106 @@
 package opnsense
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 )
+
+// TestFirewallRuleStatsResponse_StatsShape covers the PHP empty-array-vs-object
+// quirk from #481: OPNsense serializes "stats" as a JSON object when populated
+// and as a bare "[]" when there is nothing to report (a freshly-stripped box).
+// The populated case is derived from TestFetchFirewallRuleStats_DetailsDisabled's
+// fixture above; the empty case is the exact body captured live and quoted in #481.
+func TestFirewallRuleStatsResponse_StatsShape(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantLen   int
+		wantErr   bool
+		wantEval1 int64 // evaluations for "uuid-rule-1", when present
+	}{
+		{
+			name: "populated object form",
+			body: `{
+				"status": "ok",
+				"stats": {
+					"uuid-rule-1": {
+						"pf_rules": 1,
+						"evaluations": 100,
+						"packets": 5000,
+						"bytes": 2000000,
+						"states": 25
+					},
+					"uuid-rule-2": {
+						"pf_rules": 2,
+						"evaluations": 200,
+						"packets": 10000,
+						"bytes": 4000000,
+						"states": 50
+					}
+				}
+			}`,
+			wantLen:   2,
+			wantEval1: 100,
+		},
+		{
+			name:    "empty array form (live capture, #481)",
+			body:    `{"status":"ok","stats":[]}`,
+			wantLen: 0,
+		},
+		{
+			name:    "non-empty array is an error, not silently absorbed",
+			body:    `{"status":"ok","stats":[{"pf_rules":1}]}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var resp firewallRuleStatsResponse
+			err := json.Unmarshal([]byte(tt.body), &resp)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error for non-empty array stats, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(resp.Stats) != tt.wantLen {
+				t.Fatalf("expected %d stats entries, got %d", tt.wantLen, len(resp.Stats))
+			}
+			if tt.wantEval1 != 0 {
+				stat, ok := resp.Stats["uuid-rule-1"]
+				if !ok {
+					t.Fatal("uuid-rule-1 not found in decoded stats")
+				}
+				if stat.Evaluations != tt.wantEval1 {
+					t.Errorf("expected Evaluations=%d, got %d", tt.wantEval1, stat.Evaluations)
+				}
+			}
+		})
+	}
+}
+
+// TestFetchFirewallRuleStats_EmptyArrayStats reproduces the live failure from
+// #481 end-to-end through FetchFirewallRuleStats: a freshly-stripped box returns
+// "stats":[] and the collector must report zero rules, not an error.
+func TestFetchFirewallRuleStats_EmptyArrayStats(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","stats":[]}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchFirewallRuleStats(false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rules) != 0 {
+		t.Fatalf("expected 0 rules, got %d", len(data.Rules))
+	}
+}
 
 func TestFetchFirewallRuleStats_DetailsDisabled(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {

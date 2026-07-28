@@ -10,31 +10,7 @@
   "fields": [
     {
       "path": "stats",
-      "kind": "object"
-    },
-    {
-      "path": "stats.*",
-      "kind": "object"
-    },
-    {
-      "path": "stats.*.bytes",
-      "kind": "number"
-    },
-    {
-      "path": "stats.*.evaluations",
-      "kind": "number"
-    },
-    {
-      "path": "stats.*.packets",
-      "kind": "number"
-    },
-    {
-      "path": "stats.*.pf_rules",
-      "kind": "number"
-    },
-    {
-      "path": "stats.*.states",
-      "kind": "number"
+      "kind": "any"
     },
     {
       "path": "status",

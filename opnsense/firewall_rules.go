@@ -1,12 +1,57 @@
 package opnsense
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"strings"
 )
 
 type firewallRuleStatsResponse struct {
-	Status string                      `json:"status"`
-	Stats  map[string]firewallRuleStat `json:"stats"`
+	Status string              `json:"status"`
+	Stats  firewallRuleStatMap `json:"stats"`
+}
+
+// firewallRuleStatMap decodes the api/firewall/filter_util/rule_stats "stats"
+// field. It is built by PHP as an associative array keyed by rule UUID, so
+// json_encode renders it as a JSON object ({...}) when at least one rule has
+// stats, but as an empty JSON array ([]) on a box with nothing to report — a
+// fresh install, or one just stripped of its config (#481). A plain map field
+// cannot unmarshal "[]", which fails the whole fetch and kills the collector
+// rather than reporting zero rules. This type tolerates the empty-array form.
+//
+// A NON-empty array is deliberately treated as an error rather than absorbed:
+// rule stats are always keyed by UUID, never by sequential index, so upstream
+// has no encoding path that produces a populated array here (unlike e.g.
+// captivePortalZoneMap's numeric-key re-integerization). A populated array
+// would mean the payload shape genuinely changed and should surface as drift,
+// not be silently swallowed into an empty result.
+type firewallRuleStatMap map[string]firewallRuleStat
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (m *firewallRuleStatMap) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		*m = nil
+		return nil
+	}
+	if trimmed[0] == '[' {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(trimmed, &arr); err != nil {
+			return fmt.Errorf("firewallRuleStatMap array: %w", err)
+		}
+		if len(arr) > 0 {
+			return fmt.Errorf("firewallRuleStatMap: unexpected non-empty array with %d elements", len(arr))
+		}
+		*m = nil
+		return nil
+	}
+	var raw map[string]firewallRuleStat
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return fmt.Errorf("firewallRuleStatMap object: %w", err)
+	}
+	*m = raw
+	return nil
 }
 
 type firewallRuleStat struct {

@@ -112,6 +112,37 @@ func TestFirewallRulesCollector_Update_WithDetails(t *testing.T) {
 	}
 }
 
+// TestFirewallRulesCollector_Update_EmptyArrayStats reproduces #481 at the
+// collector level: a box with no rule statistics returns "stats":[] (PHP's
+// empty-array encoding, not an object), and the collector must report zero
+// rules rather than erroring the whole collection out.
+func TestFirewallRulesCollector_Update_EmptyArrayStats(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/firewall/filter_util/rule_stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok","stats":[]}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &firewallRulesCollector{subsystem: FirewallRulesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	expectedCount := 1
+	if len(metrics) != expectedCount {
+		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	if getMetricValue(metrics[0]) != 0 {
+		t.Errorf("expected rulesTotal=0, got %f", getMetricValue(metrics[0]))
+	}
+}
+
 func TestFirewallRulesCollector_Name(t *testing.T) {
 	c := &firewallRulesCollector{subsystem: FirewallRulesSubsystem}
 	if c.Name() != FirewallRulesSubsystem {
