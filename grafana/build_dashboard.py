@@ -505,6 +505,22 @@ def build_diagnostics(b: Builder):
                             "large total with a flat rate panel beside it is history, not a live "
                             "problem; the two are meant to be read together."
                        ))
+    # #494: the soft series budget is REPORTED, never enforced — nothing is dropped
+    # or refused when it is exceeded. This counts the COLLECTOR registry only, which
+    # is what /metrics and the OTLP bridge serve; the exporter's own process_*/go_*
+    # and otlp delivery-health families live on a separate self registry and are not
+    # in this number, so it reads lower than what the tenant finally stores for this
+    # job. Charted as a rate alongside the level because a budget breach is far less
+    # interesting than the slope that got there.
+    series_total = b.ts("Collector Series Total (soft budget)",
+                        [(sel("opnsense_exporter_series_total"), "series {{opnsense_instance}}")],
+                        w=12, h=6,
+                        desc="Total series on the collector registry, the number --exporter.series-budget "
+                             "is measured against. The budget is advisory: exceeding it logs a rate-limited "
+                             "warning and flags the console's Cardinality tab, and changes nothing about what "
+                             "is exported. Excludes the exporter's own process_*/go_* and OTLP delivery "
+                             "families, which are on a separate registry, so expect this to read lower than "
+                             "your tenant's series count for this job.")
     build = b.table("Build Info", [sel("opnsense_exporter_build_info")],
                     excludes=["Value", "__name__", "job", "instance"],
                     renames={"version": "Version", "goversion": "Go", "opnsense_instance": "Instance"},
@@ -824,7 +840,7 @@ def build_diagnostics(b: Builder):
         b.row("Grafana Annotation Writing", [ann_rate, ann_age], present="has_annotations"),
         b.row("Metrics Handler Serving Path",
               [server_inflight, server_req_rate, server_rejected, server_gather_err, server_p95]),
-        b.row("Exporter Build & Collectors", [build, cov]),
+        b.row("Exporter Build & Collectors", [build, cov, series_total]),
         b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),
     ])

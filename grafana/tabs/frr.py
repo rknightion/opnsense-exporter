@@ -13,6 +13,7 @@ Gauges shown raw: service_running, bgp_peers_total, bgp_failed_peers,
 bgp_rib_entries, bgp_peer_up, bgp_peer_prefixes_received/sent,
 bgp_peer_uptime_seconds, ospf_neighbors_total, ospf_neighbor_adjacency,
 ospf_area_*, bfd_peers_total, bfd_peer_up, bfd_peer_uptime_seconds,
+bfd_peer_downtime_seconds, bfd_peer_rtt_min/avg/max_microseconds,
 bgp_peer_last_reset_seconds, bgp_peer_prefixes_accepted, bgp_peer_queue_depth,
 ospf_interface_up/cost/neighbors/neighbors_adjacent, ospfv3_interface_up/cost,
 ospfv3_area_lsa_count, ospfv3_interface_pending_lsa, and (opt-in) route_count,
@@ -22,6 +23,16 @@ ospf_interface_state/ospfv3_interface_state are enum-style gauges: one series
 per (interface, state) with exactly one state at value 1 per interface. Shown
 as an instant table filtered to the active row (value == 1), not a
 statetimeline.
+
+bfd_peer_diagnostic_info is an info metric (value always 1) carrying FRR's
+diag2str() down-reason enum as labels (diagnostic/remote_diagnostic) — shown
+as a table, not charted. bfd_peer_downtime_seconds is the Down-state
+counterpart of bfd_peer_uptime_seconds: FRR emits the two as mutually
+exclusive fields (#484), so a peer that is up/initializing/administratively
+shut down has NO downtime series at all — do not treat a missing series on
+this panel as zero downtime. bfd_peer_rtt_min/avg/max_microseconds read 0
+unless both BFD peers support FRR's RTT extension, which is a legitimate
+zero, not a fault signal.
 
 The routing-state volume gauges (route_count, route_nexthop_count,
 ospf_route_count, ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count) are
@@ -357,6 +368,48 @@ def build(b: Builder):
         desc="BFD session state-change event rates per peer.",
     )
 
+    # ------------------------------------------------------------------ #
+    # Row 4b: BFD Diagnostic / RTT / Down-Duration (#484)                  #
+    # ------------------------------------------------------------------ #
+    bfd_diagnostic = b.table(
+        "BFD Peer Diagnostic",
+        [sel("opnsense_frr_bfd_peer_diagnostic_info")],
+        w=24, h=6,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "peer": "Peer",
+            "diagnostic": "Diagnostic",
+            "remote_diagnostic": "Remote Diagnostic",
+            "opnsense_instance": "Instance",
+        },
+        sort_by="Peer",
+        desc="FRR's diag2str() down-reason enum per BFD peer (info metric — value is always "+
+             "1; use labels). Distinct from the up/down state already shown above: this is "+
+             "WHY a session last went down (e.g. \"control detection time expired\", "+
+             "\"neighbor signaled session down\"), not whether it currently is.",
+    )
+    bfd_rtt = b.ts(
+        "BFD Peer Round-Trip Time",
+        [
+            (sel("opnsense_frr_bfd_peer_rtt_min_microseconds"), "{{peer}} min"),
+            (sel("opnsense_frr_bfd_peer_rtt_avg_microseconds"), "{{peer}} avg"),
+            (sel("opnsense_frr_bfd_peer_rtt_max_microseconds"), "{{peer}} max"),
+        ],
+        unit="µs", w=12, h=8,
+        desc="Measured BFD round-trip time per peer (FRR's RTT extension). Reads 0 unless "+
+             "BOTH ends of the session support the extension — a legitimate zero, not a "+
+             "fault indicator.",
+    )
+    bfd_downtime = b.ts(
+        "BFD Peer Down-Duration",
+        [(sel("opnsense_frr_bfd_peer_downtime_seconds"), "{{peer}}")],
+        unit="s", w=12, h=8,
+        desc="Duration a BFD peer session has been down. Only present while the peer is "+
+             "actually in the down state — FRR emits uptime and downtime as mutually "+
+             "exclusive fields, so a peer that is up, initializing, or administratively "+
+             "shut down has NO series here at all (absent, not zero).",
+    )
+
     b.tab("FRR Routing", [
         b.row("FRR Service & Summary",
               [svc, bgp_peers, bgp_failed, ospf_neighbors, bfd_peers, bgp_rib],
@@ -385,6 +438,7 @@ def build(b: Builder):
                ospfv3_route_count, ospf_lsa_count, ospfv3_lsa_count],
               present="has_frr_routes"),
         b.row("BFD",
-              [bfd_state, bfd_uptime, bfd_pkt_rate, bfd_events],
+              [bfd_state, bfd_uptime, bfd_pkt_rate, bfd_events,
+               bfd_diagnostic, bfd_rtt, bfd_downtime],
               present="has_frr"),
     ])

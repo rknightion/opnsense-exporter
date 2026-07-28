@@ -173,12 +173,15 @@ def build(b: Builder):
             "description": "Instance",
             "real_address": "Real Address",
             "virtual_address": "Virtual Address",
+            "virtual_ipv6_address": "Virtual IPv6 Address",
             "username": "Username",
             "Value": "OK",
         },
         sort_by="Instance",
         desc=(
             "Per-session OpenVPN details (username, virtual address). "
+            "'Virtual IPv6 Address' is populated only for dual-stack or "
+            "IPv6-only tunnels; empty for v4-only sessions. "
             "Value: 1 = ok, 0 = not ok. Only populated when the exporter runs "
             "with --exporter.enable-openvpn-details."
         ),
@@ -222,6 +225,7 @@ def build(b: Builder):
             "description": "Instance",
             "real_address": "Real Address",
             "virtual_address": "Virtual Address",
+            "virtual_ipv6_address": "Virtual IPv6 Address",
             "username": "Identity",
             "Value": "Connected Since",
         },

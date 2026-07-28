@@ -91,12 +91,43 @@ func frrCollectorMux(t *testing.T) *http.ServeMux {
       "local": "10.1.1.1",
       "interface": "em0",
       "status": "up",
-      "uptime": 3600
+      "uptime": 3600,
+      "diagnostic": "ok",
+      "remote-diagnostic": "ok",
+      "rtt-min": 500,
+      "rtt-avg": 750,
+      "rtt-max": 1200
+    },
+    "10.1.1.3": {
+      "peer": "10.1.1.3",
+      "local": "10.1.1.1",
+      "interface": "em1",
+      "status": "down",
+      "downtime": 120,
+      "diagnostic": "neighbor signaled session down",
+      "remote-diagnostic": "control detection time expired",
+      "rtt-min": 0,
+      "rtt-avg": 0,
+      "rtt-max": 0
+    },
+    "10.1.1.4": {
+      "peer": "10.1.1.4",
+      "local": "10.1.1.1",
+      "interface": "em2",
+      "status": "init",
+      "diagnostic": "ok",
+      "remote-diagnostic": "ok",
+      "rtt-min": 0,
+      "rtt-avg": 0,
+      "rtt-max": 0
     }
   }
 }`))
 	})
 
+	// session-up/session-down are FRR's real wire names (bfdd/bfdd_vty.c) — see
+	// the CORRECTION banner in opnsense/frr.go (#480). Do not "restore" a
+	// -events suffix; it appears nowhere in FRR.
 	mux.HandleFunc("/api/quagga/diagnostics/bfdcounters", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{
   "response": {
@@ -106,8 +137,8 @@ func frrCollectorMux(t *testing.T) *http.ServeMux {
       "control-packet-output": 990,
       "echo-packet-input": 0,
       "echo-packet-output": 0,
-      "session-up-events": 1,
-      "session-down-events": 0,
+      "session-up": 1,
+      "session-down": 0,
       "zebra-notifications": 3
     }
   }
@@ -210,6 +241,90 @@ func TestFRRCollector_Update_Normal(t *testing.T) {
 				t.Error("expected frr_bgp_peer_uptime_seconds to be skipped for peer with 0 uptime")
 			}
 		}
+	}
+}
+
+// TestFRRCollector_Update_BFDDiagnosticRTTAndDownDuration covers #484: the
+// diagnostic/remote_diagnostic labelled info series, the RTT gauges, and
+// down-duration modelling at the collector (metric-emission) layer.
+//
+// The critical case is peer 10.1.1.4, which frrCollectorMux's bfdneighbors
+// fixture puts in FRR's "init" state — carrying neither "uptime" nor
+// "downtime" on the wire (bfdd_vty.c:373-375). opnsense_frr_bfd_peer_downtime_seconds
+// must be entirely ABSENT for that peer, not present with value 0: "0 seconds
+// down" and "no information" are different answers, and this test is what
+// pins that distinction at the metric-emission boundary (not just the
+// opnsense/ decode layer).
+func TestFRRCollector_Update_BFDDiagnosticRTTAndDownDuration(t *testing.T) {
+	server := httptest.NewServer(frrCollectorMux(t))
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &frrCollector{subsystem: FRRSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	diagLabelsByPeer := map[string]map[string]string{}
+	rttMinByPeer := map[string]float64{}
+	downtimePeersSeen := map[string]bool{}
+
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		val := getMetricValue(m)
+
+		switch {
+		case strings.Contains(desc, "frr_bfd_peer_diagnostic_info"):
+			diagLabelsByPeer[labels["peer"]] = labels
+		case strings.Contains(desc, "frr_bfd_peer_rtt_min_microseconds"):
+			rttMinByPeer[labels["peer"]] = val
+		case strings.Contains(desc, "frr_bfd_peer_downtime_seconds"):
+			downtimePeersSeen[labels["peer"]] = true
+			if labels["peer"] == "10.1.1.3" && val != 120 {
+				t.Errorf("bfd_peer_downtime_seconds{peer=10.1.1.3}: want 120, got %v", val)
+			}
+		}
+	}
+
+	// UP peer (10.1.1.2): diagnostic info present, RTT gauges present, no
+	// downtime series.
+	if labels, ok := diagLabelsByPeer["10.1.1.2"]; !ok {
+		t.Error("expected frr_bfd_peer_diagnostic_info for peer 10.1.1.2")
+	} else if labels["diagnostic"] != "ok" || labels["remote_diagnostic"] != "ok" {
+		t.Errorf("peer 10.1.1.2 diagnostic labels: want ok/ok, got %s/%s",
+			labels["diagnostic"], labels["remote_diagnostic"])
+	}
+	if val, ok := rttMinByPeer["10.1.1.2"]; !ok || val != 500 {
+		t.Errorf("bfd_peer_rtt_min_microseconds{peer=10.1.1.2}: want 500, got %v (present=%v)", val, ok)
+	}
+	if downtimePeersSeen["10.1.1.2"] {
+		t.Error("peer 10.1.1.2 (up): expected NO frr_bfd_peer_downtime_seconds series")
+	}
+
+	// DOWN peer (10.1.1.3): diagnostic carries the real down reason, downtime present.
+	if labels, ok := diagLabelsByPeer["10.1.1.3"]; !ok {
+		t.Error("expected frr_bfd_peer_diagnostic_info for peer 10.1.1.3")
+	} else if labels["diagnostic"] != "neighbor signaled session down" {
+		t.Errorf("peer 10.1.1.3 diagnostic: want %q, got %q",
+			"neighbor signaled session down", labels["diagnostic"])
+	}
+	if !downtimePeersSeen["10.1.1.3"] {
+		t.Error("peer 10.1.1.3 (down): expected frr_bfd_peer_downtime_seconds series")
+	}
+
+	// INIT peer (10.1.1.4): the load-bearing assertion. downtime must be
+	// ABSENT, not present-with-zero.
+	if downtimePeersSeen["10.1.1.4"] {
+		t.Error("peer 10.1.1.4 (init): expected NO frr_bfd_peer_downtime_seconds series " +
+			"(FRR emits neither uptime nor downtime for PTM_BFD_INIT) — absence must stay " +
+			"absence, not become a zero")
+	}
+	// diagnostic/RTT are unconditional in FRR, so they ARE expected even for
+	// the init peer.
+	if _, ok := diagLabelsByPeer["10.1.1.4"]; !ok {
+		t.Error("expected frr_bfd_peer_diagnostic_info for peer 10.1.1.4 (init) — " +
+			"diagnostic is emitted unconditionally by FRR regardless of session state")
 	}
 }
 

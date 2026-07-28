@@ -50,6 +50,13 @@ type Recorder struct {
 	lanes       map[string]laneCapture
 	lastErrorAt time.Time
 	errorCount  uint64
+
+	// budget and budgetState back the optional soft total-series budget check
+	// (#494); see ConfigureSeriesBudget and budget.go. budget is guarded by mu
+	// (set once at startup, read on every Gather); budgetState has its own lock
+	// since it is touched only after mu is released.
+	budget      SeriesBudget
+	budgetState budgetState
 }
 
 // New returns an empty Recorder. Snapshot returns (nil, zero-time) until the
@@ -95,7 +102,16 @@ func (t teed) Gather() ([]*dto.MetricFamily, error) {
 	if len(mfs) > 0 {
 		t.r.lanes[t.lane] = laneCapture{families: mfs, at: time.Now(), partial: err != nil}
 	}
+	// Compute the MERGED total (every lane, not just this one) under the same
+	// lock, since a split OTLP lane only ever sees part of the metric set —
+	// see merged()'s doc comment. cfg is copied out so the budget check itself
+	// runs unlocked.
+	merged, _, _ := t.r.merged()
+	total := totalSeriesOf(merged)
+	cfg := t.r.budget
 	t.r.mu.Unlock()
+
+	t.r.observeSeries(total, cfg)
 
 	return mfs, err
 }

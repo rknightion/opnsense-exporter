@@ -48,7 +48,12 @@ import (
 type Deps struct {
 	Version, GoVersion, Host, InstanceLabel string
 	StartTime                               time.Time
-	Tracker                                 *collector.StatusTracker
+	// SeriesBudget is the soft TOTAL-series budget (#494,
+	// --exporter.series-budget) the Cardinality report measures against. 0
+	// disables the check. It is threaded through Deps rather than held as
+	// package state so a report can never depend on hidden startup order.
+	SeriesBudget int
+	Tracker      *collector.StatusTracker
 	// Capture returns the passive metric capture the whole console renders from
 	// (metricsnap.Recorder.Capture). It carries the families, their capture time,
 	// and whether that capture arrived WITH a gather error — the console must say
@@ -258,7 +263,7 @@ func (s *Server) snapshot() Status {
 	// pure, passive computation — no live API call. Config is deliberately NOT
 	// folded in here: EffectiveConfig re-reads secret files from disk, so it is
 	// rendered server-side once per page load (see handleStatus), not per poll.
-	card := buildCardinality(families, warnCardinality, critCardinality)
+	card := buildCardinality(families, warnCardinality, critCardinality, s.deps.SeriesBudget)
 	card.Generated = time.Now()
 	card.Growth = s.growth.rows()
 	st.Cardinality = card

@@ -224,7 +224,15 @@ const ospfNeighborsFixture = `{
 }`
 
 // bfdNeighborsFixture is derived from FRR `show bfd peers json` as keyed by
-// the quagga plugin's bfdTreeFetch helper.
+// the quagga plugin's bfdTreeFetch helper. It covers three of FRR's session
+// states (bfdd_vty.c:364-385): PTM_BFD_UP (10.1.1.2, carries "uptime", no
+// "downtime"), PTM_BFD_DOWN (10.1.1.3, carries "downtime", no "uptime"), and
+// PTM_BFD_INIT (10.1.1.4, carries NEITHER — that absence is the point of
+// TestFetchFRRBFD_DiagnosticRTTAndDownDuration below). diagnostic/
+// remote-diagnostic values are real diag2str() strings (bfdd/bfd.c:1922-1946)
+// — "ok" (diag 0), "neighbor signaled session down" (diag 3) and "control
+// detection time expired" (diag 1) — not invented ones; rtt-min/avg/max are
+// always present per bfdd_vty.c:433-436 (unconditional, not gated by state).
 const bfdNeighborsFixture = `{
   "response": {
     "10.1.1.2": {
@@ -235,6 +243,9 @@ const bfdNeighborsFixture = `{
       "uptime": 3600,
       "diagnostic": "ok",
       "remote-diagnostic": "ok",
+      "rtt-min": 500,
+      "rtt-avg": 750,
+      "rtt-max": 1200,
       "id": 1,
       "remote-id": 2
     },
@@ -243,10 +254,27 @@ const bfdNeighborsFixture = `{
       "local": "10.1.1.1",
       "interface": "em1",
       "status": "down",
-      "diagnostic": "no-diagnostic",
-      "remote-diagnostic": "no-diagnostic",
+      "downtime": 120,
+      "diagnostic": "neighbor signaled session down",
+      "remote-diagnostic": "control detection time expired",
+      "rtt-min": 0,
+      "rtt-avg": 0,
+      "rtt-max": 0,
       "id": 3,
       "remote-id": 4
+    },
+    "10.1.1.4": {
+      "peer": "10.1.1.4",
+      "local": "10.1.1.1",
+      "interface": "em2",
+      "status": "init",
+      "diagnostic": "ok",
+      "remote-diagnostic": "ok",
+      "rtt-min": 0,
+      "rtt-avg": 0,
+      "rtt-max": 0,
+      "id": 5,
+      "remote-id": 6
     }
   }
 }`
@@ -596,8 +624,8 @@ func TestFetchFRRBFD_Normal(t *testing.T) {
 	if !data.Present {
 		t.Fatal("expected Present=true")
 	}
-	if len(data.Peers) != 2 {
-		t.Fatalf("expected 2 peers, got %d", len(data.Peers))
+	if len(data.Peers) != 3 {
+		t.Fatalf("expected 3 peers, got %d", len(data.Peers))
 	}
 
 	peerMap := make(map[string]FRRBFDPeer)
@@ -637,6 +665,78 @@ func TestFetchFRRBFD_Normal(t *testing.T) {
 	}
 	if p2.HasCounters {
 		t.Error("peer 10.1.1.3: expected HasCounters=false (no counters entry)")
+	}
+}
+
+// TestFetchFRRBFD_DiagnosticRTTAndDownDuration covers #484: diagnostic/
+// remote-diagnostic labels, the rtt-min/avg/max gauges, and down-duration
+// modelling. The critical assertion is on the INIT peer (10.1.1.4): FRR emits
+// neither "uptime" nor "downtime" for PTM_BFD_INIT (bfdd_vty.c:373-375), so
+// HasDowntime must be false there — absence must stay absence, never a
+// silently-invented zero.
+func TestFetchFRRBFD_DiagnosticRTTAndDownDuration(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/quagga/diagnostics/bfdneighbors", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(bfdNeighborsFixture))
+	})
+	mux.HandleFunc("/api/quagga/diagnostics/bfdcounters", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+
+	data, err := client.FetchFRRBFD()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Peers) != 3 {
+		t.Fatalf("expected 3 peers, got %d", len(data.Peers))
+	}
+
+	peerMap := make(map[string]FRRBFDPeer)
+	for _, p := range data.Peers {
+		peerMap[p.Peer] = p
+	}
+
+	// UP peer: diagnostic "ok", RTT populated, no downtime.
+	up := peerMap["10.1.1.2"]
+	if up.Diagnostic != "ok" {
+		t.Errorf("up peer Diagnostic: want %q, got %q", "ok", up.Diagnostic)
+	}
+	if up.RemoteDiagnostic != "ok" {
+		t.Errorf("up peer RemoteDiagnostic: want %q, got %q", "ok", up.RemoteDiagnostic)
+	}
+	if up.RTTMinUsec != 500 || up.RTTAvgUsec != 750 || up.RTTMaxUsec != 1200 {
+		t.Errorf("up peer RTT: want 500/750/1200, got %v/%v/%v", up.RTTMinUsec, up.RTTAvgUsec, up.RTTMaxUsec)
+	}
+	if up.HasDowntime {
+		t.Error("up peer: expected HasDowntime=false")
+	}
+
+	// DOWN peer: real diag2str reason strings, downtime present.
+	down := peerMap["10.1.1.3"]
+	if down.Diagnostic != "neighbor signaled session down" {
+		t.Errorf("down peer Diagnostic: want %q, got %q", "neighbor signaled session down", down.Diagnostic)
+	}
+	if down.RemoteDiagnostic != "control detection time expired" {
+		t.Errorf("down peer RemoteDiagnostic: want %q, got %q", "control detection time expired", down.RemoteDiagnostic)
+	}
+	if !down.HasDowntime {
+		t.Fatal("down peer: expected HasDowntime=true")
+	}
+	if down.DowntimeSeconds != 120 {
+		t.Errorf("down peer DowntimeSeconds: want 120, got %v", down.DowntimeSeconds)
+	}
+
+	// INIT peer: the whole point of #484 — neither uptime nor downtime is
+	// present on the wire, so both must stay absent, not read as zero.
+	init := peerMap["10.1.1.4"]
+	if init.HasDowntime {
+		t.Errorf("init peer: expected HasDowntime=false (FRR emits neither uptime nor downtime "+
+			"for PTM_BFD_INIT), got HasDowntime=true DowntimeSeconds=%v", init.DowntimeSeconds)
+	}
+	if init.UptimeSeconds != 0 {
+		t.Errorf("init peer UptimeSeconds: want 0 (absent on wire), got %v", init.UptimeSeconds)
 	}
 }
 
@@ -716,8 +816,8 @@ func TestFetchFRRBFD_CountersMissing(t *testing.T) {
 	if !data.Present {
 		t.Fatal("expected Present=true (neighbors responded)")
 	}
-	if len(data.Peers) != 2 {
-		t.Fatalf("expected 2 peers, got %d", len(data.Peers))
+	if len(data.Peers) != 3 {
+		t.Fatalf("expected 3 peers, got %d", len(data.Peers))
 	}
 	for _, p := range data.Peers {
 		if p.HasCounters {

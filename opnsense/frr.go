@@ -395,12 +395,32 @@ func (c *Client) FetchFRROSPF() (FRROSPF, *APICallError) {
 // --- BFD ---
 
 // frrBFDNeighborEntry holds a single BFD peer from the bfdneighbors response.
+//
+// diagnostic/remote-diagnostic (bfdd_vty.c:387-389, diag2str()) and
+// rtt-min/rtt-avg/rtt-max (bfdd_vty.c:433-436) are emitted UNCONDITIONALLY by
+// FRR for every peer regardless of session state, so plain value types are
+// correct for them — a zero RTT is a legitimate "peer doesn't support FRR's
+// RTT extension" reading, not an absence.
+//
+// uptime/downtime are the opposite: bfdd_vty.c:364-385 emits "uptime" ONLY
+// inside the PTM_BFD_UP case and "downtime" ONLY inside PTM_BFD_DOWN — they
+// are mutually exclusive, and PTM_BFD_INIT/PTM_BFD_ADM_DOWN emit NEITHER.
+// Downtime uses a pointer so json.Unmarshal can tell "key absent" (nil) apart
+// from "key present with value 0" (a session that transitioned to down in
+// the same second the sample was taken) — a plain float64 cannot make that
+// distinction and would silently turn "no data" into "0 seconds down".
 type frrBFDNeighborEntry struct {
-	Peer      string  `json:"peer"`
-	Local     string  `json:"local"`
-	Interface string  `json:"interface"`
-	Status    string  `json:"status"`
-	Uptime    float64 `json:"uptime"` // seconds; only present when up
+	Peer             string   `json:"peer"`
+	Local            string   `json:"local"`
+	Interface        string   `json:"interface"`
+	Status           string   `json:"status"`
+	Uptime           float64  `json:"uptime"`            // seconds; only present when up
+	Downtime         *float64 `json:"downtime"`          // seconds; only present when down (bfdd_vty.c:370-371)
+	Diagnostic       string   `json:"diagnostic"`        // diag2str(bs->local_diag), bfdd_vty.c:387
+	RemoteDiagnostic string   `json:"remote-diagnostic"` // diag2str(bs->remote_diag), bfdd_vty.c:388-389
+	RTTMin           float64  `json:"rtt-min"`           // usec, bfdd_vty.c:434
+	RTTAvg           float64  `json:"rtt-avg"`           // usec, bfdd_vty.c:435
+	RTTMax           float64  `json:"rtt-max"`           // usec, bfdd_vty.c:436
 }
 
 // frrBFDCounterEntry holds a single BFD peer's counters from bfdcounters.
@@ -429,9 +449,19 @@ type frrBFDCountersEnvelope struct {
 }
 
 // FRRBFDPeer holds normalised per-BFD-peer metrics.
+//
+// HasDowntime mirrors the mutual exclusivity of FRR's uptime/downtime fields
+// (see frrBFDNeighborEntry): it is true only when the wire payload carried a
+// "downtime" key at all (i.e. the peer is in FRR's PTM_BFD_DOWN state).
+// DowntimeSeconds must never be read when HasDowntime is false — that is the
+// INIT/ADM_DOWN "no data" case, not a zero-duration down session.
 type FRRBFDPeer struct {
 	Peer, Interface                    string
 	Up, UptimeSeconds                  float64
+	Diagnostic, RemoteDiagnostic       string
+	RTTMinUsec, RTTAvgUsec, RTTMaxUsec float64
+	HasDowntime                        bool
+	DowntimeSeconds                    float64
 	HasCounters                        bool
 	ControlIn, ControlOut              float64
 	SessionUpEvents, SessionDownEvents float64
@@ -501,10 +531,19 @@ func (c *Client) FetchFRRBFD() (FRRBFD, *APICallError) {
 			up = 1.0
 		}
 		p := &FRRBFDPeer{
-			Peer:          peerIP,
-			Interface:     nbr.Interface,
-			Up:            up,
-			UptimeSeconds: nbr.Uptime,
+			Peer:             peerIP,
+			Interface:        nbr.Interface,
+			Up:               up,
+			UptimeSeconds:    nbr.Uptime,
+			Diagnostic:       nbr.Diagnostic,
+			RemoteDiagnostic: nbr.RemoteDiagnostic,
+			RTTMinUsec:       nbr.RTTMin,
+			RTTAvgUsec:       nbr.RTTAvg,
+			RTTMaxUsec:       nbr.RTTMax,
+		}
+		if nbr.Downtime != nil {
+			p.HasDowntime = true
+			p.DowntimeSeconds = *nbr.Downtime
 		}
 		peerMap[peerIP] = p
 		data.Peers = append(data.Peers, *p)

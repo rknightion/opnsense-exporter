@@ -231,6 +231,18 @@ type Collector struct {
 	snapshotTs    *prometheus.Desc
 	lastSuccessTs *prometheus.Desc
 
+	// seriesTotal backs opnsense_exporter_series_total (#494): the most recent
+	// total collector-registry series count observed by metricsnap's
+	// Tee/TeeLane on a real scrape or OTLP export, so the soft
+	// --exporter.series-budget check is alertable rather than only visible in
+	// logs and the web UI. Nil until New() sets it (guarded at every emit site
+	// so a Collector built by test helpers via struct literal, which never set
+	// it, never panics). observedSeriesTotal is written from
+	// SetObservedSeriesTotal, called asynchronously to Collect() from
+	// metricsnap's SeriesBudget.Observed callback, hence atomic.
+	seriesTotal         *prometheus.Desc
+	observedSeriesTotal atomic.Int64
+
 	// maxScrapeDuration is the legacy field name for the per-poll timeout configured
 	// by --exporter.max-scrape-duration. Serving /metrics only replays snapshots and
 	// never uses this as an API deadline. Zero selects defaultMaxScrapeDuration.
@@ -1075,6 +1087,16 @@ func WithBuildInfo(version string) Option {
 	}
 }
 
+// SetObservedSeriesTotal records the most recent total collector-registry
+// series count observed by metricsnap's Tee/TeeLane on a real scrape or OTLP
+// export (#494), surfaced via opnsense_exporter_series_total on the next
+// Collect. Safe to call concurrently with Collect(). Wired as
+// metricsnap.SeriesBudget.Observed by main.go — this package never imports
+// metricsnap, so the wiring lives at the composition root, not here.
+func (c *Collector) SetObservedSeriesTotal(total int) {
+	c.observedSeriesTotal.Store(int64(total))
+}
+
 // firewallIsHealthy reports whether the OPNsense firewall subsystem is healthy, tolerating
 // both the legacy (<25.1) top-level string status and the 25.1+ metadata status. On 25.1+ a
 // healthy box reports an OK overall system status and OMITS any per-Firewall entry (the
@@ -1184,6 +1206,13 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 		prometheus.BuildFQName(namespace, "exporter", "collector_last_success_timestamp_seconds"),
 		"Unix timestamp of a collector's last fully successful poll. Unlike collector_snapshot_timestamp_seconds this does NOT advance on a partial-error poll, so the two together distinguish 'refreshed but degraded' from 'fully healthy'. Absent until the collector has succeeded at least once (#382)",
 		[]string{"collector", instanceLabelName},
+		nil,
+	)
+
+	c.seriesTotal = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "exporter", "series_total"),
+		"Total number of Prometheus series produced by the COLLECTOR registry on the most recent real /metrics scrape or OTLP export (#494) — the same set --exporter.series-budget is compared against, and what metricsnap replays to the web UI's /cardinality report. Self-metrics on the separate self registry (process_*/go_*, the opnsense_exporter_otlp_* delivery-health family, and this gauge itself) are NOT included, so this reads lower than a full scrape's total series count; see --exporter.series-budget's flag help for the same caveat. This gauge is itself exactly one series, so it cannot meaningfully move the number it reports. Reads 0 before the first real scrape/export has completed.",
+		[]string{instanceLabelName},
 		nil,
 	)
 
@@ -1344,6 +1373,9 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.nextPollTs
 	ch <- c.snapshotTs
 	ch <- c.lastSuccessTs
+	if c.seriesTotal != nil {
+		ch <- c.seriesTotal
+	}
 
 	for _, collector := range c.collectors {
 		collector.Describe(ch)
@@ -1411,6 +1443,12 @@ func (c *Collector) collectAlwaysOn(ch chan<- prometheus.Metric) {
 	c.apiCacheHits.Collect(ch)
 	c.apiCacheMisses.Collect(ch)
 	c.collectExporterInfo(ch)
+	if c.seriesTotal != nil {
+		ch <- prometheus.MustNewConstMetric(
+			c.seriesTotal, prometheus.GaugeValue, float64(c.observedSeriesTotal.Load()),
+			c.instanceLabel,
+		)
+	}
 }
 
 // collect serves one scrape by replaying the latest poll snapshot (#336). It makes

@@ -385,3 +385,84 @@ func TestFetchOpenVPNSessions_TrafficFieldsAbsent(t *testing.T) {
 		t.Errorf("expected Identity()='user1' (fallback), got %q", id)
 	}
 }
+
+// TestFetchOpenVPNSessions_VirtualIPv6Address guards #483: openVPNSessions rows
+// carry virtual_ipv6_address as a peer field alongside virtual_address (both
+// come from the same OpenVPN status-3 CLIENT_LIST row, per
+// scripts/openvpn/ovpn_status.py). All three real-world shapes must decode
+// correctly: v4-only (virtual_ipv6_address absent), dual-stack (both present),
+// and v6-only (virtual_address absent, e.g. an IPv6-only tunnel).
+func TestFetchOpenVPNSessions_VirtualIPv6Address(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"description": "Road Warrior VPN",
+					"username": "v4only",
+					"real_address": "203.0.113.10:1194",
+					"virtual_address": "10.8.0.2",
+					"status": "ok",
+					"is_client": true
+				},
+				{
+					"description": "Road Warrior VPN",
+					"username": "dualstack",
+					"real_address": "203.0.113.11:1194",
+					"virtual_address": "10.8.0.3",
+					"virtual_ipv6_address": "fd00:8::3",
+					"status": "ok",
+					"is_client": true
+				},
+				{
+					"description": "Road Warrior VPN",
+					"username": "v6only",
+					"real_address": "203.0.113.12:1194",
+					"virtual_ipv6_address": "fd00:8::4",
+					"status": "ok",
+					"is_client": true
+				}
+			],
+			"rowCount": 3,
+			"total": 3,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchOpenVPNSessions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rows) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(data.Rows))
+	}
+
+	byUser := make(map[string]Sessions, 3)
+	for _, s := range data.Rows {
+		byUser[s.Username] = s
+	}
+
+	v4only := byUser["v4only"]
+	if v4only.VirtualAddress != "10.8.0.2" {
+		t.Errorf("expected v4only VirtualAddress='10.8.0.2', got %q", v4only.VirtualAddress)
+	}
+	if v4only.VirtualIPv6Address != "" {
+		t.Errorf("expected v4only VirtualIPv6Address='' (absent), got %q", v4only.VirtualIPv6Address)
+	}
+
+	dual := byUser["dualstack"]
+	if dual.VirtualAddress != "10.8.0.3" {
+		t.Errorf("expected dualstack VirtualAddress='10.8.0.3', got %q", dual.VirtualAddress)
+	}
+	if dual.VirtualIPv6Address != "fd00:8::3" {
+		t.Errorf("expected dualstack VirtualIPv6Address='fd00:8::3', got %q", dual.VirtualIPv6Address)
+	}
+
+	v6only := byUser["v6only"]
+	if v6only.VirtualAddress != "" {
+		t.Errorf("expected v6only VirtualAddress='' (absent), got %q", v6only.VirtualAddress)
+	}
+	if v6only.VirtualIPv6Address != "fd00:8::4" {
+		t.Errorf("expected v6only VirtualIPv6Address='fd00:8::4', got %q", v6only.VirtualIPv6Address)
+	}
+}

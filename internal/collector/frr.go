@@ -72,6 +72,13 @@ type frrCollector struct {
 	bfdPeerSessionUpEvents *prometheus.Desc
 	bfdPeerSessionDnEvents *prometheus.Desc
 
+	// BFD per-peer diagnostic/RTT/down-duration (#484)
+	bfdPeerDiagnosticInfo *prometheus.Desc
+	bfdPeerRTTMin         *prometheus.Desc
+	bfdPeerRTTAvg         *prometheus.Desc
+	bfdPeerRTTMax         *prometheus.Desc
+	bfdPeerDowntimeSec    *prometheus.Desc
+
 	// Routing-state volume gauges (#199, opt-in via --exporter.enable-frr-routes)
 	routeCount        *prometheus.Desc
 	routeNexthopCount *prometheus.Desc
@@ -241,6 +248,33 @@ func (c *frrCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	c.bfdPeerSessionDnEvents = buildPrometheusDesc(c.subsystem, "bfd_peer_session_down_events_total",
 		"Cumulative BFD session-down events for this peer", peerOnlyLabels)
 
+	// BFD per-peer diagnostic/RTT/down-duration (#484)
+	c.bfdPeerDiagnosticInfo = buildPrometheusDesc(c.subsystem, "bfd_peer_diagnostic_info",
+		"FRR BFD peer diagnostic reason (value is always 1; use labels). diagnostic/"+
+			"remote_diagnostic are FRR's diag2str() enum: ok, control detection time expired, "+
+			"echo function failed, neighbor signaled session down, forwarding plane reset, "+
+			"path down, concatenated path down, administratively down, reverse concatenated "+
+			"path down, unknown.",
+		[]string{"peer", "diagnostic", "remote_diagnostic"})
+	c.bfdPeerRTTMin = buildPrometheusDesc(c.subsystem, "bfd_peer_rtt_min_microseconds",
+		"Minimum measured BFD round-trip time for this peer, in microseconds. Reads 0 unless "+
+			"both ends support FRR's BFD RTT extension — a legitimate zero, not a fault.",
+		peerOnlyLabels)
+	c.bfdPeerRTTAvg = buildPrometheusDesc(c.subsystem, "bfd_peer_rtt_avg_microseconds",
+		"Average measured BFD round-trip time for this peer, in microseconds. Reads 0 unless "+
+			"both ends support FRR's BFD RTT extension — a legitimate zero, not a fault.",
+		peerOnlyLabels)
+	c.bfdPeerRTTMax = buildPrometheusDesc(c.subsystem, "bfd_peer_rtt_max_microseconds",
+		"Maximum measured BFD round-trip time for this peer, in microseconds. Reads 0 unless "+
+			"both ends support FRR's BFD RTT extension — a legitimate zero, not a fault.",
+		peerOnlyLabels)
+	c.bfdPeerDowntimeSec = buildPrometheusDesc(c.subsystem, "bfd_peer_downtime_seconds",
+		"Duration this BFD peer session has been down, in seconds. Only emitted while the "+
+			"peer is in the down state — absent (not zero) while up, initializing, or "+
+			"administratively shut down, matching FRR's mutually exclusive uptime/downtime "+
+			"fields.",
+		peerOnlyLabels)
+
 	// Routing-state volume gauges (#199, opt-in via --exporter.enable-frr-routes).
 	// Aggregates only — never a per-prefix or per-LSA series.
 	c.routeCount = buildPrometheusDesc(c.subsystem, "route_count",
@@ -314,6 +348,8 @@ func (c *frrCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.bfdPeerUp, c.bfdPeerUptimeSec,
 		c.bfdPeerCtrlIn, c.bfdPeerCtrlOut,
 		c.bfdPeerSessionUpEvents, c.bfdPeerSessionDnEvents,
+		c.bfdPeerDiagnosticInfo, c.bfdPeerRTTMin, c.bfdPeerRTTAvg, c.bfdPeerRTTMax,
+		c.bfdPeerDowntimeSec,
 		c.routeCount, c.routeNexthopCount, c.ospfRouteCount, c.ospfv3RouteCount,
 		c.ospfLSACount, c.ospfv3LSACount,
 	} {
@@ -513,6 +549,28 @@ func (c *frrCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 					prometheus.CounterValue, peer.SessionUpEvents, peer.Peer, c.instance)
 				ch <- prometheus.MustNewConstMetric(c.bfdPeerSessionDnEvents,
 					prometheus.CounterValue, peer.SessionDownEvents, peer.Peer, c.instance)
+			}
+			// diagnostic/remote-diagnostic and RTT are emitted unconditionally by
+			// FRR for every peer regardless of session state (bfdd_vty.c:387-389,
+			// 433-436), so they're always emitted here too.
+			ch <- prometheus.MustNewConstMetric(c.bfdPeerDiagnosticInfo,
+				prometheus.GaugeValue, 1, peer.Peer, peer.Diagnostic, peer.RemoteDiagnostic, c.instance)
+			ch <- prometheus.MustNewConstMetric(c.bfdPeerRTTMin,
+				prometheus.GaugeValue, peer.RTTMinUsec, peer.Peer, c.instance)
+			ch <- prometheus.MustNewConstMetric(c.bfdPeerRTTAvg,
+				prometheus.GaugeValue, peer.RTTAvgUsec, peer.Peer, c.instance)
+			ch <- prometheus.MustNewConstMetric(c.bfdPeerRTTMax,
+				prometheus.GaugeValue, peer.RTTMaxUsec, peer.Peer, c.instance)
+			// Down-duration: emitted ONLY when FRR actually sent a "downtime" key
+			// (peer.HasDowntime, set from frrBFDNeighborEntry.Downtime being
+			// non-nil). This must stay a presence check, never peer.DowntimeSeconds
+			// > 0 — a peer that went down in the same second as the sample has a
+			// legitimate DowntimeSeconds of 0, which is not the same as "no data"
+			// (INIT/ADM_DOWN, where HasDowntime is false and the field is skipped
+			// entirely — see #484).
+			if peer.HasDowntime {
+				ch <- prometheus.MustNewConstMetric(c.bfdPeerDowntimeSec,
+					prometheus.GaugeValue, peer.DowntimeSeconds, peer.Peer, c.instance)
 			}
 		}
 	}

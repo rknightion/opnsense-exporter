@@ -67,6 +67,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].virtual_ipv6_address",
+      "kind": "string"
+    },
+    {
       "path": "total",
       "kind": "number"
     }

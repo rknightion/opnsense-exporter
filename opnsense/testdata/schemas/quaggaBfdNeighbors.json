@@ -16,6 +16,14 @@
       "kind": "object"
     },
     {
+      "path": "response.*.diagnostic",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.downtime",
+      "kind": "number"
+    },
+    {
       "path": "response.*.interface",
       "kind": "string"
     },
@@ -26,6 +34,22 @@
     {
       "path": "response.*.peer",
       "kind": "string"
+    },
+    {
+      "path": "response.*.remote-diagnostic",
+      "kind": "string"
+    },
+    {
+      "path": "response.*.rtt-avg",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.rtt-max",
+      "kind": "number"
+    },
+    {
+      "path": "response.*.rtt-min",
+      "kind": "number"
     },
     {
       "path": "response.*.status",

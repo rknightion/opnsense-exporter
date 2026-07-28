@@ -67,6 +67,7 @@ const openVPNTestSessions = `{
 			"common_name": "cert-user2",
 			"real_address": "203.0.113.11:51820",
 			"virtual_address": "10.0.0.3",
+			"virtual_ipv6_address": "fd00:0:0::3",
 			"status": "ok",
 			"is_client": true,
 			"bytes_received": "3000",
@@ -205,16 +206,33 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 		t.Fatalf("expected 3 per-session metrics with details enabled, got %d", len(sessions))
 	}
 	found := false
+	foundV6 := false
 	for _, m := range sessions {
 		labels := getMetricLabels(m)
 		if labels["username"] == "user1" &&
 			labels["virtual_address"] == "10.0.0.2" &&
 			labels["real_address"] == "203.0.113.10:51820" {
 			found = true
+			// v4-only session: the new label must be present but empty, not
+			// simply absent (it is a declared label on the metric).
+			if v6, ok := labels["virtual_ipv6_address"]; !ok || v6 != "" {
+				t.Errorf("expected virtual_ipv6_address='' for v4-only session user1, got %q (present=%v)", v6, ok)
+			}
+		}
+		// The "sessions" gauge labels by the raw OpenVPN username field
+		// (not Identity()/common_name, unlike the other three per-session
+		// metrics below) — the dual-stack fixture row has username "UNDEF".
+		if labels["username"] == "UNDEF" &&
+			labels["virtual_address"] == "10.0.0.3" &&
+			labels["virtual_ipv6_address"] == "fd00:0:0::3" {
+			foundV6 = true
 		}
 	}
 	if !found {
 		t.Error("expected a per-session metric with username=user1, virtual_address=10.0.0.2 and real_address=203.0.113.10:51820")
+	}
+	if !foundV6 {
+		t.Error("expected a per-session metric with username=UNDEF, virtual_address=10.0.0.3 and virtual_ipv6_address=fd00:0:0::3 (dual-stack session)")
 	}
 
 	// Aggregates still emitted alongside details.
@@ -232,8 +250,11 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 		t.Fatalf("expected 3 per-session received-bytes metrics, got %d", len(rxSessions))
 	}
 	rxByUser := map[string]float64{}
+	rxV6ByUser := map[string]string{}
 	for _, m := range rxSessions {
-		rxByUser[getMetricLabels(m)["username"]] = getMetricValue(m)
+		labels := getMetricLabels(m)
+		rxByUser[labels["username"]] = getMetricValue(m)
+		rxV6ByUser[labels["username"]] = labels["virtual_ipv6_address"]
 	}
 	if rxByUser["user1"] != 1000 {
 		t.Errorf("expected session_received_bytes_total=1000 for user1 (no common_name), got %v", rxByUser["user1"])
@@ -248,14 +269,27 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 	if _, ok := rxByUser["UNDEF"]; ok {
 		t.Error("expected no series labeled 'UNDEF' when common_name is present")
 	}
+	// Label-value assertions (not just series count) prove the new label
+	// landed in the right variadic position at this call site: a shifted
+	// argument would put the username or byte count into
+	// virtual_ipv6_address, or vice versa.
+	if rxV6ByUser["user1"] != "" {
+		t.Errorf("expected virtual_ipv6_address='' for v4-only session user1, got %q", rxV6ByUser["user1"])
+	}
+	if rxV6ByUser["cert-user2"] != "fd00:0:0::3" {
+		t.Errorf("expected virtual_ipv6_address='fd00:0:0::3' for dual-stack session cert-user2, got %q", rxV6ByUser["cert-user2"])
+	}
 
 	txSessions := metricsByDesc(metrics, "opnsense_openvpn_session_transmitted_bytes_total")
 	if len(txSessions) != 3 {
 		t.Fatalf("expected 3 per-session transmitted-bytes metrics, got %d", len(txSessions))
 	}
 	txByUser := map[string]float64{}
+	txV6ByUser := map[string]string{}
 	for _, m := range txSessions {
-		txByUser[getMetricLabels(m)["username"]] = getMetricValue(m)
+		labels := getMetricLabels(m)
+		txByUser[labels["username"]] = getMetricValue(m)
+		txV6ByUser[labels["username"]] = labels["virtual_ipv6_address"]
 	}
 	if txByUser["user1"] != 2000 {
 		t.Errorf("expected session_transmitted_bytes_total=2000 for user1, got %v", txByUser["user1"])
@@ -266,20 +300,29 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 	if txByUser["user3"] != 600 {
 		t.Errorf("expected session_transmitted_bytes_total=600 for user3, got %v", txByUser["user3"])
 	}
+	if txV6ByUser["cert-user2"] != "fd00:0:0::3" {
+		t.Errorf("expected virtual_ipv6_address='fd00:0:0::3' for dual-stack session cert-user2 on tx series, got %q", txV6ByUser["cert-user2"])
+	}
 
 	connSince := metricsByDesc(metrics, "opnsense_openvpn_session_connected_since_timestamp_seconds")
 	if len(connSince) != 3 {
 		t.Fatalf("expected 3 per-session connected-since metrics, got %d", len(connSince))
 	}
 	csByUser := map[string]float64{}
+	csV6ByUser := map[string]string{}
 	for _, m := range connSince {
-		csByUser[getMetricLabels(m)["username"]] = getMetricValue(m)
+		labels := getMetricLabels(m)
+		csByUser[labels["username"]] = getMetricValue(m)
+		csV6ByUser[labels["username"]] = labels["virtual_ipv6_address"]
 	}
 	if csByUser["user1"] != 1700000000 {
 		t.Errorf("expected connected_since=1700000000 for user1, got %v", csByUser["user1"])
 	}
 	if csByUser["cert-user2"] != 1700000100 {
 		t.Errorf("expected connected_since=1700000100 for cert-user2, got %v", csByUser["cert-user2"])
+	}
+	if csV6ByUser["cert-user2"] != "fd00:0:0::3" {
+		t.Errorf("expected virtual_ipv6_address='fd00:0:0::3' for dual-stack session cert-user2 on connected-since series, got %q", csV6ByUser["cert-user2"])
 	}
 
 	// 2 instances + 1 sessions_total + 2 sessions_by_instance + 3 sessions
@@ -288,6 +331,122 @@ func TestOpenVPNCollector_Update_DetailsEnabled(t *testing.T) {
 	// + 3 session_connected_since_timestamp_seconds = 21
 	if expectedCount := 21; len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+}
+
+// TestOpenVPNCollector_Update_VirtualIPv6AddressSessionShapes guards #483's
+// three real-world session shapes on the gated per-session "sessions" series:
+// v4-only (new label empty), dual-stack (both populated), and v6-only
+// (virtual_address empty, virtual_ipv6_address populated) — the shape most
+// likely to be mis-handled since it is easy to assume virtual_address is
+// always non-empty.
+func TestOpenVPNCollector_Update_VirtualIPv6AddressSessionShapes(t *testing.T) {
+	sessions := `{
+		"rows": [
+			{"description":"Road Warrior","username":"v4only","real_address":"203.0.113.10:1194","virtual_address":"10.0.0.2","status":"ok","is_client":true},
+			{"description":"Road Warrior","username":"dualstack","real_address":"203.0.113.11:1194","virtual_address":"10.0.0.3","virtual_ipv6_address":"fd00:0:0::3","status":"ok","is_client":true},
+			{"description":"Road Warrior","username":"v6only","real_address":"203.0.113.12:1194","virtual_ipv6_address":"fd00:0:0::4","status":"ok","is_client":true}
+		],
+		"rowCount": 3, "total": 3, "current": 1
+	}`
+	server := openVPNTestServer(t, sessions)
+	client := newCollectorTestClient(t, server)
+
+	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+
+	detail := metricsByDesc(metrics, "opnsense_openvpn_sessions")
+	if len(detail) != 3 {
+		t.Fatalf("expected 3 per-session metrics, got %d", len(detail))
+	}
+
+	byUser := map[string]map[string]string{}
+	for _, m := range detail {
+		labels := getMetricLabels(m)
+		byUser[labels["username"]] = labels
+	}
+
+	v4only, ok := byUser["v4only"]
+	if !ok {
+		t.Fatal("expected a session labeled username=v4only")
+	}
+	if v4only["virtual_address"] != "10.0.0.2" {
+		t.Errorf("expected virtual_address='10.0.0.2' for v4only, got %q", v4only["virtual_address"])
+	}
+	if v4only["virtual_ipv6_address"] != "" {
+		t.Errorf("expected virtual_ipv6_address='' for v4only, got %q", v4only["virtual_ipv6_address"])
+	}
+
+	dual, ok := byUser["dualstack"]
+	if !ok {
+		t.Fatal("expected a session labeled username=dualstack")
+	}
+	if dual["virtual_address"] != "10.0.0.3" {
+		t.Errorf("expected virtual_address='10.0.0.3' for dualstack, got %q", dual["virtual_address"])
+	}
+	if dual["virtual_ipv6_address"] != "fd00:0:0::3" {
+		t.Errorf("expected virtual_ipv6_address='fd00:0:0::3' for dualstack, got %q", dual["virtual_ipv6_address"])
+	}
+
+	v6only, ok := byUser["v6only"]
+	if !ok {
+		t.Fatal("expected a session labeled username=v6only")
+	}
+	if v6only["virtual_address"] != "" {
+		t.Errorf("expected virtual_address='' for v6only, got %q", v6only["virtual_address"])
+	}
+	if v6only["virtual_ipv6_address"] != "fd00:0:0::4" {
+		t.Errorf("expected virtual_ipv6_address='fd00:0:0::4' for v6only, got %q", v6only["virtual_ipv6_address"])
+	}
+}
+
+// TestOpenVPNCollector_Update_VirtualIPv6AddressDuplicateSeries guards the
+// duplicate-series hazard directly: adding a label changes series identity
+// for a Prometheus const-metric collector, and MustNewConstMetric panics
+// (failing the whole scrape) if two sessions collapse onto the same label
+// set. Two sessions here differ ONLY in virtual_ipv6_address, and two more
+// differ ONLY in virtual_address — both pairs must resolve to distinct
+// series with no panic.
+func TestOpenVPNCollector_Update_VirtualIPv6AddressDuplicateSeries(t *testing.T) {
+	sessions := `{
+		"rows": [
+			{"description":"Road Warrior","username":"sameuser","real_address":"203.0.113.10:1194","virtual_address":"10.0.0.2","virtual_ipv6_address":"fd00:0:0::a","status":"ok","is_client":true},
+			{"description":"Road Warrior","username":"sameuser","real_address":"203.0.113.10:1194","virtual_address":"10.0.0.2","virtual_ipv6_address":"fd00:0:0::b","status":"ok","is_client":true},
+			{"description":"Road Warrior","username":"otheruser","real_address":"203.0.113.11:1194","virtual_address":"10.0.0.5","virtual_ipv6_address":"fd00:0:0::c","status":"ok","is_client":true},
+			{"description":"Road Warrior","username":"otheruser","real_address":"203.0.113.11:1194","virtual_address":"10.0.0.6","virtual_ipv6_address":"fd00:0:0::c","status":"ok","is_client":true}
+		],
+		"rowCount": 4, "total": 4, "current": 1
+	}`
+	server := openVPNTestServer(t, sessions)
+	client := newCollectorTestClient(t, server)
+
+	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	// MustNewConstMetric panics on any programming error such as a duplicate
+	// label set within one Collect() batch; a panic here fails the test.
+	metrics := collectMetrics(t, c, client)
+
+	detail := metricsByDesc(metrics, "opnsense_openvpn_sessions")
+	if len(detail) != 4 {
+		t.Fatalf("expected 4 distinct per-session metrics (differing only by v4 or v6 address), got %d", len(detail))
+	}
+
+	seen := map[string]bool{}
+	for _, m := range detail {
+		labels := getMetricLabels(m)
+		key := labels["username"] + "|" + labels["virtual_address"] + "|" + labels["virtual_ipv6_address"]
+		if seen[key] {
+			t.Errorf("duplicate series for label set %q", key)
+		}
+		seen[key] = true
+	}
+	if len(seen) != 4 {
+		t.Errorf("expected 4 unique label combinations, got %d", len(seen))
 	}
 }
 

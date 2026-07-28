@@ -47,7 +47,7 @@ func (c *openVPNCollector) Register(namespace, instanceLabel string, log *slog.L
 	)
 	c.sessions = buildPrometheusDesc(c.subsystem, "sessions",
 		"OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set.",
-		[]string{"description", "real_address", "virtual_address", "username"},
+		[]string{"description", "real_address", "virtual_address", "virtual_ipv6_address", "username"},
 	)
 	c.sessionsTotal = buildPrometheusDesc(c.subsystem, "sessions_total",
 		"Total number of OpenVPN sessions",
@@ -59,21 +59,23 @@ func (c *openVPNCollector) Register(namespace, instanceLabel string, log *slog.L
 	)
 	// Per-session traffic/connected-since series reuse the exact label surface
 	// of the existing "sessions" gauge (description, real_address,
-	// virtual_address, username), gated behind the same
+	// virtual_address, virtual_ipv6_address, username), gated behind the same
 	// --exporter.enable-openvpn-details flag. The "username" label value
 	// prefers the TLS common_name (Sessions.Identity()) over the raw OpenVPN
 	// username field, which is the literal "UNDEF" for cert-only sessions (#212).
+	// virtual_ipv6_address is a separate label alongside virtual_address
+	// (#483): empty for v4-only sessions, populated for dual-stack/v6-only.
 	c.sessionReceivedBytes = buildPrometheusDesc(c.subsystem, "session_received_bytes_total",
 		"Cumulative bytes received for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set.",
-		[]string{"description", "real_address", "virtual_address", "username"},
+		[]string{"description", "real_address", "virtual_address", "virtual_ipv6_address", "username"},
 	)
 	c.sessionTransmittedBytes = buildPrometheusDesc(c.subsystem, "session_transmitted_bytes_total",
 		"Cumulative bytes transmitted for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set.",
-		[]string{"description", "real_address", "virtual_address", "username"},
+		[]string{"description", "real_address", "virtual_address", "virtual_ipv6_address", "username"},
 	)
 	c.sessionConnectedSince = buildPrometheusDesc(c.subsystem, "session_connected_since_timestamp_seconds",
 		"Unix timestamp of when this OpenVPN session connected. Only emitted when --exporter.enable-openvpn-details is set.",
-		[]string{"description", "real_address", "virtual_address", "username"},
+		[]string{"description", "real_address", "virtual_address", "virtual_ipv6_address", "username"},
 	)
 	// Instance-level traffic aggregates are default-on: no per-session identity
 	// label, so cardinality is bounded by the number of configured OpenVPN
@@ -189,6 +191,7 @@ func (c *openVPNCollector) Update(ctx context.Context, client *opnsense.Client, 
 				session.Description,
 				session.RealAddress,
 				session.VirtualAddress,
+				session.VirtualIPv6Address,
 				session.Username,
 				c.instance,
 			)
@@ -204,6 +207,7 @@ func (c *openVPNCollector) Update(ctx context.Context, client *opnsense.Client, 
 				session.Description,
 				session.RealAddress,
 				session.VirtualAddress,
+				session.VirtualIPv6Address,
 				session.Identity(),
 				c.instance,
 			)
@@ -214,6 +218,7 @@ func (c *openVPNCollector) Update(ctx context.Context, client *opnsense.Client, 
 				session.Description,
 				session.RealAddress,
 				session.VirtualAddress,
+				session.VirtualIPv6Address,
 				session.Identity(),
 				c.instance,
 			)
@@ -224,6 +229,7 @@ func (c *openVPNCollector) Update(ctx context.Context, client *opnsense.Client, 
 				session.Description,
 				session.RealAddress,
 				session.VirtualAddress,
+				session.VirtualIPv6Address,
 				session.Identity(),
 				c.instance,
 			)

@@ -50,6 +50,23 @@ type keaLeaseRow struct {
 	IsReserved flexBool   `json:"is_reserved"`
 	Type       flexString `json:"type"`
 	State      flexInt    `json:"state"`
+	// MacInfo is PHP-side enrichment (LeasesController.php): an offline IEEE
+	// OUI lookup of the first three hwaddr octets against the OPNsense
+	// macdb, run identically for both endpoints. It is a vendor-NAME string
+	// ("Apple, Inc."), empty whenever the OUI is unknown (common with MAC
+	// randomisation) — not derivable from hwaddr without shipping that DB.
+	MacInfo string `json:"mac_info"`
+	// ClientID is Kea's own raw `client-id` lease field
+	// (get_kea_leases.py:151, `lease.get("client-id", "")`) — genuine DHCPv4
+	// option 61. Kea's lease6-get-all response carries no "client-id" key at
+	// all (DHCPv6 identifies clients by DUID instead), so on v6 rows this is
+	// permanently "" — confirmed against upstream source, not just untested.
+	ClientID string `json:"client_id"`
+	// ValidLifetime is Kea's `valid-lft` (granted lease duration in
+	// seconds), populated identically for both endpoints. It is NOT
+	// derivable from the already-modeled Expire: Expire = cltt + valid-lft
+	// and cltt is never exposed, so the sum cannot be reversed.
+	ValidLifetime flexInt `json:"valid_lifetime"`
 }
 
 type keaLeaseResponse struct {
@@ -70,6 +87,16 @@ type KeaLease struct {
 	IfDescr    string
 	Type       string // v6: "IA_NA" or "IA_PD"; v4 rows carry no type ("")
 	State      int    // 0=active, 1=declined, 2=expired-reclaimed (Kea's own enum)
+	// Vendor is the decoded mac_info OUI vendor-name lookup, populated on
+	// both v4 and v6 leases; empty whenever the OUI is unknown.
+	Vendor string
+	// ClientID is the raw DHCPv4 option 61 client identifier. Always empty
+	// on v6 leases (Kea's lease6 records carry no client-id field) — callers
+	// must not surface it as a v6 label.
+	ClientID string
+	// ValidLifetime is Kea's valid-lft in seconds, populated on both v4 and
+	// v6 leases.
+	ValidLifetime int
 }
 
 type KeaLeases struct {
@@ -143,14 +170,17 @@ func (c *Client) fetchKeaLeases(endpointName EndpointName) (KeaLeases, *APICallE
 		state := row.State.Int()
 
 		lease := KeaLease{
-			Address:    row.Address,
-			HWAddr:     row.HWAddr,
-			Hostname:   row.Hostname,
-			IsReserved: reserved,
-			Expire:     row.Expire.Int(),
-			IfDescr:    row.IfDescr,
-			Type:       typ,
-			State:      state,
+			Address:       row.Address,
+			HWAddr:        row.HWAddr,
+			Hostname:      row.Hostname,
+			IsReserved:    reserved,
+			Expire:        row.Expire.Int(),
+			IfDescr:       row.IfDescr,
+			Type:          typ,
+			State:         state,
+			Vendor:        row.MacInfo,
+			ClientID:      row.ClientID,
+			ValidLifetime: row.ValidLifetime.Int(),
 		}
 
 		data.Leases = append(data.Leases, lease)

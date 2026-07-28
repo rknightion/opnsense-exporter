@@ -37,6 +37,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].client_id",
+      "kind": "string"
+    },
+    {
       "path": "rows[].expire",
       "kind": "any"
     },
@@ -57,11 +61,19 @@
       "kind": "any"
     },
     {
+      "path": "rows[].mac_info",
+      "kind": "string"
+    },
+    {
       "path": "rows[].state",
       "kind": "any"
     },
     {
       "path": "rows[].type",
+      "kind": "any"
+    },
+    {
+      "path": "rows[].valid_lifetime",
       "kind": "any"
     },
     {

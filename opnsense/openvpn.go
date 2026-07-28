@@ -26,7 +26,16 @@ type openVPNSearchSessionsResponse struct {
 		Username       string `json:"username"`
 		RealAddress    string `json:"real_address"`
 		VirtualAddress string `json:"virtual_address"`
-		Status         string `json:"status"`
+		// VirtualIPv6Address is virtual_ipv6_address, a peer field to
+		// virtual_address rather than derived data: both come from the same
+		// OpenVPN status-3 CLIENT_LIST row (scripts/openvpn/ovpn_status.py
+		// zips the row against the header, renaming nothing), and OPNsense's
+		// own code treats them as equal-status siblings when building
+		// dual-stack alias-group address lists (scripts/filter/lib/alias/
+		// auth.py). Empty for v4-only sessions, populated for dual-stack and
+		// v6-only sessions (#483).
+		VirtualIPv6Address string `json:"virtual_ipv6_address"`
+		Status             string `json:"status"`
 		// IsClient is true only for real per-client session rows. The
 		// searchSessionsAction controller also appends a synthetic row for a
 		// running server with zero clients and a stub row for each
@@ -68,14 +77,18 @@ type OpenVPNInstances struct {
 }
 
 type Sessions struct {
-	Description      string
-	Username         string
-	CommonName       string
-	RealAddress      string
-	VirtualAddress   string
-	Status           int
-	BytesReceived    int64
-	BytesTransmitted int64
+	Description    string
+	Username       string
+	CommonName     string
+	RealAddress    string
+	VirtualAddress string
+	// VirtualIPv6Address is the session's IPv6 tunnel address, populated
+	// alongside (or instead of) VirtualAddress for dual-stack and v6-only
+	// clients (#483). Empty for v4-only sessions.
+	VirtualIPv6Address string
+	Status             int
+	BytesReceived      int64
+	BytesTransmitted   int64
 	// ConnectedSince is a unix-seconds timestamp, or 0 if the box did not send
 	// connected_since__time_t_ (absent field or an unparseable value).
 	ConnectedSince int64
@@ -156,15 +169,16 @@ func (c *Client) FetchOpenVPNSessions() (OpenVPNSessions, *APICallError) {
 			continue
 		}
 		data.Rows = append(data.Rows, Sessions{
-			Description:      v.Description,
-			Username:         v.Username,
-			CommonName:       v.CommonName.String(),
-			RealAddress:      v.RealAddress,
-			VirtualAddress:   v.VirtualAddress,
-			Status:           parseOpenVPNsessionStatusToInt(v.Status),
-			BytesReceived:    numToInt(v.BytesReceived),
-			BytesTransmitted: numToInt(v.BytesSent),
-			ConnectedSince:   numToInt(v.ConnectedSince),
+			Description:        v.Description,
+			Username:           v.Username,
+			CommonName:         v.CommonName.String(),
+			RealAddress:        v.RealAddress,
+			VirtualAddress:     v.VirtualAddress,
+			VirtualIPv6Address: v.VirtualIPv6Address,
+			Status:             parseOpenVPNsessionStatusToInt(v.Status),
+			BytesReceived:      numToInt(v.BytesReceived),
+			BytesTransmitted:   numToInt(v.BytesSent),
+			ConnectedSince:     numToInt(v.ConnectedSince),
 		})
 	}
 

@@ -34,6 +34,15 @@ type CardinalityReport struct {
 	Recommendations []string     // warn-level metrics, human readable
 	Growth          []GrowthRow  // per-minute series growth over the sampling window
 	Generated       time.Time
+
+	// SeriesBudget, BudgetPercent and OverBudget report TotalSeries against the
+	// soft TOTAL-series budget (#494, --exporter.series-budget) — a different
+	// dimension from WarnThreshold/CritThreshold above, which are PER-METRIC.
+	// SeriesBudget == 0 means the budget is disabled; BudgetPercent and
+	// OverBudget then stay at their zero values rather than a divide-by-zero.
+	SeriesBudget  int     // the configured budget; 0 = disabled
+	BudgetPercent float64 // TotalSeries / SeriesBudget * 100; 0 when disabled
+	OverBudget    bool    // TotalSeries >= SeriesBudget; always false when disabled
 }
 
 // GrowthRow is one metric family's series growth rate, derived from the
@@ -72,8 +81,15 @@ func cardLevel(series, warn, crit int) string {
 }
 
 // buildCardinality reduces the metric families to the cardinality report. It is
-// pure and never gathers. warn/crit are the series-per-metric thresholds.
-func buildCardinality(families []*dto.MetricFamily, warn, crit int) CardinalityReport {
+// pure and never gathers. warn/crit are the series-per-metric thresholds;
+// budget is the soft TOTAL-series budget (#494), a different dimension from
+// warn/crit and deliberately not derived from them.
+//
+// budget <= 0 means disabled: SeriesBudget reads 0 and BudgetPercent/OverBudget
+// stay at their zero values rather than dividing by zero. Callers pass it from
+// Deps.SeriesBudget rather than a package variable, so a report can never
+// depend on hidden startup state and tests stay independent of each other.
+func buildCardinality(families []*dto.MetricFamily, warn, crit, budget int) CardinalityReport {
 	rep := CardinalityReport{WarnThreshold: warn, CritThreshold: crit}
 
 	type labelAgg struct {
@@ -142,6 +158,12 @@ func buildCardinality(families []*dto.MetricFamily, warn, crit int) CardinalityR
 		return rep.TopLabels[i].Name < rep.TopLabels[j].Name
 	})
 
+	if budget > 0 {
+		rep.SeriesBudget = budget
+		rep.BudgetPercent = float64(rep.TotalSeries) / float64(budget) * 100
+		rep.OverBudget = rep.TotalSeries >= budget
+	}
+
 	return rep
 }
 
@@ -160,7 +182,7 @@ func (s *Server) registerCardinality(mux *http.ServeMux) {
 // never gathers. (The console page builds its own copy inside snapshot(); these
 // endpoints keep an independent build so they work even if that changes.)
 func (s *Server) cardinalitySnapshot() CardinalityReport {
-	rep := buildCardinality(s.families(), warnCardinality, critCardinality)
+	rep := buildCardinality(s.families(), warnCardinality, critCardinality, s.deps.SeriesBudget)
 	rep.Generated = time.Now()
 	if s.growth != nil {
 		rep.Growth = s.growth.rows()

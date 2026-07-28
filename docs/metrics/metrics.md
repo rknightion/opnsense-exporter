@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 839
-- **Gauges:** 553
+- **Total metrics:** 845
+- **Gauges:** 559
 - **Counters:** 286
 
 ## General
@@ -24,6 +24,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_exporter_collector_next_poll_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's next scheduled poll, read from the scheduler's actual fixed-cadence deadline (not derived from last poll + interval); absent when no poller is running for the collector (#336, #385) |
 | opnsense_exporter_collector_snapshot_timestamp_seconds | Gauge | collector | Unix timestamp at which a collector's stored metric buffer was last REPLACED — the true age of the data a scrape replays. Advances on a successful poll and on a partial-error poll that still emitted data; does NOT advance when a failed poll emitted nothing and the last-good buffer was retained. Absent until the collector has stored data at least once (#382) |
 | opnsense_exporter_collector_last_success_timestamp_seconds | Gauge | collector | Unix timestamp of a collector's last fully successful poll. Unlike collector_snapshot_timestamp_seconds this does NOT advance on a partial-error poll, so the two together distinguish 'refreshed but degraded' from 'fully healthy'. Absent until the collector has succeeded at least once (#382) |
+| opnsense_exporter_series_total | Gauge | --- | Total number of Prometheus series produced by the COLLECTOR registry on the most recent real /metrics scrape or OTLP export (#494) — the same set --exporter.series-budget is compared against, and what metricsnap replays to the web UI's /cardinality report. Self-metrics on the separate self registry (process_*/go_*, the opnsense_exporter_otlp_* delivery-health family, and this gauge itself) are NOT included, so this reads lower than a full scrape's total series count; see --exporter.series-budget's flag help for the same caveat. This gauge is itself exactly one series, so it cannot meaningfully move the number it reports. Reads 0 before the first real scrape/export has completed. |
 | opnsense_up | Gauge | --- | Whether the OPNsense API was reachable on the last health poll (1 = reachable, 0 = unreachable), updated on --collector.poll-interval independently of scrapes. A reachable box reporting a degraded subsystem stays 1; see opnsense_system_status_code and the per-subsystem status metrics. |
 | opnsense_firewall_status | Gauge | --- | Status of the firewall reported by the system health check (1 = ok, 0 = errors) |
 | opnsense_crash_reporter_status | Gauge | --- | Status of the crash reporter reported by the system health check (1 = ok/no crash reports, 0 = crash reports present) |
@@ -263,6 +264,11 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_bfd_peer_control_packets_sent_total | Counter | peer | Cumulative BFD control packets sent to this peer | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_session_up_events_total | Counter | peer | Cumulative BFD session-up events for this peer | --exporter.disable-frr |
 | opnsense_frr_bfd_peer_session_down_events_total | Counter | peer | Cumulative BFD session-down events for this peer | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_diagnostic_info | Gauge | peer, diagnostic, remote_diagnostic | FRR BFD peer diagnostic reason (value is always 1; use labels). diagnostic/remote_diagnostic are FRR's diag2str() enum: ok, control detection time expired, echo function failed, neighbor signaled session down, forwarding plane reset, path down, concatenated path down, administratively down, reverse concatenated path down, unknown. | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_rtt_min_microseconds | Gauge | peer | Minimum measured BFD round-trip time for this peer, in microseconds. Reads 0 unless both ends support FRR's BFD RTT extension — a legitimate zero, not a fault. | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_rtt_avg_microseconds | Gauge | peer | Average measured BFD round-trip time for this peer, in microseconds. Reads 0 unless both ends support FRR's BFD RTT extension — a legitimate zero, not a fault. | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_rtt_max_microseconds | Gauge | peer | Maximum measured BFD round-trip time for this peer, in microseconds. Reads 0 unless both ends support FRR's BFD RTT extension — a legitimate zero, not a fault. | --exporter.disable-frr |
+| opnsense_frr_bfd_peer_downtime_seconds | Gauge | peer | Duration this BFD peer session has been down, in seconds. Only emitted while the peer is in the down state — absent (not zero) while up, initializing, or administratively shut down, matching FRR's mutually exclusive uptime/downtime fields. | --exporter.disable-frr |
 | opnsense_frr_route_count | Gauge | af, protocol | Number of distinct routed prefixes in the zebra RIB, by address family and protocol. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
 | opnsense_frr_route_nexthop_count | Gauge | af, protocol | Number of nexthop rows in the zebra RIB (ECMP width), by address family and protocol. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
 | opnsense_frr_ospf_route_count | Gauge | type | Number of rows in the OSPF route table, by route type. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
@@ -615,14 +621,14 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_kea_dhcp4_leases_reserved_total | Counter | --- | Total number of reserved (static) Kea DHCPv4 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp4_leases_dynamic_total | Counter | --- | Total number of dynamic Kea DHCPv4 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp4_leases_by_state | Gauge | state | Number of Kea DHCPv4 leases per lease state (active, declined, expired-reclaimed) | --exporter.disable-kea |
-| opnsense_kea_dhcp4_lease_info | Gauge | address, hostname, hwaddr, interface | Per-lease DHCPv4 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. | --exporter.disable-kea |
+| opnsense_kea_dhcp4_lease_info | Gauge | address, hostname, hwaddr, interface, vendor, valid_lifetime, client_id | Per-lease DHCPv4 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_total | Counter | --- | Total number of Kea DHCPv6 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_by_interface | Gauge | interface | Number of Kea DHCPv6 leases per interface | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_reserved_total | Counter | --- | Total number of reserved (static) Kea DHCPv6 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_dynamic_total | Counter | --- | Total number of dynamic Kea DHCPv6 leases | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_by_state | Gauge | state | Number of Kea DHCPv6 leases per lease state (active, declined, expired-reclaimed) | --exporter.disable-kea |
 | opnsense_kea_dhcp6_leases_by_type | Gauge | type | Number of Kea DHCPv6 leases per lease type (IA_NA address lease vs IA_PD prefix delegation) | --exporter.disable-kea |
-| opnsense_kea_dhcp6_lease_info | Gauge | address, hostname, hwaddr, interface | Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. | --exporter.disable-kea |
+| opnsense_kea_dhcp6_lease_info | Gauge | address, hostname, hwaddr, interface, vendor, valid_lifetime | Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. | --exporter.disable-kea |
 | opnsense_kea_service_running | Gauge | --- | Whether the Kea DHCP service is running (1 = running, 0 = stopped/disabled) | --exporter.disable-kea |
 | opnsense_kea_dhcp4_pool_size | Gauge | subnet, interface | Number of addresses in the configured Kea DHCPv4 pools for this subnet | --exporter.disable-kea |
 | opnsense_kea_dhcp6_pool_size | Gauge | subnet, interface | Number of addresses in the configured Kea DHCPv6 pools for this subnet | --exporter.disable-kea |
@@ -850,12 +856,12 @@ The `opnsense_instance` label is applied to all metrics.
 | Metric Name | Type | Labels | Description | Disable Flag |
 |-------------|------|--------|-------------|--------------|
 | opnsense_openvpn_instances | Gauge | uuid, role, description, device_type | OpenVPN instances (1 = enabled, 0 = disabled) by role (server, client) | --exporter.disable-openvpn |
-| opnsense_openvpn_sessions | Gauge | description, real_address, virtual_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_sessions | Gauge | description, real_address, virtual_address, virtual_ipv6_address, username | OpenVPN session (1 = ok, 0 = not ok). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_total | Gauge | --- | Total number of OpenVPN sessions | --exporter.disable-openvpn |
 | opnsense_openvpn_sessions_by_instance | Gauge | description | Number of OpenVPN sessions per instance | --exporter.disable-openvpn |
-| opnsense_openvpn_session_received_bytes_total | Counter | description, real_address, virtual_address, username | Cumulative bytes received for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
-| opnsense_openvpn_session_transmitted_bytes_total | Counter | description, real_address, virtual_address, username | Cumulative bytes transmitted for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
-| opnsense_openvpn_session_connected_since_timestamp_seconds | Gauge | description, real_address, virtual_address, username | Unix timestamp of when this OpenVPN session connected. Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_session_received_bytes_total | Counter | description, real_address, virtual_address, virtual_ipv6_address, username | Cumulative bytes received for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_session_transmitted_bytes_total | Counter | description, real_address, virtual_address, virtual_ipv6_address, username | Cumulative bytes transmitted for this OpenVPN session (resets on reconnect). Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
+| opnsense_openvpn_session_connected_since_timestamp_seconds | Gauge | description, real_address, virtual_address, virtual_ipv6_address, username | Unix timestamp of when this OpenVPN session connected. Only emitted when --exporter.enable-openvpn-details is set. | --exporter.disable-openvpn |
 | opnsense_openvpn_instance_received_bytes_total | Counter | description | Cumulative bytes received across all active sessions on this OpenVPN instance | --exporter.disable-openvpn |
 | opnsense_openvpn_instance_transmitted_bytes_total | Counter | description | Cumulative bytes transmitted across all active sessions on this OpenVPN instance | --exporter.disable-openvpn |
 

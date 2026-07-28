@@ -284,12 +284,18 @@ def build(b: Builder):
             "hostname": "Hostname",
             "hwaddr": "MAC Address",
             "interface": "Interface",
+            "vendor": "Vendor",
+            "valid_lifetime": "Valid Lifetime (s)",
+            "client_id": "Client ID",
             "Value": "Expires",
         },
         unit_overrides={"Expires": "dateTimeAsIso"},
         sort_by="Interface",
         desc=(
             "Per-lease DHCPv4 detail. The Expires column shows the lease expiry as an ISO date. "
+            "Vendor is an offline IEEE OUI lookup (empty when the OUI is unknown, e.g. MAC "
+            "randomisation); Client ID is the raw DHCPv4 option 61 identifier (empty when the "
+            "client never sent one); Valid Lifetime is Kea's granted lease duration in seconds. "
             "Only emitted with --exporter.enable-kea-details."
         ),
     )
@@ -307,12 +313,18 @@ def build(b: Builder):
             "hostname": "Hostname",
             "hwaddr": "DUID / MAC",
             "interface": "Interface",
+            "vendor": "Vendor",
+            "valid_lifetime": "Valid Lifetime (s)",
             "Value": "Expires",
         },
         unit_overrides={"Expires": "dateTimeAsIso"},
         sort_by="Interface",
         desc=(
             "Per-lease DHCPv6 detail. The Expires column shows the lease expiry as an ISO date. "
+            "Vendor is an offline IEEE OUI lookup (empty when the OUI is unknown, e.g. MAC "
+            "randomisation); Valid Lifetime is Kea's granted lease duration in seconds. No "
+            "Client ID column: DHCPv6 has no option-61 concept (Kea's lease6 records carry no "
+            "client-id field at all), so this metric never emits that label. "
             "Only emitted with --exporter.enable-kea-details."
         ),
     )

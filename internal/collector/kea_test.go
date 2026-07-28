@@ -590,3 +590,197 @@ func TestKeaCollector_PdPoolCapacity_RealDevBoxCapture(t *testing.T) {
 		t.Error("expected a kea_dhcp6_pd_pool_size metric")
 	}
 }
+
+// TestKeaCollector_Update_WithDetails_VendorClientIDValidLifetime covers
+// issue #482: the mac_info (as `vendor`), `client_id` and `valid_lifetime`
+// labels on the gated per-lease info metrics. Two v4 leases are covered
+// deliberately: one with all three fields empty (the NORMAL case — mac_info
+// is empty on an unknown OUI, client_id is empty whenever the client never
+// sent DHCPv4 option 61) and one with all three populated, so an
+// all-empty lease still produces exactly one well-formed series rather than
+// a dropped or malformed one. The v6 lease carries `vendor` and
+// `valid_lifetime` but must NOT carry a `client_id` label at all — DHCPv6
+// has no option-61 concept, so it is dropped rather than emitted as an
+// always-empty label.
+func TestKeaCollector_Update_WithDetails_VendorClientIDValidLifetime(t *testing.T) {
+	v4Response := `{
+		"total": 2,
+		"rowCount": 2,
+		"current": 1,
+		"rows": [
+			{
+				"address": "192.168.1.10",
+				"hwaddr": "00:11:22:33:44:55",
+				"hostname": "randomised-client",
+				"expire": 1772401000,
+				"if_descr": "LAN",
+				"is_reserved": "1",
+				"mac_info": "",
+				"client_id": "",
+				"valid_lifetime": 0
+			},
+			{
+				"address": "192.168.1.20",
+				"hwaddr": "AA:BB:CC:DD:EE:FF",
+				"hostname": "known-client",
+				"expire": 1772402000,
+				"if_descr": "LAN",
+				"is_reserved": "0",
+				"mac_info": "Apple, Inc.",
+				"client_id": "0100112233",
+				"valid_lifetime": 7200
+			}
+		],
+		"interfaces": {"em0": "LAN"}
+	}`
+
+	v6Response := `{
+		"total": 1,
+		"rowCount": 1,
+		"current": 1,
+		"rows": [
+			{
+				"address": "fd00::10",
+				"hwaddr": "11:22:33:44:55:66",
+				"hostname": "server1",
+				"expire": 1772501000,
+				"if_descr": "LAN",
+				"is_reserved": "0",
+				"mac_info": "Google, Inc.",
+				"client_id": "",
+				"valid_lifetime": 3600
+			}
+		],
+		"interfaces": {"em0": "LAN"}
+	}`
+
+	mux := keaTestMux(t, v4Response, v6Response)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register("opnsense", "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawEmptyV4Detail, sawKnownV4Detail, sawV6Detail bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+
+		if strings.Contains(desc, "dhcp4_lease_info") && labels["address"] == "192.168.1.10" {
+			sawEmptyV4Detail = true
+			if labels["vendor"] != "" {
+				t.Errorf("expected empty vendor label for unknown OUI, got %q", labels["vendor"])
+			}
+			if labels["client_id"] != "" {
+				t.Errorf("expected empty client_id label, got %q", labels["client_id"])
+			}
+			if labels["valid_lifetime"] != "0" {
+				t.Errorf("expected valid_lifetime label '0', got %q", labels["valid_lifetime"])
+			}
+		}
+		if strings.Contains(desc, "dhcp4_lease_info") && labels["address"] == "192.168.1.20" {
+			sawKnownV4Detail = true
+			if labels["vendor"] != "Apple, Inc." {
+				t.Errorf("expected vendor label 'Apple, Inc.', got %q", labels["vendor"])
+			}
+			if labels["client_id"] != "0100112233" {
+				t.Errorf("expected client_id label '0100112233', got %q", labels["client_id"])
+			}
+			if labels["valid_lifetime"] != "7200" {
+				t.Errorf("expected valid_lifetime label '7200', got %q", labels["valid_lifetime"])
+			}
+		}
+		if strings.Contains(desc, "dhcp6_lease_info") && labels["address"] == "fd00::10" {
+			sawV6Detail = true
+			if labels["vendor"] != "Google, Inc." {
+				t.Errorf("expected vendor label 'Google, Inc.', got %q", labels["vendor"])
+			}
+			if labels["valid_lifetime"] != "3600" {
+				t.Errorf("expected valid_lifetime label '3600', got %q", labels["valid_lifetime"])
+			}
+			if _, ok := labels["client_id"]; ok {
+				t.Errorf("expected NO client_id label on dhcp6_lease_info (DHCPv6 has no option-61 concept), got %q", labels["client_id"])
+			}
+		}
+	}
+	if !sawEmptyV4Detail {
+		t.Error("expected to find the all-empty-fields v4 detail metric")
+	}
+	if !sawKnownV4Detail {
+		t.Error("expected to find the fully-populated v4 detail metric")
+	}
+	if !sawV6Detail {
+		t.Error("expected to find the v6 detail metric")
+	}
+}
+
+// TestKeaCollector_Update_WithDetails_DuplicateSeriesGuard covers the
+// cardinality risk flagged in #482: adding labels to a per-lease metric
+// changes series identity, and a duplicate label tuple fails the WHOLE
+// scrape (assertNoDuplicateSeries mirrors what a checked registry's
+// Gather() would reject). Two v4 leases share every pre-existing label
+// (hostname, hwaddr, interface) and differ ONLY in address plus the three
+// new fields, pinning that the new labels never collapse two distinct
+// leases onto one series or split what should be one series into two.
+func TestKeaCollector_Update_WithDetails_DuplicateSeriesGuard(t *testing.T) {
+	v4Response := `{
+		"total": 2,
+		"rowCount": 2,
+		"current": 1,
+		"rows": [
+			{
+				"address": "192.168.1.10",
+				"hwaddr": "00:11:22:33:44:55",
+				"hostname": "shared-name",
+				"expire": 1772401000,
+				"if_descr": "LAN",
+				"is_reserved": "0",
+				"mac_info": "",
+				"client_id": "",
+				"valid_lifetime": 0
+			},
+			{
+				"address": "192.168.1.11",
+				"hwaddr": "00:11:22:33:44:55",
+				"hostname": "shared-name",
+				"expire": 1772401000,
+				"if_descr": "LAN",
+				"is_reserved": "0",
+				"mac_info": "Apple, Inc.",
+				"client_id": "0100112233",
+				"valid_lifetime": 7200
+			}
+		],
+		"interfaces": {"em0": "LAN"}
+	}`
+	emptyV6 := `{"total":0,"rowCount":0,"current":1,"rows":[]}`
+
+	mux := keaTestMux(t, v4Response, emptyV6)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register("opnsense", "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	detailCount := 0
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "dhcp4_lease_info") {
+			detailCount++
+		}
+	}
+	if detailCount != 2 {
+		t.Errorf("expected 2 distinct dhcp4_lease_info series, got %d", detailCount)
+	}
+}

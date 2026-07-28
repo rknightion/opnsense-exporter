@@ -29,7 +29,7 @@ func fakeFamilies(spec map[string]int) []*dto.MetricFamily {
 
 func TestBuildCardinality_CountsAndOrdering(t *testing.T) {
 	fams := fakeFamilies(map[string]int{"metric_a": 3, "metric_b": 1200})
-	rep := buildCardinality(fams, 1000, 10000)
+	rep := buildCardinality(fams, 1000, 10000, 0)
 
 	if rep.TotalFamilies != 2 {
 		t.Fatalf("TotalFamilies want 2, got %d", rep.TotalFamilies)
@@ -56,7 +56,7 @@ func TestBuildCardinality_CountsAndOrdering(t *testing.T) {
 
 func TestBuildCardinality_Bucketing(t *testing.T) {
 	fams := fakeFamilies(map[string]int{"low": 10, "mid": 600, "high": 3000})
-	rep := buildCardinality(fams, 500, 2000)
+	rep := buildCardinality(fams, 500, 2000, 0)
 	if rep.Warn != 1 {
 		t.Fatalf("Warn want 1 (mid), got %d", rep.Warn)
 	}
@@ -86,7 +86,7 @@ func TestBuildCardinality_LabelDistinctValues(t *testing.T) {
 			counterMetric(1, "code", "200"),
 		}},
 	}
-	rep := buildCardinality(fams, 500, 2000)
+	rep := buildCardinality(fams, 500, 2000, 0)
 
 	var code *LabelCard
 	for i := range rep.TopLabels {
@@ -107,6 +107,88 @@ func TestBuildCardinality_LabelDistinctValues(t *testing.T) {
 	// ties break by name, so code before method.
 	if rep.TopLabels[0].Name != "code" {
 		t.Fatalf("TopLabels[0] want code, got %+v", rep.TopLabels)
+	}
+}
+
+// --- total-series budget tests (#494) ---
+
+// TestBuildCardinalityBudget_Under pins the under-budget shape: OverBudget
+// false, BudgetPercent computed, SeriesBudget echoed back.
+func TestBuildCardinalityBudget_Under(t *testing.T) {
+	fams := fakeFamilies(map[string]int{"a": 30})
+	rep := buildCardinality(fams, 500, 2000, 100)
+	if rep.SeriesBudget != 100 {
+		t.Fatalf("SeriesBudget want 100, got %d", rep.SeriesBudget)
+	}
+	if rep.OverBudget {
+		t.Fatalf("30/100 want OverBudget false")
+	}
+	if rep.BudgetPercent != 30 {
+		t.Fatalf("BudgetPercent want 30, got %v", rep.BudgetPercent)
+	}
+}
+
+// TestBuildCardinalityBudget_OverAtExactly pins the boundary: total == budget
+// counts as OVER (matching the existing >= convention cardLevel already uses
+// for the per-metric warn/crit thresholds), not under.
+func TestBuildCardinalityBudget_OverAtExactly(t *testing.T) {
+	fams := fakeFamilies(map[string]int{"a": 100})
+	rep := buildCardinality(fams, 500, 2000, 100)
+	if !rep.OverBudget {
+		t.Fatalf("100/100 want OverBudget true (>= convention)")
+	}
+	if rep.BudgetPercent != 100 {
+		t.Fatalf("BudgetPercent want 100, got %v", rep.BudgetPercent)
+	}
+}
+
+// TestBuildCardinalityBudget_Disabled pins budget <= 0 as "disabled": the
+// report carries zero values, never a divide-by-zero, regardless of the real
+// series count.
+func TestBuildCardinalityBudget_Disabled(t *testing.T) {
+	fams := fakeFamilies(map[string]int{"a": 999999})
+	rep := buildCardinality(fams, 500, 2000, 0)
+	if rep.SeriesBudget != 0 {
+		t.Fatalf("SeriesBudget want 0 (disabled), got %d", rep.SeriesBudget)
+	}
+	if rep.OverBudget {
+		t.Fatalf("disabled budget must never report OverBudget")
+	}
+	if rep.BudgetPercent != 0 {
+		t.Fatalf("disabled budget BudgetPercent want 0, got %v", rep.BudgetPercent)
+	}
+}
+
+// TestSeriesBudget_ReachesTheJSONEndpointFromDeps pins the wiring that matters:
+// the budget configured in Deps is what the SERVER's own report carries, not
+// just what a direct buildCardinality call returns. Both call sites — the JSON
+// endpoints here and the console's live Cardinality tab in server.go — read
+// s.deps.SeriesBudget, so a report can never depend on hidden package state.
+func TestSeriesBudget_ReachesTheJSONEndpointFromDeps(t *testing.T) {
+	fams := fakeFamilies(map[string]int{"a": 40})
+	s := NewServer(Deps{
+		SeriesBudget: 40,
+		Capture:      func() metricsnap.Capture { return metricsnap.Capture{Families: fams} },
+	})
+
+	rep := s.cardinalitySnapshot()
+	if rep.SeriesBudget != 40 {
+		t.Fatalf("SeriesBudget want 40 (from Deps), got %d", rep.SeriesBudget)
+	}
+	if !rep.OverBudget {
+		t.Fatalf("40 series against a budget of 40 want OverBudget true")
+	}
+}
+
+// TestSeriesBudget_ZeroDepsDisablesIt pins that an unset budget disables the
+// check rather than reporting 0% used, which would read as infinite headroom.
+func TestSeriesBudget_ZeroDepsDisablesIt(t *testing.T) {
+	fams := fakeFamilies(map[string]int{"a": 5})
+	s := NewServer(Deps{Capture: func() metricsnap.Capture { return metricsnap.Capture{Families: fams} }})
+
+	rep := s.cardinalitySnapshot()
+	if rep.SeriesBudget != 0 || rep.OverBudget || rep.BudgetPercent != 0 {
+		t.Fatalf("want a disabled budget with zero percent, got %+v", rep)
 	}
 }
 

@@ -1005,6 +1005,20 @@ func main() {
 	// the firewall — itself.
 	metricsRecorder := metricsnap.New()
 
+	// Soft total-series budget (#494): metricsRecorder already sees every real
+	// scrape's/OTLP export's family set through the Tee/TeeLane it is about to
+	// wrap below, so the check rides along there rather than adding a timer or
+	// a Gather() of its own — see metricsnap.SeriesBudget's doc comment.
+	// Observed feeds opnsense_exporter_series_total (collectorInstance's own
+	// self-metric) on every real capture, independent of whether a budget is
+	// even configured. The same number reaches the console's /cardinality report
+	// via webui.Deps.SeriesBudget below.
+	metricsRecorder.ConfigureSeriesBudget(metricsnap.SeriesBudget{
+		Total:    *options.SeriesBudget,
+		Logger:   logger,
+		Observed: collectorInstance.SetObservedSeriesTotal,
+	})
+
 	// OTLP metrics export is opt-in (--otlp.enabled). It pushes the exact metrics
 	// exposed at /metrics to an OTLP endpoint via a Prometheus bridge producer over
 	// the same registry, so names, labels and values stay in parity. A transient
@@ -1503,6 +1517,7 @@ func main() {
 				StartTime:     startTime,
 				Tracker:       statusTracker,
 				Capture:       metricsRecorder.Capture,
+				SeriesBudget:  *options.SeriesBudget,
 				// Passive upstream health (#384). Without this the console's badge is
 				// derived from collector run history alone, which is silent during
 				// exactly the outage it most needs to report: an unreachable box makes

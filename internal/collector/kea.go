@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -77,7 +78,7 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	)
 	c.dhcp4LeaseInfo = buildPrometheusDesc(c.subsystem, "dhcp4_lease_info",
 		"Per-lease DHCPv4 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set.",
-		[]string{"address", "hostname", "hwaddr", "interface"},
+		[]string{"address", "hostname", "hwaddr", "interface", "vendor", "valid_lifetime", "client_id"},
 	)
 
 	// DHCPv6 metrics
@@ -107,7 +108,11 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 	)
 	c.dhcp6LeaseInfo = buildPrometheusDesc(c.subsystem, "dhcp6_lease_info",
 		"Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set.",
-		[]string{"address", "hostname", "hwaddr", "interface"},
+		// No client_id label here: Kea's lease6-get-all response carries no
+		// "client-id" key (DHCPv6 identifies clients by DUID, not option
+		// 61), so on v6 it would always be an empty label — dropped rather
+		// than modeled as dead weight.
+		[]string{"address", "hostname", "hwaddr", "interface", "vendor", "valid_lifetime"},
 	)
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
@@ -181,6 +186,7 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			c.dhcp4LeasesByState,
 			nil, // DHCPv4 leases have no lease-type concept
 			c.dhcp4LeaseInfo,
+			true, // includeClientID: genuine DHCPv4 option 61
 		)
 	}
 
@@ -200,6 +206,7 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			c.dhcp6LeasesByState,
 			c.dhcp6LeasesByType,
 			c.dhcp6LeaseInfo,
+			false, // includeClientID: always "" on v6, dropped rather than modeled
 		)
 	}
 
@@ -302,6 +309,7 @@ func (c *keaCollector) emitLeaseMetrics(
 	ch chan<- prometheus.Metric,
 	data opnsense.KeaLeases,
 	leasesTotal, reservedTotal, dynamicTotal, leasesByIface, leasesByState, leasesByType, leaseInfo *prometheus.Desc,
+	includeClientID bool,
 ) {
 	ch <- prometheus.MustNewConstMetric(
 		leasesTotal,
@@ -356,15 +364,24 @@ func (c *keaCollector) emitLeaseMetrics(
 
 	if c.detailsEnabled {
 		for _, lease := range data.Leases {
-			ch <- prometheus.MustNewConstMetric(
-				leaseInfo,
-				prometheus.GaugeValue,
-				float64(lease.Expire),
+			labelValues := []string{
 				lease.Address,
 				lease.Hostname,
 				lease.HWAddr,
 				lease.IfDescr,
-				c.instance,
+				lease.Vendor,
+				strconv.Itoa(lease.ValidLifetime),
+			}
+			if includeClientID {
+				labelValues = append(labelValues, lease.ClientID)
+			}
+			labelValues = append(labelValues, c.instance)
+
+			ch <- prometheus.MustNewConstMetric(
+				leaseInfo,
+				prometheus.GaugeValue,
+				float64(lease.Expire),
+				labelValues...,
 			)
 		}
 	}

@@ -254,6 +254,7 @@
       <div class="card"><div class="k">Total series</div><div class="v" id="cardTotal">{{.Cardinality.TotalSeries}}</div><div class="sub">across <span id="cardFamilies">{{.Cardinality.TotalFamilies}}</span> families</div></div>
       <div class="card"><div class="k">Review (≥ warn)</div><div class="v" id="cardWarn">{{.Cardinality.Warn}}</div><div class="sub">warn ≥ {{.Cardinality.WarnThreshold}}</div></div>
       <div class="card"><div class="k">Alerts (≥ crit)</div><div class="v" id="cardCrit">{{.Cardinality.Crit}}</div><div class="sub">crit ≥ {{.Cardinality.CritThreshold}}</div></div>
+      <div class="card"><div class="k">Series budget</div><div class="v" id="cardBudget">{{if .Cardinality.SeriesBudget}}{{printf "%.0f%%" .Cardinality.BudgetPercent}}{{else}}off{{end}}</div><div class="sub" id="cardBudgetSub">{{if .Cardinality.SeriesBudget}}{{.Cardinality.TotalSeries}} of {{.Cardinality.SeriesBudget}}{{if .Cardinality.OverBudget}} <span class="badge badge-bad">over</span>{{end}}{{else}}disabled{{end}}</div></div>
     </div>
     <div class="sub-h">Top metrics by series</div>
     <input class="filter" type="text" placeholder="Filter metrics…" oninput="filterTable(this,'cardMetrics')">
@@ -487,6 +488,17 @@ function rebuildCardinality(cd){
   if(!cd) return;
   setText('cardTotal', cd.TotalSeries); setText('cardFamilies', cd.TotalFamilies);
   setText('cardWarn', cd.Warn); setText('cardCrit', cd.Crit);
+  // Series budget (#494). A budget of 0 means the check is disabled entirely,
+  // which must read as "off" rather than as 0% — 0% would look like headroom.
+  var bs=document.getElementById('cardBudgetSub');
+  if(cd.SeriesBudget){
+    setText('cardBudget', Math.round(cd.BudgetPercent)+'%');
+    if(bs){ bs.textContent=cd.TotalSeries+' of '+cd.SeriesBudget;
+      if(cd.OverBudget){ bs.appendChild(document.createTextNode(' ')); bs.appendChild(el('span',{'class':'badge badge-bad'},'over')); } }
+  } else {
+    setText('cardBudget', 'off');
+    if(bs) bs.textContent='disabled';
+  }
   var mb=document.getElementById('cardMetricsBody');
   if(mb){ mb.textContent='';
     var ms=cd.TopMetrics||[];

@@ -667,6 +667,17 @@ func TestFetchKeaLeases4_RealDevBoxCapture(t *testing.T) {
 	if len(data.LeasesByType) != 0 {
 		t.Errorf("expected empty LeasesByType (v4 has no type), got %v", data.LeasesByType)
 	}
+	// #482: mac_info (OUI vendor lookup), client_id (raw DHCPv4 option 61) and
+	// valid_lifetime (Kea's valid-lft) as captured on the real dev-box lease.
+	if l.Vendor != "Proxmox Server Solutions GmbH" {
+		t.Errorf("expected Vendor 'Proxmox Server Solutions GmbH', got %q", l.Vendor)
+	}
+	if l.ClientID != "" {
+		t.Errorf("expected empty ClientID (client sent no option 61), got %q", l.ClientID)
+	}
+	if l.ValidLifetime != 4000 {
+		t.Errorf("expected ValidLifetime=4000, got %d", l.ValidLifetime)
+	}
 }
 
 // TestFetchKeaPdPools_RealDevBoxCapture replays the literal live PD pool
@@ -706,5 +717,134 @@ func TestFetchKeaPdPools_RealDevBoxCapture(t *testing.T) {
 	// own reported total-pds==64 for this pool.
 	if p.Capacity != 64 {
 		t.Errorf("expected Capacity=64 (matches Kea's own total-pds), got %v", p.Capacity)
+	}
+}
+
+// TestFetchKeaLeases4_VendorClientIDValidLifetime covers issue #482:
+// mac_info (decoded as Vendor), client_id and valid_lifetime on the DHCPv4
+// endpoint. The empty-value case is the NORMAL case (mac_info is empty
+// whenever the OUI is unknown, e.g. MAC randomisation; client_id is empty
+// whenever the client never sent DHCPv4 option 61), so the fixture pins one
+// lease with all three empty and one with all three populated.
+func TestFetchKeaLeases4_VendorClientIDValidLifetime(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{
+					"address": "10.0.0.5",
+					"hwaddr": "aa:bb:cc:dd:ee:01",
+					"hostname": "randomised-client",
+					"expire": 1,
+					"if_descr": "LAN",
+					"is_reserved": "0",
+					"mac_info": "",
+					"client_id": "",
+					"valid_lifetime": 0
+				},
+				{
+					"address": "10.0.0.6",
+					"hwaddr": "aa:bb:cc:dd:ee:02",
+					"hostname": "known-client",
+					"expire": 2,
+					"if_descr": "LAN",
+					"is_reserved": "0",
+					"mac_info": "Apple, Inc.",
+					"client_id": "0100112233",
+					"valid_lifetime": 7200
+				}
+			]
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	}
+
+	empty := data.Leases[0]
+	if empty.Vendor != "" {
+		t.Errorf("expected empty Vendor for unknown OUI, got %q", empty.Vendor)
+	}
+	if empty.ClientID != "" {
+		t.Errorf("expected empty ClientID when no option 61 sent, got %q", empty.ClientID)
+	}
+	if empty.ValidLifetime != 0 {
+		t.Errorf("expected ValidLifetime=0, got %d", empty.ValidLifetime)
+	}
+
+	known := data.Leases[1]
+	if known.Vendor != "Apple, Inc." {
+		t.Errorf("expected Vendor 'Apple, Inc.', got %q", known.Vendor)
+	}
+	if known.ClientID != "0100112233" {
+		t.Errorf("expected ClientID '0100112233', got %q", known.ClientID)
+	}
+	if known.ValidLifetime != 7200 {
+		t.Errorf("expected ValidLifetime=7200, got %d", known.ValidLifetime)
+	}
+}
+
+// TestFetchKeaLeases6_VendorValidLifetime_ClientIDAlwaysEmpty covers issue
+// #482 on the DHCPv6 endpoint. mac_info and valid_lifetime are populated by
+// the same shared row-builder as v4 (LeasesController.php's OUI lookup runs
+// unconditionally; get_kea_leases.py emits valid_lifetime from Kea's
+// valid-lft for both protocols). client_id is different: it comes straight
+// from Kea's own lease dict (`lease.get("client-id", "")`), and Kea's
+// lease6-get-all response has no "client-id" key at all (DHCPv6 identifies
+// clients by DUID, not option 61) — so client_id is permanently "" on every
+// v6 row, confirmed against upstream's get_kea_leases.py source. This is
+// verified here as an explicit negative so the field is never mistaken for
+// "just needs a live client that sends it".
+func TestFetchKeaLeases6_VendorValidLifetime_ClientIDAlwaysEmpty(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{
+					"address": "fd00::10",
+					"hwaddr": "aa:bb:cc:dd:ee:10",
+					"hostname": "server1",
+					"expire": 1772501000,
+					"if_descr": "LAN",
+					"is_reserved": "0",
+					"mac_info": "Google, Inc.",
+					"client_id": "",
+					"valid_lifetime": 3600
+				}
+			]
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases6()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Leases) != 1 {
+		t.Fatalf("expected 1 lease, got %d", len(data.Leases))
+	}
+
+	l := data.Leases[0]
+	if l.Vendor != "Google, Inc." {
+		t.Errorf("expected Vendor 'Google, Inc.', got %q", l.Vendor)
+	}
+	if l.ValidLifetime != 3600 {
+		t.Errorf("expected ValidLifetime=3600, got %d", l.ValidLifetime)
+	}
+	if l.ClientID != "" {
+		t.Errorf("expected ClientID always empty on DHCPv6 (no option-61 concept), got %q", l.ClientID)
 	}
 }
