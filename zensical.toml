@@ -32,7 +32,8 @@ nav = [
       { "Syslog Receiver" = "syslog-receiver.md" },
       { "Zenarmor Receiver" = "zenarmor-receiver.md" },
       { "Flow Volume" = "flow.md" },
-      { "Native Log Export" = "log-export-native.md" }
+      { "Native Log Export" = "log-export-native.md" },
+      { "OTLP Attribute Contract" = "otlp-attribute-contract.md" }
     ] },
   { Troubleshooting = "troubleshooting.md" },
   { Upgrading = "upgrading.md" },

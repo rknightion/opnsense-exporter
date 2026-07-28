@@ -326,8 +326,13 @@ A promoted attribute moves out of structured metadata and into the label, so
 your queries when you switch the config. This applies per attribute, so a partial
 promotion leaves the rest filterable with `|` exactly as before.
 
-On Grafana Cloud the promotion slots are shared across the **whole tenant** and keyed by
-attribute name, so count them against everything else writing to the same Loki.
+Two different limits get conflated here, and conflating them invents a scarcity that is not
+there. `max_label_names_per_series` (default **15**) bounds the label names on a **single
+stream** - it is per stream, so another exporter writing to the same tenant does not consume
+any of it, because its streams never carry an `opnsense_*` label. The exporter's widest stream
+carries seven. Separately, the tenant's promoted-attribute **list** is one shared list, so
+adding entries to it is a coordinated change - but adding another exporter's attributes cannot
+affect an `opnsense_*` stream. See [OTLP attribute contract](otlp-attribute-contract.md).
 
 Do **not** promote anything else. `src_ip` as a label is one stream per address: the
 classic Loki cardinality footgun, and the reason the exporter keeps it out of reach.
