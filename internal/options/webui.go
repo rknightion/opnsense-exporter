@@ -465,6 +465,13 @@ func countNonEmpty(items []string) int {
 // options package's own CollectorsSwitches(), never collector.SubsystemDisplayNames.)
 func collectorConfigItems() []ConfigItem {
 	sw := CollectorsSwitches()
+	// Prefer the post-resolution set when main has recorded one: with
+	// --exporter.enable-all-available set, the raw flag values say "off" for every
+	// collector the blanket switch turned on, so rendering them would understate the
+	// running exporter on all three config surfaces.
+	if resolvedSwitches != nil {
+		sw = *resolvedSwitches
+	}
 	v := reflect.ValueOf(sw)
 	t := v.Type()
 	items := make([]ConfigItem, 0, t.NumField())

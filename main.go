@@ -637,6 +637,12 @@ func main() {
 		}
 	}
 
+	// Everything is resolved by here — file-based secrets, the blanket enable switch
+	// and its availability probe — so this is the first point at which the rendered
+	// config is what is actually in force rather than what was typed (#526).
+	options.SetResolvedCollectorSwitches(collectorsSwitches)
+	options.LogEffectiveConfig(logger)
+
 	// selfMetricsRegistry holds exporter self-metrics (process_*, go_*). It is
 	// gathered on every /metrics request alongside the per-request collector view.
 	selfMetricsRegistry := prometheus.NewRegistry()

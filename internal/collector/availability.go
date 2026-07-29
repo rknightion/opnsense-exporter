@@ -306,6 +306,39 @@ func (c *availabilityCollector) Update(ctx context.Context, client *opnsense.Cli
 // The flag, env var and reason are read from options.CollectorFlags rather than
 // stored on the probe, so there is exactly one place each is authored.
 func (c *availabilityCollector) logAvailabilityReport(results map[string]bool, enabledFn FeatureEnabledFunc) {
+	// The inventory block (#526). It leads, so the counts frame the per-feature lines
+	// that follow, and it is the reason this cannot be emitted with the startup config
+	// block: availability is not known at process start, and printing a confidently
+	// empty list while the firewall is unreachable would be worse than printing it
+	// late.
+	var installed, scraped, unscraped, absent []string
+	for _, probe := range featureAvailabilityProbes {
+		available, ok := results[probe.Feature]
+		switch {
+		case !ok:
+			continue
+		case !available:
+			absent = append(absent, probe.Feature)
+		default:
+			installed = append(installed, probe.Feature)
+			if enabledFn(probe.Feature) {
+				scraped = append(scraped, probe.Feature)
+			} else {
+				unscraped = append(unscraped, probe.Feature)
+			}
+		}
+	}
+	c.log.Info("plugin inventory",
+		"component", "collector",
+		"installed", len(installed),
+		"scraped", len(scraped),
+		"installed_not_scraped", len(unscraped),
+		"absent", len(absent),
+		"scraping", strings.Join(scraped, ","),
+		"available_but_off", strings.Join(unscraped, ","),
+		"not_installed", strings.Join(absent, ","),
+	)
+
 	for _, probe := range featureAvailabilityProbes {
 		available, ok := results[probe.Feature]
 		switch {

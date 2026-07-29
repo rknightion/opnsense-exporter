@@ -38,7 +38,18 @@ Run with `--log.level=debug` to see each API call and its failure reason.
   opt-in collectors) removed it. See [Configuration](configuration.md#collector-switches).
 - **Plugin absent?** Plugin-backed collectors (ACME, SMART, DynDNS, ISC DHCPv4) stay
   silent when the OPNsense plugin is not installed - the API returns 404 and the
-  exporter treats it as "feature absent" by design.
+  exporter treats it as "feature absent" by design. Ask the exporter rather than
+  guessing: `opnsense_feature_available{feature="<name>"}` is `1` when the plugin
+  answered and `0` when it returned 404, and the `enabled` label says whether that
+  collector is switched on. **No series at all** means availability has never been
+  determined - not that the plugin is missing.
+- **Installed but not being scraped?** `opnsense_feature_available{enabled="false"} == 1`
+  lists every plugin the box has that nothing is reading, which covers both an opt-in
+  collector nobody turned on and a default-on one somebody disabled. The exporter also
+  names each one, with the flag that would enable it, in a `feature available but its
+  collector is not enabled` log line - and a `plugin inventory` line summarising the
+  counts. `--exporter.enable-all-available` turns on every collector whose plugin the
+  startup probe found present.
 - **Endpoint errors?** Check `opnsense_exporter_endpoint_errors_total` and the
   exporter logs for the failing endpoint.
 - **Unbound statistics empty?** Enable *Unbound DNS > Advanced > Extended Statistics*
@@ -74,6 +85,24 @@ The detail flags (`--exporter.enable-*-details`) emit one series per DHCP lease,
 firewall rule, or VPN session and can produce thousands of series on busy networks.
 Leave them off unless you need per-item data, and review
 [high-cardinality options](configuration.md#high-cardinality-detail-options).
+
+## What configuration is actually in force?
+
+The exporter logs its **entire resolved configuration at startup**, at `Info`, one entry
+per section (`effective config: Connection`, `effective config: Collectors`, and so on).
+That is the resolved view - after file-based secrets are read and after
+`--exporter.enable-all-available` and its availability probe have been applied - so it is
+what the process is running, not what was typed. Credentials appear only as `set` or
+`unset`, never as values.
+
+A `plugin inventory` line follows once the first availability probe completes. It is
+separate on purpose: availability needs the firewall to answer, and printing a
+confidently empty list while the box is unreachable would be worse than printing it a
+few seconds late.
+
+The same content is available two other ways, rendered from the same source: the
+`/config` page of the operator console, and `--config.check`, which prints it and exits
+without contacting the firewall.
 
 ## Where are the exporter's own logs?
 
