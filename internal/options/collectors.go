@@ -1,6 +1,10 @@
 package options
 
-import "github.com/alecthomas/kingpin/v2"
+import (
+	"os"
+
+	"github.com/alecthomas/kingpin/v2"
+)
 
 var (
 	arpTableCollectorDisabled = kingpin.Flag(
@@ -22,7 +26,7 @@ var (
 	arpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-arp-details",
 		"Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS").Default("false").IsSetByUser(&arpDetailsEnabledUserSet).Bool()
 	cronTableCollectorDisabled = kingpin.Flag(
 		"exporter.disable-cron-table",
 		"Disable the scraping of the cron table",
@@ -38,7 +42,7 @@ var (
 	ipsecLeaseDetailsEnabled = kingpin.Flag(
 		"exporter.enable-ipsec-lease-details",
 		"Enable per-lease IPsec mode-cfg detail metrics (opnsense_ipsec_lease_online with an unbounded road-warrior user label). Off by default; the per-pool lease aggregates stay always-on.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_IPSEC_LEASE_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_IPSEC_LEASE_DETAILS").Default("false").IsSetByUser(&ipsecLeaseDetailsEnabledUserSet).Bool()
 	unboundCollectorDisabled = kingpin.Flag(
 		"exporter.disable-unbound",
 		"Disable the scraping of Unbound service",
@@ -46,11 +50,11 @@ var (
 	unboundInfraEnabled = kingpin.Flag(
 		"exporter.enable-unbound-infra",
 		"Enable per-upstream infra cache RTT metrics from Unbound (cardinality scales with the resolver's infra cache; one series pair per upstream ip/host)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA").Default("false").IsSetByUser(&unboundInfraEnabledUserSet).Bool()
 	unboundQStatsEnabled = kingpin.Flag(
 		"exporter.enable-unbound-qstats",
 		"Enable Unbound DNSBL query-stats totals and blocklist size metrics, plus local-zone/data/insecure-domain counts. Off by default: the query-stats totals call is backed by an expensive configd+python+pandas+DuckDB query (~1s per scheduled poll) - skipped entirely while query-stats logging (general.stats) is off on the box, but still paid for on every scheduled poll once it is on.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS").Default("false").IsSetByUser(&unboundQStatsEnabledUserSet).Bool()
 	openVPNCollectorDisabled = kingpin.Flag(
 		"exporter.disable-openvpn",
 		"Disable the scraping of OpenVPN service",
@@ -58,7 +62,7 @@ var (
 	openVPNDetailsEnabled = kingpin.Flag(
 		"exporter.enable-openvpn-details",
 		"Enable per-session detail metrics for OpenVPN (exposes usernames and per-client tunnel addresses)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS").Default("false").IsSetByUser(&openVPNDetailsEnabledUserSet).Bool()
 	firewallCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firewall",
 		"Disable the scraping of the firewall (pf) metrics",
@@ -71,7 +75,7 @@ var (
 	firewallNATCountsEnabled = kingpin.Flag(
 		"exporter.enable-firewall-nat-counts",
 		"Enable the NAT rule inventory count metric (opnsense_firewall_nat_rules), broken down by type (source_nat, d_nat, one_to_one, npt) and enabled state. Off by default: each scheduled poll does four extra GETs, one per NAT rule type. Rules created before an admin migrated to the MVC-managed NAT backend are not counted; NAT rule pf hit/byte statistics do not exist upstream.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_NAT_COUNTS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_NAT_COUNTS").Default("false").IsSetByUser(&firewallNATCountsEnabledUserSet).Bool()
 	firmwareCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firmware",
 		"Disable the scraping of the firmware metrics",
@@ -79,7 +83,7 @@ var (
 	firmwarePackageDetailsEnabled = kingpin.Flag(
 		"exporter.enable-firmware-package-details",
 		"Enable per-package firmware detail metrics (pending package updates and installed plugin inventory; adds one extra API call per scheduled poll)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS").Default("false").IsSetByUser(&firmwarePackageDetailsEnabledUserSet).Bool()
 	systemCollectorDisabled = kingpin.Flag(
 		"exporter.disable-system",
 		"Disable the scraping of system resource metrics (memory, uptime, disk, swap)",
@@ -95,7 +99,7 @@ var (
 	dnsmasqDetailsEnabled = kingpin.Flag(
 		"exporter.enable-dnsmasq-details",
 		"Enable per-lease detail metrics for Dnsmasq DHCP (high cardinality on large networks)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS").Default("false").IsSetByUser(&dnsmasqDetailsEnabledUserSet).Bool()
 	firewallRulesCollectorDisabled = kingpin.Flag(
 		"exporter.disable-firewall-rules",
 		"Disable the scraping of firewall rule statistics",
@@ -103,7 +107,7 @@ var (
 	firewallRulesDetailsEnabled = kingpin.Flag(
 		"exporter.enable-firewall-rules-details",
 		"Enable per-rule detail metrics for firewall rules (high cardinality on large rulesets)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS").Default("false").IsSetByUser(&firewallRulesDetailsEnabledUserSet).Bool()
 	mbufCollectorDisabled = kingpin.Flag(
 		"exporter.disable-mbuf",
 		"Disable the scraping of mbuf statistics",
@@ -131,15 +135,15 @@ var (
 	keaDetailsEnabled = kingpin.Flag(
 		"exporter.enable-kea-details",
 		"Enable per-lease detail metrics for Kea DHCP (high cardinality on large networks)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS").Default("false").IsSetByUser(&keaDetailsEnabledUserSet).Bool()
 	networkDiagnosticsEnabled = kingpin.Flag(
 		"exporter.enable-network-diagnostics",
 		"Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS").Default("false").IsSetByUser(&networkDiagnosticsEnabledUserSet).Bool()
 	netflowEnabled = kingpin.Flag(
 		"exporter.enable-netflow",
 		"Enable the netflow collector (enabled status, service status, cache stats). Disabled by default.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_NETFLOW").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NETFLOW").Default("false").IsSetByUser(&netflowEnabledUserSet).Bool()
 	pfStatsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-pf-stats",
 		"Disable the scraping of PF statistics (state table, counters, memory limits, timeouts)",
@@ -151,7 +155,7 @@ var (
 	ndpDetailsEnabled = kingpin.Flag(
 		"exporter.enable-ndp-details",
 		"Enable per-entry NDP metrics (ip/mac labels - high, churning cardinality from IPv6 privacy-address rotation). Off by default; the low-cardinality entries_total aggregate is always emitted.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS").Default("false").IsSetByUser(&ndpDetailsEnabledUserSet).Bool()
 	dhcpv4CollectorDisabled = kingpin.Flag(
 		"exporter.disable-dhcpv4",
 		"Disable the scraping of ISC DHCPv4 leases (silent when the legacy ISC DHCP backend is absent)",
@@ -159,7 +163,7 @@ var (
 	dhcpv4DetailsEnabled = kingpin.Flag(
 		"exporter.enable-dhcpv4-details",
 		"Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS").Default("false").IsSetByUser(&dhcpv4DetailsEnabledUserSet).Bool()
 	acmeCollectorDisabled = kingpin.Flag(
 		"exporter.disable-acme",
 		"Disable the scraping of ACME client certificate renewal status and expiry metrics (silent when the os-acme-client plugin is absent)",
@@ -172,7 +176,7 @@ var (
 	smartEnabled = kingpin.Flag(
 		"exporter.enable-smart",
 		"Enable the SMART disk health collector. Off by default: each scheduled poll does a per-disk POST fanout that runs `smartctl -a` on the firewall (extra API/latency cost, and wakes spun-down disks). Silent when the os-smart plugin is absent.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_SMART").Default("false").IsSetByUser(&smartEnabledUserSet).Bool()
 	// Tor is opt-in (default-off, #206): each scheduled poll costs two extra configd execs
 	// (a Ruby script dialing the Tor control port for circuit-status and
 	// stream-status) on top of the plugin/control-port setup dependency, matching
@@ -181,7 +185,7 @@ var (
 	torEnabled = kingpin.Flag(
 		"exporter.enable-tor",
 		"Enable the Tor circuit/stream telemetry collector (control-port GETINFO via the os-tor plugin). Off by default: each scheduled poll does two extra configd execs to query the control port, and requires the plugin's control port + password to be configured. Silent when the os-tor plugin is absent.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_TOR").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_TOR").Default("false").IsSetByUser(&torEnabledUserSet).Bool()
 	dyndnsCollectorDisabled = kingpin.Flag(
 		"exporter.disable-dyndns",
 		"Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent)",
@@ -205,7 +209,7 @@ var (
 	tailscalePeerDetailsEnabled = kingpin.Flag(
 		"exporter.enable-tailscale-peer-details",
 		"Enable per-peer detail metrics for Tailscale (per-peer cardinality; peer hostname labels)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS").Default("false").IsSetByUser(&tailscalePeerDetailsEnabledUserSet).Bool()
 	aliasCollectorDisabled = kingpin.Flag(
 		"exporter.disable-alias",
 		"Disable the scraping of firewall alias table sizes",
@@ -213,7 +217,7 @@ var (
 	aliasDetailsEnabled = kingpin.Flag(
 		"exporter.enable-alias-details",
 		"Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS").Default("false").IsSetByUser(&aliasDetailsEnabledUserSet).Bool()
 	haproxyCollectorDisabled = kingpin.Flag(
 		"exporter.disable-haproxy",
 		"Disable the scraping of HAProxy statistics (silent when the os-haproxy plugin is absent)",
@@ -232,7 +236,7 @@ var (
 			"protocol, route type, area and LSA type - never per-prefix or per-LSA series). Off by "+
 			"default: the underlying bootgrid endpoints have no success-body caching and their "+
 			"payload size scales with route-table size (up to 6 extra vtysh execs per scheduled poll).",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES").Default("false").IsSetByUser(&frrRoutesEnabledUserSet).Bool()
 	monitCollectorDisabled = kingpin.Flag(
 		"exporter.disable-monit",
 		"Disable the scraping of Monit service check status (silent when Monit is not running)",
@@ -260,7 +264,7 @@ var (
 	hasyncEnabled = kingpin.Flag(
 		"exporter.enable-hasync",
 		"Enable the HA sync status collector (performs a live XML-RPC call to the CARP peer on every scheduled poll). Disabled by default.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_HASYNC").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_HASYNC").Default("false").IsSetByUser(&hasyncEnabledUserSet).Bool()
 	chronyCollectorDisabled = kingpin.Flag(
 		"exporter.disable-chrony",
 		"Disable the scraping of chrony NTP tracking/source metrics (silent when the os-chrony plugin is absent)",
@@ -272,7 +276,7 @@ var (
 	dhcpv6DetailsEnabled = kingpin.Flag(
 		"exporter.enable-dhcpv6-details",
 		"Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS").Default("false").IsSetByUser(&dhcpv6DetailsEnabledUserSet).Bool()
 	bpfCollectorDisabled = kingpin.Flag(
 		"exporter.disable-bpf",
 		"Disable the scraping of BPF listener statistics",
@@ -296,7 +300,7 @@ var (
 	idsAlertsEnabled = kingpin.Flag(
 		"exporter.enable-ids-alerts",
 		"Enable the Suricata recent-alerts gauge (opnsense_ids_recent_alerts by action). Off by default: each scheduled poll triggers a reverse read of eve.json on the box. Window set by --exporter.ids-alert-lookback.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS").Default("false").IsSetByUser(&idsAlertsEnabledUserSet).Bool()
 	lldpdCollectorDisabled = kingpin.Flag(
 		"exporter.disable-lldpd",
 		"Disable the scraping of LLDP neighbor table metrics (silent when the os-lldpd plugin is absent)",
@@ -313,7 +317,7 @@ var (
 	vnstatEnabled = kingpin.Flag(
 		"exporter.enable-vnstat",
 		"Enable the vnstat persistent traffic accounting collector (day/month/total bytes per interface, survives reboots). Off by default: each scheduled poll does one interface_list call plus one get_json_data call per interface vnstat tracks. Silent when the os-vnstat plugin is absent.",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_VNSTAT").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_VNSTAT").Default("false").IsSetByUser(&vnstatEnabledUserSet).Bool()
 	netbirdCollectorDisabled = kingpin.Flag(
 		"exporter.disable-netbird",
 		"Disable the scraping of NetBird management/signal connectivity, relay and peer metrics (silent when the os-netbird plugin is absent)",
@@ -321,7 +325,7 @@ var (
 	netbirdDetailsEnabled = kingpin.Flag(
 		"exporter.enable-netbird-details",
 		"Enable per-peer detail metrics for NetBird (per-peer cardinality; peer FQDN labels)",
-	).Envar("OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS").Default("false").IsSetByUser(&netbirdDetailsEnabledUserSet).Bool()
 	authCollectorDisabled = kingpin.Flag(
 		"exporter.disable-auth",
 		"Disable the scraping of local-auth security-posture metrics (user/group/API-key counts, aggregates only - no per-user data)",
@@ -354,6 +358,62 @@ var (
 		"exporter.disable-flow",
 		"Disable the flow collector (Prometheus byte/packet volume counters rolled up from flow records, on bounded dimensions). Silent until a flow source - today the Zenarmor receiver - is enabled and feeding it.",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_FLOW").Default("false").Bool()
+	// feature_availability (#517) is default-on and low-cost: it probes the SAME
+	// plugin-gated endpoints PluginGatedEndpoints() already answers "is the plugin
+	// absent?" for (#495) - SMART, Tor, Vnstat today - on the cold poll tier
+	// (15m), bypassing the negative-cache TTL so a plugin installed after startup
+	// is noticed within that window rather than up to --exporter.cache-ttl later.
+	featureAvailabilityCollectorDisabled = kingpin.Flag(
+		"exporter.disable-feature-availability",
+		"Disable the feature-availability collector (opnsense_feature_available; #517). It periodically probes the plugin-gated endpoints backing the opt-in SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable any that answer successfully but are not yet enabled.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY").Default("false").Bool()
+
+	// enableAllAvailable is the single blanket opt-in switch (#517): it turns on
+	// every --exporter.enable-* collector switch (both whole-collector and
+	// *-details toggles) that the operator has not explicitly set themselves,
+	// so a plugin-gated collector that IS available (per the availability
+	// prober, internal/collector's feature_availability collector) starts
+	// producing data without hunting through the flag reference. It deliberately
+	// never touches the syslog/Zenarmor/NetFlow RECEIVERS: those are unauthenticated
+	// listening sockets, not collectors, and are out of scope entirely - see
+	// ApplyEnableAllAvailable's doc comment.
+	enableAllAvailable = kingpin.Flag(
+		"exporter.enable-all-available",
+		"Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off (extra per-poll API cost, high/unbounded cardinality, or exposing usernames/addresses); an explicit --exporter.enable-<x>=false always wins over this blanket switch.",
+	).Envar("OPNSENSE_EXPORTER_EXPORTER_ENABLE_ALL_AVAILABLE").Default("false").Bool()
+)
+
+// enableFlagUserSet tracks, per --exporter.enable-* flag, whether the operator
+// set it explicitly on the command line (via kingpin's IsSetByUser). Env-var
+// overrides are detected separately by ApplyEnableAllAvailable reading the
+// flag's own Envar name from os.LookupEnv, since kingpin's IsSetByUser callback
+// only fires for a CLI token (vendor/github.com/alecthomas/kingpin/v2/flags.go)
+// and never for a value that arrived through Envar/OverrideDefaultFromEnvar.
+var (
+	arpDetailsEnabledUserSet             bool
+	ipsecLeaseDetailsEnabledUserSet      bool
+	unboundInfraEnabledUserSet           bool
+	unboundQStatsEnabledUserSet          bool
+	openVPNDetailsEnabledUserSet         bool
+	firewallNATCountsEnabledUserSet      bool
+	firmwarePackageDetailsEnabledUserSet bool
+	dnsmasqDetailsEnabledUserSet         bool
+	firewallRulesDetailsEnabledUserSet   bool
+	keaDetailsEnabledUserSet             bool
+	networkDiagnosticsEnabledUserSet     bool
+	netflowEnabledUserSet                bool
+	ndpDetailsEnabledUserSet             bool
+	dhcpv4DetailsEnabledUserSet          bool
+	smartEnabledUserSet                  bool
+	torEnabledUserSet                    bool
+	tailscalePeerDetailsEnabledUserSet   bool
+	aliasDetailsEnabledUserSet           bool
+	frrRoutesEnabledUserSet              bool
+	hasyncEnabledUserSet                 bool
+	dhcpv6DetailsEnabledUserSet          bool
+	idsAlertsEnabledUserSet              bool
+	vnstatEnabledUserSet                 bool
+	netbirdDetailsEnabledUserSet         bool
 )
 
 // CollectorsDisableSwitch hold the enabled/disabled state of the collectors
@@ -438,6 +498,7 @@ type CollectorsDisableSwitch struct {
 	Relayd                 bool
 	LogEvents              bool
 	Flow                   bool
+	FeatureAvailability    bool
 }
 
 // CollectorsSwitches returns configured instances of CollectorsDisableSwitch
@@ -523,6 +584,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Siproxd:                !*siproxdCollectorDisabled,
 		LogEvents:              !*logEventsCollectorDisabled,
 		Flow:                   !*flowCollectorDisabled,
+		FeatureAvailability:    !*featureAvailabilityCollectorDisabled,
 	}
 }
 
@@ -534,6 +596,13 @@ type CollectorFlag struct {
 	Flag      string // kingpin flag name without leading --
 	Subsystem string // collector.XxxSubsystem constant
 	Detail    bool   // true when the flag toggles extra detail metrics rather than the collector itself
+	// Reason is why an enable-* flag defaults to off: extra per-poll API cost,
+	// high/unbounded cardinality, or exposing sensitive data. Populated only for
+	// enable-* entries, copied verbatim from the flag's own Help text above so
+	// there is exactly one place each reason is authored. --exporter.enable-all-available
+	// (#517) surfaces it in the per-collector log line it emits for every switch
+	// it turns on.
+	Reason string
 }
 
 // CollectorFlags lists every collector switch flag.
@@ -546,80 +615,206 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-interfaces", Subsystem: "interfaces"},
 	{Flag: "exporter.disable-protocol", Subsystem: "protocol"},
 	{Flag: "exporter.disable-services", Subsystem: "services"},
-	{Flag: "exporter.enable-arp-details", Subsystem: "arp_table", Detail: true},
-	{Flag: "exporter.enable-ndp-details", Subsystem: "ndp", Detail: true},
+	{Flag: "exporter.enable-arp-details", Subsystem: "arp_table", Detail: true, Reason: "high, churning cardinality (per-entry ip/mac/hostname labels)"},
+	{Flag: "exporter.enable-ndp-details", Subsystem: "ndp", Detail: true, Reason: "high, churning cardinality from IPv6 privacy-address rotation (per-entry ip/mac labels)"},
 	{Flag: "exporter.disable-cron-table", Subsystem: "cron"},
 	{Flag: "exporter.disable-wireguard", Subsystem: "wireguard"},
 	{Flag: "exporter.disable-ipsec", Subsystem: "ipsec"},
-	{Flag: "exporter.enable-ipsec-lease-details", Subsystem: "ipsec", Detail: true},
+	{Flag: "exporter.enable-ipsec-lease-details", Subsystem: "ipsec", Detail: true, Reason: "unbounded road-warrior user label on the per-lease metric"},
 	{Flag: "exporter.disable-unbound", Subsystem: "unbound_dns"},
-	{Flag: "exporter.enable-unbound-infra", Subsystem: "unbound_dns", Detail: true},
-	{Flag: "exporter.enable-unbound-qstats", Subsystem: "unbound_dns", Detail: true},
+	{Flag: "exporter.enable-unbound-infra", Subsystem: "unbound_dns", Detail: true, Reason: "cardinality scales with the resolver's infra cache (one series pair per upstream)"},
+	{Flag: "exporter.enable-unbound-qstats", Subsystem: "unbound_dns", Detail: true, Reason: "backed by an expensive configd+python+pandas+DuckDB query (~1s per scheduled poll)"},
 	{Flag: "exporter.disable-openvpn", Subsystem: "openvpn"},
-	{Flag: "exporter.enable-openvpn-details", Subsystem: "openvpn", Detail: true},
+	{Flag: "exporter.enable-openvpn-details", Subsystem: "openvpn", Detail: true, Reason: "exposes usernames and per-client tunnel addresses"},
 	{Flag: "exporter.disable-firewall", Subsystem: "firewall"},
-	{Flag: "exporter.enable-firewall-nat-counts", Subsystem: "firewall", Detail: true},
+	{Flag: "exporter.enable-firewall-nat-counts", Subsystem: "firewall", Detail: true, Reason: "four extra GETs per scheduled poll, one per NAT rule type"},
 	{Flag: "exporter.disable-firmware", Subsystem: "firmware"},
-	{Flag: "exporter.enable-firmware-package-details", Subsystem: "firmware", Detail: true},
+	{Flag: "exporter.enable-firmware-package-details", Subsystem: "firmware", Detail: true, Reason: "one extra API call per scheduled poll"},
 	{Flag: "exporter.disable-system", Subsystem: "system"},
 	{Flag: "exporter.disable-temperature", Subsystem: "temperature"},
 	{Flag: "exporter.disable-dnsmasq", Subsystem: "dnsmasq"},
-	{Flag: "exporter.enable-dnsmasq-details", Subsystem: "dnsmasq", Detail: true},
+	{Flag: "exporter.enable-dnsmasq-details", Subsystem: "dnsmasq", Detail: true, Reason: "high cardinality on large networks (per-lease detail metrics)"},
 	{Flag: "exporter.disable-firewall-rules", Subsystem: "firewall_rule"},
-	{Flag: "exporter.enable-firewall-rules-details", Subsystem: "firewall_rule", Detail: true},
+	{Flag: "exporter.enable-firewall-rules-details", Subsystem: "firewall_rule", Detail: true, Reason: "high cardinality on large rulesets (per-rule detail metrics)"},
 	{Flag: "exporter.disable-mbuf", Subsystem: "mbuf"},
 	{Flag: "exporter.disable-ntp", Subsystem: "ntp"},
 	{Flag: "exporter.disable-certificates", Subsystem: "certificate"},
 	{Flag: "exporter.disable-carp", Subsystem: "carp"},
 	{Flag: "exporter.disable-activity", Subsystem: "activity"},
 	{Flag: "exporter.disable-kea", Subsystem: "kea"},
-	{Flag: "exporter.enable-kea-details", Subsystem: "kea", Detail: true},
-	{Flag: "exporter.enable-network-diagnostics", Subsystem: "network_diag"},
-	{Flag: "exporter.enable-netflow", Subsystem: "netflow"},
+	{Flag: "exporter.enable-kea-details", Subsystem: "kea", Detail: true, Reason: "high cardinality on large networks (per-lease detail metrics)"},
+	{Flag: "exporter.enable-network-diagnostics", Subsystem: "network_diag", Reason: "not needed by every deployment; adds netisr/socket/route diagnostics collection"},
+	{Flag: "exporter.enable-netflow", Subsystem: "netflow", Reason: "only relevant when NetFlow capture is configured on the firewall"},
 	{Flag: "exporter.disable-pf-stats", Subsystem: "pf_stats"},
 	{Flag: "exporter.disable-ndp", Subsystem: "ndp"},
 	{Flag: "exporter.disable-dhcpv4", Subsystem: "dhcpv4"},
-	{Flag: "exporter.enable-dhcpv4-details", Subsystem: "dhcpv4", Detail: true},
+	{Flag: "exporter.enable-dhcpv4-details", Subsystem: "dhcpv4", Detail: true, Reason: "high cardinality on large networks (per-lease detail metrics)"},
 	{Flag: "exporter.disable-acme", Subsystem: "acme"},
-	{Flag: "exporter.enable-smart", Subsystem: "smart"},
-	{Flag: "exporter.enable-tor", Subsystem: "tor"},
+	{Flag: "exporter.enable-smart", Subsystem: "smart", Reason: "each scheduled poll runs `smartctl -a` per disk on the firewall and can wake spun-down disks"},
+	{Flag: "exporter.enable-tor", Subsystem: "tor", Reason: "each scheduled poll does two extra configd execs to query the Tor control port"},
 	{Flag: "exporter.disable-dyndns", Subsystem: "dyndns"},
 	{Flag: "exporter.disable-gateways", Subsystem: "gateways"},
 	{Flag: "exporter.disable-syslog", Subsystem: "syslog"},
 	{Flag: "exporter.disable-qfeeds", Subsystem: "qfeeds"},
 	{Flag: "exporter.disable-tailscale", Subsystem: "tailscale"},
-	{Flag: "exporter.enable-tailscale-peer-details", Subsystem: "tailscale", Detail: true},
+	{Flag: "exporter.enable-tailscale-peer-details", Subsystem: "tailscale", Detail: true, Reason: "per-peer cardinality; peer hostname labels"},
 	{Flag: "exporter.disable-alias", Subsystem: "alias"},
-	{Flag: "exporter.enable-alias-details", Subsystem: "alias", Detail: true},
+	{Flag: "exporter.enable-alias-details", Subsystem: "alias", Detail: true, Reason: "~10 series per alias table"},
 	{Flag: "exporter.disable-haproxy", Subsystem: "haproxy"},
 	{Flag: "exporter.disable-nginx", Subsystem: "nginx"},
 	{Flag: "exporter.disable-frr", Subsystem: "frr"},
-	{Flag: "exporter.enable-frr-routes", Subsystem: "frr", Detail: true},
+	{Flag: "exporter.enable-frr-routes", Subsystem: "frr", Detail: true, Reason: "up to 6 extra vtysh execs per scheduled poll; payload scales with route-table size"},
 	{Flag: "exporter.disable-monit", Subsystem: "monit"},
 	{Flag: "exporter.disable-crowdsec", Subsystem: "crowdsec"},
 	{Flag: "exporter.disable-nut", Subsystem: "nut"},
 	{Flag: "exporter.disable-apcupsd", Subsystem: "apcupsd"},
 	{Flag: "exporter.disable-captiveportal", Subsystem: "captiveportal"},
 	{Flag: "exporter.disable-trafficshaper", Subsystem: "trafficshaper"},
-	{Flag: "exporter.enable-hasync", Subsystem: "hasync"},
+	{Flag: "exporter.enable-hasync", Subsystem: "hasync", Reason: "performs a live XML-RPC call to the CARP peer on every scheduled poll"},
 	{Flag: "exporter.disable-chrony", Subsystem: "chrony"},
 	{Flag: "exporter.disable-dhcpv6", Subsystem: "dhcpv6"},
-	{Flag: "exporter.enable-dhcpv6-details", Subsystem: "dhcpv6", Detail: true},
+	{Flag: "exporter.enable-dhcpv6-details", Subsystem: "dhcpv6", Detail: true, Reason: "high cardinality on large networks (per-lease detail metrics)"},
 	{Flag: "exporter.disable-bpf", Subsystem: "bpf"},
 	{Flag: "exporter.disable-backup", Subsystem: "backup"},
 	{Flag: "exporter.disable-snapshots", Subsystem: "snapshots"},
 	{Flag: "exporter.disable-clamav", Subsystem: "clamav"},
 	{Flag: "exporter.disable-ids", Subsystem: "ids"},
-	{Flag: "exporter.enable-ids-alerts", Subsystem: "ids", Detail: true},
+	{Flag: "exporter.enable-ids-alerts", Subsystem: "ids", Detail: true, Reason: "each scheduled poll triggers a reverse read of eve.json on the box"},
 	{Flag: "exporter.disable-lldpd", Subsystem: "lldp"},
 	{Flag: "exporter.disable-hardware", Subsystem: "hardware"},
-	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat"},
+	{Flag: "exporter.enable-vnstat", Subsystem: "vnstat", Reason: "each scheduled poll does one interface_list call plus one get_json_data call per interface vnstat tracks"},
 	{Flag: "exporter.disable-netbird", Subsystem: "netbird"},
-	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true},
+	{Flag: "exporter.enable-netbird-details", Subsystem: "netbird", Detail: true, Reason: "per-peer cardinality; peer FQDN labels"},
 	{Flag: "exporter.disable-auth", Subsystem: "auth"},
 	{Flag: "exporter.disable-hostdiscovery", Subsystem: "hostdiscovery"},
 	{Flag: "exporter.disable-relayd", Subsystem: "relayd"},
 	{Flag: "exporter.disable-siproxd", Subsystem: "siproxd"},
 	{Flag: "exporter.disable-log-events", Subsystem: "log_events"},
 	{Flag: "exporter.disable-flow", Subsystem: "flow"},
+	{Flag: "exporter.disable-feature-availability", Subsystem: "feature"},
+}
+
+// enableFlagBinding pairs one --exporter.enable-* flag with the state
+// ApplyEnableAllAvailable needs to decide, per flag, whether the operator has
+// already made a choice: its live value, the CLI-tracking bool wired via
+// IsSetByUser above, its env var name, and the setter that flips the
+// corresponding CollectorsDisableSwitch field. Deliberately excludes
+// --exporter.enable-all-available itself (nothing to bind it to) and every
+// receiver flag (--logs.syslog.enabled &c, in a different options file
+// entirely) - see ApplyEnableAllAvailable's doc comment.
+type enableFlagBinding struct {
+	flag    string
+	envar   string
+	value   *bool
+	userSet *bool
+	apply   func(*CollectorsDisableSwitch)
+}
+
+var enableFlagBindings = []enableFlagBinding{
+	{"exporter.enable-arp-details", "OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS", arpDetailsEnabled, &arpDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.ArpDetails = true }},
+	{"exporter.enable-ndp-details", "OPNSENSE_EXPORTER_ENABLE_NDP_DETAILS", ndpDetailsEnabled, &ndpDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.NdpDetails = true }},
+	{"exporter.enable-ipsec-lease-details", "OPNSENSE_EXPORTER_ENABLE_IPSEC_LEASE_DETAILS", ipsecLeaseDetailsEnabled, &ipsecLeaseDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.IPsecLeaseDetails = true }},
+	{"exporter.enable-unbound-infra", "OPNSENSE_EXPORTER_ENABLE_UNBOUND_INFRA", unboundInfraEnabled, &unboundInfraEnabledUserSet, func(s *CollectorsDisableSwitch) { s.UnboundInfra = true }},
+	{"exporter.enable-unbound-qstats", "OPNSENSE_EXPORTER_ENABLE_UNBOUND_QSTATS", unboundQStatsEnabled, &unboundQStatsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.UnboundQStats = true }},
+	{"exporter.enable-openvpn-details", "OPNSENSE_EXPORTER_ENABLE_OPENVPN_DETAILS", openVPNDetailsEnabled, &openVPNDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.OpenVPNDetails = true }},
+	{"exporter.enable-firewall-nat-counts", "OPNSENSE_EXPORTER_ENABLE_FIREWALL_NAT_COUNTS", firewallNATCountsEnabled, &firewallNATCountsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.FirewallNATCounts = true }},
+	{"exporter.enable-firmware-package-details", "OPNSENSE_EXPORTER_ENABLE_FIRMWARE_PACKAGE_DETAILS", firmwarePackageDetailsEnabled, &firmwarePackageDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.FirmwarePackageDetails = true }},
+	{"exporter.enable-dnsmasq-details", "OPNSENSE_EXPORTER_ENABLE_DNSMASQ_DETAILS", dnsmasqDetailsEnabled, &dnsmasqDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.DnsmasqDetails = true }},
+	{"exporter.enable-firewall-rules-details", "OPNSENSE_EXPORTER_ENABLE_FIREWALL_RULES_DETAILS", firewallRulesDetailsEnabled, &firewallRulesDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.FirewallRulesDetails = true }},
+	{"exporter.enable-kea-details", "OPNSENSE_EXPORTER_ENABLE_KEA_DETAILS", keaDetailsEnabled, &keaDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.KeaDetails = true }},
+	{"exporter.enable-network-diagnostics", "OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS", networkDiagnosticsEnabled, &networkDiagnosticsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.NetworkDiagnostics = true }},
+	{"exporter.enable-netflow", "OPNSENSE_EXPORTER_ENABLE_NETFLOW", netflowEnabled, &netflowEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Netflow = true }},
+	{"exporter.enable-dhcpv4-details", "OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS", dhcpv4DetailsEnabled, &dhcpv4DetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Dhcpv4Details = true }},
+	{"exporter.enable-smart", "OPNSENSE_EXPORTER_ENABLE_SMART", smartEnabled, &smartEnabledUserSet, func(s *CollectorsDisableSwitch) { s.SMART = true }},
+	{"exporter.enable-tor", "OPNSENSE_EXPORTER_ENABLE_TOR", torEnabled, &torEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Tor = true }},
+	{"exporter.enable-tailscale-peer-details", "OPNSENSE_EXPORTER_ENABLE_TAILSCALE_PEER_DETAILS", tailscalePeerDetailsEnabled, &tailscalePeerDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.TailscalePeerDetails = true }},
+	{"exporter.enable-alias-details", "OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS", aliasDetailsEnabled, &aliasDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.AliasDetails = true }},
+	{"exporter.enable-frr-routes", "OPNSENSE_EXPORTER_ENABLE_FRR_ROUTES", frrRoutesEnabled, &frrRoutesEnabledUserSet, func(s *CollectorsDisableSwitch) { s.FRRRoutes = true }},
+	{"exporter.enable-hasync", "OPNSENSE_EXPORTER_ENABLE_HASYNC", hasyncEnabled, &hasyncEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Hasync = true }},
+	{"exporter.enable-dhcpv6-details", "OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS", dhcpv6DetailsEnabled, &dhcpv6DetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Dhcpv6Details = true }},
+	{"exporter.enable-ids-alerts", "OPNSENSE_EXPORTER_ENABLE_IDS_ALERTS", idsAlertsEnabled, &idsAlertsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.IDSAlerts = true }},
+	{"exporter.enable-vnstat", "OPNSENSE_EXPORTER_ENABLE_VNSTAT", vnstatEnabled, &vnstatEnabledUserSet, func(s *CollectorsDisableSwitch) { s.Vnstat = true }},
+	{"exporter.enable-netbird-details", "OPNSENSE_EXPORTER_ENABLE_NETBIRD_DETAILS", netbirdDetailsEnabled, &netbirdDetailsEnabledUserSet, func(s *CollectorsDisableSwitch) { s.NetbirdDetails = true }},
+}
+
+// explicitlySet reports whether the operator supplied b's flag themselves,
+// either as a CLI token (tracked via userSet, wired through IsSetByUser at flag
+// registration) or through its own env var (checked directly via os.LookupEnv,
+// since kingpin's IsSetByUser callback never fires for an Envar-sourced value -
+// see flags.go: isSetByUser() is only called from the CLI token parse path).
+func (b enableFlagBinding) explicitlySet() bool {
+	if b.userSet != nil && *b.userSet {
+		return true
+	}
+	if b.envar != "" {
+		if _, ok := os.LookupEnv(b.envar); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// AutoEnabledFeature is one collector switch --exporter.enable-all-available
+// turned on that the operator had not already set themselves. main logs each
+// one individually with its Reason (#517 decision C: "log every feature
+// enabled and why it was gated"), plus a --exporter.series-budget reminder
+// once more than 5 are enabled in one run.
+type AutoEnabledFeature struct {
+	Flag      string
+	Subsystem string
+	Reason    string
+}
+
+// ApplyEnableAllAvailable is --exporter.enable-all-available's entire effect:
+// when set, every --exporter.enable-* switch the operator left untouched is
+// flipped to true, and the list of what changed is returned so main can log it.
+//
+// "AVAILABLE" in the flag's name distinguishes what it touches (opt-in
+// COLLECTORS, all 24 of them) from what it never touches (the syslog/Zenarmor/
+// NetFlow receivers): a collector left on is harmless when its plugin turns
+// out to be absent - every plugin-gated Fetch* already treats a 404 as
+// "feature absent" and stays silent (mirroring the disable-* default-on
+// collectors' existing self-activation behaviour, e.g. ACME lighting up the
+// moment os-acme-client is installed, #517's own motivating example) - but a
+// receiver LISTENS ON A NETWORK SOCKET, which is never something a blanket
+// switch should open unattended.
+//
+// An operator's own choice always wins, whether given on the command line or
+// via the flag's env var (enableFlagBinding.explicitlySet): this only fills in
+// switches nobody has touched, never overrides one somebody set.
+func ApplyEnableAllAvailable(switches CollectorsDisableSwitch) (CollectorsDisableSwitch, []AutoEnabledFeature) {
+	return applyEnableAllAvailable(*enableAllAvailable, enableFlagBindings, switches)
+}
+
+// applyEnableAllAvailable is ApplyEnableAllAvailable's testable core: it takes
+// the blanket flag's value and the binding table as plain parameters instead
+// of reading the package-level kingpin flags directly, so collectors_test.go
+// can exercise the precedence rules (explicit CLI flag wins, explicit env var
+// wins, an untouched flag gets enabled) against synthetic bindings without
+// mutating the real global flags kingpin owns for the whole test binary.
+func applyEnableAllAvailable(enableAll bool, bindings []enableFlagBinding, switches CollectorsDisableSwitch) (CollectorsDisableSwitch, []AutoEnabledFeature) {
+	if !enableAll {
+		return switches, nil
+	}
+
+	reasons := make(map[string]string, len(CollectorFlags))
+	subsystems := make(map[string]string, len(CollectorFlags))
+	for _, cf := range CollectorFlags {
+		reasons[cf.Flag] = cf.Reason
+		subsystems[cf.Flag] = cf.Subsystem
+	}
+
+	var enabled []AutoEnabledFeature
+	for _, b := range bindings {
+		if b.explicitlySet() {
+			continue
+		}
+		b.apply(&switches)
+		enabled = append(enabled, AutoEnabledFeature{
+			Flag:      b.flag,
+			Subsystem: subsystems[b.flag],
+			Reason:    reasons[b.flag],
+		})
+	}
+	return switches, enabled
 }

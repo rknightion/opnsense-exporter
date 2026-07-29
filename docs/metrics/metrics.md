@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 846
-- **Gauges:** 560
+- **Total metrics:** 847
+- **Gauges:** 561
 - **Counters:** 286
 
 ## General
@@ -275,6 +275,12 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_frr_ospfv3_route_count | Gauge | type | Number of rows in the OSPFv3 route table, by route type. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
 | opnsense_frr_ospf_lsa_count | Gauge | area, lsa_type | Number of LSAs in the OSPF LSDB, by area and LSA type. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
 | opnsense_frr_ospfv3_lsa_count | Gauge | scope | Number of LSAs in the OSPFv3 LSDB, by flooding scope. Only emitted when --exporter.enable-frr-routes is set. | --exporter.disable-frr |
+
+## Feature Availability
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_feature_available | Gauge | feature, enabled | Whether an opt-in, plugin-gated feature answered its OPNsense API endpoint successfully on the most recent availability probe (1) or not (absent otherwise; #517). enabled reflects whether the matching --exporter.enable-* collector switch is currently on. Probed on a fixed 15-minute cadence (the cold poll tier) independent of --exporter.cache-ttl, so a plugin installed after startup is noticed within 15 minutes rather than only after that TTL. Today covers smart, tor and vnstat - the only opt-in collectors whose availability is a plugin-installed question; cost-only and cardinality-only opt-in collectors have no plugin to probe for and never appear. | --exporter.disable-feature-availability |
 
 ## Firewall
 

@@ -96,6 +96,15 @@ const (
 	// Like log_events it never polls an API: the receiver lanes feed collector.Flow
 	// out of band and Update emits the accumulator's current totals.
 	FlowSubsystem = "flow"
+	// FeatureAvailabilitySubsystem (#517) is deliberately short: the metric this
+	// collector emits must be EXACTLY opnsense_feature_available, and
+	// prometheus.BuildFQName joins namespace_subsystem_name, so the subsystem
+	// has to be "feature" for the metric name "available" to land there. Must
+	// live in THIS const block (not availability.go, where the rest of its
+	// probe logic lives): scripts/docgen's parseSubsystemConstants only reads
+	// collector.go's const declarations to resolve a collector file's
+	// `subsystem: XxxSubsystem` init() literal back to a string.
+	FeatureAvailabilitySubsystem = "feature"
 )
 
 // SubsystemDisplayNames maps every collector subsystem to the human-readable
@@ -103,68 +112,69 @@ const (
 // when a registered collector has no entry, so a new collector without a
 // display name breaks the build instead of rendering a raw slug.
 var SubsystemDisplayNames = map[string]string{
-	ArpTableSubsystem:      "ARP Table",
-	GatewaysSubsystem:      "Gateways",
-	CronTableSubsystem:     "Cron",
-	WireguardSubsystem:     "Wireguard",
-	IPsecSubsystem:         "IPsec",
-	UnboundDNSSubsystem:    "Unbound DNS",
-	InterfacesSubsystem:    "Interfaces",
-	ProtocolSubsystem:      "Protocol Statistics",
-	OpenVPNSubsystem:       "OpenVPN",
-	ServicesSubsystem:      "Services",
-	FirewallSubsystem:      "Firewall",
-	FirmwareSubsystem:      "Firmware",
-	DnsmasqSubsystem:       "Dnsmasq DHCP",
-	SystemSubsystem:        "System",
-	TemperatureSubsystem:   "Temperature",
-	FirewallRulesSubsystem: "Firewall Rules",
-	MbufSubsystem:          "Mbuf",
-	NTPSubsystem:           "NTP",
-	CertificatesSubsystem:  "Certificates",
-	CARPSubsystem:          "CARP",
-	ActivitySubsystem:      "Activity",
-	KeaSubsystem:           "Kea DHCP",
-	Dhcpv4Subsystem:        "ISC DHCPv4",
-	NetworkDiagSubsystem:   "Network Diagnostics",
-	NetflowSubsystem:       "NetFlow",
-	PFStatsSubsystem:       "PF Statistics",
-	NDPSubsystem:           "NDP",
-	ACMESubsystem:          "ACME Client",
-	SMARTSubsystem:         "SMART Disk Health",
-	DynDNSSubsystem:        "DynDNS",
-	SyslogSubsystem:        "Syslog",
-	QFeedsSubsystem:        "Q-Feeds",
-	TailscaleSubsystem:     "Tailscale",
-	AliasSubsystem:         "Firewall Aliases",
-	HAProxySubsystem:       "HAProxy",
-	NginxSubsystem:         "Nginx",
-	FRRSubsystem:           "FRR Routing (BGP/OSPF/BFD)",
-	MonitSubsystem:         "Monit",
-	CrowdSecSubsystem:      "CrowdSec",
-	NUTSubsystem:           "NUT UPS",
-	ApcupsdSubsystem:       "APC UPS (apcupsd)",
-	CaptivePortalSubsystem: "Captive Portal",
-	TrafficShaperSubsystem: "Traffic Shaper",
-	HasyncSubsystem:        "HA Sync Status",
-	ChronySubsystem:        "Chrony",
-	Dhcpv6Subsystem:        "ISC DHCPv6",
-	BPFSubsystem:           "BPF Statistics",
-	BackupSubsystem:        "Config Backup",
-	SnapshotsSubsystem:     "ZFS Boot Environments",
-	ClamAVSubsystem:        "ClamAV",
-	IDSSubsystem:           "IDS/IPS (Suricata)",
-	LLDPSubsystem:          "LLDP Neighbors",
-	HardwareSubsystem:      "Hardware",
-	VnstatSubsystem:        "Vnstat Traffic Accounting",
-	NetbirdSubsystem:       "NetBird",
-	TorSubsystem:           "Tor",
-	AuthSubsystem:          "Local Auth",
-	HostDiscoverySubsystem: "Host Discovery",
-	RelaydSubsystem:        "Relayd Load Balancer",
-	SiproxdSubsystem:       "Siproxd",
-	LogEventsSubsystem:     "Log-derived Events",
-	FlowSubsystem:          "Flow Volume",
+	ArpTableSubsystem:            "ARP Table",
+	GatewaysSubsystem:            "Gateways",
+	CronTableSubsystem:           "Cron",
+	WireguardSubsystem:           "Wireguard",
+	IPsecSubsystem:               "IPsec",
+	UnboundDNSSubsystem:          "Unbound DNS",
+	InterfacesSubsystem:          "Interfaces",
+	ProtocolSubsystem:            "Protocol Statistics",
+	OpenVPNSubsystem:             "OpenVPN",
+	ServicesSubsystem:            "Services",
+	FirewallSubsystem:            "Firewall",
+	FirmwareSubsystem:            "Firmware",
+	DnsmasqSubsystem:             "Dnsmasq DHCP",
+	SystemSubsystem:              "System",
+	TemperatureSubsystem:         "Temperature",
+	FirewallRulesSubsystem:       "Firewall Rules",
+	MbufSubsystem:                "Mbuf",
+	NTPSubsystem:                 "NTP",
+	CertificatesSubsystem:        "Certificates",
+	CARPSubsystem:                "CARP",
+	ActivitySubsystem:            "Activity",
+	KeaSubsystem:                 "Kea DHCP",
+	Dhcpv4Subsystem:              "ISC DHCPv4",
+	NetworkDiagSubsystem:         "Network Diagnostics",
+	NetflowSubsystem:             "NetFlow",
+	PFStatsSubsystem:             "PF Statistics",
+	NDPSubsystem:                 "NDP",
+	ACMESubsystem:                "ACME Client",
+	SMARTSubsystem:               "SMART Disk Health",
+	DynDNSSubsystem:              "DynDNS",
+	SyslogSubsystem:              "Syslog",
+	QFeedsSubsystem:              "Q-Feeds",
+	TailscaleSubsystem:           "Tailscale",
+	AliasSubsystem:               "Firewall Aliases",
+	HAProxySubsystem:             "HAProxy",
+	NginxSubsystem:               "Nginx",
+	FRRSubsystem:                 "FRR Routing (BGP/OSPF/BFD)",
+	MonitSubsystem:               "Monit",
+	CrowdSecSubsystem:            "CrowdSec",
+	NUTSubsystem:                 "NUT UPS",
+	ApcupsdSubsystem:             "APC UPS (apcupsd)",
+	CaptivePortalSubsystem:       "Captive Portal",
+	TrafficShaperSubsystem:       "Traffic Shaper",
+	HasyncSubsystem:              "HA Sync Status",
+	ChronySubsystem:              "Chrony",
+	Dhcpv6Subsystem:              "ISC DHCPv6",
+	BPFSubsystem:                 "BPF Statistics",
+	BackupSubsystem:              "Config Backup",
+	SnapshotsSubsystem:           "ZFS Boot Environments",
+	ClamAVSubsystem:              "ClamAV",
+	IDSSubsystem:                 "IDS/IPS (Suricata)",
+	LLDPSubsystem:                "LLDP Neighbors",
+	HardwareSubsystem:            "Hardware",
+	VnstatSubsystem:              "Vnstat Traffic Accounting",
+	NetbirdSubsystem:             "NetBird",
+	TorSubsystem:                 "Tor",
+	AuthSubsystem:                "Local Auth",
+	HostDiscoverySubsystem:       "Host Discovery",
+	RelaydSubsystem:              "Relayd Load Balancer",
+	SiproxdSubsystem:             "Siproxd",
+	LogEventsSubsystem:           "Log-derived Events",
+	FlowSubsystem:                "Flow Volume",
+	FeatureAvailabilitySubsystem: "Feature Availability",
 }
 
 // AllCollectors returns a copy of every collector instance registered via
@@ -802,6 +812,12 @@ func WithoutNetbirdCollector() Option {
 // removes the tor collector from the list of collectors
 func WithoutTorCollector() Option {
 	return withoutCollectorInstance(TorSubsystem)
+}
+
+// WithoutFeatureAvailabilityCollector Option
+// removes the feature-availability collector (#517) from the list of collectors
+func WithoutFeatureAvailabilityCollector() Option {
+	return withoutCollectorInstance(FeatureAvailabilitySubsystem)
 }
 
 // WithoutAuthCollector Option

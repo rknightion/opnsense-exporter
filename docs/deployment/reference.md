@@ -91,6 +91,14 @@ services:
       # Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10
       # series per alias table)
       # OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS: "false"
+      # Enable every opt-in collector switch (--exporter.enable-*) that is not
+      # explicitly set on the command line or via its own env var. Never enables the
+      # syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of
+      # scope. Each collector this switches on is logged individually with the reason it
+      # defaults to off (extra per-poll API cost, high/unbounded cardinality, or
+      # exposing usernames/addresses); an explicit --exporter.enable-<x>=false always
+      # wins over this blanket switch.
+      # OPNSENSE_EXPORTER_EXPORTER_ENABLE_ALL_AVAILABLE: "false"
       # Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning
       # cardinality). Off by default; the low-cardinality entries_total aggregate is
       # always emitted.
@@ -234,6 +242,11 @@ services:
       # Disable the scraping of DynDNS (ddclient) account update status metrics (silent
       # when the os-ddclient plugin is absent)
       # OPNSENSE_EXPORTER_DISABLE_DYNDNS: "false"
+      # Disable the feature-availability collector (opnsense_feature_available; #517).
+      # It periodically probes the plugin-gated endpoints backing the opt-in
+      # SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable
+      # any that answer successfully but are not yet enabled.
+      # OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY: "false"
       # Disable the scraping of the firewall (pf) metrics
       # OPNSENSE_EXPORTER_DISABLE_FIREWALL: "false"
       # Disable the scraping of firewall rule statistics

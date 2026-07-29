@@ -24,9 +24,18 @@ func TestCollectorFlagsCoverAllSwitchFlags(t *testing.T) {
 		}
 	}
 
+	// exporter.enable-all-available (#517) is exempt: it is the blanket switch
+	// that flips every OTHER enable-* collector switch, not a switch for one
+	// collector of its own, so it has no single CollectorFlags subsystem to
+	// declare.
+	const blanketEnableFlag = "exporter.enable-all-available"
+
 	modelFlags := map[string]bool{}
 	for _, f := range model.Flags {
 		modelFlags[f.Name] = true
+		if f.Name == blanketEnableFlag {
+			continue
+		}
 		if strings.HasPrefix(f.Name, "exporter.disable-") || strings.HasPrefix(f.Name, "exporter.enable-") {
 			if _, ok := declared[f.Name]; !ok {
 				t.Errorf("flag --%s has no CollectorFlags entry (add one in collectors.go)", f.Name)

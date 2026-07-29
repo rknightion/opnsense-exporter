@@ -108,6 +108,14 @@ settings:
   # alias table)
   # exporter.enable-alias-details: false
   #
+  # Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on
+  # the command line or via its own env var. Never enables the syslog/Zenarmor/NetFlow
+  # receivers - those open network sockets and are out of scope. Each collector this
+  # switches on is logged individually with the reason it defaults to off (extra per-poll
+  # API cost, high/unbounded cardinality, or exposing usernames/addresses); an explicit
+  # --exporter.enable-<x>=false always wins over this blanket switch.
+  # exporter.enable-all-available: false
+  #
   # Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off
   # by default; the low-cardinality entries_total aggregate is always emitted.
   # exporter.enable-arp-details: false
@@ -281,6 +289,12 @@ settings:
   # Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the
   # os-ddclient plugin is absent)
   # exporter.disable-dyndns: false
+  #
+  # Disable the feature-availability collector (opnsense_feature_available; #517). It
+  # periodically probes the plugin-gated endpoints backing the opt-in SMART/Tor/Vnstat
+  # collectors and logs a one-shot line naming the flag to enable any that answer
+  # successfully but are not yet enabled.
+  # exporter.disable-feature-availability: false
   #
   # Disable the scraping of the firewall (pf) metrics
   # exporter.disable-firewall: false

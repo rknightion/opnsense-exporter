@@ -578,6 +578,27 @@ def build_diagnostics(b: Builder):
                           {"0": ("Disabled", "red"), "1": ("Enabled", "green")}, w=12, h=8,
                           desc="opnsense_exporter_collector_enabled: which collectors are on.")
 
+    # #517: autodiscovery for opt-in, plugin-gated collectors. The series only
+    # exists while the probe last found the plugin answering (absent
+    # otherwise, matching every other plugin-gated collector's own
+    # convention), so this is an info-style table rather than a 0/1 gauge -
+    # a row is precisely "available right now"; enabled says whether the
+    # matching --exporter.enable-* switch is on. A row with enabled=false is
+    # the "available but not enabled" case the one-shot startup log line also
+    # reports; --exporter.enable-all-available turns all of these on at once.
+    feature_available = b.table(
+        "Feature Availability (opt-in, plugin-gated collectors)",
+        [sel("opnsense_feature_available")],
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={"feature": "Feature", "enabled": "Enabled", "opnsense_instance": "Instance"},
+        w=12, h=8,
+        desc="opnsense_feature_available: SMART/Tor/Vnstat plugin availability, probed every "
+             "15 minutes independent of --exporter.cache-ttl (#517). A row present with "
+             "Enabled=false names a feature the box supports but the matching "
+             "--exporter.enable-<feature> flag has not turned on; --exporter.enable-all-available "
+             "enables every such feature at once. A feature whose plugin has never answered "
+             "successfully has no row at all.")
+
     scrape_dur = b.ts("Collector Poll Duration",
                       [(sel("opnsense_exporter_scrape_collector_duration_seconds"), "{{collector}}")],
                       unit="s", w=12, h=8,
@@ -912,6 +933,7 @@ def build_diagnostics(b: Builder):
     ])
     b.tab("Exporter Runtime", [
         b.row("Exporter Build & Collectors", [build, cov, series_total]),
+        b.row("Feature Availability (opt-in autodiscovery, #517)", [feature_available]),
         b.row("Go Runtime (client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),
     ])

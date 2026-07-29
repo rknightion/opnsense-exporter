@@ -46,6 +46,12 @@ var version = ""
 // (#258). Assert the seam here so a signature drift on either side fails the build.
 var _ logship.MetricSink = collector.LogEvents
 
+// enableAllAvailableBudgetReminderThreshold is the number of collector switches
+// --exporter.enable-all-available (#517) can turn on before main also reminds
+// the operator to check --exporter.series-budget (design constraint: "the
+// availability report is the right place to say so up front").
+const enableAllAvailableBudgetReminderThreshold = 5
+
 // otlpShutdownTimeout bounds the final OTLP flush on graceful shutdown so a dead
 // export endpoint cannot hang process exit.
 const otlpShutdownTimeout = 10 * time.Second
@@ -200,15 +206,20 @@ type startupConfig struct {
 	CacheTTLs      options.EndpointCacheTTLs
 	AbsentCacheTTL time.Duration
 	Collectors     options.CollectorsDisableSwitch
-	Flow           options.FlowConfig
-	NetflowCapture netflow.CaptureMode
-	PollOverrides  map[string]time.Duration
-	Pyroscope      *options.PyroscopeConfig
-	PyroscopeOn    bool
-	OTLP           *options.OTLPConfig
-	OTLPOn         bool
-	Logs           *options.LogsConfig
-	LogsOn         bool
+	// AutoEnabledFeatures is what --exporter.enable-all-available turned on that
+	// the operator had not already set themselves (#517), in options.CollectorFlags
+	// order. Empty when the flag is off. Logged individually once the logger
+	// exists (resolveOptions runs before it does).
+	AutoEnabledFeatures []options.AutoEnabledFeature
+	Flow                options.FlowConfig
+	NetflowCapture      netflow.CaptureMode
+	PollOverrides       map[string]time.Duration
+	Pyroscope           *options.PyroscopeConfig
+	PyroscopeOn         bool
+	OTLP                *options.OTLPConfig
+	OTLPOn              bool
+	Logs                *options.LogsConfig
+	LogsOn              bool
 	// LogsOTLP is the OTLP transport the log pipeline ships over. Resolved
 	// independently of --otlp.enabled (logs may ship with metrics OTLP off) and
 	// nil unless the logs sink is "otlp".
@@ -245,8 +256,11 @@ func resolveOptions() (*startupConfig, []error) {
 	cfg := &startupConfig{
 		CacheTTLs:      options.CacheTTLs(),
 		AbsentCacheTTL: options.AbsentCacheTTL(),
-		Collectors:     options.CollectorsSwitches(),
 	}
+	// --exporter.enable-all-available (#517) turns on every opt-in collector
+	// switch the operator has not set themselves; ApplyEnableAllAvailable is a
+	// no-op returning the switches unchanged and a nil list when the flag is off.
+	cfg.Collectors, cfg.AutoEnabledFeatures = options.ApplyEnableAllAvailable(options.CollectorsSwitches())
 
 	opns, err := options.OPNSense()
 	if err != nil {
@@ -440,6 +454,20 @@ func main() {
 			"problems", len(cfgErrs), "hint", "run with --config.check to validate without starting")
 		os.Exit(1)
 	}
+	// --exporter.enable-all-available (#517): log every collector switch it
+	// turned on, individually and with its reason, so the blanket switch is
+	// never a silent convenience toggle - plus a --exporter.series-budget
+	// reminder once more than 5 are enabled in one run.
+	for _, f := range cfg.AutoEnabledFeatures {
+		logger.Info("collector switch enabled by --exporter.enable-all-available",
+			"flag", "--"+f.Flag, "collector", f.Subsystem, "reason", f.Reason)
+	}
+	if len(cfg.AutoEnabledFeatures) > enableAllAvailableBudgetReminderThreshold {
+		logger.Info("--exporter.enable-all-available turned on several collectors at once; "+
+			"check --exporter.series-budget against the resulting series count",
+			"enabled", len(cfg.AutoEnabledFeatures), "series_budget", *options.SeriesBudget)
+	}
+
 	opnsConfig := cfg.OPNsense
 	collectorsSwitches := cfg.Collectors
 	flowCfg := cfg.Flow
@@ -910,6 +938,25 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutSiproxdCollector())
 		logger.Info("siproxd collector disabled")
 	}
+	if !collectorsSwitches.FeatureAvailability {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFeatureAvailabilityCollector())
+		logger.Info("feature-availability collector disabled")
+	}
+	// Wire the feature-availability collector's "enabled" label to the resolved
+	// switches (#517): Update's CollectorInstance signature carries no switches
+	// of its own, so this is the out-of-band seam, mirroring LogEvents/Flow.
+	collector.SetFeatureEnabled(func(feature string) bool {
+		switch feature {
+		case collector.SMARTSubsystem:
+			return collectorsSwitches.SMART
+		case collector.TorSubsystem:
+			return collectorsSwitches.Tor
+		case collector.VnstatSubsystem:
+			return collectorsSwitches.Vnstat
+		default:
+			return false
+		}
+	})
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

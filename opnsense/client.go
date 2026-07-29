@@ -474,6 +474,23 @@ func (c *Client) WithContext(ctx context.Context) *Client {
 	return &clone
 }
 
+// WithoutCache returns a shallow copy of the client with its response cache
+// detached: every request the clone makes bypasses both the positive (body)
+// and negative (404) TTLs and always reaches the box. The original client's
+// cache is untouched — cache is a pointer field and this clone gets a nil one,
+// so put()/get() on the clone are the documented nil-safe no-ops (cache.go).
+//
+// Built for the feature-availability prober (#517 decision D): a plugin-gated
+// endpoint's 404 may be cached for up to --exporter.cache-ttl's absent-TTL
+// counterpart, and a probe that hit that cache would keep reporting a plugin
+// installed mid-run as absent for as long as the TTL. Not intended for
+// anything else — every other caller wants the cache.
+func (c *Client) WithoutCache() *Client {
+	clone := *c
+	clone.cache = nil
+	return &clone
+}
+
 // acquireSlot blocks until an upstream-concurrency slot is free or ctx is cancelled,
 // returning a release func that hands the slot back. When no limit is configured
 // (sem == nil) it is a no-op, so an unbounded client keeps its previous behaviour.

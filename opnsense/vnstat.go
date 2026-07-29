@@ -239,3 +239,30 @@ func currentVnstatEntry(entries []vnstatJSONEntry, updated vnstatJSONYMD, matchD
 	}
 	return &entries[len(entries)-1]
 }
+
+// FetchVnstatAvailable calls only the os-vnstat plugin's interface_list
+// endpoint and reports whether it answered at all (true) or 404'd, i.e. the
+// plugin is absent (false, no error). Unlike FetchVnstat it never follows up
+// with a per-interface get_json_data call, so it pays only the one list call
+// regardless of how many interfaces vnstat tracks - it exists for the
+// feature-availability prober (#517), which must answer "is the plugin
+// there?" without paying the collector's own per-poll cost.
+func (c *Client) FetchVnstatAvailable() (bool, *APICallError) {
+	listPath, ok := c.endpoints["vnstatInterfaceList"]
+	if !ok {
+		return false, &APICallError{
+			Endpoint:   "vnstatInterfaceList",
+			Message:    "endpoint not found in client endpoints",
+			StatusCode: 0,
+		}
+	}
+
+	var listResp vnstatInterfaceListResponse
+	if err := c.do("GET", listPath, nil, &listResp); err != nil {
+		if err.StatusCode == http.StatusNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}

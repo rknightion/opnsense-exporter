@@ -432,6 +432,7 @@ All collectors are **enabled by default** unless noted otherwise. Each can be in
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | Dnsmasq DHCP | Disable the scraping of Dnsmasq DHCP leases |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | DynDNS | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
 | `--exporter.disable-frr` | `OPNSENSE_EXPORTER_DISABLE_FRR` | FRR Routing (BGP/OSPF/BFD) | Disable the scraping of FRR routing metrics (BGP/OSPF/BFD; silent when the os-frr plugin is absent) |
+| `--exporter.disable-feature-availability` | `OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY` | Feature Availability | Disable the feature-availability collector (opnsense_feature_available; #517). It periodically probes the plugin-gated endpoints backing the opt-in SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable any that answer successfully but are not yet enabled. |
 | `--exporter.disable-firewall` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL` | Firewall | Disable the scraping of the firewall (pf) metrics |
 | `--exporter.disable-alias` | `OPNSENSE_EXPORTER_DISABLE_ALIAS` | Firewall Aliases | Disable the scraping of firewall alias table sizes |
 | `--exporter.disable-firewall-rules` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` | Firewall Rules | Disable the scraping of firewall rule statistics |
@@ -563,6 +564,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-dhcpv6` | `OPNSENSE_EXPORTER_DISABLE_DHCPV6` | `false` | Disable the scraping of ISC DHCPv6 leases and delegated prefixes (silent when the legacy ISC DHCP backend is absent) |
 | `--exporter.disable-dnsmasq` | `OPNSENSE_EXPORTER_DISABLE_DNSMASQ` | `false` | Disable the scraping of Dnsmasq DHCP leases |
 | `--exporter.disable-dyndns` | `OPNSENSE_EXPORTER_DISABLE_DYNDNS` | `false` | Disable the scraping of DynDNS (ddclient) account update status metrics (silent when the os-ddclient plugin is absent) |
+| `--exporter.disable-feature-availability` | `OPNSENSE_EXPORTER_DISABLE_FEATURE_AVAILABILITY` | `false` | Disable the feature-availability collector (opnsense_feature_available; #517). It periodically probes the plugin-gated endpoints backing the opt-in SMART/Tor/Vnstat collectors and logs a one-shot line naming the flag to enable any that answer successfully but are not yet enabled. |
 | `--exporter.disable-firewall` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL` | `false` | Disable the scraping of the firewall (pf) metrics |
 | `--exporter.disable-firewall-rules` | `OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES` | `false` | Disable the scraping of firewall rule statistics |
 | `--exporter.disable-firmware` | `OPNSENSE_EXPORTER_DISABLE_FIRMWARE` | `false` | Disable the scraping of the firmware metrics |
@@ -601,6 +603,7 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--exporter.disable-unbound` | `OPNSENSE_EXPORTER_DISABLE_UNBOUND` | `false` | Disable the scraping of Unbound service |
 | `--exporter.disable-wireguard` | `OPNSENSE_EXPORTER_DISABLE_WIREGUARD` | `false` | Disable the scraping of Wireguard service |
 | `--exporter.enable-alias-details` | `OPNSENSE_EXPORTER_ENABLE_ALIAS_DETAILS` | `false` | Enable per-table pf evaluation/packet/byte counters for firewall aliases (~10 series per alias table) |
+| `--exporter.enable-all-available` | `OPNSENSE_EXPORTER_EXPORTER_ENABLE_ALL_AVAILABLE` | `false` | Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off (extra per-poll API cost, high/unbounded cardinality, or exposing usernames/addresses); an explicit --exporter.enable-<x>=false always wins over this blanket switch. |
 | `--exporter.enable-arp-details` | `OPNSENSE_EXPORTER_ENABLE_ARP_DETAILS` | `false` | Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning cardinality). Off by default; the low-cardinality entries_total aggregate is always emitted. |
 | `--exporter.enable-dhcpv4-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV4_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv4 (high cardinality on large networks) |
 | `--exporter.enable-dhcpv6-details` | `OPNSENSE_EXPORTER_ENABLE_DHCPV6_DETAILS` | `false` | Enable per-lease detail metrics for ISC DHCPv6 (high cardinality on large networks) |
