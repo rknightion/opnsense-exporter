@@ -424,5 +424,35 @@
       }
     ],
     "note": "CLOSED 2026-07-28 by #460. ROOT CAUSE of the long-standing empty lease list, recorded so nobody re-investigates it: the traffgen LXC held a STATIC address, so nothing on the Kea-served VLAN ever asked for a lease. Switching it to DHCP was NOT sufficient on its own - the legacy ISC dhcpd had restarted and was wildcard-binding UDP/67, silently starving kea-dhcp4 of its socket, so DHCPDISCOVER drew no offers at all. Stopping dhcpd and restarting Kea produced an offer immediately. This is the same dhcpd-versus-Kea collision recorded on 2026-07-13, and it recurs because dhcpd is only STOPPED, never disabled in config. REGRESSION TRIGGERS, likeliest first: (1) the firewall reboots and brings dhcpd back, re-breaking Kea DHCPv4 - check that kea-dhcp4 and not dhcpd owns UDP/67 before calling this drift; (2) the lease expires if the traffgen LXC stops renewing."
+  },
+  "wireguardClients": {
+    "required": [
+      {
+        "path": "rows[].latest-handshake",
+        "metrics": [
+          "opnsense_wireguard_peer_last_handshake_seconds",
+          "opnsense_wireguard_peer_handshake_age_seconds"
+        ],
+        "exercise": "Enable WireGuard on the box (Services > WireGuard > general, enabled=1). Both testbeds carry the same self-contained pair from the #460 clone - two local instances wgtest1/wgtest2 peering each other over the loopback with a short persistent-keepalive - so no external peer is needed and a handshake re-establishes within seconds of enabling. These three keys exist ONLY on type=\"peer\" rows; a box with WireGuard disabled still returns its two type=\"interface\" rows, so the endpoint looks populated while every peer field is absent. That is the shape that made this a finding rather than an obviously empty response.",
+        "verified": "LIVE-VERIFIED 2026-07-29 on both testbeds (#502). VM 102 had WireGuard enabled and served peer rows; VM 106 was enabled=0 from the clone strip and reported all three paths missing in the first release-vm canary run (#508). Enabling it on 106 produced peer rows carrying all three within 15s. Fixed on the box rather than exempted, per the triage rule that a field backing an exported metric should have the testbed fixed instead — an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].transfer-rx",
+        "metrics": [
+          "opnsense_wireguard_peer_received_bytes_total"
+        ],
+        "exercise": "Same as rows[].latest-handshake; the keepalive alone moves enough bytes for both byte counters to be non-zero.",
+        "verified": "LIVE-VERIFIED 2026-07-29 on both testbeds (#502). VM 102 had WireGuard enabled and served peer rows; VM 106 was enabled=0 from the clone strip and reported all three paths missing in the first release-vm canary run (#508). Enabling it on 106 produced peer rows carrying all three within 15s. Fixed on the box rather than exempted, per the triage rule that a field backing an exported metric should have the testbed fixed instead — an exemption here would blind the canary to real drift on a consumed field."
+      },
+      {
+        "path": "rows[].transfer-tx",
+        "metrics": [
+          "opnsense_wireguard_peer_transmitted_bytes_total"
+        ],
+        "exercise": "Same as rows[].transfer-rx.",
+        "verified": "LIVE-VERIFIED 2026-07-29 on both testbeds (#502). VM 102 had WireGuard enabled and served peer rows; VM 106 was enabled=0 from the clone strip and reported all three paths missing in the first release-vm canary run (#508). Enabling it on 106 produced peer rows carrying all three within 15s. Fixed on the box rather than exempted, per the triage rule that a field backing an exported metric should have the testbed fixed instead — an exemption here would blind the canary to real drift on a consumed field."
+      }
+    ],
+    "note": "WireGuard is enabled on BOTH testbeds as of 2026-07-29 and must stay that way, or the release box silently loses these three paths again while still answering the endpoint with its interface rows."
   }
 }
