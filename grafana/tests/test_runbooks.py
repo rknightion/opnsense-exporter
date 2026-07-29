@@ -102,11 +102,12 @@ class RunbookDocumentParityTest(unittest.TestCase):
         cls.markdown = build_rules.generate_runbooks_md()
         cls.headings = _headings(cls.markdown)
 
-    def test_exact_alert_count_is_42(self):
+    def test_exact_alert_count_is_43(self):
         # Re-measured against current main (#430 audit found the tracked issue's
         # figures - 31/19 rows - stale; the epic's 2026-07-27 revalidation corrected
-        # it to 42/14, confirmed again here structurally).
-        self.assertEqual(len(build_rules.RULES), 42)
+        # it to 42/14, confirmed again here structurally). 43 since #520 added
+        # OPNsenseFlowGeoIPDatabaseStale.
+        self.assertEqual(len(build_rules.RULES), 43)
 
     def test_exact_recording_count_is_14(self):
         self.assertEqual(len(build_rules.RECORDING), 14)

@@ -371,6 +371,11 @@ NOT_ANNOTATED: dict = {
     "opnsense_clamav_signature_db_built_timestamp_seconds":
         "Upstream's BUILD time from freshclam metadata, not the instant this box "
         "fetched it, so the marker would sit at an event that happened elsewhere.",
+    "opnsense_flow_geoip_database_build_timestamp_seconds":
+        "MaxMind's BUILD time for the database, not the instant this box downloaded "
+        "it, so the marker would sit at an event that happened elsewhere - the same "
+        "reason clamav_signature_db_built is excluded. Its value is as a STALENESS "
+        "reading, which is what OPNsenseFlowGeoIPDatabaseStale alerts on.",
     "opnsense_crowdsec_bouncer_last_pull_timestamp_seconds":
         "A heartbeat: it advances on every successful pull, so under value-as-time it "
         "produces a continuous smear of markers rather than events.",
