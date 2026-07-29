@@ -284,6 +284,10 @@ func (c *Correlator) finalize(e *corrEntry) (Record, bool) {
 		if out.Enrich.DstDomain == "" {
 			out.Enrich.DstDomain = e.zen.Enrich.DstDomain
 		}
+		// Zenarmor's geo is an enrichment input, not the answer: MergeGeo re-applies
+		// #520's per-field precedence so a merged record means the same thing as a
+		// Zenarmor-only one. The NetFlow side already carries OUR lookup.
+		MergeGeo(&out.Geo, e.zen.Geo)
 	} else {
 		out.Source = SourceNetflow
 	}

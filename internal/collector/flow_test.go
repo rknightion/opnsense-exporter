@@ -170,7 +170,10 @@ func TestFlowCollector_EmitsAccumulatedVolume(t *testing.T) {
 
 	got := collect(t, c)
 	// Label pairs come back sorted by name, not in emission order.
-	const series = "|action=|category=Web Browsing|direction=outbound|interface=LAN|scope=|source=zenarmor|transport=tcp"
+	// country= is empty because --flow.geoip.metric-dims is off, which is the default
+	// and the only state this test exercises: an empty label value is an absent one to
+	// Prometheus, so the family reads exactly as it did before #520.
+	const series = "|action=|category=Web Browsing|country=|direction=outbound|interface=LAN|scope=|source=zenarmor|transport=tcp"
 	if v := got["opnsense_flow_bytes_total"+series]; v != 1500 {
 		t.Fatalf("bytes = %v, want 1500 (got %v)", v, got)
 	}

@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 101,
+    "total": 103,
     "by_scope": {
-      "collector": 96,
+      "collector": 98,
       "self_labeled": 4,
       "target_join": 1,
       "global": 0
@@ -293,6 +293,26 @@
         "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "OPNsense Exporter Health > Delivery > Flow Pipeline"
+        ]
+      },
+      {
+        "name": "has_flow_country",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\",country!=\"\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter > Network > Flow Volume > Geography"
+        ]
+      },
+      {
+        "name": "has_flow_geoip",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_flow_geoip_lookups_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter Health > Delivery > Flow Pipeline > GeoIP Enrichment"
         ]
       },
       {

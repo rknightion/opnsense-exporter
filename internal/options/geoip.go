@@ -1,0 +1,291 @@
+package options
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
+)
+
+// Editions shipped by default. Country + ASN, following the reference implementation
+// in rknightion/tailscale2otel:
+//
+//   - Country is ~9 MB resident and answers the only question that may ever become a
+//     metric label.
+//   - ASN is ~12 MB and is the one thing Zenarmor cannot supply on ANY box — a live
+//     check found no ASN database anywhere under /usr/local/zenarmor, and its asn
+//     field was the string "0" on every record of the capture box.
+//
+// City is SUPPORTED but not default: it is roughly 60 MB resident, six times Country,
+// and city belongs on logs only regardless. It is the right choice for an operator who
+// wants locality without Zenarmor — which is most of them, since on a box with no
+// Zenarmor our database is the ONLY city source. Set
+// --geoip.download.editions=GeoLite2-City,GeoLite2-ASN (or point
+// --geoip.country-database at a City file): the Country and City schemas are the same
+// and one path accepts either.
+const defaultGeoIPEditions = "GeoLite2-Country,GeoLite2-ASN"
+
+var (
+	geoipEnabled = kingpin.Flag(
+		"geoip.enabled",
+		"Enable local GeoIP enrichment of flow records from MaxMind .mmdb files on disk. Adds "+
+			"country/continent/city/ASN attributes to flow LOGS for external addresses, so geo no "+
+			"longer depends on whether Zenarmor happened to see the connection. Purely local: no "+
+			"lookup ever touches the network. Off by default because it needs a database the "+
+			"exporter does not ship.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_ENABLED").Default("false").Bool()
+
+	geoipCountryDatabase = kingpin.Flag(
+		"geoip.country-database",
+		"Path to a MaxMind Country OR City database (GeoLite2-Country, GeoLite2-City, GeoIP2-City). "+
+			"A City database is a strict superset, so one path accepts either and the city/region "+
+			"attributes are simply absent with a Country file. Defaults to the downloaded copy when "+
+			"--geoip.download.enabled is set. A missing file is not an error - enrichment is fail-open "+
+			"and the attributes are just absent.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE").Default("").String()
+
+	geoipASNDatabase = kingpin.Flag(
+		"geoip.asn-database",
+		"Path to a MaxMind GeoLite2-ASN / GeoIP2-ISP database. This is the one enrichment no amount "+
+			"of Zenarmor coverage supplies: Zenarmor ships no ASN database on any box. Defaults to the "+
+			"downloaded copy when --geoip.download.enabled is set.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE").Default("").String()
+
+	geoipReloadInterval = kingpin.Flag(
+		"geoip.reload-interval",
+		"How often to re-stat the database paths and hot-swap a changed file. This is what makes the "+
+			"operator-managed path work - a geoipupdate cron, a sidecar or a re-mounted volume can "+
+			"rewrite the files under a running exporter. Separate from --geoip.download.interval, which "+
+			"asks MaxMind whether a newer build exists. 0 disables reloading.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_RELOAD_INTERVAL").Default("15m").Duration()
+
+	geoipDownloadEnabled = kingpin.Flag(
+		"geoip.download.enabled",
+		"Download MaxMind databases directly, so no geoipupdate cron or sidecar is needed. Requires "+
+			"--geoip.download.account-id and a license key. Conditional requests mean an unchanged "+
+			"database costs a 304 and no download quota. Off by default: operator-managed files are "+
+			"the supported baseline and this adds an outbound network dependency.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ENABLED").Default("false").Bool()
+
+	geoipDownloadAccountID = kingpin.Flag(
+		"geoip.download.account-id",
+		"MaxMind account ID for the database download API (the Basic-auth username).",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ACCOUNT_ID").Default("").String()
+
+	geoipDownloadLicenseKey = kingpin.Flag(
+		"geoip.download.license-key",
+		"MaxMind license key. This flag/ENV or OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE may "+
+			"be set; the file form is preferred for a container secret.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY").Default("").String()
+
+	geoipDownloadEditions = kingpin.Flag(
+		"geoip.download.editions",
+		"Comma-separated MaxMind edition IDs to download. Default is Country + ASN (~9 MB and ~12 MB "+
+			"resident). Swap GeoLite2-Country for GeoLite2-City (~60 MB resident) to get city and "+
+			"region attributes without Zenarmor - the same --geoip.country-database path accepts "+
+			"either edition.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_EDITIONS").Default(defaultGeoIPEditions).String()
+
+	geoipDownloadDir = kingpin.Flag(
+		"geoip.download.dir",
+		"Directory downloaded databases are installed into, as <dir>/<edition>.mmdb. Must be "+
+			"writable and should be persistent - a volume that is lost on restart costs a full "+
+			"download every start, against MaxMind's daily limit.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_DIR").Default("/var/lib/opnsense-exporter/geoip").String()
+
+	geoipDownloadInterval = kingpin.Flag(
+		"geoip.download.interval",
+		"How often to ask MaxMind for a newer build. GeoLite2 rebuilds twice a week, so daily is "+
+			"ample; an unchanged database answers 304 and costs no quota. The first download runs at "+
+			"startup regardless, so a fresh container is not blind for a whole interval. 0 downloads "+
+			"only at startup.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_INTERVAL").Default("24h").Duration()
+
+	geoipDownloadTimeout = kingpin.Flag(
+		"geoip.download.timeout",
+		"End-to-end timeout for one edition's download. A timeout leaves the installed database "+
+			"untouched and is retried on the next interval.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_TIMEOUT").Default("5m").Duration()
+
+	// The cardinality gate, and the reason it is a separate flag from
+	// --geoip.enabled. Log attributes are free; a metric label is not.
+	geoipMetricDims = kingpin.Flag(
+		"flow.geoip.metric-dims",
+		"Add a `country` label to the flow volume metrics. OFF by default and it should usually stay "+
+			"off: country is a ~250-value dimension multiplied against every existing flow series, so "+
+			"turning it on can multiply opnsense_flow_bytes_total's cardinality roughly 250-fold. "+
+			"--flow.top-n and --flow.max-keys still bound the result, which means the practical effect "+
+			"on a busy box is that real series start folding into __other__ rather than that the family "+
+			"grows without limit. ASN and city NEVER become labels at any setting. Geo on flow LOGS "+
+			"needs no flag - it is unconditional whenever --geoip.enabled is set.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_GEOIP_METRIC_DIMS").Default("false").Bool()
+)
+
+// geoipLicenseKey resolves the MaxMind license key through the same secret precedence
+// as every other credential: the *_FILE env var wins unless it is set-but-empty, in
+// which case the flag/env value is used.
+func geoipLicenseKey() (string, error) {
+	return resolveSecret("OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE", *geoipDownloadLicenseKey)
+}
+
+// GeoIPConfig is the resolved GeoIP configuration.
+type GeoIPConfig struct {
+	Enabled bool
+	// CountryPath / ASNPath are the resolved database paths, already defaulted from
+	// the download directory where the operator gave no explicit path.
+	CountryPath    string
+	ASNPath        string
+	ReloadInterval time.Duration
+
+	DownloadEnabled  bool
+	DownloadAccount  string
+	DownloadKey      string
+	DownloadEditions []string
+	DownloadDir      string
+	DownloadInterval time.Duration
+	DownloadTimeout  time.Duration
+
+	// MetricDims mirrors --flow.geoip.metric-dims: the country METRIC label only.
+	MetricDims bool
+}
+
+// LicenseKeySet reports whether a license key resolved, without exposing it. The
+// /config summary is built from presence booleans only.
+func (c GeoIPConfig) LicenseKeySet() bool { return c.DownloadKey != "" }
+
+// GeoIP returns the resolved GeoIP configuration, validated.
+func GeoIP() (GeoIPConfig, error) {
+	key, err := geoipLicenseKey()
+	if err != nil {
+		return GeoIPConfig{}, fmt.Errorf("geoip: reading the MaxMind license key: %w", err)
+	}
+	c := GeoIPConfig{
+		Enabled:          *geoipEnabled,
+		CountryPath:      strings.TrimSpace(*geoipCountryDatabase),
+		ASNPath:          strings.TrimSpace(*geoipASNDatabase),
+		ReloadInterval:   *geoipReloadInterval,
+		DownloadEnabled:  *geoipDownloadEnabled,
+		DownloadAccount:  strings.TrimSpace(*geoipDownloadAccountID),
+		DownloadKey:      key,
+		DownloadEditions: splitEditions(*geoipDownloadEditions),
+		DownloadDir:      strings.TrimSpace(*geoipDownloadDir),
+		DownloadInterval: *geoipDownloadInterval,
+		DownloadTimeout:  *geoipDownloadTimeout,
+		MetricDims:       *geoipMetricDims,
+	}
+	c.applyDownloadDefaults()
+	if err := c.Validate(); err != nil {
+		return GeoIPConfig{}, err
+	}
+	return c, nil
+}
+
+// applyDownloadDefaults points the unset database paths at what the downloader will
+// install, so an operator who configures only the downloader gets a working setup
+// rather than a downloaded file nothing reads.
+//
+// The edition-to-role mapping is by NAME, and City beats Country when both are
+// listed: a City database answers every Country question too, so loading the Country
+// file alongside it would spend ~9 MB to answer nothing extra.
+func (c *GeoIPConfig) applyDownloadDefaults() {
+	if !c.DownloadEnabled || c.DownloadDir == "" {
+		return
+	}
+	for _, ed := range c.DownloadEditions {
+		lower := strings.ToLower(ed)
+		switch {
+		case strings.Contains(lower, "asn") || strings.Contains(lower, "isp"):
+			if c.ASNPath == "" {
+				c.ASNPath = geoip.DatabasePath(c.DownloadDir, ed)
+			}
+		case strings.Contains(lower, "city"):
+			// City wins outright, overriding a Country default set on an earlier pass.
+			if c.CountryPath == "" || isDefaultedTo(c.CountryPath, c.DownloadDir, "country") {
+				c.CountryPath = geoip.DatabasePath(c.DownloadDir, ed)
+			}
+		case strings.Contains(lower, "country"):
+			if c.CountryPath == "" {
+				c.CountryPath = geoip.DatabasePath(c.DownloadDir, ed)
+			}
+		}
+	}
+}
+
+// isDefaultedTo reports whether path is one applyDownloadDefaults itself produced for
+// an edition of the given kind, so City may override a Country default without ever
+// overriding an explicit operator path.
+func isDefaultedTo(path, dir, kind string) bool {
+	return strings.HasPrefix(path, dir) && strings.Contains(strings.ToLower(path), kind)
+}
+
+// splitEditions parses the comma-separated edition list, dropping empties.
+func splitEditions(s string) []string {
+	var out []string
+	for _, e := range strings.Split(s, ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// Validate rejects configurations that would silently do nothing — the same rule the
+// flow and Zenarmor families follow. A flag that quietly no-ops looks exactly like a
+// quiet network.
+//
+// It deliberately does NOT reject a missing database FILE. That is the fail-open
+// contract: a download that has not landed yet, or a volume mounted a second later,
+// must not be a startup failure.
+func (c GeoIPConfig) Validate() error {
+	if !c.Enabled {
+		// Nothing downstream reads the rest, so an unused mis-set flag is not worth a
+		// refusal to start. The exception is the metric label, which is a flow-family
+		// setting an operator could reasonably believe took effect on its own.
+		if c.MetricDims {
+			return fmt.Errorf("flow: --flow.geoip.metric-dims requires --geoip.enabled; " +
+				"there is no country to label with")
+		}
+		return nil
+	}
+	if c.ReloadInterval < 0 {
+		return fmt.Errorf("geoip: --geoip.reload-interval must not be negative (got %s); 0 disables reloading",
+			c.ReloadInterval)
+	}
+	if !c.DownloadEnabled {
+		// Operator-managed is the default path, but it needs a path to manage.
+		if c.CountryPath == "" && c.ASNPath == "" {
+			return fmt.Errorf("geoip: --geoip.enabled needs --geoip.country-database and/or " +
+				"--geoip.asn-database, or --geoip.download.enabled to fetch them")
+		}
+		return nil
+	}
+	if c.DownloadAccount == "" || c.DownloadKey == "" {
+		return fmt.Errorf("geoip: --geoip.download.enabled requires --geoip.download.account-id and " +
+			"--geoip.download.license-key (or OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE)")
+	}
+	if len(c.DownloadEditions) == 0 {
+		return fmt.Errorf("geoip: --geoip.download.enabled requires at least one " +
+			"--geoip.download.editions entry")
+	}
+	// Validated before a request is ever made, rather than sanitised afterwards into
+	// something the operator did not ask for: the edition name is interpolated into
+	// both a URL path and a filename.
+	for _, ed := range c.DownloadEditions {
+		if err := geoip.ValidateEdition(ed); err != nil {
+			return fmt.Errorf("geoip: --geoip.download.editions: %w", err)
+		}
+	}
+	if c.DownloadDir == "" {
+		return fmt.Errorf("geoip: --geoip.download.enabled requires --geoip.download.dir")
+	}
+	if c.DownloadInterval < 0 {
+		return fmt.Errorf("geoip: --geoip.download.interval must not be negative (got %s); "+
+			"0 downloads only at startup", c.DownloadInterval)
+	}
+	if c.DownloadTimeout < 0 {
+		return fmt.Errorf("geoip: --geoip.download.timeout must not be negative (got %s)", c.DownloadTimeout)
+	}
+	return nil
+}

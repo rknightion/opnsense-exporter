@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -76,6 +77,31 @@ type FlowStore struct {
 	// than a flat zero that implies one exists and has done nothing.
 	correlator atomic.Pointer[func() flow.CorrelatorStats]
 	flowLog    atomic.Pointer[func() FlowLogStats]
+
+	// geoip is nil until main builds the GeoIP databases, which it does only when
+	// --geoip.enabled is set. Absent-until-built for the same reason as netflow: a
+	// zero would claim a database exists and has answered nothing, which is false on
+	// every deployment that never turned geo on.
+	geoip atomic.Pointer[func() GeoIPStats]
+}
+
+// GeoIPStats is the GeoIP databases' and the flow enricher's health together, so the
+// collector need not import internal/geoip. main wires the accessor.
+type GeoIPStats struct {
+	DB   geoip.Stats
+	Flow flow.GeoStats
+}
+
+// SetGeoIPStats installs the source of the GeoIP self-metrics; main calls it once,
+// when it opens the databases.
+func (s *FlowStore) SetGeoIPStats(fn func() GeoIPStats) { s.geoip.Store(&fn) }
+
+func (s *FlowStore) geoipStats() (GeoIPStats, bool) {
+	fn := s.geoip.Load()
+	if fn == nil || *fn == nil {
+		return GeoIPStats{}, false
+	}
+	return (*fn)(), true
 }
 
 // FlowLogStats is the flow-log emission lane's health, mirrored here so the collector
@@ -273,6 +299,13 @@ type flowCollector struct {
 	dnsCacheHits     *prometheus.Desc
 	dnsCacheMisses   *prometheus.Desc
 	dnsCacheRejected *prometheus.Desc
+
+	geoLookups      *prometheus.Desc
+	geoReloads      *prometheus.Desc
+	geoDownloads    *prometheus.Desc
+	geoBuildTime    *prometheus.Desc
+	geoEnriched     *prometheus.Desc
+	geoCountryAgree *prometheus.Desc
 }
 
 func init() {
@@ -299,7 +332,7 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 	// Reused across the three volume metrics safely: a composite literal has
 	// cap == len, so buildPrometheusDesc's append of the instance label allocates a
 	// new array each time instead of writing into this one.
-	labels := []string{"interface", "direction", "transport", "category", "action", "source", "scope"}
+	labels := []string{"interface", "direction", "transport", "category", "action", "source", "scope", "country"}
 
 	c.bytes = buildPrometheusDesc(c.subsystem, "bytes_total",
 		"Bytes observed in flow records, by bounded dimension. Keys beyond --flow.top-n fold into "+
@@ -349,6 +382,7 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 			"dimensions are being lost to the cap, not merely folded by the top-N.", nil)
 	c.registerCorrelator()
 	c.registerExtras()
+	c.registerGeoIP()
 }
 
 // registerExtras builds the §9 volume/talker metrics and the DNS answer-cache
@@ -397,6 +431,115 @@ func (c *flowCollector) registerExtras() {
 		"DNS answers refused insertion because the cache was already at --flow.dns-cache.size. Over the "+
 			"cap it stops inserting rather than evicting hot entries, so a rising value means the cap is "+
 			"binding and domain enrichment is going stale for new answers.", nil)
+}
+
+// registerGeoIP builds the self-metrics for the local MaxMind databases and the flow
+// geo enricher (#520). All of them are absent unless --geoip.enabled opened a
+// database, for the same reason the NetFlow metrics are (see SetNetflowStats).
+func (c *flowCollector) registerGeoIP() {
+	// Literals, for the same docgen static-resolution reason as the volume labels.
+	dbResultLabels := []string{"database", "result"}
+	dbLabel := []string{"database"}
+	resultLabel := []string{"result"}
+
+	c.geoLookups = buildPrometheusDesc(c.subsystem, "geoip_lookups_total",
+		"GeoIP enrichment lookups, by database (\"country\", \"asn\" or \"skipped\") and result. "+
+			"\"hit\" means a record was found; \"miss\" means the loaded database has no record for "+
+			"that address; \"skipped\" (always with database=\"skipped\") counts addresses that never "+
+			"reached a database because they are not globally routable - loopback, RFC 1918, "+
+			"link-local, and carrier-grade NAT, which MaxMind publishes no records for at all. A "+
+			"database that is not loaded contributes neither hits nor misses, so a country hit rate of "+
+			"zero with a non-zero ASN rate means the country database specifically failed to load.",
+		dbResultLabels,
+	)
+	c.geoReloads = buildPrometheusDesc(c.subsystem, "geoip_reloads_total",
+		"GeoIP database hot-swaps, by database and result. A \"success\" means a changed file on disk "+
+			"was read and swapped in atomically, which is how an operator's geoipupdate cron or the "+
+			"built-in downloader replaces a database under a running exporter. A \"failure\" means the "+
+			"new file could not be read or parsed, in which case the PREVIOUSLY loaded database keeps "+
+			"serving - a bad update costs freshness, never availability. An unchanged file is not "+
+			"counted at all. Failures are not attributable to one database without threading the path "+
+			"out of the reload, so they carry database=\"skipped\", a value no real database uses.",
+		dbResultLabels,
+	)
+	c.geoDownloads = buildPrometheusDesc(c.subsystem, "geoip_downloads_total",
+		"MaxMind database downloads, by result: \"updated\" (a newer build was fetched, verified "+
+			"against its published SHA-256, and installed), \"unmodified\" (the conditional request "+
+			"returned 304 - the healthy steady state, and what keeps a daily updater inside MaxMind's "+
+			"download limit), or \"failure\". Emitted only when --geoip.download.enabled is set; an "+
+			"operator-managed deployment leaves this at zero forever, which is correct.",
+		resultLabel,
+	)
+	c.geoBuildTime = buildPrometheusDesc(c.subsystem, "geoip_database_build_timestamp_seconds",
+		"Unix timestamp of the loaded GeoIP database's build, per database. This is MaxMind's BUILD "+
+			"date, not when the file was downloaded, so it is the right thing to alert staleness on: "+
+			"time() - this > 14d catches an updater that has silently stopped working, which the "+
+			"fail-open design makes otherwise invisible. ABSENT for a database that is not loaded, "+
+			"rather than zero - a zero would read as \"built in 1970\" and fire every staleness alert "+
+			"ever written against it.",
+		dbLabel,
+	)
+	c.geoEnriched = buildPrometheusDesc(c.subsystem, "geoip_enriched_records_total",
+		"Flow records that gained at least one fact from OUR database. It is the \"is this feature "+
+			"doing anything\" signal, and it is what distinguishes a database that failed to load from "+
+			"a network whose traffic is genuinely all internal - both of which otherwise look like "+
+			"silence, because enrichment is fail-open by design.",
+		nil,
+	)
+	c.geoCountryAgree = buildPrometheusDesc(c.subsystem, "geoip_country_comparisons_total",
+		"Flow endpoints where BOTH our database and Zenarmor's answered with a country, by whether "+
+			"they agreed. This is what makes the cost of the ours-wins precedence rule measurable "+
+			"rather than assumed: Zenarmor's database is a commercial GeoIP2-City build (verified on a "+
+			"live firewall - database_type \"GeoIP2-City\", 126 MB against a stock GeoLite2's 63 MB), so "+
+			"overwriting its answer with a free GeoLite2 lookup can genuinely replace a better "+
+			"attribution with a worse one. A rising disagree rate is the signal to look; ours still "+
+			"wins the exported country either way, and the disagreeing value is kept on the log record "+
+			"as <src|dst>.geo.zen_country. Absent entirely without Zenarmor, since there is nothing to "+
+			"compare against.",
+		resultLabel,
+	)
+}
+
+// collectGeoIP emits the GeoIP self-metrics, and emits nothing when no database was
+// ever opened — see SetGeoIPStats for why absent beats zero here.
+func (c *flowCollector) collectGeoIP(ch chan<- prometheus.Metric) {
+	st, ok := c.store.geoipStats()
+	if !ok {
+		return
+	}
+	counter := func(d *prometheus.Desc, v int64, labels ...string) {
+		ch <- prometheus.MustNewConstMetric(d, prometheus.CounterValue, float64(v),
+			append(labels, c.instance)...)
+	}
+
+	counter(c.geoLookups, st.DB.CountryHits, "country", "hit")
+	counter(c.geoLookups, st.DB.CountryMisses, "country", "miss")
+	counter(c.geoLookups, st.DB.ASNHits, "asn", "hit")
+	counter(c.geoLookups, st.DB.ASNMisses, "asn", "miss")
+	counter(c.geoLookups, st.DB.Skipped, "skipped", "skipped")
+
+	counter(c.geoReloads, st.DB.CountryReloads, "country", "success")
+	counter(c.geoReloads, st.DB.ASNReloads, "asn", "success")
+	counter(c.geoReloads, st.DB.ReloadFailures, "skipped", "failure")
+
+	counter(c.geoDownloads, st.DB.DownloadsUpdated, "updated")
+	counter(c.geoDownloads, st.DB.DownloadsUnmodified, "unmodified")
+	counter(c.geoDownloads, st.DB.DownloadsFailed, "failure")
+
+	counter(c.geoEnriched, int64(st.Flow.Enriched)) //nolint:gosec // a counter, never near 2^63
+	counter(c.geoCountryAgree, int64(st.Flow.CountryAgreements), "agree")
+	counter(c.geoCountryAgree, int64(st.Flow.CountryDisagreements), "disagree")
+
+	// Omitted entirely for a database that is not loaded: a zero build time reads as
+	// 1970 and would fire every staleness alert written against it, forever.
+	if !st.DB.CountryBuildTime.IsZero() {
+		ch <- prometheus.MustNewConstMetric(c.geoBuildTime, prometheus.GaugeValue,
+			float64(st.DB.CountryBuildTime.Unix()), "country", c.instance)
+	}
+	if !st.DB.ASNBuildTime.IsZero() {
+		ch <- prometheus.MustNewConstMetric(c.geoBuildTime, prometheus.GaugeValue,
+			float64(st.DB.ASNBuildTime.Unix()), "asn", c.instance)
+	}
 }
 
 // registerCorrelator builds the self-metrics for the correlator and the flow-log
@@ -723,6 +866,12 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dnsCacheHits
 	ch <- c.dnsCacheMisses
 	ch <- c.dnsCacheRejected
+	ch <- c.geoLookups
+	ch <- c.geoReloads
+	ch <- c.geoDownloads
+	ch <- c.geoBuildTime
+	ch <- c.geoEnriched
+	ch <- c.geoCountryAgree
 }
 
 // Update emits the accumulator's current totals. It ignores the client: this
@@ -752,6 +901,7 @@ func (c *flowCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- 
 	c.collectNetflow(ch)
 	c.collectCorrelator(ch)
 	c.collectExtras(ch)
+	c.collectGeoIP(ch)
 	return nil
 }
 

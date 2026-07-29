@@ -1,0 +1,88 @@
+{
+  "apiVersion": "rules.alerting.grafana.app/v0alpha1",
+  "kind": "AlertRule",
+  "metadata": {
+    "name": "opnsense-flow-geoip-database-stale",
+    "annotations": {
+      "grafana.app/folder": "opnsense-alerts"
+    },
+    "labels": {
+      "grafana.app/folder": "opnsense-alerts"
+    }
+  },
+  "spec": {
+    "title": "OPNsenseFlowGeoIPDatabaseStale",
+    "noDataState": "Ok",
+    "execErrState": "Error",
+    "for": "60m0s",
+    "trigger": {
+      "interval": "1m"
+    },
+    "labels": {
+      "severity": "warning"
+    },
+    "annotations": {
+      "summary": "OPNsense GeoIP {{ $labels.database }} database is stale ({{ $labels.opnsense_instance }})",
+      "description": "The loaded MaxMind {{ $labels.database }} database was built more than 14 days ago. GeoLite2 rebuilds twice a week, so the updater has stopped: with --geoip.download.enabled that is a failed fetch (expired license key, blocked egress, exhausted download quota), and without it a geoipupdate cron, sidecar or mounted volume that is no longer refreshing the file. Enrichment is fail-open, so nothing has broken and no attribute has disappeared - the countries and ASNs on flow records are simply drifting out of date, which is exactly why this needs an alert rather than being noticed.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseflowgeoipdatabasestale"
+    },
+    "expressions": {
+      "A": {
+        "datasourceUID": "grafanacloud-prom",
+        "relativeTimeRange": {
+          "from": "15m0s",
+          "to": "0s"
+        },
+        "model": {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "grafanacloud-prom"
+          },
+          "editorMode": "code",
+          "expr": "max by (opnsense_instance, database) (time() - opnsense_flow_geoip_database_build_timestamp_seconds)",
+          "instant": true,
+          "range": false,
+          "intervalMs": 60000,
+          "maxDataPoints": 43200,
+          "refId": "A"
+        }
+      },
+      "C": {
+        "model": {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "A",
+          "type": "threshold",
+          "refId": "C",
+          "intervalMs": 1000,
+          "maxDataPoints": 43200,
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  1209600,
+                  0
+                ]
+              },
+              "operator": {
+                "type": "and"
+              },
+              "query": {
+                "params": []
+              },
+              "reducer": {
+                "type": "last",
+                "params": []
+              },
+              "type": "query"
+            }
+          ]
+        },
+        "source": true
+      }
+    }
+  }
+}

@@ -28,6 +28,15 @@ type RollupKey struct {
 	Action    string
 	Source    string
 	Scope     string
+	// Country is the ISO 3166-1 alpha-2 code of the flow's REMOTE end, and is the
+	// ONLY geo field that may ever be a metric label (#520). ASN and city are not
+	// usefully bounded and stay on the log record.
+	//
+	// EMPTY unless --flow.geoip.metric-dims is set, and empty is not a compromise:
+	// Prometheus treats an empty label value as an absent one, so the default
+	// deployment sees this family exactly as it did before geo existed. With the
+	// opt-in on it splits every series roughly 250 ways, which is why it is opt-in.
+	Country string
 }
 
 // RollupLabelNames is the metric's label names, in the order RollupKey spells them.
@@ -39,12 +48,12 @@ type RollupKey struct {
 // labels and scripts/docgen/verify.go then fails the docs build. This exists so a
 // test can assert the two spellings have not drifted apart.
 func RollupLabelNames() []string {
-	return []string{"interface", "direction", "transport", "category", "action", "source", "scope"}
+	return []string{"interface", "direction", "transport", "category", "action", "source", "scope", "country"}
 }
 
 // Values returns the label values in RollupLabelNames order.
 func (k RollupKey) Values() []string {
-	return []string{k.Interface, k.Direction, k.Transport, k.Category, k.Action, k.Source, k.Scope}
+	return []string{k.Interface, k.Direction, k.Transport, k.Category, k.Action, k.Source, k.Scope, k.Country}
 }
 
 // RollupEntry is one emitted series.
@@ -269,6 +278,12 @@ func otherKey(source string) RollupKey {
 	return RollupKey{
 		Interface: OtherLabel, Direction: OtherLabel, Transport: OtherLabel,
 		Category: OtherLabel, Action: OtherLabel, Source: source, Scope: OtherLabel,
+		// The sentinel is spelled on country too, so the remainder stays ONE series
+		// per source rather than one per surviving country. It reads as __other__
+		// even on a deployment with the geo label off, where every real series has an
+		// empty country - that asymmetry is deliberate and matches every other
+		// dimension: __other__ means "collapsed", never "unknown country".
+		Country: OtherLabel,
 	}
 }
 
@@ -281,6 +296,7 @@ func keyFor(rec Record) RollupKey {
 		Action:    rec.Verdict.String(),
 		Source:    rec.Source.String(),
 		Scope:     rec.Enrich.DstScope,
+		Country:   GeoEnrichment.MetricCountry(rec),
 	}
 }
 

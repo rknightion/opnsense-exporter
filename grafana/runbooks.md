@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **42 alert rules** and **14 recording rules**.
+Total: **43 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -1224,6 +1224,40 @@ sum by (opnsense_instance) (rate(opnsense_flow_logs_truncated_total[5m]))
 **Verify recovery:**
 - The truncation rate returns to 0
 - Per-flow log completeness is restored (no further gaps on the health dashboard's Flow Pipeline tab)
+
+## OPNsenseFlowGeoIPDatabaseStale
+
+**Severity:** warning  
+**Pending window:** 60m0s  
+**Rule name:** `opnsense-flow-geoip-database-stale`
+
+**Expression:**
+```promql
+max by (opnsense_instance, database) (time() - opnsense_flow_geoip_database_build_timestamp_seconds)
+```
+
+**What it measures:** Age in seconds of the loaded GeoIP database, per database (country, asn), against MaxMind's own BUILD date rather than the download time - a re-download of the same build correctly does NOT reset it.
+
+**Threshold & window:** gt 1209600s (14d), for_min=60. GeoLite2 rebuilds twice a week, so 14d is four missed builds - past any weekly-cron jitter, and still recent enough that the data is only slightly wrong when it fires.
+
+**Absent / no-data semantics:** Default noDataState (Ok). The gauge is omitted entirely for a database that is not loaded (a zero would read as "built in 1970" and fire permanently), so a deployment with --geoip.enabled off has no series here and cannot false-fire.
+
+**First checks:**
+- Check opnsense_flow_geoip_downloads_total: a rising result="failure" rate is a fetch problem, while a flat counter with --geoip.download.enabled set means the updater goroutine is not running at all
+- With the built-in downloader: verify the MaxMind license key has not expired and that the exporter has egress to download.maxmind.com
+- With operator-managed files: confirm the geoipupdate cron / sidecar is still running and writing to the configured --geoip.country-database and --geoip.asn-database paths
+- Check opnsense_flow_geoip_reloads_total for result="failure" - a corrupt replacement leaves the OLD database serving, which looks exactly like no update at all
+- Confirm the download directory is persistent: a volume lost on restart re-downloads every start and can exhaust the daily limit
+
+**Likely causes:**
+- MaxMind license key expired or the account was disabled
+- Egress to download.maxmind.com blocked, or the daily download limit exhausted
+- A geoipupdate cron / sidecar stopped running, or its output path no longer matches the exporter configuration
+- A corrupt or truncated replacement file that fails to parse, leaving the previous database serving indefinitely
+
+**Verify recovery:**
+- opnsense_flow_geoip_database_build_timestamp_seconds advances to a recent build
+- opnsense_flow_geoip_downloads_total{result="updated"} increments once, then settles back to result="unmodified"
 
 ## OPNsenseNetFlowHookDead
 

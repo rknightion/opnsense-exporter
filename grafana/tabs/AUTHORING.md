@@ -303,7 +303,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 101 total (collector 96 / self_labeled 4 / target_join 1 / global 0)
+### Prometheus sentinels — 103 total (collector 98 / self_labeled 4 / target_join 1 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -334,6 +334,8 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_firewall_rules` | `collector` | existence (series presence) | OPNsense Exporter > Security > Firewall & PF > Firewall Rules (top 20) | `label_values(opnsense_firewall_rule_rules_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_firmware_details` | `collector` | existence (series presence) | OPNsense Exporter > System > System & Resources > Firmware Packages | `label_values(opnsense_firmware_plugin_installed{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_flow` | `collector` | existence (series presence) | OPNsense Exporter Health > Delivery > Flow Pipeline | `label_values({__name__=~"opnsense_flow_.+",opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_flow_country` | `collector` | existence (series presence) | OPNsense Exporter > Network > Flow Volume > Geography | `label_values(opnsense_flow_bytes_total{opnsense_instance=~"$opnsense_instance",country!=""}, __name__)` |
+| `has_flow_geoip` | `collector` | existence (series presence) | OPNsense Exporter Health > Delivery > Flow Pipeline > GeoIP Enrichment | `label_values(opnsense_flow_geoip_lookups_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_flow_netflow` | `collector` | existence (series presence) | OPNsense Exporter Health > Delivery > Flow Pipeline > NetFlow Receiver; OPNsense Exporter Health > Delivery > Flow Pipeline > NetFlow Repairs & Topology | `label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_flow_volume` | `collector` | existence (series presence) | OPNsense Exporter > Network > Flow Volume; OPNsense Exporter > Network > Flow Volume > Breakdown; OPNsense Exporter > Network > Flow Volume > Records & Packets; OPNsense Exporter > Network > Flow Volume > Volume | `label_values(opnsense_flow_bytes_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_frr` | `collector` | existence (series presence) | OPNsense Exporter > Network > FRR Routing; OPNsense Exporter > Network > FRR Routing > BFD; OPNsense Exporter > Network > FRR Routing > BGP Peer Session Detail; OPNsense Exporter > Network > FRR Routing > BGP Peers; OPNsense Exporter > Network > FRR Routing > FRR Service & Summary; OPNsense Exporter > Network > FRR Routing > OSPF; OPNsense Exporter > Network > FRR Routing > OSPF Interface Detail; OPNsense Exporter > Network > FRR Routing > OSPFv3 (ospf6) Parity | `label_values(opnsense_frr_service_running{opnsense_instance=~"$opnsense_instance"}, __name__)` |

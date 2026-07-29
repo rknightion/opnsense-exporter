@@ -1,6 +1,6 @@
 {
-  "metrics": 884,
-  "panels": 779,
+  "metrics": 890,
+  "panels": 783,
   "tabs": 46,
   "tab_names": [
     "Overview",
@@ -63,7 +63,7 @@
     {
       "uid": "opnsense-exporter",
       "title": "OPNsense Exporter",
-      "panels": 690,
+      "panels": 691,
       "tabs": 38,
       "tab_names": [
         "Overview",
@@ -109,7 +109,7 @@
     {
       "uid": "opnsense-exporter-health",
       "title": "OPNsense Exporter Health",
-      "panels": 89,
+      "panels": 92,
       "tabs": 8,
       "tab_names": [
         "Overview",

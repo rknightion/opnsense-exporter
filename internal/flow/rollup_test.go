@@ -85,7 +85,7 @@ func TestRollup_InsertCapFoldsWithoutLosingVolume(t *testing.T) {
 // guard that stops a future change adding an IP, port or app_name label.
 func TestRollup_LabelNamesAreExactlyTheAllowlist(t *testing.T) {
 	got := RollupLabelNames()
-	want := []string{"interface", "direction", "transport", "category", "action", "source", "scope"}
+	want := []string{"interface", "direction", "transport", "category", "action", "source", "scope", "country"}
 	if len(got) != len(want) {
 		t.Fatalf("label set changed: got %v, want %v", got, want)
 	}
@@ -97,7 +97,7 @@ func TestRollup_LabelNamesAreExactlyTheAllowlist(t *testing.T) {
 	// Values() must line up with the names positionally, or a label lands on the
 	// wrong dimension with nothing failing.
 	k := RollupKey{Interface: "i", Direction: "d", Transport: "t", Category: "c",
-		Action: "a", Source: "s", Scope: "sc"}
+		Action: "a", Source: "s", Scope: "sc", Country: "GB"}
 	if v := k.Values(); len(v) != len(want) {
 		t.Fatalf("Values() has %d entries, want %d", len(v), len(want))
 	}

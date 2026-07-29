@@ -291,6 +291,11 @@ func enrichRecord(r *Record, snap *enrich.Snapshot, cache *DNSCache, now time.Ti
 		}
 	}
 	if snap == nil {
+		// Geo is independent of the snapshot too: it needs only the addresses. A cold
+		// snapshot costs the country METRIC label (MetricCountry has no scope to read)
+		// but never the log attributes, which is the right trade — a flow log with no
+		// country would be exactly the asymmetry #520 exists to close.
+		applyGeo(r)
 		return
 	}
 	if r.In.Name == "" && r.In.Device != "" {
@@ -316,7 +321,16 @@ func enrichRecord(r *Record, snap *enrich.Snapshot, cache *DNSCache, now time.Ti
 			r.Enrich.DstService = svc
 		}
 	}
+	applyGeo(r)
 }
+
+// applyGeo runs the process-wide GeoIP enrichment (#520). It is called at the END of
+// each lane's enrichment, and the ordering is load-bearing: the metric-label rule
+// reads Enrich.SrcScope/DstScope to decide which end is the remote one, so a record
+// enriched before its scopes are resolved would land on an empty country label.
+//
+// A nil enricher (--geoip.enabled off, or main never wired one) is a no-op.
+func applyGeo(r *Record) { GeoEnrichment.Enrich(r) }
 
 // protoName maps the IANA protocol number to the lowercase name the service table
 // is keyed by. Anything else yields "", which simply misses the lookup.

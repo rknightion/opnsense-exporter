@@ -214,6 +214,12 @@ type Record struct {
 	L7      L7
 	Enrich  Enrichment
 	Repairs Repairs
+
+	// Geo is MaxMind geolocation for the external end(s), merged with whatever
+	// Zenarmor supplied (#520). It is filled by GeoEnricher AFTER Enrich, because the
+	// precedence rules read Zenarmor's values and the metric label reads the scopes.
+	// Absent entirely when --geoip.enabled is off.
+	Geo GeoInfo
 }
 
 // Tuple is the canonical, direction-independent identity of a conversation.

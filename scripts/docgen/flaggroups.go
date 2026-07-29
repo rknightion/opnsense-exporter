@@ -109,6 +109,18 @@ var groupRules = []groupRule{
 		blurb:    "Volume counters derived from flow records, and the correlator that joins NetFlow fragments with Zenarmor conn documents.",
 		prefixes: []string{"flow."},
 	},
+	{
+		// Listed after "flow" on purpose: --flow.geoip.metric-dims is a flow-family
+		// flag and belongs in the flow section beside the other cardinality controls,
+		// while the "geoip." family is the database configuration itself. Rules are
+		// matched in order, so the flow prefix claims that one first.
+		key: "geoip", title: "GeoIP enrichment",
+		blurb: "Local MaxMind lookups that give every flow record a country, continent and ASN, " +
+			"whether or not Zenarmor saw the connection. Purely local - no lookup touches the " +
+			"network. Fail-open: a missing database means the attributes are absent, never a " +
+			"failed start.",
+		prefixes: []string{"geoip."},
+	},
 }
 
 // groupFlags partitions the kingpin model into ordered sections. Every flag

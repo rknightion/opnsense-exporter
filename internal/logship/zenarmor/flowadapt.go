@@ -90,6 +90,14 @@ func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, cache *flow.DN
 
 	r.CommunityID = flow.CommunityID(r.CanonicalTuple(), 0)
 
+	// Zenarmor's own geo, carried onto the flow record verbatim (#520). This is an
+	// INPUT to the precedence rules, not the answer: flow.GeoEnricher resolves which
+	// database wins per field and stamps the provenance attribute. Copying it here is
+	// also what lets the two databases be compared at all — before this, Zenarmor's
+	// geo reached only its own log record and never met ours.
+	zenGeoInto(&r.Geo.Src, d.SrcGeoIP)
+	zenGeoInto(&r.Geo.Dst, d.DstGeoIP)
+
 	if snap != nil {
 		if name, ok := snap.InterfaceName(r.In.Device); ok {
 			r.In.Name = name
@@ -115,7 +123,39 @@ func flowFromDoc(family string, d *zenDoc, snap *enrich.Snapshot, cache *flow.DN
 			r.Enrich.DstDomain = dom
 		}
 	}
+
+	// LAST, after the scopes are resolved: the geo metric label reads them to decide
+	// which end of the flow is the remote one. Same ordering rule as the NetFlow
+	// lane's enrichRecord.
+	flow.GeoEnrichment.Enrich(&r)
 	return r, true
+}
+
+// zenGeoInto copies Zenarmor's geo block onto a flow endpoint, taking only the fields
+// #520's precedence table names.
+//
+// country_code2 is the ISO 3166-1 alpha-2 code, which is directly comparable with
+// ours. country_code3, country_name and timezone are deliberately not carried: the
+// resolved record already states the country, and three more spellings of it on every
+// flow record is the per-line cost #475 removed the coordinates for.
+//
+// region_name is a NAME ("England"), not the ISO 3166-2 code MaxMind returns. The two
+// are not normalised into each other — inventing that mapping would be fabricating
+// data — which is exactly why every record carries a provenance attribute saying which
+// database answered.
+//
+// The asn field is NOT read at all. It was the string "0" on every record of the
+// capture box, "0" is Zenarmor's empty value rather than AS0, and a live check found
+// no ASN database anywhere under /usr/local/zenarmor: Zenarmor structurally cannot
+// supply one.
+func zenGeoInto(dst *flow.GeoEndpoint, g *zenGeo) {
+	if g == nil {
+		return
+	}
+	dst.ZenCountry = g.CountryCode2
+	dst.ZenContinent = g.ContinentCode
+	dst.ZenCity = g.CityName
+	dst.ZenRegion = g.RegionName
 }
 
 // feedDNSCache records a dns family document's answers so a later flow to one of

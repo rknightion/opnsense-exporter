@@ -25,6 +25,7 @@ var configFamilySections = map[string]string{
 	"annotations": "Annotations",
 	"logs":        "Log shipping",
 	"flow":        "Flow",
+	"geoip":       "GeoIP",
 }
 
 // configFamilyExemptions lists flag families deliberately left off the

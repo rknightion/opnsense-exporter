@@ -1014,6 +1014,16 @@ settings:
   # collector entirely.
   # flow.enabled: true
   #
+  # Add a `country` label to the flow volume metrics. OFF by default and it should usually
+  # stay off: country is a ~250-value dimension multiplied against every existing flow
+  # series, so turning it on can multiply opnsense_flow_bytes_total's cardinality roughly
+  # 250-fold. --flow.top-n and --flow.max-keys still bound the result, which means the
+  # practical effect on a busy box is that real series start folding into __other__ rather
+  # than that the family grows without limit. ASN and city NEVER become labels at any
+  # setting. Geo on flow LOGS needs no flag - it is unconditional whenever --geoip.enabled
+  # is set.
+  # flow.geoip.metric-dims: false
+  #
   # Flow log emission: "per_flow" ships one OTLP log record per correlated flow on the
   # shared log pipeline; "off" ships none while still deriving all metrics. Zenarmor conn
   # documents ship on their own lane regardless.
@@ -1044,6 +1054,70 @@ settings:
   # to Loki: the conn document ships exactly as before and this only feeds the metric
   # rollup. Requires --logs.zenarmor.enabled to produce anything.
   # flow.zenarmor: true
+
+  # ---- GeoIP enrichment ----
+  # Local MaxMind lookups that give every flow record a country, continent and ASN, whether
+  # or not Zenarmor saw the connection. Purely local - no lookup touches the network.
+  # Fail-open: a missing database means the attributes are absent, never a failed start.
+  #
+  # Path to a MaxMind GeoLite2-ASN / GeoIP2-ISP database. This is the one enrichment no
+  # amount of Zenarmor coverage supplies: Zenarmor ships no ASN database on any box.
+  # Defaults to the downloaded copy when --geoip.download.enabled is set.
+  # geoip.asn-database: ""
+  #
+  # Path to a MaxMind Country OR City database (GeoLite2-Country, GeoLite2-City,
+  # GeoIP2-City). A City database is a strict superset, so one path accepts either and the
+  # city/region attributes are simply absent with a Country file. Defaults to the downloaded
+  # copy when --geoip.download.enabled is set. A missing file is not an error - enrichment
+  # is fail-open and the attributes are just absent.
+  # geoip.country-database: ""
+  #
+  # MaxMind account ID for the database download API (the Basic-auth username).
+  # geoip.download.account-id: ""
+  #
+  # Directory downloaded databases are installed into, as <dir>/<edition>.mmdb. Must be
+  # writable and should be persistent - a volume that is lost on restart costs a full
+  # download every start, against MaxMind's daily limit.
+  # geoip.download.dir: "/var/lib/opnsense-exporter/geoip"
+  #
+  # Comma-separated MaxMind edition IDs to download. Default is Country + ASN (~9 MB and ~12
+  # MB resident). Swap GeoLite2-Country for GeoLite2-City (~60 MB resident) to get city and
+  # region attributes without Zenarmor - the same --geoip.country-database path accepts
+  # either edition.
+  # geoip.download.editions: "GeoLite2-Country,GeoLite2-ASN"
+  #
+  # Download MaxMind databases directly, so no geoipupdate cron or sidecar is needed.
+  # Requires --geoip.download.account-id and a license key. Conditional requests mean an
+  # unchanged database costs a 304 and no download quota. Off by default: operator-managed
+  # files are the supported baseline and this adds an outbound network dependency.
+  # geoip.download.enabled: false
+  #
+  # How often to ask MaxMind for a newer build. GeoLite2 rebuilds twice a week, so daily is
+  # ample; an unchanged database answers 304 and costs no quota. The first download runs at
+  # startup regardless, so a fresh container is not blind for a whole interval. 0 downloads
+  # only at startup.
+  # geoip.download.interval: "24h"
+  #
+  # MaxMind license key. This flag/ENV or OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_LICENSE_KEY_FILE
+  # may be set; the file form is preferred for a container secret.
+  # geoip.download.license-key: ""
+  #
+  # End-to-end timeout for one edition's download. A timeout leaves the installed database
+  # untouched and is retried on the next interval.
+  # geoip.download.timeout: "5m"
+  #
+  # Enable local GeoIP enrichment of flow records from MaxMind .mmdb files on disk. Adds
+  # country/continent/city/ASN attributes to flow LOGS for external addresses, so geo no
+  # longer depends on whether Zenarmor happened to see the connection. Purely local: no
+  # lookup ever touches the network. Off by default because it needs a database the exporter
+  # does not ship.
+  # geoip.enabled: false
+  #
+  # How often to re-stat the database paths and hot-swap a changed file. This is what makes
+  # the operator-managed path work - a geoipupdate cron, a sidecar or a re-mounted volume
+  # can rewrite the files under a running exporter. Separate from --geoip.download.interval,
+  # which asks MaxMind whether a newer build exists. 0 disables reloading.
+  # geoip.reload-interval: "15m"
 
   # Excluded on purpose -- never renderable via settings at all:
   #   config.check: one-shot validate-and-exit; wiring it through settings would turn every pod start into a no-op that exits 0 instead of running the exporter

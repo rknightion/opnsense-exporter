@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
@@ -516,14 +517,14 @@ func isWANIdentifier(id string) bool {
 // the internet: not loopback, not link-local, not multicast, not unspecified and
 // not RFC1918/ULA private. Carrier-grade NAT space (100.64.0.0/10) is NOT excluded
 // — it is what many ISPs hand a WAN, and netip does not classify it as private.
+//
+// The implementation moved to internal/geoip (#520) so the GeoIP enrichment path and
+// this one share a single classifier rather than drifting apart; it could not move
+// the other way, because this package imports internal/options and options needs
+// geoip. geoip.Enrichable is the geo-side variant and differs ONLY in excluding
+// CGNAT, for a reason documented there.
 func isGloballyRoutable(a netip.Addr) bool {
-	a = a.Unmap()
-	if !a.IsValid() {
-		return false
-	}
-	return !a.IsLoopback() && !a.IsUnspecified() && !a.IsPrivate() &&
-		!a.IsLinkLocalUnicast() && !a.IsLinkLocalMulticast() &&
-		!a.IsInterfaceLocalMulticast() && !a.IsMulticast()
+	return geoip.IsGloballyRoutable(a)
 }
 
 // doRefreshLeases rebuilds IP -> hostname and IP -> MAC from every source the box

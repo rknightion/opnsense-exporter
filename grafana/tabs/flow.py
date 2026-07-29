@@ -182,9 +182,36 @@ def build(b: Builder):
             to_tab("Firewall verdicts for this selection", "Security", "Firewall & PF"),
         ])
 
+    # ---- geo (#520) -------------------------------------------------------
+    # The `country` label exists on the volume family only behind
+    # --flow.geoip.metric-dims, because it multiplies every existing flow series
+    # roughly 250-fold. The sentinel therefore tests for a NON-EMPTY country rather
+    # than for the metric: the family is always present, and on the default
+    # deployment every series carries country="" — which Prometheus treats as absent,
+    # so an ungated row would render one flat "unknown" line on every box that has
+    # not opted in.
+    b.sentinel("has_flow_country", metric="opnsense_flow_bytes_total", more='country!=""')
+
+    country = b.ts(
+        "Traffic by Country (bits/sec)",
+        [(f'topk {grp()} (15, sum {grp(BY_SOURCE, "country")} '
+          f'(rate({sel("opnsense_flow_bytes_total")}[{RATE}]))) * 8', "{{country}} ({{source}})")],
+        unit="bps",
+        desc="Bytes per second by the country of the flow's REMOTE end, from the exporter's own "
+             "MaxMind database — so it is the same answer whether or not Zenarmor saw the connection, "
+             "which is the asymmetry #520 exists to close. Present only with "
+             "--flow.geoip.metric-dims, which is OFF by default: country is a ~250-value dimension "
+             "multiplied against every other flow label, and --flow.top-n/--flow.max-keys will start "
+             "folding real series into __other__ before the family grows without bound. ASN and city "
+             "are never labels at any setting — they are on the flow LOG records, as "
+             "<src|dst>.geo.asn and <src|dst>.geo.city. Pin `source` in any query of your own or the "
+             "two lanes' measurements of the same traffic are summed.",
+    )
+
     b.tab("Flow Volume", [
         b.row("Volume", [iface, direction], present="has_flow_volume"),
         b.row("Breakdown", [category, transport, scope], present="has_flow_volume"),
         b.row("Records & Packets", [action, packets], present="has_flow_volume"),
         b.row("Domain, Talkers & Source Delta", [dnscache, uniquedest, toptalkers, delta]),
+        b.row("Geography", [country], present="has_flow_country"),
     ], present="has_flow_volume")

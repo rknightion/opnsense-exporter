@@ -24,6 +24,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/collector"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/internal/healthprobe"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
@@ -230,6 +231,10 @@ type startupConfig struct {
 	// (#421). Opt-in, and the exporter's only outbound write.
 	Annotations   *options.AnnotationsConfig
 	AnnotationsOn bool
+	// GeoIP is the local MaxMind enrichment of flow records (#520). Opt-in, and
+	// fail-open: a missing or unreadable database leaves the geo attributes absent
+	// rather than failing the start.
+	GeoIP options.GeoIPConfig
 }
 
 // resolveOptions parses nothing and starts nothing: it reads the already-parsed
@@ -294,6 +299,13 @@ func resolveOptions() (*startupConfig, []error) {
 			errs = append(errs, fmt.Errorf("invalid --flow.netflow.debug-capture: %w", cmErr))
 		}
 		cfg.NetflowCapture = mode
+	}
+
+	geoCfg, gerr := options.GeoIP()
+	if gerr != nil {
+		errs = append(errs, fmt.Errorf("invalid geoip configuration: %w", gerr))
+	} else {
+		cfg.GeoIP = geoCfg
 	}
 
 	// Validate the collector-name half of every override BEFORE parsing durations
@@ -412,6 +424,71 @@ func dispatchSubcommand(args []string, stdout, stderr io.Writer) (code int, hand
 	}
 }
 
+// startGeoIP opens the configured MaxMind databases, installs the process-wide flow
+// enricher, wires the self-metrics and starts the download/reload updater. It returns
+// a stop function, or nil when geo enrichment is off.
+//
+// Nothing here can fail the start. That is the whole contract: geo is an enrichment
+// on top of telemetry the exporter would ship anyway, so a bad path, an expired
+// license key or a truncated download degrades the attributes and nothing else.
+func startGeoIP(cfg options.GeoIPConfig, logger *slog.Logger) func() {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// Open returns a USABLE *DB alongside any error: whatever loaded is serving and
+	// whatever did not is simply absent, and the configured paths are retained either
+	// way so a later reload picks up a corrected file. A path that does not exist yet
+	// is not an error at all — the scheduled download may not have landed.
+	db, err := geoip.Open(geoip.Options{CountryPath: cfg.CountryPath, ASNPath: cfg.ASNPath})
+	if err != nil {
+		logger.Warn("geoip database could not be loaded; enrichment will be absent until it can",
+			"err", err, "country_database", cfg.CountryPath, "asn_database", cfg.ASNPath)
+	}
+
+	flow.ConfigureGeoIP(db, cfg.MetricDims)
+	collector.Flow.SetGeoIPStats(func() collector.GeoIPStats {
+		return collector.GeoIPStats{DB: db.Stats(), Flow: flow.GeoEnrichment.Stats()}
+	})
+
+	var fetcher geoip.Fetcher
+	if cfg.DownloadEnabled {
+		fetcher = &geoip.Downloader{
+			AccountID:  cfg.DownloadAccount,
+			LicenseKey: cfg.DownloadKey,
+			Dir:        cfg.DownloadDir,
+			Timeout:    cfg.DownloadTimeout,
+		}
+	}
+	updater := geoip.NewUpdater(geoip.UpdaterOptions{
+		DB:               db,
+		Fetcher:          fetcher,
+		Editions:         cfg.DownloadEditions,
+		DownloadInterval: cfg.DownloadInterval,
+		ReloadInterval:   cfg.ReloadInterval,
+		Logger:           logger,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	go updater.Run(ctx)
+
+	st := db.Stats()
+	logger.Info("geoip enrichment enabled",
+		"country_database", cfg.CountryPath, "country_type", st.CountryType,
+		"asn_database", cfg.ASNPath, "asn_type", st.ASNType,
+		"download", cfg.DownloadEnabled, "metric_country_label", cfg.MetricDims)
+	if db.Empty() {
+		// Loud, because this is the state that looks identical to a quiet network:
+		// every attribute absent, every counter at zero, and nothing failing.
+		logger.Warn("geoip is enabled but no database is loaded; flow records will carry no geo " +
+			"attributes until one appears at the configured path")
+	}
+
+	return func() {
+		cancel()
+		db.Close()
+	}
+}
+
 func main() {
 	// The `health` subcommand (#438) is dispatched from argv first, before any
 	// flag parsing or env inspection, so the probe works in a container whose
@@ -471,6 +548,21 @@ func main() {
 	opnsConfig := cfg.OPNsense
 	collectorsSwitches := cfg.Collectors
 	flowCfg := cfg.Flow
+
+	// GeoIP enrichment (#520). Started here, before any receiver exists, because
+	// flow.ConfigureGeoIP has to be in place before the first record is normalised —
+	// a record enriched before the enricher is installed silently ships with no geo
+	// and nothing says so.
+	//
+	// EVERY failure below is logged and continued, never fatal. A missing, unreadable
+	// or corrupt database means the geo attributes are absent; it must not be able to
+	// stop an exporter whose real job is metrics. The database identity and the
+	// enrichment counters are published as opnsense_flow_geoip_*, which is how an
+	// operator sees the degradation the fail-open design otherwise hides.
+	stopGeoIP := startGeoIP(cfg.GeoIP, logger)
+	if stopGeoIP != nil {
+		defer stopGeoIP()
+	}
 
 	opnsenseClient, err := opnsense.NewClient(
 		*opnsConfig,

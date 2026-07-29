@@ -263,10 +263,70 @@ def build(b: Builder):
              "shutdown began). Flat zero throughout when --flow.log-mode=off.",
     )
 
+    # ---- GeoIP enrichment (#520) -----------------------------------------
+    # Gated on the databases existing at all: geo is opt-in (--geoip.enabled) and
+    # its metrics are ABSENT rather than zero where it was never turned on, so an
+    # ungated row would show flat zeros on every deployment that does not use it.
+    b.sentinel("has_flow_geoip", metric="opnsense_flow_geoip_lookups_total")
+
+    geoip_lookups = b.ts(
+        "GeoIP Lookups",
+        [(f'sum {grp("database", "result")} '
+          f'(rate({sel("opnsense_flow_geoip_lookups_total")}[{RATE}]))', "{{database}} {{result}}"),
+         (f'rate({sel("opnsense_flow_geoip_enriched_records_total")}[{RATE}])', "records enriched/sec")],
+        unit="ops",
+        desc="Local MaxMind lookups per second, by database and result. Enrichment is FAIL-OPEN, which "
+             "means a database that failed to load looks exactly like a quiet network — so read these "
+             "together: country hits at zero while asn hits move is a country database that "
+             "specifically did not load, and records-enriched at zero with lookups moving means every "
+             "address missed. database=\"skipped\" is not a failure: it counts addresses that never "
+             "reached a database because they are not globally routable (RFC 1918, link-local, and "
+             "carrier-grade NAT, which MaxMind publishes no records for at all), and on a LAN-heavy "
+             "box it is legitimately the largest series here.",
+    )
+
+    geoip_freshness = b.ts(
+        "GeoIP Database Age & Updates",
+        [(f'(time() - {sel("opnsense_flow_geoip_database_build_timestamp_seconds")})', "{{database}} age"),
+         (f'sum {grp("result")} (rate({sel("opnsense_flow_geoip_downloads_total")}[{RATE}])) * 86400',
+          "downloads/day {{result}}"),
+         (f'sum {grp("database", "result")} '
+          f'(rate({sel("opnsense_flow_geoip_reloads_total")}[{RATE}])) * 86400',
+          "reloads/day {{database}} {{result}}")],
+        unit="s",
+        desc="Age of each loaded database against MaxMind's own BUILD date — not the download time, "
+             "which is why it is the right staleness signal and what OPNsenseFlowGeoIPDatabaseStale "
+             "alerts on. GeoLite2 rebuilds twice a week, so an age past ~14 days means the updater has "
+             "silently stopped: with --geoip.download.enabled that is a failed fetch (expired license "
+             "key, blocked egress), and without it a geoipupdate cron or sidecar that is no longer "
+             "running. A steady stream of result=\"unmodified\" downloads is the HEALTHY state — a 304 "
+             "costs no MaxMind quota. reloads move only when a file on disk actually changed; a "
+             "result=\"failure\" reload means the previously loaded database is still serving.",
+        overrides=[("downloads/day .*", "unit", "short"), ("reloads/day .*", "unit", "short")],
+    )
+
+    geoip_agreement = b.ts(
+        "GeoIP Country: Ours vs Zenarmor",
+        [(f'sum {grp("result")} '
+          f'(rate({sel("opnsense_flow_geoip_country_comparisons_total")}[{RATE}]))', "{{result}}/sec")],
+        unit="ops",
+        desc="Flow endpoints where BOTH databases answered with a country, split by whether they "
+             "agreed. This is what makes the cost of the ours-wins precedence rule measurable rather "
+             "than assumed: Zenarmor backs its geo with a commercial GeoIP2-City build (verified on a "
+             "live firewall — database_type \"GeoIP2-City\", 126 MB against a stock GeoLite2's 63 MB), "
+             "so a free GeoLite2 answer overwriting it can genuinely be the worse attribution. Ours "
+             "still wins the exported country either way — the point is that the disagreement is "
+             "visible, and the disagreeing value is kept on the log record as <src|dst>.geo.zen_country "
+             "so an investigation can see both. Absent entirely without Zenarmor, since there is "
+             "nothing to compare against.",
+    )
+
     b.tab("Flow Pipeline", [
         b.row("Accumulator Health", [other_share, keys, capped]),
         b.row("NetFlow Receiver", [ingest, ingest_bytes, funnel, decoder],
               present="has_flow_netflow"),
         b.row("NetFlow Repairs & Topology", [repairs, ifindex], present="has_flow_netflow"),
         b.row("Correlator & Log Emission", [correlator, flowlogs]),
+        b.row("GeoIP Enrichment", [geoip_lookups, geoip_freshness, geoip_agreement],
+              present="has_flow_geoip"),
     ], present="has_flow")

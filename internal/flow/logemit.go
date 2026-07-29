@@ -106,6 +106,9 @@ func (r Record) LogAttributes() map[string]string {
 		a["dst.domain"] = r.Enrich.DstDomain
 	}
 
+	geoAttrs(a, "src", r.Geo.Src)
+	geoAttrs(a, "dst", r.Geo.Dst)
+
 	// Both sources' counters travel together and are NEVER summed (#346 decision 3):
 	// they measure at different points and their disagreement is itself the signal.
 	if r.NF.Present {
@@ -117,6 +120,52 @@ func (r Record) LogAttributes() map[string]string {
 		a["flow.zen.packets"] = strconv.FormatUint(r.Zen.Packets(), 10)
 	}
 	return a
+}
+
+// geoAttrs renders one endpoint's geolocation under the given prefix ("src"/"dst").
+//
+// Everything here is a LOG ATTRIBUTE and must stay one. Per the deployment's Loki
+// setup, only RESOURCE attributes are ever promoted to index labels, and country must
+// not become one — it is a ~250-value dimension on a stream that already has enough.
+// ASN and city are not usefully bounded at all and exist only here.
+//
+// The two *_source keys are the provenance attributes #520 makes mandatory. They are
+// emitted whenever the field they describe is set, including when only one database
+// could possibly have answered: a reader must never have to infer which one it was
+// from whether Zenarmor happens to be installed.
+func geoAttrs(a map[string]string, prefix string, g GeoEndpoint) {
+	if g.Empty() {
+		return
+	}
+	if g.Country != "" {
+		a[prefix+".geo.country"] = g.Country
+		a[prefix+".geo.country_source"] = g.CountrySource
+	}
+	if g.Continent != "" {
+		a[prefix+".geo.continent"] = g.Continent
+	}
+	if g.City != "" {
+		a[prefix+".geo.city"] = g.City
+	}
+	if g.Region != "" {
+		a[prefix+".geo.region"] = g.Region
+	}
+	if g.City != "" || g.Region != "" {
+		a[prefix+".geo.city_source"] = g.CitySource
+	}
+	if g.ASN != 0 {
+		a[prefix+".geo.asn"] = "AS" + strconv.FormatUint(uint64(g.ASN), 10)
+	}
+	if g.ASOrg != "" {
+		a[prefix+".geo.as_org"] = g.ASOrg
+	}
+	// Zenarmor's country is retained, but only where it actually says something our
+	// answer does not. Re-emitting an identical value on every record would be pure
+	// per-line cost for no information; a DISAGREEMENT is the interesting case, and
+	// the one the disagreement counter is a rate for.
+	if g.ZenCountry != "" && g.ZenCountry != g.Country {
+		a[prefix+".geo.zen_country"] = g.ZenCountry
+	}
 }
 
 // LogBody is a compact, human-readable one-line summary of the flow, used as the OTLP

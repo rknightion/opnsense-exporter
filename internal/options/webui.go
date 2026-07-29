@@ -123,6 +123,18 @@ type configInputs struct {
 	netflowListen         string
 	netflowAllowlistCount int
 	netflowDebugCapture   string // "off" | "unidentified" | "all"
+
+	// GeoIP (#520). The database paths and whether anything is loaded are the two
+	// facts an operator preflighting geo enrichment needs: a typo'd path is
+	// fail-open, so without this row it looks identical to "enabled and working".
+	// The license key is a credential and crosses as a presence boolean only.
+	geoipEnabled          bool
+	geoipCountryPath      string
+	geoipASNPath          string
+	geoipMetricDims       bool
+	geoipDownloadEnabled  bool
+	geoipDownloadEditions string
+	geoipLicenseKeySet    bool
 }
 
 // boolStr renders a bool as the on/off vocabulary used across the config view.
@@ -267,6 +279,23 @@ func buildEffectiveConfig(in configInputs) []ConfigSection {
 				plainItem("NetFlow Debug Capture", in.netflowDebugCapture),
 			},
 		},
+		{
+			// #520: GeoIP enrichment is fail-open by design, so a database path that
+			// is wrong, unwritable or simply not downloaded yet produces exactly the
+			// same silence as a correctly configured one that has nothing to say.
+			// These rows are how an operator tells those apart before going looking
+			// for missing attributes in Loki.
+			Title: "GeoIP",
+			Items: []ConfigItem{
+				plainItem("Enabled", boolStr(in.geoipEnabled)),
+				plainItem("Country Database", in.geoipCountryPath),
+				plainItem("ASN Database", in.geoipASNPath),
+				plainItem("Metric Country Label", boolStr(in.geoipMetricDims)),
+				plainItem("Download Enabled", boolStr(in.geoipDownloadEnabled)),
+				plainItem("Download Editions", in.geoipDownloadEditions),
+				secretItem("MaxMind License Key", in.geoipLicenseKeySet),
+			},
+		},
 	}
 }
 
@@ -353,7 +382,43 @@ func gatherConfigInputs() configInputs {
 		netflowListen:         strings.TrimSpace(*flowNetflowListen),
 		netflowAllowlistCount: countNonEmpty(*flowNetflowPeers),
 		netflowDebugCapture:   captureModeOrOff(*flowNetflowDebugCapture),
+
+		// The RESOLVED paths, not the raw flags: an operator who configured only the
+		// downloader has empty flags and non-empty effective paths, and the effective
+		// ones are what the exporter actually opens. A key that fails to resolve is
+		// reported as "not set" — this is a status view, not the startup validation
+		// path, and GeoIP.Validate already owns failing hard on a bad secret file.
+		geoipEnabled:          *geoipEnabled,
+		geoipCountryPath:      geoipResolvedCountryPath(),
+		geoipASNPath:          geoipResolvedASNPath(),
+		geoipMetricDims:       *geoipMetricDims,
+		geoipDownloadEnabled:  *geoipDownloadEnabled,
+		geoipDownloadEditions: strings.TrimSpace(*geoipDownloadEditions),
+		geoipLicenseKeySet:    geoipLicenseKeyPresent(),
 	}
+}
+
+// geoipResolvedCountryPath / geoipResolvedASNPath / geoipLicenseKeyPresent read the
+// same defaulting GeoIP() applies, so the summary shows what the exporter will
+// actually open rather than the raw flag. They never surface the key itself.
+func geoipResolvedCountryPath() string { return geoipResolvedPaths().CountryPath }
+func geoipResolvedASNPath() string     { return geoipResolvedPaths().ASNPath }
+
+func geoipResolvedPaths() GeoIPConfig {
+	c := GeoIPConfig{
+		CountryPath:      strings.TrimSpace(*geoipCountryDatabase),
+		ASNPath:          strings.TrimSpace(*geoipASNDatabase),
+		DownloadEnabled:  *geoipDownloadEnabled,
+		DownloadEditions: splitEditions(*geoipDownloadEditions),
+		DownloadDir:      strings.TrimSpace(*geoipDownloadDir),
+	}
+	c.applyDownloadDefaults()
+	return c
+}
+
+func geoipLicenseKeyPresent() bool {
+	key, err := geoipLicenseKey()
+	return err == nil && key != ""
 }
 
 // syslogListenSummary renders the syslog receiver's up-to-three listeners
