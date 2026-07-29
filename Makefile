@@ -34,7 +34,7 @@ GOEXPERIMENT ?= goroutineleakprofile
 
 .PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
         schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
-        print-go-licenses-module tools-kubeconform deployment-test
+        print-go-licenses-module tools-kubeconform deployment-test testbed-test
 default:
 	GOEXPERIMENT=$(GOEXPERIMENT) go build \
 	-tags osusergo,netgo \
@@ -138,6 +138,13 @@ deployment-test: tools-kubeconform
 	scripts/systemd/test_unit.sh
 	$(TOOLS_DIR)/kubeconform -strict -summary deploy/k8s/deployment.yaml
 	PATH="$(TOOLS_DIR):$(PATH)" charts/opnsense-exporter/tests/test-chart.sh
+
+# Unit tests for the testbed config linter (scripts/testbed/config_lint.py, #504). The
+# linter itself runs against a config.xml pulled off a firewall, which CI has no access
+# to — these tests pin its checks against synthetic configs so the checks cannot rot
+# between the rare occasions someone runs it for real.
+testbed-test:
+	cd scripts/testbed && python3 -m unittest discover -p '*_test.py' -q
 
 install-hooks:
 	cp scripts/hooks/pre-commit .git/hooks/pre-commit

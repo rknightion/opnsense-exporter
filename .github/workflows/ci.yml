@@ -155,6 +155,11 @@ jobs:
       - name: Run deployment contract tests
         run: make deployment-test
 
+      # Checks for the testbed config linter (#504). It reads a firewall's config.xml,
+      # which CI cannot reach, so only its unit tests run here.
+      - name: Run testbed tooling tests
+        run: make testbed-test
+
   grafana:
     name: Grafana artifacts up-to-date
     runs-on: ubuntu-24.04
