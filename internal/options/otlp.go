@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -322,4 +323,58 @@ func resolveOTLPTransport() (*OTLPConfig, bool, error) {
 		gcToken:      gcToken,
 		gcEndpoint:   *otlpGCEndpoint,
 	})
+}
+
+// OTLPSignalLogs and OTLPSignalMetrics name the OTLP signals whose exporters this
+// binary builds. They form the signal-specific half of the compression environment
+// variable names below.
+const (
+	OTLPSignalLogs    = "LOGS"
+	OTLPSignalMetrics = "METRICS"
+)
+
+// OTLPGzipDefault reports whether the caller should ASK for gzip on this signal.
+//
+// It answers false whenever the operator has stated a preference through the
+// environment, so `OTEL_EXPORTER_OTLP_COMPRESSION=none` genuinely disables compression
+// rather than being silently overridden.
+//
+// The keys are listed signal-specific first, matching the SDK's own order and the spec's
+// rule that "Each configuration option MUST be overridable by a signal specific option".
+// Be aware that the order is DOCUMENTARY here, not load-bearing: this returns a bool, and
+// any recognised value in either key produces false, so the loop is an OR and reversing
+// it would change nothing. Actual precedence is enforced downstream by the SDK, which is
+// the component that reads the value. Order only starts to matter if this ever returns
+// WHICH key supplied the preference rather than merely whether one did.
+//
+// WHY THE CALLER MUST NOT JUST PASS WithCompression UNCONDITIONALLY: in the OTel Go
+// SDK's config resolution, a passed option BEATS the environment — getenv() returns early
+// when the setting is already Set, commented "Passed, valid, options have precedence".
+// So an unconditional WithCompression would make the documented env override a no-op.
+// Asking this function first, and staying silent when it says false, is what keeps the
+// override working.
+//
+// DEFAULTING TO GZIP IS DELIBERATE AND SPEC-SANCTIONED. The OTLP exporter spec lists the
+// default as "No value" (no compression) but explicitly delegates the choice: "If no
+// compression value is explicitly specified, SIGs can default to the value they deem most
+// useful among the supported options"
+// (https://opentelemetry.io/docs/specs/otel/protocol/exporter/). Both signals here ship
+// highly compressible payloads — log lines, and Prometheus-bridged metric families whose
+// name and label strings repeat on every export — so gzip is the largest egress lever on
+// either path and costs a little CPU on a box that is otherwise idle between scrapes.
+//
+// An unrecognised value falls through to the next key and finally to the gzip default,
+// mirroring the SDK's own loop, which skips values that fail conversion — the difference
+// being that our terminal fallback is gzip rather than none.
+func OTLPGzipDefault(signal string) bool {
+	for _, k := range []string{
+		"OTEL_EXPORTER_OTLP_" + signal + "_COMPRESSION",
+		"OTEL_EXPORTER_OTLP_COMPRESSION",
+	} {
+		switch os.Getenv(k) {
+		case "none", "gzip":
+			return false
+		}
+	}
+	return true
 }

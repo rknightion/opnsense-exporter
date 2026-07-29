@@ -246,3 +246,144 @@ func TestResolveSecret_OTLPTokenFile(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// otlpCompressionEnvVars are every env var OTLPGzipDefault reads for either
+// signal. Tests clear all of them via t.Setenv so a stray value left by an
+// earlier test (or the outer shell) can never leak into a later case.
+var otlpCompressionEnvVars = []string{
+	"OTEL_EXPORTER_OTLP_COMPRESSION",
+	"OTEL_EXPORTER_OTLP_LOGS_COMPRESSION",
+	"OTEL_EXPORTER_OTLP_METRICS_COMPRESSION",
+}
+
+// clearOTLPCompressionEnv resets every compression env var OTLPGzipDefault
+// reads to "" via t.Setenv, so a test starts from a known-empty state and the
+// previous value (including "unset") is restored automatically afterwards.
+func clearOTLPCompressionEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range otlpCompressionEnvVars {
+		t.Setenv(k, "")
+	}
+}
+
+func TestOTLPGzipDefault(t *testing.T) {
+	tests := []struct {
+		name   string
+		env    map[string]string
+		signal string
+		want   bool
+	}{
+		{
+			name:   "neither var set -> gzip default (logs)",
+			env:    nil,
+			signal: OTLPSignalLogs,
+			want:   true,
+		},
+		{
+			name:   "neither var set -> gzip default (metrics)",
+			env:    nil,
+			signal: OTLPSignalMetrics,
+			want:   true,
+		},
+		{
+			name:   "generic none disables gzip",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_COMPRESSION": "none"},
+			signal: OTLPSignalLogs,
+			want:   false,
+		},
+		{
+			// The operator asked explicitly for gzip. We must still return
+			// false here: if we asked the SDK for gzip ourselves too, that's
+			// harmless when it agrees, but the point of staying silent is
+			// that a passed option beats the env var in the SDK's own
+			// resolution order (see the doc comment on OTLPGzipDefault) --
+			// so once a preference is expressed at all, we get out of the
+			// way rather than relying on our own default and the operator's
+			// explicit value happening to agree.
+			name:   "generic gzip also means 'operator expressed a preference' -> false",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_COMPRESSION": "gzip"},
+			signal: OTLPSignalLogs,
+			want:   false,
+		},
+		{
+			// Most important case: a signal-specific var must not leak
+			// across signals. Setting it for logs must leave metrics on the
+			// gzip default.
+			name:   "logs-specific none affects only logs",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_LOGS_COMPRESSION": "none"},
+			signal: OTLPSignalLogs,
+			want:   false,
+		},
+		{
+			name:   "logs-specific none does not leak to metrics",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_LOGS_COMPRESSION": "none"},
+			signal: OTLPSignalMetrics,
+			want:   true,
+		},
+		{
+			name:   "metrics-specific none affects only metrics",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_METRICS_COMPRESSION": "none"},
+			signal: OTLPSignalMetrics,
+			want:   false,
+		},
+		{
+			name:   "metrics-specific none does not leak to logs",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_METRICS_COMPRESSION": "none"},
+			signal: OTLPSignalLogs,
+			want:   true,
+		},
+		{
+			// Signal-specific beats generic when they'd otherwise disagree
+			// on which key "wins" -- but both keys here are recognised
+			// preferences (none and gzip), and OTLPGzipDefault only ever
+			// returns false for a recognised preference, so this asserts
+			// the outcome, not which key was consulted.
+			name: "signal-specific (gzip) and generic (none) both count as a preference -> false for logs",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_COMPRESSION":      "none",
+				"OTEL_EXPORTER_OTLP_LOGS_COMPRESSION": "gzip",
+			},
+			signal: OTLPSignalLogs,
+			want:   false,
+		},
+		{
+			// Same env, but for metrics: no metrics-specific var is set, so
+			// this falls through to the generic key.
+			name: "generic none governs metrics when no metrics-specific var is set",
+			env: map[string]string{
+				"OTEL_EXPORTER_OTLP_COMPRESSION":      "none",
+				"OTEL_EXPORTER_OTLP_LOGS_COMPRESSION": "gzip",
+			},
+			signal: OTLPSignalMetrics,
+			want:   false,
+		},
+		{
+			// Falls through to our gzip default -- this deliberately
+			// differs from the SDK's own resolution, which skips
+			// unconvertible values and ends up with no compression. Our
+			// terminal fallback is gzip, not none (see the doc comment).
+			name:   "unrecognised value falls through to gzip default",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_COMPRESSION": "bogus"},
+			signal: OTLPSignalLogs,
+			want:   true,
+		},
+		{
+			name:   "empty string explicitly set behaves as unset -> gzip default",
+			env:    map[string]string{"OTEL_EXPORTER_OTLP_COMPRESSION": ""},
+			signal: OTLPSignalMetrics,
+			want:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearOTLPCompressionEnv(t)
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+			if got := OTLPGzipDefault(tt.signal); got != tt.want {
+				t.Errorf("OTLPGzipDefault(%q) = %v, want %v", tt.signal, got, tt.want)
+			}
+		})
+	}
+}

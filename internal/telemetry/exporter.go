@@ -92,6 +92,15 @@ func newExporter(ctx context.Context, cfg *options.OTLPConfig) (sdkmetric.Export
 	switch cfg.Protocol {
 	case "grpc":
 		var opts []otlpmetricgrpc.Option
+		// Ask for gzip unless the operator set OTEL_EXPORTER_OTLP[_METRICS]_COMPRESSION.
+		// The bridged Prometheus registry re-sends every metric name and label string on
+		// every export tick, so this payload is unusually repetitive and compresses hard.
+		// See options.OTLPGzipDefault for why this must be conditional rather than an
+		// unconditional option — a passed option beats the env var in the SDK, which
+		// would silently disable the documented override.
+		if options.OTLPGzipDefault(options.OTLPSignalMetrics) {
+			opts = append(opts, otlpmetricgrpc.WithCompressor("gzip"))
+		}
 		if cfg.Endpoint != "" {
 			opts = append(opts, otlpmetricgrpc.WithEndpointURL(cfg.Endpoint))
 		}
@@ -107,6 +116,10 @@ func newExporter(ctx context.Context, cfg *options.OTLPConfig) (sdkmetric.Export
 		return otlpmetricgrpc.New(ctx, opts...)
 	case "http/protobuf", "":
 		var opts []otlpmetrichttp.Option
+		// See the grpc branch above for why this is conditional.
+		if options.OTLPGzipDefault(options.OTLPSignalMetrics) {
+			opts = append(opts, otlpmetrichttp.WithCompression(otlpmetrichttp.GzipCompression))
+		}
 		if cfg.Endpoint != "" {
 			ep, err := metricsEndpointURL(cfg.Endpoint)
 			if err != nil {

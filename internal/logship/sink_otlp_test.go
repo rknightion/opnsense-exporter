@@ -2,6 +2,7 @@ package logship
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -876,6 +877,22 @@ func TestOTLPSink_EmptyBatchIsANoOp(t *testing.T) {
 // without anyone parsing vendor error text.
 
 // newSinkOverEndpoint builds a real OTLP exporter pointed at endpoint and wraps it in
+// readOTLPBody reads a request body the way a real OTLP/HTTP receiver does: honouring
+// Content-Encoding. The sink now asks for gzip by default (see defaultCompressor), so a
+// fake endpoint that proto.Unmarshals r.Body directly gets compressed bytes and fails to
+// parse — which is exactly how this helper came to exist.
+func readOTLPBody(r *http.Request) ([]byte, error) {
+	if !strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
+		return io.ReadAll(r.Body)
+	}
+	zr, err := gzip.NewReader(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = zr.Close() }()
+	return io.ReadAll(zr)
+}
+
 // testShipConcurrency is deliberately > 1 so the shared-endpoint sink tests exercise the
 // concurrent partition flush path rather than silently degrading to the old sequential
 // one. Every assertion in this file is about the CONTENT of SinkResult, never the order
@@ -885,16 +902,19 @@ const testShipConcurrency = 4
 // the sink, exactly as production does.
 func newSinkOverEndpoint(t *testing.T, protocol, endpoint string) *otlpSink {
 	t.Helper()
-	exp, err := newLogExporter(context.Background(), &options.OTLPConfig{
+	// Build the real pool, exactly as production does, so these tests exercise the
+	// per-worker exporter lease rather than the single-exporter fallback.
+	exps, err := newLogExporters(context.Background(), &options.OTLPConfig{
 		Protocol: protocol,
 		Endpoint: endpoint,
 		Insecure: true,
 	}, testShipConcurrency)
 	if err != nil {
-		t.Fatalf("newLogExporter(%s): %v", protocol, err)
+		t.Fatalf("newLogExporters(%s): %v", protocol, err)
 	}
 	s := &otlpSink{
-		exporter:    exp,
+		exporters:   exps,
+		exporter:    exps[0],
 		concurrency: testShipConcurrency,
 		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
 		providers:   make(map[resourceKey]*resourceLogger),
@@ -1356,7 +1376,7 @@ func TestOTLPSink_HTTPMixedPartitionOutcomes(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, _ := readOTLPBody(r)
 		var req collogpb.ExportLogsServiceRequest
 		if err := proto.Unmarshal(body, &req); err != nil {
 			w.WriteHeader(500)
@@ -1792,5 +1812,315 @@ func TestOTLPSink_ZeroConcurrencyDoesNotDeadlock(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Emit with concurrency=0 did not return within 5s — the worker pool likely " +
 			"deadlocked on an unbuffered token channel")
+	}
+}
+
+// --- gzip by default, and the per-worker exporter pool -----------------------
+
+// TestOTLPSink_GzipIsOnTheWireByDefault proves compression is not merely requested but
+// genuinely applied to the bytes that leave the process: the raw request body starts
+// with the gzip magic number, and it only decodes as a populated
+// ExportLogsServiceRequest after gunzipping — a raw proto.Unmarshal of the still-
+// compressed bytes must NOT yield a populated request.
+func TestOTLPSink_GzipIsOnTheWireByDefault(t *testing.T) {
+	var encoding string
+	var raw []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoding = r.Header.Get("Content-Encoding")
+		var err error
+		raw, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := newSinkOverEndpoint(t, "http/protobuf", srv.URL)
+	batch := []Entry{entry("syslog", "firewall", "gzip-default")}
+	res := s.Emit(context.Background(), batch)
+	assertResultCoversBatch(t, res, batch)
+	if len(res.Acked) != 1 || len(res.Rejected) != 0 || len(res.Retry) != 0 {
+		t.Fatalf("acked=%d rejected=%d retry=%d, want the batch cleanly acknowledged (err=%v)",
+			len(res.Acked), len(res.Rejected), len(res.Retry), res.Err)
+	}
+
+	if !strings.EqualFold(encoding, "gzip") {
+		t.Fatalf("Content-Encoding = %q, want gzip", encoding)
+	}
+	if len(raw) < 2 || raw[0] != 0x1f || raw[1] != 0x8b {
+		t.Fatalf("request body does not start with the gzip magic number (got %#x %#x) — "+
+			"the bytes on the wire are not actually compressed", safeByte(raw, 0), safeByte(raw, 1))
+	}
+	var direct collogpb.ExportLogsServiceRequest
+	if err := proto.Unmarshal(raw, &direct); err == nil && len(direct.GetResourceLogs()) > 0 {
+		t.Fatalf("the raw, still-compressed bytes parsed directly as a populated " +
+			"ExportLogsServiceRequest — the body was not actually compressed")
+	}
+
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("gzip.NewReader on the request body: %v", err)
+	}
+	defer func() { _ = gz.Close() }()
+	plain, err := io.ReadAll(gz)
+	if err != nil {
+		t.Fatalf("gunzip request body: %v", err)
+	}
+	var req collogpb.ExportLogsServiceRequest
+	if err := proto.Unmarshal(plain, &req); err != nil {
+		t.Fatalf("unmarshal gunzipped body: %v", err)
+	}
+	if len(req.GetResourceLogs()) == 0 {
+		t.Fatalf("gunzipped body decoded to zero resource logs, want the one entry we emitted")
+	}
+}
+
+// safeByte reads b[i], or 0 when out of range, purely so a too-short body doesn't panic
+// the failure message itself.
+func safeByte(b []byte, i int) byte {
+	if i < 0 || i >= len(b) {
+		return 0
+	}
+	return b[i]
+}
+
+// TestOTLPSink_CompressionEnvVarDisablesGzip protects the documented override: the SDK
+// gives explicitly passed options precedence over its own env-var reads, so an
+// unconditional WithCompression call would silently defeat OTEL_EXPORTER_OTLP_COMPRESSION
+// / OTEL_EXPORTER_OTLP_LOGS_COMPRESSION=none. gzipByDefault() is read at exporter
+// CONSTRUCTION time (newLogExporters -> newLogExporter), so t.Setenv must happen before
+// newSinkOverEndpoint builds the sink.
+func TestOTLPSink_CompressionEnvVarDisablesGzip(t *testing.T) {
+	for _, envVar := range []string{"OTEL_EXPORTER_OTLP_COMPRESSION", "OTEL_EXPORTER_OTLP_LOGS_COMPRESSION"} {
+		t.Run(envVar, func(t *testing.T) {
+			t.Setenv(envVar, "none")
+
+			var encoding string
+			var raw []byte
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				encoding = r.Header.Get("Content-Encoding")
+				var err error
+				raw, err = io.ReadAll(r.Body)
+				if err != nil {
+					t.Errorf("read request body: %v", err)
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			// Built AFTER t.Setenv, so the exporter's compression choice is made with the
+			// override already in effect.
+			s := newSinkOverEndpoint(t, "http/protobuf", srv.URL)
+			batch := []Entry{entry("syslog", "firewall", "no-gzip")}
+			res := s.Emit(context.Background(), batch)
+			assertResultCoversBatch(t, res, batch)
+			if len(res.Acked) != 1 || len(res.Rejected) != 0 || len(res.Retry) != 0 {
+				t.Fatalf("acked=%d rejected=%d retry=%d, want the batch cleanly acknowledged (err=%v)",
+					len(res.Acked), len(res.Rejected), len(res.Retry), res.Err)
+			}
+
+			if strings.EqualFold(encoding, "gzip") {
+				t.Fatalf("Content-Encoding = %q with %s=none set, want no gzip encoding", encoding, envVar)
+			}
+			var req collogpb.ExportLogsServiceRequest
+			if err := proto.Unmarshal(raw, &req); err != nil {
+				t.Fatalf("body did not parse as plain (uncompressed) protobuf even though %s=none: %v", envVar, err)
+			}
+			if len(req.GetResourceLogs()) == 0 {
+				t.Fatalf("body parsed but carried zero resource logs, want the one entry we emitted")
+			}
+		})
+	}
+}
+
+// TestOTLPSink_CompressionSurvivesRetry guards against a classic compression+retry bug:
+// the request body being consumed, or not reset, across the SDK's internal retry. A 503
+// followed by a 200 must arrive gzipped on BOTH wire attempts, and the batch must still be
+// accounted for exactly once.
+func TestOTLPSink_CompressionSurvivesRetry(t *testing.T) {
+	var mu sync.Mutex
+	var encodings []string
+	var bodies [][]byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		mu.Lock()
+		encodings = append(encodings, r.Header.Get("Content-Encoding"))
+		bodies = append(bodies, raw)
+		attempt := len(encodings)
+		mu.Unlock()
+
+		if attempt == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := newSinkOverEndpoint(t, "http/protobuf", srv.URL)
+	batch := []Entry{entry("syslog", "firewall", "retry-gzip")}
+	res := s.Emit(context.Background(), batch)
+	assertResultCoversBatch(t, res, batch)
+	if len(res.Acked) != 1 || len(res.Rejected) != 0 || len(res.Retry) != 0 {
+		t.Fatalf("acked=%d rejected=%d retry=%d, want exactly one clean acknowledgement (err=%v)",
+			len(res.Acked), len(res.Rejected), len(res.Retry), res.Err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(encodings) != 2 {
+		t.Fatalf("wire attempts = %d, want exactly 2 (503 then recovery)", len(encodings))
+	}
+	for i, enc := range encodings {
+		if !strings.EqualFold(enc, "gzip") {
+			t.Fatalf("attempt %d Content-Encoding = %q, want gzip on every attempt", i+1, enc)
+		}
+		body := bodies[i]
+		if len(body) < 2 || body[0] != 0x1f || body[1] != 0x8b {
+			t.Fatalf("attempt %d body does not start with the gzip magic number — "+
+				"compression did not survive the retry", i+1)
+		}
+		gz, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("attempt %d gzip.NewReader: %v", i+1, err)
+		}
+		plain, err := io.ReadAll(gz)
+		_ = gz.Close()
+		if err != nil {
+			t.Fatalf("attempt %d gunzip: %v", i+1, err)
+		}
+		var req collogpb.ExportLogsServiceRequest
+		if err := proto.Unmarshal(plain, &req); err != nil || len(req.GetResourceLogs()) == 0 {
+			t.Fatalf("attempt %d gunzipped body did not decode to a populated request: err=%v", i+1, err)
+		}
+	}
+}
+
+// identifiableExporter records its own identity and whether an Export call ever
+// overlapped with another Export call on the SAME instance. That overlap is exactly the
+// contract sdk/log/exporter.go:34 forbids: "Export should never be called concurrently
+// with other Export calls".
+type identifiableExporter struct {
+	id int
+
+	mu       sync.Mutex
+	inFlight bool
+
+	overlapped atomic.Bool
+	used       atomic.Bool
+	shutdownN  atomic.Int64
+}
+
+func (e *identifiableExporter) Export(context.Context, []sdklog.Record) error {
+	e.mu.Lock()
+	if e.inFlight {
+		e.overlapped.Store(true)
+	}
+	e.inFlight = true
+	e.mu.Unlock()
+
+	e.used.Store(true)
+	// Widen the window so a real overlap is observable rather than raced past before a
+	// second goroutine gets scheduled onto the same exporter (mirrors trackingExporter).
+	time.Sleep(15 * time.Millisecond)
+
+	e.mu.Lock()
+	e.inFlight = false
+	e.mu.Unlock()
+	return nil
+}
+
+func (e *identifiableExporter) Shutdown(context.Context) error {
+	e.shutdownN.Add(1)
+	return nil
+}
+
+func (*identifiableExporter) ForceFlush(context.Context) error { return nil }
+
+// TestOTLPSink_ConcurrentFlushesUseDistinctExporters pins the correctness property
+// behind "one exporter per concurrent worker" (newLogExporters): no single exporter
+// instance may ever have two concurrent Export calls in flight. A batch spanning many
+// more partitions than the pool forces the pool to reuse exporters across successive
+// waves, which is exactly where a shared-exporter regression would surface as overlap.
+func TestOTLPSink_ConcurrentFlushesUseDistinctExporters(t *testing.T) {
+	const poolSize = 4
+	const partitions = 20
+
+	exps := make([]sdklog.Exporter, poolSize)
+	tracked := make([]*identifiableExporter, poolSize)
+	for i := range poolSize {
+		fe := &identifiableExporter{id: i}
+		tracked[i] = fe
+		exps[i] = fe
+	}
+
+	s := &otlpSink{
+		exporters:   exps,
+		exporter:    exps[0],
+		concurrency: poolSize,
+		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		providers:   make(map[resourceKey]*resourceLogger),
+	}
+
+	batch := make([]Entry, 0, partitions)
+	for i := 0; i < partitions; i++ {
+		batch = append(batch, entry("syslog", fmt.Sprintf("sub-%d", i), fmt.Sprintf("body-%d", i)))
+	}
+
+	mustEmit(t, s, batch)
+
+	for _, fe := range tracked {
+		if fe.overlapped.Load() {
+			t.Errorf("exporter %d had two concurrent Export calls in flight — exactly the "+
+				"contract violation \"one exporter per concurrent worker\" exists to prevent", fe.id)
+		}
+	}
+	used := 0
+	for _, fe := range tracked {
+		if fe.used.Load() {
+			used++
+		}
+	}
+	if used <= 1 {
+		t.Fatalf("only %d of %d pooled exporters were ever used, want more than one — "+
+			"the pool is not actually being exercised by this batch", used, poolSize)
+	}
+}
+
+// TestOTLPSink_ShutdownClosesEveryExporterInThePool guards against a Shutdown that only
+// closes exporters[0]. Missing one leaks a connection for the life of the process — a
+// whole ClientConn on the gRPC path.
+func TestOTLPSink_ShutdownClosesEveryExporterInThePool(t *testing.T) {
+	const poolSize = 5
+	exps := make([]sdklog.Exporter, poolSize)
+	tracked := make([]*fakeExporter, poolSize)
+	for i := range poolSize {
+		fe := &fakeExporter{}
+		tracked[i] = fe
+		exps[i] = fe
+	}
+
+	s := &otlpSink{
+		exporters: exps,
+		exporter:  exps[0],
+		base:      baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		providers: make(map[resourceKey]*resourceLogger),
+	}
+
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	for i, fe := range tracked {
+		fe.mu.Lock()
+		got := fe.shutdown
+		fe.mu.Unlock()
+		if got != 1 {
+			t.Errorf("exporter %d Shutdown called %d times, want exactly 1", i, got)
+		}
 	}
 }

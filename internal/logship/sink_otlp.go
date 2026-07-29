@@ -90,14 +90,22 @@ const maxLogResources = 256
 //	        - action: index_label
 //	          attributes: [opnsense.subsystem, opnsense.source]
 //
-// The providers share ONE exporter, so partitioning costs no extra connections.
+// The providers share ONE HTTP CLIENT, so resource partitioning costs no extra
+// connection pool — but NOT one exporter: there is one exporter per concurrent worker,
+// because an exporter is not re-entrant. See newLogExporters.
 //
 // The pre-1.0 otel logs SDK is deliberately confined to this file (pinned +
 // Renovate) so the rest of the codebase never imports it.
 type otlpSink struct {
-	exporter sdklog.Exporter
-	base     []attribute.KeyValue
-	log      *slog.Logger
+	// exporters holds one exporter per concurrent worker — an exporter is not
+	// re-entrant, so concurrent flushes must not share one. See newLogExporters.
+	// exporter is exporters[0] and is only the fallback for a flush that arrives
+	// without a leased exporter on its context (a provider ForceFlushed outside Emit,
+	// e.g. at Shutdown, where nothing is concurrent).
+	exporters []sdklog.Exporter
+	exporter  sdklog.Exporter
+	base      []attribute.KeyValue
+	log       *slog.Logger
 	// concurrency bounds how many of a batch's resource partitions are exported at
 	// once. Always >= 1; see newOTLPSink for why the floor is applied there rather
 	// than trusted from config.
@@ -122,11 +130,16 @@ type resourceLogger struct {
 	logger   otellog.Logger
 }
 
-// sharedExporter lends the one real exporter to many LoggerProviders. Shutdown is
+// sharedExporter lends a real exporter to many LoggerProviders. Shutdown is
 // suppressed: a provider shutting down would otherwise close the exporter out from
 // under its siblings, and whichever of them still had records queued would fail to
-// flush them. otlpSink.Shutdown closes the real exporter once, after every provider
+// flush them. otlpSink.Shutdown closes every real exporter once, after every provider
 // has drained.
+//
+// What a provider holds through this wrapper is only the FALLBACK exporter. A flush
+// dispatched by Emit's worker pool carries its own leased exporter on the context and
+// uses that instead (see syncBatchProcessor.export), which is what keeps concurrent
+// Export calls off a single instance.
 type sharedExporter struct{ sdklog.Exporter }
 
 func (sharedExporter) Shutdown(context.Context) error { return nil }
@@ -176,7 +189,15 @@ func (p *syncBatchProcessor) export(ctx context.Context) error {
 	if len(batch) == 0 {
 		return nil
 	}
-	return p.exporter.Export(ctx, batch)
+	// Prefer the exporter leased to this flush. Emit's worker pool leases a distinct one
+	// per concurrent worker precisely so no two concurrent Export calls land on the same
+	// exporter instance, which the SDK forbids. p.exporter is the fallback for flushes
+	// that did not come from the pool, where nothing is concurrent.
+	exporter := p.exporter
+	if leased := leasedExporterFrom(ctx); leased != nil {
+		exporter = leased
+	}
+	return exporter.Export(ctx, batch)
 }
 
 func (p *syncBatchProcessor) ForceFlush(ctx context.Context) error { return p.export(ctx) }
@@ -204,13 +225,14 @@ func newOTLPSink(cfg *options.OTLPConfig, version, instance string, concurrency 
 		concurrency = 1
 	}
 
-	exporter, err := newLogExporter(context.Background(), cfg, concurrency)
+	exporters, err := newLogExporters(context.Background(), cfg, concurrency)
 	if err != nil {
 		return nil, fmt.Errorf("build otlp log exporter: %w", err)
 	}
 
 	return &otlpSink{
-		exporter:    exporter,
+		exporters:   exporters,
+		exporter:    exporters[0],
 		log:         log,
 		concurrency: concurrency,
 		base:        baseLogAttributes(cfg.ServiceName, version, instance),
@@ -313,8 +335,16 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 	if poolSize > len(order) {
 		poolSize = len(order)
 	}
+	// Tokens carry an exporter INDEX rather than being empty structs. Holding a token is
+	// what grants exclusive use of exporters[idx] for the length of one flush, so at most
+	// poolSize flushes run and no two of them share an exporter — which is the whole
+	// reason there is more than one. Pre-filled, so a worker takes an index and puts it
+	// back rather than deriving one from loop position.
 	results := make([]SinkResult, len(order))
-	tokens := make(chan struct{}, poolSize)
+	tokens := make(chan int, poolSize)
+	for i := range poolSize {
+		tokens <- i
+	}
 	var wg sync.WaitGroup
 
 	for i, key := range order {
@@ -387,14 +417,15 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 		// above, so handing the flush to a worker cannot interleave with another
 		// partition's Emit calls.
 		wg.Add(1)
-		tokens <- struct{}{}
-		go func(slot int, p *logPartition) {
+		expIdx := <-tokens
+		go func(slot, expIdx int, p *logPartition) {
 			defer wg.Done()
-			defer func() { <-tokens }()
+			defer func() { tokens <- expIdx }()
 			obs := &deliveryObservation{}
-			err := p.rl.provider.ForceFlush(withDeliveryObservation(ctx, obs))
+			fctx := withLeasedExporter(withDeliveryObservation(ctx, obs), s.exporterAt(expIdx))
+			err := p.rl.provider.ForceFlush(fctx)
 			classifyPartition(p.entries, obs, err, &results[slot])
-		}(i, p)
+		}(i, expIdx, p)
 	}
 	wg.Wait()
 
@@ -407,6 +438,17 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 		res.Err = errors.Join(res.Err, results[i].Err)
 	}
 	return res
+}
+
+// exporterAt returns the exporter for a worker slot, or nil when the sink was built
+// without a pool (constructed directly in a test), in which case the processor falls back
+// to its own. Tolerating a short pool here rather than indexing blindly keeps a
+// directly-constructed sink working instead of panicking on the first Emit.
+func (s *otlpSink) exporterAt(i int) sdklog.Exporter {
+	if i < 0 || i >= len(s.exporters) {
+		return nil
+	}
+	return s.exporters[i]
 }
 
 // logPartition is one resource stream's share of a batch: the entries destined for a
@@ -615,8 +657,17 @@ func (s *otlpSink) Shutdown(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	if err := s.exporter.Shutdown(ctx); err != nil {
-		errs = append(errs, err)
+	// Close every exporter in the pool, not just exporters[0]. Each owns its own
+	// transport state, and on gRPC its own client connection, so missing one leaks a
+	// connection for the life of the process.
+	shut := s.exporters
+	if len(shut) == 0 && s.exporter != nil {
+		shut = []sdklog.Exporter{s.exporter}
+	}
+	for _, e := range shut {
+		if err := e.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -799,6 +850,24 @@ func withDeliveryObservation(ctx context.Context, o *deliveryObservation) contex
 	return context.WithValue(ctx, deliveryObservationCtxKey{}, o)
 }
 
+// leasedExporterCtxKey carries the exporter one worker has exclusive use of for the
+// duration of its flush. The processor is shared per resource, but the EXPORTER must not
+// be shared between concurrent flushes, so the choice cannot live on the processor — it
+// has to travel with the call. ForceFlush passes its context straight through to
+// Processor.ForceFlush and on to export, which is what makes this work.
+type leasedExporterCtxKey struct{}
+
+func withLeasedExporter(ctx context.Context, e sdklog.Exporter) context.Context {
+	return context.WithValue(ctx, leasedExporterCtxKey{}, e)
+}
+
+// leasedExporterFrom returns the exporter leased to this flush, or nil when the flush did
+// not come from Emit's worker pool (Shutdown, or a test driving a provider directly).
+func leasedExporterFrom(ctx context.Context) sdklog.Exporter {
+	e, _ := ctx.Value(leasedExporterCtxKey{}).(sdklog.Exporter)
+	return e
+}
+
 // deliveryObservationFrom returns the observation attached to ctx, or nil when the
 // caller is not a log export (the same transport could, in principle, carry other
 // traffic) — in which case the hooks record nothing at all.
@@ -954,29 +1023,81 @@ func observingUnaryInterceptor(
 //
 // Both branches install the delivery-observation hook described above; without it every
 // failure would read as generic-and-retryable, which is the pre-#392 behaviour.
-// concurrency sizes the HTTP idle-connection pool. The gRPC branch ignores it, and NOT
-// because HTTP/2 multiplexing makes it free: otlploggrpc.Exporter.Export takes a
-// clientMu around the whole upload (vendor/…/otlploggrpc/exporter.go:29-30, :71-73), so
-// every concurrent ForceFlush queues behind that one mutex and --logs.ship-concurrency
-// buys NOTHING on gRPC. The throughput win in #505 is http/protobuf-only. Getting it on
-// gRPC would mean one exporter per worker rather than the shared one, which is a real
-// change, not a config tweak. otlploghttp.Exporter.Export holds no such lock — it is an
-// atomic client load, the request is cloned per call and the gzip writer comes from a
-// sync.Pool — so concurrent Export is safe there today by inspection. That is a fact
-// about the pinned version, not a promise from the interface: sdk/log/exporter.go:34
-// says Export "should never be called concurrently with other Export calls". If a future
-// otlploghttp grows the mutex gRPC already has, this collapses back to sequential
-// silently — no error, no failing test, just the ~125 rec/s ceiling again. Check it on
-// any otlplog dependency bump.
-func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, concurrency int) (sdklog.Exporter, error) {
+// gzipByDefault reports whether to request gzip on the logs signal. The policy, the
+// spec citation and the reason an unconditional WithCompression would be WRONG all live
+// on options.OTLPGzipDefault, which the self-telemetry metrics exporter shares.
+func gzipByDefault() bool { return options.OTLPGzipDefault(options.OTLPSignalLogs) }
+
+// newLogExporters builds ONE EXPORTER PER CONCURRENT WORKER, not one shared between them.
+//
+// The interface is explicit that an exporter is not re-entrant — sdk/log/exporter.go:34,
+// "Export should never be called concurrently with other Export calls" — and the logs
+// SDK spec says the same (logs/sdk.md L621-622). Since #505 up to --logs.ship-concurrency
+// partitions flush at once, so a single shared exporter would breach that contract. Two
+// concrete things follow, and only the second is about spec purity:
+//
+//   - otlploggrpc.Exporter.Export takes a clientMu around the whole upload
+//     (vendor/…/otlploggrpc/exporter.go:29-30, :71-73). With one shared exporter every
+//     concurrent flush queues behind that mutex and --logs.ship-concurrency buys
+//     NOTHING on gRPC — the flag silently means something different per transport. One
+//     exporter per worker is what makes the flag mean the same thing on both.
+//   - otlploghttp.Exporter.Export holds no such lock, so sharing it happened to work.
+//     But that is a fact about the pinned version, not a promise: if a future
+//     otlploghttp grows the mutex gRPC already has, a shared exporter would collapse
+//     back to sequential SILENTLY — no error, no failing test, just the ~125 rec/s
+//     ceiling that cost 451k records. Owning N exporters removes that tripwire entirely
+//     rather than documenting it.
+//
+// The HTTP branch shares ONE *http.Client across all N. The contract being honoured is
+// per-Exporter, not per-connection-pool, and N private pools of N connections each would
+// be N^2 connections to one host for no benefit. http.Client is explicitly safe for
+// concurrent use, and the idle pool is sized to the concurrency (see
+// newObservingHTTPClient).
+func newLogExporters(ctx context.Context, cfg *options.OTLPConfig, concurrency int) ([]sdklog.Exporter, error) {
+	if concurrency < 1 {
+		concurrency = 1
+	}
 	tlsCfg, err := buildLogTLSConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
+	// Built once and shared by every HTTP exporter; nil on the gRPC path.
+	var sharedClient *http.Client
+	if cfg.Protocol != "grpc" {
+		sharedClient, err = newObservingHTTPClient(cfg, tlsCfg, concurrency)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	exps := make([]sdklog.Exporter, 0, concurrency)
+	for range concurrency {
+		exp, err := newLogExporter(ctx, cfg, tlsCfg, sharedClient)
+		if err != nil {
+			// Close the ones already built rather than leaking their connections.
+			for _, e := range exps {
+				_ = e.Shutdown(ctx)
+			}
+			return nil, err
+		}
+		exps = append(exps, exp)
+	}
+	return exps, nil
+}
+
+// newLogExporter builds a single exporter. sharedClient is the HTTP client every HTTP
+// exporter shares; it is ignored on the gRPC path.
+//
+// Both branches install the delivery-observation hook described above; without it every
+// failure would read as generic-and-retryable, which is the pre-#392 behaviour.
+func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, tlsCfg *tls.Config, sharedClient *http.Client) (sdklog.Exporter, error) {
 	switch cfg.Protocol {
 	case "grpc":
 		opts := []otlploggrpc.Option{
 			otlploggrpc.WithDialOption(grpc.WithChainUnaryInterceptor(observingUnaryInterceptor)),
+		}
+		if gzipByDefault() {
+			opts = append(opts, otlploggrpc.WithCompressor("gzip"))
 		}
 		if cfg.Endpoint != "" {
 			opts = append(opts, otlploggrpc.WithEndpointURL(cfg.Endpoint))
@@ -997,11 +1118,17 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, concurrency in
 		// supplying a client means owning all of that here. buildLogTLSConfig and
 		// logExportTimeout resolve the same env vars the SDK would have, so the only
 		// behaviour that changes is that we can now see the response.
-		client, err := newObservingHTTPClient(cfg, tlsCfg, concurrency)
-		if err != nil {
-			return nil, err
+		client := sharedClient
+		if client == nil {
+			var err error
+			if client, err = newObservingHTTPClient(cfg, tlsCfg, 1); err != nil {
+				return nil, err
+			}
 		}
 		opts := []otlploghttp.Option{otlploghttp.WithHTTPClient(client)}
+		if gzipByDefault() {
+			opts = append(opts, otlploghttp.WithCompression(otlploghttp.GzipCompression))
+		}
 		if cfg.Endpoint != "" {
 			ep, err := logsEndpointURL(cfg.Endpoint)
 			if err != nil {
