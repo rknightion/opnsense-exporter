@@ -39,6 +39,20 @@ RUNBOOKS_MD_PATH = os.path.join(GRAFANA_DIR, "runbooks.md")
 sys.path.insert(0, os.path.dirname(HERE))
 from uids import RUNBOOK_URL, runbook_url  # noqa: E402
 
+# ---- panel links (#530) ---------------------------------------------------
+# An alert notification says WHAT crossed a threshold. `panel=` says WHERE to look,
+# so Grafana's "View panel" lands the responder on the canonical graph instead of a
+# dashboard they then have to search.
+#
+# The two generated dashboards are read, never hand-listed: the operational rules
+# link into the main dashboard and the exporter-health rules into the health one,
+# which is the same split as the two alert folders.
+DASHBOARD_DOCS = (
+    os.path.join(GRAFANA_DIR, "dashboard.json"),
+    os.path.join(GRAFANA_DIR, "dashboard-health.json"),
+)
+_panel_index_cache = None
+
 # #430: every alert's summary should identify WHICH box fired when the query can carry
 # opnsense_instance at all - a bare "gateway X is down" is ambiguous the moment more
 # than one firewall is scraped. This is the documented exception list (style matches
@@ -1512,6 +1526,197 @@ def is_self_health_expr(expr: str) -> bool:
     return bool(SELF_METRIC_RE.search(expr)) and not FIREWALL_METRIC_RE.search(expr)
 
 
+# ---- panel links (#530) ---------------------------------------------------
+def _walk_layout(node, tabs: tuple, out: dict):
+    """Collect element name -> tuple of enclosing tab titles.
+
+    The tab is needed because a handful of titles legitimately appear twice: once as
+    an Overview summary tile and once as the canonical panel on its domain tab.
+    Walking the layout is what lets an alert name which of the two it means without
+    renaming either panel.
+    """
+    if isinstance(node, dict):
+        kind = node.get("kind")
+        if kind == "TabsLayoutTab":
+            tabs = tabs + (node.get("spec", {}).get("title"),)
+        elif kind == "ElementReference":
+            out.setdefault(node["name"], tabs)
+            return
+        for value in node.values():
+            _walk_layout(value, tabs, out)
+    elif isinstance(node, list):
+        for value in node:
+            _walk_layout(value, tabs, out)
+
+
+def _panel_index():
+    """[(dashboard uid, {title: [(panel id, tab titles), ...]}), ...] over the
+    GENERATED dashboards.
+
+    Resolution is by TITLE, never by a hard-coded id: ids come from a counter in the
+    dashboard builder and renumber whenever a panel is inserted, so a literal id here
+    would rot silently into a link to whatever panel inherited the number.
+    """
+    global _panel_index_cache
+    if _panel_index_cache is not None:
+        return _panel_index_cache
+    indexed = []
+    for path in DASHBOARD_DOCS:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError) as err:
+            # `make rules` alone can be run against a dashboard that has not been
+            # rebuilt yet. Say which target fixes it rather than emitting a rule with
+            # a link into a stale panel id.
+            raise ValueError(
+                f"cannot read the generated dashboard {path}: {err}. "
+                "Run `make dashboard` before `make rules`.") from err
+        where: dict = {}
+        _walk_layout(doc["spec"].get("layout", {}), (), where)
+        titles: dict = {}
+        for key, element in doc["spec"]["elements"].items():
+            if element.get("kind") != "Panel":
+                continue
+            spec = element["spec"]
+            titles.setdefault(spec["title"], []).append((spec["id"], where.get(key, ())))
+        if not titles:
+            raise ValueError(f"{path} contains no panels")
+        indexed.append((doc["metadata"]["name"], titles))
+    _panel_index_cache = indexed
+    return indexed
+
+
+def panel_ref(title: str, selfhealth: bool, tab: "str | None" = None):
+    """(dashboardUid, panelId) for exactly one panel titled `title`.
+
+    A title present on BOTH dashboards resolves to the one matching the rule's own
+    folder — an exporter-health rule means the health dashboard's copy, and an
+    operational rule whose only panel lives on the health dashboard still resolves,
+    because the other dashboard is tried second.
+
+    Ambiguity within a dashboard is an ERROR, not a pick-first: silently linking the
+    first match sends an on-call engineer to the wrong tab. Pass `panel_tab` to say
+    which copy is canonical — that is a statement of intent, and cheaper than renaming
+    a panel an operator already recognises.
+    """
+    indexed = _panel_index()
+    # Index order is (main, health); the rule's own dashboard is tried first.
+    ordered = list(reversed(indexed)) if selfhealth else list(indexed)
+    for uid, titles in ordered:
+        found = titles.get(title)
+        if not found:
+            continue
+        if tab is not None:
+            found = [(pid, tabs) for pid, tabs in found if tab in tabs]
+            if not found:
+                raise ValueError(
+                    f"no panel titled {title!r} on tab {tab!r} of {uid}. Check the tab "
+                    "title, or drop panel_tab if the panel title is already unique.")
+        if len(found) > 1:
+            detail = "; ".join(f"id {pid} on {' / '.join(t for t in tabs if t)}"
+                               for pid, tabs in found)
+            raise ValueError(
+                f"panel title {title!r} is used by {len(found)} panels on {uid} ({detail}). "
+                "Add panel_tab= to name the canonical one.")
+        return uid, found[0][0]
+    known = ", ".join(uid for uid, _ in indexed)
+    raise ValueError(
+        f"no panel titled {title!r} on either generated dashboard ({known}). Panel titles "
+        "are the link key, so a retitled panel must be updated here too.")
+
+
+# Alert title -> the canonical panel to open from the notification. Either a panel
+# title, or (panel title, tab) for the handful of titles that appear twice — once as an
+# Overview summary tile and once on the domain tab.
+#
+# A table rather than a per-rule kwarg because completeness is the property worth
+# gating: `test_every_alert_declares_a_panel_or_is_exempt` requires every alert to
+# appear HERE or in PANEL_LINK_EXEMPT with a reason, so a new alert cannot quietly ship
+# without someone deciding where it points.
+PANEL_LINKS = {
+    # --- exporter health -------------------------------------------------------
+    "OPNsenseExporterDown": "Firewall Reachable",
+    "OPNsenseExporterInstanceMissing": "Scrape Success (opnsense_up)",
+    "OPNsenseEndpointErrors": "Endpoint Errors (rate)",
+    "OPNsenseCollectorDataStale": "Collector Retained Data Age (true data age)",
+    "OPNsenseCollectorDegraded": "Collector Time Since Last Full Success",
+    "OPNsenseCollectorNeverStoredData": "Collector Last Attempt Age (scheduler liveness)",
+    "OPNsenseLogShipSinkErrors": "Sink Errors (rate)",
+    "OPNsenseLogShipQueueNearCapacity": "Queue Depth",
+    "OPNsenseLogShipCountedLoss": "Records Dropped (rate)",
+    "OPNsenseLogShipResourceCapped": "Resource Label Cap Hit (rate)",
+    "OPNsenseLogShipCursorStalled": "Delivery Lag",
+    "OPNsenseOTLPDeliveryFailing": ("OTLP Consecutive Failures", "Delivery"),
+    # --- firewall health -------------------------------------------------------
+    "OPNsenseFirewallUnhealthy": "Health History",
+    "OPNsenseCrashReports": "Crash reports",
+    "OPNsenseDiskSpaceLow": "Subsystem Status",
+    # --- gateways --------------------------------------------------------------
+    "OPNsenseGatewayDown": ("Gateway Status", "Gateways & WAN"),
+    "OPNsenseGatewayDownFailover": ("Gateway Status", "Gateways & WAN"),
+    "OPNsenseGatewayAlarmFlapping": "Gateway Alarm Events",
+    "OPNsenseGatewayHighLoss": "Packet Loss %",
+    "OPNsenseGatewayHighRTT": ("Gateway RTT", "Gateways & WAN"),
+    # --- system resources ------------------------------------------------------
+    "OPNsensePFStateTableNearLimit": "PF States Used %",
+    "OPNsenseMemoryHigh": "Memory Used %",
+    "OPNsenseDiskUsageHigh": "Disk Usage % by Mountpoint",
+    "OPNsenseHighTemperature": "Temperature",
+    "OPNsenseSmartHealthFailed": "Drive Health",
+    # --- firmware and certificates --------------------------------------------
+    "OPNsenseFirmwareNeedsReboot": "Needs Reboot",
+    "OPNsenseUpdateCheckFailing": "Update Check",
+    "OPNsenseCertificateExpiringSoon": "Certificate Expiry (days left)",
+    "OPNsenseCertificateExpiringCritical": "Certificate Expiry (days left)",
+    # --- services --------------------------------------------------------------
+    "OPNsenseServiceDown": "Service Status (current)",
+    "OPNsenseNTPPeerUnreachable": "Peer Reachability Register",
+    "OPNsenseUnboundDNSSECBogus": "DNSSEC Answers / s",
+    # --- VPN and HA ------------------------------------------------------------
+    "OPNsenseIPsecTunnelDown": "IPsec Phase 1 Status",
+    "OPNsenseWireGuardPeerDown": "WireGuard Peer Status",
+    "OPNsenseHASyncUnreachable": "Remote Reachable",
+    "OPNsenseCARPVIPFault": "CARP VIP Status",
+    "OPNsenseCARPStateFlapping": "CARP Transition Events",
+    "OPNsenseCARPUnexpectedDemotion": "CARP Transition Events",
+    # --- IDS -------------------------------------------------------------------
+    "OPNsenseIDSAlertSpike": "Recent Alerts by Action",
+    # --- flow pipeline ---------------------------------------------------------
+    # These are operational rules whose panels live on the HEALTH dashboard: the flow
+    # correlator and the GeoIP databases are exporter-side machinery, so that is where
+    # they are graphed. The resolver falls through to the other dashboard for exactly
+    # this case.
+    "OPNsenseFlowCorrelatorEvicting": "Flow Correlator",
+    "OPNsenseFlowLogsTruncated": "Flow Log Emission",
+    "OPNsenseFlowGeoIPDatabaseStale": "GeoIP Database Age & Updates",
+    "OPNsenseNetFlowHookDead": "Dead Capture Hooks (configured, own node frozen)",
+}
+
+# Alerts that deliberately carry NO panel link, with the reason. Empty today — every
+# alert has a panel worth opening. Kept because the next alert whose only useful
+# destination is a log stream or a runbook needs somewhere to say so with a reason,
+# rather than being silently absent from PANEL_LINKS.
+PANEL_LINK_EXEMPT: dict = {}
+
+
+def panel_annotations(rule, selfhealth: bool) -> dict:
+    """The paired panel-link annotations for one rule, or {} when it has no panel.
+
+    This API has no top-level dashboardUid/panelId — those are the `apiVersion: 1`
+    provisioning form and `additionalProperties: false` rejects them outright. The
+    paired __dashboardUid__/__panelId__ annotations are the mechanism, and
+    __panelId__ must be a STRING: annotation values are typed as strings, so an int
+    is dropped silently and the rule looks linked while not being.
+    """
+    link = PANEL_LINKS.get(rule["title"])
+    if not link:
+        return {}
+    title, tab = link if isinstance(link, tuple) else (link, None)
+    uid, panel_id = panel_ref(title, selfhealth, tab)
+    return {"__dashboardUid__": uid, "__panelId__": str(panel_id)}
+
+
 def rule_folder(rule, folder: str, health_folder: str) -> str:
     """Which Grafana folder one alert or recording rule belongs in.
 
@@ -1563,7 +1768,8 @@ def emit_grafana_managed(ds: str, ops_folder: str, stack: bool, health_folder: s
                 "execErrState": "Error", "for": grafana_for(r["for_min"]),
                 "trigger": {"interval": "1m"}, "labels": labels,
                 "annotations": {"summary": r["summary"], "description": r["description"],
-                                "runbook_url": runbook_url(r["title"])},
+                                "runbook_url": runbook_url(r["title"]),
+                                **panel_annotations(r, folder == health_folder)},
                 "expressions": {
                     "A": {"datasourceUID": ds,
                           "relativeTimeRange": {"from": "15m0s", "to": "0s"},

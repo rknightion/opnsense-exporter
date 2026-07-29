@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense sensor {{ $labels.device }} hot ({{ $labels.opnsense_instance }})",
       "description": "Temperature sensor {{ $labels.device }} above 85\u00b0C for 10m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensehightemperature"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensehightemperature",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "61"
     },
     "expressions": {
       "A": {

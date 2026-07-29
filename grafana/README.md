@@ -343,6 +343,24 @@ duplicate, or stale entry, so this README deliberately does not carry a second, 
 copy of that table. Thresholds are conservative defaults - tune them in `build_rules.py` for your
 environment. Every alert's own `runbook_url` annotation links straight to its section.
 
+**Every alert also links to the panel that explains it.** A notification says what crossed a
+threshold; the paired `__dashboardUid__` / `__panelId__` annotations say where to look, so
+Grafana's "View panel" opens the canonical graph rather than a dashboard you then have to search.
+Operational alerts point into `dashboard.json` and exporter-health alerts into
+`dashboard-health.json` - the same split as the two Grafana folders - except for the flow-pipeline
+rules, whose panels legitimately live on the health dashboard because the correlator and the GeoIP
+databases are exporter-side machinery.
+
+The mapping is the `PANEL_LINKS` table in `build_rules.py`, keyed by alert title and resolved
+against the **generated** dashboards by panel **title**, never by a literal id: ids come from a
+counter in the dashboard builder and renumber whenever a panel is inserted. A retitled panel
+therefore fails the build instead of deep-linking into whatever panel inherited the number. A title
+used twice - an Overview summary tile plus the domain-tab panel - must name its tab
+(`("Gateway Status", "Gateways & WAN")`); an unqualified duplicate is an error, because linking the
+first match sends whoever is on call to the wrong tab. `grafana/tests/test_panel_links.py` gates all
+of it, including that every alert appears in `PANEL_LINKS` or in `PANEL_LINK_EXEMPT` with a reason,
+so a new alert cannot quietly ship unlinked.
+
 **Stale-data alerting is tier-aware, and attempt age is not freshness.** Each collector polls on
 its own tier (fast 15s / medium 60s / slow 5m / cold 15m, overridable with
 `--collector.poll-interval-override`), and a failed poll that produced nothing deliberately

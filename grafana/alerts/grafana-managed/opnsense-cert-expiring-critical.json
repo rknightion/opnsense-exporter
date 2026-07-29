@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense certificate expiring imminently: {{ $labels.commonname }} ({{ $labels.opnsense_instance }})",
       "description": "Certificate {{ $labels.commonname }} ({{ $labels.description }}) expires within 3 days.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecertificateexpiringcritical"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecertificateexpiringcritical",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "366"
     },
     "expressions": {
       "A": {

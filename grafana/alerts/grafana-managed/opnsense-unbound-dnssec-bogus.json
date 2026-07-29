@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense Unbound DNSSEC bogus answers ({{ $labels.opnsense_instance }})",
       "description": "More than 5 DNSSEC-bogus answers in 15m \u2014 possible misconfiguration or tampering.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseunbounddnssecbogus"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseunbounddnssecbogus",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "183"
     },
     "expressions": {
       "A": {

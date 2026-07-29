@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense GeoIP {{ $labels.database }} database is stale ({{ $labels.opnsense_instance }})",
       "description": "The loaded MaxMind {{ $labels.database }} database was built more than 14 days ago. GeoLite2 rebuilds twice a week, so the updater has stopped: with --geoip.download.enabled that is a failed fetch (expired license key, blocked egress, exhausted download quota), and without it a geoipupdate cron, sidecar or mounted volume that is no longer refreshing the file. Enrichment is fail-open, so nothing has broken and no attribute has disappeared - the countries and ASNs on flow records are simply drifting out of date, which is exactly why this needs an alert rather than being noticed.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseflowgeoipdatabasestale"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenseflowgeoipdatabasestale",
+      "__dashboardUid__": "opnsense-exporter-health",
+      "__panelId__": "33"
     },
     "expressions": {
       "A": {

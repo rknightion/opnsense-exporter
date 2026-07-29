@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense log-shipping queue under sustained pressure ({{ $labels.opnsense_instance }})",
       "description": "The log-shipping backpressure queue has averaged over 75% of either its record-count capacity or its enabled byte budget for 5m \u2014 overflow drops are imminent.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipqueuenearcapacity"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipqueuenearcapacity",
+      "__dashboardUid__": "opnsense-exporter-health",
+      "__panelId__": "3"
     },
     "expressions": {
       "A": {

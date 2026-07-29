@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense firewall health check failing ({{ $labels.opnsense_instance }})",
       "description": "opnsense_firewall_status has reported 0 (errors) for 10m.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensefirewallunhealthy"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensefirewallunhealthy",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "17"
     },
     "expressions": {
       "A": {

@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense log-shipping sink retrying ({{ $labels.opnsense_instance }})",
       "description": "The log-shipping sink (OTLP/Loki) has had failed Emit attempts for 10m. The unacknowledged remainder is in retry/degradation, not proof of counted record loss. Check OPNsenseLogShipCountedLoss separately.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipsinkerrors"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipsinkerrors",
+      "__dashboardUid__": "opnsense-exporter-health",
+      "__panelId__": "5"
     },
     "expressions": {
       "A": {

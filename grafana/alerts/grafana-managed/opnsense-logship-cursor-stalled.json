@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense log-shipping source {{ $labels.source }} stalled ({{ $labels.opnsense_instance }})",
       "description": "Push source {{ $labels.source }} has shipped no events for 15m despite being continuously active. Scoped to syslog|zenarmor only, so a quiet or unconfigured source cannot false-fire.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipcursorstalled"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipcursorstalled",
+      "__dashboardUid__": "opnsense-exporter-health",
+      "__panelId__": "8"
     },
     "expressions": {
       "A": {

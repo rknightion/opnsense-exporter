@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense needs a reboot ({{ $labels.opnsense_instance }})",
       "description": "A firmware update flagged that OPNsense needs a reboot.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensefirmwareneedsreboot"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensefirmwareneedsreboot",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "41"
     },
     "expressions": {
       "A": {

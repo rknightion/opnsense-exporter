@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense log-shipping counted record loss ({{ $labels.reason }}) on {{ $labels.source }} ({{ $labels.opnsense_instance }})",
       "description": "Log records were counted as lost in the last 15m, grouped by the exact source and reason. overflow means either queue bound evicted the oldest record; record_too_large was rejected at ingest; rejected was terminally refused by the destination; ship_failed_permanent exhausted the configured retry bound; and ship_failed was abandoned during shutdown. Retry attempts alone increment logs_ship_errors_total, not this alert.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipcountedloss"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipcountedloss",
+      "__dashboardUid__": "opnsense-exporter-health",
+      "__panelId__": "2"
     },
     "expressions": {
       "A": {

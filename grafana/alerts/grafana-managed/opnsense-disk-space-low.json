@@ -24,7 +24,9 @@
     "annotations": {
       "summary": "OPNsense root filesystem disk space low ({{ $labels.opnsense_instance }})",
       "description": "opnsense_system_subsystem_status_code{subsystem=\"diskspace\"} has reported below OK (2 = OK, 1 = NOTICE, 0 = WARNING nearly full, -1 = ERROR critically full) for 10m. Absent means healthy \u2014 OPNsense omits an OK subsystem from the health-check payload.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensediskspacelow"
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensediskspacelow",
+      "__dashboardUid__": "opnsense-exporter",
+      "__panelId__": "29"
     },
     "expressions": {
       "A": {
