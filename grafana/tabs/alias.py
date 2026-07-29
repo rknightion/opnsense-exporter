@@ -59,7 +59,7 @@ def build(b: Builder):
     eval_rate = b.ts("Evaluation Rate (match vs nomatch)",
                      [(f'topk {grp()} (20, rate({sel("opnsense_alias_table_evaluations_total")}[{RATE}]))',
                        "{{table}} {{result}}")],
-                     unit="short", w=12, h=8,
+                     unit="ops", w=12, h=8,
                      desc=(
                           "Packet evaluations per second against each alias table, split by "
                           "whether the packet matched. A table with evaluations and no matches "

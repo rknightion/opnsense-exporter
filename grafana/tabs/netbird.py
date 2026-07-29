@@ -11,7 +11,7 @@ netbirdio/netbird's client/status/status.go — no enrolled netbird network was
 available to observe them live (#211).
 """
 
-from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP
+from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP, CONNDISC
 
 
 def build(b: Builder):
@@ -21,11 +21,11 @@ def build(b: Builder):
     svc = b.stat("Plugin Service", sel("opnsense_netbird_service_running"),
                  unit="short", w=4, h=4, mappings=RUNSTOP)
     mgmt = b.stat("Management Connected", sel("opnsense_netbird_management_connected"),
-                  unit="short", w=4, h=4, mappings=RUNSTOP,
+                  unit="short", w=4, h=4, mappings=CONNDISC,
                   desc="Whether this node's netbird daemon has an active connection "
                        "to the management server.")
     signal = b.stat("Signal Connected", sel("opnsense_netbird_signal_connected"),
-                    unit="short", w=4, h=4, mappings=RUNSTOP,
+                    unit="short", w=4, h=4, mappings=CONNDISC,
                     desc="Whether this node's netbird daemon has an active connection "
                          "to the signal server.")
     relays_total = b.stat("Relays Known", sel("opnsense_netbird_relays_total"),

@@ -430,6 +430,9 @@ def build(b: Builder):
             (sel("opnsense_ipsec_config_dirty"), "uncommitted changes"),
         ],
         {"0": ("No", "green"), "1": ("Yes", "yellow")},
+        # enabled is GOOD at 1: a working IPsec install was painting yellow for its whole
+        # history and going green when IPsec was switched off (#511).
+        series_mappings={"enabled": {"0": ("No", "red"), "1": ("Yes", "green")}},
         w=8, h=8,
         desc=(
             "IPsec enabled flag and the pending-config (dirty) flag. "

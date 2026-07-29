@@ -129,7 +129,12 @@ def build(b: Builder):
         [(sel("opnsense_netflow_capture_expected", desc_iface), "expected: {{interface}}"),
          (sel("opnsense_netflow_capture_last_record_seconds", desc_iface),
           "last record (s): {{interface}}")],
-        unit="short",
+        # The age series is seconds — the two stats the description says to compare it
+        # against both use "s". The expected series is a 0/1 flag that the age axis
+        # flattens onto the baseline, so give it its own axis rather than losing it (#513).
+        unit="s",
+        overrides=[{"matcher": {"id": "byRegexp", "options": "^expected: "},
+             "properties": [{"id": "unit", "value": "short"}, {"id": "custom.axisPlacement", "value": "right"}, {"id": "max", "value": 1}]}],
         w=16, h=8,
         desc="expected=1 means the firewall is configured to capture NetFlow on that interface; "
              "the paired series is how long since this exporter last received a record naming it. "

@@ -427,7 +427,9 @@ class IngestPanelUnitSplitTest(unittest.TestCase):
         builder = self.builder
 
         messages = panel_for_title(builder, "Dropped / Truncated Message Rate (msgs/sec)")
-        self.assertEqual(panel_unit(messages), "short")
+        # #514 gave it a real per-second unit; what #416 asserts is that it is NOT the
+        # byte panel's Bps, which is what flattened the message series.
+        self.assertEqual(panel_unit(messages), "ops")
         message_exprs = panel_exprs(messages)
         self.assertFalse(any("truncated_bytes" in e for e in message_exprs))
         desc = messages["spec"]["description"].lower()
@@ -457,7 +459,9 @@ class IngestPanelUnitSplitTest(unittest.TestCase):
         builder = self.builder
 
         datagrams = panel_for_title(builder, "NetFlow Ingest (datagrams/sec)")
-        self.assertEqual(panel_unit(datagrams), "short")
+        # Datagrams are packet-valued, so #514 units this pps — still not the byte
+        # panel's Bps, which is the split #416 exists to protect.
+        self.assertEqual(panel_unit(datagrams), "pps")
         datagram_exprs = panel_exprs(datagrams)
         self.assertFalse(any("bytes_received" in e for e in datagram_exprs))
         desc = datagrams["spec"]["description"].lower()

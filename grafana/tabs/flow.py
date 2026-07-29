@@ -114,7 +114,7 @@ def build(b: Builder):
         "Flow Records by Verdict (rate)",
         [(f'sum {grp(BY_SOURCE, "action")} (rate({sel("opnsense_flow_records_total")}[{RATE}]))',
           "{{action}} ({{source}})")],
-        unit="short",
+        unit="ops",
         desc="opnsense_flow_records_total by firewall verdict. An empty action means the source "
              "stated no disposition — NetFlow never does — and is NOT the same as 'pass'. Note "
              "this counts RECORDS, not connections: a Zenarmor conn document is one per "
@@ -167,7 +167,7 @@ def build(b: Builder):
           "records lost to the max-keys cap"),
          (f'rate({sel("opnsense_flow_payload_byte_fallback_total")}[{RATE}])',
           "records using the payload-byte fallback")],
-        unit="short",
+        unit="ops",
         desc="Two counters that must never be silent. capped_total rising means new label "
              "combinations are hitting the memory cap, not merely the top-N — raise --flow.max-keys "
              "or narrow what is being rolled up. payload_byte_fallback_total counts records whose "
@@ -189,7 +189,7 @@ def build(b: Builder):
     ingest = b.ts(
         "NetFlow Ingest (datagrams/sec)",
         [(f'sum {grp("result")} (rate({sel("opnsense_flow_netflow_datagrams_total")}[{RATE}]))', "{{result}}")],
-        unit="short",
+        unit="pps",
         desc="Datagrams per second by outcome (datagrams/sec, not bytes). result=\"accepted\" "
              "passed the peer allowlist; \"peer_rejected\" came from outside "
              "--flow.netflow.allowed-peers and is the signal that something else on the network is "
@@ -215,7 +215,7 @@ def build(b: Builder):
          (f'rate({sel("opnsense_flow_netflow_records_emitted_total")}[{RATE}])', "emitted to rollup"),
          (f'sum {grp("reason")} (rate({sel("opnsense_flow_netflow_records_dropped_total")}[{RATE}]))',
           "dropped: {{reason}}")],
-        unit="short",
+        unit="ops",
         desc="decoded = emitted + dropped. reason=\"vlan_duplicate\" is the parent-interface copy of a "
              "VLAN flow being suppressed — ng_netflow captures both the trunk and the child, so this "
              "SHOULD be non-zero on a VLAN'd box (~4% of bytes on the reference capture) and a flat "
@@ -232,7 +232,7 @@ def build(b: Builder):
           "unexpected {{field}}"),
          (f'sum {grp("kind")} (rate({sel("opnsense_flow_netflow_unidentified_total")}[{RATE}]))',
           "unidentified {{kind}}")],
-        unit="short",
+        unit="ops",
         desc="templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the "
              "exporter is re-sending a template id with a DIFFERENT field shape, which invalidates the "
              "decoder's understanding of every record behind it. unexpected_field counts records "
@@ -294,6 +294,10 @@ def build(b: Builder):
           "unmapped records/sec"),
          (f'{sel("opnsense_flow_ifindex_source_disagreements")}', "guard: {{reason}}")],
         unit="short",
+        # map age is the one series here whose absolute magnitude is the alarm, and it was
+        # the only one rendered unitless — a day-old map read "86.4 K" (#513).
+        overrides=[{"matcher": {"id": "byRegexp", "options": "^map age \\(s\\)$"},
+             "properties": [{"id": "unit", "value": "s"}]}],
         desc="Two unmapped series, and they are NOT the same number. \"unmapped lookups\" counts "
              "ifIndex lookups that missed against a map that EXISTS; \"unmapped records\" counts whole "
              "records that ended up with an empty interface label, and it is the only one of the two "
@@ -336,7 +340,7 @@ def build(b: Builder):
         [(f'rate({sel("opnsense_flow_logs_emitted_total")}[{RATE}])', "emitted/sec"),
          (f'rate({sel("opnsense_flow_logs_truncated_total")}[{RATE}])', "truncated/sec"),
          (f'rate({sel("opnsense_flow_logs_dropped_total")}[{RATE}])', "dropped/sec")],
-        unit="short",
+        unit="ops",
         desc="Flow records shipped to the OTLP log pipeline in --flow.log-mode=per_flow. truncated is "
              "the --flow.max-logs-per-window budget dropping records under a flood on the "
              "unauthenticated NetFlow ingress — truncated, never sampled, and metrics are never "
@@ -396,7 +400,7 @@ def build(b: Builder):
           f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p90 {{interface}}"),
          (f'histogram_quantile(0.99, sum {grp("le", "interface")} '
           f'(rate({sel("opnsense_flow_source_byte_delta_ratio_bucket")}[{RATE}])))', "p99 {{interface}}")],
-        unit="short",
+        unit="ops",
         desc="Distribution of NetFlow-over-Zenarmor byte ratios on merged flow records, by interface — "
              "the payoff of correlating the two sources (#346 decision 3). 1.0 is agreement; a p90/p99 "
              "well above 1 means Zenarmor inspected far fewer bytes than crossed the wire on those "

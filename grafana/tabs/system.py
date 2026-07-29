@@ -15,7 +15,7 @@ Covers:
   - Auth subsystem (6 metrics) — local user/group/API-key security posture (aggregate counts only)
 """
 
-from builder import Builder, sel, grp, epoch_ms, RATE, YESNO, UPDOWN, OKERR
+from builder import Builder, sel, grp, epoch_ms, RATE, YESNO, YESNO_GOOD, UPDOWN, OKERR
 
 # opnsense_system_subsystem_status_code value -> (display text, colour). OPNsense's
 # SystemStatusCode enum: 2=OK, 1=NOTICE, 0=WARNING, -1=ERROR. OK is included for
@@ -557,7 +557,7 @@ def build(b: Builder):
     snapshots_supported = b.stat(
         "ZFS Boot Environments Supported",
         sel("opnsense_snapshots_supported"),
-        mappings=YESNO,
+        mappings=YESNO_GOOD,
         color_mode="background",
         thresholds=[{"color": "blue", "value": None}, {"color": "green", "value": 1}],
         w=4,
@@ -744,7 +744,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_smart_nvme_unsafe_shutdowns_total")}[{RATE}])',
              "{{device}} unsafe shutdowns/s"),
         ],
-        unit="short", w=8, h=6,
+        unit="ops", w=8, h=6,
         desc="Rates of opnsense_smart_nvme_media_errors_total and "
              "opnsense_smart_nvme_unsafe_shutdowns_total.",
     )

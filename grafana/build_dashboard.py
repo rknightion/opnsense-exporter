@@ -548,7 +548,8 @@ def build_diagnostics(b: Builder):
     # countdown to the next poll — the same data the operator console shows.
     poll_interval = b.table("Collector Poll Interval",
                             [sel("opnsense_exporter_collector_poll_interval_seconds")],
-                            renames={"Value": "Interval (s)", "collector": "Collector", "opnsense_instance": "Instance"},
+                            renames={"Value": "Interval", "collector": "Collector", "opnsense_instance": "Instance"},
+                            unit_overrides={"Interval": "s"},
                             excludes=["__name__", "job", "instance"], w=8, h=8,
                             desc="Configured poll interval per collector (#336): fast 15s / medium 60s / "
                                  "slow 5m / cold 15m, overridable via --collector.poll-interval-override.")
@@ -749,7 +750,7 @@ def build_diagnostics(b: Builder):
                     [(f'rate({sel("opnsense_exporter_annotations_written_total")}[{RATE}])', "written"),
                      (f'rate({sel("opnsense_exporter_annotations_failed_total")}[{RATE}])', "failed"),
                      (f'rate({sel("opnsense_exporter_annotations_skipped_total")}[{RATE}])', "skipped")],
-                    unit="short", w=12, h=7,
+                    unit="ops", w=12, h=7,
                     desc="Annotations written to Grafana per second, against those that failed or were "
                          "skipped. A failed write is RETRIED on the next detection pass — the event is "
                          "not marked seen — so a brief failure rate that stops without a matching drop "
@@ -1149,11 +1150,16 @@ def main():
 
     # A multi-expr table() renames/units its merged columns by "Value #A".."Value #N"; keying on a
     # metric name (or bare "Value") is a silent no-op that ships unlabeled, unit-less columns (#97).
+    # The single-expr mirror image is #509: there the value column is bare "Value", so a "Value #A"
+    # key matches nothing. The two spellings are correct in exactly opposite cases, which is why
+    # panel-146 shipped a table with no value column at all and every gate stayed green.
     table_key_violations = [v for b in builders for v in b._table_key_violations]
     if table_key_violations:
-        print(f"dead multi-expr table rename/unit keys ({len(table_key_violations)}):", file=sys.stderr)
+        print(f"dead table rename/unit keys ({len(table_key_violations)}):", file=sys.stderr)
         for v in table_key_violations:
-            print(f"  - {v}  (key it on \"Value #A\"..\"Value #N\" in expr order, not the metric name)", file=sys.stderr)
+            print(f"  - {v}", file=sys.stderr)
+        print('  (multi-expr: key on "Value #A".."Value #N" in expr order, never the metric name.'
+              ' single-expr: key on bare "Value".)', file=sys.stderr)
         sys.exit(1)
 
     # A DHCP-backend row bundles a service-health stat with the lease/pool panels, so its

@@ -9205,7 +9205,8 @@
                       "renameByName": {
                         "name": "Package",
                         "installed_version": "Installed",
-                        "new_version": "Available"
+                        "new_version": "Available",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -9317,7 +9318,8 @@
                       },
                       "renameByName": {
                         "name": "Plugin",
-                        "version": "Version"
+                        "version": "Version",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -9698,12 +9700,12 @@
                       "options": {
                         "0": {
                           "text": "No",
-                          "color": "green",
+                          "color": "red",
                           "index": 0
                         },
                         "1": {
                           "text": "Yes",
-                          "color": "orange",
+                          "color": "green",
                           "index": 1
                         }
                       }
@@ -10602,7 +10604,8 @@
                         "Value #A": "Value",
                         "Value #B": "Worst",
                         "Value #C": "Threshold",
-                        "Value #D": "Raw"
+                        "Value #D": "Raw",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -11002,7 +11005,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -13317,7 +13320,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -13412,7 +13415,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -13642,7 +13645,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -13895,8 +13898,9 @@
                         "interface": "Interface",
                         "device": "Device",
                         "type": "Type",
-                        "Value #A": "MTU (bytes)",
-                        "Value #B": "Line Rate (bps)"
+                        "Value #A": "MTU",
+                        "Value #B": "Line Rate (bps)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -14147,7 +14151,8 @@
                         "link_type": "Link Type",
                         "vlan_tag": "VLAN Tag",
                         "vlan_parent": "VLAN Parent",
-                        "physical": "Physical"
+                        "physical": "Physical",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -14260,7 +14265,8 @@
                       "renameByName": {
                         "device": "LAGG Device",
                         "protocol": "Protocol",
-                        "hash": "Hash"
+                        "hash": "Hash",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -14449,7 +14455,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -14605,7 +14611,8 @@
                         "member": "Member Port",
                         "Value #A": "Active",
                         "Value #B": "Collecting (LACP)",
-                        "Value #C": "Distributing (LACP)"
+                        "Value #C": "Distributing (LACP)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -14717,7 +14724,8 @@
                       },
                       "renameByName": {
                         "device": "Bridge Device",
-                        "member": "Member Interface"
+                        "member": "Member Interface",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -14831,7 +14839,8 @@
                         "device": "Device",
                         "vendor": "Vendor",
                         "part_number": "Part Number",
-                        "serial_number": "Serial Number"
+                        "serial_number": "Serial Number",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -14945,8 +14954,7 @@
                     "stacking": {
                       "mode": "none"
                     }
-                  },
-                  "min": 0
+                  }
                 },
                 "overrides": []
               },
@@ -15123,8 +15131,7 @@
                     "stacking": {
                       "mode": "none"
                     }
-                  },
-                  "min": 0
+                  }
                 },
                 "overrides": []
               },
@@ -18951,7 +18958,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "h",
                   "color": {
                     "mode": "thresholds"
                   },
@@ -19052,12 +19059,11 @@
                         "Time": true,
                         "__name__": true,
                         "job": true,
-                        "instance": true,
-                        "Value": true
+                        "instance": true
                       },
                       "renameByName": {
                         "opnsense_instance": "Instance",
-                        "Value #A": "Last Update"
+                        "Value": "Last Update"
                       },
                       "indexByName": {}
                     }
@@ -19881,7 +19887,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -20539,7 +20545,8 @@
                         "name": "Gateway",
                         "address": "Address",
                         "Value #A": "RTT Low (ms)",
-                        "Value #B": "RTT High (ms)"
+                        "Value #B": "RTT High (ms)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -20798,7 +20805,8 @@
                         "name": "Gateway",
                         "address": "Address",
                         "Value #A": "Loss Low (%)",
-                        "Value #B": "Loss High (%)"
+                        "Value #B": "Loss High (%)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -20941,7 +20949,8 @@
                         "enabled": "Enabled",
                         "weight": "Weight",
                         "interface": "Interface",
-                        "upstream": "Upstream"
+                        "upstream": "Upstream",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -21055,7 +21064,8 @@
                         "name": "Name",
                         "enabled": "Enabled",
                         "no_route": "No Route",
-                        "address": "Monitor Address"
+                        "address": "Monitor Address",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -21249,7 +21259,8 @@
                         "Value #A": "Force Down",
                         "Value #B": "Virtual",
                         "Value #C": "Dynamic",
-                        "Value #D": "Priority"
+                        "Value #D": "Priority",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -21416,7 +21427,8 @@
                         "address": "Address",
                         "Value #A": "Interval (s)",
                         "Value #B": "Period (s)",
-                        "Value #C": "Timeout (s)"
+                        "Value #C": "Timeout (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -25213,7 +25225,8 @@
                         "hostname": "Hostname",
                         "hwaddr": "MAC Address",
                         "interface": "Interface",
-                        "Value": "Expires"
+                        "Value": "Expires",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -26945,7 +26958,8 @@
                         "vendor": "Vendor",
                         "valid_lifetime": "Valid Lifetime (s)",
                         "client_id": "Client ID",
-                        "Value": "Expires"
+                        "Value": "Expires",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -27074,7 +27088,8 @@
                         "interface": "Interface",
                         "vendor": "Vendor",
                         "valid_lifetime": "Valid Lifetime (s)",
-                        "Value": "Expires"
+                        "Value": "Expires",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -27627,7 +27642,8 @@
                         "interface": "Interface",
                         "type": "Type",
                         "state": "State",
-                        "status": "Status"
+                        "status": "Status",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -28253,7 +28269,8 @@
                         "if_descr": "Interface",
                         "state": "State",
                         "status": "Status",
-                        "type": "Type"
+                        "type": "Type",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -29068,7 +29085,8 @@
                         "device_name": "Interface",
                         "device": "Device",
                         "device_type": "Type",
-                        "Value": "Last Handshake"
+                        "Value": "Last Handshake",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -29467,7 +29485,8 @@
                         "role": "Role",
                         "description": "Description",
                         "device_type": "Device Type",
-                        "Value": "Enabled"
+                        "Value": "Enabled",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -29582,7 +29601,8 @@
                         "virtual_address": "Virtual Address",
                         "virtual_ipv6_address": "Virtual IPv6 Address",
                         "username": "Username",
-                        "Value": "OK"
+                        "Value": "OK",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -29927,7 +29947,8 @@
                         "virtual_address": "Virtual Address",
                         "virtual_ipv6_address": "Virtual IPv6 Address",
                         "username": "Identity",
-                        "Value": "Connected Since"
+                        "Value": "Connected Since",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -30480,7 +30501,8 @@
                         "description": "Description",
                         "name": "Name",
                         "phase1_name": "Phase 1",
-                        "Value": "Install Age (s)"
+                        "Value": "Install Age (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -30863,7 +30885,8 @@
                         "name": "Name",
                         "phase1_name": "Phase 1",
                         "Value #A": "Rekey Time (s)",
-                        "Value #B": "Life Time (s)"
+                        "Value #B": "Life Time (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -31262,7 +31285,8 @@
                       "renameByName": {
                         "pool": "Pool",
                         "user": "User",
-                        "Value": "Online"
+                        "Value": "Online",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -31851,7 +31875,36 @@
                     ]
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "enabled"
+                    },
+                    "properties": [
+                      {
+                        "id": "mappings",
+                        "value": [
+                          {
+                            "type": "value",
+                            "options": {
+                              "0": {
+                                "text": "No",
+                                "color": "red",
+                                "index": 0
+                              },
+                              "1": {
+                                "text": "Yes",
+                                "color": "green",
+                                "index": 1
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "showValue": "never",
@@ -32398,7 +32451,8 @@
                       },
                       "renameByName": {
                         "version": "Version",
-                        "relay": "DERP Relay"
+                        "relay": "DERP Relay",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -32833,7 +32887,8 @@
                         "instance": true
                       },
                       "renameByName": {
-                        "peer": "Peer"
+                        "peer": "Peer",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -33065,12 +33120,12 @@
                       "type": "value",
                       "options": {
                         "0": {
-                          "text": "Stopped",
+                          "text": "Disconnected",
                           "color": "red",
                           "index": 0
                         },
                         "1": {
-                          "text": "Running",
+                          "text": "Connected",
                           "color": "green",
                           "index": 1
                         }
@@ -33167,12 +33222,12 @@
                       "type": "value",
                       "options": {
                         "0": {
-                          "text": "Stopped",
+                          "text": "Disconnected",
                           "color": "red",
                           "index": 0
                         },
                         "1": {
-                          "text": "Running",
+                          "text": "Connected",
                           "color": "green",
                           "index": 1
                         }
@@ -33604,7 +33659,8 @@
                       },
                       "renameByName": {
                         "cli_version": "CLI Version",
-                        "daemon_version": "Daemon Version"
+                        "daemon_version": "Daemon Version",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -34234,7 +34290,8 @@
                         "instance": true
                       },
                       "renameByName": {
-                        "fqdn": "Peer"
+                        "fqdn": "Peer",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -36631,7 +36688,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "pps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -36976,7 +37033,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -37154,7 +37211,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -37243,7 +37300,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -37332,7 +37389,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -37426,22 +37483,13 @@
                   "color": {
                     "mode": "thresholds"
                   },
-                  "mappings": [
-                    {
-                      "type": "value",
-                      "options": {}
-                    }
-                  ],
+                  "mappings": [],
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
                       {
-                        "color": "red",
+                        "color": "blue",
                         "value": null
-                      },
-                      {
-                        "color": "green",
-                        "value": 1
                       }
                     ]
                   }
@@ -41923,7 +41971,8 @@
                       "renameByName": {
                         "description": "Description",
                         "commonname": "Common Name",
-                        "Value": "Days Left"
+                        "Value": "Days Left",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -42047,7 +42096,8 @@
                       },
                       "renameByName": {
                         "description": "Description",
-                        "commonname": "Common Name"
+                        "commonname": "Common Name",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -42944,12 +42994,12 @@
                     "mode": "absolute",
                     "steps": [
                       {
-                        "color": "blue",
+                        "color": "red",
                         "value": null
                       },
                       {
-                        "color": "red",
-                        "value": 0
+                        "color": "blue",
+                        "value": 1
                       }
                     ]
                   }
@@ -44700,7 +44750,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -44815,7 +44865,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -44993,7 +45043,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -45333,7 +45383,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "min": 0,
                   "custom": {
                     "axisCenteredZero": false,
@@ -45782,7 +45832,8 @@
                         "instance": true
                       },
                       "renameByName": {
-                        "license": "License"
+                        "license": "License",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -46257,7 +46308,8 @@
                         "instance": true
                       },
                       "renameByName": {
-                        "feed": "Feed"
+                        "feed": "Feed",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -47064,7 +47116,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "s",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -47081,7 +47133,28 @@
                   },
                   "min": 0
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": "^expected: "
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "short"
+                      },
+                      {
+                        "id": "custom.axisPlacement",
+                        "value": "right"
+                      },
+                      {
+                        "id": "max",
+                        "value": 1
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "legend": {
@@ -47961,10 +48034,15 @@
                           "color": "orange",
                           "index": 2
                         },
+                        "3": {
+                          "text": "DISABLED",
+                          "color": "text",
+                          "index": 3
+                        },
                         "-1": {
                           "text": "Unknown",
                           "color": "red",
-                          "index": 3
+                          "index": 4
                         }
                       }
                     }
@@ -48685,7 +48763,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "reqps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -49023,7 +49101,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -49342,7 +49420,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -49431,7 +49509,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -49520,7 +49598,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "reqps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -49832,7 +49910,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -50229,7 +50307,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -50433,7 +50511,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -50715,7 +50793,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -51005,7 +51083,8 @@
                         "Value #A": "Status",
                         "Value #B": "Weight",
                         "Value #C": "Sessions",
-                        "Value #D": "Queue"
+                        "Value #D": "Queue",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -51105,7 +51184,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -51387,7 +51466,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -51686,7 +51765,20 @@
                   },
                   "min": 0
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": ".*down transitions/s$"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "short"
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "legend": {
@@ -51912,7 +52004,8 @@
                         "table": "Table",
                         "type": "Type",
                         "Value #A": "Size",
-                        "Value #B": "Used"
+                        "Value #B": "Used",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -52721,7 +52814,8 @@
                         "host": "Host",
                         "address": "Address",
                         "Value #A": "Up",
-                        "Value #B": "Availability %"
+                        "Value #B": "Availability %",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -53025,7 +53119,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "reqps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -53281,7 +53375,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -53717,7 +53811,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "reqps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -53921,7 +54015,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -54020,13 +54114,13 @@
                       "type": "value",
                       "options": {
                         "0": {
-                          "text": "Down",
-                          "color": "red",
+                          "text": "Up",
+                          "color": "green",
                           "index": 0
                         },
                         "1": {
-                          "text": "Up",
-                          "color": "green",
+                          "text": "Down",
+                          "color": "red",
                           "index": 1
                         }
                       }
@@ -54118,7 +54212,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "reqps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -54411,7 +54505,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -54678,7 +54772,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -55086,7 +55180,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -56378,7 +56472,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -56493,7 +56587,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -56671,7 +56765,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -57313,7 +57407,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -57726,7 +57820,8 @@
                       },
                       "renameByName": {
                         "interface": "Interface",
-                        "state": "State"
+                        "state": "State",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -58118,7 +58213,8 @@
                       },
                       "renameByName": {
                         "interface": "Interface",
-                        "state": "State"
+                        "state": "State",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -59058,7 +59154,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -59173,7 +59269,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -60195,12 +60291,12 @@
                       "type": "value",
                       "options": {
                         "0": {
-                          "text": "Down",
-                          "color": "red",
+                          "text": "Unmonitored",
+                          "color": "text",
                           "index": 0
                         },
                         "1": {
-                          "text": "Up",
+                          "text": "Monitored",
                           "color": "green",
                           "index": 1
                         }
@@ -60332,7 +60428,8 @@
                         "name": "Check Name",
                         "type": "Type",
                         "Value #A": "Status OK",
-                        "Value #B": "Monitored"
+                        "Value #B": "Monitored",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -61979,7 +62076,8 @@
                         "name": "Bouncer",
                         "type": "Type",
                         "Value #A": "Valid",
-                        "Value #B": "Last Pull Age (s)"
+                        "Value #B": "Last Pull Age (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -62225,7 +62323,8 @@
                       "renameByName": {
                         "name": "Machine",
                         "Value #A": "Validated",
-                        "Value #B": "Last Heartbeat Age (s)"
+                        "Value #B": "Last Heartbeat Age (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -62515,7 +62614,8 @@
                       "renameByName": {
                         "component": "Component",
                         "status": "Status",
-                        "Value": "Count"
+                        "Value": "Count",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -62626,7 +62726,8 @@
                         "instance": true
                       },
                       "renameByName": {
-                        "version": "Engine Version"
+                        "version": "Engine Version",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -63435,7 +63536,8 @@
                       "renameByName": {
                         "ruleset": "Ruleset",
                         "Value #A": "Enabled",
-                        "Value #B": "Last Updated Age (s)"
+                        "Value #B": "Last Updated Age (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -64485,7 +64587,64 @@
                     ]
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "online"
+                    },
+                    "properties": [
+                      {
+                        "id": "mappings",
+                        "value": [
+                          {
+                            "type": "value",
+                            "options": {
+                              "0": {
+                                "text": "No",
+                                "color": "red",
+                                "index": 0
+                              },
+                              "1": {
+                                "text": "Yes",
+                                "color": "green",
+                                "index": 1
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "charging"
+                    },
+                    "properties": [
+                      {
+                        "id": "mappings",
+                        "value": [
+                          {
+                            "type": "value",
+                            "options": {
+                              "0": {
+                                "text": "No",
+                                "color": "red",
+                                "index": 0
+                              },
+                              "1": {
+                                "text": "Yes",
+                                "color": "green",
+                                "index": 1
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "showValue": "never",
@@ -64569,7 +64728,8 @@
                       },
                       "renameByName": {
                         "model": "Model",
-                        "status": "Status"
+                        "status": "Status",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -65367,7 +65527,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -65544,7 +65704,36 @@
                     ]
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "online"
+                    },
+                    "properties": [
+                      {
+                        "id": "mappings",
+                        "value": [
+                          {
+                            "type": "value",
+                            "options": {
+                              "0": {
+                                "text": "No",
+                                "color": "red",
+                                "index": 0
+                              },
+                              "1": {
+                                "text": "Yes",
+                                "color": "green",
+                                "index": 1
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "showValue": "never",
@@ -65628,7 +65817,8 @@
                       },
                       "renameByName": {
                         "model": "Model",
-                        "status": "Status"
+                        "status": "Status",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -66107,7 +66297,8 @@
                       "renameByName": {
                         "zone_id": "Zone ID",
                         "zone_description": "Zone",
-                        "Value": "Sessions"
+                        "Value": "Sessions",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -67118,7 +67309,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "pps",
+                  "unit": "short",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -67437,7 +67628,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "pps",
+                  "unit": "short",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -68056,7 +68247,8 @@
                       },
                       "renameByName": {
                         "remote_version": "Remote Version",
-                        "local_version": "Local Version"
+                        "local_version": "Local Version",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -68557,10 +68749,6 @@
                       {
                         "color": "red",
                         "value": null
-                      },
-                      {
-                        "color": "green",
-                        "value": 0
                       }
                     ]
                   },
@@ -68762,7 +68950,8 @@
                       "renameByName": {
                         "reference_id": "Reference ID",
                         "reference_name": "Reference Name",
-                        "leap_status": "Leap Status"
+                        "leap_status": "Leap Status",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -68928,8 +69117,7 @@
                     "stacking": {
                       "mode": "none"
                     }
-                  },
-                  "min": 0
+                  }
                 },
                 "overrides": []
               },
@@ -69069,8 +69257,7 @@
                     "stacking": {
                       "mode": "none"
                     }
-                  },
-                  "min": 0
+                  }
                 },
                 "overrides": []
               },
@@ -69441,7 +69628,8 @@
                         "Value #A": "Selected",
                         "Value #B": "Stratum",
                         "Value #C": "Reachability",
-                        "Value #D": "Last RX (s)"
+                        "Value #D": "Last RX (s)",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -69568,8 +69756,7 @@
                     "stacking": {
                       "mode": "none"
                     }
-                  },
-                  "min": 0
+                  }
                 },
                 "overrides": []
               },
@@ -69681,7 +69868,8 @@
                       "renameByName": {
                         "source": "Source",
                         "Value #A": "Offset Std Dev (s)",
-                        "Value #B": "Samples"
+                        "Value #B": "Samples",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -70507,7 +70695,8 @@
                       },
                       "renameByName": {
                         "service": "Service",
-                        "Value": "Hostname Available"
+                        "Value": "Hostname Available",
+                        "opnsense_instance": "Instance"
                       },
                       "indexByName": {}
                     }
@@ -70686,7 +70875,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -70775,7 +70964,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -70864,7 +71053,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -70953,7 +71142,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71042,7 +71231,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71131,7 +71320,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71220,7 +71409,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71309,7 +71498,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71398,7 +71587,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71487,7 +71676,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71576,7 +71765,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71665,7 +71854,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71843,7 +72032,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -71932,7 +72121,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -72465,7 +72654,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -72940,7 +73129,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -73029,7 +73218,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "pps",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -73259,7 +73448,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -73400,7 +73589,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -73881,7 +74070,20 @@
                   },
                   "min": 0
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byRegexp",
+                      "options": "^map age \\(s\\)$"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "legend": {
@@ -74198,7 +74400,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -74700,7 +74902,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -74789,7 +74991,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -74878,7 +75080,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -75145,7 +75347,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -75518,7 +75720,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -75680,7 +75882,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "min": 0,
                   "custom": {
                     "axisCenteredZero": false,
@@ -75770,7 +75972,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "min": 0,
                   "custom": {
                     "axisCenteredZero": false,
@@ -76038,7 +76240,20 @@
                     "filterable": true
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Total"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "bytes"
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "showHeader": true,
@@ -76497,7 +76712,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "min": 0,
                   "custom": {
                     "axisCenteredZero": false,
@@ -77096,7 +77311,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "min": 0,
                   "custom": {
                     "axisCenteredZero": false,

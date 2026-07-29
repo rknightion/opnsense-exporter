@@ -64,7 +64,9 @@ def build(b: Builder):
         "Leap Status",
         sel("opnsense_chrony_leap_status"),
         mappings=_LEAP, color_mode="background",
-        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 0}],
+        # The mapping owns the colour for 0-3; the fallback must not be green, or an
+        # unmapped leap value would render as healthy (#514).
+        thresholds=[{"color": "red", "value": None}],
         w=4, h=4,
         desc=(
             "chronyc Leap Status: 0=Normal, 1=Insert second, "
@@ -99,7 +101,10 @@ def build(b: Builder):
         [(sel("opnsense_chrony_system_time_offset_seconds"), "offset (fast=+, slow=−)"),
          (sel("opnsense_chrony_last_offset_seconds"), "last offset"),
          (sel("opnsense_chrony_rms_offset_seconds"), "RMS offset")],
-        unit="s", w=12, h=8,
+        # Signed: fast = positive, slow = negative. The builder's min0 default pinned the
+        # axis floor at 0 and drew every slow clock below the visible area, so half of all
+        # drift incidents looked identical to a perfectly synced clock (#512).
+        unit="s", min0=False, w=12, h=8,
         desc=(
             "System clock offset from NTP time. Negative = slow; "
             "rms_offset is the long-term root-mean-square."
@@ -110,7 +115,8 @@ def build(b: Builder):
         [(sel("opnsense_chrony_frequency_ppm"), "frequency"),
          (sel("opnsense_chrony_residual_frequency_ppm"), "residual"),
          (sel("opnsense_chrony_skew_ppm"), "skew")],
-        unit="ppm", w=12, h=8,
+        # frequency and residual are signed; only skew is non-negative (#512).
+        unit="ppm", min0=False, w=12, h=8,
         desc="chrony frequency error metrics in parts per million.",
     )
     root_ts = b.ts(
@@ -162,7 +168,7 @@ def build(b: Builder):
     source_offset = b.ts(
         "Source Offset",
         [(sel("opnsense_chrony_source_offset_seconds"), "{{source}}")],
-        unit="s", w=24, h=8,
+        unit="s", min0=False, w=24, h=8,   # signed offset per source (#512)
         desc=(
             "Measured time offset from each NTP source. "
             "Note: source label set may churn with a pool directive."

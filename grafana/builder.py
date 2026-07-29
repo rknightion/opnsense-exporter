@@ -169,6 +169,18 @@ def stable(expr: str) -> str:
 
 # Shared value-mapping dictionaries: state value -> (display text, colour).
 UPDOWN = {"0": ("Down", "red"), "1": ("Up", "green")}
+# Inverse polarity: for metrics where 1 is the *fault* ("..._down"), not the healthy
+# state. Using UPDOWN on one of those paints a healthy box solid red and a real
+# outage green (#511).
+DOWNUP = {"0": ("Up", "green"), "1": ("Down", "red")}
+# A configuration flag, not a health flag: "not monitored" is a deliberate setting,
+# so it must not borrow UPDOWN's red (#511).
+MONITORED = {"0": ("Unmonitored", "text"), "1": ("Monitored", "green")}
+# A connection to a remote service, as distinct from a local daemon (RUNSTOP) (#514).
+CONNDISC = {"0": ("Disconnected", "red"), "1": ("Connected", "green")}
+# Capability flags where 1 means "supported". YESNO is the "is this a problem?"
+# polarity (1 = orange) and must not be reused for these (#511).
+YESNO_GOOD = {"0": ("No", "red"), "1": ("Yes", "green")}
 # Interface link state is tri-state: unknown ("2") is reported for carrier-less
 # pseudo-devices (PPPoE, tun/tailscale) and is not a fault, so map it distinctly
 # from a genuine down rather than folding it into UPDOWN (#86).
@@ -442,8 +454,16 @@ class Builder:
         excl = {"Time": True, "__name__": True}
         for x in (excludes or []):
             excl[x] = True
+        # Every sel() expr carries an opnsense_instance filter, so the label reaches the
+        # table as a column. Half the tables used to rename it and half shipped the raw
+        # Prometheus label name as a header (54 vs 58 at the time of #514) — neither was a
+        # convention, just drift. Rename it here so no call site has to remember.
+        renames = dict(renames or {})
+        if ("opnsense_instance" not in renames and not excl.get("opnsense_instance")
+                and any("opnsense_instance" in e for e in exprs)):
+            renames["opnsense_instance"] = "Instance"
         org = {"kind": "Transformation", "group": "organize", "spec": {"options": {
-            "excludeByName": excl, "renameByName": renames or {}, "indexByName": {}}}}
+            "excludeByName": excl, "renameByName": renames, "indexByName": {}}}}
         transformations = [{"kind": "Transformation", "group": "merge", "spec": {"options": {}}}, org]
         overrides = []
         for field, unit in (unit_overrides or {}).items():
@@ -474,10 +494,21 @@ class Builder:
                 referenced.update(re.findall(r"opnsense_[a-z0-9_]+", e))
             referenced.discard("opnsense_instance")  # a real label, legitimately renamable
             valid_value_cols = {f"Value #{chr(65 + i)}" for i in range(len(exprs))}
-            for key in list((renames or {}).keys()) + list((unit_overrides or {}).keys()):
+            for key in list(renames.keys()) + list((unit_overrides or {}).keys()):
                 if key in referenced or key == "Value" or (
                         key.startswith("Value #") and key not in valid_value_cols):
                     self._table_key_violations.append(f"table {title!r} key {key!r}")
+        else:
+            # Mirror image of the #97 guard, and the hole it left (#509). With a SINGLE expr
+            # the merge transform names the value column bare "Value" — the "Value #A"
+            # spelling is the *Loki* table convention (LOKI_TABLE_VALUE_FIELD) and on a
+            # Prometheus table can only ever match nothing. panel-146 excluded "Value" and
+            # renamed "Value #A", so it rendered a table with no value column at all: valid
+            # manifest, passing tests, passing coverage gate, nothing on screen.
+            for key in list(renames.keys()) + list((unit_overrides or {}).keys()):
+                if key.startswith("Value #"):
+                    self._table_key_violations.append(
+                        f"table {title!r} key {key!r} (single-expr table: the value column is bare \"Value\")")
         opts = {"showHeader": True, "cellHeight": "sm",
                 "footer": {"show": footer, "reducer": ["sum"], "countRows": False, "fields": ""}}
         if sort_by:
@@ -491,15 +522,42 @@ class Builder:
         return n
 
     def statetimeline(self, title, series, mappings, unit="short", desc="",
-                      w=24, h=8, thresholds=None, dedupe=True) -> str:
-        """series = list of (expr, legend). mappings = {"0":("Down","red"),...}."""
+                      w=24, h=8, thresholds=None, dedupe=True,
+                      series_mappings=None) -> str:
+        """series = list of (expr, legend). mappings = {"0":("Down","red"),...}.
+
+        series_mappings = {legend: mapping} overrides the panel-wide mapping for one
+        row. Needed whenever a panel stacks flags of opposite polarity — a UPS panel
+        plots `online` (1 = good) beside `on_battery` (1 = bad), and a single mapping
+        has to paint one of them the wrong colour (#511).
+        """
         queries = [self._query(e, ref=chr(65 + i), legend=lg, dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
         defaults = {"unit": unit, "color": {"mode": "thresholds"},
-                    "mappings": self._value_mappings(mappings),
+                    # An empty dict used to emit a bare {"type":"value","options":{}} into
+                    # the shipped JSON — dead config that reads as intent (#510).
+                    "mappings": self._value_mappings(mappings) if mappings else [],
                     "thresholds": self._thresholds(
                         thresholds or [{"color": "red", "value": None}, {"color": "green", "value": 1}])}
-        spec = {"fieldConfig": {"defaults": defaults, "overrides": []},
+        if not mappings and thresholds is None:
+            # The default [red@base, green@1] is a two-state DOWN/UP mapping, which is
+            # right for a binary metric and wrong for anything else. panel-323 plots a TCP
+            # connection-state census with no mapping at all, so every state that happened
+            # to be at zero painted solid red and a healthy firewall rendered two-thirds
+            # alarm-coloured (#510). An unmapped timeline must say what its colours mean.
+            self._table_key_violations.append(
+                f"statetimeline {title!r} has no value mappings, so the default red@0/green@1 "
+                "would colour it as an up/down flag — pass explicit thresholds")
+        legends = {lg for _, lg in series}
+        overrides = []
+        for legend, mapping in (series_mappings or {}).items():
+            if legend not in legends:
+                self._table_key_violations.append(
+                    f"statetimeline {title!r} series_mappings key {legend!r} matches no series legend")
+            overrides.append({"matcher": {"id": "byName", "options": legend},
+                              "properties": [{"id": "mappings",
+                                              "value": self._value_mappings(mapping)}]})
+        spec = {"fieldConfig": {"defaults": defaults, "overrides": overrides},
                 "options": {"showValue": "never", "alignValue": "left", "rowHeight": 0.9,
                             "fillOpacity": 80, "mergeValues": True,
                             "legend": {"displayMode": "list", "placement": "bottom"},
@@ -641,7 +699,8 @@ class Builder:
         return labels.pop()
 
     def loki_table(self, title, exprs, field_title, desc="", w=24, h=10,
-                   sort_by="Total", sort_desc=True, time_from=None) -> str:
+                   sort_by="Total", sort_desc=True, time_from=None,
+                   value_unit=None) -> str:
         """exprs = a one-element list holding the LogQL string, queried as a RANGE
         query — the standard "topk over range" shape for high-cardinality log
         fields. `queryOptions.interval="5m"` is a cardinality guard on wide time
@@ -724,7 +783,13 @@ class Builder:
                     "color": {"mode": "palette-classic"},
                     "custom": {"align": "auto", "cellOptions": {"type": "auto"},
                                "inspect": False, "filterable": True}},
-                    "overrides": []},
+                    "overrides": [
+                        # Most of these tables count records, where a bare integer is right.
+                        # The ones that sum a byte field are not: unset, they rendered an
+                        # 11-digit number that read as a connection count (#513).
+                        {"matcher": {"id": "byName", "options": self.LOKI_TABLE_VALUE_COLUMN},
+                         "properties": [{"id": "unit", "value": value_unit}]},
+                    ] if value_unit else []},
                 "options": opts}
         n = self._panel(title, "table", spec, queries, desc=desc,
                         transformations=transformations, interval="5m",

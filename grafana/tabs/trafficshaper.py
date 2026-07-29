@@ -73,7 +73,7 @@ def build(b: Builder):
           "{{pipe}} pkts"),
          (sel("opnsense_trafficshaper_pipe_drop_packets"),
           "{{pipe}} drop_pkts")],
-        unit="pps", w=12, h=8,
+        unit="short", w=12, h=8,
         desc="Current packet counts per pipe (gauge).",
     )
 
@@ -102,7 +102,7 @@ def build(b: Builder):
           "{{queue}} pkts"),
          (sel("opnsense_trafficshaper_queue_drop_packets"),
           "{{queue}} drop_pkts")],
-        unit="pps", w=12, h=8,
+        unit="short", w=12, h=8,
         desc="Current packet counts per queue (gauge).",
     )
 

@@ -111,6 +111,9 @@ def build(b: Builder):
             (sel("opnsense_nut_status_replace_battery"), "replace battery"),
         ],
         {"0": ("No", "green"), "1": ("Yes", "orange")},
+        # online and charging are GOOD at 1; the panel-wide fault polarity would paint a
+        # healthy mains-powered UPS solid orange and turn green during an outage (#511).
+        series_mappings={"online": {"0": ("No", "red"), "1": ("Yes", "green")}, "charging": {"0": ("No", "red"), "1": ("Yes", "green")}},
         w=24, h=8,
         desc="NUT UPS status flags over time.",
     )
@@ -199,7 +202,7 @@ def build(b: Builder):
     apc_transfers_ts = b.ts(
         "APC Mains Transfer Rate",
         [(f'rate({sel("opnsense_apcupsd_transfers_total")}[{RATE}])', "transfers/s")],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Rate of mains-to-battery transfers (counter, use rate()).",
     )
     apc_status_ts = b.statetimeline(
@@ -210,6 +213,8 @@ def build(b: Builder):
             (sel("opnsense_apcupsd_status_low_battery"), "low battery"),
         ],
         {"0": ("No", "green"), "1": ("Yes", "orange")},
+        # online is GOOD at 1 — see the NUT panel above (#511).
+        series_mappings={"online": {"0": ("No", "red"), "1": ("Yes", "green")}},
         w=24, h=8,
         desc="apcupsd UPS status flags over time.",
     )

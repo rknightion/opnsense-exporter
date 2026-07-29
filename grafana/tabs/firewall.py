@@ -360,7 +360,7 @@ def build(b: Builder):
     geoip_age = b.stat(
         "GeoIP Database Age",
         f"(time() - {sel('opnsense_firewall_geoip_last_update_timestamp_seconds')}) / 3600",
-        unit="short", w=6, h=4,
+        unit="h", w=6, h=4,
         thresholds=[{"color": "green", "value": None},
                     {"color": "orange", "value": 24},
                     {"color": "red", "value": 168}],
@@ -376,8 +376,8 @@ def build(b: Builder):
         "GeoIP Database Last Update",
         [epoch_ms(sel("opnsense_firewall_geoip_last_update_timestamp_seconds"))],
         w=24, h=4,
-        excludes=["__name__", "job", "instance", "Value"],
-        renames={"opnsense_instance": "Instance", "Value #A": "Last Update"},
+        excludes=["__name__", "job", "instance"],
+        renames={"opnsense_instance": "Instance", "Value": "Last Update"},
         unit_overrides={"Last Update": "dateTimeAsIso"},
         desc="Timestamp of the last successful GeoIP database download, per instance.",
     )

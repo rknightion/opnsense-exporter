@@ -36,7 +36,7 @@ def build(b: Builder):
     processed = b.ts("Processed Rate by Destination",
                      [(f'topk {grp()} (20, rate({sel("opnsense_syslog_processed_total")}[{RATE}]))',
                        "{{source_name}}/{{source_id}}")],
-                     unit="short", w=12, h=8,
+                     unit="ops", w=12, h=8,
                      desc=(
                           "Messages per second processed by each syslog-ng object (source, "
                           "destination or filter), from the box's own syslog-ng statistics — NOT "
@@ -57,7 +57,7 @@ def build(b: Builder):
                      "dropped msgs/s {{source_name}}/{{source_id}}"),
                     (f'rate({sel("opnsense_syslog_truncated_messages_total")}[{RATE}])',
                      "truncated msgs/s {{source_name}}/{{source_id}}")],
-                   unit="short", w=6, h=8,
+                   unit="ops", w=6, h=8,
                    desc="syslog-ng dropped and truncated MESSAGE counts per second "
                         "(messages/sec), by destination -- not bytes. dropped = messages "
                         "discarded outright; truncated = messages shortened rather than "
@@ -75,7 +75,7 @@ def build(b: Builder):
     written = b.ts("Written Rate",
                    [(f'rate({sel("opnsense_syslog_written_total")}[{RATE}])',
                      "{{source_name}}/{{source_id}}")],
-                   unit="short", w=8, h=8,
+                   unit="ops", w=8, h=8,
                    desc=(
                         "Messages per second written by each syslog-ng object. Written well "
                         "below processed for a destination means syslog-ng is dropping or "
@@ -101,6 +101,7 @@ def build(b: Builder):
         "Syslog lines/s by subsystem",
         [(f'sum {loki_grp("opnsense_subsystem")} (rate({SYSLOG_STREAM} [$__auto]))',
           "{{opnsense_subsystem}}")],
+        unit="ops",
         desc=(
             "Shipped log lines per second by subsystem, counted in Loki rather than from a "
             "metric. Uses $__auto for the range so the step follows the picked window; "

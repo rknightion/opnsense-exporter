@@ -117,7 +117,7 @@ def build(b: Builder):
         "Zenarmor Events (rate)",
         [(f'sum {grp("family", "action")} (rate({sel("opnsense_log_events_zenarmor_total")}[{RATE}]))',
           "{{family}} / {{action}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_zenarmor_total: Zenarmor records per second by family "
              "(flow/dns/tls/web/ids/voip) and disposition. action=block is what the firewall "
              "stopped. An action with no value is a record that stated no verdict -- it is not "
@@ -127,7 +127,7 @@ def build(b: Builder):
         "Zenarmor Blocks by Category (rate)",
         [(f'sum {grp("category")} (rate({sel("opnsense_log_events_zenarmor_total", "action=\"block\"")}[{RATE}]))',
           "{{category}}")],
-        unit="short",
+        unit="ops",
         desc="Blocked Zenarmor records per second by category -- application category for "
              "flows, domain category for DNS/TLS, alert category for threats. Application "
              "names, IPs and hostnames are never labels; query the log stream for those.",
@@ -164,7 +164,7 @@ def build(b: Builder):
         "Zenarmor Records Excluded (rate)",
         [(f'sum {grp("rule")} (rate({sel("opnsense_exporter_logs_zenarmor_excluded_total")}[{RATE}]))',
           "{{rule}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_zenarmor_excluded_total: records dropped per second by a "
              "--logs.zenarmor.exclude rule, by rule (#279). This panel IS the blind spot: every "
              "record counted here was real traffic that is now absent from the log stream, and "
@@ -215,7 +215,7 @@ def build(b: Builder):
         "Self-Traffic Drop Rate",
         [(f'rate({sel("opnsense_exporter_logs_rejected_total", "reason=\"self_traffic\",source=\"zenarmor\"")}[{RATE}])',
           "self-traffic drops")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_rejected_total{reason=\"self_traffic\",source=\"zenarmor\"}: "
              "Zenarmor's own connection delivering its bulk requests to us, correctly identified "
              "and dropped rather than shipped (#278). A steady rate is normal and healthy, "
@@ -235,6 +235,7 @@ def build(b: Builder):
     zen_records_rate = b.loki_ts(
         "Records/s by Family",
         [(f'sum {loki_grp("opnsense_subsystem")} (rate({ZEN_STREAM} [$__auto]))', "{{opnsense_subsystem}}")],
+        unit="ops",
         desc="Raw Zenarmor log line rate by family, computed directly over the Loki stream "
              "(opnsense_subsystem is the indexed family label: flow/dns/tls/web/ids/voip).",
     )
@@ -242,6 +243,7 @@ def build(b: Builder):
         "Blocked/s by Family",
         [(f'sum {loki_grp("opnsense_subsystem")} (rate({ZEN_BLOCKED} [$__auto]))',
           "{{opnsense_subsystem}}")],
+        unit="ops",
         desc="Blocked Zenarmor log line rate by family, computed directly over the Loki stream.",
     )
 
@@ -261,6 +263,7 @@ def build(b: Builder):
         [f'topk {loki_grp()} (200, sum {loki_grp("device_name")} (sum_over_time({ZEN_FLOW} '
          '| device_name!="" | unwrap dst_nbytes [$__range])))'],
         field_title="Device",
+        value_unit="bytes",
         desc="Top 200 devices by inbound flow bytes (dst_nbytes), flow family only. Value column "
              "is raw bytes. device_name and dst_nbytes are structured metadata on the flow record.",
     )
@@ -306,6 +309,7 @@ def build(b: Builder):
         "DNS Response Codes",
         [(f'sum {loki_grp("rcode")} (rate({ZEN_DNS} {CLIENT_FILTER} [$__auto]))',
           "{{rcode}}")],
+        unit="ops",
         desc="DNS responses per second by response code. A climbing NXDOMAIN or SERVFAIL "
              "share is usually a resolver or upstream problem rather than a client one; "
              "read it beside the Unbound tab, which measures the same failures from the "
@@ -356,6 +360,7 @@ def build(b: Builder):
         "HTTP Status Codes",
         [(f'sum {loki_grp("http_status_code")} (rate({ZEN_WEB} {CLIENT_FILTER} '
           f'{NOT_SELF} [$__auto]))', "{{http_status_code}}")],
+        unit="ops",
         desc="Plaintext-HTTP responses per second by status code, excluding the exporter's "
              "own ingest endpoint. This is traffic Zenarmor OBSERVED passing through the "
              "firewall, not requests served by it — the exporter's own HTTP health is on "

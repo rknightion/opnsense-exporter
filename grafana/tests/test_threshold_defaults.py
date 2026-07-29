@@ -26,9 +26,17 @@ Scope note — the other threshold-injecting helpers have a recorded verdict:
 
 * `statetimeline()` / `statushistory()` default to `red@None / green@1`. That is
   a two-state MAPPING (down/up), not a severity boundary on a continuous scale:
-  every caller passes `mappings=` for a binary metric, and the colors exist to
-  paint the two states. Correct as-is, asserted by
+  the colors exist to paint the two states. Correct as-is, asserted by
   `test_state_viz_defaults_are_a_binary_state_mapping_not_a_boundary`.
+
+  The clause "every caller passes `mappings=` for a binary metric" was WRONG, and
+  #510 is what it cost. `panel-323` plots a TCP connection-state CENSUS and passes
+  `mappings={}`, so it inherited the binary default and painted every state that
+  happened to sit at zero solid red — a healthy firewall rendered two-thirds
+  alarm-coloured, which is worse than useless because it teaches the reader to
+  ignore the panel. The default is unchanged (it is right for the binary case);
+  what changed is that an unmapped timeline must now pass explicit thresholds, and
+  `statetimeline()` fails the build otherwise.
 * `stat()`, `loki_stat()` and `table()` already fall back to a single neutral
   blue step, i.e. they were never affected. Asserted below so a future edit
   cannot quietly give them a default boundary.

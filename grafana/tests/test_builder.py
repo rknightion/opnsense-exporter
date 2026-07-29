@@ -170,3 +170,77 @@ class NestedLayoutTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TableValueColumnKeyTest(unittest.TestCase):
+    """#509: the value column's field name depends on how many exprs the table has,
+    and the two spellings are correct in exactly opposite cases. A single-expr
+    Prometheus table names it bare "Value"; multi-expr names them "Value #A"..
+    "Value #N". `panel-146` renamed "Value #A" on a single-expr table AND excluded
+    "Value", so the timestamp it existed to show was dropped and the rename matched
+    nothing — a table that rendered one column, with a valid manifest, passing tests
+    and a passing coverage gate."""
+
+    def test_single_expr_table_rejects_the_loki_value_column_spelling(self):
+        b = Builder()
+        b.table("Bad", [sel("opnsense_up")], renames={"Value #A": "When"})
+        self.assertTrue(
+            any("Value #A" in v for v in b._table_key_violations),
+            "a 'Value #A' rename on a single-expr table matches nothing and must fail the build",
+        )
+
+    def test_single_expr_table_accepts_the_bare_value_column(self):
+        b = Builder()
+        b.table("Good", [sel("opnsense_up")], renames={"Value": "When"})
+        self.assertEqual(b._table_key_violations, [])
+
+    def test_multi_expr_table_still_rejects_the_bare_value_column(self):
+        """The #97 guard, kept honest while its mirror image was added."""
+        b = Builder()
+        b.table("Bad", [sel("opnsense_up"), sel("opnsense_up")], renames={"Value": "When"})
+        self.assertTrue(any("Value" in v for v in b._table_key_violations))
+
+    def test_instance_label_is_titled_without_the_call_site_asking(self):
+        """#514: half the tables shipped the raw Prometheus label name as a column
+        header because each call site had to remember the rename."""
+        b = Builder()
+        name = b.table("T", [sel("opnsense_up")], renames={"Value": "V"})
+        org = next(t for t in b.elements[name]["spec"]["data"]["spec"]["transformations"]
+                   if t["group"] == "organize")
+        self.assertEqual(org["spec"]["options"]["renameByName"]["opnsense_instance"], "Instance")
+
+
+class StateTimelinePolarityTest(unittest.TestCase):
+    """#511: one panel-wide mapping cannot serve two polarities. A UPS panel plots
+    `online` (1 = good) beside `on_battery` (1 = bad), so whichever polarity the
+    panel-wide mapping encodes, the other rows are painted the wrong colour — and on
+    a state timeline the colour is the whole signal."""
+
+    def test_per_series_mapping_overrides_the_panel_wide_one(self):
+        b = Builder()
+        name = b.statetimeline(
+            "UPS", [(sel("opnsense_nut_status_online"), "online"),
+                    (sel("opnsense_nut_status_on_battery"), "on battery")],
+            {"0": ("No", "green"), "1": ("Yes", "orange")},
+            series_mappings={"online": {"0": ("No", "red"), "1": ("Yes", "green")}},
+        )
+        ov = b.elements[name]["spec"]["vizConfig"]["spec"]["fieldConfig"]["overrides"]
+        self.assertEqual(len(ov), 1)
+        self.assertEqual(ov[0]["matcher"]["options"], "online")
+        opts = ov[0]["properties"][0]["value"][0]["options"]
+        self.assertEqual(opts["1"]["color"], "green")
+
+    def test_a_series_mapping_for_a_legend_that_does_not_exist_fails_the_build(self):
+        b = Builder()
+        b.statetimeline("UPS", [(sel("opnsense_nut_status_online"), "online")],
+                        {"0": ("No", "green"), "1": ("Yes", "orange")},
+                        series_mappings={"typo": {"0": ("No", "red")}})
+        self.assertTrue(b._table_key_violations)
+
+    def test_an_empty_mapping_emits_no_dead_mapping_object(self):
+        """#510: `mappings={}` shipped a bare {"type":"value","options":{}} into the
+        JSON — dead config that reads as intent to the next author."""
+        b = Builder()
+        name = b.statetimeline("Census", [(sel("opnsense_up"), "{{state}}")], {})
+        defaults = b.elements[name]["spec"]["vizConfig"]["spec"]["fieldConfig"]["defaults"]
+        self.assertEqual(defaults["mappings"], [])

@@ -31,6 +31,10 @@ _VIP_STATUS = {
     "0":  ("BACKUP",  "blue"),
     "1":  ("MASTER",  "green"),
     "2":  ("INIT",    "orange"),
+    # #503 added 3 = DISABLED: emitted for any configured VIP the ifconfig pass did not
+    # find (admin-disabled, or its interface is down). Routine, so it must not be green —
+    # unmapped it fell through to the >=1 threshold and looked exactly like MASTER (#511).
+    "3":  ("DISABLED", "text"),
     "-1": ("Unknown", "red"),
 }
 

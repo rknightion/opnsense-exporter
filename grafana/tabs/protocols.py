@@ -82,7 +82,7 @@ def build(b: Builder):
             (f"rate({sel('opnsense_protocol_tcp_syncache_dropped_total')}[{RATE}])",
              "syncache dropped"),
         ],
-        unit="short",
+        unit="pps",
         w=12, h=8,
         desc="Rate of TCP retransmits, keepalive events, syncache activity, and listen queue overflows.",
     )
@@ -135,7 +135,7 @@ def build(b: Builder):
             (f"rate({sel('opnsense_protocol_tcp_segments_updated_rtt_total')}[{RATE}])",
              "segments updating RTT"),
         ],
-        unit="short",
+        unit="ops",
         w=12, h=8,
         desc="Rate of TCP segments that caused an RTT sample update.",
     )
@@ -161,7 +161,7 @@ def build(b: Builder):
             (f"rate({sel('opnsense_protocol_tcp_ecn_accecn_handshakes_total')}[{RATE}])",
              "{{mark}}"),
         ],
-        unit="short",
+        unit="ops",
         w=8, h=8,
         desc="opnsense_protocol_tcp_ecn_accecn_handshakes_total: FreeBSD 15 AccECN "
              "handshake SYNs by mark (ce/ect0/ect1/nonect). OPNsense 26.1.11+ only.",
@@ -172,7 +172,7 @@ def build(b: Builder):
             (f"rate({sel('opnsense_protocol_tcp_syncookies_total')}[{RATE}])",
              "{{result}}"),
         ],
-        unit="short",
+        unit="ops",
         w=8, h=8,
         desc="opnsense_protocol_tcp_syncookies_total: SYN cookies by result "
              "(sent/received/failed/spurious). Replaces the legacy syncache "
@@ -184,7 +184,7 @@ def build(b: Builder):
             (f"rate({sel('opnsense_protocol_tcp_received_acks_for_data_total')}[{RATE}])",
              "{{reason}}"),
         ],
-        unit="short",
+        unit="ops",
         w=8, h=8,
         desc="opnsense_protocol_tcp_received_acks_for_data_total: ACKs received for data "
              "by reason (not_yet_sent/never_been_sent/being_too_old) — the 26.7 three-way "
@@ -200,6 +200,10 @@ def build(b: Builder):
              "{{state}}"),
         ],
         mappings={},  # no binary mapping — numeric count displayed as-is
+        # A state census is not an up/down flag: the helper's default [red@base, green@1]
+        # painted every state with zero connections solid red, so a healthy firewall
+        # rendered two-thirds alarm-coloured (#510). One neutral step, no false alarm.
+        thresholds=[{"color": "blue", "value": None}],
         unit="short",
         w=16, h=8,
         desc="Number of TCP connections by state (gauge — current value, not rate).",

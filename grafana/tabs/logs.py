@@ -42,7 +42,7 @@ def build(b: Builder):
     shipped = b.ts(
         "Records Shipped (rate)",
         [(f'sum {grp("source")} (rate({sel("opnsense_exporter_logs_shipped_total")}[{RATE}]))', "{{source}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_shipped_total: records successfully handed to the "
              "sink per second, by source. This is the primary throughput signal.",
     )
@@ -50,7 +50,7 @@ def build(b: Builder):
         "Records Dropped (rate)",
         [(f'sum {grp("source", "reason")} (rate({sel("opnsense_exporter_logs_dropped_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_dropped_total: records dropped before delivery, by "
              "source and reason (reason=overflow means the backpressure queue was full and "
              "the oldest record was evicted). Sustained drops mean the sink cannot keep up.",
@@ -78,7 +78,7 @@ def build(b: Builder):
     ship_errors = b.ts(
         "Sink Errors (rate)",
         [(f'rate({sel("opnsense_exporter_logs_ship_errors_total")}[{RATE}])', "ship errors")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_ship_errors_total: sink Emit attempts that did not fully "
              "deliver per second. The pipeline retries their unacknowledged remainder, so this is "
              "a retry/degradation signal, not a record-loss counter. A dead OTLP endpoint shows up here.",
@@ -86,7 +86,7 @@ def build(b: Builder):
     poll_errors = b.ts(
         "Source Poll Errors (rate)",
         [(f'sum {grp("source")} (rate({sel("opnsense_exporter_logs_poll_errors_total")}[{RATE}]))', "{{source}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_poll_errors_total: source Poll errors per second, by "
              "source (e.g. the OPNsense API being unreachable). The poller retries next tick.",
     )
@@ -109,7 +109,7 @@ def build(b: Builder):
     possible_gaps = b.ts(
         "Possible Sampling Gaps (rate)",
         [(f'sum {grp("source")} (rate({sel("opnsense_exporter_logs_possible_gap_total")}[{RATE}]))', "{{source}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_possible_gap_total: possible sampling gaps detected by a "
              "source whose only view of its data is a bounded window (e.g. the unbound source's "
              "latest-1000-row DNS query log, #233) — incremented when a poll's page shows no "
@@ -128,7 +128,7 @@ def build(b: Builder):
         "Parse Errors (rate)",
         [(f'sum {grp("source", "stage")} (rate({sel("opnsense_exporter_logs_parse_errors_total")}[{RATE}]))',
           "{{source}} / {{stage}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_parse_errors_total: received records that failed to parse, "
              "by source and stage (syslog envelope = not valid RFC5424/RFC3164; Zenarmor bulk = "
              "an invalid _bulk envelope; Zenarmor document = one document that would not decode). These "
@@ -139,7 +139,7 @@ def build(b: Builder):
         "Input Rejected (rate)",
         [(f'sum {grp("source", "reason")} (rate({sel("opnsense_exporter_logs_rejected_total")}[{RATE}]))',
           "{{source}} / {{reason}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_rejected_total: receiver input refused rather than shipped. "
              "reason=peer means a sender outside the allowlist (check this first when a receiver "
              "appears to receive nothing); oversized means a frame beyond the message cap; "
@@ -152,7 +152,7 @@ def build(b: Builder):
     resource_capped = b.ts(
         "Resource Label Cap Hit (rate)",
         [(f'rate({sel("opnsense_exporter_logs_resource_capped_total")}[{RATE}])', "capped")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_resource_capped_total: records shipped with their "
              "opnsense.* index labels DROPPED because the distinct (source, subsystem, action) "
              "count exceeded the sink's resource cap. The records still arrive, so throughput "
@@ -163,7 +163,7 @@ def build(b: Builder):
     enrich_misses = b.ts(
         "Enrichment Misses (rate)",
         [(f'sum {grp("table")} (rate({sel("opnsense_exporter_logs_enrich_misses_total")}[{RATE}]))', "{{table}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_enrich_misses_total: enrichment lookups that missed, by "
              "table. A sustained rate on table=rules means the rule snapshot is behind the box's "
              "ruleset, so log lines are shipping without a rule description. A miss triggers a "
@@ -173,7 +173,7 @@ def build(b: Builder):
         "Enrichment Refresh Errors (rate)",
         [(f'sum {grp("table")} (rate({sel("opnsense_exporter_logs_enrich_refresh_errors_total")}[{RATE}]))',
           "{{table}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_enrich_refresh_errors_total: failed enrichment refreshes "
              "against the OPNsense API, by table. The previous snapshot keeps serving, so records "
              "still ship -- enriched with increasingly stale data. Pair with the staleness panel.",
@@ -195,7 +195,7 @@ def build(b: Builder):
         "Debug Captures Written (rate)",
         [(f'sum {grp("receiver", "kind")} (rate({sel("opnsense_exporter_logs_debug_captured_total")}[{RATE}]))',
           "{{receiver}} {{kind}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_debug_captured_total: signals written to the debug-capture "
              "dir per second, by receiver and kind. Only signals the exporter does NOT model are "
              "captured — unhandled endpoints, unknown families, parse errors, unparsed syslog "
@@ -206,7 +206,7 @@ def build(b: Builder):
         "Debug Captures Dropped (rate)",
         [(f'sum {grp("receiver", "reason")} (rate({sel("opnsense_exporter_logs_debug_capture_dropped_total")}[{RATE}]))',
           "{{receiver}} {{reason}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_exporter_logs_debug_capture_dropped_total: capture entries dropped rather "
              "than written, by receiver and reason. Read the reasons differently: duplicate_shape "
              "is the healthy steady state (one example of each shape is already on disk, and this "

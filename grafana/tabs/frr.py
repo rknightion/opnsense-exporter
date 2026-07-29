@@ -129,7 +129,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_frr_bgp_peer_messages_sent_total")}[{RATE}])',
              "{{peer}} {{af}} sent"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="BGP UPDATE/KEEPALIVE/NOTIFICATION message rate per peer.",
     )
 
@@ -144,7 +144,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_frr_bgp_peer_connections_dropped_total")}[{RATE}])',
              "{{peer}} dropped"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Rate of BGP session establish/drop events per peer — the canonical flap counters.",
     )
     bgp_last_reset = b.ts(
@@ -158,7 +158,7 @@ def build(b: Builder):
         "BGP Message Rate by Type",
         [(f'rate({sel("opnsense_frr_bgp_peer_messages_by_type_total")}[{RATE}])',
           "{{peer}} {{type}} {{direction}}")],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Per-message-type BGP rate per peer (open/update/keepalive/notification/"+
              "route_refresh/capability) — separates UPDATE churn from KEEPALIVE noise.",
     )
@@ -209,7 +209,7 @@ def build(b: Builder):
         "OSPF SPF Execution Rate",
         [(f'rate({sel("opnsense_frr_ospf_area_spf_executed_total")}[{RATE}])',
           "area {{area}}")],
-        unit="short", w=24, h=8,
+        unit="ops", w=24, h=8,
         desc="OSPF SPF (shortest path first) execution rate per area.",
     )
 
@@ -353,7 +353,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_frr_bfd_peer_control_packets_sent_total")}[{RATE}])',
              "{{peer}} sent"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="BFD control packet receive/send rates per peer.",
     )
     bfd_events = b.ts(
@@ -364,7 +364,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_frr_bfd_peer_session_down_events_total")}[{RATE}])',
              "{{peer}} down events"),
         ],
-        unit="short", w=24, h=8,
+        unit="ops", w=24, h=8,
         desc="BFD session state-change event rates per peer.",
     )
 

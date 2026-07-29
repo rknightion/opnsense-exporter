@@ -109,14 +109,14 @@ def build(b: Builder):
             (f'rate({sel("opnsense_interfaces_output_errors_total", iface)}[{RATE}])',
              "{{interface}} output errors"),
         ],
-        unit="short", w=8, h=8,
+        unit="ops", w=8, h=8,
         desc="Input and output errors per second.",
     )
     collisions = b.ts(
         "Collisions",
         [(f'rate({sel("opnsense_interfaces_collisions_total", iface)}[{RATE}])',
           "{{interface}}")],
-        unit="short", w=4, h=8,
+        unit="ops", w=4, h=8,
         desc="Collision events per second.",
     )
 
@@ -140,7 +140,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_interfaces_input_queue_drops_total", iface)}[{RATE}])',
              "{{interface}} input queue drops"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Send-queue and input-queue drops per second.",
     )
 
@@ -165,7 +165,7 @@ def build(b: Builder):
             "interface": "Interface",
             "device": "Device",
             "type": "Type",
-            "Value #A": "MTU (bytes)",
+            "Value #A": "MTU",
             "Value #B": "Line Rate (bps)",
         },
         unit_overrides={
@@ -227,7 +227,7 @@ def build(b: Builder):
     lagg_flapping = b.ts(
         "LAGG Port Flapping",
         [(f'rate({sel("opnsense_interfaces_lagg_flapping_total")}[{RATE}])', "{{device}}")],
-        unit="short", w=6, h=8,
+        unit="ops", w=6, h=8,
         desc="Rate of LAGG active-port membership change (flap) events — a healthy LAGG "
              "should sit at 0; sustained flapping indicates a failing member link.",
     )
@@ -282,7 +282,9 @@ def build(b: Builder):
     sfp_temperature = b.ts(
         "SFP Temperature",
         [(sel("opnsense_interfaces_sfp_temperature_celsius"), "{{device}}")],
-        unit="celsius", w=12, h=8,
+        # Industrial-temp modules (-40 to +85) legitimately read sub-zero in an unheated
+        # cabinet; same clipping as the dBm panel, narrower blast radius (#512).
+        unit="celsius", min0=False, w=12, h=8,
         desc="Digital Optical Monitoring module temperature. Only present for DOM-capable "
              "transceivers — a rising trend or an out-of-spec reading is an early warning "
              "sign for a dying optic.",
@@ -297,7 +299,9 @@ def build(b: Builder):
     sfp_rx_power_dbm = b.ts(
         "SFP Lane RX Power (dBm)",
         [(sel("opnsense_interfaces_sfp_lane_rx_power_dbm"), "{{device}} lane {{lane}}")],
-        unit="dBm", w=12, h=8,
+        # dBm optical RX power is essentially always negative (-3 to -20 typical), so the
+        # min0 default drew an empty plot with the real readings below the axis (#512).
+        unit="dBm", min0=False, w=12, h=8,
         desc="opnsense_interfaces_sfp_lane_rx_power_dbm: per-lane received optical power, "
              "logarithmic (dBm) scale. Only present for DOM-capable transceivers; a falling "
              "trend indicates a degrading link or fiber. See also the milliwatts panel for "

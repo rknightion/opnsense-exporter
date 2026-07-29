@@ -6,7 +6,7 @@ Plugin-gated: tab hidden unless monit metrics are present.
 All metrics are gauges (instantaneous values, no _total counters).
 """
 
-from builder import Builder, sel, RUNSTOP, OKERR, UPDOWN
+from builder import Builder, sel, RUNSTOP, OKERR, UPDOWN, MONITORED
 
 
 def build(b: Builder):
@@ -74,7 +74,7 @@ def build(b: Builder):
     check_monitored_timeline = b.statetimeline(
         "Check Monitored State",
         [(sel("opnsense_monit_check_monitored"), "{{name}} ({{type}})")],
-        UPDOWN, w=24, h=8,
+        MONITORED, w=24, h=8,
         desc=(
             "Whether each check is actively monitored over time. "
             "1 = monitored (monitor != 0), 0 = unmonitored."

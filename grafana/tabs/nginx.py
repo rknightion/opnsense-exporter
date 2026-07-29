@@ -25,7 +25,7 @@ server_zone_cache_responses_total, so that row hides independently of the
 rest of the tab.
 """
 
-from builder import Builder, sel, epoch_ms, RATE, RUNSTOP, UPDOWN
+from builder import Builder, sel, epoch_ms, RATE, RUNSTOP, DOWNUP
 
 
 def build(b: Builder):
@@ -52,7 +52,7 @@ def build(b: Builder):
     req_rate = b.ts(
         "Request Rate",
         [(f'rate({sel("opnsense_nginx_requests_total")}[{RATE}])', "requests/s")],
-        unit="short", w=8, h=4,
+        unit="reqps", w=8, h=4,
         desc="Total HTTP request rate across all server zones.",
     )
     conn_gauges = b.ts(
@@ -73,7 +73,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_nginx_connections_handled_total")}[{RATE}])',
              "handled/s"),
         ],
-        unit="short", w=8, h=4,
+        unit="ops", w=8, h=4,
         desc="Connection accept and handle rates (accepted - handled = dropped).",
     )
 
@@ -117,7 +117,7 @@ def build(b: Builder):
         "Server Zone Request Rate",
         [(f'rate({sel("opnsense_nginx_server_zone_requests_total")}[{RATE}])',
           "{{zone}}")],
-        unit="short", w=12, h=8,
+        unit="reqps", w=12, h=8,
         desc="HTTP request rate per server zone (aggregate zone '*' excluded).",
     )
     zone_bytes = b.ts(
@@ -135,7 +135,7 @@ def build(b: Builder):
         "Server Zone Responses by Code",
         [(f'rate({sel("opnsense_nginx_server_zone_responses_total")}[{RATE}])',
           "{{zone}} {{code}}")],
-        unit="short", w=24, h=8, stack=True,
+        unit="ops", w=24, h=8, stack=True,
         desc="HTTP response rate by status code class (1xx–5xx) per server zone.",
     )
 
@@ -146,14 +146,14 @@ def build(b: Builder):
         "Upstream Server Down",
         [(sel("opnsense_nginx_upstream_server_down"),
           "{{upstream}}/{{server}}")],
-        UPDOWN, w=24, h=8,
+        DOWNUP, w=24, h=8,
         desc="Upstream server down flag over time (1 = down, 0 = up).",
     )
     up_req_rate = b.ts(
         "Upstream Server Request Rate",
         [(f'rate({sel("opnsense_nginx_upstream_server_requests_total")}[{RATE}])',
           "{{upstream}}/{{server}}")],
-        unit="short", w=8, h=8,
+        unit="reqps", w=8, h=8,
         desc="Request rate per upstream server.",
     )
     up_bytes = b.ts(
@@ -178,7 +178,7 @@ def build(b: Builder):
         "Upstream Server Responses by Code",
         [(f'rate({sel("opnsense_nginx_upstream_server_responses_total")}[{RATE}])',
           "{{upstream}}/{{server}} {{code}}")],
-        unit="short", w=24, h=8, stack=True,
+        unit="ops", w=24, h=8, stack=True,
         desc="Upstream server HTTP response rate by status code class.",
     )
     up_req_latency = b.ts(
@@ -208,7 +208,7 @@ def build(b: Builder):
         "Server Zone Cache Status",
         [(f'rate({sel("opnsense_nginx_server_zone_cache_responses_total")}[{RATE}])',
           "{{zone}} {{cache_status}}")],
-        unit="short", w=24, h=8, stack=True,
+        unit="ops", w=24, h=8, stack=True,
         desc="Per-server-zone response rate by cache outcome (hit/miss/bypass/…); "
              "only present when this vts build reports cache status.",
     )
@@ -249,7 +249,7 @@ def build(b: Builder):
         "Cache Zone Responses by Status",
         [(f'rate({sel("opnsense_nginx_cache_zone_responses_total")}[{RATE}])',
           "{{zone}} {{cache_status}}")],
-        unit="short", w=24, h=8, stack=True,
+        unit="ops", w=24, h=8, stack=True,
         desc="Per-cache-zone response rate by cache outcome (hit/miss/bypass/…).",
     )
 

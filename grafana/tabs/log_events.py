@@ -37,7 +37,7 @@ def build(b: Builder):
         "Firewall Events by Action & Scope (rate)",
         [(f'sum {grp("action", "scope")} (rate({sel("opnsense_log_events_firewall_total")}[{RATE}]))',
           "{{action}} / {{scope}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_firewall_total: filterlog events per second by action and "
              "source scope. Every line is counted including passes, so this is accurate even "
              "when --logs.syslog.sample drops the raw pass lines. action=block from scope=remote "
@@ -48,7 +48,7 @@ def build(b: Builder):
         "Top Firewall Rules by Block Rate",
         [(f'topk {grp()} (20, sum {grp("rule_name", "rule_id", "interface")} (rate({blocks}[{RATE}])))',
           "{{rule_name}} ({{interface}})")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_firewall_total (action != pass): the busiest blocking rules by "
              "name and interface. rule_name is the rule's description used as its name; rule_id is "
              "the stable OPNsense rule id. Free-text is never a metric label beyond these bounded values.",
@@ -58,7 +58,7 @@ def build(b: Builder):
         "HAProxy Events by Event, State & Status (rate)",
         [(f'sum {grp("event", "state", "status_class")} (rate({sel("opnsense_log_events_haproxy_total")}[{RATE}]))',
           "{{event}} / {{state}} / {{status_class}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_haproxy_total: HAProxy events per second. event=server_state with "
              "state=down is a backend going unhealthy; status_class=5xx is server errors. The "
              "per-connection 'connect' noise is dropped by sampling but still counted here.",
@@ -67,7 +67,7 @@ def build(b: Builder):
         "HAProxy Events by Backend/Server (rate)",
         [(f'topk {grp()} (20, sum {grp("backend", "server")} (rate({sel("opnsense_log_events_haproxy_total")}[{RATE}])))',
           "{{backend}} / {{server}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_haproxy_total by backend and server — where the HAProxy activity is.",
     )
 
@@ -75,7 +75,7 @@ def build(b: Builder):
         "sshd Auth Events by Result (rate)",
         [(f'sum {grp("result", "method", "scope")} (rate({sel("opnsense_log_events_sshd_total")}[{RATE}]))',
           "{{result}} / {{method}} / {{scope}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_sshd_total: firewall sshd authentication outcomes per second. "
              "result=failed / invalid-user from scope=remote is external login attempts against "
              "the firewall — the primary security signal on this tab.",
@@ -85,7 +85,7 @@ def build(b: Builder):
         "DHCP Lease Events by Action (rate)",
         [(f'sum {grp("action", "interface")} (rate({sel("opnsense_log_events_dhcp_total")}[{RATE}]))',
           "{{action}} / {{interface}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_dhcp_total: DHCP lease events per second by action (ack/nak/offer/…) "
              "and interface, across the Kea / dnsmasq / ISC backends.",
     )
@@ -94,7 +94,7 @@ def build(b: Builder):
         "Config / Audit Events by Type & Result (rate)",
         [(f'sum {grp("event", "result")} (rate({sel("opnsense_log_events_audit_total")}[{RATE}]))',
           "{{event}} / {{result}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_audit_total: audit events per second — event=config_change tracks "
              "configuration writes, event=authorization tracks GUI/API auth decisions.",
     )
@@ -103,7 +103,7 @@ def build(b: Builder):
         "IDS Events by Action & Severity (rate)",
         [(f'sum {grp("event_type", "action", "severity")} (rate({sel("opnsense_log_events_ids_total")}[{RATE}]))',
           "{{event_type}} / {{action}} / sev {{severity}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_ids_total: Suricata EVE events per second by type, action and "
              "severity. Signature text and SID are deliberately not labels; use the raw log line "
              "(shipped in full — IDS is never sampled) for per-alert detail.",
@@ -113,7 +113,7 @@ def build(b: Builder):
         "RADIUS Access Events by Result (rate)",
         [(f'sum {grp("event", "result", "client_scope")} (rate({sel("opnsense_log_events_radius_total")}[{RATE}]))',
           "{{event}} / {{result}} / {{client_scope}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_radius_total: FreeRADIUS access outcomes per second. The closed "
              "vocabulary is event=access, result=accepted or rejected, and "
              "client_scope=configured. Accounting is not supported because normal Start, "
@@ -126,7 +126,7 @@ def build(b: Builder):
         "VPN Lifecycle Events by Backend & Event (rate)",
         [(f'sum {grp("backend", "event", "result")} (rate({sel("opnsense_log_events_vpn_total")}[{RATE}]))',
           "{{backend}} / {{event}} / {{result}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_vpn_total: IPsec (charon) and OpenVPN tunnel lifecycle "
              "transitions per second. The vocabulary is closed and code-defined: backend=ipsec or "
              "openvpn; event=established, terminated, authentication_failed, liveness_failed or "
@@ -144,7 +144,7 @@ def build(b: Builder):
         "VPN Lifecycle Failures by Connection (rate)",
         [(f'topk {grp()} (20, sum {grp("backend", "event", "connection")} (rate({vpn_failures}[{RATE}])))',
           "{{connection}} / {{backend}} / {{event}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_vpn_total (result=failure): which tunnels are failing, by the "
              "connection name configured on the firewall. connection is resolved from the IPsec "
              "connection or OpenVPN instance id against the inventory the exporter already "
@@ -161,7 +161,7 @@ def build(b: Builder):
         "UPnP / NAT-PMP Mapping Events by Event & Result (rate)",
         [(f'sum {grp("event", "result", "protocol")} (rate({sel("opnsense_log_events_upnp_total")}[{RATE}]))',
           "{{event}} / {{result}} / {{protocol}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_upnp_total: miniupnpd mapping events per second. The vocabulary "
              "is closed and code-defined: event=expired (a mapping reached the end of its lease "
              "and was torn down, the only ok result), cleanup_failed (the daemon could not find "
@@ -198,7 +198,7 @@ def build(b: Builder):
         "Derived Metric Tuples Folded Into Overflow (rate)",
         [(f'sum {grp("family")} (rate({sel("opnsense_log_events_cardinality_capped_total")}[{RATE}]))',
           "{{family}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_cardinality_capped_total: observations per second whose label "
              "tuple was refused by the per-family key budget and folded into the overflow total. "
              "Nothing is lost — the counted series plus this overflow equal the true observed "
@@ -211,7 +211,7 @@ def build(b: Builder):
         "Derived Metric Observation Drops (rate)",
         [(f'sum {grp("reason")} (rate({sel("opnsense_log_events_observation_dropped_total")}[{RATE}]))',
           "{{reason}}")],
-        unit="short",
+        unit="ops",
         desc="opnsense_log_events_observation_dropped_total: derived observations refused before "
              "the map-owning collector goroutine because its bounded handoff was full. "
              "reason=handoff_full is a closed receiver-pressure signal. Syslog keeps a "

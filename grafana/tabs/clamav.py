@@ -38,7 +38,7 @@ def build(b: Builder):
         "Total Signatures Loaded",
         sel("opnsense_clamav_signatures"),
         unit="short", w=6, h=4,
-        thresholds=[{"color": "blue", "value": None}, {"color": "red", "value": 0}],
+        thresholds=[{"color": "red", "value": None}, {"color": "blue", "value": 1}],
         desc=(
             "Total number of virus signatures loaded across all databases. "
             "0 both when freshclam has never run and when the field is unavailable."

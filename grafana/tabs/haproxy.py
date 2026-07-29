@@ -77,7 +77,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_haproxy_process_requests_total")}[{RATE}])',
              "requests/s"),
         ],
-        unit="short", w=8, h=4,
+        unit="reqps", w=8, h=4,
         desc="HAProxy process-level connection and HTTP request rates.",
     )
     conn_capacity = b.ts(
@@ -105,7 +105,7 @@ def build(b: Builder):
         "Frontend Session Rate",
         [(f'rate({sel("opnsense_haproxy_frontend_sessions_total")}[{RATE}])',
           "{{frontend}}")],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Cumulative sessions per second per frontend.",
     )
     fe_curr_sess = b.ts(
@@ -133,21 +133,21 @@ def build(b: Builder):
             (f'rate({sel("opnsense_haproxy_frontend_requests_denied_total")}[{RATE}])',
              "{{frontend}} denied"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Frontend request errors and denied requests per second.",
     )
     fe_responses = b.ts(
         "Frontend HTTP Responses by Code",
         [(f'rate({sel("opnsense_haproxy_frontend_http_responses_total")}[{RATE}])',
           "{{frontend}} {{code}}")],
-        unit="short", w=24, h=8, stack=True,
+        unit="ops", w=24, h=8, stack=True,
         desc="Frontend HTTP response rate by status code class (1xx–5xx, other).",
     )
     fe_req_rate = b.ts(
         "Frontend HTTP Request Rate",
         [(f'rate({sel("opnsense_haproxy_frontend_requests_total")}[{RATE}])',
           "{{frontend}}")],
-        unit="short", w=12, h=8,
+        unit="reqps", w=12, h=8,
         desc="HTTP requests per second per frontend (#201, req_tot — absent "
              "for tcp-mode frontends).",
     )
@@ -176,7 +176,7 @@ def build(b: Builder):
         "Backend Session Rate",
         [(f'rate({sel("opnsense_haproxy_backend_sessions_total")}[{RATE}])',
           "{{backend}}")],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Cumulative sessions per second per backend.",
     )
     be_curr_sess = b.ts(
@@ -211,7 +211,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_haproxy_backend_redispatches_total")}[{RATE}])',
              "{{backend}} redispatches"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Backend connection/response error rates, retries, and redispatches.",
     )
     be_servers = b.ts(
@@ -227,7 +227,7 @@ def build(b: Builder):
         "Backend HTTP Responses by Code",
         [(f'rate({sel("opnsense_haproxy_backend_http_responses_total")}[{RATE}])',
           "{{backend}} {{code}}")],
-        unit="short", w=24, h=8, stack=True,
+        unit="ops", w=24, h=8, stack=True,
         desc="Backend HTTP response rate by status code class (1xx–5xx, other).",
     )
     be_latency = b.ts(
@@ -251,7 +251,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_haproxy_backend_aborts_total")}[{RATE}])',
              "{{backend}} {{side}} aborts"),
         ],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Load-balancer selection rate (#201, lbtot) and client/server "
              "abort rate (cli_abrt/srv_abrt) per backend.",
     )
@@ -290,7 +290,7 @@ def build(b: Builder):
         "Server Session Rate",
         [(f'rate({sel("opnsense_haproxy_server_sessions_total")}[{RATE}])',
           "{{backend}}/{{server}}")],
-        unit="short", w=12, h=8,
+        unit="ops", w=12, h=8,
         desc="Sessions per second per server.",
     )
     srv_bytes = b.ts(
@@ -316,7 +316,7 @@ def build(b: Builder):
             (f'rate({sel("opnsense_haproxy_server_downtime_seconds_total")}[{RATE}])',
              "{{backend}}/{{server}} downtime rate"),
         ],
-        unit="short", w=24, h=8,
+        unit="ops", w=24, h=8,
         desc="Server-level error rates, check failures, and downtime accumulation rate.",
     )
     srv_latency = b.ts(
@@ -339,6 +339,10 @@ def build(b: Builder):
              "{{backend}}/{{server}} time since change"),
         ],
         unit="s", w=12, h=8,
+        # The panel unit belongs to lastchg; without this override the chkdown RATE is
+        # formatted as a duration, so one transition a minute reads "16.7 ms" (#513).
+        overrides=[{"matcher": {"id": "byRegexp", "options": ".*down transitions/s$"},
+             "properties": [{"id": "unit", "value": "short"}]}],
         desc="UP->DOWN health-check transition rate (#201, chkdown) and "
              "seconds since the last state change (lastchg, resets on every "
              "transition) — a low 'time since change' value alongside "

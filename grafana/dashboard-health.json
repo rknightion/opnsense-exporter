@@ -850,7 +850,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -944,7 +944,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1268,7 +1268,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1357,7 +1357,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1624,7 +1624,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1713,7 +1713,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1802,7 +1802,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1891,7 +1891,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -1980,7 +1980,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -2069,7 +2069,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -2247,7 +2247,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -2336,7 +2336,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
@@ -3345,7 +3345,7 @@
                         "instance": true
                       },
                       "renameByName": {
-                        "Value": "Interval (s)",
+                        "Value": "Interval",
                         "collector": "Collector",
                         "opnsense_instance": "Instance"
                       },
@@ -3372,7 +3372,20 @@
                     "filterable": true
                   }
                 },
-                "overrides": []
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Interval"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      }
+                    ]
+                  }
+                ]
               },
               "options": {
                 "showHeader": true,
@@ -4979,7 +4992,7 @@
             "spec": {
               "fieldConfig": {
                 "defaults": {
-                  "unit": "short",
+                  "unit": "ops",
                   "custom": {
                     "axisCenteredZero": false,
                     "fillOpacity": 18,
