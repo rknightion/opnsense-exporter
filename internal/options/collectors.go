@@ -379,9 +379,13 @@ var (
 	// ApplyEnableAllAvailable's doc comment.
 	enableAllAvailable = kingpin.Flag(
 		"exporter.enable-all-available",
-		"Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off (extra per-poll API cost, high/unbounded cardinality, or exposing usernames/addresses); an explicit --exporter.enable-<x>=false always wins over this blanket switch.",
+		"Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. A collector whose PLUGIN the startup availability probe finds absent is left off, so this enables what the box can actually serve; anything gated on cost or cardinality rather than a plugin is enabled regardless. If the firewall cannot be reached at startup the probe falls open and everything is enabled. NOTE: because availability is resolved once at startup, a plugin installed LATER does not self-activate under this flag until the next restart. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off; an explicit --exporter.enable-<x>=false always wins over this blanket switch.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_ALL_AVAILABLE").Default("false").Bool()
 )
+
+// EnableAllAvailable reports whether --exporter.enable-all-available is set. main
+// needs it to decide whether the startup availability probe is worth making at all.
+func EnableAllAvailable() bool { return *enableAllAvailable }
 
 // enableFlagUserSet tracks, per --exporter.enable-* flag, whether the operator
 // set it explicitly on the command line (via kingpin's IsSetByUser). Env-var
@@ -783,7 +787,27 @@ type AutoEnabledFeature struct {
 // via the flag's env var (enableFlagBinding.explicitlySet): this only fills in
 // switches nobody has touched, never overrides one somebody set.
 func ApplyEnableAllAvailable(switches CollectorsDisableSwitch) (CollectorsDisableSwitch, []AutoEnabledFeature) {
-	return applyEnableAllAvailable(*enableAllAvailable, enableFlagBindings, switches)
+	return applyEnableAllAvailable(*enableAllAvailable, enableFlagBindings, switches, nil, false)
+}
+
+// ApplyEnableAllAvailableProbed is the same thing once availability is actually
+// known: a collector whose plugin the prober found ABSENT is left off, so the flag
+// means what its name says (#525 decision 4).
+//
+// available maps a collector subsystem to whether its plugin answered. A subsystem
+// MISSING from the map is enabled: most opt-in collectors are gated on API cost or
+// cardinality rather than on a plugin, and there is nothing to discover about
+// those — treating "not probed" as "not available" would silently disable
+// everything the prober does not cover.
+//
+// Passing a nil map (ApplyEnableAllAvailable above) fails OPEN and enables
+// everything, which is both the pre-#525 behaviour and the only honest answer
+// where availability cannot be established: the --config.check preflight, which
+// must not touch the network, and a firewall that was unreachable at boot. A box
+// that is briefly down must never come back up as a smaller exporter than the
+// operator asked for.
+func ApplyEnableAllAvailableProbed(switches CollectorsDisableSwitch, available map[string]bool) (CollectorsDisableSwitch, []AutoEnabledFeature) {
+	return applyEnableAllAvailable(*enableAllAvailable, enableFlagBindings, switches, available, available != nil)
 }
 
 // applyEnableAllAvailable is ApplyEnableAllAvailable's testable core: it takes
@@ -792,7 +816,7 @@ func ApplyEnableAllAvailable(switches CollectorsDisableSwitch) (CollectorsDisabl
 // can exercise the precedence rules (explicit CLI flag wins, explicit env var
 // wins, an untouched flag gets enabled) against synthetic bindings without
 // mutating the real global flags kingpin owns for the whole test binary.
-func applyEnableAllAvailable(enableAll bool, bindings []enableFlagBinding, switches CollectorsDisableSwitch) (CollectorsDisableSwitch, []AutoEnabledFeature) {
+func applyEnableAllAvailable(enableAll bool, bindings []enableFlagBinding, switches CollectorsDisableSwitch, available map[string]bool, probed bool) (CollectorsDisableSwitch, []AutoEnabledFeature) {
 	if !enableAll {
 		return switches, nil
 	}
@@ -808,6 +832,13 @@ func applyEnableAllAvailable(enableAll bool, bindings []enableFlagBinding, switc
 	for _, b := range bindings {
 		if b.explicitlySet() {
 			continue
+		}
+		if probed {
+			// Only skip on a POSITIVE finding of absence. An unprobed subsystem, or
+			// one whose probe could not be answered, is enabled as before.
+			if got, known := available[subsystems[b.flag]]; known && !got {
+				continue
+			}
 		}
 		b.apply(&switches)
 		enabled = append(enabled, AutoEnabledFeature{

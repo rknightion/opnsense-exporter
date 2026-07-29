@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"runtime"
 	"sort"
 	"strconv"
@@ -218,7 +219,13 @@ type Collector struct {
 	version string
 	// collectorStates maps every registered collector subsystem name to whether it
 	// is enabled in this exporter instance, surfaced via opnsense_exporter_collector_enabled.
-	collectorStates  map[string]bool
+	collectorStates map[string]bool
+
+	// routeStatus records, per endpoint PATH, whether that route exists, as
+	// observed by the request and cache observers. Read by the availability
+	// prober so an enabled collector's endpoint is never probed twice (#525).
+	routeMu          sync.Mutex
+	routeStatus      map[string]bool
 	buildInfo        *prometheus.Desc
 	collectorEnabled *prometheus.Desc
 	// scrapeDuration / scrapeSuccess retain the historical node_exporter-compatible
@@ -1162,6 +1169,14 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 
 	c.collectorStates = deriveCollectorStates(allCollectors, c.collectors)
 
+	// Wire the availability collector's two out-of-band inputs here rather than in
+	// main: collectorStates IS the authoritative per-subsystem enabled state, and
+	// routeStatus is this Collector's own observation. Doing it in main meant a
+	// hand-written subsystem-to-switch mapping that covered three of thirty
+	// families and had to be extended by hand for each new one.
+	SetFeatureEnabled(func(feature string) bool { return c.collectorStates[feature] })
+	SetRouteObserved(c.RouteObserved)
+
 	c.buildInfo = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "exporter", "build_info"),
 		"Build information of the opnsense exporter (value is always 1; see labels)",
@@ -1355,6 +1370,52 @@ func New(client *opnsense.Client, log *slog.Logger, instanceName string, options
 func (c *Collector) ObserveAPIRequest(endpoint string, statusCode int, duration time.Duration) {
 	c.apiRequests.WithLabelValues(endpoint, strconv.Itoa(statusCode), c.instanceLabel).Inc()
 	c.apiRequestDuration.WithLabelValues(endpoint, c.instanceLabel).Observe(duration.Seconds())
+	c.noteRouteStatus(endpoint, statusCode)
+}
+
+// noteRouteStatus records whether a route EXISTS, from a status code the client
+// was going to report anyway.
+//
+// It is what lets the availability prober skip every endpoint an enabled
+// collector already calls (#525). Only two codes say anything: 404 means the
+// plugin is absent, and a 2xx means it is present. Everything else - a 500, an
+// auth failure, a network error reported as 0 - says nothing about the route and
+// must leave the previous verdict alone, or a firewall reboot would read as every
+// plugin being uninstalled and then reinstalled.
+func (c *Collector) noteRouteStatus(endpoint string, statusCode int) {
+	var exists bool
+	switch {
+	case statusCode == http.StatusNotFound:
+		exists = false
+	case statusCode >= 200 && statusCode < 300:
+		exists = true
+	default:
+		return
+	}
+	c.routeMu.Lock()
+	// Created here rather than only in New: a Collector assembled as a struct
+	// literal (several tests, and anything wiring observers before New finishes)
+	// would otherwise panic writing to a nil map, on a path whose whole purpose is
+	// to be a harmless side effect of a metric we were recording anyway.
+	if c.routeStatus == nil {
+		c.routeStatus = make(map[string]bool)
+	}
+	c.routeStatus[endpoint] = exists
+	c.routeMu.Unlock()
+}
+
+// RouteObserved reports what the collectors' own traffic has established about an
+// endpoint's route. The second return distinguishes "known to be absent" from
+// "never called", which the prober must not conflate.
+func (c *Collector) RouteObserved(name opnsense.EndpointName) (bool, bool) {
+	path, ok := c.Client.EndpointPathFor(name)
+	if !ok {
+		return false, false
+	}
+	c.routeMu.Lock()
+	defer c.routeMu.Unlock()
+	exists, known := c.routeStatus[string(path)]
+	return exists, known
 }
 
 // ObserveCacheHit implements opnsense.CacheObserver: it counts one API call served
@@ -1363,6 +1424,15 @@ func (c *Collector) ObserveAPIRequest(endpoint string, statusCode int, duration 
 // concurrently across sub-collector goroutines — the prometheus vecs are concurrency-safe.
 func (c *Collector) ObserveCacheHit(endpoint, kind string) {
 	c.apiCacheHits.WithLabelValues(endpoint, kind, c.instanceLabel).Inc()
+	// A cache hit issues no request, so the request observer never sees it - but a
+	// replayed 404 is still evidence the plugin is absent, and a replayed body is
+	// still evidence the route exists.
+	switch kind {
+	case opnsense.CacheHitAbsent:
+		c.noteRouteStatus(endpoint, http.StatusNotFound)
+	case opnsense.CacheHitBody:
+		c.noteRouteStatus(endpoint, http.StatusOK)
+	}
 }
 
 // ObserveCacheMiss implements opnsense.CacheObserver: it counts one API call for a

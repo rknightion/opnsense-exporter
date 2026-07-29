@@ -587,17 +587,36 @@ def build_diagnostics(b: Builder):
     # the "available but not enabled" case the one-shot startup log line also
     # reports; --exporter.enable-all-available turns all of these on at once.
     feature_available = b.table(
-        "Feature Availability (opt-in, plugin-gated collectors)",
+        "Plugin Availability (every plugin-gated collector)",
         [sel("opnsense_feature_available")],
-        excludes=["Value", "__name__", "job", "instance"],
-        renames={"feature": "Feature", "enabled": "Enabled", "opnsense_instance": "Instance"},
+        excludes=["__name__", "job", "instance"],
+        renames={"feature": "Feature", "enabled": "Scraped", "Value": "Installed",
+                 "opnsense_instance": "Instance"},
         w=12, h=8,
-        desc="opnsense_feature_available: SMART/Tor/Vnstat plugin availability, probed every "
-             "15 minutes independent of --exporter.cache-ttl (#517). A row present with "
-             "Enabled=false names a feature the box supports but the matching "
-             "--exporter.enable-<feature> flag has not turned on; --exporter.enable-all-available "
-             "enables every such feature at once. A feature whose plugin has never answered "
-             "successfully has no row at all.")
+        desc="opnsense_feature_available: which plugin-gated features this firewall has, "
+             "refreshed every 15 minutes independent of --exporter.cache-ttl (#517, widened "
+             "in #525). Installed=1 means the plugin's API endpoint answered; Installed=0 "
+             "means it returned 404 and the plugin is absent. NO ROW means availability has "
+             "never been determined - an unreachable firewall keeps the previous verdict "
+             "rather than reporting every plugin as gone. Installed=1 with Scraped=false is "
+             "the actionable combination, and covers both an opt-in collector nobody turned "
+             "on and a default-on one somebody disabled. An already-enabled collector is not "
+             "re-probed: its own polling answers the same question.")
+
+    # The one number worth alerting a human to. Counting the actionable combination
+    # directly beats asking someone to read the table above and spot it.
+    feature_unscraped = b.stat(
+        "Plugins Installed But Not Scraped",
+        'count(opnsense_feature_available{enabled="false"} == 1)',
+        graph="none",
+        thresholds=[(None, "green"), (1, "yellow")],
+        desc="Features whose plugin IS installed but whose collector is switched off, so the "
+             "box is serving data nothing is reading. Non-zero is not an error - an opt-in "
+             "collector is off for a stated reason (per-poll API cost, cardinality, or "
+             "exposing usernames) and a default-on one may have been disabled deliberately. "
+             "The exporter also names each one in a startup log line with the flag that would "
+             "turn it on. --exporter.enable-all-available turns on every one whose plugin the "
+             "startup probe found present.")
 
     scrape_dur = b.ts("Collector Poll Duration",
                       [(sel("opnsense_exporter_scrape_collector_duration_seconds"), "{{collector}}")],
@@ -933,7 +952,7 @@ def build_diagnostics(b: Builder):
     ])
     b.tab("Exporter Runtime", [
         b.row("Exporter Build & Collectors", [build, cov, series_total]),
-        b.row("Feature Availability (opt-in autodiscovery, #517)", [feature_available]),
+        b.row("Plugin Availability (autodiscovery, #517/#525)", [feature_available, feature_unscraped]),
         b.row("Go Runtime (client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),
     ])

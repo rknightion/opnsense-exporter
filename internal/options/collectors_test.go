@@ -18,7 +18,7 @@ func TestApplyEnableAllAvailable_Disabled_IsNoOp(t *testing.T) {
 	bindings := []enableFlagBinding{
 		testBinding("exporter.enable-smart", &smart, new(bool), func(s *CollectorsDisableSwitch) { s.SMART = true }),
 	}
-	switches, enabled := applyEnableAllAvailable(false, bindings, CollectorsDisableSwitch{})
+	switches, enabled := applyEnableAllAvailable(false, bindings, CollectorsDisableSwitch{}, nil, false)
 	if switches.SMART {
 		t.Error("expected SMART to stay false when --exporter.enable-all-available is off")
 	}
@@ -32,7 +32,7 @@ func TestApplyEnableAllAvailable_EnablesUntouchedSwitch(t *testing.T) {
 	bindings := []enableFlagBinding{
 		testBinding("exporter.enable-smart", &smart, new(bool), func(s *CollectorsDisableSwitch) { s.SMART = true }),
 	}
-	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{})
+	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{}, nil, false)
 	if !switches.SMART {
 		t.Error("expected SMART to be turned on")
 	}
@@ -57,7 +57,7 @@ func TestApplyEnableAllAvailable_ExplicitCLIFlagWins(t *testing.T) {
 	bindings := []enableFlagBinding{
 		testBinding("exporter.enable-smart", &smartValue, &smartUserSet, func(s *CollectorsDisableSwitch) { s.SMART = true }),
 	}
-	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{})
+	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{}, nil, false)
 	if switches.SMART {
 		t.Error("expected SMART to stay false: the operator's own --exporter.enable-smart=false must win")
 	}
@@ -81,7 +81,7 @@ func TestApplyEnableAllAvailable_ExplicitEnvVarWins(t *testing.T) {
 			apply: func(s *CollectorsDisableSwitch) { s.SMART = true },
 		},
 	}
-	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{})
+	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{}, nil, false)
 	if switches.SMART {
 		t.Error("expected SMART to stay false: the operator's own env var must win")
 	}
@@ -97,7 +97,7 @@ func TestApplyEnableAllAvailable_MultipleUntouchedSwitchesAllEnabled(t *testing.
 		testBinding("exporter.enable-tor", &tor, new(bool), func(s *CollectorsDisableSwitch) { s.Tor = true }),
 		testBinding("exporter.enable-vnstat", &vnstat, new(bool), func(s *CollectorsDisableSwitch) { s.Vnstat = true }),
 	}
-	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{})
+	switches, enabled := applyEnableAllAvailable(true, bindings, CollectorsDisableSwitch{}, nil, false)
 	if !switches.SMART || !switches.Tor || !switches.Vnstat {
 		t.Errorf("expected all three switches enabled, got %+v", switches)
 	}

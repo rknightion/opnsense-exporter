@@ -116,6 +116,12 @@ const ifIndexColdRetryInterval = time.Second
 // device-labelled map as final and settles to the normal cadence.
 const ifIndexNamelessDeadline = 5 * time.Minute
 
+// enableAllAvailableProbeTimeout bounds the one startup availability pass behind
+// --exporter.enable-all-available. It gates which collectors exist, so it has to
+// finish before the collector set is built — and must therefore never be able to
+// hang a start. Expiring falls open and enables everything.
+const enableAllAvailableProbeTimeout = 15 * time.Second
+
 // ifIndexSettled reports whether a built ifIndex map may be treated as final, so
 // the rebuild ticker can drop from the cold retry to the normal interval.
 //
@@ -595,6 +601,42 @@ func main() {
 			"endpoints", len(opnsense.NegativeCacheable404Endpoints()), "ttl", absentTTL)
 	}
 
+	// --exporter.enable-all-available means what its name says: gate it on what the
+	// box actually has (#525 decision 4). This runs HERE because it needs the client,
+	// and it deliberately does NOT run inside resolveOptions — the --config.check
+	// preflight must never touch the network, so there it keeps the fail-open answer.
+	//
+	// Bounded, and it cannot fail the start. On a timeout or an unreachable firewall
+	// the probe map comes back empty (or partial) and every unprobed collector is
+	// enabled, which is the pre-#525 behaviour. A box that is briefly down must not
+	// come back up as a smaller exporter than the operator asked for.
+	//
+	// Known consequence, documented at the flag: a plugin installed LATER will not
+	// self-activate under this flag until the next restart, where previously the
+	// collector was on unconditionally and lit up on its own.
+	if options.EnableAllAvailable() && len(cfg.AutoEnabledFeatures) > 0 {
+		probeCtx, cancelProbe := context.WithTimeout(context.Background(), enableAllAvailableProbeTimeout)
+		available := collector.ProbeFeatureAvailability(probeCtx, &opnsenseClient)
+		cancelProbe()
+
+		if len(available) == 0 {
+			logger.Warn("availability probe returned nothing; enabling every opt-in collector",
+				"component", "startup",
+				"hint", "the firewall was unreachable or too slow to answer; a collector whose plugin is absent stays silent anyway",
+				"timeout", enableAllAvailableProbeTimeout)
+		} else {
+			probed, autoEnabled := options.ApplyEnableAllAvailableProbed(options.CollectorsSwitches(), available)
+			skipped := len(cfg.AutoEnabledFeatures) - len(autoEnabled)
+			collectorsSwitches = probed
+			cfg.AutoEnabledFeatures = autoEnabled
+			logger.Info("resolved enable-all-available against probed feature availability",
+				"component", "startup",
+				"enabled", len(autoEnabled),
+				"left_off_plugin_absent", skipped,
+				"probed", len(available))
+		}
+	}
+
 	// selfMetricsRegistry holds exporter self-metrics (process_*, go_*). It is
 	// gathered on every /metrics request alongside the per-request collector view.
 	selfMetricsRegistry := prometheus.NewRegistry()
@@ -1034,21 +1076,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutFeatureAvailabilityCollector())
 		logger.Info("feature-availability collector disabled")
 	}
-	// Wire the feature-availability collector's "enabled" label to the resolved
-	// switches (#517): Update's CollectorInstance signature carries no switches
-	// of its own, so this is the out-of-band seam, mirroring LogEvents/Flow.
-	collector.SetFeatureEnabled(func(feature string) bool {
-		switch feature {
-		case collector.SMARTSubsystem:
-			return collectorsSwitches.SMART
-		case collector.TorSubsystem:
-			return collectorsSwitches.Tor
-		case collector.VnstatSubsystem:
-			return collectorsSwitches.Vnstat
-		default:
-			return false
-		}
-	})
+	// The feature-availability collector's "enabled" and observed-route inputs are
+	// wired inside collector.New, from collectorStates and the Collector's own
+	// request observer (#525). They used to be a hand-written subsystem-to-switch
+	// mapping here that covered three of thirty families.
 
 	// Resolve the instance label deterministically (see #75). The label is baked
 	// once into every metric, the OTLP resource identity and Pyroscope tags, so it

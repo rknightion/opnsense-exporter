@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
 // availabilityTestMux answers every probed feature's gating endpoint. present
@@ -58,7 +60,11 @@ func newAvailabilityCollector(logger *slog.Logger, enabledFn FeatureEnabledFunc)
 	return c
 }
 
-func TestAvailabilityCollector_EmitsMetricOnlyForAvailableFeatures(t *testing.T) {
+// Every family with a verdict gets a series, 0 as well as 1 (#525 decision 2), so
+// a panel can show the plugins this box does NOT have and a plugin vanishing is
+// alertable. Anything the test mux does not answer 404s, which is exactly what an
+// uninstalled plugin does.
+func TestAvailabilityCollector_EmitsZeroAndOneForEveryDeterminedFeature(t *testing.T) {
 	mux := availabilityTestMux(t, map[string]bool{
 		SMARTSubsystem:  true,
 		TorSubsystem:    false,
@@ -73,31 +79,109 @@ func TestAvailabilityCollector_EmitsMetricOnlyForAvailableFeatures(t *testing.T)
 	})
 
 	metrics := collectMetrics(t, c, client)
-	if len(metrics) != 2 {
-		t.Fatalf("expected 2 metrics (smart, vnstat available; tor absent), got %d", len(metrics))
+	if len(metrics) != len(featureAvailabilityProbes) {
+		t.Fatalf("got %d series, want one per probed family (%d)", len(metrics), len(featureAvailabilityProbes))
 	}
 
-	byFeature := map[string]map[string]string{}
+	values := map[string]float64{}
+	labels := map[string]map[string]string{}
 	for _, m := range metrics {
-		labels := getMetricLabels(m)
-		byFeature[labels["feature"]] = labels
-		if getMetricValue(m) != 1 {
-			t.Errorf("expected value=1 for feature %q, got %v", labels["feature"], getMetricValue(m))
-		}
+		l := getMetricLabels(m)
+		labels[l["feature"]] = l
+		values[l["feature"]] = getMetricValue(m)
 	}
 
-	if _, ok := byFeature[TorSubsystem]; ok {
-		t.Error("tor is unavailable and must be ABSENT, not emitted with value 0")
+	if got, ok := values[TorSubsystem]; !ok || got != 0 {
+		t.Errorf("tor = %v (present=%v), want an explicit 0 — absence would be "+
+			"indistinguishable from never having probed", got, ok)
 	}
-	if labels, ok := byFeature[SMARTSubsystem]; !ok {
-		t.Error("expected a smart series")
-	} else if labels["enabled"] != "false" {
-		t.Errorf("expected smart enabled=false, got %q", labels["enabled"])
+	if got := values[SMARTSubsystem]; got != 1 {
+		t.Errorf("smart = %v, want 1", got)
 	}
-	if labels, ok := byFeature[VnstatSubsystem]; !ok {
-		t.Error("expected a vnstat series")
-	} else if labels["enabled"] != "true" {
-		t.Errorf("expected vnstat enabled=true, got %q", labels["enabled"])
+	if labels[SMARTSubsystem]["enabled"] != "false" {
+		t.Errorf("smart enabled = %q, want false", labels[SMARTSubsystem]["enabled"])
+	}
+	if labels[VnstatSubsystem]["enabled"] != "true" {
+		t.Errorf("vnstat enabled = %q, want true", labels[VnstatSubsystem]["enabled"])
+	}
+	// A family the mux never heard of must read 0, not vanish.
+	if got, ok := values[CrowdSecSubsystem]; !ok || got != 0 {
+		t.Errorf("crowdsec = %v (present=%v), want 0 — its route 404s here", got, ok)
+	}
+}
+
+// An enabled collector already calls its gating endpoint every poll, so probing it
+// again is duplicate load on the firewall for a question its own traffic answered
+// (#525 decision 1). The mux fails the test if the probe asks anyway.
+func TestAvailabilityCollector_DoesNotProbeWhatTheCollectorsAlreadyObserved(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/vnstat/service/interface_list", func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("vnstat is enabled and its route was already observed; probing it again is " +
+			"duplicate load on the firewall")
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := newAvailabilityCollector(discardLogger(), func(f string) bool { return f == VnstatSubsystem })
+	c.observedFn = func(name opnsense.EndpointName) (bool, bool) {
+		if name == "vnstatInterfaceList" {
+			return true, true
+		}
+		return false, false
+	}
+
+	values := map[string]float64{}
+	for _, m := range collectMetrics(t, c, client) {
+		values[getMetricLabels(m)["feature"]] = getMetricValue(m)
+	}
+	if got := values[VnstatSubsystem]; got != 1 {
+		t.Errorf("vnstat = %v, want 1 from the observed route rather than a fresh probe", got)
+	}
+}
+
+// A probe that cannot get an answer is not evidence of absence. A firewall that is
+// briefly unreachable must not read as every plugin having been uninstalled at
+// once — that would fire an alert and, through --exporter.enable-all-available,
+// could shrink the exporter on the next restart.
+func TestAvailabilityCollector_UnanswerableProbeKeepsThePreviousVerdict(t *testing.T) {
+	present := map[string]bool{SMARTSubsystem: true}
+	var broken bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/smart/service/list", func(w http.ResponseWriter, _ *http.Request) {
+		if broken {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if !present[SMARTSubsystem] {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"devices":[]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := newAvailabilityCollector(discardLogger(), func(string) bool { return false })
+
+	first := map[string]float64{}
+	for _, m := range collectMetrics(t, c, client) {
+		first[getMetricLabels(m)["feature"]] = getMetricValue(m)
+	}
+	if first[SMARTSubsystem] != 1 {
+		t.Fatalf("smart = %v on the first probe, want 1", first[SMARTSubsystem])
+	}
+
+	broken = true
+	second := map[string]float64{}
+	for _, m := range collectMetrics(t, c, client) {
+		second[getMetricLabels(m)["feature"]] = getMetricValue(m)
+	}
+	if got, ok := second[SMARTSubsystem]; !ok || got != 1 {
+		t.Errorf("smart = %v (present=%v) after an unanswerable probe, want the previous 1 "+
+			"carried forward — a 500 says nothing about whether the plugin is installed", got, ok)
 	}
 }
 
@@ -118,7 +202,7 @@ func TestAvailabilityCollector_LogsOnceOnChange(t *testing.T) {
 	// First probe: smart becomes available. Must log (first probe ever).
 	present[SMARTSubsystem] = true
 	collectMetrics(t, c, client)
-	firstLogCount := strings.Count(buf.String(), "feature available but not enabled")
+	firstLogCount := strings.Count(buf.String(), "feature available but its collector is not enabled")
 	if firstLogCount != 1 {
 		t.Fatalf("expected exactly 1 log line after the first probe, got %d:\n%s", firstLogCount, buf.String())
 	}
@@ -126,7 +210,7 @@ func TestAvailabilityCollector_LogsOnceOnChange(t *testing.T) {
 	// Second probe: identical result. Must NOT log again.
 	buf.Reset()
 	collectMetrics(t, c, client)
-	if got := strings.Count(buf.String(), "feature available but not enabled"); got != 0 {
+	if got := strings.Count(buf.String(), "feature available but its collector is not enabled"); got != 0 {
 		t.Errorf("expected no new log lines on an unchanged probe, got %d:\n%s", got, buf.String())
 	}
 
@@ -134,7 +218,7 @@ func TestAvailabilityCollector_LogsOnceOnChange(t *testing.T) {
 	buf.Reset()
 	present[TorSubsystem] = true
 	collectMetrics(t, c, client)
-	if got := strings.Count(buf.String(), "feature available but not enabled"); got == 0 {
+	if got := strings.Count(buf.String(), "feature available but its collector is not enabled"); got == 0 {
 		t.Error("expected a new log line once the availability set changed")
 	}
 }

@@ -243,30 +243,3 @@ func (c *Client) FetchSMARTDevices() (SMARTDevices, *APICallError) {
 
 	return data, nil
 }
-
-// FetchSMARTAvailable calls only the os-smart plugin's list endpoint and
-// reports whether it answered at all (true) or 404'd, i.e. the plugin is
-// absent (false, no error). Unlike FetchSMARTDevices it never follows up with
-// a per-disk smartInfo POST, so it never runs `smartctl -a` or wakes a
-// spun-down disk - it exists for the feature-availability prober (#517),
-// which must answer "is the plugin there?" without paying the collector's own
-// per-poll cost, the exact cost --exporter.enable-smart defaults off for.
-func (c *Client) FetchSMARTAvailable() (bool, *APICallError) {
-	listURL, ok := c.endpoints["smartList"]
-	if !ok {
-		return false, &APICallError{
-			Endpoint:   "smartList",
-			Message:    "endpoint not found in client endpoints",
-			StatusCode: 0,
-		}
-	}
-
-	var listResp smartListResponse
-	if err := c.doForm(listURL, url.Values{}, &listResp); err != nil {
-		if err.StatusCode == http.StatusNotFound {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
