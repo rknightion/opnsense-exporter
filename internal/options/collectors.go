@@ -380,7 +380,7 @@ var (
 	enableAllAvailable = kingpin.Flag(
 		"exporter.enable-all-available",
 		"Enable every opt-in collector switch (--exporter.enable-*) that is not explicitly set on the command line or via its own env var. Never enables the syslog/Zenarmor/NetFlow receivers - those open network sockets and are out of scope. Each collector this switches on is logged individually with the reason it defaults to off (extra per-poll API cost, high/unbounded cardinality, or exposing usernames/addresses); an explicit --exporter.enable-<x>=false always wins over this blanket switch.",
-	).Envar("OPNSENSE_EXPORTER_EXPORTER_ENABLE_ALL_AVAILABLE").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_ENABLE_ALL_AVAILABLE").Default("false").Bool()
 )
 
 // enableFlagUserSet tracks, per --exporter.enable-* flag, whether the operator

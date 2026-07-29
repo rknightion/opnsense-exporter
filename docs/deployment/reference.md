@@ -98,7 +98,7 @@ services:
       # defaults to off (extra per-poll API cost, high/unbounded cardinality, or
       # exposing usernames/addresses); an explicit --exporter.enable-<x>=false always
       # wins over this blanket switch.
-      # OPNSENSE_EXPORTER_EXPORTER_ENABLE_ALL_AVAILABLE: "false"
+      # OPNSENSE_EXPORTER_ENABLE_ALL_AVAILABLE: "false"
       # Enable per-entry ARP metrics (ip/mac/hostname labels - high, churning
       # cardinality). Off by default; the low-cardinality entries_total aggregate is
       # always emitted.
