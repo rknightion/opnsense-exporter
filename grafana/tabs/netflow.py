@@ -133,7 +133,7 @@ def build(b: Builder):
         # against both use "s". The expected series is a 0/1 flag that the age axis
         # flattens onto the baseline, so give it its own axis rather than losing it (#513).
         unit="s",
-        overrides=[{"matcher": {"id": "byRegexp", "options": "^expected: "},
+        overrides=[{"matcher": {"id": "byRegexp", "options": "expected: .*"},
              "properties": [{"id": "unit", "value": "short"}, {"id": "custom.axisPlacement", "value": "right"}, {"id": "max", "value": 1}]}],
         w=16, h=8,
         desc="expected=1 means the firewall is configured to capture NetFlow on that interface; "

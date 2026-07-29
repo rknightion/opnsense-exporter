@@ -523,7 +523,7 @@ class Builder:
 
     def statetimeline(self, title, series, mappings, unit="short", desc="",
                       w=24, h=8, thresholds=None, dedupe=True,
-                      series_mappings=None) -> str:
+                      series_mappings=None, color_mode=None) -> str:
         """series = list of (expr, legend). mappings = {"0":("Down","red"),...}.
 
         series_mappings = {legend: mapping} overrides the panel-wide mapping for one
@@ -533,13 +533,16 @@ class Builder:
         """
         queries = [self._query(e, ref=chr(65 + i), legend=lg, dedupe=dedupe)
                    for i, (e, lg) in enumerate(series)]
-        defaults = {"unit": unit, "color": {"mode": "thresholds"},
+        # A census timeline (a count per state) has no two states to paint, so threshold
+        # colouring gives it one bit per row. A continuous palette makes the band shade
+        # track the count, which is the only thing such a panel has to say (#510).
+        defaults = {"unit": unit, "color": {"mode": color_mode or "thresholds"},
                     # An empty dict used to emit a bare {"type":"value","options":{}} into
                     # the shipped JSON — dead config that reads as intent (#510).
                     "mappings": self._value_mappings(mappings) if mappings else [],
                     "thresholds": self._thresholds(
                         thresholds or [{"color": "red", "value": None}, {"color": "green", "value": 1}])}
-        if not mappings and thresholds is None:
+        if not mappings and thresholds is None and color_mode is None:
             # The default [red@base, green@1] is a two-state DOWN/UP mapping, which is
             # right for a binary metric and wrong for anything else. panel-323 plots a TCP
             # connection-state census with no mapping at all, so every state that happened

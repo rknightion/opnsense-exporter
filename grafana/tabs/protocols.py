@@ -202,8 +202,10 @@ def build(b: Builder):
         mappings={},  # no binary mapping — numeric count displayed as-is
         # A state census is not an up/down flag: the helper's default [red@base, green@1]
         # painted every state with zero connections solid red, so a healthy firewall
-        # rendered two-thirds alarm-coloured (#510). One neutral step, no false alarm.
-        thresholds=[{"color": "blue", "value": None}],
+        # rendered two-thirds alarm-coloured (#510). A flat neutral step fixes the false
+        # alarm but leaves every row the same shade, which says nothing — so colour it
+        # continuously instead, and the band tracks the connection count.
+        color_mode="continuous-BlPu",
         unit="short",
         w=16, h=8,
         desc="Number of TCP connections by state (gauge — current value, not rate).",

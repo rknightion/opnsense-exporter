@@ -169,7 +169,8 @@ def build(b: Builder):
             "Value #B": "Line Rate (bps)",
         },
         unit_overrides={
-            "Value #A": "bytes",
+            # No unit on MTU deliberately: "bytes" renders 1500 as "1.46 KiB", and MTU is
+            # a figure operators pattern-match against 1500/9000/1492 (#513).
             "Value #B": "bps",
         },
         sort_by="Interface",

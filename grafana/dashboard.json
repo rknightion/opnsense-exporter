@@ -13929,18 +13929,6 @@
                   {
                     "matcher": {
                       "id": "byName",
-                      "options": "Value #A"
-                    },
-                    "properties": [
-                      {
-                        "id": "unit",
-                        "value": "bytes"
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
                       "options": "Value #B"
                     },
                     "properties": [
@@ -37481,15 +37469,19 @@
                 "defaults": {
                   "unit": "short",
                   "color": {
-                    "mode": "thresholds"
+                    "mode": "continuous-BlPu"
                   },
                   "mappings": [],
                   "thresholds": {
                     "mode": "absolute",
                     "steps": [
                       {
-                        "color": "blue",
+                        "color": "red",
                         "value": null
+                      },
+                      {
+                        "color": "green",
+                        "value": 1
                       }
                     ]
                   }
@@ -47137,7 +47129,7 @@
                   {
                     "matcher": {
                       "id": "byRegexp",
-                      "options": "^expected: "
+                      "options": "expected: .*"
                     },
                     "properties": [
                       {
