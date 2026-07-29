@@ -91,15 +91,21 @@ func TestFetchCaptivePortalSessions_Normal(t *testing.T) {
 	}
 }
 
+// TestFetchCaptivePortalSessions_Unconfigured asserts the search POST is skipped
+// entirely when no zones are configured (#524). It is not merely wasteful there:
+// searchAction takes no zoneid and always runs `configd captiveportal list_clients`,
+// which on a box whose portal has never started reads a schemaless SQLite database,
+// exits non-zero, and makes the firewall log a traceback once per poll.
 func TestFetchCaptivePortalSessions_Unconfigured(t *testing.T) {
-	// zones returns [] (PHP empty array); sessions returns zero rows.
+	// zones returns [] (PHP empty array).
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()
 	mux.HandleFunc("/api/captiveportal/session/zones", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`[]`))
 	})
 	mux.HandleFunc("/api/captiveportal/session/search", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"total": 0, "rowCount": 0, "current": 1, "rows": []}`))
+		t.Error("session/search must not be requested when no zones are configured")
+		http.Error(w, "configd failure", http.StatusInternalServerError)
 	})
 
 	data, err := client.FetchCaptivePortalSessions()

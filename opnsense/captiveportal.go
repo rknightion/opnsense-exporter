@@ -125,6 +125,16 @@ func (c *Client) FetchCaptivePortalSessions() (CaptivePortalSessions, *APICallEr
 	}
 	data.Present = true
 
+	// No zones configured: there is nothing to attribute sessions to, and the
+	// search is not merely wasted work (#524). searchAction takes no zoneid — it
+	// always runs `configd captiveportal list_clients`, and on a box whose portal
+	// has never started that reads a SQLite database with no schema (DB.open()
+	// creates the file, only DB.create() builds the tables), so the script exits
+	// non-zero and the firewall logs a traceback once per poll. Stop before it.
+	if len(zones) == 0 {
+		return data, nil
+	}
+
 	// Build a session count map keyed by zone ID.
 	sessionCounts := make(map[string]float64)
 
