@@ -954,8 +954,20 @@ func observingUnaryInterceptor(
 //
 // Both branches install the delivery-observation hook described above; without it every
 // failure would read as generic-and-retryable, which is the pre-#392 behaviour.
-// concurrency sizes the HTTP idle-connection pool; the gRPC branch ignores it because a
-// single HTTP/2 connection multiplexes every concurrent flush.
+// concurrency sizes the HTTP idle-connection pool. The gRPC branch ignores it, and NOT
+// because HTTP/2 multiplexing makes it free: otlploggrpc.Exporter.Export takes a
+// clientMu around the whole upload (vendor/…/otlploggrpc/exporter.go:29-30, :71-73), so
+// every concurrent ForceFlush queues behind that one mutex and --logs.ship-concurrency
+// buys NOTHING on gRPC. The throughput win in #505 is http/protobuf-only. Getting it on
+// gRPC would mean one exporter per worker rather than the shared one, which is a real
+// change, not a config tweak. otlploghttp.Exporter.Export holds no such lock — it is an
+// atomic client load, the request is cloned per call and the gzip writer comes from a
+// sync.Pool — so concurrent Export is safe there today by inspection. That is a fact
+// about the pinned version, not a promise from the interface: sdk/log/exporter.go:34
+// says Export "should never be called concurrently with other Export calls". If a future
+// otlploghttp grows the mutex gRPC already has, this collapses back to sequential
+// silently — no error, no failing test, just the ~125 rec/s ceiling again. Check it on
+// any otlplog dependency bump.
 func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, concurrency int) (sdklog.Exporter, error) {
 	tlsCfg, err := buildLogTLSConfig(cfg)
 	if err != nil {
