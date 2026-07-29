@@ -601,6 +601,14 @@ services:
       # opnsense_exporter_logs_rejected_total{reason="filtered"} - never silently
       # discarded.
       # OPNSENSE_EXPORTER_LOGS_SYSLOG_EXCLUDE_PROGRAMS: ""
+      # Add GeoIP country/continent/ASN/as_org attributes (identical keys to the flow
+      # lane) to filterlog, sshd/auth and Suricata log lines, for the remote peer's
+      # address. Needs no database of its own: it reuses whatever --geoip.enabled
+      # already loaded. On by default WHENEVER --geoip.enabled is set -- BEHAVIOUR
+      # CHANGE ON UPGRADE for any deployment already running --geoip.enabled for flow
+      # records, since filterlog is the highest-volume log stream on the box. Set to
+      # false to keep GeoIP on flow records only.
+      # OPNSENSE_EXPORTER_LOGS_SYSLOG_GEOIP: "true"
       # Comma-separated syslog programs to ship, dropping everything else. Empty ships
       # everything. Mutually exclusive with --logs.syslog.exclude-programs.
       # OPNSENSE_EXPORTER_LOGS_SYSLOG_INCLUDE_PROGRAMS: ""
@@ -981,11 +989,17 @@ services:
       # End-to-end timeout for one edition's download. A timeout leaves the installed
       # database untouched and is retried on the next interval.
       # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_TIMEOUT: "5m"
-      # Enable local GeoIP enrichment of flow records from MaxMind .mmdb files on disk.
-      # Adds country/continent/city/ASN attributes to flow LOGS for external addresses,
-      # so geo no longer depends on whether Zenarmor happened to see the connection.
-      # Purely local: no lookup ever touches the network. Off by default because it
-      # needs a database the exporter does not ship.
+      # Enable local GeoIP enrichment from MaxMind .mmdb files on disk. Adds
+      # country/continent/city/ASN attributes to flow LOGS for external addresses, so
+      # geo no longer depends on whether Zenarmor happened to see the connection. Purely
+      # local: no lookup ever touches the network. Off by default because it needs a
+      # database the exporter does not ship. BEHAVIOUR CHANGE ON UPGRADE (#528): this
+      # ALSO now covers filterlog, sshd/auth and Suricata log lines with
+      # country/continent/ASN/as_org (no city/region there) - filterlog is the
+      # highest-volume log stream on the box, so an existing --geoip.enabled deployment
+      # gains real per-line byte cost on upgrade with no config change. Set
+      # --logs.syslog.geoip=false to opt those log lines back out while keeping GeoIP on
+      # flow records. See docs/geoip.md.
       # OPNSENSE_EXPORTER_GEOIP_ENABLED: "false"
       # How often to re-stat the database paths and hot-swap a changed file. This is
       # what makes the operator-managed path work - a geoipupdate cron, a sidecar or a

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 )
 
@@ -128,6 +129,46 @@ func TestMapEveSeverity(t *testing.T) {
 	for _, tt := range tests {
 		if got := mapEveSeverity(tt.in); got != tt.want {
 			t.Errorf("mapEveSeverity(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// GeoIP (#528): both alert endpoints are geoip.Enrichable public addresses in the
+// captured line, so both get geo attributes once a GeoIP source is configured.
+func TestParseSuricata_GeoAttrs(t *testing.T) {
+	geoLookup = fakeGeoLookup{results: map[string]geoip.Result{
+		"52.85.47.113": {CountryISO: "US", ContinentCode: "NA", ASN: 16509, ASOrg: "Amazon.com, Inc."},
+	}}
+	t.Cleanup(func() { geoLookup = nil })
+
+	rec := BuildRecord(Envelope{Program: "suricata", Message: eveAlertLine, Severity: 5}, enrichSnap(), nil)
+	a := rec.Attributes
+	for k, want := range map[string]string{
+		"src.geo.country":        "US",
+		"src.geo.country_source": "maxmind",
+		"src.geo.continent":      "NA",
+		"src.geo.asn":            "AS16509",
+		"src.geo.as_org":         "Amazon.com, Inc.",
+	} {
+		if a[k] != want {
+			t.Errorf("attr %q = %q, want %q", k, a[k], want)
+		}
+	}
+	// 172.16.9.50 is RFC1918: never enrichable, so dest must carry no geo attribute.
+	for k := range a {
+		if strings.HasPrefix(k, "dst.geo.") {
+			t.Errorf("attribute %q present for a private destination address", k)
+		}
+	}
+}
+
+// Without a configured GeoIP source, Suricata ships exactly as before #528.
+func TestParseSuricata_GeoAttrs_AbsentWithNoLookupConfigured(t *testing.T) {
+	geoLookup = nil
+	rec := BuildRecord(Envelope{Program: "suricata", Message: eveAlertLine, Severity: 5}, enrichSnap(), nil)
+	for k := range rec.Attributes {
+		if strings.Contains(k, ".geo.") {
+			t.Errorf("attribute %q present with no GeoIP source configured", k)
 		}
 	}
 }

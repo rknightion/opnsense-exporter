@@ -160,6 +160,13 @@ func parseFilterlog(env Envelope, snap *enrich.Snapshot, miss func(table string)
 	}
 	enrichEndpoint(set, snap, "src", src, srcPort, protoName)
 	enrichEndpoint(set, snap, "dst", dst, dstPort, protoName)
+	// GeoIP (#528): filterlog is one of the three lanes where a remote peer is the
+	// SUBJECT of the line, not an incidental mention -- unlike unbound or DHCP, which
+	// never get this. geoAttrs is itself a no-op unless a GeoIP source has been
+	// configured (--geoip.enabled plus --logs.syslog.geoip), so this costs nothing on
+	// a deployment that has not opted in.
+	geoAttrs(set, "src", src)
+	geoAttrs(set, "dst", dst)
 
 	sev := logship.SeverityInfo
 	if action == "block" {

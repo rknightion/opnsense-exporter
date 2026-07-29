@@ -1,8 +1,18 @@
 # GeoIP enrichment
 
 Optional, purely **local** geolocation and autonomous-system enrichment of flow
-records, from MaxMind `.mmdb` files on disk. No lookup ever touches the network:
-a lookup is a radix-tree walk costing well under a microsecond.
+records **and of the filterlog/sshd/Suricata log lines** described below, from
+MaxMind `.mmdb` files on disk. No lookup ever touches the network: a lookup is a
+radix-tree walk costing well under a microsecond.
+
+!!! warning "Behaviour change on upgrade"
+
+    `--geoip.enabled` now covers **both** flow records and the filterlog/sshd/auth/
+    Suricata log lines (see [Logs](#logs-filterlog-sshdauth-suricata) below) - one
+    switch means geo, everywhere it can reach. An existing deployment that already
+    runs `--geoip.enabled` for flow records gains real per-line byte cost on
+    filterlog, the highest-volume log stream on the box, **with no config change**.
+    Set `--logs.syslog.geoip=false` to keep GeoIP on flow records only.
 
 It exists to close an asymmetry. Zenarmor's `conn` documents carry geo from
 Zenarmor's own database; NetFlow-derived flows carry bare addresses and no geo at
@@ -154,6 +164,91 @@ folding into `__other__` rather than that the family grows without limit.
 **ASN and city never become labels at any setting.** With the opt-in off, every
 series carries `country=""`, which Prometheus treats as an absent label - so the
 family reads exactly as it did before this feature existed.
+
+## Logs (filterlog, sshd/auth, Suricata)
+
+`--geoip.enabled` also adds geo to three log lanes, and only these three: the ones
+where a remote peer is the **subject** of the line, not an incidental mention.
+
+* **filterlog** - every blocked/passed packet, both `src.ip` and `dst.ip`. This is
+  what answers "which countries are hitting my WAN and getting dropped", and it
+  works identically with or without Zenarmor, because filterlog never had any geo
+  source at all.
+* **sshd / auth** - a brute-force or login attempt's source address.
+* **Suricata** (the EVE-over-syslog alert path) - an alert's source and
+  destination.
+
+**Deliberately excluded:** unbound, DHCP, and every other lane where an address
+appears incidentally. Geo is not queried there, and it would be paid for on every
+line for no operational benefit.
+
+Attributes are a **subset** of the flow lane's, with the **same keys** so one Loki
+query covers both streams:
+
+| attribute | notes |
+| --- | --- |
+| `<src\|dst>.geo.country` | ISO 3166-1 alpha-2 |
+| `<src\|dst>.geo.country_source` | always `maxmind` - these lanes have no second source to disagree with |
+| `<src\|dst>.geo.continent` | two-letter code |
+| `<src\|dst>.geo.asn` | e.g. `AS13335` |
+| `<src\|dst>.geo.as_org` | e.g. `Cloudflare` |
+
+**No `city`, no `region`.** They stay a flow/Zenarmor-only field: filterlog's
+volume makes them a worse trade here than they already were on flow (see the
+per-line cost below), and nothing on this path needs them.
+
+Non-global addresses (loopback, RFC 1918, link-local, CGNAT) are skipped through
+the same `geoip.Enrichable` check flow enrichment uses - never a second classifier,
+never a lookup that could only ever miss.
+
+**Logs-only.** Country does **not** become a `log_events` metric dimension, on any
+setting, and there is no flag for it: filterlog's block-line volume is far higher
+than flow volume, so the cardinality multiplication that justifies
+`--flow.geoip.metric-dims` being opt-in on flow is a strictly worse trade on logs.
+
+### The per-lane opt-out
+
+```bash
+--logs.syslog.geoip=false
+```
+
+On by default whenever `--geoip.enabled` is set - that default is the behaviour
+change flagged at the top of this page. Set it to `false` to keep GeoIP on flow
+records while opting these three log lanes back out. It needs no database of its
+own: it only gates whether the log lanes consult the same `*geoip.DB`
+`--geoip.enabled` already opened, so flipping it costs nothing beyond the toggle.
+
+### Measured per-line cost
+
+Measured against the repository's own filterlog test captures plus a representative
+sample of real-world autonomous-system organization names (ISPs and cloud/hosting
+providers commonly seen in inbound block traffic - MaxMind's tiny test fixtures do
+not have enough variety to size this on their own):
+
+| | one endpoint | both endpoints (worst case: transit traffic between two public addresses) |
+| --- | --- | --- |
+| average | ~116 B | ~232 B |
+| worst case (longest observed `as_org`) | ~140 B | ~280 B |
+
+(`TestGeoByteCost`, `internal/logship/syslog/geo_bytecost_test.go` - key+value byte
+length summed over the attributes one `geoAttrs` call adds, against a representative
+sample of real-world autonomous-system organization names rather than MaxMind's tiny
+test fixtures, which do not carry enough org-name variety to size this on their own.)
+
+`as_org` is the largest single field - about **28% of one endpoint's average added
+bytes, up to 40% in the worst observed case** - but does not dominate the total:
+`country`/`country_source`/`continent`/`asn` together are fixed-size overhead of
+about 57 B regardless of which autonomous system answers. It is shipped per the
+frozen scope decision (#528) because an ASN number with no organization name needs
+an external lookup to be readable. Compare against #475, which removed Zenarmor's
+latitude/longitude at 145-149 B/line for a similar reason - that number lands close
+to this feature's worst case by coincidence, not because the two are the same shape
+of cost.
+
+Most filterlog lines add **zero** bytes: an internal-to-internal line, or a line
+whose only public-looking address is a miss in the loaded database, gets no `.geo.`
+attribute at all (fail-open). The figures above are the cost on a line that
+actually resolves.
 
 ## Fail-open, always
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 )
@@ -353,5 +354,51 @@ func TestParseFilterlog_UnknownActionLeavesAttrActionUnset(t *testing.T) {
 	// The raw verb still ships.
 	if got := attr(t, rec, "action"); got != "rdr" {
 		t.Errorf(`raw "action" = %q, want "rdr"`, got)
+	}
+}
+
+// A blocked line from a public source hitting the firewall's public WAN address:
+// both endpoints are geoip.Enrichable, so both get geo attributes when a GeoIP
+// source is configured (#528).
+func TestParseFilterlog_GeoAttrs_BothEndpointsEnriched(t *testing.T) {
+	geoLookup = fakeGeoLookup{results: map[string]geoip.Result{
+		"198.51.100.7": {CountryISO: "GB", ContinentCode: "EU", ASN: 15169, ASOrg: "Google LLC"},
+		"203.0.113.9":  {CountryISO: "US", ContinentCode: "NA"},
+	}}
+	t.Cleanup(func() { geoLookup = nil })
+
+	line := `117,,,60533d555322b9f6a009f71c1c471480,vtnet1,match,block,in,4,0x0,,64,42046,0,DF,6,tcp,60,198.51.100.7,203.0.113.9,57920,22,0,S,1621336252,,64240,,mss;sackOK;TS;nop;wscale`
+	rec, ok := parseFilterlog(testEnvelope(line), testSnapshot(t), nil)
+	if !ok {
+		t.Fatalf("parseFilterlog(ok) = false, want true")
+	}
+
+	assertAttr(t, rec, "src.geo.country", "GB")
+	assertAttr(t, rec, "src.geo.country_source", "maxmind")
+	assertAttr(t, rec, "src.geo.continent", "EU")
+	assertAttr(t, rec, "src.geo.asn", "AS15169")
+	assertAttr(t, rec, "src.geo.as_org", "Google LLC")
+
+	assertAttr(t, rec, "dst.geo.country", "US")
+	assertAttr(t, rec, "dst.geo.country_source", "maxmind")
+	assertAttr(t, rec, "dst.geo.continent", "NA")
+	assertNoAttr(t, rec, "dst.geo.asn")
+	assertNoAttr(t, rec, "dst.geo.as_org")
+}
+
+// Without a configured GeoIP source (the default, and the per-lane opt-out's
+// effect), filterlog ships exactly as it did before #528 -- no geo.* attribute at
+// all, never an empty one.
+func TestParseFilterlog_GeoAttrs_AbsentWithNoLookupConfigured(t *testing.T) {
+	geoLookup = nil // explicit: this is the package's zero state
+
+	rec, ok := parseFilterlog(testEnvelope(realIPv4TCPLine), testSnapshot(t), nil)
+	if !ok {
+		t.Fatalf("parseFilterlog(ok) = false, want true")
+	}
+	for k := range rec.Attributes {
+		if strings.Contains(k, ".geo.") {
+			t.Errorf("attribute %q present with no GeoIP source configured", k)
+		}
 	}
 }

@@ -89,6 +89,22 @@ var (
 			"MAC addresses, local/remote scope and well-known service names.",
 	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_ENRICH").Default("true").Bool()
 
+	// GeoIP on logs (#528) is the PER-LANE OPT-OUT --geoip.enabled's own help text
+	// promises: turning --geoip.enabled on now covers filterlog, sshd/auth and
+	// Suricata log lines too, not only flow records, and filterlog is the
+	// highest-volume stream on the box -- see the geoip.enabled flag and
+	// docs/geoip.md for why that upgrade behaviour is deliberate. Set this to false
+	// to keep GeoIP on flow records while opting these log lines back out.
+	logsSyslogGeoIP = kingpin.Flag(
+		"logs.syslog.geoip",
+		"Add GeoIP country/continent/ASN/as_org attributes (identical keys to the flow lane) to "+
+			"filterlog, sshd/auth and Suricata log lines, for the remote peer's address. Needs no "+
+			"database of its own: it reuses whatever --geoip.enabled already loaded. On by default "+
+			"WHENEVER --geoip.enabled is set -- BEHAVIOUR CHANGE ON UPGRADE for any deployment "+
+			"already running --geoip.enabled for flow records, since filterlog is the highest-volume "+
+			"log stream on the box. Set to false to keep GeoIP on flow records only.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SYSLOG_GEOIP").Default("true").Bool()
+
 	// Sampling is OPT-IN. Metric derivation (the log_events collector) is on by
 	// default and additive; sampling is what actually DROPS raw lines, so it stays
 	// off until asked. It requires the log_events collector so every dropped line was
@@ -147,13 +163,17 @@ var (
 
 // SyslogConfig is the resolved configuration for the syslog receiver.
 type SyslogConfig struct {
-	UDPAddr         string
-	TCPAddr         string
-	TLSAddr         string
-	TLSConfig       *tls.Config
-	AllowedPeers    []netip.Prefix
-	MaxConns        int
-	Enrich          bool
+	UDPAddr      string
+	TCPAddr      string
+	TLSAddr      string
+	TLSConfig    *tls.Config
+	AllowedPeers []netip.Prefix
+	MaxConns     int
+	Enrich       bool
+	// GeoIP is the per-lane opt-out for --geoip.enabled on filterlog/sshd/Suricata
+	// log lines (#528). Independent of Enrich: GeoIP reads a local MaxMind database,
+	// never the OPNsense API, so it is not part of the API-enrichment toggle above.
+	GeoIP           bool
 	IncludePrograms []string
 	ExcludePrograms []string
 	MinSeverity     int
@@ -198,6 +218,7 @@ func LogsSyslog() (*SyslogConfig, bool, error) {
 		TLSAddr:      strings.TrimSpace(*logsSyslogListenTLS),
 		MaxConns:     *logsSyslogMaxConns,
 		Enrich:       *logsSyslogEnrich,
+		GeoIP:        *logsSyslogGeoIP,
 		Sample:       *logsSyslogSample,
 		SampledAttr:  *logsSyslogSampledAttr,
 		DebugCapture: *logsSyslogDebugCapture,

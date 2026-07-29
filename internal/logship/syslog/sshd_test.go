@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/internal/logship"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 )
@@ -283,6 +284,31 @@ func TestSSHDNilSnapshot(t *testing.T) {
 		"src.ip":      "10.0.0.6",
 	})
 	assertNoAttrs(t, rec, "src.hostname", "src.mac", "src.scope")
+}
+
+// GeoIP (#528): a brute-force attempt from a public address is exactly the case
+// this lane exists for, and geo is what makes it operationally readable.
+func TestSSHDGeoAttrs(t *testing.T) {
+	geoLookup = fakeGeoLookup{results: map[string]geoip.Result{
+		"198.51.100.23": {CountryISO: "CN", ContinentCode: "AS", ASN: 4837, ASOrg: "CHINA UNICOM China169 Backbone"},
+	}}
+	t.Cleanup(func() { geoLookup = nil })
+
+	rec := BuildRecord(sshdEnv("Failed password for invalid user admin from 198.51.100.23 port 51555 ssh2"), sshdSnapshot(), func(string) {})
+	assertAttrs(t, rec, map[string]string{
+		"src.geo.country":        "CN",
+		"src.geo.country_source": "maxmind",
+		"src.geo.continent":      "AS",
+		"src.geo.asn":            "AS4837",
+		"src.geo.as_org":         "CHINA UNICOM China169 Backbone",
+	})
+}
+
+// Without a configured GeoIP source, sshd ships exactly as before #528.
+func TestSSHDGeoAttrs_AbsentWithNoLookupConfigured(t *testing.T) {
+	geoLookup = nil
+	rec := BuildRecord(sshdEnv("Failed password for invalid user admin from 198.51.100.23 port 51555 ssh2"), sshdSnapshot(), func(string) {})
+	assertNoAttrs(t, rec, "src.geo.country", "src.geo.continent", "src.geo.asn", "src.geo.as_org", "src.geo.country_source")
 }
 
 // TestSSHDNilMiss: a nil miss callback must not panic either.

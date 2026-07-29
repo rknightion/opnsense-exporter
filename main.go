@@ -30,8 +30,8 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/logship/capture"
 	"github.com/rknightion/opnsense-exporter/internal/logship/enrich"
 	"github.com/rknightion/opnsense-exporter/internal/logship/flowlog"
-	_ "github.com/rknightion/opnsense-exporter/internal/logship/syslog"   // registers the syslog push source
-	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor" // registers the zenarmor push source
+	logshipsyslog "github.com/rknightion/opnsense-exporter/internal/logship/syslog" // registers the syslog push source; also the log-lane GeoIP enricher (#528)
+	_ "github.com/rknightion/opnsense-exporter/internal/logship/zenarmor"           // registers the zenarmor push source
 	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/internal/profiling"
@@ -431,13 +431,20 @@ func dispatchSubcommand(args []string, stdout, stderr io.Writer) (code int, hand
 }
 
 // startGeoIP opens the configured MaxMind databases, installs the process-wide flow
-// enricher, wires the self-metrics and starts the download/reload updater. It returns
-// a stop function, or nil when geo enrichment is off.
+// enricher (and the syslog log lanes' enricher, per the per-lane opt-out), wires the
+// self-metrics and starts the download/reload updater. It returns a stop function, or
+// nil when geo enrichment is off.
 //
 // Nothing here can fail the start. That is the whole contract: geo is an enrichment
 // on top of telemetry the exporter would ship anyway, so a bad path, an expired
 // license key or a truncated download degrades the attributes and nothing else.
-func startGeoIP(cfg options.GeoIPConfig, logger *slog.Logger) func() {
+//
+// logsGeoIPEnabled is the resolved --logs.syslog.geoip opt-out (#528): --geoip.enabled
+// is the single master switch and covers filterlog/sshd/Suricata log lines by default,
+// but an operator who wants GeoIP on flow records only sets --logs.syslog.geoip=false,
+// and this is where that is honoured — the syslog package's enricher is left nil
+// rather than wired to db.
+func startGeoIP(cfg options.GeoIPConfig, logsGeoIPEnabled bool, logger *slog.Logger) func() {
 	if !cfg.Enabled {
 		return nil
 	}
@@ -456,6 +463,13 @@ func startGeoIP(cfg options.GeoIPConfig, logger *slog.Logger) func() {
 	collector.Flow.SetGeoIPStats(func() collector.GeoIPStats {
 		return collector.GeoIPStats{DB: db.Stats(), Flow: flow.GeoEnrichment.Stats()}
 	})
+
+	// The SAME *DB is handed to the log lanes -- never a second Open call, never a
+	// second set of databases in memory. logsGeoIPEnabled false leaves the syslog
+	// package's enricher nil, its documented fail-open no-op state.
+	if logsGeoIPEnabled {
+		logshipsyslog.ConfigureGeoIP(db)
+	}
 
 	var fetcher geoip.Fetcher
 	if cfg.DownloadEnabled {
@@ -565,7 +579,10 @@ func main() {
 	// stop an exporter whose real job is metrics. The database identity and the
 	// enrichment counters are published as opnsense_flow_geoip_*, which is how an
 	// operator sees the degradation the fail-open design otherwise hides.
-	stopGeoIP := startGeoIP(cfg.GeoIP, logger)
+	// The per-lane opt-out (#528) only means something when the syslog receiver is
+	// even running; cfg.Syslog is nil otherwise, so this must not dereference it.
+	logsSyslogGeoIPEnabled := cfg.SyslogOn && cfg.Syslog.GeoIP
+	stopGeoIP := startGeoIP(cfg.GeoIP, logsSyslogGeoIPEnabled, logger)
 	if stopGeoIP != nil {
 		defer stopGeoIP()
 	}

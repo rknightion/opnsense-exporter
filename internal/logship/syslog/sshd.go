@@ -140,6 +140,9 @@ func parseSSHD(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	// service lookup is skipped (empty proto): an SSH client's ephemeral source
 	// port names no service.
 	enrichEndpoint(set, snap, "src", ip, "", "")
+	// GeoIP (#528): auth attempts from the internet are exactly the case this lane
+	// exists for. geoAttrs is a no-op unless a GeoIP source is configured.
+	geoAttrs(set, "src", ip)
 
 	// sshd logs a rejected login at syslog info, level with a successful one. A
 	// failed or invalid-user attempt is a security event, so raise it — but only

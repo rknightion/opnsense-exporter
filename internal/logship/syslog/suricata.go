@@ -86,6 +86,10 @@ func parseSuricata(env Envelope, snap *enrich.Snapshot, _ func(table string)) (l
 	// -- so no miss is reported.
 	enrichEndpoint(set, snap, "src", e.SrcIP, strconv.Itoa(e.SrcPort), eveProto(e.Proto))
 	enrichEndpoint(set, snap, "dst", e.DestIP, strconv.Itoa(e.DestPort), eveProto(e.Proto))
+	// GeoIP (#528): an IDS alert's source geo is directly operationally useful.
+	// geoAttrs is a no-op unless a GeoIP source is configured.
+	geoAttrs(set, "src", e.SrcIP)
+	geoAttrs(set, "dst", e.DestIP)
 
 	return rec, true
 }

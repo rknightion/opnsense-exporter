@@ -705,6 +705,14 @@ settings:
   # - never silently discarded.
   # logs.syslog.exclude-programs: ""
   #
+  # Add GeoIP country/continent/ASN/as_org attributes (identical keys to the flow lane) to
+  # filterlog, sshd/auth and Suricata log lines, for the remote peer's address. Needs no
+  # database of its own: it reuses whatever --geoip.enabled already loaded. On by default
+  # WHENEVER --geoip.enabled is set -- BEHAVIOUR CHANGE ON UPGRADE for any deployment
+  # already running --geoip.enabled for flow records, since filterlog is the highest-volume
+  # log stream on the box. Set to false to keep GeoIP on flow records only.
+  # logs.syslog.geoip: true
+  #
   # Comma-separated syslog programs to ship, dropping everything else. Empty ships
   # everything. Mutually exclusive with --logs.syslog.exclude-programs.
   # logs.syslog.include-programs: ""
@@ -1110,11 +1118,16 @@ settings:
   # untouched and is retried on the next interval.
   # geoip.download.timeout: "5m"
   #
-  # Enable local GeoIP enrichment of flow records from MaxMind .mmdb files on disk. Adds
+  # Enable local GeoIP enrichment from MaxMind .mmdb files on disk. Adds
   # country/continent/city/ASN attributes to flow LOGS for external addresses, so geo no
   # longer depends on whether Zenarmor happened to see the connection. Purely local: no
   # lookup ever touches the network. Off by default because it needs a database the exporter
-  # does not ship.
+  # does not ship. BEHAVIOUR CHANGE ON UPGRADE (#528): this ALSO now covers filterlog,
+  # sshd/auth and Suricata log lines with country/continent/ASN/as_org (no city/region
+  # there) - filterlog is the highest-volume log stream on the box, so an existing
+  # --geoip.enabled deployment gains real per-line byte cost on upgrade with no config
+  # change. Set --logs.syslog.geoip=false to opt those log lines back out while keeping
+  # GeoIP on flow records. See docs/geoip.md.
   # geoip.enabled: false
   #
   # How often to re-stat the database paths and hot-swap a changed file. This is what makes
