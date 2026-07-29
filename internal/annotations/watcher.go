@@ -2,8 +2,11 @@ package annotations
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -23,6 +26,31 @@ const instanceLabel = "opnsense_instance"
 // something is wrong and an annotation dated next week would be invisible on every
 // dashboard until then.
 const futureTolerance = 5 * time.Minute
+
+// Rate-limit backoff. These are deliberately not flags: an operator has no way to
+// choose them better than the server's own Retry-After, which takes precedence
+// whenever it is present, and a tunable backoff is a tunable way to keep hammering
+// a shared org-wide limit.
+const (
+	// backoffBase is the first wait, doubled per consecutive rate-limited cycle. It
+	// is longer than the 60s default interval on purpose only after one doubling —
+	// the first wait deliberately sits BELOW one interval so a single stray 429 on
+	// an otherwise healthy stack costs at most one skipped cycle.
+	backoffBase = 30 * time.Second
+	// backoffCeiling bounds both the exponential wait and any Retry-After the server
+	// states. Past this the exporter is no longer usefully "retrying later", it is
+	// off — and an operator reading a flat written_total needs the failure to still
+	// be visibly recurring in rate_limited_total.
+	backoffCeiling = 15 * time.Minute
+	// backoffJitter is the ±fraction applied to the exponential wait. Two exporters
+	// against one Grafana org share its rate limit, so an unjittered 30/60/120s
+	// ladder makes them retry in lockstep and re-trigger the limit together.
+	// Never applied to a server-stated Retry-After: that instant was chosen for us.
+	backoffJitter = 0.2
+	// maxBackoffStreak caps the doubling exponent. Without it the shift overflows
+	// on a long outage, and 2^5 * 30s already exceeds the ceiling.
+	maxBackoffStreak = 6
+)
 
 // Watcher diffs the watched instant-valued metrics and writes an annotation for
 // each change.
@@ -48,13 +76,24 @@ type Watcher struct {
 	reconciled bool
 	seeded     bool
 	now        func() time.Time
+
+	// backoffUntil is the instant before which a tick posts NOTHING. Bounding
+	// attempts per cycle alone only converts an unbounded storm into a permanent
+	// MaxPerCycle-per-interval one, which still holds a shared org-wide annotation
+	// limit down; the answer to "you are sending too many requests" has to include
+	// sending fewer (#519).
+	backoffUntil time.Time
+	// backoffStreak counts CONSECUTIVE rate-limited cycles, reset by the first
+	// success. It drives the doubling, so a lingering streak would make an isolated
+	// 429 months later wait minutes for no reason.
+	backoffStreak int
 }
 
 // New returns a Watcher over the given gatherer. The gatherer is the same registry
 // `/metrics` replays, so detection makes no OPNsense API call of its own — it reads
 // the snapshot the poll scheduler already filled.
 func New(cfg Config, gatherer prometheus.Gatherer, registerer prometheus.Registerer, log *slog.Logger) *Watcher {
-	return &Watcher{
+	w := &Watcher{
 		cfg:      cfg,
 		gatherer: gatherer,
 		client:   newClient(cfg),
@@ -63,6 +102,11 @@ func New(cfg Config, gatherer prometheus.Gatherer, registerer prometheus.Registe
 		seen:     map[string]int64{},
 		now:      time.Now,
 	}
+	// Routed through the closure rather than assigned directly, so a test that
+	// replaces w.now after construction also moves the clock the client resolves an
+	// HTTP-date Retry-After against.
+	w.client.now = func() time.Time { return w.now() }
+	return w
 }
 
 // Run reconciles against Grafana once, then diffs on every tick until ctx is done.
@@ -103,7 +147,17 @@ func (w *Watcher) reconcile(ctx context.Context) {
 
 // tick performs one detection pass.
 func (w *Watcher) tick(ctx context.Context) {
-	w.prune(w.now())
+	now := w.now()
+	w.prune(now)
+
+	// Backed off: post nothing and consume nothing. Returning before detect() is
+	// deliberate — the backlog stays unmarked and is re-proposed in full once the
+	// wait expires, so backing off delays writes rather than dropping them.
+	if now.Before(w.backoffUntil) {
+		w.log.Debug("annotation cycle skipped while backing off from a Grafana rate limit",
+			"until", w.backoffUntil.UTC().Format(time.RFC3339), "streak", w.backoffStreak)
+		return
+	}
 
 	events, err := w.detect()
 	if err != nil {
@@ -130,6 +184,13 @@ func (w *Watcher) tick(ctx context.Context) {
 	// tick, forever, sustaining the condition that caused it (#519).
 	attempted := 0
 	failures := 0
+	rateLimited := 0
+	// retryAfter is the FIRST server-stated wait seen this cycle. First rather than
+	// last because every 429 in one burst describes the same window, and the
+	// earliest answer is the one that has not already been overtaken by the requests
+	// that followed it.
+	var retryAfter time.Duration
+	permanentLogged := false
 	for _, event := range events {
 		if attempted >= w.cfg.MaxPerCycle {
 			w.metrics.skipped.Add(float64(len(events) - attempted))
@@ -141,6 +202,29 @@ func (w *Watcher) tick(ctx context.Context) {
 		if err := w.client.post(ctx, event); err != nil {
 			w.metrics.failed.Inc()
 			failures++
+			var status *httpError
+			switch {
+			case errors.As(err, &status) && status.StatusCode == http.StatusTooManyRequests:
+				w.metrics.rateLimited.Inc()
+				rateLimited++
+				if retryAfter == 0 {
+					retryAfter = status.RetryAfter
+				}
+			case errors.As(err, &status) && status.permanent():
+				// The identical body will be rejected identically on every future
+				// interval, so this event is marked seen and abandoned. Retrying it
+				// is a storm nothing but a restart can stop, and it is the one
+				// failure mode where "retry forever" loses MORE than it saves: the
+				// backlog it holds open blocks the events behind it via the cap.
+				w.metrics.undeliverable.Inc()
+				w.markSeen(event)
+				if !permanentLogged {
+					permanentLogged = true
+					w.log.Warn("annotation permanently rejected and abandoned",
+						"kind", event.Kind, "status", status.StatusCode, "err", err)
+				}
+				continue
+			}
 			// One line per cycle, not one per event: a rate-limited exporter at the
 			// cap would otherwise log MaxPerCycle identical warnings every interval.
 			if failures == 1 {
@@ -153,12 +237,54 @@ func (w *Watcher) tick(ctx context.Context) {
 		w.markSeen(event)
 		w.metrics.posted.Inc()
 		w.metrics.lastSuccess.Set(float64(w.now().Unix()))
+		// A write landing proves the limit has cleared, so the ladder starts from the
+		// bottom again on the next one.
+		w.backoffStreak = 0
+		w.backoffUntil = time.Time{}
 		w.log.Debug("annotation written", "kind", event.Kind, "at", event.At.UTC().Format(time.RFC3339))
 	}
 	if failures > 1 {
 		w.log.Warn("further annotation posts failed this cycle", "failures", failures,
 			"cap", w.cfg.MaxPerCycle)
 	}
+	if rateLimited > 0 {
+		w.armBackoff(retryAfter)
+	}
+}
+
+// armBackoff parks the writer after a rate-limited cycle. A server-stated
+// Retry-After always wins: it is the only number in play that describes the actual
+// limit rather than guessing at it.
+func (w *Watcher) armBackoff(retryAfter time.Duration) {
+	if w.backoffStreak < maxBackoffStreak {
+		w.backoffStreak++
+	}
+	delay := retryAfter
+	source := "retry-after"
+	if delay <= 0 {
+		source = "exponential"
+		delay = backoffBase * time.Duration(1<<(w.backoffStreak-1))
+		if delay > backoffCeiling {
+			delay = backoffCeiling
+		}
+		delay = jitter(delay)
+	}
+	w.backoffUntil = w.now().Add(delay)
+	// One WARN per rate-limited cycle, at WARN rather than INFO because a shared
+	// org-wide limit being hit is other people's problem too.
+	w.log.Warn("annotation writes rate limited by Grafana; backing off",
+		"delay", delay.String(), "source", source, "streak", w.backoffStreak,
+		"until", w.backoffUntil.UTC().Format(time.RFC3339))
+}
+
+// jitter spreads a wait by ±backoffJitter so two exporters sharing one Grafana org
+// do not retry in lockstep and re-trigger the limit together.
+func jitter(delay time.Duration) time.Duration {
+	spread := int64(float64(delay) * backoffJitter)
+	if spread <= 0 {
+		return delay
+	}
+	return delay - time.Duration(spread) + time.Duration(rand.Int64N(2*spread+1))
 }
 
 // detect gathers the registry and returns the events not yet seen.

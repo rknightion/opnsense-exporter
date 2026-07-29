@@ -110,6 +110,112 @@ func TestPrettifyFieldName(t *testing.T) {
 	}
 }
 
+// TestBuildEffectiveConfig_AnnotationsLogsFlowPresent covers #518: --config.check
+// and the /config page previously printed nothing for annotations, log shipping
+// or flow even when all three were fully configured. Assert the sections exist
+// and carry the specific facts the issue calls out as security/operationally
+// relevant (allowlist count, not just on/off; token/lookback/max-per-cycle).
+func TestBuildEffectiveConfig_AnnotationsLogsFlowPresent(t *testing.T) {
+	in := configInputs{
+		host: "fw.example",
+
+		annotationsEnabled:     true,
+		annotationsURL:         "https://grafana.example",
+		annotationsTokenSet:    true,
+		annotationsLookback:    "24h0m0s",
+		annotationsInterval:    "1m0s",
+		annotationsMaxPerCycle: 20,
+
+		logsEnabled: true,
+		logsSink:    "otlp",
+
+		syslogEnabled:        true,
+		syslogListen:         "udp :5514, tcp :5514",
+		syslogTLS:            false,
+		syslogAllowlistCount: 3,
+		syslogDebugCapture:   true,
+
+		zenarmorEnabled:        true,
+		zenarmorListen:         ":9200",
+		zenarmorTLS:            true,
+		zenarmorAllowlistCount: 0,
+		zenarmorDebugCapture:   false,
+
+		logsDebugCaptureDir: "/var/log/capture",
+
+		flowEnabled:   true,
+		flowCorrelate: true,
+		flowLogMode:   "per_flow",
+
+		netflowEnabled:        true,
+		netflowListen:         ":2055",
+		netflowAllowlistCount: 1,
+		netflowDebugCapture:   "unidentified",
+	}
+	sections := buildEffectiveConfig(in)
+
+	byTitle := map[string]ConfigSection{}
+	for _, sec := range sections {
+		byTitle[sec.Title] = sec
+	}
+
+	for _, want := range []string{"Annotations", "Log shipping", "Flow"} {
+		if _, ok := byTitle[want]; !ok {
+			t.Fatalf("missing section %q", want)
+		}
+	}
+
+	items := func(title string) map[string]ConfigItem {
+		m := map[string]ConfigItem{}
+		for _, it := range byTitle[title].Items {
+			m[it.Key] = it
+		}
+		return m
+	}
+
+	ann := items("Annotations")
+	if ann["Enabled"].Value != "on" {
+		t.Errorf("Annotations Enabled = %q, want on", ann["Enabled"].Value)
+	}
+	if ann["Grafana URL"].Value != "https://grafana.example" {
+		t.Errorf("Grafana URL = %q", ann["Grafana URL"].Value)
+	}
+	if !ann["Token"].Secret || ann["Token"].Value != redacted {
+		t.Errorf("Token = %+v, want redacted secret", ann["Token"])
+	}
+	if ann["Lookback"].Value != "24h0m0s" {
+		t.Errorf("Lookback = %q", ann["Lookback"].Value)
+	}
+	if ann["Max Per Cycle"].Value != "20" {
+		t.Errorf("Max Per Cycle = %q", ann["Max Per Cycle"].Value)
+	}
+
+	logs := items("Log shipping")
+	if logs["Syslog Allowed Peers"].Value != "set (3 prefixes)" {
+		t.Errorf("Syslog Allowed Peers = %q", logs["Syslog Allowed Peers"].Value)
+	}
+	if logs["Zenarmor Allowed Peers"].Value != "open (no allowlist)" {
+		t.Errorf("Zenarmor Allowed Peers = %q", logs["Zenarmor Allowed Peers"].Value)
+	}
+	if logs["Syslog Debug Capture"].Value != "on" {
+		t.Errorf("Syslog Debug Capture = %q", logs["Syslog Debug Capture"].Value)
+	}
+	if logs["Debug Capture Dir"].Value != "/var/log/capture" {
+		t.Errorf("Debug Capture Dir = %q", logs["Debug Capture Dir"].Value)
+	}
+	if logs["Zenarmor TLS"].Value != "on" {
+		t.Errorf("Zenarmor TLS = %q", logs["Zenarmor TLS"].Value)
+	}
+
+	flow := items("Flow")
+	if flow["NetFlow Allowed Peers"].Value != "set (1 prefix)" {
+		t.Errorf("NetFlow Allowed Peers = %q", flow["NetFlow Allowed Peers"].Value)
+	}
+	if flow["NetFlow Debug Capture"].Value != "unidentified" {
+		t.Errorf("NetFlow Debug Capture = %q", flow["NetFlow Debug Capture"].Value)
+	}
+}
+
 func TestCollectorConfigItems_HaveDisplay(t *testing.T) {
 	items := collectorConfigItems()
 	if len(items) == 0 {

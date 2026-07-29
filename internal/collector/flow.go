@@ -600,10 +600,17 @@ func (c *flowCollector) registerNetflow() {
 	)
 	c.ifIndexConflicts = buildPrometheusDesc(c.subsystem, "ifindex_conflicts",
 		"Operator overrides from --flow.netflow.ifindex-map that DISAGREE with the map derived from "+
-			"the API. Non-zero is the alarm that the derived enumeration does not reproduce the box's "+
-			"own ifinfo ordering - the override is winning, so labels are right, but every index the "+
-			"operator did not pin is suspect.",
-		nil,
+			"the API. reason=\"derived_differs\" counts pins where the derivation produced a DIFFERENT "+
+			"interface at that index; reason=\"derived_absent\" counts pins at an index the derivation "+
+			"produced nothing for at all, which is normal for an index beyond the enumeration and says "+
+			"nothing about the ordering. Non-zero does NOT say which side is right: a pin is a static "+
+			"assertion, and adding or removing ANY interface renumbers every position above it, so a "+
+			"pin that was correct when written goes stale on its own - that is what #516 turned out to "+
+			"be, a new VLAN shifting three pins by one and relabelling the WAN as the tailnet. Settle "+
+			"it against the box, not this counter: `ifinfo` order, or decisively the ifaceN hook names "+
+			"on its ng_netflow nodes (`ngctl show netflow_<device>:`). The override wins either way, so "+
+			"a stale pin is actively mislabelling while a correct one leaves every unpinned index suspect.",
+		reasonLabel,
 	)
 	c.ifIndexAge = buildPrometheusDesc(c.subsystem, "ifindex_map_age_seconds",
 		"Age of the ifIndex map. ng_netflow's indices are positional over ifinfo output, so adding or "+
@@ -815,7 +822,8 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	}
 
 	gauge(c.ifIndexEntries, float64(nf.IfMap.Entries))
-	gauge(c.ifIndexConflicts, float64(nf.IfMap.Conflicts))
+	gauge(c.ifIndexConflicts, float64(nf.IfMap.ConflictsDiffering), "derived_differs")
+	gauge(c.ifIndexConflicts, float64(nf.IfMap.ConflictsAbsent), "derived_absent")
 	gauge(c.ifIndexAge, nf.IfMapAge.Seconds())
 	counter(c.ifIndexUnmapped, nf.IfMap.UnmappedLookups)
 	gauge(c.ifIndexGuard, float64(nf.IfMap.StatedIndexDisagreements), "stated_index")

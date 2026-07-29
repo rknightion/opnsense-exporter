@@ -73920,7 +73920,7 @@
                       "spec": {
                         "expr": "max without (job, service_instance_id, service_name, service_version) (opnsense_flow_ifindex_conflicts{opnsense_instance=~\"$opnsense_instance\"})",
                         "refId": "B",
-                        "legendFormat": "override conflicts",
+                        "legendFormat": "override conflict: {{reason}}",
                         "instant": false,
                         "range": true
                       }

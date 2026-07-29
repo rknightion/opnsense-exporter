@@ -287,7 +287,7 @@ def build(b: Builder):
     ifindex = b.ts(
         "NetFlow ifIndex Map",
         [(f'{sel("opnsense_flow_ifindex_entries")}', "entries"),
-         (f'{sel("opnsense_flow_ifindex_conflicts")}', "override conflicts"),
+         (f'{sel("opnsense_flow_ifindex_conflicts")}', "override conflict: {{reason}}"),
          (f'{sel("opnsense_flow_ifindex_map_age_seconds")}', "map age (s)"),
          (f'rate({sel("opnsense_flow_ifindex_unmapped_total")}[{RATE}])', "unmapped lookups/sec"),
          (f'rate({sel("opnsense_flow_netflow_records_unmapped_total")}[{RATE}])',

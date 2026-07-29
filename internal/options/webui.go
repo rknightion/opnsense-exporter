@@ -1,8 +1,10 @@
 package options
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -78,6 +80,49 @@ type configInputs struct {
 	pyroEnabled, pyroAuthUserSet, pyroAuthPassSet bool
 
 	collectors []ConfigItem // one {Key: <switch name>, Value: "on"/"off"} per collector switch
+
+	// Annotations (#518): the exporter's only outbound write, so a preflight that
+	// silently omits it cannot confirm whether a start will write to Grafana.
+	annotationsEnabled     bool
+	annotationsURL         string
+	annotationsTokenSet    bool
+	annotationsLookback    string
+	annotationsInterval    string
+	annotationsMaxPerCycle int
+
+	// Log shipping (#518). All three push receivers (syslog, Zenarmor, NetFlow
+	// below) are UNAUTHENTICATED by default, so whether a peer allowlist is
+	// actually in effect is the security-relevant fact this summary must not
+	// withhold — hence allowlist rows carry a prefix COUNT, not just on/off.
+	logsEnabled bool
+	logsSink    string
+
+	syslogEnabled        bool
+	syslogListen         string // combined "udp <addr>, tcp <addr>, tls <addr>"
+	syslogTLS            bool
+	syslogAllowlistCount int
+	syslogDebugCapture   bool
+
+	zenarmorEnabled        bool
+	zenarmorListen         string
+	zenarmorTLS            bool
+	zenarmorAllowlistCount int
+	zenarmorDebugCapture   bool
+
+	// logsDebugCaptureDir is the ONE shared capture directory both receivers'
+	// debug-capture switches write into (logs_debug_capture.go) - shown once at
+	// the Log shipping level rather than duplicated per receiver.
+	logsDebugCaptureDir string
+
+	// Flow (#518).
+	flowEnabled   bool
+	flowCorrelate bool
+	flowLogMode   string
+
+	netflowEnabled        bool
+	netflowListen         string
+	netflowAllowlistCount int
+	netflowDebugCapture   string // "off" | "unidentified" | "all"
 }
 
 // boolStr renders a bool as the on/off vocabulary used across the config view.
@@ -104,6 +149,21 @@ func plainItem(key, value string) ConfigItem {
 		value = unset
 	}
 	return ConfigItem{Key: key, Value: value}
+}
+
+// allowlistItem renders a peer-allowlist row from a prefix COUNT, never the
+// prefixes themselves: an operator preflighting an unauthenticated receiver
+// (#518) needs to know an allowlist is actually in effect and how big it is,
+// not have the row grow unboundedly with a long list.
+func allowlistItem(key string, count int) ConfigItem {
+	if count == 0 {
+		return plainItem(key, "open (no allowlist)")
+	}
+	unit := "prefix"
+	if count != 1 {
+		unit = "prefixes"
+	}
+	return plainItem(key, fmt.Sprintf("set (%d %s)", count, unit))
 }
 
 // buildEffectiveConfig is the pure builder: it never touches a kingpin flag,
@@ -152,6 +212,61 @@ func buildEffectiveConfig(in configInputs) []ConfigSection {
 				secretItem("Auth Password", in.pyroAuthPassSet),
 			},
 		},
+		{
+			// #518: this is the exporter's only outbound write, so a preflight
+			// that does not mention it cannot confirm whether a start will write
+			// to Grafana, or which Grafana.
+			Title: "Annotations",
+			Items: []ConfigItem{
+				plainItem("Enabled", boolStr(in.annotationsEnabled)),
+				plainItem("Grafana URL", in.annotationsURL),
+				secretItem("Token", in.annotationsTokenSet),
+				plainItem("Lookback", in.annotationsLookback),
+				plainItem("Interval", in.annotationsInterval),
+				plainItem("Max Per Cycle", strconv.Itoa(in.annotationsMaxPerCycle)),
+			},
+		},
+		{
+			// #518: syslog and Zenarmor are both push receivers that open a
+			// listening socket UNAUTHENTICATED by default, so allowlist/TLS state
+			// is security-relevant, not cosmetic - a typo'd allowlist flag must
+			// not read as "not configured" here.
+			Title: "Log shipping",
+			Items: []ConfigItem{
+				plainItem("Enabled", boolStr(in.logsEnabled)),
+				plainItem("Sink", in.logsSink),
+
+				plainItem("Syslog Enabled", boolStr(in.syslogEnabled)),
+				plainItem("Syslog Listen", in.syslogListen),
+				allowlistItem("Syslog Allowed Peers", in.syslogAllowlistCount),
+				plainItem("Syslog TLS", boolStr(in.syslogTLS)),
+				plainItem("Syslog Debug Capture", boolStr(in.syslogDebugCapture)),
+
+				plainItem("Zenarmor Enabled", boolStr(in.zenarmorEnabled)),
+				plainItem("Zenarmor Listen", in.zenarmorListen),
+				allowlistItem("Zenarmor Allowed Peers", in.zenarmorAllowlistCount),
+				plainItem("Zenarmor TLS", boolStr(in.zenarmorTLS)),
+				plainItem("Zenarmor Debug Capture", boolStr(in.zenarmorDebugCapture)),
+
+				plainItem("Debug Capture Dir", in.logsDebugCaptureDir),
+			},
+		},
+		{
+			// #518: the NetFlow receiver is the same "unauthenticated listening
+			// socket" shape as the log receivers above, so it gets the same
+			// allowlist-count treatment.
+			Title: "Flow",
+			Items: []ConfigItem{
+				plainItem("Enabled", boolStr(in.flowEnabled)),
+				plainItem("Correlate", boolStr(in.flowCorrelate)),
+				plainItem("Log Mode", in.flowLogMode),
+
+				plainItem("NetFlow Enabled", boolStr(in.netflowEnabled)),
+				plainItem("NetFlow Listen", in.netflowListen),
+				allowlistItem("NetFlow Allowed Peers", in.netflowAllowlistCount),
+				plainItem("NetFlow Debug Capture", in.netflowDebugCapture),
+			},
+		},
 	}
 }
 
@@ -179,6 +294,8 @@ func gatherConfigInputs() configInputs {
 		"OPNSENSE_EXPORTER_PYROSCOPE_AUTH_PASSWORD_FILE", "PYROSCOPE_AUTH_PASSWORD_FILE")
 	pyroAddr := strings.TrimSpace(*pyroscopeServerAddress)
 
+	annToken, _ := resolveSecret("OPNSENSE_EXPORTER_ANNOTATIONS_TOKEN_FILE", *annotationsToken)
+
 	return configInputs{
 		host:         strings.TrimSpace(*opnsenseAPI),
 		metricsPath:  *MetricsPath,
@@ -199,7 +316,77 @@ func gatherConfigInputs() configInputs {
 		pyroAuthPassSet: strings.TrimSpace(pyroPass) != "",
 
 		collectors: collectorConfigItems(),
+
+		annotationsEnabled:     *annotationsEnabled,
+		annotationsURL:         strings.TrimSpace(*annotationsGrafanaURL),
+		annotationsTokenSet:    strings.TrimSpace(annToken) != "",
+		annotationsLookback:    annotationsLookback.String(),
+		annotationsInterval:    annotationsInterval.String(),
+		annotationsMaxPerCycle: *annotationsMaxPerCycle,
+
+		logsEnabled: *logsEnabled,
+		logsSink:    *logsSink,
+
+		syslogEnabled: *logsSyslogEnabled,
+		syslogListen: syslogListenSummary(
+			strings.TrimSpace(*logsSyslogListenUDP),
+			strings.TrimSpace(*logsSyslogListenTCP),
+			strings.TrimSpace(*logsSyslogListenTLS),
+		),
+		syslogTLS:            strings.TrimSpace(*logsSyslogListenTLS) != "",
+		syslogAllowlistCount: len(splitList(*logsSyslogAllowedPeers)),
+		syslogDebugCapture:   *logsSyslogDebugCapture,
+
+		zenarmorEnabled:        *logsZenarmorEnabled,
+		zenarmorListen:         strings.TrimSpace(*logsZenarmorListenHTTP),
+		zenarmorTLS:            strings.TrimSpace(*logsZenarmorTLSCertFile) != "" && strings.TrimSpace(*logsZenarmorTLSKeyFile) != "",
+		zenarmorAllowlistCount: len(splitList(*logsZenarmorAllowedPeers)),
+		zenarmorDebugCapture:   *logsZenarmorDebugCapture,
+
+		logsDebugCaptureDir: LogsDebugCaptureDir(),
+
+		flowEnabled:   *flowEnabled,
+		flowCorrelate: *flowCorrelate,
+		flowLogMode:   *flowLogMode,
+
+		netflowEnabled:        *flowNetflowEnabled,
+		netflowListen:         strings.TrimSpace(*flowNetflowListen),
+		netflowAllowlistCount: countNonEmpty(*flowNetflowPeers),
+		netflowDebugCapture:   captureModeOrOff(*flowNetflowDebugCapture),
 	}
+}
+
+// syslogListenSummary renders the syslog receiver's up-to-three listeners
+// (UDP/TCP/TLS) as one "udp <addr>, tcp <addr>, tls <addr>" row, omitting
+// whichever transport is disabled (empty). At least one is non-empty whenever
+// the receiver validated at startup (LogsSyslog rejects all-three-empty), but
+// this reads the raw flags directly rather than that validated config, so it
+// stays correct even from a not-yet-validated context.
+func syslogListenSummary(udp, tcp, tls string) string {
+	var parts []string
+	if udp != "" {
+		parts = append(parts, "udp "+udp)
+	}
+	if tcp != "" {
+		parts = append(parts, "tcp "+tcp)
+	}
+	if tls != "" {
+		parts = append(parts, "tls "+tls)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// countNonEmpty counts the non-blank entries in a repeatable string flag
+// (e.g. --flow.netflow.allowed-peers), mirroring how splitList counts a
+// comma-separated one for the allowlist-count rows above.
+func countNonEmpty(items []string) int {
+	n := 0
+	for _, s := range items {
+		if strings.TrimSpace(s) != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // collectorConfigItems renders one ConfigItem per collector switch from the

@@ -16,13 +16,15 @@ library's own collectors rather than from this codebase, they carry no
 `opnsense_instance` label, and they are charted from the Exporter Runtime row behind
 the `has_go_runtime` sentinel.
 
-Total: 51 self-metrics.
+Total: 53 self-metrics.
 
 | Metric | Type | Declared in |
 | --- | --- | --- |
 | opnsense_exporter_annotations_failed_total | Counter | `internal/annotations` |
 | opnsense_exporter_annotations_last_success_timestamp_seconds | Gauge | `internal/annotations` |
+| opnsense_exporter_annotations_rate_limited_total | Counter | `internal/annotations` |
 | opnsense_exporter_annotations_skipped_total | Counter | `internal/annotations` |
+| opnsense_exporter_annotations_undeliverable_total | Counter | `internal/annotations` |
 | opnsense_exporter_annotations_written_total | Counter | `internal/annotations` |
 | opnsense_exporter_api_cache_hits_total | Counter | `internal/collector` |
 | opnsense_exporter_api_cache_misses_total | Counter | `internal/collector` |

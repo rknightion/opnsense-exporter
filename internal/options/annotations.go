@@ -37,7 +37,12 @@ var (
 		"annotations.lookback",
 		"How old an event may be and still be worth annotating, and how far back the "+
 			"startup reconciliation looks for annotations this exporter already wrote. Keeps a "+
-			"fresh deployment from annotating a reboot that happened months ago.",
+			"fresh deployment from annotating a reboot that happened months ago. Read this "+
+			"together with --annotations.max-per-cycle: a fresh deployment finds every event "+
+			"inside this window at once, and that first-run backlog drains at most "+
+			"max-per-cycle annotations per --annotations.interval (default 20/60s), so a 24h "+
+			"lookback on a busy firewall takes several minutes to catch up. Shorten this if "+
+			"you want a fresh deployment to start clean rather than backfill a day.",
 	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_LOOKBACK").Default("24h").Duration()
 	annotationsTimeout = kingpin.Flag(
 		"annotations.timeout",
@@ -50,8 +55,15 @@ var (
 	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_EXTRA_TAGS").Strings()
 	annotationsMaxPerCycle = kingpin.Flag(
 		"annotations.max-per-cycle",
-		"Maximum annotations written per check. A guard against one bad reading writing "+
-			"hundreds of annotations, not a rate limit to tune.",
+		"Maximum annotation posts ATTEMPTED per check, successful or not. A guard "+
+			"against one bad reading writing hundreds of annotations, not a rate limit to "+
+			"tune. It also paces the first-run backlog --annotations.lookback produces: "+
+			"the excess is not marked seen, so it is re-proposed on the next check and a "+
+			"deployment with a 24h lookback drains at this many per --annotations.interval "+
+			"until it is caught up. Events are only lost if they age out of the lookback "+
+			"before the backlog reaches them. Raising it drains faster but makes a rate limit "+
+			"(opnsense_exporter_annotations_rate_limited_total) more likely, since a "+
+			"Grafana org shares one annotation limit across every writer.",
 	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_MAX_PER_CYCLE").Default("20").Int()
 )
 

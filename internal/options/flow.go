@@ -110,7 +110,13 @@ var (
 			"Read yours off the box with: ifinfo | awk '$1 == \"Interface\" { n++; print n, $2 }' "+
 			"- that is the whole enumeration. ngctl list | grep netflow shows only the "+
 			"interfaces netflow captures, and an egress index can legitimately name one it "+
-			"does not.",
+			"does not. A pin is a STATIC assertion against a POSITIONAL index: adding or "+
+			"removing any interface renumbers every position above it, so a pin that was right "+
+			"when written silently goes stale and then actively mislabels, because it still "+
+			"wins. Re-read the enumeration after any interface change and watch "+
+			"opnsense_flow_ifindex_conflicts, whose reason=\"derived_differs\" is that "+
+			"divergence; settle which side is right with ngctl show netflow_<device>:, where "+
+			"the ifaceN hook name is the index ng_netflow actually stamps on the records.",
 	).Envar("OPNSENSE_EXPORTER_FLOW_NETFLOW_IFINDEX_MAP").Default("").String()
 
 	// Correlation joins the two sources' view of one conversation. It is a pass-through

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -29,6 +30,10 @@ type fakeGrafana struct {
 	// request volume a failing cycle generates - which is the thing the per-cycle
 	// cap is supposed to bound.
 	postAttempts int
+	// postRetryAfter, when non-empty, is sent as the Retry-After header on every
+	// rejected POST. Grafana Cloud sends it on a 429; a self-hosted Grafana behind
+	// a proxy may not, which is why the backoff cannot depend on it.
+	postRetryAfter string
 }
 
 func newFakeGrafana(t *testing.T) *fakeGrafana {
@@ -53,6 +58,9 @@ func newFakeGrafana(t *testing.T) *fakeGrafana {
 		case http.MethodPost:
 			f.postAttempts++
 			if f.postCode != http.StatusOK {
+				if f.postRetryAfter != "" {
+					w.Header().Set("Retry-After", f.postRetryAfter)
+				}
 				w.WriteHeader(f.postCode)
 				_, _ = io.WriteString(w, `{"message":"nope"}`)
 				return
@@ -444,6 +452,270 @@ func TestWatcherCapsAttemptsWhenEveryPostFails(t *testing.T) {
 	}
 	if got := len(f.writes()); got != 0 {
 		t.Fatalf("expected no successful writes while the server rejects, got %d", got)
+	}
+}
+
+// rulesetBacklog builds n distinct events, one per ruleset, all inside the
+// lookback. This is the shape that produced #519 live: a fresh deployment with a
+// 24h lookback found dozens of ids-ruleset-update events at once.
+func rulesetBacklog(now time.Time, n int) []series {
+	all := make([]series, 0, n)
+	for i := range n {
+		all = append(all, series{
+			name:   "opnsense_ids_ruleset_last_updated_timestamp_seconds",
+			labels: map[string]string{instanceLabel: "fw-a", "ruleset": string(rune('a' + i))},
+			value:  float64(now.Add(-time.Duration(i+1) * time.Minute).Unix()),
+		})
+	}
+	return all
+}
+
+func postAttempts(f *fakeGrafana) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.postAttempts
+}
+
+func setPostResponse(f *fakeGrafana, code int, retryAfter string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.postCode = code
+	f.postRetryAfter = retryAfter
+}
+
+func counterValue(t *testing.T, c prometheus.Counter) float64 {
+	t.Helper()
+	var d dto.Metric
+	if err := c.Write(&d); err != nil {
+		t.Fatalf("write metric: %v", err)
+	}
+	return d.GetCounter().GetValue()
+}
+
+// A 429 says "you are sending too many requests". Answering it by sending the same
+// cap-full of requests on the very next interval is what made #519 self-sustaining:
+// bounding attempts alone turns an unbounded storm into a permanent 20-per-minute
+// one. The cycle after a rate limit must post NOTHING, and must not consume the
+// backlog while it waits.
+func TestWatcherBacksOffAfterARateLimit(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 10)...)
+	w.cfg.MaxPerCycle = 3
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusTooManyRequests, "")
+
+	w.tick(context.Background())
+	if got := postAttempts(f); got != 3 {
+		t.Fatalf("first tick made %d attempts, want the cap of 3", got)
+	}
+	if got := counterValue(t, w.metrics.rateLimited); got != 3 {
+		t.Errorf("rate_limited_total = %v, want 3", got)
+	}
+	if !w.backoffUntil.After(now) {
+		t.Fatalf("a 429 did not arm the backoff (backoffUntil=%s, now=%s)", w.backoffUntil, now)
+	}
+
+	w.tick(context.Background())
+	if got := postAttempts(f); got != 3 {
+		t.Fatalf("a backed-off tick made %d further attempts; it must post nothing", got-3)
+	}
+	// The backlog is still owed: backing off delays the writes, it does not drop
+	// them, so nothing may be marked seen while waiting.
+	if len(w.seen) != 0 {
+		t.Errorf("a backed-off tick consumed %d events from the backlog", len(w.seen))
+	}
+}
+
+// Grafana Cloud answers a 429 with Retry-After. Guessing an exponential delay when
+// the server has stated one either hammers it early or idles far longer than asked.
+func TestWatcherHonoursRetryAfterInDeltaSeconds(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 2)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusTooManyRequests, "120")
+
+	w.tick(context.Background())
+
+	if want := now.Add(120 * time.Second); !w.backoffUntil.Equal(want) {
+		t.Fatalf("backoffUntil = %s, want the server's Retry-After of %s", w.backoffUntil, want)
+	}
+}
+
+// RFC 9110 allows Retry-After as an HTTP-date as well as delta-seconds, and both
+// forms are seen in the wild behind proxies. Parsing only the integer form silently
+// discards the header and falls back to a guess.
+func TestWatcherHonoursRetryAfterAsAnHTTPDate(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 2)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusTooManyRequests,
+		now.Add(90*time.Second).UTC().Format(http.TimeFormat))
+
+	w.tick(context.Background())
+
+	// HTTP-date has one-second granularity, so the parsed instant can sit up to a
+	// second below the target.
+	delay := w.backoffUntil.Sub(now)
+	if delay < 89*time.Second || delay > 90*time.Second {
+		t.Fatalf("backoff delay = %s, want ~90s from the HTTP-date Retry-After", delay)
+	}
+}
+
+// A garbage Retry-After must not poison the backoff into 0 (an immediate retry) or
+// into a bogus instant. It falls through to the exponential path.
+func TestWatcherFallsBackToExponentialOnAnUnparseableRetryAfter(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 2)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusTooManyRequests, "in a bit")
+
+	w.tick(context.Background())
+
+	delay := w.backoffUntil.Sub(now)
+	low := time.Duration(float64(backoffBase) * (1 - backoffJitter))
+	high := time.Duration(float64(backoffBase) * (1 + backoffJitter))
+	if delay < low || delay > high {
+		t.Fatalf("backoff delay = %s, want the jittered base in [%s, %s]", delay, low, high)
+	}
+}
+
+// Consecutive rate limits must widen the gap, or a persistently rate-limited org
+// keeps a fixed 30s drumbeat against a limit it is already over.
+func TestWatcherBackoffGrowsWithConsecutiveRateLimits(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 2)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusTooManyRequests, "")
+
+	var previous time.Duration
+	for cycle := range 4 {
+		w.now = func() time.Time { return now }
+		w.tick(context.Background())
+		delay := w.backoffUntil.Sub(now)
+		if cycle > 0 && delay <= previous {
+			t.Fatalf("cycle %d backoff %s did not grow past %s", cycle, delay, previous)
+		}
+		previous = delay
+		// Step past the wait so the next tick is allowed to attempt again.
+		now = w.backoffUntil.Add(time.Second)
+	}
+	if previous > backoffCeiling {
+		t.Fatalf("backoff %s exceeded the ceiling %s", previous, backoffCeiling)
+	}
+}
+
+// A success means the limit has cleared. Leaving the streak wound up would make the
+// next isolated 429 wait minutes for no reason.
+func TestWatcherResetsBackoffAfterASuccess(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 2)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusTooManyRequests, "")
+
+	w.tick(context.Background())
+	if w.backoffStreak == 0 {
+		t.Fatal("a 429 must record a backoff streak")
+	}
+
+	setPostResponse(f, http.StatusOK, "")
+	w.now = func() time.Time { return w.backoffUntil.Add(time.Second) }
+	w.tick(context.Background())
+
+	if got := len(f.writes()); got != 2 {
+		t.Fatalf("expected the backlog to drain once the limit cleared, got %d writes", got)
+	}
+	if w.backoffStreak != 0 || !w.backoffUntil.IsZero() {
+		t.Fatalf("backoff not reset after a success: streak=%d until=%s", w.backoffStreak, w.backoffUntil)
+	}
+}
+
+// A 400 is a statement about the request, not about load: the identical body will be
+// rejected identically forever. Retrying it every --annotations.interval is a
+// permanent request storm that no operator action short of a restart can stop, so
+// the event is marked seen and counted as undeliverable instead.
+func TestWatcherDoesNotRetryANonRetryable4xx(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 1)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusBadRequest, "")
+
+	w.tick(context.Background())
+	if got := postAttempts(f); got != 1 {
+		t.Fatalf("first tick made %d attempts, want 1", got)
+	}
+	if got := counterValue(t, w.metrics.undeliverable); got != 1 {
+		t.Errorf("undeliverable_total = %v, want 1", got)
+	}
+	if w.backoffUntil.After(now) {
+		t.Error("a non-retryable 4xx must not arm the rate-limit backoff")
+	}
+
+	setPostResponse(f, http.StatusOK, "")
+	w.tick(context.Background())
+
+	if got := postAttempts(f); got != 1 {
+		t.Fatalf("a permanently rejected event was retried: %d attempts", got)
+	}
+	if got := len(f.writes()); got != 0 {
+		t.Fatalf("expected no writes, got %d", got)
+	}
+}
+
+// A 5xx or a 408 is transient by definition, so the existing retry contract still
+// holds for them — dropping those would lose events on a Grafana restart.
+func TestWatcherStillRetriesATransientRejection(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, rulesetBacklog(now, 1)...)
+	w.reconcile(context.Background())
+	setPostResponse(f, http.StatusRequestTimeout, "")
+
+	w.tick(context.Background())
+	if got := counterValue(t, w.metrics.undeliverable); got != 0 {
+		t.Fatalf("a 408 was treated as permanent: undeliverable_total = %v", got)
+	}
+
+	setPostResponse(f, http.StatusOK, "")
+	w.tick(context.Background())
+	if got := len(f.writes()); got != 1 {
+		t.Fatalf("expected the 408'd event to be retried and written, got %d writes", got)
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	base := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name   string
+		header string
+		want   time.Duration
+	}{
+		{"absent", "", 0},
+		{"delta seconds", "120", 120 * time.Second},
+		{"delta seconds with padding", "  30  ", 30 * time.Second},
+		// A zero or negative delta is legal and means "retry now"; it must not be
+		// mistaken for "header absent", which would substitute an exponential wait.
+		{"zero delta", "0", time.Nanosecond},
+		{"http date", base.Add(45 * time.Second).Format(http.TimeFormat), 45 * time.Second},
+		// A date already in the past means the wait is over.
+		{"past http date", base.Add(-time.Hour).Format(http.TimeFormat), time.Nanosecond},
+		{"garbage", "soon", 0},
+		{"negative delta", "-5", time.Nanosecond},
+		// Clamped: a proxy answering with a day would park the writer for a day.
+		{"absurd delta", "864000", backoffCeiling},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseRetryAfter(tc.header, base); got != tc.want {
+				t.Errorf("parseRetryAfter(%q) = %s, want %s", tc.header, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -93,11 +93,12 @@ type IfMap struct {
 	stated        map[string]uint32
 	overriddenIdx map[uint32]bool
 
-	built         time.Time
-	overridden    int
-	conflicts     int
-	disagreements int
-	unlisted      int
+	built              time.Time
+	overridden         int
+	conflictsDiffering int
+	conflictsAbsent    int
+	disagreements      int
+	unlisted           int
 
 	// ownCounters backs a map nobody attached shared counters to — tests, and the
 	// cold-start path before a Processor exists.
@@ -153,10 +154,24 @@ type IfMapStats struct {
 	// Overridden is how many entries came from the operator override.
 	Overridden int
 	// Conflicts is how many of those overrides DISAGREED with what the derived
-	// enumeration produced for the same index (including an index the derivation
-	// never produced at all). A non-zero value means the ordering source does not
-	// reproduce ifinfo order and is the signal worth alerting on.
+	// enumeration produced for the same index. It is the sum of the two reasons
+	// below and is kept whole because the operator console renders one number.
 	Conflicts int
+	// ConflictsDiffering and ConflictsAbsent split Conflicts by WHY, because the
+	// total alone cannot be triaged and #516 proved it: a live box read three
+	// conflicts against ten pins, and answering "is the derivation wrong, or does
+	// it simply not enumerate these interfaces" needed shell access to the
+	// firewall. Differing means the derivation produced a DIFFERENT interface at
+	// that index; absent means it produced no entry there at all.
+	//
+	// Neither reason says which side is RIGHT. A pin is a static assertion, and
+	// adding or removing any interface renumbers every position above it, so a
+	// pin that was correct when it was written goes stale on its own — which is
+	// exactly what #516 turned out to be. Ground truth is the box's own
+	// enumeration (`ifinfo`, or decisively the ifaceN hook names on its
+	// ng_netflow nodes), never this counter.
+	ConflictsDiffering int
+	ConflictsAbsent    int
 	// StatedIndexDisagreements is how many devices the API states an ifIndex for
 	// that differs from the position the ordering put them at. It is the guard on
 	// an ordering carried by JSON key order: agreement is silent, disagreement
@@ -362,9 +377,15 @@ func BuildIfMap(in IfMapInput) *IfMap {
 		}
 		resolved.Index = idx
 
-		prev, existed := m.byIndex[idx]
-		if !existed || prev.Device != resolved.Device || prev.Name != resolved.Name {
-			m.conflicts++
+		// The two reasons are counted apart, not summed into one number: "the
+		// derivation put a different interface here" and "the derivation has
+		// nothing here" have different fixes, and a bare total cannot be triaged
+		// without shell access to the firewall (#516).
+		switch prev, existed := m.byIndex[idx]; {
+		case !existed:
+			m.conflictsAbsent++
+		case prev.Device != resolved.Device || prev.Name != resolved.Name:
+			m.conflictsDiffering++
 		}
 		m.byIndex[idx] = resolved
 		m.overriddenIdx[idx] = true
@@ -564,7 +585,9 @@ func (m *IfMap) Stats() IfMapStats {
 	return IfMapStats{
 		Entries:                  len(m.byIndex),
 		Overridden:               m.overridden,
-		Conflicts:                m.conflicts,
+		Conflicts:                m.conflictsDiffering + m.conflictsAbsent,
+		ConflictsDiffering:       m.conflictsDiffering,
+		ConflictsAbsent:          m.conflictsAbsent,
 		StatedIndexDisagreements: m.disagreements,
 		UnlistedDevices:          m.unlisted,
 		UnmappedLookups:          m.counters.unmapped.Load(),

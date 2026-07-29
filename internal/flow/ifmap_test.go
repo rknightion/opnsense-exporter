@@ -567,6 +567,34 @@ func TestBuildIfMap_OverrideCanAddAnIndexTheDerivationNeverSaw(t *testing.T) {
 	}
 }
 
+// A conflict count on its own cannot be triaged: "the pin names a different
+// interface than the derivation did" and "the derivation never produced that
+// index at all" are different failures with different fixes, and #516 hit
+// exactly that ambiguity on a live box — three conflicts against ten pins, with
+// no way to tell from the metric which kind they were without shell access to
+// the firewall. So the two are counted separately.
+func TestBuildIfMap_ConflictReasonsAreCountedSeparately(t *testing.T) {
+	override := map[uint32]string{
+		1:  "igb0",          // index 1 IS derived (ixl0): the pin names a different interface
+		5:  "SATELLITE",     // index 5 IS derived: verbatim name, still a different interface
+		40: "ixl0_vlan50",   // index 40 was never derived at all
+		41: "somethingelse", // ditto
+	}
+	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: override})
+	st := m.Stats()
+
+	if st.Conflicts != 4 {
+		t.Errorf("Conflicts = %d, want 4 (the total must stay the sum of the reasons)", st.Conflicts)
+	}
+	if st.ConflictsDiffering != 2 {
+		t.Errorf("ConflictsDiffering = %d, want 2 (indices 1 and 5 exist in the derivation "+
+			"and name a different interface)", st.ConflictsDiffering)
+	}
+	if st.ConflictsAbsent != 2 {
+		t.Errorf("ConflictsAbsent = %d, want 2 (indices 40 and 41 were never derived)", st.ConflictsAbsent)
+	}
+}
+
 func TestBuildIfMap_EmptyOverrideValueIsIgnored(t *testing.T) {
 	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: map[uint32]string{1: "", 5: "   "}})
 	if got := m.Iface(1); got.Device != "ixl0" {

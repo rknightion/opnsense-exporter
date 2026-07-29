@@ -749,15 +749,27 @@ def build_diagnostics(b: Builder):
     ann_rate = b.ts("Annotation Writes (rate)",
                     [(f'rate({sel("opnsense_exporter_annotations_written_total")}[{RATE}])', "written"),
                      (f'rate({sel("opnsense_exporter_annotations_failed_total")}[{RATE}])', "failed"),
+                     (f'rate({sel("opnsense_exporter_annotations_rate_limited_total")}[{RATE}])',
+                      "rate limited"),
+                     (f'rate({sel("opnsense_exporter_annotations_undeliverable_total")}[{RATE}])',
+                      "undeliverable"),
                      (f'rate({sel("opnsense_exporter_annotations_skipped_total")}[{RATE}])', "skipped")],
                     unit="ops", w=12, h=7,
                     desc="Annotations written to Grafana per second, against those that failed or were "
                          "skipped. A failed write is RETRIED on the next detection pass — the event is "
                          "not marked seen — so a brief failure rate that stops without a matching drop "
-                         "in writes cost nothing. Skips are different and are lossy: they mean a "
-                         "detection pass hit its --annotations.max-per-cycle cap and abandoned the "
-                         "excess, so a sustained skip rate means events are being silently discarded "
-                         "and the cap needs raising.")
+                         "in writes cost nothing. rate limited and undeliverable are BREAKDOWNS of "
+                         "failed, not additions to it, and they are the two shapes worth telling apart "
+                         "(#519): rate limited is HTTP 429, after which the writer backs off and posts "
+                         "nothing until the wait expires (honouring Retry-After when the server sends "
+                         "one) — a Grafana org shares one annotation limit, so another writer can cause "
+                         "it. undeliverable is a 4xx that can never succeed (malformed body, or a token "
+                         "without the annotation write permission); those events are abandoned rather "
+                         "than retried, so a sustained rate means annotations are being lost and the "
+                         "exporter log names the status. Skips are lossier still: a detection pass hit "
+                         "its --annotations.max-per-cycle cap and left the excess for the next pass, so "
+                         "a sustained skip rate means the backlog is not draining and the cap needs "
+                         "raising.")
     ann_age = b.stat("Time Since Last Annotation Written",
                      f'time() - ({sel("opnsense_exporter_annotations_last_success_timestamp_seconds")} > 0)',
                      unit="s", w=12, h=7, graph="none", color_mode="background",

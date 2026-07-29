@@ -249,12 +249,33 @@ So the guards matter more here than the mechanism:
   does not contain at all. Either one non-zero means every label is suspect;
 - `--flow.netflow.ifindex-map` pins any index outright, and
   `opnsense_flow_ifindex_conflicts` reports how many of your pins disagree with the
-  derivation. Non-zero means the indices you did *not* pin are suspect. Unlisted indices
-  keep using the derivation, so pin every index that carries traffic:
+  derivation. Unlisted indices keep using the derivation, so pin every index that carries
+  traffic:
 
   ```
   --flow.netflow.ifindex-map=1=ixl0,2=ixl1,7=lo0,15=pppoe0,16=tailscale0
   ```
+
+  The two reasons are different problems. `reason="derived_absent"` means you pinned an
+  index the derivation produced nothing for, which is expected when you pin beyond the
+  enumeration and says nothing about the ordering. `reason="derived_differs"` means the
+  two name different interfaces at the same index - and it does **not** tell you which is
+  right. A pin is a static assertion against a *positional* index, so adding or removing
+  any interface renumbers everything above it and a once-correct pin goes stale on its
+  own, while still winning. That is exactly what #516 was: a VLAN added on the firewall
+  shifted three pins by one, and the pin kept labelling the PPPoE WAN - 91% of the box's
+  volume - as the tailnet interface, which is #361's failure reintroduced from the other
+  direction. Settle it on the box, never from the metric:
+
+  ```
+  ifinfo | awk '$1 == "Interface" { n++; print n, $2 }'   # the enumeration
+  ngctl show netflow_pppoe0:                              # ifaceN = the index actually stamped
+  ```
+
+  The `ifaceN` hook name is decisive: it is the number `rc.d/netflow` passed to
+  `ngctl mkpeer` and therefore the number that arrives in every record. If it agrees with
+  the derivation, delete the pin rather than correcting it - an unpinned index cannot go
+  stale.
 
 - `opnsense_flow_ifindex_map_age_seconds` tracks the map's freshness, which is a
   correctness signal here rather than a staleness nuisance. On a failed fetch or a
