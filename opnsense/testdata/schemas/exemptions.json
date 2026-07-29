@@ -226,9 +226,10 @@
       "rows[].nocheck",
       "rows[].php",
       "rows[].pidfile",
-      "rows[].uid"
+      "rows[].uid",
+      "rows[].verbose"
     ],
-    "note": "rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow (opnsense/hasync.go) that upstream has never populated on any release, so it can never be present on any box - this is NOT box-state and NOT drift. Source: list_services_xmlrpc in the HA XML-RPC surface builds each row with 'status' and no 'running' key. #460 built a real HA peer (a second OPNsense on the isolated testbed bridge) and confirmed on 2026-07-28 against a live 38-row response that the key is absent from a configured, reachable, fully-populated payload - the strongest available evidence, because it excludes every other reason a path can be missing (no peer configured, peer unreachable, empty rows). Without this entry the canary reports it on every run forever. PRUNE TRIGGER: remove this entry when the 'running' alias is removed from hasyncServiceRow, OR if upstream ever starts emitting it - in which case the effective-running expression should prefer it and this entry becomes wrong in the other direction. TestFetchHasyncStatus_RunningAliasNeverOnTheWire pins the alias inert in the meantime: if that expression is ever 'simplified' to prefer running, every stopped service on every real box silently flips to 1. --- knownExtraPaths (#480): all eight are REDUNDANT, triaged per key against upstream source on 2026-07-28. They are new only because #460 gave the box a real HA peer, so rows[] was non-empty for the first time - upstream did not change. Chain: HasyncStatusController::servicesAction -> configd 'system ha services_cached' -> ha_xmlrpc_exec.php services -> XML-RPC opnsense.list_services -> list_services_xmlrpc (src/etc/inc/xmlrpc/service.inc), which iterates plugins_services() and adds only 'status' itself. configd/php/mwexec are the three ALTERNATIVE SERVICE-CONTROL DISPATCH TABLES (start/stop/restart command names, PHP callbacks, raw shell), consumed only by service_control_start/stop/restart in src/etc/inc/util.inc - internal wiring, and exposing raw command or PHP-function strings as label data would be an info leak with no operator value. pidfile is the INPUT to the liveness check (service_status reads isvalidpid($service['pidfile']), util.inc) whose OUTPUT is the 'status' we already model. nocheck short-circuits service_status to always-true (util.inc), so its effect is ALREADY BAKED INTO the running gauge we export - modelling it separately would double-count a static per-service definition. locked only gates whether the webConfigurator renders start/stop/restart buttons (hasync_status.volt) - UI permission, not health. dns_ports is a resolver-port-conflict input for service_by_filter, set only on the unbound/dnsmasq rows; if that data is ever wanted it belongs to the Unbound/Dnsmasq collectors reading their own config endpoints, not to a remote-peer HA service list. uid is synthesized by the controller itself as name[_id] (HasyncStatusController.php) purely as a bootgrid row key - it is exactly the name+id composite the exporter already derives for series identity. PRESENCE IS CONDITIONAL: only uid is on every row; the other seven are set only by the plugin _services() functions that declare them, so these paths are stable in shape but not in per-row presence. PRUNE TRIGGER: none of these becomes interesting unless upstream repurposes one to carry health state - re-triage if the note above stops matching the source."
+    "note": "rows[].running is a DEFENSIVE ALIAS in hasyncServiceRow (opnsense/hasync.go) that upstream has never populated on any release, so it can never be present on any box - this is NOT box-state and NOT drift. Source: list_services_xmlrpc in the HA XML-RPC surface builds each row with 'status' and no 'running' key. #460 built a real HA peer (a second OPNsense on the isolated testbed bridge) and confirmed on 2026-07-28 against a live 38-row response that the key is absent from a configured, reachable, fully-populated payload - the strongest available evidence, because it excludes every other reason a path can be missing (no peer configured, peer unreachable, empty rows). Without this entry the canary reports it on every run forever. PRUNE TRIGGER: remove this entry when the 'running' alias is removed from hasyncServiceRow, OR if upstream ever starts emitting it - in which case the effective-running expression should prefer it and this entry becomes wrong in the other direction. TestFetchHasyncStatus_RunningAliasNeverOnTheWire pins the alias inert in the meantime: if that expression is ever 'simplified' to prefer running, every stopped service on every real box silently flips to 1. --- knownExtraPaths (#480): all eight are REDUNDANT, triaged per key against upstream source on 2026-07-28. They are new only because #460 gave the box a real HA peer, so rows[] was non-empty for the first time - upstream did not change. Chain: HasyncStatusController::servicesAction -> configd 'system ha services_cached' -> ha_xmlrpc_exec.php services -> XML-RPC opnsense.list_services -> list_services_xmlrpc (src/etc/inc/xmlrpc/service.inc), which iterates plugins_services() and adds only 'status' itself. configd/php/mwexec are the three ALTERNATIVE SERVICE-CONTROL DISPATCH TABLES (start/stop/restart command names, PHP callbacks, raw shell), consumed only by service_control_start/stop/restart in src/etc/inc/util.inc - internal wiring, and exposing raw command or PHP-function strings as label data would be an info leak with no operator value. pidfile is the INPUT to the liveness check (service_status reads isvalidpid($service['pidfile']), util.inc) whose OUTPUT is the 'status' we already model. nocheck short-circuits service_status to always-true (util.inc), so its effect is ALREADY BAKED INTO the running gauge we export - modelling it separately would double-count a static per-service definition. locked only gates whether the webConfigurator renders start/stop/restart buttons (hasync_status.volt) - UI permission, not health. dns_ports is a resolver-port-conflict input for service_by_filter, set only on the unbound/dnsmasq rows; if that data is ever wanted it belongs to the Unbound/Dnsmasq collectors reading their own config endpoints, not to a remote-peer HA service list. uid is synthesized by the controller itself as name[_id] (HasyncStatusController.php) purely as a bootgrid row key - it is exactly the name+id composite the exporter already derives for series identity. PRESENCE IS CONDITIONAL: only uid is on every row; the other seven are set only by the plugin _services() functions that declare them, so these paths are stable in shape but not in per-row presence. PRUNE TRIGGER: none of these becomes interesting unless upstream repurposes one to carry health state - re-triage if the note above stops matching the source. --- rows[].verbose ADDED (#496 nightly, plugins_services() chain confirmed identical to the #480 batch): verified against opnsense/core master, src/etc/inc/plugins.inc.d/dpinger.inc, dpinger_services() (the gateway-monitor/dpinger service, one row per configured gateway plus a synthetic 'Gateway Watcher' entry) - it hardcodes $pconfig['verbose'] = false and lists 'verbose' in php.args alongside 'id'; this is a static PHP-restart-callback argument (verbosity of the reconfigure log output), not runtime health or state, same PRESENCE IS CONDITIONAL bucket as the other seven plugin-declared keys above - it surfaced only now because the nightly testbed has gateway monitoring configured, and no prior canary run happened to include a dpinger row. PRUNE TRIGGER: none, unless upstream repurposes this static flag."
   },
   "hasyncVersion": {
     "missingOK": [
@@ -1745,5 +1746,188 @@
       "rows[].size"
     ],
     "note": "FIRST LEDGER ENTRY (#496/#490, prod release 26.7.1_1) - this endpoint was previously unledgered because the nightly testbed's earlier canary runs happened not to report it; the release box's bootgrid rows carry the same shape. Not drift: bootEnvironmentRow (opnsense/snapshots.go) already has a doc comment stating explicitly that size/mountpoint/created_str are seen on the wire and deliberately not modelled. Verified against upstream source (opnsense/core, src/opnsense/scripts/system/bectl.py, stable/26.7, action='list'): each row is built directly from `bectl list -H` tab-separated output - parts[2]=mountpoint (a raw filesystem path), parts[3]=size (bectl's own HUMAN-FORMATTED size string, e.g. \"28.8G\", not a byte count), parts[4]=created_str (a formatted \"%Y-%m-%d %H:%M\" display string, re-parsed by the same script into the already-modelled numeric `created` epoch field). So created_str is a redundant display twin of data already captured (Created, the flexString feeding ActiveCreatedTimestamp); mountpoint is filesystem-path identity with no metric use; size is a human-formatted string that would require unit-parsing (G/T/M suffixes) to become a byte gauge - the collector's own doc comment (internal/collector/snapshots.go) already states this was a deliberate scope decision, not an oversight: \"avoid parsing human-formatted sizes into series\". OPPORTUNITY, if that scope decision is ever revisited: size is a real per-boot-environment disk-usage figure with no current equivalent, but modelling it means writing a size-suffix parser this codebase does not otherwise need. PRUNE TRIGGER: remove size from this list only if that scope decision is revisited and a suffix parser is added; mountpoint/created_str have no trigger."
+  },
+  "netflowStatus": {
+    "missingOK": [
+      "collectors"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly). BOX STATE, not drift: verified against opnsense/core master, src/opnsense/mvc/app/controllers/OPNsense/Diagnostics/Api/NetflowController.php, statusAction() - it returns array('status' => 'inactive') with NO 'collectors' key at all whenever `$backend->configdRun('netflow status')` does not contain the substring 'netflow is active'; the 'collectors' key is built ONLY on the active branch, parsed out of that same status string (`trim(explode(')', explode(':', $status)[1])[0])`). The nightly testbed deliberately runs with no netflow collector targets configured - a prior finding in this codebase's own memory notes that pointing a collector at itself once wrote a 51 GB log in 30 minutes - so the service reports inactive and the key is legitimately absent, not renamed or dropped. FetchNetflowStatus (opnsense/netflow.go) already handles this correctly without any code change: resp.Collectors decodes to an empty Go string, strconv.Atoi fails silently, and data.Collectors is left at its int zero value; internal/collector/netflow.go's collectorsCount gauge then reports 0, which is the factually correct reading when netflow is inactive, not a masked absence. PRUNE TRIGGER: none - recurs on any box with no netflow collector configured, not version-bound."
+  },
+  "quaggaOspfDatabase": {
+    "missingOK": [
+      "response.areas.*.asbrSummaryLinkStatesCount",
+      "response.areas.*.nssaExternalLinkStatesCount",
+      "response.areas.*.opaqueAreaLinkStatesCount",
+      "response.areas.*.opaqueLinkLinkStatesCount",
+      "response.areas.*.summaryLinkStatesCount"
+    ],
+    "knownExtraPaths": [
+      "response.areas.*.networkLinkStates",
+      "response.areas.*.routerLinkStates",
+      "response.asExternalLinkStates",
+      "response.routerId"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly) - this endpoint was structurally INVISIBLE to the canary before #459 (commit 0a24a5a, 'reflect through RawMessage envelopes'): schema_registry.go previously registered it as its bare envelope (Response json.RawMessage -> KindAny), so the golden carried one opaque path and accepted any payload. #459 replaced that with an envelopeDescent entry (Envelope: frrOSPFDatabaseEnvelope{}, Field: \"response\", Inner: frrOSPFDatabaseBody{}), so this is the FIRST run that could ever see this endpoint's real shape - not a sudden upstream change. frrOSPFDatabaseBody/frrOSPFDatabaseAreaEntry (opnsense/frr.go) model Areas[].{RouterLinkStatesCount,NetworkLinkStatesCount,SummaryLinkStatesCount,AsbrSummaryLinkStatesCount,NssaExternalLinkStatesCount,OpaqueLinkLinkStatesCount,OpaqueAreaLinkStatesCount} plus top-level AsExternalLinkStatesCount, all feeding FRROSPFLSACount (lsa_type label: router/network/summary/asbrSummary/nssaExternal/opaqueLink/opaqueArea/external) - so the five missingOK fields DO back an exported metric, which is exactly the class of exemption this repo's triage rules say to prefer fixing the testbed over. Verified conditional in FRR source rather than assumed: ospfd/ospf_vty.c's show_ip_ospf_database_summary() (FRRouting/frr master, function starting ~line 7103) only calls json_object_int_add for a per-area *Count key `if (ospf_lsdb_count_self(area->lsdb, type) > 0 || (!self && ospf_lsdb_count(area->lsdb, type) > 0))` - the key is omitted entirely, not zeroed, when that area's LSDB holds no LSA of that type. The nightly testbed runs a single-area OSPF instance with no ASBR/redistribution, no NSSA area and no opaque LSAs configured, so all five counts are genuinely absent-because-zero, not renamed or dropped. This IS box state, but is recorded as an exemption rather than closed by fixing the testbed, because standing up a multi-area/ASBR/NSSA/opaque-LSA OSPF topology is out of scope for a canary-triage pass; PRUNE TRIGGER: remove an entry once the testbed topology is extended to genuinely exercise that LSA type - per the triage-rule preference for fixing the testbed over exempting a metric-backing field, this should not be left standing indefinitely. knownExtraPaths: response.routerId is FRR's own router-id string (ospf_vty.c line ~7332 among others) - pure instance identity, same bucket as the router-id fields already exempted on the sibling quaggaOspfOverview/quaggaOspfv3Overview entries below. response.asExternalLinkStates and response.areas.*.{routerLinkStates,networkLinkStates} are the full per-LSA-detail ARRAYS for those LSA types (age/seq#/checksum/adv-router detail, show_lsa_detail_proc in ospf_vty.c), populated because a running single-area OSPF instance always originates at least its own router-LSA and (on a broadcast segment with a DR) a network-LSA - this endpoint only ever consumes the sibling *Count scalars into the LSA-count metric, never per-LSA detail, by the same deliberate cardinality-avoidance design already applied to quaggaGeneralRoute4/6 (a per-LSA-ID label would be unbounded). PRUNE TRIGGER for knownExtraPaths: none - reopening this means reopening that cardinality decision."
+  },
+  "quaggaBgpNeighbors": {
+    "knownExtraPaths": [
+      "response.*.bgpConnection",
+      "response.*.bgpInUpdateElapsedTimeMsecs",
+      "response.*.bgpTcpMssConfigured",
+      "response.*.bgpTcpMssSynced",
+      "response.*.bgpTimerConfiguredConditionalAdvertisementsSec",
+      "response.*.bgpTimerConfiguredHoldTimeMsecs",
+      "response.*.bgpTimerConfiguredKeepAliveIntervalMsecs",
+      "response.*.bgpTimerHoldTimeMsecs",
+      "response.*.bgpTimerKeepAliveIntervalMsecs",
+      "response.*.bgpTimerLastRead",
+      "response.*.bgpTimerLastWrite",
+      "response.*.bgpUpdateDelayTimerMsecs",
+      "response.*.bgpUpdateDelayTimerMsecsRemaining",
+      "response.*.bgpVersion",
+      "response.*.connectRetryTimer",
+      "response.*.extendedOptionalParametersLength",
+      "response.*.externalBgpNbrMaxHopsAway",
+      "response.*.gracefulRestartInfo",
+      "response.*.hostForeign",
+      "response.*.hostLocal",
+      "response.*.hostname",
+      "response.*.lastResetCode",
+      "response.*.localAs",
+      "response.*.localAsReplaceAsDualAs",
+      "response.*.localRole",
+      "response.*.localRouterId",
+      "response.*.messageStats.totalRecv",
+      "response.*.messageStats.totalSent",
+      "response.*.minBtwnAdvertisementRunsTimerMsecs",
+      "response.*.nbrDesc",
+      "response.*.nbrExternalLink",
+      "response.*.neighborAddr",
+      "response.*.nextConnectTimerDueInMsecs",
+      "response.*.nexthop",
+      "response.*.nexthopGlobal",
+      "response.*.nexthopLocal",
+      "response.*.portForeign",
+      "response.*.portLocal",
+      "response.*.prefixStats",
+      "response.*.readThread",
+      "response.*.remoteRole",
+      "response.*.remoteRouterId",
+      "response.*.softwareVersion",
+      "response.*.writeThread"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly) - newly visible only because #459 (commit 0a24a5a) taught the reflector to descend the RawMessage envelope (envelopeDescent, Inner: map[string]frrBGPNeighborEntry); the endpoint's own doc comment (frr.go banner) already documented this shape as verified against a real eBGP session in 2026-07-13, it was simply invisible to the canary until now. frrBGPNeighborEntry (opnsense/frr.go) models bgpState/remoteAs/connectionsEstablished/connectionsDropped/lastResetTimerMsecs/lastResetDueTo/messageStats.{opens,updates,notifications,keepalives,routeRefresh,capability}{Sent,Recv}/messageStats.{depthInq,depthOutq}/addressFamilyInfo.*.acceptedPrefixCounter, feeding FRRBGPNeighborDetail. Every path above is a genuine FRR bgpd field confirmed against bgpd/bgp_vty.c (FRRouting/frr master, the JSON-neighbor-detail block starting ~line 16600 and the per-message-type/state block ~17000-18420) - none are fabricated or misspelled. Buckets: hostname/hostForeign/hostLocal/portForeign/portLocal/nexthop*/localRouterId/remoteRouterId/localAs/bgpVersion/extendedOptionalParametersLength/localRole/remoteRole/nbrDesc are session identity/topology; the bgpTimer*/bgpTcpMss*/connectRetryTimer/minBtwnAdvertisementRunsTimerMsecs/nextConnectTimerDueInMsecs/bgpUpdateDelayTimerMsecs* family is negotiated protocol-timer CONFIG that changes on reconfiguration, the same class already excluded for the BFD timer families elsewhere in this file; readThread/writeThread are FRR's own internal event-scheduler state strings ('on'/'off'), implementation detail with no operator value; gracefulRestartInfo is a nested config/capability block, not live health; lastResetCode/bgpConnection/bgpInUpdateElapsedTimeMsecs/externalBgpNbrMaxHopsAway/localAsReplaceAsDualAs/nbrExternalLink/prefixStats/softwareVersion are per-session diagnostic/identity detail with no current counter use. OPPORTUNITY: messageStats.totalRecv/totalSent are FRR's own pre-summed totals across all message types, which this codebase's per-type counters (opensSent/updatesSent/...) can already reconstruct by summing client-side, so flagged but low-value; the more genuine gap is unaddressed here because it lives on the sibling quaggaBgpSummary entry (peers.*.peerState). PRUNE TRIGGER: remove an entry from this list once its field is modeled."
+  },
+  "quaggaBgpSummary": {
+    "knownExtraPaths": [
+      "response.*.as",
+      "response.*.bestPath",
+      "response.*.displayedPeers",
+      "response.*.dynamicPeers",
+      "response.*.peerMemory",
+      "response.*.peers.*.connectionsDropped",
+      "response.*.peers.*.connectionsEstablished",
+      "response.*.peers.*.desc",
+      "response.*.peers.*.idType",
+      "response.*.peers.*.inq",
+      "response.*.peers.*.localAs",
+      "response.*.peers.*.outq",
+      "response.*.peers.*.peerState",
+      "response.*.peers.*.peerUptime",
+      "response.*.peers.*.softwareVersion",
+      "response.*.peers.*.tableVersion",
+      "response.*.peers.*.version",
+      "response.*.ribMemory",
+      "response.*.routerId",
+      "response.*.tableVersion",
+      "response.*.totalPeers",
+      "response.*.vrfId",
+      "response.*.vrfName"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly) - newly visible only because #459 (commit 0a24a5a) taught the reflector to descend the RawMessage envelope (envelopeDescent, Inner: frrBGPSummaryResponseBody, itself a map[string]frrBGPFamily); the endpoint's own doc comment already documented this shape as verified against a real eBGP session in 2026-07-13, it was simply invisible to the canary until now. frrBGPFamily/frrBGPPeerEntry (opnsense/frr.go) model ribCount/peerCount/failedPeers per address-family and remoteAs/msgRcvd/msgSent/peerUptimeMsec/pfxRcd/pfxSnt/state per peer, feeding FRRBGPFamily/FRRBGPPeer. Every path above is a genuine FRR bgpd field confirmed against bgpd/bgp_vty.c (FRRouting/frr master, ~line 12730-12740 for the instance-level as/routerId/vrfId, ~14530-14620 and ~14760-14890 for the per-AF/per-peer detail block, ~15060-15070 for displayedPeers/totalPeers/dynamicPeers) - none are fabricated. Buckets: as/routerId/vrfId/vrfName are BGP instance identity, already the same class as routerId on the sibling quaggaOspfOverview/quaggaOspfv3Overview entries; tableVersion/ribMemory/peerMemory/displayedPeers/dynamicPeers/totalPeers are RIB/process memory bookkeeping counters with no current gauge; bestPath is the configured best-path SELECTION ALGORITHM object (config, not a metric); peers.*.{connectionsEstablished,connectionsDropped} duplicate the identically-named fields already modeled on the richer quaggaBgpNeighbors endpoint (sibling entry above) for the same peer; peers.*.{inq,outq} are the same live socket queue-depth reading as the already-modeled messageStats.depthInq/depthOutq on quaggaBgpNeighbors, just surfaced a second time on this summary endpoint; peers.*.{desc,idType,localAs,softwareVersion,tableVersion,version} are peer identity/config, the same bucket as their quaggaBgpNeighbors counterparts. OPPORTUNITY: peers.*.peerState is NOT a duplicate of the already-modeled FSM 'state' field - FRR emits both independently (bgp_vty.c ~14790-14862): 'state' is the connection FSM (Established/Idle/...), 'peerState' is a distinct admin/policy annotation ('OK'/'Admin'/'Passive'/'PfxCt'/'NSF passive'/'Policy') describing WHY a peer is not fully up when it isn't - genuinely new information a flapping-vs-administratively-down distinction would use, currently unavailable from any modeled field. peers.*.peerUptime is a human-formatted duration string, redundant with the already-modeled numeric peerUptimeMsec (PeerUpMsec) on the same peer via quaggaBgpNeighbors's uptime computation - not a gap. PRUNE TRIGGER: remove peerState from this list if it is ever modeled; the rest have none."
+  },
+  "quaggaOspfOverview": {
+    "knownExtraPaths": [
+      "response.attachedAreaCounter",
+      "response.forwardingAddressSelf",
+      "response.holdtimeMaxMsecs",
+      "response.holdtimeMinMsecs",
+      "response.holdtimeMultplier",
+      "response.lsaAsOpaqueChecksum",
+      "response.lsaAsopaqueCounter",
+      "response.lsaExternalChecksum",
+      "response.lsaExternalCounter",
+      "response.lsaMinArrivalMsecs",
+      "response.lsaMinIntervalMsecs",
+      "response.maximumPaths",
+      "response.preference",
+      "response.refreshTimerMsecs",
+      "response.rfc2328Conform",
+      "response.routerId",
+      "response.spfLastDurationMsecs",
+      "response.spfLastExecutedMsecs",
+      "response.spfScheduleDelayMsecs",
+      "response.tosRoutesOnly",
+      "response.writeMultiplier"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly) - newly visible only because #459 (commit 0a24a5a) taught the reflector to descend the RawMessage envelope (envelopeDescent, Inner: frrOSPFOverviewBody). frrOSPFOverviewBody/frrOSPFAreaData (opnsense/frr.go) model ONLY the per-area areas map (areaIfActiveCounter/nbrFullAdjacentCounter-or-nbrFullAdjacencyCount/lsaNumber/spfExecutedCounter), feeding FRROSPFArea - every field above sits at the INSTANCE level (flat under response, not under response.areas.*) and is entirely unmodeled by this endpoint. Confirmed as genuine FRR ospfd fields, not fabricated, against ospfd/ospf_vty.c (FRRouting/frr master, the instance-level json_object_int_add/json_object_string_add block ~line 1280-1365 of the equivalent ospf-overview handler): holdtimeMinMsecs/holdtimeMaxMsecs/holdtimeMultplier (upstream's own spelling, missing the second 'i' in 'Multiplier') are SPF exponential-backoff timer CONFIG; refreshTimerMsecs/lsaMinArrivalMsecs/lsaMinIntervalMsecs are further LSA-pacing timer config; maximumPaths/preference/rfc2328Conform/tosRoutesOnly/writeMultiplier are OSPF protocol-behavior tuning knobs - all config, not moving quantities. routerId/forwardingAddressSelf are instance identity, same bucket as the routerId fields already exempted on the sibling quaggaOspfDatabase/quaggaOspfv3Overview entries. attachedAreaCounter is a redundant count of the areas map this endpoint already models in full (len(Areas)). OPPORTUNITY: spfLastDurationMsecs/spfLastExecutedMsecs are instance-wide SPF-run timing with no current equivalent - the already-modeled spfExecutedCounter is a per-area COUNT of runs, not their duration or recency, so a 'how long did the last SPF take / how long ago' gauge is a genuine gap, the same class of opportunity already flagged on quaggaOspfv3Overview's equivalent fields below. lsaExternalCounter/lsaAsopaqueCounter/lsaExternalChecksum/lsaAsOpaqueChecksum are instance-wide LSA-type counts/checksums complementary to the per-area lsaNumber already modeled - a real gap, parallel to (but distinct from) the per-area *Count fields already tracked on quaggaOspfDatabase; the checksum fields specifically only matter as corruption/mismatch detectors, not as counters. PRUNE TRIGGER: remove an entry from this list once its field is modeled."
+  },
+  "quaggaOspfv3Interface": {
+    "knownExtraPaths": [
+      "response.*.attachedToArea",
+      "response.*.authInfo",
+      "response.*.autoDetect",
+      "response.*.bdr",
+      "response.*.dr",
+      "response.*.grHelloDelaySecs",
+      "response.*.instanceId",
+      "response.*.interfaceId",
+      "response.*.interfaceMtu",
+      "response.*.internetAddress",
+      "response.*.lsAckSendThread",
+      "response.*.lsUpdateSendThread",
+      "response.*.mtuMismatchDetection",
+      "response.*.pendingLsaLsAck",
+      "response.*.pendingLsaLsAckTime",
+      "response.*.pendingLsaLsUpdate",
+      "response.*.pendingLsaLsUpdateTime",
+      "response.*.timerIntervalsConfigDead",
+      "response.*.timerIntervalsConfigHello",
+      "response.*.timerIntervalsConfigRetransmit",
+      "response.*.timerPassiveIface",
+      "response.*.transmitDelaySec"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly) - newly visible only because #459 (commit 0a24a5a) taught the reflector to descend the RawMessage envelope (envelopeDescent, Inner: map[string]frrOSPFv3InterfaceEntry); frr.go's VERIFICATION banner already documents that ALL 13 of the fields this struct DOES decode (status/type/areaId/cost/priority/ospf6InterfaceState/numberOfInterfaceScopedLsa/pendingLsaLsUpdateCount/pendingLsaLsAckCount, plus the shared routerId/areas/numberOfAreaScopedLsa on the overview endpoint) were confirmed live against a real Full ospf6 adjacency on 2026-07-25 (#377) - this is that same struct's UNMODELED remainder, not new upstream data. Confirmed as genuine FRR ospf6d fields against ospf6d/ospf6_interface.c (FRRouting/frr master, the per-interface JSON block ~line 1068-1360): instanceId/interfaceId/interfaceMtu/autoDetect/internetAddress are interface identity; authInfo is the OSPFv3 authentication-trailer config block; grHelloDelaySecs/timerIntervalsConfig{Dead,Hello,Retransmit}/timerPassiveIface/transmitDelaySec are protocol-timer CONFIG, the same bucket as the equivalent OSPFv2/BFD timer families elsewhere in this file; mtuMismatchDetection is a config toggle string; lsAckSendThread/lsUpdateSendThread are FRR's own internal event-scheduler state strings, implementation detail with no operator value, same bucket as the equivalent quaggaBgpNeighbors readThread/writeThread; attachedToArea is a boolean presence-gate (true only when the sibling identity fields instanceId/interfaceMtu/autoDetect/mtuMismatchDetection are also set) rather than new information beyond the already-modeled areaId. dr/bdr are the elected Designated/Backup-Designated Router identities - a topology/election descriptor, the same OPPORTUNITY-adjacent-but-not-taken class as the OSPFv2 neighbor rows[].role field already exempted elsewhere in this file (DR/BDR/DROther), not a health signal on its own. OPPORTUNITY: pendingLsaLsAck/pendingLsaLsUpdate are the raw per-LSA-ID ARRAYS behind the already-modeled pendingLsaLsAckCount/pendingLsaLsUpdateCount scalars - per-LSA-ID cardinality this endpoint deliberately avoids, same cardinality-avoidance bucket as quaggaOspfDatabase's per-LSA detail arrays, so NOT flagged as a gap; pendingLsaLsAckTime/pendingLsaLsUpdateTime (queue age, alongside the already-modeled counts) are a genuine timing gap parallel to the OSPFv2/OSPFv3-overview SPF-timing opportunities noted elsewhere in this file. PRUNE TRIGGER: remove an entry from this list once its field is modeled; the cardinality-avoided array fields have no trigger."
+  },
+  "quaggaOspfv3Overview": {
+    "knownExtraPaths": [
+      "response.AuthTrailerHigherSeqNo",
+      "response.AuthTrailerLowerSeqNo",
+      "response.adjacencyChanges",
+      "response.areas.*.areaIsNSSA",
+      "response.areas.*.areaIsStub",
+      "response.areas.*.interfacesAttachedToArea",
+      "response.areas.*.lsaStatistics",
+      "response.areas.*.spfHasRun",
+      "response.areas.*.spfLastExecutedMicroSecs",
+      "response.areas.*.spfLastExecutedSecs",
+      "response.holdTimeMaxMsecs",
+      "response.holdTimeMinMsecs",
+      "response.holdTimeMultiplier",
+      "response.lsaMinimumArrivalMsecs",
+      "response.maximumPaths",
+      "response.numberOfAreaInRouter",
+      "response.preference",
+      "response.routerIsStubRouter",
+      "response.running",
+      "response.spfHasRun",
+      "response.spfLastDurationMsecs",
+      "response.spfLastDurationSecs",
+      "response.spfLastExecutedMsecs",
+      "response.spfLastExecutedReason",
+      "response.spfScheduleDelayMsecs",
+      "response.spfTimerActive"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496 nightly) - newly visible only because #459 (commit 0a24a5a) taught the reflector to descend the RawMessage envelope (envelopeDescent, Inner: frrOSPFv3OverviewBody); frr.go's VERIFICATION banner already documents this endpoint's modeled fields (routerId/numberOfAsScopedLsa/areas/areas.*.numberOfAreaScopedLsa) as confirmed live against a real Full ospf6 adjacency on 2026-07-25 (#377) - this is that same struct's UNMODELED remainder, not new upstream data; frrOSPFv3OverviewBody only decodes routerId (exempted alongside the other quagga routerId identity fields), numberOfAsScopedLsa and areas.*.numberOfAreaScopedLsa. Confirmed as genuine FRR ospf6d fields against ospf6d/ospf6_top.c (FRRouting/frr master, the instance-level JSON block ~line 1287-1364): holdTimeMinMsecs/holdTimeMaxMsecs/holdTimeMultiplier/lsaMinimumArrivalMsecs/maximumPaths/preference are SPF/LSA-pacing timer and protocol-tuning CONFIG, the exact same bucket as quaggaOspfOverview's equivalent OSPFv2 fields above; AuthTrailerHigherSeqNo/AuthTrailerLowerSeqNo are the OSPFv3 authentication-trailer sequence-number state, security/config bookkeeping not a counter; adjacencyChanges is a free-form status STRING (not the numeric neighbor-adjacency count this codebase already derives per-interface from ospf6InterfaceState); routerIsStubRouter/numberOfAreaInRouter are instance identity/topology, and numberOfAreaInRouter specifically duplicates the count of the already-modeled areas map. running is the ospf6d instance's own enabled/disabled boolean - a service-presence signal analogous to other already-exposed daemon-presence gauges elsewhere in the exporter, but this endpoint's existing Present/FetchFRROSPFv3Overview design already derives an equivalent presence signal from whether areas is non-empty, so treated as redundant rather than a gap. areas.*.{areaIsNSSA,areaIsStub,interfacesAttachedToArea} are per-area topology/type flags, not counters. OPPORTUNITY: spfHasRun/spfLastDurationMsecs/spfLastDurationSecs/spfLastExecutedMsecs/spfLastExecutedReason/spfScheduleDelayMsecs/spfTimerActive (instance-wide) and areas.*.{spfHasRun,spfLastExecutedMicroSecs,spfLastExecutedSecs} (per-area) are SPF-run timing telemetry with no current equivalent - the already-modeled numberOfAreaScopedLsa/numberOfAsScopedLsa are LSA-count gauges, not SPF-recency or duration, so an OSPFv3 SPF-run-timing metric is a genuine gap, the same class of opportunity already flagged on quaggaOspfOverview's OSPFv2 equivalent fields above; areas.*.lsaStatistics is a nested per-LSA-type breakdown parallel to (but not yet cross-checked against) the OSPFv2-side quaggaOspfDatabase per-area *Count fields already tracked as metrics - a real modeling candidate if that breakdown proves distinct data, not confirmed identical here. PRUNE TRIGGER: remove an entry from this list once its field is modeled; running has none unless the presence-derivation approach changes."
   }
 }

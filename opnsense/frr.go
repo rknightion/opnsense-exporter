@@ -33,19 +33,27 @@ import (
 // stack. That is a host-kernel property, not the container-privilege issue #227
 // concluded. A VM (own kernel) works fine on the same bridge.
 //
-// These two endpoints remain INVISIBLE TO THE CANARY regardless, and that is a
-// code limit rather than a lab gap: schema_registry.go registers the envelope
-// types, whose sole field is `Response json.RawMessage` → KindAny, so the
-// derived golden carries one path and accepts any payload. Tracked in #459;
-// until it lands, coverage.json marks them required-but-opaque so the blind spot
-// is named rather than silently counted. Do not re-provision the lab chasing
-// this — provisioning cannot fix it.
+// CORRECTION (#459, closed 2026-07-27 by 0a24a5a): this block used to say these
+// two endpoints "remain INVISIBLE TO THE CANARY regardless". That is no longer
+// true. schema_registry.go registered the envelope types, whose sole field is
+// `Response json.RawMessage` → KindAny, so the derived golden carried one path
+// and accepted any payload. envelopeDescent now names the second decode stage
+// explicitly, so the reflector sees through the envelope and the inner paths are
+// checked like any other.
+//
+// The visible consequence, recorded because it looked alarming and was not: the
+// first canary run after that landed reported ~130 "unexpected nested keys"
+// across the six quagga endpoints at once. Upstream had not changed. The canary
+// had simply stopped being blind, and those paths were always there. They are
+// ledgered in exemptions.json now (#496). Do not read a future bulk finding on a
+// newly-unwrapped envelope as drift without checking whether the reflector's
+// reach changed first.
 //
 //   - bgpsummary: per-AF field set, numeric types (remoteAs may exceed int32) — verified
 //   - bgpneighbors: per-peer flap/message/AF-prefix detail — verified (#197)
 //   - ospfoverview: areas key structure, nbrFullAdjacencyCount vs nbrFullAdjacentCounter — verified
 //   - ospfinterface: per-interface detail — verified ("interfaces"-wrapped shape, FRR>=8, this box's FRR 10.3); older flat top-level shape is decoded tolerantly but unverified live
-//   - ospfv3overview/ospfv3interface: field names VERIFIED against a live v3 adjacency 2026-07-25 (#377); still opaque to the canary via the RawMessage envelope (#459)
+//   - ospfv3overview/ospfv3interface: field names VERIFIED against a live v3 adjacency 2026-07-25 (#377); canary-visible since #459
 //   - searchOspfneighbor: old vs new field names (state/nbrState, address/ifaceAddress) — verified
 //   - bfdneighbors/bfdcounters: peer-keyed map structure, uptime field presence
 //
