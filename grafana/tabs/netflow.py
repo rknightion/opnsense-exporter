@@ -201,6 +201,27 @@ def build(b: Builder):
              "every other panel here: the cache metrics are keyed by Device, the capture and flow "
              "metrics by Interface.",
     )
+    nf_incapable = b.table(
+        "Interfaces That Can Never Capture",
+        [sel("opnsense_flow_interface_capture_unsupported")],
+        w=10, h=6,
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "interface": "Interface",
+            "device": "Device",
+            "reason": "Reason",
+            "opnsense_instance": "Instance",
+        },
+        desc="Interfaces selected for capture whose kernel device CANNOT produce NetFlow, whatever "
+             "the box's configuration says. Empty on most boxes. A row is not a fault and not "
+             "actionable beyond unticking the interface: reason=pppoe_framing_node means ng_netflow "
+             "attached to mpd's framing node rather than the ng_iface node ng_pppoe exposes, so the "
+             "hook was accepted and counts zero forever (#368). Nothing is lost - ng_netflow fills "
+             "the far side of every flow from a FIB lookup, so that WAN's traffic is still captured "
+             "through the other interfaces' hooks and still attributed to it. These rows are excluded "
+             "from the dead-hook table beside this one, and from OPNsenseNetFlowHookDead, because a "
+             "permanent unclearable alert is worse than no alert.",
+    )
     nf_dead_hooks = b.table(
         "Dead Capture Hooks (configured, own node frozen)",
         [
@@ -224,6 +245,14 @@ def build(b: Builder):
             ")"
             " and on (opnsense_instance) ("
             f'{sel("opnsense_netflow_capture_active_timeout_seconds")} < 2700'
+            ")"
+            # A device that can NEVER capture is not a dead hook, it is a
+            # selection that was never possible. Reporting it here would make the
+            # table permanently non-empty on every PPPoE WAN, which trains the
+            # reader to ignore a table whose whole contract is "a row here is a
+            # fault" (#521).
+            " unless on (opnsense_instance, interface) ("
+            f'{sel("opnsense_flow_interface_capture_unsupported")} == 1'
             ")"
         ],
         w=14, h=8,
@@ -250,8 +279,11 @@ def build(b: Builder):
              "drops the whole query if the configured timeout is 45m or more rather than letting the "
              "window quietly become a lie. Absent from this table, deliberately: an interface with no "
              "cache_packets_total series at all (a hook that was never created) - check the map on "
-             "the left. Needs the firewall collector for clause 3; with it disabled this panel is "
-             "empty rather than wrong.",
+             "the left. (5) An interface whose DEVICE can never capture at all is excluded - "
+             "opnsense_flow_interface_capture_unsupported marks those and every PPPoE WAN is one, so "
+             "without this clause the table would be permanently non-empty on such a box with no "
+             "action available to clear it. Needs the firewall collector for clause 3; with it "
+             "disabled this panel is empty rather than wrong.",
     )
 
     # ======================================================================
@@ -262,4 +294,5 @@ def build(b: Builder):
         b.row("NetFlow Cache", [nf_packets_ts, nf_src_ips_ts, nf_dst_ips_ts]),
         b.row("Capture Coverage", [nf_capture, nf_active_to, nf_inactive_to]),
         b.row("Hook Liveness", [nf_ifindex_map, nf_dead_hooks]),
+        b.row("Capture Feasibility", [nf_incapable]),
     ], present="has_netflow")

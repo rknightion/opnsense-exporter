@@ -398,6 +398,44 @@ func TestFlowCollector_PublishesTheIfIndexJoinMetric(t *testing.T) {
 	}
 }
 
+// A PPPoE device can NEVER capture NetFlow (#368: ng_netflow attaches to mpd's
+// framing node, not the ng_iface node ng_pppoe exposes), so its hook counts zero
+// forever while accepting the attach. Marking that structurally is what stops
+// OPNsenseNetFlowHookDead from firing permanently on every PPPoE WAN with no
+// action available to clear it (#521). Absence of the series means capable, so a
+// non-PPPoE device must publish NOTHING rather than a zero.
+func TestFlowCollector_MarksPPPoEDevicesCaptureUnsupported(t *testing.T) {
+	store := newFlowStore(10, 100)
+	store.SetNetflowStats(func() NetflowStats {
+		return NetflowStats{IfMapEntries: []flow.IfaceEntry{
+			{Index: 1, Device: "ixl0", Name: "LAN"},
+			{Index: 15, Device: "pppoe0", Name: "AAISP"},
+			{Index: 4, Device: "igb1"},
+			// Not a PPPoE device despite the substring: the match is a PREFIX, or
+			// an interface an operator described as "pppoe-backup" would be
+			// silently exempted from the alert that protects it.
+			{Index: 5, Device: "igb2", Name: "pppoe-backup"},
+		}}
+	})
+
+	got := collect(t, newFlowTestCollector(t, store))
+	want := "opnsense_flow_interface_capture_unsupported|device=pppoe0|interface=AAISP|reason=pppoe_framing_node"
+	if v, ok := got[want]; !ok {
+		t.Errorf("%s not published", want)
+	} else if v != 1 {
+		t.Errorf("%s = %v, want 1", want, v)
+	}
+	for k := range got {
+		if !strings.HasPrefix(k, "opnsense_flow_interface_capture_unsupported") {
+			continue
+		}
+		if k != want {
+			t.Errorf("%s published; only a pppoe* DEVICE may be marked unsupported, "+
+				"and a capable interface must be absent rather than 0", k)
+		}
+	}
+}
+
 // The netflow lane's self-metrics are absent, not zero, when the lane was never
 // built (see SetNetflowStats). The info metric has to follow that rule too: a
 // device/description correspondence for a box that is not running NetFlow is not

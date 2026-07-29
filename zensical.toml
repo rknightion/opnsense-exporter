@@ -1,6 +1,6 @@
 [project]
 site_name = "OPNsense Exporter"
-site_description = "Prometheus and OpenTelemetry exporter for OPNsense firewalls: 845 metrics across 62 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping"
+site_description = "Prometheus and OpenTelemetry exporter for OPNsense firewalls: 846 metrics across 62 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping"
 site_url = "https://m7kni.io/opnsense-exporter/"
 site_author = "Rob Knighton"
 repo_name = "rknightion/opnsense-exporter"

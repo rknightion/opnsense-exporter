@@ -262,9 +262,13 @@ def _flow_doc_dead_hook_query():
     of docs/flow.md ("Joining the two label spaces"), so a future edit to either the
     doc or the rule that lets them drift apart fails loudly instead of silently."""
     text = (REPO_ROOT / "docs" / "flow.md").read_text()
+    # The timeout clause stays the ANCHOR that identifies this block among the
+    # doc's other promql fences, but the capture runs on to the closing fence so a
+    # clause appended after it (the #521 PPPoE suppression) is compared too rather
+    # than silently trimmed off before the equality check.
     match = re.search(
         r"```promql\n(max by \(opnsense_instance, interface, device\) \(.*?"
-        r"opnsense_netflow_capture_active_timeout_seconds < 2700\))\n```",
+        r"opnsense_netflow_capture_active_timeout_seconds < 2700\).*?)\n```",
         text, re.DOTALL,
     )
     if not match:

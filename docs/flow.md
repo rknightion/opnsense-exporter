@@ -376,6 +376,32 @@ For **per-hook** liveness, use the box's own view instead:
 node. A node pinned at zero while its peers climb is the firewall itself saying that hook is
 dead.
 
+#### A PPPoE hook is dead by construction
+
+`ng_netflow` attaches to **mpd's framing node**, not the `ng_iface` node `ng_pppoe` exposes,
+so selecting a PPPoE interface for capture *succeeds* - `ngctl mkpeer` returns cleanly, the
+node exists (`netflow_pppoe0`, with a real `ifaceN` hook) - and then counts **zero packets
+forever**. No configuration clears it.
+
+`opnsense_flow_interface_capture_unsupported{interface,device,reason="pppoe_framing_node"}`
+marks these. The series is present only for a device that can never capture; **absent means
+capable**, so it is an exception marker rather than a per-interface flag. It excludes those
+interfaces from the dead-hook table and from `OPNsenseNetFlowHookDead`, because an alert that
+can never be cleared is worse than no alert.
+
+**Nothing is lost when it appears.** The FIB-lookup behaviour above is what saves it: the WAN's
+traffic is captured by the *other* interfaces' hooks and still attributed to the WAN. Measured
+on the reference box in one 45-minute window: 2.09 GB attributed to `AAISP` while
+`opnsense_netflow_cache_packets_total{interface="pppoe0"}` read zero for the whole 7-day
+retention window. Unticking the interface in **Reporting → NetFlow** stops asking for a capture
+that cannot happen; leaving it selected costs only a dead netgraph node.
+
+The match is on the **device** name and is a prefix (`pppoe*`), never the description - a device
+name is the kernel's and is what netgraph attaches to, while an operator could call any
+interface "pppoe-backup" and would then have silently disarmed the alert protecting it. `pptp`
+and `l2tp` are built on the same mpd framing and are very likely identical, but that is
+unverified and deliberately not claimed.
+
 #### Joining the two label spaces
 
 Three metric families describe the same interface under two different meanings of the
@@ -417,6 +443,7 @@ and on (opnsense_instance, device) max by (opnsense_instance, device) (
   label_join(increase(opnsense_firewall_in_ipv4_pass_bytes_total[45m]), "device", "", "interface") > 0
 )
 and on (opnsense_instance) (opnsense_netflow_capture_active_timeout_seconds < 2700)
+unless on (opnsense_instance, interface) (opnsense_flow_interface_capture_unsupported == 1)
 ```
 
 Every clause is load-bearing:
@@ -431,6 +458,10 @@ Every clause is load-bearing:
   active timeout has passed, so the query withdraws itself if the box's configured timeout is
   45m or more instead of letting `[45m]` quietly become a lie. 45m clears OPNsense's 1800s
   default.
+- **Clause 5** drops any interface whose device can never capture at all - every PPPoE WAN, per
+  the section above. Without it the expression is permanently non-empty on such a box, with no
+  action available to clear it, which trains the reader to ignore a result whose whole contract
+  is "a row here is a fault".
 
 An interface with **no** `cache_packets_total` series at all - a hook that was never created -
 is deliberately absent rather than reported; read it off the ifIndex map instead. Both the map
@@ -438,7 +469,8 @@ and this query are on the dashboard's **NetFlow → Hook Liveness** row.
 
 Run against the reference box on 2026-07-25 the expression returned exactly one row,
 `{interface="AAISP", device="pppoe0"}` - the hook whose death took a packet capture to find in
-July.
+July. That row is exactly what clause 5 now suppresses: `pppoe0` is not a hook that broke, it is
+a hook that could never have worked, and it had been firing continuously since.
 
 This exact query is also a managed alert, `OPNsenseNetFlowHookDead`
 (`grafana/alerts/build_rules.py`, rule `opnsense-netflow-hook-dead`) - `warning` severity, `for: 5m`

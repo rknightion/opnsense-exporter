@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -247,6 +248,7 @@ type flowCollector struct {
 	repairHeld         *prometheus.Desc
 
 	interfaceInfo    *prometheus.Desc
+	captureUnsupp    *prometheus.Desc
 	ifIndexEntries   *prometheus.Desc
 	ifIndexConflicts *prometheus.Desc
 	ifIndexAge       *prometheus.Desc
@@ -593,6 +595,23 @@ func (c *flowCollector) registerNetflow() {
 			"port with no OPNsense assignment, which still holds a slot in the enumeration.",
 		[]string{"device", "interface", "ifindex"},
 	)
+
+	c.captureUnsupp = buildPrometheusDesc(c.subsystem, "interface_capture_unsupported",
+		"Interfaces whose kernel device can NEVER capture NetFlow, whatever the box's capture "+
+			"configuration says. Present (and always 1) only for such a device; ABSENT means capable, "+
+			"so this is an exception marker rather than a per-interface flag. "+
+			"reason=\"pppoe_framing_node\" is the only value today: ng_netflow attaches to mpd's "+
+			"framing node rather than the ng_iface node ng_pppoe exposes, so `ngctl mkpeer` on a PPPoE "+
+			"interface SUCCEEDS, creates the node, and then counts zero packets forever (#368). No "+
+			"configuration clears it, which is why this suppresses OPNsenseNetFlowHookDead rather than "+
+			"raising an alert of its own. Nothing is lost when it appears: ng_netflow fills the far "+
+			"side of every flow from a FIB lookup, so the WAN's traffic is still captured through the "+
+			"other interfaces' hooks and still attributed to it - 2.09 GB in 45m on the reference box "+
+			"while this very device's hook read zero. Untick the interface in Reporting/NetFlow to "+
+			"stop asking for a capture that cannot happen; leaving it selected costs only a dead "+
+			"netgraph node.",
+		[]string{"device", "interface", "reason"},
+	)
 	c.ifIndexEntries = buildPrometheusDesc(c.subsystem, "ifindex_entries",
 		"Entries in the NetFlow ifIndex-to-interface map, including the synthetic index 0 "+
 			"(traffic originated by the firewall itself).",
@@ -637,6 +656,25 @@ func (c *flowCollector) registerNetflow() {
 	)
 }
 
+// captureUnsupportedReason names why a kernel device can never capture NetFlow,
+// or "" when nothing is known against it.
+//
+// Matched on the DEVICE and as a PREFIX, both deliberately. The device is the
+// kernel's own name and is the thing netgraph attaches to, while the description
+// is operator-chosen free text — exempting an interface someone happened to call
+// "pppoe-backup" would silently disarm the alert that protects it.
+//
+// pppoe only. pptp and l2tp are built on the same mpd/netgraph framing and are
+// very likely identical, but that is UNVERIFIED — this list states what has been
+// observed on a real box, not what is probable, because a wrong entry here
+// silences a genuinely dead hook rather than merely failing to explain one.
+func captureUnsupportedReason(device string) string {
+	if strings.HasPrefix(device, "pppoe") {
+		return "pppoe_framing_node"
+	}
+	return ""
+}
+
 func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.bytes
 	ch <- c.packets
@@ -664,6 +702,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.vlanLateChildCopy
 	ch <- c.repairHeld
 	ch <- c.interfaceInfo
+	ch <- c.captureUnsupp
 	ch <- c.ifIndexEntries
 	ch <- c.ifIndexConflicts
 	ch <- c.ifIndexAge
@@ -819,6 +858,9 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	// operator needs to SEE, and dropping it would make the map look complete.
 	for _, e := range nf.IfMapEntries {
 		gauge(c.interfaceInfo, 1, e.Device, e.Name, strconv.FormatUint(uint64(e.Index), 10))
+		if reason := captureUnsupportedReason(e.Device); reason != "" {
+			gauge(c.captureUnsupp, 1, e.Device, e.Name, reason)
+		}
 	}
 
 	gauge(c.ifIndexEntries, float64(nf.IfMap.Entries))

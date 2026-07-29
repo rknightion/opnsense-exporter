@@ -1244,13 +1244,14 @@ and on (opnsense_instance, device) max by (opnsense_instance, device) (
   label_join(increase(opnsense_firewall_in_ipv4_pass_bytes_total[45m]), "device", "", "interface") > 0
 )
 and on (opnsense_instance) (opnsense_netflow_capture_active_timeout_seconds < 2700)
+unless on (opnsense_instance, interface) (opnsense_flow_interface_capture_unsupported == 1)
 ```
 
-**What it measures:** A four-clause join proving a specific NetFlow capture hook has gone silent while pf still passes traffic on the same kernel device - the #368 dead-hook failure mode, where ng_netflow accepted a bogus hook on a PPPoE interface (it attaches to mpd's framing node, not the ng_iface node ng_pppoe exposes) and silently captured nothing.
+**What it measures:** A five-clause join proving a specific NetFlow capture hook has gone silent while pf still passes traffic on the same kernel device - the #368 dead-hook failure mode, where ng_netflow accepted a bogus hook and silently captured nothing. PPPoE interfaces, where that is permanent and unfixable (ng_netflow attaches to mpd's framing node, not the ng_iface node ng_pppoe exposes), are excluded by clause 5 rather than reported forever.
 
-**Threshold & window:** gt 0 for 5m. Clause 1 restricts to interfaces actually configured for capture; clause 2 checks the interface's OWN ng_netflow cache node recorded zero packets in 45m; clause 3 confirms pf actually passed bytes on the same device in that window (telling a dead hook from a legitimately idle interface); clause 4 withdraws the whole query unless the box's own configured NetFlow active timeout is at least the 45m observation window.
+**Threshold & window:** gt 0 for 5m. Clause 1 restricts to interfaces actually configured for capture; clause 2 checks the interface's OWN ng_netflow cache node recorded zero packets in 45m; clause 3 confirms pf actually passed bytes on the same device in that window (telling a dead hook from a legitimately idle interface); clause 4 withdraws the whole query unless the box's own configured NetFlow active timeout is at least the 45m observation window; clause 5 drops any interface whose device can never capture at all (opnsense_flow_interface_capture_unsupported), which is every PPPoE WAN.
 
-**Absent / no-data semantics:** Default noDataState (Ok) - a healthy hook, an interface not configured for capture, or a box whose active timeout is shorter than 45m (clause 4's honesty guard) all produce no series here, which is the intended quiet state.
+**Absent / no-data semantics:** Default noDataState (Ok) - a healthy hook, an interface not configured for capture, a PPPoE interface (clause 5, permanently incapable), or a box whose active timeout is shorter than 45m (clause 4's honesty guard) all produce no series here, which is the intended quiet state.
 
 **First checks:**
 - Check opnsense_netflow_capture_active_timeout_seconds FIRST if you believe a hook is dead but this never fires - a box with a shorter active timeout is structurally excluded by clause 4

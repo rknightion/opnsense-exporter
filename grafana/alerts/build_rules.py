@@ -1348,7 +1348,9 @@ RULES = [
            "  label_join(increase(opnsense_firewall_in_ipv4_pass_bytes_total[45m]), \"device\", \"\", "
            "\"interface\") > 0\n"
            ")\n"
-           "and on (opnsense_instance) (opnsense_netflow_capture_active_timeout_seconds < 2700)",
+           "and on (opnsense_instance) (opnsense_netflow_capture_active_timeout_seconds < 2700)\n"
+           "unless on (opnsense_instance, interface) "
+           "(opnsense_flow_interface_capture_unsupported == 1)",
          op="gt", params=[0, 0], for_min=5, severity="warning",
          summary="OPNsense NetFlow hook dead on {{ $labels.interface }} ({{ $labels.device }}, {{ $labels.opnsense_instance }})",
          description="The NetFlow hook configured for interface {{ $labels.interface }} (kernel device "
@@ -1361,15 +1363,21 @@ RULES = [
                      "itself if the box's own configured NetFlow active timeout is 45m (2700s) or more, "
                      "rather than call a shorter window dead on an honesty guard it cannot clear - check "
                      "opnsense_netflow_capture_active_timeout_seconds first if this never fires on a box "
-                     "you know has a dead hook. On firing: open the operator console's NetFlow / ifIndex "
-                     "tab, confirm {{ $labels.device }} is a real ng_netflow node with `ngctl list` on the "
-                     "box, then rebind the capture to the correct kernel device. See docs/flow.md "
+                     "you know has a dead hook. A device that can NEVER capture is excluded rather than "
+                     "reported here - opnsense_flow_interface_capture_unsupported marks those, and every "
+                     "PPPoE interface is one, so this firing means a hook that SHOULD work does not. "
+                     "On firing: open the operator console's NetFlow / ifIndex tab and confirm "
+                     "{{ $labels.device }} is a real ng_netflow node with `ngctl list` on the box. If the "
+                     "node is missing, the capture selection no longer matches the box's interfaces - "
+                     "re-save Reporting/NetFlow to reattach. If it exists and still counts zero, capture "
+                     "on that device is not working at the netgraph layer and the interface should be "
+                     "unticked until it is. See docs/flow.md "
                      "('Joining the two label spaces') for the full derivation. Resolves automatically "
                      "once opnsense_netflow_cache_packets_total resumes counting on the device.",
          runbook=dict(
-             measures="A four-clause join proving a specific NetFlow capture hook has gone silent while pf still passes traffic on the same kernel device - the #368 dead-hook failure mode, where ng_netflow accepted a bogus hook on a PPPoE interface (it attaches to mpd's framing node, not the ng_iface node ng_pppoe exposes) and silently captured nothing.",
-             threshold="gt 0 for 5m. Clause 1 restricts to interfaces actually configured for capture; clause 2 checks the interface's OWN ng_netflow cache node recorded zero packets in 45m; clause 3 confirms pf actually passed bytes on the same device in that window (telling a dead hook from a legitimately idle interface); clause 4 withdraws the whole query unless the box's own configured NetFlow active timeout is at least the 45m observation window.",
-             absent="Default noDataState (Ok) - a healthy hook, an interface not configured for capture, or a box whose active timeout is shorter than 45m (clause 4's honesty guard) all produce no series here, which is the intended quiet state.",
+             measures="A five-clause join proving a specific NetFlow capture hook has gone silent while pf still passes traffic on the same kernel device - the #368 dead-hook failure mode, where ng_netflow accepted a bogus hook and silently captured nothing. PPPoE interfaces, where that is permanent and unfixable (ng_netflow attaches to mpd's framing node, not the ng_iface node ng_pppoe exposes), are excluded by clause 5 rather than reported forever.",
+             threshold="gt 0 for 5m. Clause 1 restricts to interfaces actually configured for capture; clause 2 checks the interface's OWN ng_netflow cache node recorded zero packets in 45m; clause 3 confirms pf actually passed bytes on the same device in that window (telling a dead hook from a legitimately idle interface); clause 4 withdraws the whole query unless the box's own configured NetFlow active timeout is at least the 45m observation window; clause 5 drops any interface whose device can never capture at all (opnsense_flow_interface_capture_unsupported), which is every PPPoE WAN.",
+             absent="Default noDataState (Ok) - a healthy hook, an interface not configured for capture, a PPPoE interface (clause 5, permanently incapable), or a box whose active timeout is shorter than 45m (clause 4's honesty guard) all produce no series here, which is the intended quiet state.",
              checks=[
                 'Check opnsense_netflow_capture_active_timeout_seconds FIRST if you believe a hook is dead but this never fires - a box with a shorter active timeout is structurally excluded by clause 4',
                 "Open the operator console's NetFlow/ifIndex tab and confirm the device label is a real ng_netflow node with `ngctl list` on the box",
