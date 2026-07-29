@@ -7,6 +7,10 @@ name: OPNsense Live-Box Canary
 # metric-name floor. Drift lands in the same api-drift issue machinery as the
 # endpoint-manifest canary (api-contract.yml), under its own issue title.
 #
+# Runs once per probe target (nightly = devel-channel box, release-vm =
+# release-channel box), each filing into its OWN issue so neither can close the
+# other's findings. camden runs the third target, prod, on a systemd timer.
+#
 # Reports and logs carry key paths + JSON type names only — never payload
 # values (the box's data must not leak into a public repo).
 
@@ -34,6 +38,26 @@ env:
 
 jobs:
   canary:
+    # One job per probe target. Each owns its OWN drift issue (title suffixed
+    # with the target) rather than sharing one, because the close-on-clean step
+    # below cannot tell whose findings an issue holds: with a shared issue, a
+    # clean run on one box closes an issue holding another box's real drift and
+    # comments "clean" over it. Separate titles make that structurally
+    # impossible instead of guarded against.
+    strategy:
+      # Never cancel the sibling target because one box is down or drifting -
+      # the whole point is reading the two generations against each other.
+      fail-fast: false
+      matrix:
+        include:
+          - target: nightly
+            host_secret: DEVBOX_HOST
+            key_secret: DEVBOX_API_KEY
+            secret_secret: DEVBOX_API_SECRET
+          - target: release-vm
+            host_secret: DEVBOX2_HOST
+            key_secret: DEVBOX2_API_KEY
+            secret_secret: DEVBOX2_API_SECRET
     # Hardening, since this workflow holds tailnet credentials in a public
     # repo: it triggers only on schedule + manual dispatch (never on
     # pull_request, so fork PRs can neither run it nor see its secrets), the
@@ -42,6 +66,7 @@ jobs:
     # attempting scheduled runs. timeout-minutes bounds how long the ephemeral
     # node can exist if something hangs.
     if: github.repository == 'rknightion/opnsense-exporter'
+    name: canary (${{ matrix.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: tailnet
@@ -71,16 +96,17 @@ jobs:
       - name: Schema canary (apidrift)
         id: drift
         env:
-          DEVBOX_HOST: ${{ secrets.DEVBOX_HOST }}
-          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets.DEVBOX_API_KEY }}
-          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets.DEVBOX_API_SECRET }}
+          DEVBOX_HOST: ${{ secrets[matrix.host_secret] }}
+          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets[matrix.key_secret] }}
+          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets[matrix.secret_secret] }}
+          CANARY_PROFILE: ${{ matrix.target }}
         run: |
           set -euo pipefail
           mkdir -p out
           # Exit 0 = clean or warnings-only; exit 1 = breaking drift (outputs
           # are written first); anything else = probe error.
           if go run ./cmd/apidrift --base-url "https://${DEVBOX_HOST}" --insecure \
-               --profile nightly \
+               --profile "${CANARY_PROFILE}" \
                --out out/report.md --captures "$RUNNER_TEMP/captures"; then
             :
           else
@@ -95,9 +121,9 @@ jobs:
       - name: End-to-end exporter smoke
         id: smoke
         env:
-          DEVBOX_HOST: ${{ secrets.DEVBOX_HOST }}
-          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets.DEVBOX_API_KEY }}
-          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets.DEVBOX_API_SECRET }}
+          DEVBOX_HOST: ${{ secrets[matrix.host_secret] }}
+          OPNSENSE_EXPORTER_OPS_API_KEY: ${{ secrets[matrix.key_secret] }}
+          OPNSENSE_EXPORTER_OPS_API_SECRET: ${{ secrets[matrix.secret_secret] }}
           OPNSENSE_EXPORTER_OPS_PROTOCOL: https
           OPNSENSE_EXPORTER_OPS_INSECURE: 'true'
           OPNSENSE_EXPORTER_INSTANCE_LABEL: canary
@@ -199,13 +225,19 @@ jobs:
         if: steps.drift.outputs.drift == 'true' || steps.drift.outputs.warnings == 'true' || steps.smoke.outputs.failed == '1'
         env:
           GH_TOKEN: ${{ github.token }}
+          CANARY_TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          title="OPNsense live-box canary drift"
+          # ONE ISSUE PER TARGET. The close step below has no way to tell which
+          # target's findings an issue holds, so a shared issue means a clean run
+          # on one box closes another box's live drift and comments "clean" over
+          # it — a canary reporting all-clear while real drift sits unread.
+          # camden's prod canary uses the same "- prod" suffix convention.
+          title="OPNsense live-box canary drift - ${CANARY_TARGET}"
           # Label+exact-title dedupe — same proven pattern as api-contract.yml
           # (author-based matching broke on gh's bot-login shape changes, #83).
           existing=$(gh issue list --label api-drift --state open --json number,title \
-            --jq '.[] | select(.title == "OPNsense live-box canary drift") | .number' \
+            --jq ".[] | select(.title == \"$title\") | .number" \
             | head -n1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file out/report.md
@@ -219,13 +251,17 @@ jobs:
         if: steps.drift.outputs.drift == 'false' && steps.drift.outputs.warnings == 'false' && steps.smoke.outputs.failed == '0'
         env:
           GH_TOKEN: ${{ github.token }}
+          CANARY_TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          # Only ever closes THIS target's issue. A sibling target's drift is a
+          # different issue and is none of this job's business.
+          title="OPNsense live-box canary drift - ${CANARY_TARGET}"
           existing=$(gh issue list --label api-drift --state open --json number,title \
-            --jq '.[] | select(.title == "OPNsense live-box canary drift") | .number' \
+            --jq ".[] | select(.title == \"$title\") | .number" \
             | head -n1)
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Live-box canary clean on the latest run. Closing."
+            gh issue comment "$existing" --body "Live-box canary clean on the latest ${CANARY_TARGET} run. Closing."
             gh issue close "$existing"
           fi
 
