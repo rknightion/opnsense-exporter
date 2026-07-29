@@ -872,17 +872,24 @@ RULES = [
     dict(name="opnsense-logship-queue-near-capacity", title="OPNsenseLogShipQueueNearCapacity",
          selfhealth=True,
          A="max by (opnsense_instance) ("
-           "label_replace(opnsense_exporter_logs_queue_length / "
+           "label_replace(avg_over_time(opnsense_exporter_logs_queue_length[5m]) / "
            "(opnsense_exporter_logs_queue_capacity > 0), \"bound\", \"count\", \"__name__\", \".*\") "
-           "or label_replace(opnsense_exporter_logs_queue_bytes / "
+           "or label_replace(avg_over_time(opnsense_exporter_logs_queue_bytes[5m]) / "
            "(opnsense_exporter_logs_queue_max_bytes > 0), \"bound\", \"bytes\", \"__name__\", \".*\"))",
-         op="gt", params=[0.9, 0], for_min=5, severity="warning",
-         summary="OPNsense log-shipping queue near capacity ({{ $labels.opnsense_instance }})",
-         description="The log-shipping backpressure queue has been above 90% of either its record-count "
+         op="gt", params=[0.75, 0], for_min=5, severity="warning",
+         summary="OPNsense log-shipping queue under sustained pressure ({{ $labels.opnsense_instance }})",
+         description="The log-shipping backpressure queue has averaged over 75% of either its record-count "
                      "capacity or its enabled byte budget for 5m — overflow drops are imminent.",
          runbook=dict(
-             measures="The higher of two ratios for the log-shipping backpressure queue: record-count occupancy (queue_length / queue_capacity) or byte occupancy where a byte budget is enabled (queue_bytes / queue_max_bytes), max'd by opnsense_instance.",
-             threshold='gt 0.9 (over 90% of whichever bound is enabled) sustained for 5m.',
+             measures="The higher of two ratios for the log-shipping backpressure queue: record-count occupancy (queue_length / queue_capacity) or byte occupancy where a byte budget is enabled (queue_bytes / queue_max_bytes), max'd by opnsense_instance. The numerator is a 5m AVERAGE, not the instantaneous depth - see the threshold note.",
+             threshold='gt 0.75 of whichever bound is enabled, on a 5m average, sustained for a further 5m. '
+                       'The numerator is averaged deliberately. An earlier version of this rule read the '
+                       'INSTANTANEOUS queue depth against a 0.9 threshold and it was structurally unable to '
+                       'fire: the emitter drains a whole batch at once, so occupancy sawtooths on roughly the '
+                       'batch period and almost never sits above a fixed line for 5 consecutive minutes. '
+                       'Measured over one week on a live box it went Normal->Pending 148 times and reached '
+                       'Alerting twice, while the queue was in fact overflowing and losing records the whole '
+                       'time. Averaging reads the sawtooth as the sustained pressure it actually is.',
              absent='Default noDataState (Ok) - the `> 0` guards mean an unconfigured bound produces no series for that half rather than a meaningless ratio.',
              checks=[
                 "Check the downstream sink's health first (OPNsenseLogShipSinkErrors) - a stalled destination is the most common reason the queue backs up",

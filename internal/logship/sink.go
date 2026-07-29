@@ -83,7 +83,7 @@ func buildSink(cfg *options.LogsConfig, transport *options.OTLPConfig, version, 
 		if transport == nil {
 			return nil, fmt.Errorf("logs sink=otlp requires an OTLP transport; set the --otlp.* flags (e.g. --otlp.endpoint)")
 		}
-		return newOTLPSink(transport, version, instance, log)
+		return newOTLPSink(transport, version, instance, cfg.ShipConcurrency, log)
 	default:
 		return nil, fmt.Errorf("unknown logs sink %q", cfg.Sink)
 	}

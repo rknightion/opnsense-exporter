@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -63,6 +64,18 @@ func newTestSink(exp sdklog.Exporter) *otlpSink {
 		exporter:  exp,
 		base:      baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
 		providers: make(map[resourceKey]*resourceLogger),
+	}
+}
+
+// newConcurrentTestSink builds a sink over exp with an EXPLICIT worker-pool size,
+// bypassing newOTLPSink's flooring so tests can also exercise concurrency=0 (see
+// newTestSink, which always leaves concurrency zero-valued).
+func newConcurrentTestSink(exp sdklog.Exporter, concurrency int) *otlpSink {
+	return &otlpSink{
+		exporter:    exp,
+		concurrency: concurrency,
+		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		providers:   make(map[resourceKey]*resourceLogger),
 	}
 }
 
@@ -863,6 +876,12 @@ func TestOTLPSink_EmptyBatchIsANoOp(t *testing.T) {
 // without anyone parsing vendor error text.
 
 // newSinkOverEndpoint builds a real OTLP exporter pointed at endpoint and wraps it in
+// testShipConcurrency is deliberately > 1 so the shared-endpoint sink tests exercise the
+// concurrent partition flush path rather than silently degrading to the old sequential
+// one. Every assertion in this file is about the CONTENT of SinkResult, never the order
+// partitions reached the wire, which concurrency no longer fixes.
+const testShipConcurrency = 4
+
 // the sink, exactly as production does.
 func newSinkOverEndpoint(t *testing.T, protocol, endpoint string) *otlpSink {
 	t.Helper()
@@ -870,14 +889,15 @@ func newSinkOverEndpoint(t *testing.T, protocol, endpoint string) *otlpSink {
 		Protocol: protocol,
 		Endpoint: endpoint,
 		Insecure: true,
-	})
+	}, testShipConcurrency)
 	if err != nil {
 		t.Fatalf("newLogExporter(%s): %v", protocol, err)
 	}
 	s := &otlpSink{
-		exporter:  exp,
-		base:      baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
-		providers: make(map[resourceKey]*resourceLogger),
+		exporter:    exp,
+		concurrency: testShipConcurrency,
+		base:        baseLogAttributes("opnsense-exporter", "v1.2.3", "opnsense"),
+		providers:   make(map[resourceKey]*resourceLogger),
 	}
 	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
 	return s
@@ -1438,11 +1458,339 @@ func TestLogExportTimeout(t *testing.T) {
 // reject. Supplying our own client bypasses that check, so the fail-fast has to live
 // here or the setting would be silently ignored.
 func TestNewObservingHTTPClient_RejectsInsecureWithTLS(t *testing.T) {
-	_, err := newObservingHTTPClient(&options.OTLPConfig{Insecure: true}, &tls.Config{MinVersion: tls.VersionTLS12})
+	_, err := newObservingHTTPClient(&options.OTLPConfig{Insecure: true}, &tls.Config{MinVersion: tls.VersionTLS12}, testShipConcurrency)
 	if err == nil {
 		t.Fatal("an insecure endpoint with TLS client configuration was accepted silently")
 	}
 	if !strings.Contains(err.Error(), "--otlp.insecure") {
 		t.Fatalf("error should name the conflicting flag, got: %v", err)
+	}
+}
+
+// --- #505: the bounded worker pool that replaced sequential partition flushing -----
+
+// TestOTLPSink_AccountsForEveryEntryUnderConcurrency pins the sink's core contract
+// (documented on Sink.Emit and SinkResult): it must account for every entry it was
+// handed, exactly once, even when many partitions are flushed through the worker pool
+// at once. 30 distinct resource partitions against a pool of testShipConcurrency (4)
+// means the pool genuinely queues rather than running everything in one wave.
+//
+// This would fail if the concurrent merge in Emit dropped a result slot, double-counted
+// one, or raced two workers into appending onto the same slice.
+func TestOTLPSink_AccountsForEveryEntryUnderConcurrency(t *testing.T) {
+	const partitions = 30
+	sources := []string{"syslog", "zenarmor", "netflow"}
+	actions := []string{"", ActionPass, ActionBlock}
+	categories := []string{"", "laptop", "camera"}
+	ifaces := []string{"", "LAN", "WAN"}
+
+	batch := make([]Entry, 0, partitions)
+	for i := 0; i < partitions; i++ {
+		batch = append(batch, Entry{
+			Source: sources[i%len(sources)],
+			Record: Record{
+				Body: fmt.Sprintf("entry-%d", i),
+				Attributes: map[string]string{
+					// AttrSubsystem alone already makes every entry's resourceKey
+					// distinct; the other four fields are varied too so the batch
+					// really exercises all five key dimensions, not just one.
+					AttrSubsystem:      fmt.Sprintf("sub-%d", i),
+					AttrAction:         actions[i%len(actions)],
+					AttrDeviceCategory: categories[i%len(categories)],
+					AttrInterface:      ifaces[i%len(ifaces)],
+				},
+			},
+		})
+	}
+
+	exp := &fakeExporter{}
+	s := newConcurrentTestSink(exp, testShipConcurrency) // pool < partitions: the pool must genuinely queue
+
+	res := s.Emit(context.Background(), batch)
+	assertResultCoversBatch(t, res, batch)
+
+	if got := len(res.Acked) + len(res.Rejected) + len(res.Retry); got != len(batch) {
+		t.Fatalf("SinkResult accounts for %d of %d entries", got, len(batch))
+	}
+	if len(res.Acked) != len(batch) {
+		t.Fatalf("acked %d of %d entries (rejected=%d retry=%d) against a clean-accept fake endpoint: %v",
+			len(res.Acked), len(batch), len(res.Rejected), len(res.Retry), res.Err)
+	}
+
+	wantBodies := entryBodies(batch)
+	gotBodies := entryBodies(res.Acked)
+	slices.Sort(wantBodies)
+	slices.Sort(gotBodies)
+	if !slices.Equal(gotBodies, wantBodies) {
+		t.Fatalf("acked set = %v, want exactly the input set %v", gotBodies, wantBodies)
+	}
+}
+
+// TestOTLPSink_ResultIsDeterministicAcrossRuns pins the property sortResourceKeys exists
+// to protect (see the comment on that merge in Emit): SinkResult must be byte-for-byte
+// reproducible for a given batch, even though the worker pool completes partition
+// flushes in a genuinely nondeterministic wire order.
+//
+// The outcome is keyed off partition CONTENT — each subsystem gets a fixed scripted
+// outcome (accept / permanent-reject / transient-retry) — rather than off request count
+// or arrival order, because content is the one thing that is the same on every run
+// regardless of how the goroutines happened to interleave.
+func TestOTLPSink_ResultIsDeterministicAcrossRuns(t *testing.T) {
+	subsystems := []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"}
+	script := map[string]scriptedOutcome{}
+	for i, sub := range subsystems {
+		switch i % 3 {
+		case 0:
+			// left unscripted: scriptedExporter treats "no entry" as a clean accept.
+		case 1:
+			script[sub] = scriptedOutcome{outcome: outcomePermanent, err: errors.New("400 bad request")}
+		case 2:
+			script[sub] = scriptedOutcome{outcome: outcomeRetryable, err: errors.New("503 unavailable")}
+		}
+	}
+
+	batch := make([]Entry, 0, len(subsystems)*3)
+	for _, sub := range subsystems {
+		for j := 0; j < 3; j++ {
+			batch = append(batch, entry("syslog", sub, fmt.Sprintf("%s-%d", sub, j)))
+		}
+	}
+
+	type snapshot struct{ acked, rejected, retry []string }
+	var first snapshot
+	const runs = 20
+	for run := 0; run < runs; run++ {
+		exp := &scriptedExporter{script: script}
+		s := newConcurrentTestSink(exp, testShipConcurrency)
+
+		res := s.Emit(context.Background(), batch)
+		assertResultCoversBatch(t, res, batch)
+
+		got := snapshot{
+			acked:    entryBodies(res.Acked),
+			rejected: entryBodies(res.Rejected),
+			retry:    entryBodies(res.Retry),
+		}
+		if run == 0 {
+			first = got
+			continue
+		}
+		if !slices.Equal(got.acked, first.acked) ||
+			!slices.Equal(got.rejected, first.rejected) ||
+			!slices.Equal(got.retry, first.retry) {
+			t.Fatalf("run %d produced a different SinkResult order/membership than run 0 — "+
+				"sortResourceKeys exists to guarantee this never happens.\n"+
+				"run 0:  acked=%v rejected=%v retry=%v\n"+
+				"run %d: acked=%v rejected=%v retry=%v",
+				run, first.acked, first.rejected, first.retry,
+				run, got.acked, got.rejected, got.retry)
+		}
+	}
+}
+
+// capExporter groups the Export calls it sees by whether the flushed records' resource
+// carries an opnsense.subsystem attribute (a per-key provider) or not (the collapsed
+// BASE resource, resourceKey{}) — the same distinction loggerFor draws when the
+// cardinality cap is reached — and totals how many records each side ever carried.
+type capExporter struct {
+	mu                       sync.Mutex
+	baseCalls, baseRecords   int
+	otherCalls, otherRecords int
+}
+
+func (e *capExporter) Export(_ context.Context, records []sdklog.Record) error {
+	if len(records) == 0 {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, hasSubsystem := resourceAttrs(records[0])[AttrSubsystem]; hasSubsystem {
+		e.otherCalls++
+		e.otherRecords += len(records)
+	} else {
+		e.baseCalls++
+		e.baseRecords += len(records)
+	}
+	return nil
+}
+
+func (*capExporter) Shutdown(context.Context) error   { return nil }
+func (*capExporter) ForceFlush(context.Context) error { return nil }
+
+func (e *capExporter) snapshot() (baseCalls, baseRecords, otherCalls, otherRecords int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.baseCalls, e.baseRecords, e.otherCalls, e.otherRecords
+}
+
+// TestOTLPSink_CardinalityCapCollapsesOntoOnePartition pins THE LOAD-BEARING SAFETY
+// INVARIANT that makes per-partition concurrency safe at all (see the "THE INVARIANT
+// THIS RESTS ON" comment above the worker-pool loop in Emit): one provider must never
+// be flushed twice concurrently in the same Emit, because syncBatchProcessor.export
+// swaps out its WHOLE buffer — two concurrent flushes of the same provider would each
+// ship the other's records and observe a wire outcome that never described what it
+// actually sent.
+//
+// That can only stay true if every key that COLLAPSES onto the base resource under the
+// cardinality cap is grouped into ONE partition before the pool starts flushing, which
+// is exactly what grouping by loggerFor's EFFECTIVE key (as opposed to the per-entry
+// requested key) guarantees. This test drives 255 (maxLogResources-1) distinct keys to
+// fill every per-key provider slot, then adds 50 more distinct keys that must all
+// collapse onto the same base provider — and asserts that collapse produces exactly one
+// Export call carrying all 50, not 50 separate ones.
+//
+// THIS IS A CORRECTNESS TEST, NOT AN ACCOUNTING NICETY. Do not "simplify" the
+// effective-key grouping in Emit away — see the mutation-testing note in the dispatch
+// brief that produced this test for what happens when you do (multiple Export calls
+// racing the same LoggerProvider).
+func TestOTLPSink_CardinalityCapCollapsesOntoOnePartition(t *testing.T) {
+	const preFill = maxLogResources - 1
+	const overflow = 50
+
+	batch := make([]Entry, 0, preFill+overflow)
+	for i := 0; i < preFill; i++ {
+		batch = append(batch, Entry{Source: "syslog", Record: Record{
+			Body:       fmt.Sprintf("pre-%d", i),
+			Attributes: map[string]string{AttrSubsystem: fmt.Sprintf("sub-%d", i)},
+		}})
+	}
+	for i := 0; i < overflow; i++ {
+		batch = append(batch, Entry{Source: "syslog", Record: Record{
+			Body:       fmt.Sprintf("overflow-%d", i),
+			Attributes: map[string]string{AttrSubsystem: fmt.Sprintf("overflow-sub-%d", i)},
+		}})
+	}
+
+	exp := &capExporter{}
+	s := newConcurrentTestSink(exp, testShipConcurrency)
+
+	res := s.Emit(context.Background(), batch)
+	assertResultCoversBatch(t, res, batch)
+	if len(res.Acked) != len(batch) {
+		t.Fatalf("acked %d of %d entries (rejected=%d retry=%d): %v",
+			len(res.Acked), len(batch), len(res.Rejected), len(res.Retry), res.Err)
+	}
+
+	if got := len(s.providers); got != maxLogResources {
+		t.Fatalf("built %d providers, want the cap of %d (preFill distinct keys + one collapsed base)",
+			got, maxLogResources)
+	}
+	if _, degraded := s.providers[resourceKey{}]; !degraded {
+		t.Fatal("no base-resource provider was built; the overflow keys should have collapsed onto it")
+	}
+
+	baseCalls, baseRecords, otherCalls, otherRecords := exp.snapshot()
+	if baseCalls != 1 {
+		t.Fatalf("the collapsed base resource was flushed %d times in one Emit, want exactly 1 — "+
+			"two concurrent flushes of the same provider would each ship the other's records "+
+			"(syncBatchProcessor.export swaps out the whole buffer)", baseCalls)
+	}
+	if baseRecords != overflow {
+		t.Fatalf("the base-resource flush carried %d records, want all %d overflow entries", baseRecords, overflow)
+	}
+	if otherCalls != preFill {
+		t.Fatalf("non-base partitions flushed %d times, want %d (one per pre-filled distinct key)", otherCalls, preFill)
+	}
+	if otherRecords != preFill {
+		t.Fatalf("non-base partitions carried %d records total, want %d (one each)", otherRecords, preFill)
+	}
+}
+
+// trackingExporter records the peak number of concurrent Export calls it ever saw, and
+// sleeps briefly inside each call so real overlap is observable rather than racing past
+// before a second goroutine gets scheduled.
+type trackingExporter struct {
+	inFlight  atomic.Int64
+	highWater atomic.Int64
+}
+
+func (e *trackingExporter) Export(context.Context, []sdklog.Record) error {
+	cur := e.inFlight.Add(1)
+	defer e.inFlight.Add(-1)
+	for {
+		hw := e.highWater.Load()
+		if cur <= hw {
+			break
+		}
+		if e.highWater.CompareAndSwap(hw, cur) {
+			break
+		}
+	}
+	time.Sleep(20 * time.Millisecond)
+	return nil
+}
+
+func (*trackingExporter) Shutdown(context.Context) error   { return nil }
+func (*trackingExporter) ForceFlush(context.Context) error { return nil }
+
+// TestOTLPSink_ConcurrencyOverlapsPartitionFlushes pins the reason #505 exists at all:
+// the worker pool must actually run flushes concurrently, and concurrency=1 must
+// restore the old fully-sequential behaviour — the exact contract stated in the
+// --logs.ship-concurrency flag help.
+func TestOTLPSink_ConcurrencyOverlapsPartitionFlushes(t *testing.T) {
+	const partitions = 12
+	batch := make([]Entry, 0, partitions)
+	for i := 0; i < partitions; i++ {
+		batch = append(batch, Entry{Source: "syslog", Record: Record{
+			Body:       fmt.Sprintf("%d", i),
+			Attributes: map[string]string{AttrSubsystem: fmt.Sprintf("sub-%d", i)},
+		}})
+	}
+
+	t.Run("concurrency>1 overlaps requests", func(t *testing.T) {
+		exp := &trackingExporter{}
+		s := newConcurrentTestSink(exp, 8)
+		mustEmit(t, s, batch)
+		if hw := exp.highWater.Load(); hw <= 1 {
+			t.Fatalf("high-water mark of concurrent Export calls = %d, want > 1 — "+
+				"the worker pool never actually overlapped requests", hw)
+		}
+	})
+
+	t.Run("concurrency=1 stays sequential", func(t *testing.T) {
+		exp := &trackingExporter{}
+		s := newConcurrentTestSink(exp, 1)
+		mustEmit(t, s, batch)
+		if hw := exp.highWater.Load(); hw != 1 {
+			t.Fatalf("high-water mark = %d with concurrency=1, want exactly 1 — "+
+				"this is the \"1 restores sequential behaviour\" contract from the flag help", hw)
+		}
+	})
+}
+
+// TestOTLPSink_ZeroConcurrencyDoesNotDeadlock guards newOTLPSink's own reasoning for
+// flooring the pool size a second time inside Emit (see the comment above poolSize):
+// otlpSink is built directly, bypassing newOTLPSink, in every test in this file, which
+// leaves concurrency zero-valued. A zero-buffered token channel would block on its first
+// send and hang the emitter goroutine forever, so this asserts completion within a
+// bounded timeout rather than letting a regression hang the whole test binary.
+func TestOTLPSink_ZeroConcurrencyDoesNotDeadlock(t *testing.T) {
+	exp := &fakeExporter{}
+	s := newTestSink(exp) // concurrency left at its zero value, exactly like a bare struct literal
+	if s.concurrency != 0 {
+		t.Fatalf("test setup: want concurrency zero-valued, got %d", s.concurrency)
+	}
+
+	const partitions = 10
+	batch := make([]Entry, 0, partitions)
+	for i := 0; i < partitions; i++ {
+		batch = append(batch, Entry{Source: "syslog", Record: Record{
+			Body:       fmt.Sprintf("%d", i),
+			Attributes: map[string]string{AttrSubsystem: fmt.Sprintf("sub-%d", i)},
+		}})
+	}
+
+	done := make(chan SinkResult, 1)
+	go func() { done <- s.Emit(context.Background(), batch) }()
+
+	select {
+	case res := <-done:
+		assertResultCoversBatch(t, res, batch)
+		if len(res.Acked) != len(batch) {
+			t.Fatalf("acked %d of %d entries", len(res.Acked), len(batch))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Emit with concurrency=0 did not return within 5s — the worker pool likely " +
+			"deadlocked on an unbuffered token channel")
 	}
 }

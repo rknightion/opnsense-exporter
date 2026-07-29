@@ -22,8 +22,8 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense log-shipping queue near capacity ({{ $labels.opnsense_instance }})",
-      "description": "The log-shipping backpressure queue has been above 90% of either its record-count capacity or its enabled byte budget for 5m \u2014 overflow drops are imminent.",
+      "summary": "OPNsense log-shipping queue under sustained pressure ({{ $labels.opnsense_instance }})",
+      "description": "The log-shipping backpressure queue has averaged over 75% of either its record-count capacity or its enabled byte budget for 5m \u2014 overflow drops are imminent.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsenselogshipqueuenearcapacity"
     },
     "expressions": {
@@ -39,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "max by (opnsense_instance) (label_replace(opnsense_exporter_logs_queue_length / (opnsense_exporter_logs_queue_capacity > 0), \"bound\", \"count\", \"__name__\", \".*\") or label_replace(opnsense_exporter_logs_queue_bytes / (opnsense_exporter_logs_queue_max_bytes > 0), \"bound\", \"bytes\", \"__name__\", \".*\"))",
+          "expr": "max by (opnsense_instance) (label_replace(avg_over_time(opnsense_exporter_logs_queue_length[5m]) / (opnsense_exporter_logs_queue_capacity > 0), \"bound\", \"count\", \"__name__\", \".*\") or label_replace(avg_over_time(opnsense_exporter_logs_queue_bytes[5m]) / (opnsense_exporter_logs_queue_max_bytes > 0), \"bound\", \"bytes\", \"__name__\", \".*\"))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,7 +63,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  0.9,
+                  0.75,
                   0
                 ]
               },

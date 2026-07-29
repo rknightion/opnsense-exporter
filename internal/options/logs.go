@@ -29,12 +29,17 @@ var (
 	logsBufferSize = kingpin.Flag(
 		"logs.buffer-size",
 		"Capacity of the in-memory backpressure queue between pollers and the sink. On overflow the oldest "+
-			"record is dropped and counted (logs_dropped_total).",
-	).Envar("OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE").Default("4096").Int()
+			"record is dropped and counted (logs_dropped_total). At the measured ~475 bytes/record retained "+
+			"size, 65536 records is ~31MB, comfortably under the 128MiB --logs.buffer-max-bytes default, so "+
+			"the two bounds read against one number instead of this record cap silently binding first at a "+
+			"fraction of the byte budget.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_BUFFER_SIZE").Default("65536").Int()
 	logsBatchMax = kingpin.Flag(
 		"logs.batch-max",
-		"Maximum number of records the emitter hands to the sink per batch.",
-	).Envar("OPNSENSE_EXPORTER_LOGS_BATCH_MAX").Default("1000").Int()
+		"Maximum number of records the emitter hands to the sink per batch. The sink pays a fixed "+
+			"per-resource-partition round-trip, and distinct partitions plateau with batch duration, so a "+
+			"larger batch amortises that fixed cost almost linearly rather than costing proportionally more.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_BATCH_MAX").Default("5000").Int()
 	logsBufferMaxBytes = kingpin.Flag(
 		"logs.buffer-max-bytes",
 		"Aggregate byte budget for the in-memory backpressure queue. The record-count cap "+
@@ -69,6 +74,13 @@ var (
 		"Optional path to persist per-source cursors across restarts (atomic JSON). Empty = in-memory only "+
 			"(resume from now on restart).",
 	).Envar("OPNSENSE_EXPORTER_LOGS_STATE_FILE").Default("").String()
+	logsShipConcurrency = kingpin.Flag(
+		"logs.ship-concurrency",
+		"Maximum number of resource partitions within one batch that the sink exports concurrently. Each "+
+			"partition is a separate synchronous wire request, so a batch of N partitions previously cost N "+
+			"sequential round-trips. 1 restores the old fully-sequential behaviour. Values below 1 are "+
+			"normalised to 1.",
+	).Envar("OPNSENSE_EXPORTER_LOGS_SHIP_CONCURRENCY").Default("8").Int()
 )
 
 // LogsConfig is the resolved configuration for the log-shipping pipeline.
@@ -92,6 +104,9 @@ type LogsConfig struct {
 	// MaxMetricKeys bounds distinct label tuples per derived metric family. Zero
 	// disables the cap.
 	MaxMetricKeys int
+	// ShipConcurrency bounds how many resource partitions within one batch the
+	// sink exports concurrently. Always normalised to at least 1.
+	ShipConcurrency int
 }
 
 // Validate checks an enabled logs configuration for internal consistency.
@@ -109,6 +124,15 @@ func (c *LogsConfig) Validate() error {
 	}
 	if c.BatchMax < 1 {
 		return fmt.Errorf("logs batch-max must be positive, got %d", c.BatchMax)
+	}
+	// A batch larger than the whole queue can never be filled, so batch-max
+	// silently caps effective batch size at buffer-size instead of the value
+	// the operator asked for. Refuse the combination rather than accept a flag
+	// that can never do what it says.
+	if c.BatchMax > c.BufferSize {
+		return fmt.Errorf(
+			"logs batch-max (%d) must not exceed logs buffer-size (%d); a batch larger than the whole queue can never be filled",
+			c.BatchMax, c.BufferSize)
 	}
 	if c.BufferMaxBytes < 0 {
 		return fmt.Errorf("logs buffer-max-bytes must not be negative, got %d", c.BufferMaxBytes)
@@ -129,6 +153,11 @@ func (c *LogsConfig) Validate() error {
 	}
 	if c.MaxMetricKeys < 0 {
 		return fmt.Errorf("logs max-metric-keys must not be negative, got %d", c.MaxMetricKeys)
+	}
+	// A non-positive concurrency is a benign misconfiguration, not an impossible
+	// combination, so normalise rather than error.
+	if c.ShipConcurrency < 1 {
+		c.ShipConcurrency = 1
 	}
 	return nil
 }
@@ -151,6 +180,7 @@ func Logs() (*LogsConfig, bool, error) {
 		MaxRecordBytes:  *logsMaxRecordBytes,
 		ShipMaxAttempts: *logsShipMaxAttempts,
 		MaxMetricKeys:   *logsMaxMetricKeys,
+		ShipConcurrency: *logsShipConcurrency,
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, false, err

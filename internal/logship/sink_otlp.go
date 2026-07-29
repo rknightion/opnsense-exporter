@@ -98,6 +98,10 @@ type otlpSink struct {
 	exporter sdklog.Exporter
 	base     []attribute.KeyValue
 	log      *slog.Logger
+	// concurrency bounds how many of a batch's resource partitions are exported at
+	// once. Always >= 1; see newOTLPSink for why the floor is applied there rather
+	// than trusted from config.
+	concurrency int
 
 	mu        sync.Mutex
 	providers map[resourceKey]*resourceLogger
@@ -186,23 +190,31 @@ func (p *syncBatchProcessor) Shutdown(ctx context.Context) error { return p.expo
 // when no endpoint is resolvable (neither --otlp.endpoint / Grafana Cloud nor an
 // OTEL_EXPORTER_OTLP*_ENDPOINT env var), so logs.enabled with an unconfigured
 // transport is a clear startup error rather than silent no-delivery.
-func newOTLPSink(cfg *options.OTLPConfig, version, instance string, log *slog.Logger) (Sink, error) {
+// concurrency is the maximum number of resource partitions exported at once; it is
+// floored at 1 HERE rather than trusted from the caller, because a Sink built directly
+// in a test (or from a LogsConfig struct literal that never went through Validate)
+// leaves it zero-valued, and a zero would size the worker pool at nothing and deadlock.
+func newOTLPSink(cfg *options.OTLPConfig, version, instance string, concurrency int, log *slog.Logger) (Sink, error) {
 	if !endpointResolvable(cfg.Endpoint) {
 		return nil, fmt.Errorf("logs sink=otlp requires an OTLP endpoint: set --otlp.endpoint " +
 			"(or --otlp.grafana-cloud-endpoint, or the OTEL_EXPORTER_OTLP_ENDPOINT / " +
 			"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT environment variable)")
 	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
 
-	exporter, err := newLogExporter(context.Background(), cfg)
+	exporter, err := newLogExporter(context.Background(), cfg, concurrency)
 	if err != nil {
 		return nil, fmt.Errorf("build otlp log exporter: %w", err)
 	}
 
 	return &otlpSink{
-		exporter:  exporter,
-		log:       log,
-		base:      baseLogAttributes(cfg.ServiceName, version, instance),
-		providers: make(map[resourceKey]*resourceLogger),
+		exporter:    exporter,
+		log:         log,
+		concurrency: concurrency,
+		base:        baseLogAttributes(cfg.ServiceName, version, instance),
+		providers:   make(map[resourceKey]*resourceLogger),
 	}, nil
 }
 
@@ -256,13 +268,56 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 		p.entries = append(p.entries, e)
 	}
 
-	// Deterministic flush order (#392). Map iteration order is randomised per range, so
-	// without this the set of partitions already delivered when a sibling fails — and
-	// therefore what a retry would duplicate — differed on every run, which is
-	// untestable as much as it is unsafe.
+	// Deterministic MERGE order (#392, revised in #505). Map iteration order is
+	// randomised per range, so without this the accounting depended on which range the
+	// runtime happened to produce. It used to also fix wire order, because partitions
+	// were flushed one after another; they are now flushed concurrently, so wire order
+	// is genuinely nondeterministic and no longer something to preserve. What #392
+	// actually needs is that an ACKNOWLEDGED partition is never resent, and concurrency
+	// strengthens that rather than weakening it: every partition is attempted on every
+	// pass, so none is left in an ambiguous "might have reached the wire" state because
+	// a sibling failed first. Sorting now orders the result merge below, which is what
+	// keeps SinkResult reproducible.
 	sortResourceKeys(order)
 
-	for _, key := range order {
+	// Flush the partitions through a bounded worker pool. Each partition is a separate
+	// synchronous wire request, so a sequential loop cost one full round-trip per
+	// partition and capped throughput at (batch size / partitions) / latency — measured
+	// at ~125 records/sec against a live Grafana Cloud tenant, below the sustained
+	// ingest rate, which is what drove the queue into permanent oldest-drop (#505).
+	//
+	// THE INVARIANT THIS RESTS ON: one provider is never flushed twice concurrently.
+	// syncBatchProcessor.export swaps out the whole buffer, so two concurrent flushes of
+	// one provider would have each ship the other's records and observe a wire outcome
+	// that never described what it sent. Grouping by the EFFECTIVE key above guarantees
+	// one partition per provider per Emit — including when the cardinality cap collapses
+	// several keys onto the base resource — which is why that grouping is now a
+	// correctness invariant and not just an accounting nicety. It is what makes
+	// per-partition concurrency safe here and why the QUEUE drain is deliberately not
+	// parallelised instead: two concurrent batches would overlap on hot resource keys.
+	//
+	// Each worker writes its own SinkResult into its own slot, so nothing is shared: the
+	// three entry slices and the joined error are merged single-threaded afterwards.
+	// deliveryObservation is already per-flush and reachable only through that flush's
+	// context, so it needs no change.
+	//
+	// Floor the pool size here as well as in newOTLPSink. otlpSink is constructed
+	// directly in tests, which leaves concurrency zero-valued, and a zero-buffered token
+	// channel would block on the first send and deadlock the emitter goroutine for the
+	// life of the process. A silent single-partition-at-a-time fallback is the right
+	// failure mode for a field nobody set; a hang is not.
+	poolSize := s.concurrency
+	if poolSize < 1 {
+		poolSize = 1
+	}
+	if poolSize > len(order) {
+		poolSize = len(order)
+	}
+	results := make([]SinkResult, len(order))
+	tokens := make(chan struct{}, poolSize)
+	var wg sync.WaitGroup
+
+	for i, key := range order {
 		p := parts[key]
 		for _, e := range p.entries {
 			var r otellog.Record
@@ -327,9 +382,29 @@ func (s *otlpSink) Emit(ctx context.Context, batch []Entry) SinkResult {
 		// partition and nothing else. That one-to-one mapping is what makes a
 		// partial-success rejected count attributable to a single (source, subsystem,
 		// action) resource — and therefore to a single source's counters.
-		obs := &deliveryObservation{}
-		err := p.rl.provider.ForceFlush(withDeliveryObservation(ctx, obs))
-		classifyPartition(p.entries, obs, err, &res)
+		//
+		// The records are already buffered in this partition's processor by the loop
+		// above, so handing the flush to a worker cannot interleave with another
+		// partition's Emit calls.
+		wg.Add(1)
+		tokens <- struct{}{}
+		go func(slot int, p *logPartition) {
+			defer wg.Done()
+			defer func() { <-tokens }()
+			obs := &deliveryObservation{}
+			err := p.rl.provider.ForceFlush(withDeliveryObservation(ctx, obs))
+			classifyPartition(p.entries, obs, err, &results[slot])
+		}(i, p)
+	}
+	wg.Wait()
+
+	// Merge in sorted key order, so SinkResult is byte-for-byte reproducible for a given
+	// batch regardless of the order the flushes actually completed in.
+	for i := range results {
+		res.Acked = append(res.Acked, results[i].Acked...)
+		res.Rejected = append(res.Rejected, results[i].Rejected...)
+		res.Retry = append(res.Retry, results[i].Retry...)
+		res.Err = errors.Join(res.Err, results[i].Err)
 	}
 	return res
 }
@@ -879,7 +954,9 @@ func observingUnaryInterceptor(
 //
 // Both branches install the delivery-observation hook described above; without it every
 // failure would read as generic-and-retryable, which is the pre-#392 behaviour.
-func newLogExporter(ctx context.Context, cfg *options.OTLPConfig) (sdklog.Exporter, error) {
+// concurrency sizes the HTTP idle-connection pool; the gRPC branch ignores it because a
+// single HTTP/2 connection multiplexes every concurrent flush.
+func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, concurrency int) (sdklog.Exporter, error) {
 	tlsCfg, err := buildLogTLSConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -908,7 +985,7 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig) (sdklog.Export
 		// supplying a client means owning all of that here. buildLogTLSConfig and
 		// logExportTimeout resolve the same env vars the SDK would have, so the only
 		// behaviour that changes is that we can now see the response.
-		client, err := newObservingHTTPClient(cfg, tlsCfg)
+		client, err := newObservingHTTPClient(cfg, tlsCfg, concurrency)
 		if err != nil {
 			return nil, err
 		}
@@ -935,7 +1012,7 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig) (sdklog.Export
 // newObservingHTTPClient builds the *http.Client handed to otlploghttp: the SDK's own
 // default transport settings, plus our TLS config, wrapped in the observing
 // RoundTripper.
-func newObservingHTTPClient(cfg *options.OTLPConfig, tlsCfg *tls.Config) (*http.Client, error) {
+func newObservingHTTPClient(cfg *options.OTLPConfig, tlsCfg *tls.Config, concurrency int) (*http.Client, error) {
 	if cfg.Insecure && tlsCfg != nil {
 		// The SDK refuses this combination (errInsecureEndpointWithTLS) and it stops
 		// doing that check once we supply the client, so keep the fail-fast here: a
@@ -954,6 +1031,22 @@ func newObservingHTTPClient(cfg *options.OTLPConfig, tlsCfg *tls.Config) (*http.
 	base := tr.Clone()
 	if tlsCfg != nil {
 		base.TLSClientConfig = tlsCfg
+	}
+	// Size the idle pool to the export concurrency. net/http defaults
+	// MaxIdleConnsPerHost to 2 (DefaultMaxIdleConnsPerHost) when it is left at zero,
+	// and http.DefaultTransport does leave it at zero — it only raises the GLOBAL
+	// MaxIdleConns to 100. HTTP/2 would make this moot, since one connection
+	// multiplexes every concurrent flush, but the Grafana Cloud OTLP gateway does not
+	// negotiate h2: probed live 2026-07-29, `openssl s_client -alpn h2` reports "No
+	// ALPN negotiated" and curl --http2 reports http_version=1.1. So each concurrent
+	// partition flush needs its own TCP connection, and with a pool of 2 the other
+	// N-2 would be dialled and TLS-handshaken fresh on every batch — paying back in
+	// handshakes much of what the concurrency just bought.
+	if concurrency > base.MaxIdleConnsPerHost {
+		base.MaxIdleConnsPerHost = concurrency
+	}
+	if base.MaxIdleConns < concurrency {
+		base.MaxIdleConns = concurrency
 	}
 	return &http.Client{
 		Transport: &observingTransport{base: base},

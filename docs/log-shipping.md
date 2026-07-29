@@ -443,9 +443,40 @@ The pipeline flags are listed in the [Configuration reference](configuration.md)
 The complete top-level pipeline set is `--logs.enabled`, `--logs.sink`,
 `--logs.poll-interval` (floor 5s), `--logs.buffer-size`,
 `--logs.buffer-max-bytes`, `--logs.batch-max`, `--logs.max-record-bytes`,
-`--logs.ship-max-attempts`, `--logs.max-metric-keys`, and `--logs.state-file`.
+`--logs.ship-max-attempts`, `--logs.ship-concurrency`, `--logs.max-metric-keys`,
+and `--logs.state-file`.
 Per-source `--logs.<source>.enabled` flags are documented alongside each source
 above as they land.
+
+### Sink throughput
+
+The OTLP sink ships one **resource partition** per wire request — a partition being
+one distinct `(source, subsystem, action, device_category, interface)` tuple in the
+batch. That is what makes a partial-success rejection attributable to a single
+source, and it is not negotiable. It does mean a batch costs one round-trip per
+distinct partition, so throughput is governed by round-trips rather than by record
+count:
+
+    records/sec  =  ship-concurrency x (batch-max / partitions per batch) / latency
+
+Two levers follow from that shape, and they multiply:
+
+- `--logs.ship-concurrency` (default 8) exports that many partitions at once instead
+  of strictly one after another.
+- `--logs.batch-max` (default 5000) amortises the fixed per-partition round-trip.
+  Distinct partitions **plateau** with batch duration while records keep growing
+  linearly, so a larger batch costs barely more round-trips and carries far more
+  records per round-trip.
+
+Raise `--logs.buffer-size` if bursts still outrun the sink; it absorbs a burst but
+does nothing for sustained rate. If the queue is *chronically* deep rather than
+spiky, the sink rate is the problem, not the buffer.
+
+Over HTTP the client's idle-connection pool is sized to the concurrency
+automatically. Note that an endpoint which does not negotiate HTTP/2 needs one TCP
+connection per concurrent flush — the Grafana Cloud OTLP gateway is HTTP/1.1-only,
+so this matters there. The gRPC transport multiplexes every flush over one
+connection and is unaffected.
 
 ## Self-metrics
 
