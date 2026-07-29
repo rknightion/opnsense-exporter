@@ -259,10 +259,11 @@
     "missingOK": [
       "*.sfp"
     ],
-    "note": "The transceiver block is emitted only for a row ifconfig prints a \"plugged:\" line for, i.e. a physical port with an SFP cage \u2014 legacy_interfaces_details() creates $result[$dev]['sfp'] in that branch alone. The canary box is a virtio-only VM, so NO row carries it and *.sfp is absent wholesale; the prod box's three populated cages serve it and validate normally (verified live 2026-07-25 on both). Box/hardware state, not a version prune \u2014 same field, same reason and same prune trigger as the interfacesOverview rows[].sfp entry below: it goes when a canary box with a real SFP cage exists. Note the sfp subtree needs no .* companion here, unlike interfacesOverview: this struct types the block as flexStringMap, a custom unmarshaler, so the schema walker stops at the parent (#371) knownExtraPaths (#457): interface_enumeration.go states explicitly that interfaceConfigEntry exists only for schema/canary shape and that FetchInterfaceEnumeration never decodes into it - the fetch hand-rolls a raw-JSON walk that discards every value and keeps only device-name ordering (for NetFlow ifIndex mapping, #361). Since even the already-modeled struct fields (flags, media, ipv4/ipv6, mtu...) aren't used for metrics, none of these additional sub-fields are either. PRUNE TRIGGER: none, unless FetchInterfaceEnumeration is ever rewritten to actually decode this struct.",
+    "note": "The transceiver block is emitted only for a row ifconfig prints a \"plugged:\" line for, i.e. a physical port with an SFP cage \u2014 legacy_interfaces_details() creates $result[$dev]['sfp'] in that branch alone. The canary box is a virtio-only VM, so NO row carries it and *.sfp is absent wholesale; the prod box's three populated cages serve it and validate normally (verified live 2026-07-25 on both). Box/hardware state, not a version prune \u2014 same field, same reason and same prune trigger as the interfacesOverview rows[].sfp entry below: it goes when a canary box with a real SFP cage exists. Note the sfp subtree needs no .* companion here, unlike interfacesOverview: this struct types the block as flexStringMap, a custom unmarshaler, so the schema walker stops at the parent (#371) knownExtraPaths (#457): interface_enumeration.go states explicitly that interfaceConfigEntry exists only for schema/canary shape and that FetchInterfaceEnumeration never decodes into it - the fetch hand-rolls a raw-JSON walk that discards every value and keeps only device-name ordering (for NetFlow ifIndex mapping, #361). Since even the already-modeled struct fields (flags, media, ipv4/ipv6, mtu...) aren't used for metrics, none of these additional sub-fields are either. PRUNE TRIGGER: none, unless FetchInterfaceEnumeration is ever rewritten to actually decode this struct. BOX STATE (#496/#490, prod release 26.7.1_1): *.ipv4[].endpoint is BOX/HARDWARE STATE, verified against legacy_interfaces_details() (opnsense/core, src/etc/inc/interfaces.lib.inc, stable/26.7, ~line 330): the key is set only when the parsed \"inet\" ifconfig line contains the point-to-point \"-->\" marker (tmp['endpoint'] = line_parts[3]), i.e. only for a tunnel/point-to-point interface - prod's WAN1 is PPPoE, whose ng_iface presents exactly that ifconfig shape; the virtio-only testbed has no PPPoE WAN so no row ever produces the marker. Same mechanism and same box-state class as the already-exempted *.ipv6[].endpoint-adjacent tunnel fields in this same struct (*.ipv4[].tunnel, *.ipv6[].tunnel) - this is the peer-address string sibling of the already-modeled boolean tunnel flag, not new drift. PRUNE TRIGGER: none - goes when a canary box with a real PPPoE/GIF/GRE WAN exists, same as the *.sfp entries above.",
     "knownExtraPaths": [
       "*.carp",
       "*.groups",
+      "*.ipv4[].endpoint",
       "*.ipv4[].subnetbits",
       "*.ipv4[].tunnel",
       "*.ipv4[].vhid",
@@ -299,7 +300,7 @@
       "rows[].sfp",
       "rows[].sfp.*"
     ],
-    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport), bridge (members) and SFP (sfp) fields are hardware/config-dependent \u2014 only served by a row that is itself a lagg(4)/bridge(4)/physical-SFP interface. Verified empirically 2026-07-13 (lagg/bridge) and 2026-07-15 (sfp) against the live box: the 26.7-devel VM is virtio-only, so no row carries an sfp block and rows[].sfp is absent wholesale. A box WITH an SFP row (e.g. the prod box's UBNT UF-RJ45-1G) serves the sfp block and validates the sfp.* subtree normally; the exemption only suppresses the box-has-no-SFP case. Box state, not a version prune (#214, #243) knownExtraPaths (#457): interfaces.go's doc comments are explicit about scope: addr4/addr6 deliberately skip the already-parsed duplicates modeled as IPv4/IPv6, mtu duplicates the already-modeled Interface.MTU from the separate FetchInterfaces (api/diagnostics/traffic/interface), and carp overlaps the dedicated CARP collector (opnsense/carp.go, internal/collector/carp.go), which has its own endpoint for VHID master/backup state. The rest (capabilities/options/supported_media/nd6/laggoptions/media_raw/macaddr*/vlan.pcp,proto/groups/config/ifctl.*/gateways/routes, and the CARP/PPP/tunnel-peer sub-fields of ipv4[]/ipv6[]) is interface identity/capability/topology configuration, matching the file's stated scope of not duplicating the traffic-stats endpoint. OPPORTUNITY: rows[].enabled is the config-level admin-enabled flag, distinct from the already-modeled AdminUp (derived from the ifconfig UP flag) and Status - could surface 'configured but administratively disabled' separately from 'down'. PRUNE TRIGGER: remove rows[].enabled from this list if it is ever modeled.",
+    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport), bridge (members) and SFP (sfp) fields are hardware/config-dependent \u2014 only served by a row that is itself a lagg(4)/bridge(4)/physical-SFP interface. Verified empirically 2026-07-13 (lagg/bridge) and 2026-07-15 (sfp) against the live box: the 26.7-devel VM is virtio-only, so no row carries an sfp block and rows[].sfp is absent wholesale. A box WITH an SFP row (e.g. the prod box's UBNT UF-RJ45-1G) serves the sfp block and validates the sfp.* subtree normally; the exemption only suppresses the box-has-no-SFP case. Box state, not a version prune (#214, #243) knownExtraPaths (#457): interfaces.go's doc comments are explicit about scope: addr4/addr6 deliberately skip the already-parsed duplicates modeled as IPv4/IPv6, mtu duplicates the already-modeled Interface.MTU from the separate FetchInterfaces (api/diagnostics/traffic/interface), and carp overlaps the dedicated CARP collector (opnsense/carp.go, internal/collector/carp.go), which has its own endpoint for VHID master/backup state. The rest (capabilities/options/supported_media/nd6/laggoptions/media_raw/macaddr*/vlan.pcp,proto/groups/config/ifctl.*/gateways/routes, and the CARP/PPP/tunnel-peer sub-fields of ipv4[]/ipv6[]) is interface identity/capability/topology configuration, matching the file's stated scope of not duplicating the traffic-stats endpoint. OPPORTUNITY: rows[].enabled is the config-level admin-enabled flag, distinct from the already-modeled AdminUp (derived from the ifconfig UP flag) and Status - could surface 'configured but administratively disabled' separately from 'down'. PRUNE TRIGGER: remove rows[].enabled from this list if it is ever modeled. BATCH (#496/#490, prod release 26.7.1_1): rows[].ifctl.prefix is the missed sibling of the three ifctl.* keys already exempted above (nameserver/router/searchdomain) - verified against OverviewController (opnsense/core, src/opnsense/mvc/app/controllers/OPNsense/Interfaces/Api/OverviewController.php, stable/26.7, lines 100-160): all four are built from the same \"ifctl received properties\" loop and share the same GUI label class (\"Dynamic <X> received\"). ifctl.prefix specifically surfaces a dynamically received IPv6 delegated prefix (DHCPv6-PD) - present only on an interface actually running PD, which is why it did not surface until this batch. Same reasoning bucket as its three siblings: dynamic config-received GUI display data, not a counter or state gauge. PRUNE TRIGGER: none.",
     "knownExtraPaths": [
       "rows[].addr4",
       "rows[].addr6",
@@ -310,6 +311,7 @@
       "rows[].gateways",
       "rows[].groups",
       "rows[].ifctl.nameserver",
+      "rows[].ifctl.prefix",
       "rows[].ifctl.router",
       "rows[].ifctl.searchdomain",
       "rows[].ipv4[].advbase",
@@ -369,7 +371,19 @@
       "rows[].usetime_hard",
       "rows[].usetime_last",
       "rows[].usetime_soft"
-    ]
+    ],
+    "profiles": {
+      "prod": {
+        "missingOK": [
+          "rows[].addtime_diff",
+          "rows[].addtime_hard",
+          "rows[].addtime_soft",
+          "rows[].reqid",
+          "rows[].state"
+        ],
+        "note": "Live-verified on the production box 2026-07-29 (#496): when the kernel SADB is EMPTY, setkey -D prints the literal text \"No SAD entries.\", and list_sad.py parses that error string as if it were a tunnel. The line has no leading tab so it becomes a one-line section: seqid 0 sets src=\"No\" dst=\"SAD\", and because Python's \"entries.\".find(\"[\") returns -1 (truthy) the NAT branch fires and sets nat=\"ntries\". seqid never reaches 1, so satype/spi keep their \"\" init and serialise as null, while reqid/state/addtime_diff+hard+soft are never assigned at all and are ABSENT. FetchIPsecSAD already discards the row via its SPI/SAType guard (TestFetchIPsecSAD_EmptyPlaceholder pins the same shape). SCOPED TO prod ON PURPOSE: these five paths back the ipsecCollector's kernel-SA gauges, and the triage rules prefer fixing the testbed over exempting a field that backs a metric, because the exemption blinds the canary to real drift on a consumed field. The nightly and release-vm targets DO hold an established SA (LXC 105 runs strongSwan as initiator), so they keep enforcing these paths; only prod, which happens to have no tunnel up, needs the exemption. PRUNE TRIGGER: none - this is a has-a-tunnel/has-no-tunnel toggle, not version-bound. It should be removed only if prod gains a permanent tunnel, and must never be promoted to the base ledger."
+      }
+    }
   },
   "ipsecServiceStatus": {
     "knownExtraTopKeys": [
@@ -696,13 +710,33 @@
       "output.serial_number",
       "output.smart_status"
     ],
-    "note": "smartctl fields vary by drive type \u2014 the struct fields are pointers by design knownExtraPaths (#457): smart.go's smartInfoOutput models model_name/serial_number/smart_status/temperature.current/power_on_time/ata attributes/nvme health (FetchSMARTDevices). The SCSI/SAS identity fields duplicate what model_name/serial_number cover for ATA drives, and device/device_type/json_format_version/local_time/smartctl are envelope/tool metadata with no metric value; seagate_farm_log is a vendor-log-presence flag of low operational value. OPPORTUNITY: output.user_capacity (drive capacity in bytes, a size figure with no current struct field), output.smart_support (bool: SMART monitoring enabled on the device) and output.temperature.drive_trip (vendor trip-temperature threshold, pairs with the already-modeled current temperature to compute headroom) are genuine gaps. PRUNE TRIGGER: remove an entry from this list once its field is modeled.",
+    "note": "smartctl fields vary by drive type \u2014 the struct fields are pointers by design knownExtraPaths (#457): smart.go's smartInfoOutput models model_name/serial_number/smart_status/temperature.current/power_on_time/ata attributes/nvme health (FetchSMARTDevices). The SCSI/SAS identity fields duplicate what model_name/serial_number cover for ATA drives, and device/device_type/json_format_version/local_time/smartctl are envelope/tool metadata with no metric value; seagate_farm_log is a vendor-log-presence flag of low operational value. OPPORTUNITY: output.user_capacity (drive capacity in bytes, a size figure with no current struct field), output.smart_support (bool: SMART monitoring enabled on the device) and output.temperature.drive_trip (vendor trip-temperature threshold, pairs with the already-modeled current temperature to compute headroom) are genuine gaps. PRUNE TRIGGER: remove an entry from this list once its field is modeled. BATCH 2 (#496/#490, prod release 26.7.1_1) \u2014 BOX STATE, not drift: the nightly virtio testbed cannot produce ANY smartInfo data at all (api/smart/service/list 404s on virtio disks), so every ATA-specific field below is invisible there and only surfaces on a box with real physical disks; #490 confirms this explicitly. Triaged field-by-field against smartmontools' own JSON emitter (src/ataprint.cpp, main branch, 2026-07-29): output.ata_version, output.sata_version, output.form_factor, output.model_family, output.firmware_version, output.in_smartctl_database and output.wwn are all static drive-identity/tool-confidence strings read straight off ATA IDENTIFY DEVICE, the same bucket as the already-exempted scsi_* identity fields \u2014 no metric use. output.ata_sct_capabilities is a static SCT-feature-support bitmask (ataprint.cpp:1388, SCT Error Recovery/Feature Control/Data Table support flags) \u2014 capability, not state. output.ata_smart_attributes.revision (ataprint.cpp:1256) is the attribute TABLE's format revision number, protocol metadata parallel to the sibling table-format revision fields already exempted elsewhere in this file (e.g. quaggaBfd*, firmwareInfo). output.ata_smart_attributes.table[].raw.string (ataprint.cpp:1352-1353) is a human-formatted display twin of the already-modeled table[].raw numeric value \u2014 redundant, not new data. output.ata_smart_attributes.table[].flags (ataprint.cpp:1339-1349) is a bundle of booleans describing HOW the attribute itself is DEFINED (prefailure vs old-age, online vs offline-only collection, performance/error-rate/event-count/self-preserving classification bits) \u2014 metadata about the attribute definition, not a new operational reading; the attribute's actual value/worst/thresh/raw are already captured generically. output.ata_smart_data (ataprint.cpp:866-1114, offline_data_collection/self_test/capabilities) is a bundle of self-test-polling-time and logging-capability config plus a collection-status/self-test-status subfield; treated here as identity/capability alongside the rest rather than split out, since none of its sub-keys were individually reported by the canary. output.ata_smart_error_log, output.ata_smart_self_test_log and output.ata_smart_selective_self_test_log are historical log subtrees (summary/extended error entries, self-test result history, selected LBA ranges) \u2014 same log-subtree class as the already-modeled-elsewhere event logs in this codebase, not counters. SECONDARY OPPORTUNITY spotted during this triage but NOT in the originally-requested batch, flagging rather than burying per this repo's canary-triage convention: output.ata_smart_attributes.table[].when_failed (ataprint.cpp:1334, values \"now\"/\"past\"/\"\") is a PER-ATTRIBUTE failed-state marker, finer-grained than the existing device-level smart_status.passed gauge \u2014 would answer WHICH attribute tripped a failing drive, not just that one did. OPPORTUNITY (as requested): output.power_cycle_count (ataprint.cpp:1191, attribute id 12 \"Power_Cycle_Count\") IS a straight passthrough duplicate of data already captured generically via the per-attribute attribute_raw series \u2014 but that is exactly the SAME relationship the already-shipped device_power_on_hours gauge has to attribute id 9 \"Power_On_Hours\" (also duplicated in the generic table, also given its own dedicated friendly gauge), so a device_power_cycles_total gauge would be precedented, not novel data. output.rotation_rate (ataprint.cpp:725, ATA IDENTIFY word 217) is genuinely NOT attribute-table-derived \u2014 0 signals SSD, a nonzero value is HDD RPM \u2014 useful both as a wear-adjacent gauge and an SSD/HDD type discriminator, unavailable from any field modeled today. output.spare_available and output.endurance_used (ataprint.cpp:1170-1219) are smartctl's own NORMALIZED/derived wear percentages, computed by regex-matching vendor-specific attribute names (Reallocated_Sector_Count/Spare_Blocks family; SSD_Life_Left/Wear_Leveling family) that vary per vendor \u2014 genuinely not obtainable from the generic per-attribute dump without reimplementing that same vendor-name matching, unlike power_cycle_count. output.trim (ataprint.cpp:750-753) is a boolean TRIM/DSM-support CAPABILITY flag (IDENTIFY word 169), not a wear or health counter \u2014 flagged here because requested, but any future metric should be named/described as a capability gauge, not conflated with the wear-percentage opportunities above. PRUNE TRIGGER: remove an entry from this list once its field is modeled; the log/identity/capability buckets have no trigger beyond that.",
     "knownExtraPaths": [
+      "output.ata_sct_capabilities",
+      "output.ata_smart_attributes.revision",
+      "output.ata_smart_attributes.table[].flags",
+      "output.ata_smart_attributes.table[].raw.string",
+      "output.ata_smart_attributes.table[].when_failed",
+      "output.ata_smart_data",
+      "output.ata_smart_error_log",
+      "output.ata_smart_selective_self_test_log",
+      "output.ata_smart_self_test_log",
+      "output.ata_version",
       "output.device",
       "output.device_type",
+      "output.endurance_used",
+      "output.firmware_version",
+      "output.form_factor",
+      "output.in_smartctl_database",
+      "output.interface_speed",
       "output.json_format_version",
       "output.local_time",
       "output.logical_block_size",
+      "output.model_family",
+      "output.physical_block_size",
+      "output.power_cycle_count",
+      "output.rotation_rate",
+      "output.sata_version",
       "output.scsi_lb_provisioning",
       "output.scsi_model_name",
       "output.scsi_product",
@@ -712,8 +746,11 @@
       "output.seagate_farm_log",
       "output.smart_support",
       "output.smartctl",
+      "output.spare_available",
       "output.temperature.drive_trip",
-      "output.user_capacity"
+      "output.trim",
+      "output.user_capacity",
+      "output.wwn"
     ]
   },
   "syslogServiceStatus": {
@@ -784,7 +821,7 @@
       "TailscaleIPs",
       "User"
     ],
-    "note": "tailscaled status keys the exporter does not model (node identity, tailnet metadata). Health (array of live warning strings) is modelled as a count-only gauge (#237) and no longer exempted knownExtraPaths (#457): tailscaleStatusResponse (opnsense/tailscale.go) models only node-local signals (LastHandshake, CurAddr, RxBytes/TxBytes, Relay, Health count) on purpose, because this exporter complements tailscale2otel's fleet-inventory coverage and deliberately does not duplicate identity/fleet fields - addresses, tags, capability maps, user/device IDs, engine-internal debug booleans, and the coordination-server-relayed Online field are all that class. OPPORTUNITY: Peer.*.Active/Self.Active (tailscaled's own recently-exchanged-traffic boolean, more direct than the LastHandshake-presence proxy the exporter derives today), Peer.*.KeyExpiry (node-key expiry timestamp, comparable to how certificate ValidTo is already exposed), and the ExitNode/ExitNodeOption pairs (exit-node role/availability, not currently exposed) are candidates for future metrics. PRUNE TRIGGER: remove an entry from this list once its field is modeled. (fixup) Peer.*.LastSeen/Self.LastSeen were missed in the first pass: like Online, LastSeen is coordination-server-relayed presence data (when the control plane last heard from the node), not the locally-observed signal LastHandshake already provides - same identity/fleet-metadata class as the rest of this endpoint's exemptions, not exported today.",
+    "note": "tailscaled status keys the exporter does not model (node identity, tailnet metadata). Health (array of live warning strings) is modelled as a count-only gauge (#237) and no longer exempted knownExtraPaths (#457): tailscaleStatusResponse (opnsense/tailscale.go) models only node-local signals (LastHandshake, CurAddr, RxBytes/TxBytes, Relay, Health count) on purpose, because this exporter complements tailscale2otel's fleet-inventory coverage and deliberately does not duplicate identity/fleet fields - addresses, tags, capability maps, user/device IDs, engine-internal debug booleans, and the coordination-server-relayed Online field are all that class. OPPORTUNITY: Peer.*.Active/Self.Active (tailscaled's own recently-exchanged-traffic boolean, more direct than the LastHandshake-presence proxy the exporter derives today), Peer.*.KeyExpiry (node-key expiry timestamp, comparable to how certificate ValidTo is already exposed), and the ExitNode/ExitNodeOption pairs (exit-node role/availability, not currently exposed) are candidates for future metrics. PRUNE TRIGGER: remove an entry from this list once its field is modeled. (fixup) Peer.*.LastSeen/Self.LastSeen were missed in the first pass: like Online, LastSeen is coordination-server-relayed presence data (when the control plane last heard from the node), not the locally-observed signal LastHandshake already provides - same identity/fleet-metadata class as the rest of this endpoint's exemptions, not exported today. BATCH (#496/#490, prod release 26.7.1_1): Self.PrimaryRoutes is the Self-side twin of the already-exempted Peer.*.PrimaryRoutes above - tailscaleStatusPeer (opnsense/tailscale.go) is used for BOTH Status.Self and each Status.Peer entry (same Go struct, same tailscaled ipnstate.PeerStatus shape upstream), so any field left unmodeled on the Peer side is structurally unmodeled on Self too. It surfaced only now because #497/#490 exercised a box actually advertising subnet routes; same identity/topology exclusion as its Peer sibling (this exporter deliberately covers only node-local signals, not route/topology detail - see the existing note above). PRUNE TRIGGER: remove alongside Peer.*.PrimaryRoutes if it is ever modeled.",
     "knownExtraPaths": [
       "Peer.*.Active",
       "Peer.*.Addrs",
@@ -831,6 +868,7 @@
       "Self.Online",
       "Self.PeerAPIURL",
       "Self.PeerRelay",
+      "Self.PrimaryRoutes",
       "Self.PublicKey",
       "Self.Tags",
       "Self.TaildropTarget",
@@ -850,14 +888,11 @@
       "data.rrset.*",
       "data.unwanted.*"
     ],
-    "note": "extended unbound statistics \u2014 absent when the box runs extended-statistics: no, the 26.7 default; present on \u2264 26.1 and whenever an admin re-enables extended stats. Box state, not a version prune knownExtraPaths (#457): data.histogram (reply-time latency histogram) and data.num.valops (DNSSEC validation-operations counter) are genuine candidates for future metrics, entirely absent from unboundDNSStatusResponse (opnsense/unbound_dns.go) today - an OPPORTUNITY. data.thread0-thread3 are per-thread breakdowns of the same counter families already aggregated at data.total; genuine counters, but adopting them would add per-thread cardinality on top of the existing combined-total design, a deliberate tradeoff not yet made either way. PRUNE TRIGGER: remove an entry from this list once its field is modeled (per-thread breakdowns only if the cardinality tradeoff is deliberately revisited).",
+    "note": "extended unbound statistics \u2014 absent when the box runs extended-statistics: no, the 26.7 default; present on \u2264 26.1 and whenever an admin re-enables extended stats. Box state, not a version prune knownExtraPaths (#457): data.histogram (reply-time latency histogram) and data.num.valops (DNSSEC validation-operations counter) are genuine candidates for future metrics, entirely absent from unboundDNSStatusResponse (opnsense/unbound_dns.go) today - an OPPORTUNITY. data.thread0-thread3 (superseded 2026-07-29, #496/#490: see the wildcard note below) were per-thread breakdowns of the same counter families already aggregated at data.total; genuine counters, but adopting them would add per-thread cardinality on top of the existing combined-total design, a deliberate tradeoff not yet made either way. WILDCARD REWRITE 2026-07-29 (#496/#490, prod release 26.7.1_1): the four enumerated data.thread0..data.thread3 entries only ever existed because the nightly testbed VM happens to run unbound with 4 worker threads; prod's release-generation box has 12, which is a property of the box's core count, not of the OPNsense version, so the enumerated form would keep needing a new entry on every differently-sized box forever and never converge. Replaced with the single segment-prefix wildcard entry data.thread* (a bare trailing '*' on the final path segment, matching any one path segment beginning with that prefix plus that segment's entire subtree, per compilePathSet in opnsense/schema_validate.go) - data.thread* matches data.thread0, data.thread11, and data.thread0.queries alike. The cardinality-tradeoff reasoning above is UNCHANGED and still governs whether per-thread breakdowns are ever adopted as metrics; this rewrite only fixes how the exemption is SPELLED, not the underlying modelling decision. PRUNE TRIGGER: remove an entry from this list once its field is modeled (per-thread breakdowns only if the cardinality tradeoff is deliberately revisited).",
     "knownExtraPaths": [
       "data.histogram",
       "data.num.valops",
-      "data.thread0",
-      "data.thread1",
-      "data.thread2",
-      "data.thread3"
+      "data.thread*"
     ]
   },
   "unboundQueryStatsTotals": {
@@ -1030,6 +1065,7 @@
       "rows[].alias_meta_destination.network",
       "rows[].alias_meta_destination.port",
       "rows[].alias_meta_local-port",
+      "rows[].alias_meta_source.network",
       "rows[].alias_meta_target",
       "rows[].associated-rule-id",
       "rows[].categories",
@@ -1069,7 +1105,7 @@
       "rows[].updated.username",
       "rows[].uuid"
     ],
-    "note": "knownExtraPaths (#457): firewall_nat.go's doc comment states the design directly: only enabled/disabled state is captured for the inventory-count metric, so no source/destination/target field is decoded (they can carry LAN topology that doesn't belong in a metric label), and NAT rules carry no pf hit/byte counters on OPNsense (verified against live `pfctl -sr -v`, #221) - so nothing counter-shaped is being missed. The rest is match-criteria/target config plus CRUD audit metadata (created.*/updated.*). PRUNE TRIGGER: none."
+    "note": "knownExtraPaths (#457): firewall_nat.go's doc comment states the design directly: only enabled/disabled state is captured for the inventory-count metric, so no source/destination/target field is decoded (they can carry LAN topology that doesn't belong in a metric label), and NAT rules carry no pf hit/byte counters on OPNsense (verified against live `pfctl -sr -v`, #221) - so nothing counter-shaped is being missed. The rest is match-criteria/target config plus CRUD audit metadata (created.*/updated.*). PRUNE TRIGGER: none. BATCH (#496/#490, prod release 26.7.1_1): rows[].alias_meta_source.network is the SOURCE-side sibling of the already-exempted rows[].alias_meta_destination.network/rows[].alias_meta_target/rows[].alias_meta_local-port above, verified against DNatController::searchRuleAction (opnsense/core, src/opnsense/mvc/app/controllers/OPNsense/Firewall/Api/DNatController.php, stable/26.7, lines 71-76): a single loop over ['source.network','source.port','destination.network','destination.port','target','local-port'] builds alias_meta_{field} for whichever of those six fields is non-empty on a given row. It is BOX STATE, not drift: this key appears only when a DNAT rule's SOURCE is itself set to an alias (not \"any\"/a raw CIDR) - the nightly testbed's DNAT rules apparently never do that, prod's do. Same reasoning as the existing entry: alias resolution metadata for the GUI, not counter/state data. PRUNE TRIGGER: none."
   },
   "certificates": {
     "knownExtraPaths": [
@@ -1632,9 +1668,10 @@
     "knownExtraPaths": [
       "alias.geoip.address_sources",
       "alias.geoip.locations_filename",
+      "alias.geoip.subscription",
       "alias.geoip.url"
     ],
-    "note": "knownExtraPaths (#457): geoIPAliasResponse/GeoIPStatus (opnsense/firewall_geoip.go) models AliasUsages/AddressCount/FileCount/last-download timestamp for freshness metrics. address_sources/locations_filename are just the CSV filenames the geoip.py updater used, GUI/debug detail with no metric use. SECURITY (#221, already documented in firewall_geoip.go): alias.geoip.url is the full MaxMind/ipinfo download URL WITH THE LICENSE KEY embedded as a query parameter - deliberately never decoded so the credential never enters exporter memory beyond the transient response buffer. Not a plain GUI-noise exemption; do not relax it. PRUNE TRIGGER: none for url (permanent security exclusion); address_sources/locations_filename can be pruned if a metric ever needs them."
+    "note": "knownExtraPaths (#457): geoIPAliasResponse/GeoIPStatus (opnsense/firewall_geoip.go) models AliasUsages/AddressCount/FileCount/last-download timestamp for freshness metrics. address_sources/locations_filename are just the CSV filenames the geoip.py updater used, GUI/debug detail with no metric use. SECURITY (#221, already documented in firewall_geoip.go): alias.geoip.url is the full MaxMind/ipinfo download URL WITH THE LICENSE KEY embedded as a query parameter - deliberately never decoded so the credential never enters exporter memory beyond the transient response buffer. Not a plain GUI-noise exemption; do not relax it. PRUNE TRIGGER: none for url (permanent security exclusion); address_sources/locations_filename can be pruned if a metric ever needs them. BOX STATE (#496/#490, prod release 26.7.1_1): alias.geoip.subscription is BOX/CONFIG STATE, verified against AliasController::getGeoIPAction (opnsense/core, src/opnsense/mvc/app/controllers/OPNsense/Firewall/Api/AliasController.php, stable/26.7) - the key is set only if isset($cnf->system->firmware) && !empty($cnf->system->firmware->mirror), and its value is a boolean derived from whether that configured mirror URL contains opnsense-update.deciso.com (Deciso's own commercial-mirror hostname). It is absent whenever no firmware mirror is configured at all, which is why the nightly testbed never serves it. It is licensing/config identity, not an operational metric. PRUNE TRIGGER: none."
   },
   "cronJobs": {
     "knownExtraPaths": [
@@ -1690,5 +1727,23 @@
       "details.*.updated"
     ],
     "note": "knownExtraPaths (#457): aliasTableSizeResponse (opnsense/alias.go) already models the per-alias-table size counts consumed by the alias-table collector. OPPORTUNITY: details.*.updated is per-alias-table last-refresh time (e.g. for a DNS-resolved or URL-table alias) - the same naive-timestamp wire shape firewall_geoip.go's parseGeoIPTimestamp already parses into a real freshness metric for the GeoIP DB, so the parsing concern that has historically justified skipping this field is already solved elsewhere in this codebase. A silently-stale URL/DNS alias is invisible today; this is a real modeling candidate, not a plain exemption reason - exempted here only so the canary goes clean. PRUNE TRIGGER: remove once modeled as a last-refresh gauge, reusing parseGeoIPTimestamp's naive-ISO8601 handling."
+  },
+  "ipsecPools": {
+    "profiles": {
+      "prod": {
+        "missingOK": [
+          "leases"
+        ],
+        "note": "Live-verified on the production box 2026-07-29 (#496). LeasesController::poolsAction() (opnsense/core stable/26.7) ends with `return (!empty($data) && !empty($data['pools'])) ? $data : ['pools' => []];` - so with no mode-cfg address pools configured the fallback carries NO `leases` key at all, not an empty array. Live response is literally {\"pools\":[]}. No code change needed: ipsecPoolsResponse.Leases unmarshals to a nil slice and the consuming range is a no-op. SCOPED TO prod because the testbed boxes do serve a mode-cfg pool (the strongSwan initiator on LXC 105 is handed a virtual IP from it), so nightly and release-vm keep enforcing the path. PRUNE TRIGGER: none - recurs on any box with zero mode-cfg pools, not version-bound."
+      }
+    }
+  },
+  "snapshotsSearch": {
+    "knownExtraPaths": [
+      "rows[].created_str",
+      "rows[].mountpoint",
+      "rows[].size"
+    ],
+    "note": "FIRST LEDGER ENTRY (#496/#490, prod release 26.7.1_1) - this endpoint was previously unledgered because the nightly testbed's earlier canary runs happened not to report it; the release box's bootgrid rows carry the same shape. Not drift: bootEnvironmentRow (opnsense/snapshots.go) already has a doc comment stating explicitly that size/mountpoint/created_str are seen on the wire and deliberately not modelled. Verified against upstream source (opnsense/core, src/opnsense/scripts/system/bectl.py, stable/26.7, action='list'): each row is built directly from `bectl list -H` tab-separated output - parts[2]=mountpoint (a raw filesystem path), parts[3]=size (bectl's own HUMAN-FORMATTED size string, e.g. \"28.8G\", not a byte count), parts[4]=created_str (a formatted \"%Y-%m-%d %H:%M\" display string, re-parsed by the same script into the already-modelled numeric `created` epoch field). So created_str is a redundant display twin of data already captured (Created, the flexString feeding ActiveCreatedTimestamp); mountpoint is filesystem-path identity with no metric use; size is a human-formatted string that would require unit-parsing (G/T/M suffixes) to become a byte gauge - the collector's own doc comment (internal/collector/snapshots.go) already states this was a deliberate scope decision, not an oversight: \"avoid parsing human-formatted sizes into series\". OPPORTUNITY, if that scope decision is ever revisited: size is a real per-boot-environment disk-usage figure with no current equivalent, but modelling it means writing a size-suffix parser this codebase does not otherwise need. PRUNE TRIGGER: remove size from this list only if that scope decision is revisited and a suffix parser is added; mountpoint/created_str have no trigger."
   }
 }
