@@ -80,6 +80,7 @@ jobs:
           # Exit 0 = clean or warnings-only; exit 1 = breaking drift (outputs
           # are written first); anything else = probe error.
           if go run ./cmd/apidrift --base-url "https://${DEVBOX_HOST}" --insecure \
+               --profile nightly \
                --out out/report.md --captures "$RUNNER_TEMP/captures"; then
             :
           else

@@ -49,27 +49,122 @@ func (r ValidationResult) Clean() bool {
 // serves that we deliberately do not model (KnownExtraPaths). Lives in the
 // committed opnsense/testdata/schemas/exemptions.json.
 //
-// A MissingOK entry is either an exact schema path ("memory.arc") or a subtree
-// prefix ending in ".*" ("data.num.*"), which exempts the bare parent
-// ("data.num") and every path beneath it. The prefix form keeps the ledger
-// readable for endpoints whose legacy surface is a whole sub-object.
-// KnownExtraPaths takes the SAME two forms, over the normalized paths reported
-// in ValidationResult.UnknownPaths ("rows[].widget", "byName.*.legacy",
-// "details.*").
+// A MissingOK entry takes one of three forms. An exact schema path
+// ("memory.arc"). A subtree prefix ending in ".*" ("data.num.*"), which
+// exempts the bare parent ("data.num") and every path beneath it - this keeps
+// the ledger readable for endpoints whose legacy surface is a whole
+// sub-object. Or a segment-prefix wildcard, a bare trailing "*" on the final
+// segment ("data.thread*"), which exempts any single path segment starting
+// with that prefix plus that segment's own subtree - this is for endpoints
+// whose per-instance breakdown is keyed by something that varies with the
+// box (unbound's data.thread0..data.threadN, one per configured worker
+// thread), where enumerating exact indices just moves the goalpost to the
+// next box with a different count. KnownExtraPaths takes the SAME three
+// forms, over the normalized paths reported in ValidationResult.UnknownPaths
+// ("rows[].widget", "byName.*.legacy", "details.*").
 type SchemaExemption struct {
 	MissingOK         []string `json:"missingOK,omitempty"`
 	KnownExtraTopKeys []string `json:"knownExtraTopKeys,omitempty"`
 	KnownExtraPaths   []string `json:"knownExtraPaths,omitempty"`
 	Note              string   `json:"note,omitempty"`
+
+	// Profiles scopes extra entries to one probe target (#490). See
+	// ForProfile; a nested Profiles inside one of these is ignored.
+	Profiles map[string]SchemaExemption `json:"profiles,omitempty"`
 }
 
-// pathSet is a compiled schema-path ledger: exact paths plus subtree prefixes
-// from ".*" entries. Used for both MissingOK and KnownExtraPaths, which share
-// the same dot-anchored semantics.
+// Probe profiles are the canary's targets. This is a closed set on purpose: a
+// mistyped profile name in the ledger would compile to a block that silently
+// never applies, so TestExemptionProfileNamesAreKnown checks the committed file
+// against these.
+//
+// It keys on the TARGET rather than the OPNsense generation #490 first asked
+// for, because the three targets differ on three independent axes - generation,
+// plugin set, and real-vs-virtual hardware - and generation is the axis that
+// explains the fewest findings. smartInfo's extra keys are prod-only because
+// prod has real disks, not because it runs 26.7; the release-VM target runs the
+// same generation and will never produce them. Keying on generation would make
+// that target inherit prod's hardware exemptions and go blind to them.
+const (
+	// ProbeProfileNightly is CI against the devel-channel testbed VM.
+	ProbeProfileNightly = "nightly"
+	// ProbeProfileReleaseVM is CI against the release-channel testbed VM: the
+	// same plugin set and virtual hardware as nightly, so a difference between
+	// the two is attributable to the generation alone.
+	ProbeProfileReleaseVM = "release-vm"
+	// ProbeProfileProd is camden against the production firewall: real
+	// hardware and a real network, but a sparse plugin set.
+	ProbeProfileProd = "prod"
+)
+
+// KnownProbeProfiles returns the closed set of valid profile names.
+func KnownProbeProfiles() []string {
+	return []string{ProbeProfileNightly, ProbeProfileReleaseVM, ProbeProfileProd}
+}
+
+// ForProfile flattens the ledger for one probe target: the base entries, which
+// apply everywhere, plus any scoped to profile. The result carries no Profiles
+// of its own, so everything downstream keeps treating an exemption as a plain
+// list and nothing has to know profiles exist.
+//
+// An empty or unledgered profile yields the base entries alone. That is
+// deliberately not an error - the failure it would guard against is a typo, and
+// a typo fails the build in TestExemptionProfileNamesAreKnown instead, where the
+// check can see the whole committed file.
+func (e SchemaExemption) ForProfile(profile string) SchemaExemption {
+	out := SchemaExemption{
+		// Copy rather than alias: probing one profile must not append into the
+		// base ledger's backing array and leak those entries into every
+		// endpoint validated afterwards.
+		MissingOK:         append([]string(nil), e.MissingOK...),
+		KnownExtraTopKeys: append([]string(nil), e.KnownExtraTopKeys...),
+		KnownExtraPaths:   append([]string(nil), e.KnownExtraPaths...),
+		Note:              e.Note,
+	}
+	scoped, ok := e.Profiles[profile]
+	if !ok {
+		return out
+	}
+	out.MissingOK = append(out.MissingOK, scoped.MissingOK...)
+	out.KnownExtraTopKeys = append(out.KnownExtraTopKeys, scoped.KnownExtraTopKeys...)
+	out.KnownExtraPaths = append(out.KnownExtraPaths, scoped.KnownExtraPaths...)
+	return out
+}
+
+// pathSet is a compiled schema-path ledger: exact paths, subtree prefixes from
+// ".*" entries, and segment-prefix wildcards from a bare trailing "*". Used
+// for both MissingOK and KnownExtraPaths, which share the same semantics.
 type pathSet struct {
-	exact    map[string]bool
-	prefixes []string // each with its trailing dot, e.g. "data.num."
-	parents  []string // the bare parent of each prefix, e.g. "data.num"
+	exact       map[string]bool
+	prefixes    []string // each with its trailing dot, e.g. "data.num."
+	parents     []string // the bare parent of each prefix, e.g. "data.num"
+	segPrefixes []segPrefixEntry
+}
+
+// segPrefixEntry is a compiled "data.thread*" style entry. dirPrefix is
+// everything up to and including the last dot before the wildcarded segment
+// ("data.", or "" if the wildcarded segment is itself top-level); seg is the
+// literal prefix the segment must start with ("thread"). Matching happens
+// against the WHOLE segment, not a raw substring, so "data.thread*" reaches
+// "data.threads.foo" (the segment "threads" starts with "thread", and ".foo"
+// is its subtree) but never crosses into a different branch: in
+// "data.x.thread0" the segment right after "data." is "x", not
+// thread-prefixed, so the wildcard never even looks past it.
+type segPrefixEntry struct {
+	dirPrefix string
+	seg       string
+}
+
+// matches reports whether path's segment at this entry's position begins
+// with seg. Once that segment matches, everything after it - the wildcard's
+// subtree - is accepted without further inspection; the segment match alone
+// decides it, the same way the ".*" subtree prefix works.
+func (e segPrefixEntry) matches(path string) bool {
+	if !strings.HasPrefix(path, e.dirPrefix) {
+		return false
+	}
+	seg, _, _ := strings.Cut(path[len(e.dirPrefix):], ".")
+	return strings.HasPrefix(seg, e.seg)
 }
 
 func compilePathSet(entries []string) pathSet {
@@ -79,6 +174,25 @@ func compilePathSet(entries []string) pathSet {
 			s.prefixes = append(s.prefixes, stem+".")
 			s.parents = append(s.parents, stem)
 			continue
+		}
+		// The ".*" subtree form above gets first refusal, so "data.num.*" is
+		// never reinterpreted here even though it also ends in a bare "*". What
+		// remains is a segment-prefix wildcard: "data.thread*" splits into the
+		// directory before the wildcarded segment ("data.") and the prefix that
+		// segment must start with ("thread"). An entry that is just "*", or
+		// otherwise reduces to an empty segment prefix, is refused and falls
+		// through to the exact-match map instead - the alternative would compile
+		// into something that matches every segment there is, silently blinding
+		// the whole canary, the worst possible failure mode for this ledger.
+		if seg, ok := strings.CutSuffix(p, "*"); ok && seg != "" {
+			dir, prefix := "", seg
+			if i := strings.LastIndexByte(seg, '.'); i >= 0 {
+				dir, prefix = seg[:i+1], seg[i+1:]
+			}
+			if prefix != "" {
+				s.segPrefixes = append(s.segPrefixes, segPrefixEntry{dirPrefix: dir, seg: prefix})
+				continue
+			}
 		}
 		s.exact[p] = true
 	}
@@ -94,6 +208,11 @@ func (s pathSet) has(path string) bool {
 	}
 	for i, prefix := range s.prefixes {
 		if path == s.parents[i] || strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	for _, e := range s.segPrefixes {
+		if e.matches(path) {
 			return true
 		}
 	}

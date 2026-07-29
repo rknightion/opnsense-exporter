@@ -201,3 +201,34 @@ func TestSchemaForTypeCustomUnmarshaler(t *testing.T) {
 		t.Errorf("flexStringMap fields = %v, want none", fields)
 	}
 }
+
+// TestExemptionProfileNamesAreKnown is the typo guard for #490's profile-scoped
+// ledger. A misspelled profile key is the dangerous failure here precisely
+// because it is quiet: the block parses, commits, reviews fine, and then simply
+// never matches, so the finding it was written to silence keeps firing and the
+// next reader assumes the exemption was considered and rejected. Checking the
+// committed file against the closed set turns that into a build failure.
+func TestExemptionProfileNamesAreKnown(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "schemas", "exemptions.json"))
+	if err != nil {
+		t.Fatalf("read exemptions.json: %v", err)
+	}
+	var ledger map[string]SchemaExemption
+	if err := json.Unmarshal(raw, &ledger); err != nil {
+		t.Fatalf("parse exemptions.json: %v", err)
+	}
+	known := map[string]bool{}
+	for _, p := range KnownProbeProfiles() {
+		known[p] = true
+	}
+	for endpoint, ex := range ledger {
+		for profile, scoped := range ex.Profiles {
+			if !known[profile] {
+				t.Errorf("%s: unknown probe profile %q (known: %v)", endpoint, profile, KnownProbeProfiles())
+			}
+			if scoped.Profiles != nil {
+				t.Errorf("%s: profile %q nests its own profiles; ForProfile resolves one level only", endpoint, profile)
+			}
+		}
+	}
+}

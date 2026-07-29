@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/rknightion/opnsense-exporter/internal/options"
@@ -33,8 +34,18 @@ func main() {
 	captures := flag.String("captures", "", "runner-local scratch dir for raw captures (never commit or upload)")
 	exemptionsPath := flag.String("exemptions", "opnsense/testdata/schemas/exemptions.json", "committed known-optional-paths file")
 	gen := flag.String("generation", os.Getenv("OPNSENSE_CANARY_GENERATION"), "OPNsense generation label for the report heading, e.g. \"release 26.7.1_1\" (env OPNSENSE_CANARY_GENERATION)")
+	profile := flag.String("profile", os.Getenv("OPNSENSE_CANARY_PROFILE"), fmt.Sprintf("probe profile selecting profile-scoped ledger entries, one of %v (env OPNSENSE_CANARY_PROFILE)", opnsense.KnownProbeProfiles()))
 	flag.Parse()
 	generation = *gen
+
+	// Reject an unknown profile rather than falling back to the base ledger.
+	// A silent fallback would still produce a plausible-looking report, just
+	// with the target's exemptions quietly inactive, and nothing in the output
+	// would say so.
+	if *profile != "" && !slices.Contains(opnsense.KnownProbeProfiles(), *profile) {
+		fmt.Fprintf(os.Stderr, "error: unknown --profile %q, want one of %v\n", *profile, opnsense.KnownProbeProfiles())
+		os.Exit(2)
+	}
 
 	resolvedKey, err := options.ResolveOPSAPIKey(*apiKey)
 	if err != nil {
@@ -61,6 +72,11 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "loading exemptions: %v\n", err)
 		os.Exit(2)
+	}
+	// Flatten once, here, so every consumer below keeps seeing a plain
+	// exemption and only this line knows profiles exist (#490).
+	for name, ex := range exemptions {
+		exemptions[name] = ex.ForProfile(*profile)
 	}
 
 	p := &prober{

@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -202,6 +203,154 @@ func TestValidateResponseSchemaMissingOKPrefix(t *testing.T) {
 			}
 			if !reflect.DeepEqual(res.Missing, tc.wantMissing) {
 				t.Errorf("Missing = %v, want %v", res.Missing, tc.wantMissing)
+			}
+		})
+	}
+}
+
+// segPrefixFixtureSchema models a per-thread breakdown the way unbound's DNS
+// statistics endpoint does (data.thread0 .. data.threadN, one per configured
+// worker), alongside an unrelated sibling (data.total), a same-prefix nested
+// lookalike one level down (data.wrap.thread0) and a same-suffix different
+// root (dataextra.thread0) - the cases a segment-prefix wildcard must not
+// cross into.
+func segPrefixFixtureSchema() EndpointSchema {
+	return EndpointSchema{
+		Endpoint:          "segprefix",
+		TopLevelKind:      KindObject,
+		KnownTopLevelKeys: []string{"data", "dataextra"},
+		Fields: []SchemaField{
+			{Path: "data", Kind: KindObject},
+			{Path: "data.thread", Kind: KindObject},
+			{Path: "data.thread.queries", Kind: KindNumber},
+			{Path: "data.thread0", Kind: KindObject},
+			{Path: "data.thread0.queries", Kind: KindNumber},
+			{Path: "data.thread11", Kind: KindObject},
+			{Path: "data.thread11.queries", Kind: KindNumber},
+			{Path: "data.total", Kind: KindObject},
+			{Path: "data.total.queries", Kind: KindNumber},
+			{Path: "data.wrap", Kind: KindObject},
+			{Path: "data.wrap.thread0", Kind: KindObject},
+			{Path: "data.wrap.thread0.queries", Kind: KindNumber},
+			{Path: "dataextra", Kind: KindObject},
+			{Path: "dataextra.thread0", Kind: KindObject},
+			{Path: "dataextra.thread0.queries", Kind: KindNumber},
+		},
+	}
+}
+
+// A missingOK entry whose final segment ends in a bare "*" (not ".*") is a
+// segment-prefix wildcard: it exempts any single path segment starting with
+// that prefix, plus everything under it. This is the form unbound's per-thread
+// stats need - the box's own thread count tracks its core count, so
+// enumerating "data.thread0".."data.thread3" as exact entries only moves the
+// goalpost to the next box with more cores.
+func TestValidateResponseSchemaMissingOKSegmentPrefix(t *testing.T) {
+	raw := `{"data":{"thread":{},"thread0":{},"thread11":{},"total":{},"wrap":{"thread0":{}}},"dataextra":{"thread0":{}}}`
+
+	cases := []struct {
+		name        string
+		exemption   SchemaExemption
+		wantMissing []string
+	}{
+		{
+			name: "no exemption reports every thread instance and the lookalikes",
+			wantMissing: []string{
+				"data.thread.queries", "data.thread0.queries", "data.thread11.queries",
+				"data.total.queries", "data.wrap.thread0.queries", "dataextra.thread0.queries",
+			},
+		},
+		{
+			name:      "segment prefix exempts thread, thread0 and thread11 but nothing else",
+			exemption: SchemaExemption{MissingOK: []string{"data.thread*"}},
+			wantMissing: []string{
+				"data.total.queries", "data.wrap.thread0.queries", "dataextra.thread0.queries",
+			},
+		},
+		{
+			// data.* still means "the parent data and its whole subtree", exactly
+			// as before - the ".*" suffix check must run first and win, so a
+			// literal "*" entry never gets reinterpreted as a segment prefix.
+			name:        "the existing .* subtree form is unaffected",
+			exemption:   SchemaExemption{MissingOK: []string{"data.*"}},
+			wantMissing: []string{"dataextra.thread0.queries"},
+		},
+		{
+			// A bare "*" (no literal prefix in front of it) must not compile into
+			// something that matches every segment - that would silently blind
+			// the whole canary, the worst possible failure mode for this ledger.
+			name:      "a bare * entry matches nothing, not everything",
+			exemption: SchemaExemption{MissingOK: []string{"*"}},
+			wantMissing: []string{
+				"data.thread.queries", "data.thread0.queries", "data.thread11.queries",
+				"data.total.queries", "data.wrap.thread0.queries", "dataextra.thread0.queries",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := ValidateResponseSchema(segPrefixFixtureSchema(), []byte(raw), tc.exemption)
+			if err != nil {
+				t.Fatalf("ValidateResponseSchema: %v", err)
+			}
+			if !reflect.DeepEqual(res.Missing, tc.wantMissing) {
+				t.Errorf("Missing = %v, want %v", res.Missing, tc.wantMissing)
+			}
+		})
+	}
+}
+
+// segPrefixNestedFixtureSchema models the same per-thread shape but leaves the
+// threads entirely unmodeled, to exercise the segment-prefix wildcard through
+// knownExtraPaths (the reverse-traversal ledger) rather than missingOK.
+func segPrefixNestedFixtureSchema() EndpointSchema {
+	return EndpointSchema{
+		Endpoint:          "segprefixnested",
+		TopLevelKind:      KindObject,
+		KnownTopLevelKeys: []string{"data"},
+		Fields: []SchemaField{
+			{Path: "data", Kind: KindObject},
+			{Path: "data.total", Kind: KindObject},
+			{Path: "data.total.queries", Kind: KindNumber},
+		},
+	}
+}
+
+// knownExtraPaths takes the same segment-prefix wildcard form as missingOK,
+// since both compile through compilePathSet.
+func TestValidateResponseSchemaKnownExtraPathsSegmentPrefix(t *testing.T) {
+	raw := `{"data":{"total":{"queries":1},"thread":{},"thread0":{},"thread11":{},"other":1}}`
+
+	cases := []struct {
+		name      string
+		exemption SchemaExemption
+		wantPaths []string
+	}{
+		{
+			name:      "no exemption reports every unmodeled thread plus the unrelated key",
+			wantPaths: []string{"data.other", "data.thread", "data.thread0", "data.thread11"},
+		},
+		{
+			name:      "segment prefix exempts every thread instance, not the unrelated key",
+			exemption: SchemaExemption{KnownExtraPaths: []string{"data.thread*"}},
+			wantPaths: []string{"data.other"},
+		},
+		{
+			name:      "a bare * entry matches nothing, not everything",
+			exemption: SchemaExemption{KnownExtraPaths: []string{"*"}},
+			wantPaths: []string{"data.other", "data.thread", "data.thread0", "data.thread11"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := ValidateResponseSchema(segPrefixNestedFixtureSchema(), []byte(raw), tc.exemption)
+			if err != nil {
+				t.Fatalf("ValidateResponseSchema: %v", err)
+			}
+			if !reflect.DeepEqual(res.UnknownPaths, tc.wantPaths) {
+				t.Errorf("UnknownPaths = %v, want %v", res.UnknownPaths, tc.wantPaths)
 			}
 		})
 	}
@@ -609,5 +758,109 @@ func TestValidateResponseSchemaOSPFv3InnerFieldTypeConflict(t *testing.T) {
 	}
 	if !foundMismatch {
 		t.Errorf("Mismatches = %v, want to contain %+v", res.Mismatches, wantMismatch)
+	}
+}
+
+// TestSchemaExemptionForProfile pins #490's ledger requirement: the canary now
+// probes three targets that differ on three independent axes, so an exemption
+// has to be able to say "this is expected on THAT box" without switching the
+// check off for the others.
+//
+// The axes are why this keys on the probe profile rather than the OPNsense
+// generation #490 originally asked for. smartInfo's extra keys are prod-only
+// because prod has real disks; the quagga extras are nightly-only because that
+// box has the plugins installed. Neither is a property of the release, and
+// keying on generation would make the release-VM target silently inherit
+// prod's hardware exemptions.
+func TestSchemaExemptionForProfile(t *testing.T) {
+	base := SchemaExemption{
+		MissingOK:         []string{"shared.missing"},
+		KnownExtraPaths:   []string{"shared.extra"},
+		KnownExtraTopKeys: []string{"sharedTop"},
+		Profiles: map[string]SchemaExemption{
+			ProbeProfileProd: {
+				MissingOK:       []string{"rows[].reqid"},
+				KnownExtraPaths: []string{"output.wwn"},
+			},
+			ProbeProfileNightly: {
+				KnownExtraTopKeys: []string{"nightlyTop"},
+			},
+		},
+	}
+
+	cases := []struct {
+		name        string
+		profile     string
+		wantMissing []string
+		wantExtra   []string
+		wantTop     []string
+	}{
+		{
+			name:        "an unset profile sees the base ledger only",
+			profile:     "",
+			wantMissing: []string{"shared.missing"},
+			wantExtra:   []string{"shared.extra"},
+			wantTop:     []string{"sharedTop"},
+		},
+		{
+			name:        "the prod profile adds its own entries on top of the base",
+			profile:     ProbeProfileProd,
+			wantMissing: []string{"shared.missing", "rows[].reqid"},
+			wantExtra:   []string{"shared.extra", "output.wwn"},
+			wantTop:     []string{"sharedTop"},
+		},
+		{
+			name:        "a sibling profile's entries never leak across",
+			profile:     ProbeProfileNightly,
+			wantMissing: []string{"shared.missing"},
+			wantExtra:   []string{"shared.extra"},
+			wantTop:     []string{"sharedTop", "nightlyTop"},
+		},
+		{
+			// A profile nobody ledgered is not an error: it simply gets the
+			// base rules. The closed-set check that catches a TYPO lives in
+			// TestExemptionProfileNamesAreKnown, against the real file.
+			name:        "a profile with no block falls back to the base ledger",
+			profile:     ProbeProfileReleaseVM,
+			wantMissing: []string{"shared.missing"},
+			wantExtra:   []string{"shared.extra"},
+			wantTop:     []string{"sharedTop"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := base.ForProfile(tc.profile)
+			assertSameStrings(t, "MissingOK", got.MissingOK, tc.wantMissing)
+			assertSameStrings(t, "KnownExtraPaths", got.KnownExtraPaths, tc.wantExtra)
+			assertSameStrings(t, "KnownExtraTopKeys", got.KnownExtraTopKeys, tc.wantTop)
+			if got.Profiles != nil {
+				t.Errorf("resolved exemption still carries Profiles; it must be flat so nothing re-resolves it")
+			}
+		})
+	}
+}
+
+// TestSchemaExemptionForProfileLeavesBaseUntouched guards the aliasing trap: a
+// resolved exemption must not share backing arrays with the base, or probing
+// one profile would permanently mutate the ledger for every later endpoint.
+func TestSchemaExemptionForProfileLeavesBaseUntouched(t *testing.T) {
+	base := SchemaExemption{
+		MissingOK: []string{"shared.missing"},
+		Profiles: map[string]SchemaExemption{
+			ProbeProfileProd: {MissingOK: []string{"prod.only"}},
+		},
+	}
+	_ = base.ForProfile(ProbeProfileProd)
+	assertSameStrings(t, "base MissingOK after resolving", base.MissingOK, []string{"shared.missing"})
+}
+
+func assertSameStrings(t *testing.T, label string, got, want []string) {
+	t.Helper()
+	g, w := append([]string(nil), got...), append([]string(nil), want...)
+	sort.Strings(g)
+	sort.Strings(w)
+	if !reflect.DeepEqual(g, w) {
+		t.Errorf("%s = %v, want %v", label, g, w)
 	}
 }
