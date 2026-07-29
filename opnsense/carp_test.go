@@ -150,6 +150,12 @@ func TestFetchCARPStatus_StatusMapping(t *testing.T) {
 		{"MASTER maps to 1", "MASTER", 1},
 		{"BACKUP maps to 0", "BACKUP", 0},
 		{"INIT maps to 2", "INIT", 2},
+		// DISABLED is not a fallback: getVipStatusAction has a second loop
+		// that stamps it on every configured VIP the live ifconfig pass did
+		// not find - a disabled VIP, or one on a down interface. Mapping it
+		// to -1 would report routine config as a parse failure, and the
+		// VIP-fault alert pages on anything outside [0,1] (#503).
+		{"DISABLED maps to 3", "DISABLED", 3},
 		{"unknown maps to -1", "UNKNOWN", -1},
 	}
 

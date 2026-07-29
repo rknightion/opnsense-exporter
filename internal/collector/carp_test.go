@@ -183,3 +183,63 @@ func TestCarpCollector_Name(t *testing.T) {
 		t.Errorf("expected %s, got %s", CARPSubsystem, c.Name())
 	}
 }
+
+// TestCarpCollector_Update_DisabledVIP covers #503 end to end: a configured but
+// not-instantiated VIP must export status 3, not -1.
+//
+// The row below is DERIVED FROM UPSTREAM SOURCE rather than captured, and the
+// distinction is deliberate. getVipStatusAction's second loop constructs this
+// record literally - vhid/advbase/advskew/subnet/mode/interface plus a hardcoded
+// status "DISABLED" - so the field set is fixed by the source's own branch, not
+// invented. That matters here because `interface` on a disabled row carries the
+// config key resolved to its description (or upper-cased), NOT the live
+// interface name a MASTER/BACKUP row carries, and a fixture that quietly used
+// the live-row shape would test something upstream never sends.
+//
+// It is asserted separately from the MASTER/BACKUP case because those rows come
+// from a different loop over live ifconfig output, and conflating the two is
+// what let DISABLED fall through to "unknown" unnoticed.
+func TestCarpCollector_Update_DisabledVIP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"interface": "OPT3",
+					"vhid": "7",
+					"advbase": "1",
+					"advskew": "0",
+					"status": "DISABLED",
+					"status_txt": "DISABLED",
+					"subnet": "10.0.7.1",
+					"mode": "carp",
+					"vhid_txt": "7 (freq. 1/0)"
+				}
+			],
+			"carp": {
+				"demotion": "0",
+				"allow": "1",
+				"maintenancemode": false
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &carpCollector{subsystem: CARPSubsystem}
+	c.Register("opnsense", "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	// 4 global + 1 VIP * 3 metrics.
+	if len(metrics) != 7 {
+		t.Fatalf("expected 7 metrics, got %d", len(metrics))
+	}
+	if v := getMetricValue(metrics[4]); v != 3 {
+		t.Errorf("expected vip_status=3 (DISABLED), got %f — -1 would mean the exporter "+
+			"reports a routine disabled VIP as an unparseable one, and pages on it", v)
+	}
+	if labels := getMetricLabels(metrics[4]); labels["vip"] != "10.0.7.1" {
+		t.Errorf("expected vip='10.0.7.1', got %q", labels["vip"])
+	}
+}

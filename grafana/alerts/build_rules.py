@@ -1108,18 +1108,20 @@ RULES = [
          )),
     # carp_vip_status: 1=MASTER, 0=BACKUP (both normal — inside the [0,1] range), 2=INIT, -1=unknown
     # (faults — outside the range). The `unless` clause suppresses alerts during deliberate maintenance
-    # mode.
+    # mode. The `!= 3` drops administratively DISABLED VIPs before the threshold sees them (#503):
+    # DISABLED is also outside [0,1], so without it disabling a VIP pages someone five minutes later.
     dict(name="opnsense-carp-vip-fault", title="OPNsenseCARPVIPFault",
-         A="opnsense_carp_vip_status unless on(opnsense_instance) (opnsense_carp_maintenance_mode == 1)",
+         A="(opnsense_carp_vip_status != 3) unless on(opnsense_instance) (opnsense_carp_maintenance_mode == 1)",
          op="outside_range", params=[0, 1], for_min=5, severity="warning",
          summary="OPNsense CARP VIP {{ $labels.vip }} fault on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
          description="CARP VIP {{ $labels.vip }} on {{ $labels.interface }} has been outside the normal "
                      "MASTER(1)/BACKUP(0) range for 5m — status 2 (INIT) or -1 (unknown). BACKUP is a "
                      "normal, healthy state and does not fire; this only fires on INIT/unknown. "
-                     "Suppressed while opnsense_carp_maintenance_mode is 1.",
+                     "Suppressed while opnsense_carp_maintenance_mode is 1, and DISABLED(3) VIPs are "
+                     "excluded outright.",
          runbook=dict(
-             measures='opnsense_carp_vip_status for one VIP/interface. Values: 1=MASTER, 0=BACKUP (both normal, inside [0,1]), 2=INIT, -1=unknown (faults, outside the range). Suppressed while opnsense_carp_maintenance_mode is 1 (deliberate maintenance).',
-             threshold='outside_range [0, 1] sustained for 5m - fires on INIT(2)/unknown(-1) only; BACKUP is healthy and never fires.',
+             measures='opnsense_carp_vip_status for one VIP/interface. Values: 1=MASTER, 0=BACKUP (both normal, inside [0,1]), 2=INIT, 3=DISABLED, -1=unknown. Suppressed while opnsense_carp_maintenance_mode is 1 (deliberate maintenance).',
+             threshold='outside_range [0, 1] sustained for 5m - fires on INIT(2)/unknown(-1) only. BACKUP is healthy and never fires; DISABLED(3) is administrative and is filtered out of the series before the threshold is applied.',
              absent='Default noDataState (Ok) - absence means that VIP/interface is no longer configured.',
              checks=[
                 'Read the vip/interface labels to identify the exact VIP in fault',

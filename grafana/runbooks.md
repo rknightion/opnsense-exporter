@@ -1055,12 +1055,12 @@ opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) (opnsense_hasync
 
 **Expression:**
 ```promql
-opnsense_carp_vip_status unless on(opnsense_instance) (opnsense_carp_maintenance_mode == 1)
+(opnsense_carp_vip_status != 3) unless on(opnsense_instance) (opnsense_carp_maintenance_mode == 1)
 ```
 
-**What it measures:** opnsense_carp_vip_status for one VIP/interface. Values: 1=MASTER, 0=BACKUP (both normal, inside [0,1]), 2=INIT, -1=unknown (faults, outside the range). Suppressed while opnsense_carp_maintenance_mode is 1 (deliberate maintenance).
+**What it measures:** opnsense_carp_vip_status for one VIP/interface. Values: 1=MASTER, 0=BACKUP (both normal, inside [0,1]), 2=INIT, 3=DISABLED, -1=unknown. Suppressed while opnsense_carp_maintenance_mode is 1 (deliberate maintenance).
 
-**Threshold & window:** outside_range [0, 1] sustained for 5m - fires on INIT(2)/unknown(-1) only; BACKUP is healthy and never fires.
+**Threshold & window:** outside_range [0, 1] sustained for 5m - fires on INIT(2)/unknown(-1) only. BACKUP is healthy and never fires; DISABLED(3) is administrative and is filtered out of the series before the threshold is applied.
 
 **Absent / no-data semantics:** Default noDataState (Ok) - absence means that VIP/interface is no longer configured.
 

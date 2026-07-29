@@ -45,7 +45,18 @@ type CARPVIP struct {
 }
 
 // parseCARPStatus converts a CARP status string to an integer.
-// MASTER=1, BACKUP=0, INIT=2, unknown=-1.
+// MASTER=1, BACKUP=0, INIT=2, DISABLED=3, unknown=-1.
+//
+// DISABLED earns its own value rather than falling through to unknown (#503).
+// getVipStatusAction builds its rows in two passes: the first walks the live
+// ifconfig carp blocks, which is where MASTER/BACKUP/INIT come from, and the
+// second stamps DISABLED on every configured VIP the first pass did not find -
+// a VIP an admin disabled, or one whose interface is down. Both are routine.
+//
+// Folding that into -1 was wrong in two directions at once. It reported normal
+// config as a parse failure, and because the VIP-fault alert pages on anything
+// outside [0,1] it paged someone five minutes after they disabled a VIP. It also
+// hid real parse failures behind routine config, which is what -1 is for.
 func parseCARPStatus(status string) int {
 	switch status {
 	case "MASTER":
@@ -54,6 +65,8 @@ func parseCARPStatus(status string) int {
 		return 0
 	case "INIT":
 		return 2
+	case "DISABLED":
+		return 3
 	default:
 		return -1
 	}

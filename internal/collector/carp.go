@@ -55,7 +55,7 @@ func (c *carpCollector) Register(namespace, instanceLabel string, log *slog.Logg
 		nil,
 	)
 	c.vipStatus = buildPrometheusDesc(c.subsystem, "vip_status",
-		"CARP VIP status (1 = MASTER, 0 = BACKUP, 2 = INIT, -1 = unknown)",
+		"CARP VIP status (1 = MASTER, 0 = BACKUP, 2 = INIT, 3 = DISABLED, -1 = unknown)",
 		[]string{"interface", "vhid", "vip"},
 	)
 	c.vipAdvbase = buildPrometheusDesc(c.subsystem, "vip_advbase_seconds",

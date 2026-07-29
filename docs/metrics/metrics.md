@@ -107,7 +107,7 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_carp_allow | Gauge | --- | Whether CARP is allowed (1 = allowed, 0 = not allowed) | --exporter.disable-carp |
 | opnsense_carp_maintenance_mode | Gauge | --- | Whether CARP maintenance mode is enabled (1 = enabled, 0 = disabled) | --exporter.disable-carp |
 | opnsense_carp_vips_total | Gauge | --- | Total number of CARP Virtual IPs | --exporter.disable-carp |
-| opnsense_carp_vip_status | Gauge | interface, vhid, vip | CARP VIP status (1 = MASTER, 0 = BACKUP, 2 = INIT, -1 = unknown) | --exporter.disable-carp |
+| opnsense_carp_vip_status | Gauge | interface, vhid, vip | CARP VIP status (1 = MASTER, 0 = BACKUP, 2 = INIT, 3 = DISABLED, -1 = unknown) | --exporter.disable-carp |
 | opnsense_carp_vip_advbase_seconds | Gauge | interface, vhid, vip | CARP VIP advertisement base interval in seconds | --exporter.disable-carp |
 | opnsense_carp_vip_advskew | Gauge | interface, vhid, vip | CARP VIP advertisement skew | --exporter.disable-carp |
 
