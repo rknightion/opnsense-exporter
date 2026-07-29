@@ -54,10 +54,13 @@ func TestOperationsSurfaceContract(t *testing.T) {
 	mustContain(t, doc, "acknowledged", "export timestamp stage")
 	mustContain(t, doc, "`opnsense_instance`", "stable instance label")
 
-	// #393's bounded receiver-to-collector handoff is deliberately routed separately:
-	// it belongs to the Log-derived Events collector, not the Log Shipping pipeline
-	// tab. Its generated metric reference documents the metric itself and the derived
-	// events tab exposes receiver-side saturation.
+	// #393's bounded receiver-to-collector handoff belongs to the Log-derived Events
+	// collector rather than to the Log Shipping pipeline, and the doc has to keep
+	// saying so — the two families are easy to confuse and the drop reasons do not
+	// mean the same thing. #523 moved WHERE it is charted (the Derived Metric Budget
+	// row of the health dashboard's Log Shipping tab) without changing WHOSE metric it
+	// is; the panel is still defined in tabs/log_events.py, which is what the
+	// derivedDashboard assertion below pins.
 	mustContain(t, doc, "opnsense_log_events_observation_dropped_total", "#393 ops disposition")
 	mustContain(t, strings.Join(strings.Fields(doc), " "), "not a Log Shipping pipeline self-metric", "#393 routing decision")
 	mustContain(t, derivedDashboard, "opnsense_log_events_observation_dropped_total", "#393 dashboard disposition")

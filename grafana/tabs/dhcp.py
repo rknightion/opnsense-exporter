@@ -26,6 +26,7 @@ Rows:
 """
 
 from builder import Builder, sel, epoch_ms, RUNSTOP
+from tabs import log_events
 
 
 def build(b: Builder):
@@ -499,4 +500,8 @@ def build(b: Builder):
         b.row("ISC DHCPv6 Lease Details",
               [dhcpv6_lease_table],
               present="has_dhcpv6_details"),
+        # #523: lease EVENTS, as opposed to the lease inventories above. Backend-
+        # independent, so it stays populated across a Kea/dnsmasq/ISC migration that
+        # blanks whichever backend rows the box stopped using.
+        log_events.dhcp_row(b),
     ])

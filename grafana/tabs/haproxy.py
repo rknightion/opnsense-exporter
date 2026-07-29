@@ -29,6 +29,7 @@ is expected in that case):
 """
 
 from builder import Builder, sel, RATE, RUNSTOP, UPDOWN
+from tabs import log_events
 
 
 def build(b: Builder):
@@ -403,4 +404,8 @@ def build(b: Builder):
         b.row("Stick Tables",
               [stick_table_occupancy, stick_table_table],
               present="has_haproxy_stick_tables"),
+        # #523: log-derived HAProxy events, moved here from the retired Observability
+        # domain. Gated on its own sentinel because the stats socket and the syslog
+        # stream are independently available — a box can have one without the other.
+        log_events.haproxy_row(b),
     ])

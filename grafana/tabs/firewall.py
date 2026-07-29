@@ -12,6 +12,7 @@ Covers:
 
 from builder import Builder, sel, grp, epoch_ms, RATE
 from uids import focus_device, focus_interface, to_tab
+from tabs import log_events
 
 # The pf-traffic and netflow metrics label `interface` with the kernel DEVICE name
 # (igb0, ixl0_vlan25, pppoe0), NOT the configured description that the $interface
@@ -426,11 +427,10 @@ def build(b: Builder):
         b.panel_links(panel, [
             to_tab("Interface counters for this selection", "Network", "Interfaces"),
         ])
-    for panel in (pkt_block_in, iface_hits):
-        b.panel_links(panel, [
-            to_tab("Firewall log events (per rule, per action)",
-                   "Observability", "Log-derived Events"),
-        ])
+    # #523 dropped the "Firewall log events (per rule, per action)" links from
+    # pkt_block_in and iface_hits. Those events are now two rows further down THIS tab
+    # rather than on a separate Log-derived Events tab, so the link would navigate the
+    # reader to the page they are already on.
 
     b.tab("Firewall & PF", [
         b.row("Traffic — Inbound Pass/Block (packets/s)",
@@ -459,4 +459,10 @@ def build(b: Builder):
         b.row("NAT Rule Inventory (details flag)",
               [nat_rules, nat_rules_table],
               present="has_firewall_nat_counts"),
+        # #523: the filterlog and UPnP/NAT-PMP event rows used to sit on a separate
+        # Log-derived Events tab under an Observability domain. They describe the same
+        # subject as everything above — what pf did, and what state NAT is in — so they
+        # belong here, one scroll from the counters they explain.
+        log_events.firewall_row(b),
+        log_events.upnp_row(b),
     ])

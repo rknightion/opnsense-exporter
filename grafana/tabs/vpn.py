@@ -20,6 +20,7 @@ Rows:
 """
 
 from builder import Builder, sel, grp, epoch_ms, RATE, RUNSTOP, UPDOWN
+from tabs import log_events
 
 
 # Custom peer-status mapping: 0=Down, 1=Up, 2=Unknown
@@ -473,4 +474,8 @@ def build(b: Builder):
         b.row("IPsec Config State",
               [config_flags],
               present="has_ipsec"),
+        # #523: the transitions behind every state panel above, moved here from the
+        # retired Observability domain. A tunnel that is up but flapping looks healthy
+        # on the state gauges and obvious here, which is the whole reason to co-locate.
+        log_events.vpn_row(b),
     ])

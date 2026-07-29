@@ -176,18 +176,20 @@ def build(b: Builder):
 
     # ---- drilldowns (#419) ------------------------------------------------
     # A gateway name is not a dashboard variable, so there is no field link to make
-    # here: the useful jump is sideways, to the two places that say WHY a gateway
-    # changed state. Both carry the instance and window, which is the whole point —
-    # a raw syslog stream read at the wrong window is worse than no link.
+    # here: the useful jump is sideways, to the place that says WHY a gateway changed
+    # state. It carries the instance and window, which is the whole point — a raw
+    # syslog stream read at the wrong window is worse than no link.
+    #
+    # #523 removed the two "Gateway alarm events (log-derived)" links. They pointed at
+    # the retired Log-derived Events tab for a panel this tab has carried itself since
+    # the dpinger counter landed — Gateway Alarm Events is in row one, beside Gateway
+    # Status. A link to a panel already on screen is navigation that costs a click and
+    # returns the reader to where they started.
     b.panel_links(gw_status, [
-        to_tab("Gateway alarm events (log-derived)", "Observability", "Log-derived Events"),
         to_tab("Raw syslog for this window", "Services", "Syslog", loki=True),
     ])
     b.panel_links(rtt, [
         to_tab("Interface counters for this window", "Network", "Interfaces"),
-    ])
-    b.panel_links(loss, [
-        to_tab("Gateway alarm events (log-derived)", "Observability", "Log-derived Events"),
     ])
 
     b.tab("Gateways & WAN", [

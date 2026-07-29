@@ -1,7 +1,7 @@
 {
-  "metrics": 882,
-  "panels": 768,
-  "tabs": 41,
+  "metrics": 883,
+  "panels": 778,
+  "tabs": 46,
   "tab_names": [
     "Overview",
     "System & Resources",
@@ -21,9 +21,11 @@
     "Chrony",
     "Traffic Shaper",
     "NetFlow",
+    "Flow Volume",
     "FRR Routing",
     "Captive Portal",
     "Firewall & PF",
+    "Authentication & Audit",
     "Aliases",
     "IDS/IPS",
     "CrowdSec",
@@ -39,28 +41,30 @@
     "Relayd",
     "Nginx",
     "Siproxd",
-    "Log-derived Events",
-    "Flow Volume",
-    "Recording rules",
-    "Diagnostics",
-    "Log Shipping"
+    "Overview",
+    "Scrape & Poll",
+    "OPNsense API",
+    "Metrics & OTLP",
+    "Log Shipping",
+    "Flow Pipeline",
+    "Exporter Runtime",
+    "Recording rules"
   ],
-  "top_level_tabs": 7,
+  "top_level_tabs": 6,
   "top_level_tab_names": [
     "Overview",
     "System",
     "Network",
     "Security",
     "VPN & remote access",
-    "Services",
-    "Observability"
+    "Services"
   ],
   "dashboards": [
     {
       "uid": "opnsense-exporter",
       "title": "OPNsense Exporter",
-      "panels": 718,
-      "tabs": 39,
+      "panels": 690,
+      "tabs": 38,
       "tab_names": [
         "Overview",
         "System & Resources",
@@ -80,9 +84,11 @@
         "Chrony",
         "Traffic Shaper",
         "NetFlow",
+        "Flow Volume",
         "FRR Routing",
         "Captive Portal",
         "Firewall & PF",
+        "Authentication & Audit",
         "Aliases",
         "IDS/IPS",
         "CrowdSec",
@@ -97,20 +103,23 @@
         "HAProxy",
         "Relayd",
         "Nginx",
-        "Siproxd",
-        "Log-derived Events",
-        "Flow Volume",
-        "Recording rules"
+        "Siproxd"
       ]
     },
     {
       "uid": "opnsense-exporter-health",
       "title": "OPNsense Exporter Health",
-      "panels": 50,
-      "tabs": 2,
+      "panels": 88,
+      "tabs": 8,
       "tab_names": [
-        "Diagnostics",
-        "Log Shipping"
+        "Overview",
+        "Scrape & Poll",
+        "OPNsense API",
+        "Metrics & OTLP",
+        "Log Shipping",
+        "Flow Pipeline",
+        "Exporter Runtime",
+        "Recording rules"
       ]
     }
   ]

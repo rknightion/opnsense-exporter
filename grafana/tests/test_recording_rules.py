@@ -121,36 +121,22 @@ class RecordingRulesTabTest(unittest.TestCase):
         self.assertNotIn("conditionalRendering", rows_by_title["Traffic"]["spec"])
 
 
-if __name__ == "__main__":
-    unittest.main()
+class RecordingRuleDashboardPlacementTest(unittest.TestCase):
+    """#523: the Recording rules tab lives on the EXPORTER HEALTH dashboard, whole.
 
+    This reverses #431's per-rule sort, and the reversal is the owner's, not a
+    refactor. #431's rule was "a recording rule relating to self-observability may
+    move, the rest stay on the main dashboard, because they generate data used for
+    monitoring OPNsense". All 14 bundled rules are firewall-derived, so that rule
+    produced an empty move set and the tab stayed put — and the tab it stayed on was
+    then the problem #523 found: every panel of it restates a raw System, Interfaces
+    or Firewall panel in precomputed form, so on the operational dashboard it was a
+    second place to read the same figure. On the health dashboard it answers a
+    question nothing else does — are the bundled rules actually evaluating?
 
-SELF_METRIC = re.compile(r"\bopnsense_exporter_[a-z0-9_]+")
-FIREWALL_METRIC = re.compile(r"\bopnsense_(?!exporter_)[a-z0-9_]+")
-
-
-def is_self_observability(rule) -> bool:
-    """A recording rule belongs to the exporter's own health iff it derives ONLY
-    from exporter self-metrics.
-
-    This is the owner's rule for the #431 split, stated as code rather than as a
-    comment: "if a recording rule relates to self-observability it can move,
-    otherwise it stays on the main dashboard — they generate data used for
-    monitoring OPNsense, so that's where they live". A rule mixing both is
-    firewall data derived with an exporter metric alongside it, and stays.
-    """
-    expr = rule["expr"]
-    return bool(SELF_METRIC.search(expr)) and not FIREWALL_METRIC.search(expr)
-
-
-class RecordingRuleDashboardSortTest(unittest.TestCase):
-    """#431: recording rules are sorted PER RULE, not relocated as a tab.
-
-    All 14 bundled rules derive from firewall metrics today, so the self-observability
-    set is empty and the Recording rules tab stays whole on the main dashboard. That
-    makes this test the thing that stops the finding from silently expiring: add a
-    recording rule over `opnsense_exporter_*` and chart it on the main dashboard, and
-    this fails and names it.
+    So placement is no longer per rule and there is no classifier any more. What this
+    test still guarantees is the thing that mattered in #431: no recording rule is
+    silently uncharted, and a new one has to be given a panel.
     """
 
     @classmethod
@@ -163,27 +149,25 @@ class RecordingRuleDashboardSortTest(unittest.TestCase):
         return {uid for uid, b in self.by_uid.items()
                 if any(metric in expr for expr in b._exprs)}
 
-    def test_every_recording_rule_is_charted_on_the_dashboard_its_subject_belongs_to(self):
+    def test_every_recording_rule_is_charted_on_the_health_dashboard(self):
         for rule in RECORDING:
-            metric, expected = rule["metric"], (
-                self.uids.HEALTH_UID if is_self_observability(rule) else self.uids.MAIN_UID)
-            with self.subTest(metric=metric):
-                charted = self._dashboards_charting(metric)
-                self.assertIn(expected, charted,
-                              f"{metric} derives from "
-                              f"{'exporter self-metrics' if expected == self.uids.HEALTH_UID else 'firewall metrics'}"
-                              f", so it belongs on {expected}, but is only charted on "
-                              f"{sorted(charted) or 'no dashboard'}")
+            with self.subTest(metric=rule["metric"]):
+                charted = self._dashboards_charting(rule["metric"])
+                self.assertIn(
+                    self.uids.HEALTH_UID, charted,
+                    f"{rule['metric']} is charted on {sorted(charted) or 'no dashboard'}; "
+                    "every bundled recording rule belongs on the Recording rules tab, "
+                    "which lives on the exporter health dashboard since #523")
 
-    def test_the_classifier_actually_discriminates(self):
-        """The control. Every real rule is firewall-derived, so without this the
-        test above would pass on a classifier that always returned False."""
-        self.assertFalse(any(is_self_observability(r) for r in RECORDING),
-                         "a self-observability recording rule now exists; the test "
-                         "above is live for it and this control needs updating")
-        self.assertTrue(is_self_observability(
-            {"metric": "x", "expr": "rate(opnsense_exporter_logs_shipped_total[5m])"}))
-        self.assertFalse(is_self_observability(
-            {"metric": "x", "expr": "opnsense_system_memory_used_bytes"}))
-        self.assertFalse(is_self_observability(
-            {"metric": "x", "expr": "opnsense_up / opnsense_exporter_scrapes_total"}))
+    def test_the_precomputed_series_are_not_also_charted_on_the_main_dashboard(self):
+        """The reason the tab moved. A recording rule's output appearing on the
+        operational dashboard means an operator has two panels for one figure — the
+        raw one and the precomputed one — and no way to tell which is authoritative."""
+        for rule in RECORDING:
+            with self.subTest(metric=rule["metric"]):
+                self.assertNotIn(self.uids.MAIN_UID,
+                                 self._dashboards_charting(rule["metric"]))
+
+
+if __name__ == "__main__":
+    unittest.main()

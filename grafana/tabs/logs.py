@@ -19,6 +19,7 @@ removed it.
 """
 
 from builder import Builder, grp, sel, RATE
+from tabs import log_events
 from uids import HEALTH_UID, to_tab
 
 
@@ -217,19 +218,20 @@ def build(b: Builder):
 
     # ---- drilldowns (#419) ------------------------------------------------
     # This tab is the pipeline's own health; the two questions it raises point
-    # elsewhere. "Is anything arriving?" is the Loki-backed syslog stream, and "is the
-    # exporter itself healthy?" is Diagnostics. Shipping errors specifically implicate
-    # the sink, which is the same OTLP/endpoint story Diagnostics carries.
+    # elsewhere. "Is anything arriving?" is the Loki-backed syslog stream, and "what did
+    # these lines become?" is the operational dashboard, where the derived counters now
+    # sit beside the subsystems they describe (#523). Shipping errors specifically
+    # implicate the sink, which is the OTLP/endpoint story on Metrics & OTLP.
     b.panel_links(shipped, [
         to_tab("Shipped lines in Loki for this window", "Services", "Syslog", loki=True),
-        to_tab("Log-derived event metrics", "Observability", "Log-derived Events"),
+        to_tab("Firewall events derived from these lines", "Security", "Firewall & PF"),
     ])
     b.panel_links(ship_errors, [
-        to_tab("Exporter delivery health for this window", "Diagnostics", "",
+        to_tab("Exporter delivery health for this window", "Delivery", "Metrics & OTLP",
                uid=HEALTH_UID),
     ])
     b.panel_links(dropped, [
-        to_tab("Exporter delivery health for this window", "Diagnostics", "",
+        to_tab("Exporter delivery health for this window", "Delivery", "Metrics & OTLP",
                uid=HEALTH_UID),
     ])
 
@@ -240,4 +242,9 @@ def build(b: Builder):
         b.row("Receivers", [parse_errors, rejected, resource_capped], present="has_logs"),
         b.row("Enrichment", [enrich_misses, enrich_errors, enrich_stale], present="has_logs"),
         b.row("Debug Capture", [debug_captured, debug_dropped], present="has_debug_capture"),
+        # #523: the derived-metric budget. It belongs to this pipeline — these are the
+        # counters that say whether a received line became a metric observation or was
+        # folded into an overflow bucket — and it is the one row of the retired
+        # Log-derived Events tab that described the exporter rather than the firewall.
+        log_events.collector_pressure_row(b),
     ])

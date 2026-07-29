@@ -106,8 +106,17 @@ def _is_neutral(steps):
     return len(steps) == 1 and steps[0].get("value") is None
 
 
-def _panels_of(builder, group):
-    return [p for p in builder.elements.values()
+def _panels_of(builders, group):
+    """Panels of one viz group across the WHOLE dashboard family.
+
+    Family-wide rather than per-dashboard since #523: a gauge is a gauge wherever it
+    is rendered, and the recording-rule gauges moved to the health dashboard. Reading
+    one builder would have let the pinned counts fall by four without anything being
+    deleted, which is the opposite of what these pins are for.
+    """
+    if not isinstance(builders, (list, tuple)):
+        builders = [builders]
+    return [p for b in builders for p in b.elements.values()
             if p["spec"]["vizConfig"]["group"] == group]
 
 
@@ -204,7 +213,7 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.builder = build_dashboard.build_all()
+        cls.builder = [b for _, b in build_dashboard.build_family()]
 
     def _panel(self, title, group="bargauge"):
         for panel in _panels_of(self.builder, group):

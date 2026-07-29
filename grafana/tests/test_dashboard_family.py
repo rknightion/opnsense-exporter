@@ -46,32 +46,44 @@ class FamilyShapeTest(unittest.TestCase):
 
     def test_self_observability_tabs_live_on_the_health_dashboard(self):
         _, health = self.by_uid[uids.HEALTH_UID]
-        self.assertEqual(set(leaf_titles(health)), {"Diagnostics", "Log Shipping"})
+        self.assertEqual(set(leaf_titles(health)), {
+            "Overview", "Scrape & Poll", "OPNsense API", "Metrics & OTLP",
+            "Log Shipping", "Flow Pipeline", "Exporter Runtime", "Recording rules"})
 
     def test_they_are_gone_from_the_main_dashboard(self):
         _, main = self.by_uid[uids.MAIN_UID]
-        moved = {"Diagnostics", "Log Shipping"}
+        moved = {"Scrape & Poll", "OPNsense API", "Metrics & OTLP", "Log Shipping",
+                 "Flow Pipeline", "Exporter Runtime", "Recording rules"}
         self.assertEqual(moved & set(leaf_titles(main)), set(),
                          "a moved tab is still on the main dashboard; it would be "
                          "built twice and the two copies would drift")
+
+    # "Overview" is the one title both dashboards carry, and it is deliberate: each
+    # answers "what should I look at first" for its own reader. Every other leaf title
+    # is unique across the family, which is what stops a tab being built twice.
+    SHARED_LEAF_TITLES = {"Overview"}
 
     def test_no_leaf_tab_appears_on_both_dashboards(self):
         seen = {}
         for spec, b in self.built:
             for title in leaf_titles(b):
+                if title in self.SHARED_LEAF_TITLES:
+                    continue
                 self.assertNotIn(title, seen,
                                  f"leaf tab {title!r} is on both {seen.get(title)} "
                                  f"and {spec.uid}")
                 seen[title] = spec.uid
 
-    def test_the_summary_row_does_not_reproduce_a_health_panel(self):
-        """Scoped to the summary row rather than to every title, deliberately.
+    def test_a_summary_tile_shared_with_the_health_dashboard_is_the_same_panel(self):
+        """#523 inverted this check, and the inversion is the fix.
 
-        A shared title across the family is not automatically wrong — the traffic
-        shaper and the log pipeline both legitimately own a "Queue Bytes" panel in
-        their own domains. What must not happen is the summary row growing into a
-        copy of the health dashboard, which is a real risk because it charts the
-        same self-metrics.
+        It used to require that no summary tile shared a title with any health-
+        dashboard panel, on the reasoning that two copies of one panel drift apart.
+        That was the right worry and the wrong remedy: both dashboards genuinely need
+        these three figures, so forbidding the shared title only forced the second
+        copy to be spelled differently. `exporter_health_tiles()` now builds them once
+        and both dashboards render that definition, so a shared title is EXPECTED and
+        what must hold is that the two renderings are byte-identical.
         """
         _, main = self.by_uid[uids.MAIN_UID]
         _, health = self.by_uid[uids.HEALTH_UID]
@@ -80,11 +92,24 @@ class FamilyShapeTest(unittest.TestCase):
                if r["spec"]["title"] == "Exporter Health"][0]
         summary = {item["spec"]["element"]["name"]
                    for item in row["spec"]["layout"]["spec"]["items"]}
-        summary_titles = {main.elements[name]["spec"]["title"] for name in summary}
-        health_titles = {p["spec"]["title"] for p in health.elements.values()}
-        self.assertEqual(summary_titles & health_titles, set(),
-                         "a summary tile has the same title as a health-dashboard "
-                         "panel; two copies of one panel drift apart")
+        health_by_title = {p["spec"]["title"]: p for p in health.elements.values()}
+        shared = 0
+        for name in summary:
+            panel = main.elements[name]
+            twin = health_by_title.get(panel["spec"]["title"])
+            if twin is None:
+                continue
+            shared += 1
+            self.assertEqual(panel["spec"]["data"], twin["spec"]["data"],
+                             f"{panel['spec']['title']!r} queries different data on the "
+                             "two dashboards; it is meant to be one definition rendered "
+                             "twice")
+            self.assertEqual(panel["spec"]["description"], twin["spec"]["description"],
+                             f"{panel['spec']['title']!r} has drifted in description "
+                             "between the two dashboards")
+        self.assertEqual(shared, 3,
+                         "expected the three exporter_health_tiles() panels to appear "
+                         f"on both dashboards, found {shared}")
 
 
 class CoverageSurvivesTheSplitTest(unittest.TestCase):

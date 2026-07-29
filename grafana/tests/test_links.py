@@ -310,17 +310,19 @@ class UrlBuilderTest(unittest.TestCase):
     """Unit-level contract of the builder itself, independent of the dashboard."""
 
     def test_slug_collapses_space_runs_only(self):
+        # A synthetic title, not a live one: what it pins is that a hyphen INSIDE a
+        # word survives untouched while a space becomes one.
         self.assertEqual(uids.tab_slug("Log-derived Events"), "Log-derived-Events")
         self.assertEqual(uids.tab_slug("DNS - Unbound"), "DNS---Unbound")
         self.assertEqual(uids.tab_slug("VPN &  remote access"), "VPN-&-remote-access")
 
     def test_dash_url_orders_and_encodes_parameters(self):
-        url = uids.dash_url(tab=("Observability", "Log Shipping"),
+        url = uids.dash_url(tab=("Delivery", "Log Shipping"),
                             variables={"interface": "${__field.labels.interface}"})
         self.assertTrue(url.startswith(f"/d/{uids.MAIN_UID}?"))
         self.assertIn(uids.URL_TIME_RANGE, url)
-        self.assertIn("dtab=Observability", url)
-        self.assertIn("Observability-dtab=Log-Shipping", url)
+        self.assertIn("dtab=Delivery", url)
+        self.assertIn("Delivery-dtab=Log-Shipping", url)
         self.assertIn("var-interface=${__field.labels.interface}", url)
 
     def test_dash_url_refuses_a_reserved_destination(self):

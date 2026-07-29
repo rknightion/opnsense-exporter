@@ -86,32 +86,53 @@ TAB_GROUPS = [
     ("Network", (
         "Interfaces", "Gateways & WAN", "DNS - Unbound", "DHCP",
         "Routing & Neighbors", "Protocol Stats", "NTP", "Chrony",
-        "Traffic Shaper", "NetFlow", "FRR Routing", "Captive Portal",
+        "Traffic Shaper", "NetFlow", "Flow Volume", "FRR Routing", "Captive Portal",
     )),
     ("Security", (
-        "Firewall & PF", "Aliases", "IDS/IPS", "CrowdSec", "ClamAV",
-        "Q-Feeds", "Zenarmor",
+        "Firewall & PF", "Authentication & Audit", "Aliases", "IDS/IPS", "CrowdSec",
+        "ClamAV", "Q-Feeds", "Zenarmor",
     )),
     ("VPN & remote access", ("VPN", "Tailscale", "NetBird", "Tor")),
     ("Services", ("Syslog", "HAProxy", "Relayd", "Nginx", "Siproxd")),
-    ("Observability", (
-        "Log-derived Events", "Flow Volume", "Recording rules",
-    )),
 ]
 
-# The self-observability dashboard (#431). Deliberately flat: three tabs do not
-# need a domain layer, and burying "Diagnostics" one click deeper on the dashboard
-# an operator opens *because something is already wrong* would be a regression.
+# There is deliberately no "Observability" domain (#523). It held three leaves that
+# were grouped by HOW their numbers were produced — derived from syslog, rolled up
+# from flow records, precomputed by a recording rule — which is an implementation
+# detail rather than a question anyone opens a dashboard to ask. Splitting them by
+# WHO reads them put every firewall-operational panel on the domain tab that already
+# owns its subsystem (filterlog events beside the pf counters, tunnel lifecycle
+# beside tunnel state) and moved every exporter-pipeline counter to the health
+# dashboard. Do not reintroduce the domain: a panel arriving here belongs to a
+# subsystem, and if no subsystem claims it, that is the finding.
+
+# The self-observability dashboard (#431), re-laid-out by #523.
 #
-# "Recording rules" is NOT here, and that is a per-rule finding rather than a
-# per-tab preference. The owner's rule is that a recording rule relating to
-# self-observability may move while the rest stay on the main dashboard; all 14
-# bundled rules derive from firewall metrics (`opnsense_*`), none from exporter
-# self-metrics (`opnsense_exporter_*`), so the sort produces an empty set today.
-# `tests/test_recording_rules.py` enforces the rule going forward rather than
-# leaving it as a comment.
+# It launched deliberately flat — two tabs, one of them an eleven-row "Diagnostics",
+# on the reasoning that an operator opening it because something is already wrong
+# should not have to click into a domain first. That reasoning did not survive the
+# tab count: eleven rows is not a fast read, and #523 moved three more subjects here
+# (the flow pipeline, the derived-metric budget, recording rules). So it now carries
+# the same shape as the main dashboard — an Overview of tiles that answer "is the
+# exporter healthy" without scrolling, then domains for the detail behind each tile.
+#
+# The original concern is answered by the Overview rather than abandoned: every tile
+# on it links to the tab holding its detail, so "something is wrong" is still one
+# click from the panels that say what.
+#
+# "Recording rules" is top-level rather than inside a domain because it is the one
+# tab here that is not about the exporter: it shows the bundled rules' OUTPUT, which
+# is firewall data in precomputed form. It sits on this dashboard because every panel
+# restates a raw System/Interfaces/Firewall panel, so on the operational dashboard it
+# was duplication; here it answers "are my recording rules actually evaluating?".
+# "Exporter Runtime" and "Recording rules" are top-level rather than each sitting in
+# a domain of its own: a parent tab holding exactly one child is a click that shows
+# the reader nothing they could not already see.
 HEALTH_TAB_GROUPS = [
-    (None, ("Diagnostics", "Log Shipping")),
+    (None, ("Overview",)),
+    ("Collection", ("Scrape & Poll", "OPNsense API")),
+    ("Delivery", ("Metrics & OTLP", "Log Shipping", "Flow Pipeline")),
+    (None, ("Exporter Runtime", "Recording rules")),
 ]
 
 # A tab containing only conditional rows is still rendered by Grafana unless the
@@ -144,8 +165,10 @@ OPTIONAL_TAB_PRESENCE = {
     "Chrony": "has_chrony",
     "Tor": "has_tor",
     "Siproxd": "has_siproxd",
-    "Log-derived Events": "has_log_events",
-    "Flow Volume": "has_flow",
+    "Authentication & Audit": ["has_log_events_sshd", "has_log_events_audit",
+                               "has_log_events_radius"],
+    "Flow Volume": "has_flow_volume",
+    "Flow Pipeline": "has_flow",
     "Zenarmor": ["has_zenarmor_metrics", "has_zenarmor_logs"],
     "Log Shipping": "has_logs",
     "Recording rules": "has_recording_rules",
@@ -401,20 +424,27 @@ def build_overview(b: Builder):
     ])
 
 
-def exporter_health_summary(b: Builder) -> list:
-    """Three tiles answering "can I trust the rest of this dashboard?" (#431).
+def exporter_health_tiles(b: Builder) -> list:
+    """The three tiles that answer "can I trust what I am reading?" — built ONCE and
+    rendered on both dashboards (#431, shared by #523).
 
-    The self-observability detail moved to its own dashboard, which creates a new
-    way to be wrong: an operator reading a flat graph has no reason to suspect the
-    exporter stopped collecting rather than the firewall going quiet. These stay
-    behind as the tripwire, and every one of them links through to the detail.
+    They are the main dashboard's tripwire: the self-observability detail lives
+    elsewhere, so an operator reading a flat graph has no reason to suspect the
+    exporter stopped collecting rather than the firewall going quiet. They are also
+    the first three tiles of the health dashboard's own Overview, because that
+    dashboard has to answer the same question before anything else on it is worth
+    reading.
 
-    Deliberately three tiles and no graphs. Anything that needs a time axis to read
-    belongs on the health dashboard; duplicating panels here would give two places
-    to fix a description and one of them would rot.
+    The shared builder is the point, not an economy. Both dashboards genuinely need
+    these figures, and the earlier arrangement — three tiles here, no summary there —
+    was what made "two copies drift apart" avoidable rather than solved. Rendering
+    one definition twice means a fixed description is fixed in both places, and
+    `tests/test_dashboard_family.py` asserts the specs are identical rather than
+    asserting the titles differ.
+
+    Tiles only, no time axis. Anything needing one belongs on the health tab that
+    owns it — these say WHICH thing is unwell, those say since when and how badly.
     """
-    detail = [uids.data_link("Open the exporter health dashboard",
-                             uid=uids.HEALTH_UID, tab=("Diagnostics", ""))]
     failing = b.stat(
         "Failing Collectors",
         f'sum {grp()} ({sel("opnsense_exporter_scrape_collector_success")} == bool 0)',
@@ -422,18 +452,26 @@ def exporter_health_summary(b: Builder) -> list:
         legend="{{opnsense_instance}}",
         thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
         desc="Sub-collectors whose most recent scheduled poll failed. Anything above "
-             "zero means part of this dashboard is showing retained data rather than "
-             "current data — which tab is affected is on the health dashboard.")
+             "zero means part of the operational dashboard is showing retained data "
+             "rather than current data — which collector is affected is on the health "
+             "dashboard's Scrape & Poll tab.")
+    # #523 repointed this from last_success age to snapshot age. The two differ on a
+    # collector that is refreshing part of its data while one endpoint errors: the old
+    # query climbed there even though the served data was current, so the one tile an
+    # operator uses to decide whether to trust the graphs cried wolf on a degraded but
+    # usable collector. Snapshot age is the true age of what every scrape replays
+    # (#382); "is this collector degraded" is answered by its own panel on Scrape & Poll.
     stalest = b.stat(
         "Stalest Collector Data",
-        f'max {grp()} (time() - {sel("opnsense_exporter_collector_last_success_timestamp_seconds")})',
+        f'max {grp()} (time() - {sel("opnsense_exporter_collector_snapshot_timestamp_seconds")})',
         unit="s", w=4, h=5, graph="none", color_mode="background",
         legend="{{opnsense_instance}}",
         thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 900},
                     {"color": "red", "value": 3600}],
-        desc="Age of the oldest fully-clean collector poll. Compare against the poll "
-             "tiers before alarming: the cold tier legitimately sits at 15 minutes, so "
-             "a value under an hour is normal on a healthy exporter.")
+        desc="Age of the oldest metric buffer any scrape or OTLP export would replay — "
+             "the true age of the data, which does not advance on a failed poll that "
+             "emitted nothing. Compare against the poll tiers before alarming: the cold "
+             "tier legitimately sits at 15 minutes, so a value under an hour is normal.")
     api_errs = b.stat(
         "OPNsense API Error Rate",
         f'sum {grp()} (rate({sel("opnsense_exporter_endpoint_errors_total")}[{RATE}]))',
@@ -443,9 +481,18 @@ def exporter_health_summary(b: Builder) -> list:
         desc="Errors per second calling the firewall's API. A plugin-gated endpoint "
              "returning 404 is not counted, so anything here is a real failure — auth, "
              "TLS, timeout or a 5xx.")
-    for name in (failing, stalest, api_errs):
-        b.panel_links(name, detail)
     return [failing, stalest, api_errs]
+
+
+def exporter_health_summary(b: Builder) -> list:
+    """The main dashboard's rendering of the shared tiles, each linking through to
+    the health dashboard."""
+    tiles = exporter_health_tiles(b)
+    detail = [uids.data_link("Open the exporter health dashboard",
+                             uid=uids.HEALTH_UID, tab=("Overview", ""))]
+    for name in tiles:
+        b.panel_links(name, detail)
+    return tiles
 
 
 def build_diagnostics(b: Builder):
@@ -841,21 +888,131 @@ def build_diagnostics(b: Builder):
              "admission cap rejected outright (they never do enough work to be worth "
              "timing) - a rejection shows up on the Rejections panel instead.")
 
-    b.tab("Diagnostics", [
+    # #523 split what was one eleven-row "Diagnostics" tab into four, along the
+    # question each row answers. The panels are unchanged and still built together,
+    # because several of them share a sentinel registration and all of them share the
+    # module's scoping comments — splitting the FILE would separate a panel from the
+    # paragraph explaining why it is scoped the way it is.
+    b.tab("Scrape & Poll", [
         b.row("Scrape Health", [up, scrapes, errs_ts, errs_tbl]),
         b.row("Per-Collector Scrapes", [scrape_dur, scrape_ok]),
         b.row("Per-Collector Poll Schedule", [poll_interval, poll_age, next_poll]),
         b.row("Per-Collector Data Freshness", [snapshot_age, success_age]),
-        b.row("OTLP Delivery Health", [otlp_on, otlp_fails, otlp_age, otlp_rate],
-              present="has_otlp"),
+    ])
+    b.tab("OPNsense API", [
         b.row("API Requests (per endpoint)", [api_rate, api_p95]),
         b.row("API Response Cache", [cache_hit_ratio, cache_hits, cache_by_ep]),
-        b.row("Grafana Annotation Writing", [ann_rate, ann_age], present="has_annotations"),
+    ])
+    b.tab("Metrics & OTLP", [
+        b.row("OTLP Delivery Health", [otlp_on, otlp_fails, otlp_age, otlp_rate],
+              present="has_otlp"),
         b.row("Metrics Handler Serving Path",
               [server_inflight, server_req_rate, server_rejected, server_gather_err, server_p95]),
+        b.row("Grafana Annotation Writing", [ann_rate, ann_age], present="has_annotations"),
+    ])
+    b.tab("Exporter Runtime", [
         b.row("Exporter Build & Collectors", [build, cov, series_total]),
-        b.row("Exporter Runtime (Go client metrics)", [go_goro, go_mem, go_cpu],
+        b.row("Go Runtime (client metrics)", [go_goro, go_mem, go_cpu],
               present="has_go_runtime"),
+    ])
+
+
+def build_health_overview(b: Builder):
+    """The health dashboard's landing tab (#523): can I trust what the exporter is
+    telling me, answered without scrolling and without a time axis.
+
+    Every tile here restates a number whose detail lives on one of the tabs behind it,
+    and every tile links to that tab. That is the deliberate trade the flat layout used
+    to avoid: a tile is a second place a figure appears, but a reader arriving at an
+    eleven-row tab has to know which row to read, and this dashboard's whole job is
+    being read by somebody who does not yet know what is wrong.
+
+    Tiles only. Anything needing a time axis to interpret belongs on the tab that owns
+    it — the tiles say WHICH thing is unwell, the tabs say since when and how badly.
+    """
+    scrape_detail = [uids.data_link("Scrape and poll detail", uid=uids.HEALTH_UID,
+                                    tab=("Collection", "Scrape & Poll"))]
+    api_detail = [uids.data_link("API request and cache detail", uid=uids.HEALTH_UID,
+                                 tab=("Collection", "OPNsense API"))]
+    otlp_detail = [uids.data_link("Delivery detail", uid=uids.HEALTH_UID,
+                                  tab=("Delivery", "Metrics & OTLP"))]
+    logs_detail = [uids.data_link("Log shipping detail", uid=uids.HEALTH_UID,
+                                  tab=("Delivery", "Log Shipping"))]
+
+    # The same three tiles the main dashboard's summary row renders, from one
+    # definition — see exporter_health_tiles().
+    failing, stalest, api_errs = exporter_health_tiles(b)
+    reachable = b.stat(
+        "Firewall Reachable", sel("opnsense_up"), mappings=UPDOWN,
+        w=4, h=5, graph="none", color_mode="background", legend="{{opnsense_instance}}",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        desc="1 = the exporter reached the firewall on its last poll. Absent — rather "
+             "than 0 — means Prometheus is getting nothing from the exporter at all, "
+             "which is a different fault with a different fix.")
+    cache_ratio = b.stat(
+        "API Cache Hit Rate",
+        f'sum {grp()} (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) / '
+        f'(sum {grp()} (rate({sel("opnsense_exporter_api_cache_hits_total")}[{RATE}])) + '
+        f'sum {grp()} (rate({sel("opnsense_exporter_api_cache_misses_total")}[{RATE}])))',
+        unit="percentunit", w=4, h=5, legend="{{opnsense_instance}}",
+        desc="Share of calls to cacheable endpoints served from cache. Per instance, "
+             "never blended across appliances — a sum/sum ratio lets one exporter's "
+             "broken cache hide behind a healthy one. A collapse here shows up as a "
+             "step in the API request rate on the OPNsense API tab.")
+    series = b.stat(
+        "Collector Series", sel("opnsense_exporter_series_total"),
+        w=4, h=5, legend="{{opnsense_instance}}",
+        desc="Series on the collector registry, the number --exporter.series-budget is "
+             "measured against. The budget is advisory: exceeding it warns and changes "
+             "nothing about what is exported. Excludes the exporter's own process_*/go_* "
+             "and OTLP families, which live on a separate registry.")
+
+    otlp_on = b.stat(
+        "OTLP Export Enabled", sel("opnsense_exporter_otlp_enabled"), mappings=ENABLED,
+        w=6, h=5, graph="none", color_mode="background",
+        thresholds=[{"color": "red", "value": None}, {"color": "green", "value": 1}],
+        desc="1 = the OTLP metric push pipeline is RUNNING. It does NOT mean delivery "
+             "is working — the exporter connects lazily, so this reads 1 from startup "
+             "even with a wrong endpoint. Judge delivery by the two tiles beside it.")
+    otlp_fail = b.stat(
+        "OTLP Consecutive Failures", sel("opnsense_exporter_otlp_consecutive_failures"),
+        w=6, h=5, graph="none", color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+        desc="Exports that have failed back-to-back, reset to 0 by the next success. "
+             "Any sustained non-zero value is an ongoing delivery outage.")
+    otlp_last = b.stat(
+        "Since Last OTLP Export",
+        f'time() - ({sel("opnsense_exporter_otlp_last_success_timestamp_seconds")} > 0)',
+        unit="s", w=6, h=5, graph="none", color_mode="background",
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 300},
+                    {"color": "red", "value": 900}],
+        desc="Seconds since the last export the backend accepted. NO DATA means no "
+             "export has EVER succeeded since this exporter started — the `> 0` guard "
+             "suppresses the zero deliberately, since time() minus 0 would render a "
+             "56-year age as though an export had once landed.")
+    ship_rate = b.stat(
+        "Log Records Shipped",
+        f'sum {grp()} (rate({sel("opnsense_exporter_logs_shipped_total")}[{RATE}]))',
+        unit="ops", w=6, h=5, legend="{{opnsense_instance}}",
+        desc="Records per second the log pipeline handed to its sink. Zero on a box "
+             "that ships logs is the signal; absent means log shipping is off.")
+
+    for panel in (reachable, failing, stalest):
+        b.panel_links(panel, scrape_detail)
+    for panel in (api_errs, cache_ratio):
+        b.panel_links(panel, api_detail)
+    for panel in (series, otlp_on, otlp_fail, otlp_last):
+        b.panel_links(panel, otlp_detail)
+    b.panel_links(ship_rate, logs_detail)
+
+    b.tab("Overview", [
+        b.row("Collection", [reachable, failing, stalest, api_errs, cache_ratio, series]),
+        # Two independently opt-in delivery paths, each gated on its own sentinel: a
+        # box using neither would otherwise open on a row of permanent no-data tiles,
+        # which is exactly the "is it broken or is it off?" ambiguity the rest of this
+        # dashboard exists to remove.
+        b.row("OTLP Delivery", [otlp_on, otlp_fail, otlp_last], present="has_otlp"),
+        b.row("Log Shipping", [ship_rate], present="has_logs"),
     ])
 
 
@@ -941,20 +1098,24 @@ def build_health(tab_groups=HEALTH_TAB_GROUPS) -> Builder:
     """Build the SELF-OBSERVABILITY dashboard's Builder (#431).
 
     This is the exporter watching itself: scrape health, per-collector poll
-    schedule and freshness, OTLP delivery, the API response cache, the Go runtime
-    and the log-shipping pipeline. Deliberately NOT firewall domain health — the
-    epic's own scope line — which is why the Recording Rules tab stays on the main
-    dashboard even though it is "derived" data.
+    schedule and freshness, OTLP delivery, the API response cache, the Go runtime,
+    the log-shipping pipeline and the flow ingest path.
 
     It carries the same core variables and annotation layers as the main dashboard
     on purpose: the question an operator asks here is almost always "was the
     exporter unwell *when that firewall event happened*", and answering it needs
     the same instance picker and the same event timeline.
 
-    There is deliberately no separate Overview tab. Diagnostics already opens on
-    scrape health, and a summary tab in front of it would be a second place to
-    state the same three facts — the summary that IS wanted lives on the main
-    dashboard, where the reader has no other way to learn them.
+    Two things it now carries that are NOT exporter self-observability, both by
+    owner decision in #523, and both for the same reason — they were duplication on
+    the operational dashboard and are answers here. `Recording rules` shows the
+    bundled rules' output, every panel of which restates a raw System/Interfaces/
+    Firewall panel. The `Derived Metric Budget` row on Log Shipping counts the
+    exporter's own bookkeeping about log-derived metrics, not the events themselves.
+
+    The Overview tab is #523's reversal of this dashboard's original "deliberately
+    flat, no summary" decision. See `HEALTH_TAB_GROUPS` for why that decision did
+    not survive the tab count.
     """
     b = Builder()
     add_core_variables(b)
@@ -962,6 +1123,9 @@ def build_health(tab_groups=HEALTH_TAB_GROUPS) -> Builder:
     add_annotations(b)
     register_subsystem_tabs(b, HEALTH_TAB_MODULES)
     build_diagnostics(b)
+    # Last: the Overview's rows are gated on sentinels the tab modules and
+    # build_diagnostics register (has_logs, has_otlp), so it has to come after both.
+    build_health_overview(b)
     organize_tabs(b, tab_groups)
     return b
 
@@ -1039,14 +1203,17 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
 # appears in exactly one list: building it onto both dashboards would produce two
 # copies of the same tab that drift independently.
 MAIN_TAB_MODULES = [
-    "system", "interfaces", "firewall", "alias", "gateways", "dns_unbound", "dhcp",
-    "vpn", "tailscale", "netbird", "routing", "protocols", "ntp", "certificates",
-    "clamav", "services_cron", "syslog", "qfeeds", "netflow", "carp", "haproxy",
-    "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
-    "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd", "log_events",
-    "flow", "zenarmor", "recording_rules",
+    "system", "interfaces", "firewall", "auth_audit", "alias", "gateways",
+    "dns_unbound", "dhcp", "vpn", "tailscale", "netbird", "routing", "protocols",
+    "ntp", "certificates", "clamav", "services_cron", "syslog", "qfeeds", "netflow",
+    "carp", "haproxy", "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",
+    "captiveportal", "trafficshaper", "hasync", "chrony", "tor", "siproxd",
+    "flow", "zenarmor",
 ]
-HEALTH_TAB_MODULES = ["logs"]
+# `log_events` is deliberately absent from BOTH lists: since #523 it builds no tab of
+# its own, only rows that other modules place (see its docstring). Adding it back to a
+# module list would call a `build()` it does not have.
+HEALTH_TAB_MODULES = ["logs", "flow_pipeline", "recording_rules"]
 
 
 def register_subsystem_tabs(b: Builder, order=None):

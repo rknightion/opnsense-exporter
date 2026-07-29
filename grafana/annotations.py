@@ -228,14 +228,15 @@ ANNOTATIONS: list = [
         expr=f'max by (opnsense_instance) ({sel("opnsense_ids_ruleset_last_updated_timestamp_seconds")}) '
              "* 1000 > $__from < $__to",
         value_as_time=True,
-        enable=False,
         color="dark-orange",
         tag_keys=("opnsense_instance",),
         metrics=("opnsense_ids_ruleset_last_updated_timestamp_seconds",),
         why="An alert-rate step after a ruleset update is the ruleset, not the "
-            "traffic. Aggregated to the newest update per appliance and default-off "
-            "because a box tracking many rulesets updates them on a schedule, and one "
-            "marker per ruleset per day would bury the events worth seeing.",
+            "traffic — and IDS alert rate is a panel operators read constantly, so the "
+            "marker earns its place on the timeline. Aggregated to the newest update "
+            "per appliance, which is what keeps a box tracking many rulesets to one "
+            "marker per update cycle. Default-ON by owner decision 2026-07-29 (#523), "
+            "reversing the earlier default-off cadence call.",
     ),
     Annotation(
         name="Threat feed updated",
@@ -249,7 +250,10 @@ ANNOTATIONS: list = [
         tag_keys=("opnsense_instance",),
         metrics=("opnsense_qfeeds_feed_last_update_timestamp_seconds",),
         why="Same shape as the IDS ruleset: the blocklist contents changed under a "
-            "static configuration. Default-off for the same cadence reason.",
+            "static configuration. The ONE layer the owner kept default-off in the "
+            "2026-07-29 default set (#523) — Q-Feeds refreshes on a much tighter "
+            "schedule than an IDS ruleset, so its markers are the ones that would bury "
+            "the rest of the timeline. Turn it on when investigating block-rate steps.",
     ),
     Annotation(
         name="Config change detail",
@@ -257,14 +261,16 @@ ANNOTATIONS: list = [
         title="Configuration changed (audit)",
         expr=f'{loki_sel("""opnsense_subsystem="audit\"""")} | event="config_change"',
         color="blue",
-        enable=False,
         tag_keys=("service_instance_id", "config_uri"),
         why="The same event as the Config change layer, at the same instant, but "
             "carrying which API endpoint was called — so a traffic step can be traced "
-            "to /api/firewall/filter/addRule specifically. Default-off precisely "
-            "because it duplicates that layer's timestamps: turning it on is asking "
-            "for the detail. Its record body names the admin and their source "
-            "address, which is why neither is a tag.",
+            "to /api/firewall/filter/addRule specifically. Default-ON by owner "
+            "decision 2026-07-29 (#523): it lands on the same timestamps as the Config "
+            "change layer rather than adding new marks, so the duplication that argued "
+            "for default-off costs nothing on the timeline while the endpoint detail is "
+            "worth having without a toggle. It needs log shipping, so it is simply "
+            "absent where the Config change layer is the only one available. Its record "
+            "body names the admin and their source address, which is why neither is a tag.",
     ),
     Annotation(
         name="Gateway alarm",
@@ -297,11 +303,13 @@ ANNOTATIONS: list = [
         expr=f'{loki_sel("""opnsense_subsystem=~"vpn|ipsec\"""")} '
              '| vpn_event=~"established|terminated"',
         color="light-purple",
-        enable=False,
         tag_keys=("service_instance_id", "vpn_event"),
-        why="Explains a tunnel's traffic series starting or stopping. Default-off "
-            "because a box with many road-warrior peers reconnects them all day, and "
-            "the volume would swamp the infrastructure events on the same timeline.",
+        why="Explains a tunnel's traffic series starting or stopping. Default-ON by "
+            "owner decision 2026-07-29 (#523). The volume objection that made it "
+            "default-off is real on a box with many road-warrior peers — turn it off "
+            "there — but it is the wrong default for a site-to-site box, where a "
+            "tunnel establishing or terminating is precisely the event explaining the "
+            "graph. It is a toolbar-menu toggle, not a permanent cost.",
     ),
     Annotation(
         name="Exporter-pushed events",

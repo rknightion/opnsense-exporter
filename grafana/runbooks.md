@@ -1185,7 +1185,7 @@ sum by (opnsense_instance) (rate(opnsense_flow_correlator_evicted_total[5m]))
 **Absent / no-data semantics:** Default noDataState (Ok) - no eviction is the normal state.
 
 **First checks:**
-- Check current flow volume/cardinality (Flow Volume tab) against --flow.correlate.max-entries
+- Check current flow volume/cardinality (Flow Volume tab on the operational dashboard, Flow Pipeline tab on the health dashboard) against --flow.correlate.max-entries
 - Confirm nothing is generating an unusual number of concurrent flows (scan, flood, a chatty new service)
 
 **Likely causes:**
@@ -1223,7 +1223,7 @@ sum by (opnsense_instance) (rate(opnsense_flow_logs_truncated_total[5m]))
 
 **Verify recovery:**
 - The truncation rate returns to 0
-- Per-flow log completeness is restored (no further gaps in the Flow Volume tab's log-derived panels)
+- Per-flow log completeness is restored (no further gaps on the health dashboard's Flow Pipeline tab)
 
 ## OPNsenseNetFlowHookDead
 

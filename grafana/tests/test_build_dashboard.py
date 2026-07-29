@@ -18,7 +18,6 @@ TOP_LEVEL_TITLES = [
     "Security",
     "VPN & remote access",
     "Services",
-    "Observability",
 ]
 
 LEAF_TITLES = {
@@ -57,10 +56,9 @@ LEAF_TITLES = {
     "Chrony",
     "Tor",
     "Siproxd",
-    "Log-derived Events",
+    "Authentication & Audit",
     "Flow Volume",
     "Zenarmor",
-    "Recording rules",
 }
 
 # The self-observability dashboard's leaves (#431). A separate inventory rather than
@@ -68,8 +66,14 @@ LEAF_TITLES = {
 # the split, so a change that put either back on the main dashboard should fail
 # BOTH lists rather than pass a combined one.
 HEALTH_LEAF_TITLES = {
-    "Diagnostics",
+    "Overview",
+    "Scrape & Poll",
+    "OPNsense API",
+    "Metrics & OTLP",
     "Log Shipping",
+    "Flow Pipeline",
+    "Exporter Runtime",
+    "Recording rules",
 }
 
 LEAF_TITLES_BY_UID = {
@@ -245,7 +249,7 @@ class LogShippingSemanticsTest(unittest.TestCase):
 class CARPOperationalEventSemanticsTest(unittest.TestCase):
     """#405 requires Grafana to show present CARP state BESIDE the event rate and the
     cause. The panel therefore belongs on the CARP / HA tab next to the VIP state
-    timeline, not off on the Log-derived Events tab: the whole point is reading the
+    timeline, not off on a separate log-derived events tab: the whole point is reading the
     transitions that produced the state you are looking at."""
 
     def test_carp_transition_rate_is_shown_on_the_carp_tab(self):
@@ -422,6 +426,10 @@ class IngestPanelUnitSplitTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.builder = build_dashboard.build_all()
+        # The NetFlow receiver panels moved to the health dashboard's Flow Pipeline
+        # tab (#523). The unit split they are checked for is a property of the panels,
+        # not of the dashboard they render on, so the check follows them.
+        cls.health = build_dashboard.build_health()
 
     def test_syslog_dropped_truncated_rates_split_into_message_and_byte_panels(self):
         builder = self.builder
@@ -456,7 +464,7 @@ class IngestPanelUnitSplitTest(unittest.TestCase):
             self.assertIn(raw, builder._exprs)
 
     def test_netflow_ingest_rate_splits_into_datagram_and_byte_panels(self):
-        builder = self.builder
+        builder = self.health
 
         datagrams = panel_for_title(builder, "NetFlow Ingest (datagrams/sec)")
         # Datagrams are packet-valued, so #514 units this pps — still not the byte

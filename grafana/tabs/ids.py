@@ -19,6 +19,7 @@ lane is ever added to logship.
 """
 
 from builder import Builder, sel, ENABLED, YESNO
+from tabs import log_events
 
 IDS_STATUS = {"-1": ("Disabled", "text"), "0": ("Stopped", "red"), "1": ("Running", "green")}
 IPS_MODE = {"0": ("IDS (passive)", "blue"), "1": ("IPS (inline)", "orange")}
@@ -124,4 +125,8 @@ def build(b: Builder):
         b.row("eve Log Files", [log_sizes], present="has_ids"),
         b.row("Rulesets", [ruleset_state, ruleset_table], present="has_ids"),
         b.row("Alert Activity", [recent], present="has_ids_alerts"),
+        # #523: EVE events by type/action/severity, moved here from the retired
+        # Observability domain. It reads beside Alert Activity: that one is the
+        # exporter's alert-log sample, this one is every event Suricata emitted.
+        log_events.ids_row(b),
     ])

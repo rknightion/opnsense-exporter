@@ -1282,7 +1282,7 @@ RULES = [
              threshold='gt 0 sustained for 15m.',
              absent='Default noDataState (Ok) - no eviction is the normal state.',
              checks=[
-                'Check current flow volume/cardinality (Flow Volume tab) against --flow.correlate.max-entries',
+                'Check current flow volume/cardinality (Flow Volume tab on the operational dashboard, Flow Pipeline tab on the health dashboard) against --flow.correlate.max-entries',
                 'Confirm nothing is generating an unusual number of concurrent flows (scan, flood, a chatty new service)',
             ],
              causes=[
@@ -1318,7 +1318,7 @@ RULES = [
             ],
              verify=[
                 'The truncation rate returns to 0',
-                "Per-flow log completeness is restored (no further gaps in the Flow Volume tab's log-derived panels)",
+                "Per-flow log completeness is restored (no further gaps on the health dashboard's Flow Pipeline tab)",
             ],
          )),
     # #402: managed alert for the #368 dead-hook detector. Query is copied VERBATIM from

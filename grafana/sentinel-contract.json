@@ -46,7 +46,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_annotations_written_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter Health > Diagnostics > Grafana Annotation Writing"
+          "OPNsense Exporter Health > Delivery > Metrics & OTLP > Grafana Annotation Writing"
         ]
       },
       {
@@ -179,7 +179,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_logs_debug_captured_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter Health > Log Shipping > Debug Capture"
+          "OPNsense Exporter Health > Delivery > Log Shipping > Debug Capture"
         ]
       },
       {
@@ -292,10 +292,7 @@
         "presence": "existence",
         "query": "label_values({__name__=~\"opnsense_flow_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability",
-          "OPNsense Exporter > Observability > Flow Volume",
-          "OPNsense Exporter > Observability > Flow Volume > Correlator & Log Emission",
-          "OPNsense Exporter > Observability > Flow Volume > Domain, Talkers & Source Delta"
+          "OPNsense Exporter Health > Delivery > Flow Pipeline"
         ]
       },
       {
@@ -305,8 +302,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_flow_netflow_datagrams_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Flow Volume > NetFlow Receiver",
-          "OPNsense Exporter > Observability > Flow Volume > NetFlow Repairs & Topology"
+          "OPNsense Exporter Health > Delivery > Flow Pipeline > NetFlow Receiver",
+          "OPNsense Exporter Health > Delivery > Flow Pipeline > NetFlow Repairs & Topology"
         ]
       },
       {
@@ -316,9 +313,10 @@
         "presence": "existence",
         "query": "label_values(opnsense_flow_bytes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Flow Volume > Breakdown",
-          "OPNsense Exporter > Observability > Flow Volume > Records & Packets",
-          "OPNsense Exporter > Observability > Flow Volume > Volume"
+          "OPNsense Exporter > Network > Flow Volume",
+          "OPNsense Exporter > Network > Flow Volume > Breakdown",
+          "OPNsense Exporter > Network > Flow Volume > Records & Packets",
+          "OPNsense Exporter > Network > Flow Volume > Volume"
         ]
       },
       {
@@ -355,7 +353,7 @@
         "presence": "existence",
         "query": "query_result(go_goroutines{job=~\"opnsense.*\"} * on(job, instance) group_left() max by (job, instance) (opnsense_up{opnsense_instance=~\"$opnsense_instance\"}))",
         "gates": [
-          "OPNsense Exporter Health > Diagnostics > Exporter Runtime (Go client metrics)"
+          "OPNsense Exporter Health > Exporter Runtime > Go Runtime (client metrics)"
         ]
       },
       {
@@ -549,8 +547,7 @@
         "presence": "existence",
         "query": "label_values({__name__=~\"opnsense_log_events_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability",
-          "OPNsense Exporter > Observability > Log-derived Events"
+          "OPNsense Exporter Health > Delivery > Log Shipping > Derived Metric Budget"
         ]
       },
       {
@@ -560,7 +557,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_audit_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > Config / Audit"
+          "OPNsense Exporter > Security > Authentication & Audit",
+          "OPNsense Exporter > Security > Authentication & Audit > Config / Audit"
         ]
       },
       {
@@ -580,7 +578,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_dhcp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > DHCP"
+          "OPNsense Exporter > Network > DHCP > Lease Events (log-derived)"
         ]
       },
       {
@@ -590,7 +588,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_firewall_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > Firewall"
+          "OPNsense Exporter > Security > Firewall & PF > Firewall Events (log-derived)"
         ]
       },
       {
@@ -600,7 +598,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_haproxy_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > HAProxy"
+          "OPNsense Exporter > Services > HAProxy > HAProxy Events (log-derived)"
         ]
       },
       {
@@ -610,7 +608,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > IDS / IPS"
+          "OPNsense Exporter > Security > IDS/IPS > IDS Events (log-derived)"
         ]
       },
       {
@@ -620,7 +618,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_radius_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > RADIUS Authentication"
+          "OPNsense Exporter > Security > Authentication & Audit",
+          "OPNsense Exporter > Security > Authentication & Audit > RADIUS Authentication"
         ]
       },
       {
@@ -630,7 +629,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_sshd_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > SSH Authentication"
+          "OPNsense Exporter > Security > Authentication & Audit",
+          "OPNsense Exporter > Security > Authentication & Audit > SSH Authentication"
         ]
       },
       {
@@ -640,7 +640,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_upnp_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > UPnP / NAT-PMP Mappings"
+          "OPNsense Exporter > Security > Firewall & PF > UPnP / NAT-PMP Mappings"
         ]
       },
       {
@@ -650,7 +650,7 @@
         "presence": "existence",
         "query": "label_values(opnsense_log_events_vpn_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Log-derived Events > VPN Lifecycle (IPsec / OpenVPN)"
+          "OPNsense Exporter > VPN & remote access > VPN > Tunnel Lifecycle (log-derived)"
         ]
       },
       {
@@ -660,12 +660,13 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_logs_queue_capacity{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter Health > Log Shipping",
-          "OPNsense Exporter Health > Log Shipping > Cursor",
-          "OPNsense Exporter Health > Log Shipping > Enrichment",
-          "OPNsense Exporter Health > Log Shipping > Queue & Errors",
-          "OPNsense Exporter Health > Log Shipping > Receivers",
-          "OPNsense Exporter Health > Log Shipping > Throughput"
+          "OPNsense Exporter Health > Delivery > Log Shipping",
+          "OPNsense Exporter Health > Delivery > Log Shipping > Cursor",
+          "OPNsense Exporter Health > Delivery > Log Shipping > Enrichment",
+          "OPNsense Exporter Health > Delivery > Log Shipping > Queue & Errors",
+          "OPNsense Exporter Health > Delivery > Log Shipping > Receivers",
+          "OPNsense Exporter Health > Delivery > Log Shipping > Throughput",
+          "OPNsense Exporter Health > Overview > Log Shipping"
         ]
       },
       {
@@ -805,7 +806,8 @@
         "presence": "existence",
         "query": "label_values(opnsense_exporter_otlp_enabled{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter Health > Diagnostics > OTLP Delivery Health"
+          "OPNsense Exporter Health > Delivery > Metrics & OTLP > OTLP Delivery Health",
+          "OPNsense Exporter Health > Overview > OTLP Delivery"
         ]
       },
       {
@@ -827,7 +829,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_flow_bytes:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > Flow Volume"
+          "OPNsense Exporter Health > Recording rules > Flow Volume"
         ]
       },
       {
@@ -837,7 +839,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_gateway_loss:ratio{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > Gateway Health"
+          "OPNsense Exporter Health > Recording rules > Gateway Health"
         ]
       },
       {
@@ -847,7 +849,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_haproxy_5xx:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > HAProxy"
+          "OPNsense Exporter Health > Recording rules > HAProxy"
         ]
       },
       {
@@ -857,7 +859,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_ids_alerts:active{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > IDS / IPS"
+          "OPNsense Exporter Health > Recording rules > IDS / IPS"
         ]
       },
       {
@@ -867,7 +869,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_ipsec_tunnels_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > IPsec Health"
+          "OPNsense Exporter Health > Recording rules > IPsec Health"
         ]
       },
       {
@@ -877,8 +879,7 @@
         "presence": "existence",
         "query": "label_values({__name__=~\"instance:opnsense_.+\",opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability",
-          "OPNsense Exporter > Observability > Recording rules"
+          "OPNsense Exporter Health > Recording rules"
         ]
       },
       {
@@ -888,7 +889,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_unbound_queries:rate5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > Unbound DNS"
+          "OPNsense Exporter Health > Recording rules > Unbound DNS"
         ]
       },
       {
@@ -898,7 +899,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_wireguard_peers_down:count{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > WireGuard Health"
+          "OPNsense Exporter Health > Recording rules > WireGuard Health"
         ]
       },
       {
@@ -908,7 +909,7 @@
         "presence": "existence",
         "query": "label_values(instance:opnsense_zenarmor_block:ratio5m{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
-          "OPNsense Exporter > Observability > Recording rules > Zenarmor"
+          "OPNsense Exporter Health > Recording rules > Zenarmor"
         ]
       },
       {

@@ -408,10 +408,15 @@ def build(b: Builder):
     for panel in (rx_bps, tx_bps):
         b.panel_links(panel, [
             to_tab("Firewall traffic for this selection", "Security", "Firewall & PF"),
-            to_tab("Flow volume for this selection", "Observability", "Flow Volume"),
+            to_tab("Flow volume for this selection", "Network", "Flow Volume"),
         ])
+    # #523: this used to point at Log-derived Events for "interface reset / attach
+    # events", which that tab never carried — no opnsense_log_events_* family covers
+    # interface attach. The reset itself is an annotation layer on this very panel
+    # (annotations.py "Interface counter reset"), so the honest destination for the
+    # surrounding detail is the raw syslog stream at the same window.
     b.panel_links(errors, [
-        to_tab("Interface reset / attach events", "Observability", "Log-derived Events"),
+        to_tab("Raw syslog around this reset", "Services", "Syslog", loki=True),
     ])
     b.panel_links(link_state, [
         to_tab("Gateway state over the same window", "Network", "Gateways & WAN"),

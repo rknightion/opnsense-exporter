@@ -6,7 +6,7 @@ OPNsense Exporter:
 | Path | What it is |
 |------|------------|
 | `dashboard.json` | The **operational** dashboard: a **Grafana v2 dynamic dashboard** (`dashboard.grafana.app/v2`) organised into 7 top-level domains, rendering conditionally. UID `opnsense-exporter`. |
-| `dashboard-health.json` | The **self-observability companion** (UID `opnsense-exporter-health`): Diagnostics and Log Shipping — the exporter watching itself. Cross-linked with the operational dashboard, carrying the selected instance and time range. |
+| `dashboard-health.json` | The **self-observability companion** (UID `opnsense-exporter-health`): an Overview of health tiles, then Collection (scrape/poll, OPNsense API), Delivery (metrics & OTLP, log shipping, flow pipeline), Runtime, and the bundled recording rules' output — the exporter watching itself. Cross-linked with the operational dashboard, carrying the selected instance and time range. |
 | `build_dashboard.py` | Generator for BOTH dashboards. Run `python3 build_dashboard.py`. |
 | `builder.py`, `tabs/` | The builder framework and one module per tab. See `tabs/AUTHORING.md`. |
 | `alerts/grafana-managed/` | Alert + recording rules as **Grafana-managed** `rules.alerting.grafana.app/v0alpha1` manifests (+ two folders), pushable with `gcx`. |
@@ -30,16 +30,16 @@ datasource carrying the exporter's shipped logs is selected.
   thing) and **Grafana 12.4 accepts it with 200 and renders nothing** — verified against pinned
   containers, and worth knowing because neither says so usefully.
 - A Prometheus-compatible datasource scraping the exporter.
-- For the **Diagnostics** tab's *Build & Collectors* panels you need an exporter build that
-  emits `opnsense_exporter_build_info` and `opnsense_exporter_collector_enabled` (added in this
-  fork). Older builds simply leave those two panels empty.
+- For the health dashboard's **Exporter Runtime** tab (*Build & Collectors*) you need an exporter
+  build that emits `opnsense_exporter_build_info` and `opnsense_exporter_collector_enabled` (added in
+  this fork). Older builds simply leave those two panels empty.
 
 ## The dashboard
 
-Two dashboards, 41 tabs grouped by feature (generated list, do not hand-edit — the last two belong to the health companion):
+Two dashboards, 46 tabs grouped by feature (generated list, do not hand-edit). The operational dashboard runs from the first `Overview` to `Siproxd`; the health companion starts at the SECOND `Overview` and runs to `Recording rules`:
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, FRR Routing, Captive Portal, Firewall & PF, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Log-derived Events, Flow Volume, Recording rules, Diagnostics, Log Shipping
+Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, Flow Volume, FRR Routing, Captive Portal, Firewall & PF, Authentication & Audit, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Overview, Scrape & Poll, OPNsense API, Metrics & OTLP, Log Shipping, Flow Pipeline, Exporter Runtime, Recording rules
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the

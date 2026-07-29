@@ -560,9 +560,11 @@ labels are listed exactly below; `source`, `reason`, `stage`, `table`, `receiver
 
 `opnsense_log_events_observation_dropped_total{reason}` is **not a Log Shipping
 pipeline self-metric**. It belongs to the separate Log-derived Events collector's
-bounded receiver-to-collector handoff. It is documented in the generated metric
-reference and shown on the **Log-derived Events** tab, rather than the Log Shipping
-tab, with the closed reason `handoff_full`.
+bounded receiver-to-collector handoff. It is documented in the generated metric reference and
+charted in the **Derived Metric Budget** row of the health dashboard's Log Shipping
+tab, with the closed reason `handoff_full`. The rest of that collector's counters are
+firewall data, so they sit on the operational dashboard beside the subsystem each one
+describes (filterlog events on Firewall & PF, tunnel lifecycle on VPN, and so on).
 
 ### Why the syslog capture keeps one example per shape
 
