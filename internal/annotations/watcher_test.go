@@ -24,6 +24,11 @@ type fakeGrafana struct {
 	postCode int
 	listCode int
 	gets     int
+	// postAttempts counts every POST that reached the server, including the ones
+	// rejected by postCode. posted only records successes, so it cannot see the
+	// request volume a failing cycle generates - which is the thing the per-cycle
+	// cap is supposed to bound.
+	postAttempts int
 }
 
 func newFakeGrafana(t *testing.T) *fakeGrafana {
@@ -46,6 +51,7 @@ func newFakeGrafana(t *testing.T) *fakeGrafana {
 			}
 			_ = json.NewEncoder(w).Encode(f.existing)
 		case http.MethodPost:
+			f.postAttempts++
 			if f.postCode != http.StatusOK {
 				w.WriteHeader(f.postCode)
 				_, _ = io.WriteString(w, `{"message":"nope"}`)
@@ -399,6 +405,45 @@ func TestWatcherCapsWritesPerCycle(t *testing.T) {
 
 	if got := len(f.writes()); got != 3 {
 		t.Fatalf("expected the per-cycle cap to hold at 3, got %d", got)
+	}
+}
+
+// A cycle whose posts all fail must still stop at the cap. Counting successes
+// instead of attempts means the cap never trips while Grafana is rejecting, so
+// the exporter answers a 429 by sending the whole backlog again every interval -
+// sustaining the exact condition that produced the 429 (#519).
+func TestWatcherCapsAttemptsWhenEveryPostFails(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	var all []series
+	for i := range 10 {
+		all = append(all, series{
+			name:   "opnsense_ids_ruleset_last_updated_timestamp_seconds",
+			labels: map[string]string{instanceLabel: "fw-a", "ruleset": string(rune('a' + i))},
+			value:  float64(now.Add(-time.Duration(i+1) * time.Minute).Unix()),
+		})
+	}
+	w := newTestWatcher(t, f, now, all...)
+	w.cfg.MaxPerCycle = 3
+	w.reconcile(context.Background())
+
+	f.mu.Lock()
+	f.postCode = http.StatusTooManyRequests
+	f.mu.Unlock()
+
+	w.tick(context.Background())
+
+	f.mu.Lock()
+	attempts := f.postAttempts
+	f.mu.Unlock()
+
+	if attempts != 3 {
+		t.Fatalf("a fully failing cycle attempted %d posts against a cap of 3; the cap must "+
+			"bound attempts, not successes, or a rate-limited exporter retries the whole "+
+			"backlog every interval", attempts)
+	}
+	if got := len(f.writes()); got != 0 {
+		t.Fatalf("expected no successful writes while the server rejects, got %d", got)
 	}
 }
 

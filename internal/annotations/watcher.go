@@ -124,17 +124,28 @@ func (w *Watcher) tick(ctx context.Context) {
 		}
 	}
 
-	posted := 0
+	// The cap counts ATTEMPTS, not successes. Counting successes means it never
+	// trips while Grafana is rejecting, so a 429 - which says "you are sending too
+	// many requests" - is answered by sending the entire backlog again on the next
+	// tick, forever, sustaining the condition that caused it (#519).
+	attempted := 0
+	failures := 0
 	for _, event := range events {
-		if posted >= w.cfg.MaxPerCycle {
-			w.metrics.skipped.Add(float64(len(events) - posted))
+		if attempted >= w.cfg.MaxPerCycle {
+			w.metrics.skipped.Add(float64(len(events) - attempted))
 			w.log.Warn("annotation cycle cap reached; remaining events skipped",
-				"cap", w.cfg.MaxPerCycle, "skipped", len(events)-posted)
+				"cap", w.cfg.MaxPerCycle, "skipped", len(events)-attempted)
 			break
 		}
+		attempted++
 		if err := w.client.post(ctx, event); err != nil {
 			w.metrics.failed.Inc()
-			w.log.Warn("annotation post failed", "kind", event.Kind, "err", err)
+			failures++
+			// One line per cycle, not one per event: a rate-limited exporter at the
+			// cap would otherwise log MaxPerCycle identical warnings every interval.
+			if failures == 1 {
+				w.log.Warn("annotation post failed", "kind", event.Kind, "err", err)
+			}
 			// NOT marked seen: an unwritten annotation must be retried, or a
 			// transient Grafana error would silently lose the event for good.
 			continue
@@ -142,8 +153,11 @@ func (w *Watcher) tick(ctx context.Context) {
 		w.markSeen(event)
 		w.metrics.posted.Inc()
 		w.metrics.lastSuccess.Set(float64(w.now().Unix()))
-		posted++
 		w.log.Debug("annotation written", "kind", event.Kind, "at", event.At.UTC().Format(time.RFC3339))
+	}
+	if failures > 1 {
+		w.log.Warn("further annotation posts failed this cycle", "failures", failures,
+			"cap", w.cfg.MaxPerCycle)
 	}
 }
 
