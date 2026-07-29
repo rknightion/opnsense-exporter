@@ -99,6 +99,7 @@ type IfMap struct {
 	conflictsAbsent    int
 	disagreements      int
 	unlisted           int
+	named              int
 
 	// ownCounters backs a map nobody attached shared counters to — tests, and the
 	// cold-start path before a Processor exists.
@@ -183,6 +184,16 @@ type IfMapStats struct {
 	UnlistedDevices int
 	// UnmappedLookups is how many lookups found nothing and returned the zero Iface.
 	UnmappedLookups uint64
+	// Named is how many entries carry an interface NAME, EXCLUDING the synthetic
+	// ifIndex 0 (whose name is ours, not the box's, and is always present).
+	//
+	// It separates "the map is populated" from "the map is finished". The ordering
+	// and the interface metadata are two different API calls made in sequence, so a
+	// map built between them has every index correct and not one name — and
+	// Iface.Label falls back to the device, which labels records "ixl0" instead of
+	// "LAN" and splits every series in two. Zero here means the metadata has not
+	// landed yet, not that the box has no descriptions (#522).
+	Named int
 }
 
 // IfaceEntry is one resolved ifIndex entry, for the operator console.
@@ -392,6 +403,14 @@ func BuildIfMap(in IfMapInput) *IfMap {
 		m.overridden++
 	}
 
+	// Counted once at the end rather than incrementally, because an override may
+	// name an index the derivation already named and must not count it twice.
+	for idx, iface := range m.byIndex {
+		if idx != 0 && iface.Name != "" {
+			m.named++
+		}
+	}
+
 	return m
 }
 
@@ -591,6 +610,7 @@ func (m *IfMap) Stats() IfMapStats {
 		StatedIndexDisagreements: m.disagreements,
 		UnlistedDevices:          m.unlisted,
 		UnmappedLookups:          m.counters.unmapped.Load(),
+		Named:                    m.named,
 	}
 }
 

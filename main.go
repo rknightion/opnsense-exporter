@@ -94,6 +94,31 @@ const ifIndexRefreshInterval = 60 * time.Second
 // second to close it, and it stops the moment a map lands (#365).
 const ifIndexColdRetryInterval = time.Second
 
+// ifIndexNamelessDeadline bounds the cold retry when the map keeps arriving with
+// indices but no interface NAMES.
+//
+// The enumeration and the interface metadata are two sequential API calls, so the
+// first map built after a restart routinely has every index right and not one name,
+// and Iface.Label falls back to the device — labelling records "ixl0" instead of
+// "LAN" and splitting every series in two until the next rebuild (#522). Staying on
+// the 1s cadence until names land closes that in about one API call instead of a
+// minute.
+//
+// The deadline exists for the box that genuinely reports no descriptions: without
+// it, that box would poll its API once a second forever. Reaching it publishes the
+// device-labelled map as final and settles to the normal cadence.
+const ifIndexNamelessDeadline = 5 * time.Minute
+
+// ifIndexSettled reports whether a built ifIndex map may be treated as final, so
+// the rebuild ticker can drop from the cold retry to the normal interval.
+//
+// named is IfMapStats.Named and coldFor is how long maps have been building without
+// one. A map carrying names is final; a map carrying none is provisional until the
+// deadline, after which the box is taken at its word.
+func ifIndexSettled(named int, coldFor time.Duration) bool {
+	return named > 0 || coldFor >= ifIndexNamelessDeadline
+}
+
 // flowExpireTick is how often the correlator sweeps for windows that have elapsed. An
 // entry therefore emits within its window plus at most one tick; the sweep is a whole-map
 // scan, so the tick is coarse rather than sub-second.
@@ -1346,16 +1371,37 @@ func main() {
 			defer ticker.Stop()
 			var published bool
 			var lastUnmapped uint64
+			// The deadline runs from the FIRST map built, not from startup: an
+			// enumeration that itself took minutes to arrive would otherwise blow
+			// straight through it and latch on the nameless map it produced.
+			var firstBuild time.Time
 			for {
 				if snap := cache.Load(); snap != nil && len(snap.IfaceOrder) > 0 {
-					proc.SetIfMap(flow.BuildIfMap(flow.IfMapInput{
+					m := flow.BuildIfMap(flow.IfMapInput{
 						Order:    snap.IfaceOrder,
 						Ifaces:   snap.Ifaces,
 						Stated:   snap.IfaceStatedIndex,
 						Override: flowCfg.NetflowIfIndexMap,
 						Built:    time.Now(),
-					}))
-					if !published {
+					})
+					proc.SetIfMap(m)
+					if firstBuild.IsZero() {
+						firstBuild = time.Now()
+					}
+					// Publishing the map and CALLING IT FINAL are two different
+					// things. The map above is always published — a device label
+					// beats no label, and withholding it would leave records
+					// unlabelled — but a map with no names is provisional, and
+					// dropping to the 60s cadence on one freezes that degraded
+					// labelling in for a full minute (#522).
+					if named := m.Stats().Named; !published && ifIndexSettled(named, time.Since(firstBuild)) {
+						if named == 0 {
+							logger.Warn("netflow ifIndex map has no interface names; "+
+								"labelling flow records by device from here",
+								"deadline", ifIndexNamelessDeadline,
+								"entries", m.Stats().Entries,
+								"hint", "the firewall reports no interface descriptions, or the interface metadata fetch is failing")
+						}
 						published = true
 						ticker.Reset(ifIndexRefreshInterval)
 					}

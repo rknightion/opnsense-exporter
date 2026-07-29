@@ -818,3 +818,30 @@ func TestSelfMetricsRegistryIsNeverRegisteredOnBare(t *testing.T) {
 		}
 	}
 }
+
+// The ifIndex map is published as soon as the enumeration lands, but must not be
+// treated as FINAL until it carries interface names. The enumeration and the
+// interface metadata are two sequential API calls, so the map built between them has
+// correct indices and no names, and latching on it froze device labelling in for a
+// full 60s on every restart (#522).
+func TestIfIndexSettled(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		named   int
+		coldFor time.Duration
+		want    bool
+	}{
+		{"indices landed but metadata has not: stay on the cold retry", 0, 2 * time.Second, false},
+		{"still nameless well inside the deadline", 0, ifIndexNamelessDeadline - time.Second, false},
+		{"names landed: settle to the normal interval", 12, time.Second, true},
+		{"one name is enough", 1, 0, true},
+		{"a box that genuinely has no descriptions settles at the deadline", 0, ifIndexNamelessDeadline, true},
+		{"and stays settled past it", 0, time.Hour, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ifIndexSettled(tc.named, tc.coldFor); got != tc.want {
+				t.Errorf("ifIndexSettled(%d, %s) = %v, want %v", tc.named, tc.coldFor, got, tc.want)
+			}
+		})
+	}
+}

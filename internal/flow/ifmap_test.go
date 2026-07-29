@@ -595,6 +595,33 @@ func TestBuildIfMap_ConflictReasonsAreCountedSeparately(t *testing.T) {
 	}
 }
 
+// Named is what tells a caller the map is FINISHED rather than merely populated.
+// The enrichment refresher fetches the ordering and the interface metadata in two
+// separate API calls, so a map built between them has every index right and not one
+// name (#522). ifIndex 0 must not count: its name is synthetic and always present,
+// so counting it would make every map look named.
+func TestBuildIfMap_NamedCountsResolvableNamesAndNotIfIndexZero(t *testing.T) {
+	order := devicesOf(liveIfaces())
+
+	if got := BuildIfMap(IfMapInput{Order: order}).Stats().Named; got != 0 {
+		t.Errorf("Named = %d, want 0 — the ordering landed before the metadata, so no "+
+			"entry has a name and ifIndex 0's synthetic one must not be counted", got)
+	}
+
+	full := BuildIfMap(IfMapInput{Order: order, Ifaces: liveIfaces()}).Stats()
+	if full.Named == 0 || full.Named >= full.Entries {
+		t.Errorf("Named = %d with Entries = %d, want a non-zero count below Entries "+
+			"(every listed interface here is named, but ifIndex 0 is excluded)", full.Named, full.Entries)
+	}
+
+	// An override names an interface even when the metadata has not arrived, so it
+	// counts: the operator asserted a label and records carry it.
+	pinned := BuildIfMap(IfMapInput{Order: order, Override: map[uint32]string{3: "SATELLITE"}}).Stats()
+	if pinned.Named != 1 {
+		t.Errorf("Named = %d, want 1 — an override supplies a name of its own", pinned.Named)
+	}
+}
+
 func TestBuildIfMap_EmptyOverrideValueIsIgnored(t *testing.T) {
 	m := BuildIfMap(IfMapInput{Order: devicesOf(liveIfaces()), Ifaces: liveIfaces(), Override: map[uint32]string{1: "", 5: "   "}})
 	if got := m.Iface(1); got.Device != "ixl0" {

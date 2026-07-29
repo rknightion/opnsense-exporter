@@ -217,6 +217,16 @@ name, never by position**. A device in the enumeration that the metadata does no
 (`pfsync0` is the common one) still occupies its slot and falls back to labelling itself with
 its device name, which is what keeps every later index correct.
 
+The enumeration and that metadata are **two separate API calls made in sequence**, so for a
+moment after every restart the map has every index right and not one name, and each record is
+labelled with its device (`ixl0`) instead of its description (`LAN`). The map is still published
+immediately - a device label is honest and joinable, where withholding the map would leave the
+records unlabelled - but it is treated as **provisional**: the rebuild stays on its one-second
+cold retry until names land, instead of settling to the sixty-second interval on a map that is
+merely populated. A box that genuinely reports no interface descriptions is taken at its word
+after five minutes, with one log line saying so. Before this, the degraded labelling lasted a
+full minute on every restart and split every affected series in two.
+
 That split exists because the alternative was tried and was wrong. The map used to be
 derived by counting `interfaces_info` rows, which **omits `pfsync0`** - 15 rows where the
 kernel has 16 - so every index from 10 upward came out one too low. On the reference box
