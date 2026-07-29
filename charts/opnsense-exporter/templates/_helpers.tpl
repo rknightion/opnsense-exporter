@@ -57,22 +57,45 @@ seccompProfile:
   value: /etc/opnsense-exporter/creds/api-secret
 {{- end }}
 
+{{/*
+opnsense-exporter.reservedFlagReason takes a bare flag name (no leading --, no value)
+and returns the curated value that already sets it, or empty if the flag is not
+chart-managed. Shared by the extraArgs check and the settings check below so the two
+reserved-flag lists cannot drift apart -- a flag added to one and not the other would
+let extraArgs and settings disagree about what's safe to set.
+*/}}
+{{- define "opnsense-exporter.reservedFlagReason" -}}
+{{- if or (eq . "opnsense.api-key") (eq . "opnsense.api-secret") -}}
+already set via the mounted credentials Secret (opnsense.existingSecret)
+{{- else if eq . "opnsense.address" -}}
+already set via opnsense.address
+{{- else if eq . "opnsense.protocol" -}}
+already set via opnsense.protocol
+{{- else if eq . "exporter.instance-label" -}}
+already set via opnsense.instanceLabel
+{{- else if eq . "web.listen-address" -}}
+already set via ports.http
+{{- else if eq . "config.check" -}}
+it is never renderable via settings or extraArgs: a one-shot validate-and-exit flag that would turn every pod start into a no-op that exits 0
+{{- else if eq . "logs.enabled" -}}
+already set via receivers.syslog.enabled / receivers.zenarmor.enabled
+{{- else if hasPrefix "logs.syslog." . -}}
+already set via receivers.syslog.*
+{{- else if hasPrefix "logs.zenarmor." . -}}
+already set via receivers.zenarmor.*
+{{- else if eq . "flow.enabled" -}}
+already set via receivers.netflow.enabled
+{{- else if hasPrefix "flow.netflow." . -}}
+already set via receivers.netflow.*
+{{- end -}}
+{{- end }}
+
 {{- define "opnsense-exporter.args" -}}
 {{- range $arg := .Values.extraArgs }}
-{{- if or
-  (eq $arg "--opnsense.api-key") (hasPrefix "--opnsense.api-key=" $arg)
-  (eq $arg "--opnsense.api-secret") (hasPrefix "--opnsense.api-secret=" $arg)
-  (eq $arg "--opnsense.address") (hasPrefix "--opnsense.address=" $arg)
-  (eq $arg "--opnsense.protocol") (hasPrefix "--opnsense.protocol=" $arg)
-  (eq $arg "--exporter.instance-label") (hasPrefix "--exporter.instance-label=" $arg)
-  (eq $arg "--web.listen-address") (hasPrefix "--web.listen-address=" $arg)
-  (eq $arg "--config.check") (hasPrefix "--config.check=" $arg)
-  (eq $arg "--logs.enabled") (hasPrefix "--logs.enabled=" $arg)
-  (hasPrefix "--logs.syslog." $arg)
-  (hasPrefix "--logs.zenarmor." $arg)
-  (eq $arg "--flow.enabled") (hasPrefix "--flow.enabled=" $arg)
-  (hasPrefix "--flow.netflow." $arg) }}
-{{- fail (printf "extraArgs may not set chart-managed or secret flag %q" $arg) }}
+{{- $name := (splitn "=" 2 (trimPrefix "--" $arg))._0 }}
+{{- $reason := include "opnsense-exporter.reservedFlagReason" $name }}
+{{- if $reason }}
+{{- fail (printf "extraArgs may not set chart-managed or secret flag %q: %s" $arg $reason) }}
 {{- end }}
 {{- end }}
 {{- if or .Values.receivers.syslog.enabled .Values.receivers.zenarmor.enabled }}
@@ -103,5 +126,18 @@ seccompProfile:
 {{- end }}
 {{- range .Values.extraArgs }}
 - {{ . | quote }}
+{{- end }}
+{{- range $name, $value := .Values.settings }}
+{{- $reason := include "opnsense-exporter.reservedFlagReason" $name }}
+{{- if $reason }}
+{{- fail (printf "settings.%s conflicts with a chart-managed flag: %s. Set it there instead, or drop the curated value if settings should win." $name $reason) }}
+{{- end }}
+{{- if kindIs "slice" $value }}
+{{- range $item := $value }}
+- "--{{ $name }}={{ $item }}"
+{{- end }}
+{{- else }}
+- "--{{ $name }}={{ $value }}"
+{{- end }}
 {{- end }}
 {{- end }}

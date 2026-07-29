@@ -17,3 +17,11 @@ logs.scopes
 OPNSENSE_EXPORTER_LOGS_FIREWALL_ENABLED
 OPNSENSE_EXPORTER_LOGS_DIAGLOG_ENABLED
 OPNSENSE_EXPORTER_LOGS_SCOPES
+
+# charts/opnsense-exporter/templates/_helpers.tpl guards extraArgs against
+# chart-managed namespaces with `hasPrefix "--logs.syslog." $arg` etc (no "=", so
+# nothing follows the trailing dot). The token regex extracts the bare namespace
+# stem, same wildcard-prose shape as exporter.disable/exporter.enable above.
+logs.syslog
+logs.zenarmor
+flow.netflow

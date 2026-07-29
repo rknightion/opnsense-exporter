@@ -105,3 +105,56 @@ func TestLintTargetsIncludeGrafanaTabs(t *testing.T) {
 		t.Fatalf("expected a bogus flag in a tab file to be flagged, got %v", problems)
 	}
 }
+
+// TestLintTargetsIncludeCharts guards that the Helm chart is linted like any other
+// doc: a renamed flag can rot charts/opnsense-exporter/templates/_helpers.tpl (which
+// builds the exporter's args/env list from flag and env names) or README.md
+// undetected otherwise.
+func TestLintTargetsIncludeCharts(t *testing.T) {
+	targets := lintTargets(findRepoRoot())
+	want := map[string]bool{
+		"charts/opnsense-exporter/templates/_helpers.tpl": false,
+		"charts/opnsense-exporter/README.md":              false,
+		"charts/opnsense-exporter/tests/test-chart.sh":    false,
+	}
+	for _, tgt := range targets {
+		if _, ok := want[filepath.ToSlash(tgt)]; ok {
+			want[filepath.ToSlash(tgt)] = true
+		}
+	}
+	for path, found := range want {
+		if !found {
+			t.Errorf("lintTargets did not include %s: %v", path, targets)
+		}
+	}
+}
+
+// TestDoclintCatchesBogusFlagInChart is the point of the charts/ extension: a bogus
+// flag inside chart content (a Helm template, in this case) must be reported exactly
+// like one inside prose.
+func TestDoclintCatchesBogusFlagInChart(t *testing.T) {
+	known := knownTokens(collectAllFlags())
+	problems := lintText(
+		"charts/opnsense-exporter/templates/_helpers.tpl",
+		`- "--exporter.enable-bogus-details"`,
+		known, map[string]bool{},
+	)
+	if len(problems) != 1 || !strings.Contains(problems[0], "exporter.enable-bogus-details") {
+		t.Fatalf("expected a bogus flag in a chart template to be flagged, got %v", problems)
+	}
+}
+
+// TestRunDoclintChartHasNoFalsePositives runs the real doclint pass over the real
+// chart and asserts no charts/ file produces a problem. This is the regression test
+// for the _helpers.tpl hasPrefix guards (`hasPrefix "--logs.syslog." $arg` etc): those
+// extract to a bare namespace stem ("logs.syslog") rather than a real flag name, and
+// must be allowlisted in doclint_allow.txt rather than flagged as unknown.
+func TestRunDoclintChartHasNoFalsePositives(t *testing.T) {
+	repoRoot := findRepoRoot()
+	problems := runDoclint(repoRoot, collectAllFlags())
+	for _, p := range problems {
+		if strings.HasPrefix(p, "charts/") {
+			t.Errorf("unexpected doclint problem in chart: %s", p)
+		}
+	}
+}

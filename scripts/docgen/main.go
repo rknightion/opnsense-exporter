@@ -163,6 +163,15 @@ func main() {
 	// Step 7: Inject generated flag tables into docs/configuration.md.
 	injectConfigurationDoc(out, allFlags)
 
+	// Step 7b: Render the example configs that cover the WHOLE flag surface. The
+	// tables above document every flag; these are the copy-and-edit artifacts, and
+	// each one fails the build if a flag is missing from it, so a new flag cannot
+	// land documented-but-unshippable. All three render from groupFlags so they
+	// cannot drift into three different section layouts.
+	generateEnvExample(out, filepath.Join(repoRoot, ".env.example"), allFlags)
+	generateComposeReference(out, filepath.Join(repoRoot, "docs", "deployment", "reference.md"), allFlags)
+	generateHelmValues(out, filepath.Join(repoRoot, "charts", "opnsense-exporter"), allFlags)
+
 	// Step 8: Inject the generated dashboard tab-name list into prose that enumerates tabs.
 	dashMetrics, dashTabs, tabNames := loadDashboardStats(repoRoot)
 	injectDashboardTabs(out, tabNames)

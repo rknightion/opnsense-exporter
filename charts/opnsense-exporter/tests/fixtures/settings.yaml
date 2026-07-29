@@ -1,0 +1,10 @@
+opnsense:
+  address: edge-fw.example.net
+settings:
+  opnsense.max-retries: "5"
+  opnsense.insecure: true
+  collector.poll-interval-override:
+    - arp_table=30s
+    - carp=45s
+  annotations.extra-tags:
+    - env=prod

@@ -134,6 +134,28 @@ func lintTargets(repoRoot string) []string {
 			return nil
 		})
 	}
+	// charts/ ships a Helm chart whose templates and README build the exporter's CLI
+	// args and env list directly from flag/env names (_helpers.tpl), and whose
+	// tests/test-chart.sh asserts against those same rendered flags. A renamed flag
+	// rots the chart exactly like a stale doc would, so it gets the same treatment.
+	// The extension set is wider than docs/deploy because a chart's flag-bearing
+	// content isn't only markdown/YAML: NOTES.txt and the shell test assert flags too.
+	_ = filepath.WalkDir(filepath.Join(repoRoot, "charts"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".md", ".yaml", ".yml", ".tpl", ".txt", ".sh":
+			rel, relErr := filepath.Rel(repoRoot, path)
+			if relErr == nil {
+				targets = append(targets, rel)
+			}
+		}
+		return nil
+	})
 	return targets
 }
 

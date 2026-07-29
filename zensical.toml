@@ -13,6 +13,7 @@ nav = [
   { "Deployment" = [
       "deployment.md",
       { "Docker & Compose" = "deployment/docker.md" },
+      { "Compose Reference (every setting)" = "deployment/reference.md" },
       { "Kubernetes" = "deployment/kubernetes.md" },
       { "Systemd" = "deployment/systemd.md" }
     ] },

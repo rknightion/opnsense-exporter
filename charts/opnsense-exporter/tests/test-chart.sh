@@ -116,6 +116,15 @@ assert_count "$all_receivers" '"--collector.poll-interval=30s"' 2
 assert_count "$all_receivers" '"--logs.sink=stdout"' 2
 assert_count "$all_receivers" '"--config.check"' 1
 
+render settings "$fixture_dir/settings.yaml"
+settings="$render_dir/settings.yaml"
+assert_contains "$settings" '"--opnsense.max-retries=5"'
+assert_contains "$settings" '"--opnsense.insecure=true"'
+# repeatable settings values: one --flag=value arg per list element, not a comma join.
+assert_contains "$settings" '"--collector.poll-interval-override=arp_table=30s"'
+assert_contains "$settings" '"--collector.poll-interval-override=carp=45s"'
+assert_contains "$settings" '"--annotations.extra-tags=env=prod"'
+
 helm template contract "$chart_dir" -f "$fixture_dir/upgrade.yaml" --is-upgrade > "$render_dir/upgrade.yaml"
 assert_contains "$render_dir/upgrade.yaml" 'kind: Deployment'
 
@@ -146,6 +155,36 @@ for forbidden_arg in \
     --set-string "extraArgs[0]=$forbidden_arg" > /dev/null 2>&1; then
     fail "extraArgs accepted chart-managed or secret flag $forbidden_arg"
   fi
+done
+
+# The settings map draws from the same reserved-flag list as extraArgs (see
+# opnsense-exporter.reservedFlagReason in _helpers.tpl) -- a key naming a
+# chart-managed flag must fail the render rather than silently picking a winner.
+for forbidden_key in \
+  opnsense.api-key \
+  opnsense.api-secret \
+  opnsense.address \
+  opnsense.protocol \
+  exporter.instance-label \
+  web.listen-address \
+  config.check \
+  logs.enabled \
+  logs.syslog.enabled \
+  logs.zenarmor.enabled \
+  flow.enabled \
+  flow.netflow.enabled; do
+  # --set path segments split on "." same as settings' own dotted flag names, so an
+  # unescaped dot would build a NESTED value (settings.logs.syslog.enabled=x means
+  # settings: {logs: {syslog: {enabled: x}}}), which the schema already rejects for an
+  # unrelated reason (an object isn't a valid settingValue) without ever reaching the
+  # conflict check this loop means to exercise. Escaping every dot keeps each
+  # forbidden_key a single flat settings key, matching a real values.yaml entry.
+  escaped_key="${forbidden_key//./\\.}"
+  output="$(helm template contract "$chart_dir" -f "$fixture_dir/minimal.yaml" \
+    --set-string "settings.$escaped_key=x" 2>&1)" && \
+    fail "settings accepted chart-managed or secret flag $forbidden_key"
+  echo "$output" | grep -q 'conflicts with a chart-managed flag' \
+    || fail "settings.$forbidden_key was rejected for the wrong reason: $output"
 done
 
 if command -v kubeconform >/dev/null 2>&1; then
