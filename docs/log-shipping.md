@@ -472,6 +472,17 @@ Raise `--logs.buffer-size` if bursts still outrun the sink; it absorbs a burst b
 does nothing for sustained rate. If the queue is *chronically* deep rather than
 spiky, the sink rate is the problem, not the buffer.
 
+A batch is bounded by bytes as well as by `--logs.batch-max`, at half the OTLP
+exporter's serialized-request ceiling. That bound is not configurable and is not
+about memory — the queue's own `--logs.buffer-max-bytes` covers memory. It exists
+because an oversized request is refused by the exporter *before* it reaches the
+wire, which yields no delivery outcome to classify, so the batch would be retried
+to exhaustion against bytes that can never be accepted. Note that gzip does not
+raise that ceiling: it is checked against the uncompressed protobuf. A single
+record larger than the bound is still shipped on its own rather than stalling the
+queue behind it; `--logs.max-record-bytes` is the bound that rejects those, at
+ingest.
+
 Over HTTP the client's idle-connection pool is sized to the concurrency
 automatically. Note that an endpoint which does not negotiate HTTP/2 needs one TCP
 connection per concurrent flush — the Grafana Cloud OTLP gateway is HTTP/1.1-only,

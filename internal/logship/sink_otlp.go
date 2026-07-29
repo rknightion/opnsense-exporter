@@ -59,6 +59,27 @@ import (
 // is not optional; TestOTLPSink_ResourceKeyBudgetHasHeadroomOverObserved enforces it.
 const maxLogResources = 256
 
+// otlpMaxRequestBytes is the serialized-request ceiling we PIN on the HTTP exporter
+// rather than inheriting (#506). It is the SDK's own current default
+// (vendor/…/otlploghttp/config.go:29), pinned so that it and maxExportBytes below cannot
+// drift apart on a dependency bump — the whole point of the pair is the relationship
+// between them, and a silently-lowered SDK default would break it with no signal.
+//
+// The exporter checks this against the UNCOMPRESSED marshalled protobuf
+// (vendor/…/otlploghttp/client.go:159-178) and only gzips afterwards, in newRequest — so
+// the gzip default does NOT buy headroom here.
+const otlpMaxRequestBytes = 64 << 20
+
+// maxExportBytes bounds one drained batch, and therefore every partition split out of it,
+// so a request that the exporter would refuse to send is never built (#506).
+//
+// It is HALF the wire ceiling on purpose. recordBytes (queue.go) estimates the RETAINED
+// size of a record — body, source, attributes, plus fixed overhead allowances — which is
+// a proxy for the marshalled protobuf size, not a measurement of it. Protobuf adds field
+// tags and length prefixes we do not model. A 2x margin absorbs that difference instead
+// of betting that the estimate is conservative in every payload shape.
+const maxExportBytes = 32 << 20
+
 // otlpSink ships records over OTLP logs. It reuses the exporter's --otlp.*
 // transport family. Each provider's syncBatchProcessor (#290) exports synchronously and
 // returns the real export error, so the pipeline's own bounded queue is the single
@@ -1125,7 +1146,12 @@ func newLogExporter(ctx context.Context, cfg *options.OTLPConfig, tlsCfg *tls.Co
 				return nil, err
 			}
 		}
-		opts := []otlploghttp.Option{otlploghttp.WithHTTPClient(client)}
+		// Pin the request ceiling rather than inheriting the SDK default, so it and
+		// maxExportBytes stay a matched pair (#506). See otlpMaxRequestBytes.
+		opts := []otlploghttp.Option{
+			otlploghttp.WithHTTPClient(client),
+			otlploghttp.WithMaxRequestSize(otlpMaxRequestBytes),
+		}
 		if gzipByDefault() {
 			opts = append(opts, otlploghttp.WithCompression(otlploghttp.GzipCompression))
 		}

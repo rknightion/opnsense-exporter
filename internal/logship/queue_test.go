@@ -1,8 +1,11 @@
 package logship
 
 import (
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func mkEntry(body string) Entry {
@@ -19,7 +22,7 @@ func TestBoundedQueue_DropOldestOnOverflow(t *testing.T) {
 	if len(dropped) != 1 || dropped[0] != "a" {
 		t.Fatalf("expected oldest 'a' dropped, got %v", dropped)
 	}
-	batch, ok := q.drainUpTo(10)
+	batch, ok := q.drainUpTo(10, 0)
 	if !ok {
 		t.Fatal("drain returned not-ok on a non-empty queue")
 	}
@@ -33,7 +36,7 @@ func TestBoundedQueue_DrainUpToRespectsMax(t *testing.T) {
 	for _, s := range []string{"a", "b", "c", "d"} {
 		q.push(mkEntry(s))
 	}
-	batch, ok := q.drainUpTo(2)
+	batch, ok := q.drainUpTo(2, 0)
 	if !ok || len(batch) != 2 {
 		t.Fatalf("expected 2 entries, got ok=%v n=%d", ok, len(batch))
 	}
@@ -47,12 +50,12 @@ func TestBoundedQueue_CloseDrainsThenSignalsDone(t *testing.T) {
 	q.push(mkEntry("a"))
 	q.close()
 	// Buffered entry still drains.
-	batch, ok := q.drainUpTo(10)
+	batch, ok := q.drainUpTo(10, 0)
 	if !ok || len(batch) != 1 {
 		t.Fatalf("expected final drain of 1, got ok=%v n=%d", ok, len(batch))
 	}
 	// Now empty + closed => not-ok, unblocks the emitter loop.
-	if _, ok := q.drainUpTo(10); ok {
+	if _, ok := q.drainUpTo(10, 0); ok {
 		t.Fatal("expected not-ok after closed+drained")
 	}
 }
@@ -61,7 +64,7 @@ func TestBoundedQueue_DrainBlocksUntilPush(t *testing.T) {
 	q := newBoundedQueue(10, nil)
 	done := make(chan Entry, 1)
 	go func() {
-		b, _ := q.drainUpTo(10)
+		b, _ := q.drainUpTo(10, 0)
 		done <- b[0]
 	}()
 	q.push(mkEntry("x"))
@@ -98,7 +101,7 @@ func TestBoundedQueue_DrainClearsDrainedSlots(t *testing.T) {
 	q.push(mkEntry("a"))
 	q.push(mkEntry("b"))
 
-	if _, ok := q.drainUpTo(10); !ok {
+	if _, ok := q.drainUpTo(10, 0); !ok {
 		t.Fatal("drain returned not-ok on a non-empty queue")
 	}
 	// Fully drained, so buf is reset to the FRONT of its backing array and the
@@ -182,13 +185,13 @@ func TestBoundedQueue_DrainReleasesBytes(t *testing.T) {
 	if q.queuedBytes() == 0 {
 		t.Fatal("queuedBytes should be non-zero after two pushes")
 	}
-	if _, ok := q.drainUpTo(1); !ok {
+	if _, ok := q.drainUpTo(1, 0); !ok {
 		t.Fatal("drain returned not-ok")
 	}
 	if got, want := q.queuedBytes(), recordBytes(mkEntry("bbbb").Record); got != want {
 		t.Fatalf("queuedBytes after partial drain = %d, want %d", got, want)
 	}
-	if _, ok := q.drainUpTo(10); !ok {
+	if _, ok := q.drainUpTo(10, 0); !ok {
 		t.Fatal("drain returned not-ok")
 	}
 	if got := q.queuedBytes(); got != 0 {
@@ -227,4 +230,101 @@ func bodies(es []Entry) []string {
 		out[i] = e.Record.Body
 	}
 	return out
+}
+
+// TestDrainUpTo_StopsAtByteCap pins the second bound on a drained batch (#506).
+//
+// Before this, drainUpTo capped on RECORD COUNT alone, so a batch could exceed the OTLP
+// exporter's serialized-request ceiling (64 MiB, checked on the UNCOMPRESSED protobuf at
+// vendor/…/otlploghttp/client.go:177 — gzip does not raise it). An oversized request is
+// refused before any HTTP call is made, so no wire outcome is observed and
+// classifyPartition routes it to Retry, burning the whole --logs.ship-max-attempts budget
+// re-marshalling identical bytes that can never be accepted.
+func TestDrainUpTo_StopsAtByteCap(t *testing.T) {
+	q := newBoundedQueue(100, func(Entry) {})
+	// Four entries whose sizes are dominated by the body, so the byte cap is the bound
+	// that binds rather than the count cap.
+	body := strings.Repeat("x", 1000)
+	for i := range 4 {
+		q.push(Entry{Source: "syslog", Record: Record{Body: body + strconv.Itoa(i)}})
+	}
+
+	// A cap big enough for two entries but not three.
+	perEntry := recordBytes(Record{Body: body + "0"})
+	batch, ok := q.drainUpTo(100, perEntry*2+perEntry/2)
+	if !ok {
+		t.Fatal("drainUpTo returned ok=false on a non-empty queue")
+	}
+	if len(batch) != 2 {
+		t.Fatalf("drained %d entries, want 2 — the byte cap did not bind", len(batch))
+	}
+
+	total := 0
+	for _, e := range batch {
+		total += recordBytes(e.Record)
+	}
+	if total > perEntry*2+perEntry/2 {
+		t.Fatalf("drained batch is %d bytes, over the %d cap", total, perEntry*2+perEntry/2)
+	}
+
+	// The remainder must still be queued, not dropped.
+	rest, ok := q.drainUpTo(100, 1<<30)
+	if !ok || len(rest) != 2 {
+		t.Fatalf("remainder = %d entries (ok=%v), want the other 2 still queued", len(rest), ok)
+	}
+}
+
+// TestDrainUpTo_SingleOversizedEntryDoesNotWedge is the edge case that makes the byte cap
+// safe. An entry larger than the whole cap must still be handed out ALONE rather than
+// held back: a strict cap would leave it at the head of the queue forever, the emitter
+// would block on it, and every record behind it would oldest-drop. A permanently wedged
+// pipeline is far worse than one export that fails and is counted.
+func TestDrainUpTo_SingleOversizedEntryDoesNotWedge(t *testing.T) {
+	q := newBoundedQueue(100, func(Entry) {})
+	q.push(Entry{Source: "syslog", Record: Record{Body: strings.Repeat("y", 10_000)}})
+	q.push(Entry{Source: "syslog", Record: Record{Body: "small"}})
+
+	done := make(chan []Entry, 1)
+	go func() {
+		batch, _ := q.drainUpTo(100, 10) // a cap far below the first entry's size
+		done <- batch
+	}()
+
+	select {
+	case batch := <-done:
+		if len(batch) != 1 {
+			t.Fatalf("drained %d entries, want exactly the 1 oversized one", len(batch))
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("drainUpTo blocked on an entry bigger than the byte cap — the queue is wedged")
+	}
+}
+
+// TestDrainUpTo_ZeroByteCapMeansUnbounded keeps the byte cap opt-out consistent with the
+// queue's own byte budget, where 0 disables the bound.
+func TestDrainUpTo_ZeroByteCapMeansUnbounded(t *testing.T) {
+	q := newBoundedQueue(100, func(Entry) {})
+	for range 5 {
+		q.push(Entry{Source: "syslog", Record: Record{Body: strings.Repeat("z", 5000)}})
+	}
+	batch, ok := q.drainUpTo(100, 0)
+	if !ok || len(batch) != 5 {
+		t.Fatalf("drained %d entries (ok=%v), want all 5 — a zero cap must not bound", len(batch), ok)
+	}
+}
+
+// TestExportByteCapIsBelowPinnedWireCeiling pins the RELATIONSHIP between the two
+// constants rather than either value. The batch cap is deliberately well under the wire
+// ceiling because recordBytes estimates RETAINED size, not marshalled protobuf size, and
+// the two are not the same number. If someone raises maxExportBytes to match the ceiling
+// exactly, this fails and says why.
+func TestExportByteCapIsBelowPinnedWireCeiling(t *testing.T) {
+	if maxExportBytes >= otlpMaxRequestBytes {
+		t.Fatalf("maxExportBytes (%d) must stay below otlpMaxRequestBytes (%d)", maxExportBytes, otlpMaxRequestBytes)
+	}
+	if maxExportBytes > otlpMaxRequestBytes/2 {
+		t.Fatalf("maxExportBytes (%d) leaves under 2x margin below the %d wire ceiling; "+
+			"recordBytes is an estimate of retained size, not of marshalled protobuf size",
+			maxExportBytes, otlpMaxRequestBytes)
+	}
 }

@@ -145,7 +145,23 @@ func (q *boundedQueue) evictOldestLocked() {
 // returns up to max currently-queued entries and ok=false only when the queue is
 // closed AND drained (so the emitter loop terminates cleanly after a final
 // flush).
-func (q *boundedQueue) drainUpTo(max int) (batch []Entry, ok bool) {
+//
+// TWO CAPS, and the byte one exists for a different reason than the queue's own byte
+// budget (#506). maxBytes bounds what goes to the WIRE in one request, not what is held
+// in memory. The OTLP exporter refuses an oversized request before making any HTTP call
+// (vendor/…/otlploghttp/client.go:177, 64 MiB against the UNCOMPRESSED protobuf — gzip is
+// applied later, in newRequest, so it does not raise this ceiling). Because nothing
+// reaches the wire, no delivery outcome is observed, and classifyPartition can only treat
+// it as retryable — so the batch would burn the entire --logs.ship-max-attempts budget
+// re-marshalling identical bytes that can never be accepted. Bounding the drain is what
+// stops such a batch being built at all. maxBytes <= 0 disables the cap.
+//
+// AT LEAST ONE ENTRY IS ALWAYS RETURNED, however big it is. A strict cap would leave an
+// oversized entry at the head of the queue forever: the emitter would block on it and
+// every record behind it would oldest-drop. A permanently wedged pipeline is far worse
+// than one export that fails and is counted, and --logs.max-record-bytes already rejects
+// oversized records at ingest, which is the right place for that bound.
+func (q *boundedQueue) drainUpTo(max, maxBytes int) (batch []Entry, ok bool) {
 	q.mu.Lock()
 	for len(q.buf) == 0 && !q.closed {
 		q.cond.Wait()
@@ -160,6 +176,18 @@ func (q *boundedQueue) drainUpTo(max int) (batch []Entry, ok bool) {
 	n := len(q.buf)
 	if n > max {
 		n = max
+	}
+	if maxBytes > 0 {
+		acc := 0
+		for i := range n {
+			next := acc + q.buf[i].size
+			// i == 0 always passes: see the always-return-one rule above.
+			if i > 0 && next > maxBytes {
+				n = i
+				break
+			}
+			acc = next
+		}
 	}
 	batch = make([]Entry, n)
 	freed := 0

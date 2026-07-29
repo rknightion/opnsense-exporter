@@ -331,7 +331,7 @@ const (
 func (p *pipeline) runEmitter() {
 	defer p.emitterWG.Done()
 	for {
-		batch, ok := p.queue.drainUpTo(p.cfg.BatchMax)
+		batch, ok := p.queue.drainUpTo(p.cfg.BatchMax, maxExportBytes)
 		if !ok {
 			return
 		}

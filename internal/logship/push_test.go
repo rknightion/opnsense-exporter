@@ -47,7 +47,7 @@ func drainN(t *testing.T, p *pipeline, n int, d time.Duration) []Entry {
 	go func() {
 		var out []Entry
 		for len(out) < n {
-			batch, ok := p.queue.drainUpTo(n - len(out))
+			batch, ok := p.queue.drainUpTo(n-len(out), 0)
 			if !ok {
 				break
 			}
