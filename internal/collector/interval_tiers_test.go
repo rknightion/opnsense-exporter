@@ -37,6 +37,66 @@ func TestBodyCacheDefaultsOutliveThePollCeiling(t *testing.T) {
 	}
 }
 
+// fastTierMembers pins the shipped fast-tier membership as settled by the #569
+// audit. The fast tier is the only one where being wrong is expensive (5,760 polls
+// per collector per day, two configd RPCs and two audit lines each, #535), so a
+// collector must not drift into or out of it as a side effect of another change:
+// adding or removing a name here is the deliberate act of applying the admission
+// rule written above collectorTiers, and it comes with the per-collector clause
+// annotation that rule demands.
+//
+// log_events and flow were promoted by #569. Both make no API call at all — their
+// receivers fill an in-memory store out of band, exactly as cpu does — so the cost
+// paragraph is cleared outright and clause (c) decides them on their rate-shaped
+// dashboard panels.
+var fastTierMembers = map[string]bool{
+	GatewaysSubsystem:   true,
+	InterfacesSubsystem: true,
+	ProtocolSubsystem:   true,
+	PFStatsSubsystem:    true,
+	NetflowSubsystem:    true,
+	CARPSubsystem:       true,
+	CPUSubsystem:        true,
+	LogEventsSubsystem:  true,
+	FlowSubsystem:       true,
+}
+
+func TestFastTierMembershipIsDeliberate(t *testing.T) {
+	got := map[string]bool{}
+	for name, d := range collectorTiers {
+		if d == IntervalFast {
+			got[name] = true
+		}
+	}
+	for name := range got {
+		if !fastTierMembers[name] {
+			t.Errorf("collector %q is on the fast tier but is not listed in fastTierMembers: "+
+				"apply the admission rule above collectorTiers, annotate the entry with the "+
+				"clause that admits it, and add it here", name)
+		}
+	}
+	for name := range fastTierMembers {
+		if !got[name] {
+			t.Errorf("fastTierMembers lists %q but collectorTiers no longer puts it on the fast "+
+				"tier; record the demotion and drop it here", name)
+		}
+	}
+}
+
+// TestZeroCostFastTierMembersStayInTheTable guards the three fast-tier collectors
+// that issue no API request (cpu #559, log_events and flow #569). They are admitted
+// on freshness alone precisely because their firewall cost is zero; if one of them
+// ever gains a Fetch call the cost paragraph starts applying to it and the tier has
+// to be re-argued. Pinning them by name keeps that re-argument from being skipped.
+func TestZeroCostFastTierMembersStayInTheTable(t *testing.T) {
+	for _, name := range []string{CPUSubsystem, LogEventsSubsystem, FlowSubsystem} {
+		if collectorTiers[name] != IntervalFast {
+			t.Errorf("collector %q should be on the fast tier (it makes no API call, so the "+
+				"cost paragraph is cleared outright), got %v", name, collectorTiers[name])
+		}
+	}
+}
+
 // notPolled marks a body-cached endpoint that no collector poll timer fetches.
 const notPolled = "<not fetched by a polled collector>"
 

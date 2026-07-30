@@ -485,12 +485,12 @@ services:
       # OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL: "60s"
       # Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the
       # default) keeps the single-stream behaviour exactly. When set, fast-tier
-      # collectors (gateways, interfaces, protocol, pf_stats, activity, netflow, carp
-      # — or whatever --collector.poll-interval-override makes fast) export at this
-      # interval while everything else stays on --otlp.export-interval. Must be shorter
-      # than --otlp.export-interval. Fast-tier series are a small fraction of the total,
-      # so 15s here costs far less than setting --otlp.export-interval=15s for
-      # everything.
+      # collectors export at this interval while everything else stays on
+      # --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier
+      # membership is the collectorTiers table in internal/collector/interval_tiers.go,
+      # plus whatever --collector.poll-interval-override makes fast; the tier is
+      # deliberately small, so 15s here costs far less than setting
+      # --otlp.export-interval=15s for everything.
       # OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL: "0s"
       # Grafana Cloud OTLP gateway base URL (required when using the Grafana Cloud
       # shortcut).

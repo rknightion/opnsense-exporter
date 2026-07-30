@@ -40,7 +40,7 @@ var (
 	).Envar("OPNSENSE_EXPORTER_OTLP_EXPORT_INTERVAL").Default("60s").Duration()
 	otlpFastExportInterval = kingpin.Flag(
 		"otlp.fast-export-interval",
-		"Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the default) keeps the single-stream behaviour exactly. When set, fast-tier collectors (gateways, interfaces, protocol, pf_stats, activity, netflow, carp — or whatever --collector.poll-interval-override makes fast) export at this interval while everything else stays on --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier series are a small fraction of the total, so 15s here costs far less than setting --otlp.export-interval=15s for everything.",
+		"Optional second OTLP export lane for fast-tier collectors only (#390). Zero (the default) keeps the single-stream behaviour exactly. When set, fast-tier collectors export at this interval while everything else stays on --otlp.export-interval. Must be shorter than --otlp.export-interval. Fast-tier membership is the collectorTiers table in internal/collector/interval_tiers.go, plus whatever --collector.poll-interval-override makes fast; the tier is deliberately small, so 15s here costs far less than setting --otlp.export-interval=15s for everything.",
 	).Envar("OPNSENSE_EXPORTER_OTLP_FAST_EXPORT_INTERVAL").Default("0s").Duration()
 	otlpTLSCAFile = kingpin.Flag(
 		"otlp.tls-ca-file",

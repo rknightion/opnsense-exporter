@@ -79,15 +79,45 @@ const (
 // work per call — a permanent 14% duty cycle at 15s. Freshness bought nothing and the
 // cost was the largest in the tier; #559 removed it. That is what the rule is for.
 //
-// Rationale by tier:
-//   - fast: admitted by the rule above; see the per-collector clause annotations in
-//     collectorTiers.
-//   - slow: data that drifts over minutes, or is comparatively expensive to fetch
-//     (rule hit-counters, alias table contents, NTP/chrony peers, dyndns/qfeeds status,
-//     shaper pipes, siproxd registrations, tor circuits, LLDP neighbours).
-//   - cold: near-static inventory/health (firmware, certificates, ACME, SMART, cron,
-//     snapshots, vnstat's aggregated history, local auth inventory, config-backup
-//     history, ClamAV signature-database version).
+// Rationale by tier. Each states the TEST a candidate is held against, not who is
+// already there — the membership lists that used to live here described the table
+// instead of deciding it (#569, the same fix #568 made for the fast tier).
+//
+//   - fast (15s): admitted by the rule above — clause (a), (b) or (c), with the cost
+//     paragraph applied. Per-collector clause annotations are in collectorTiers.
+//   - medium (60s, the global default, ABSENCE from this table): the residual tier and
+//     the correct home for anything that neither earns 15s under the rule above nor
+//     meets a slower tier's test. A collector is here when its data moves on the scale
+//     of a minute — live status, session and lease inventories, per-poll counters read
+//     over multi-minute windows — and nothing reads it at sub-minute resolution.
+//     Absence used to mean nobody had decided; since #569 it means the audit checked
+//     and 60s was right, so a new collector still needs the same argument as any
+//     other tier.
+//   - slow (5m): data that only drifts over minutes AND whose consumers read it over
+//     windows longer than that, OR that is comparatively expensive to fetch — many
+//     requests per poll, or a payload the box has to compute — where the cost buys no
+//     freshness anyone consumes. Detection lag up to 5m must be acceptable for every
+//     consumer, because that is what a demotion actually costs.
+//   - cold (15m): near-static state that changes only on an ADMIN ACTION or a vendor
+//     release — inventory, certificate and firmware metadata, on-disk history — so a
+//     15m detection lag on a change nobody makes unattended is free.
+//
+// A collector polled slowly is NOT under-sampled for rate(): since #336 the scheduler
+// fills a snapshot and /metrics replays it, so every series is scraped at the
+// collection cadence whatever its poll tier. Under-polling turns a counter into a step
+// function with up to one poll interval of detection lag — it does not starve rate()
+// of samples. "This counter is polled too slowly for rate() to work" is therefore not
+// a valid argument for promotion; the real question is whether step-shaped data and
+// that detection lag are acceptable to whatever consumes the series (#569).
+//
+// The availability/feature collector (#517) is the one collector that declares its
+// interval in code (availability.go's PollInterval, IntervalCold) rather than here.
+// #569 confirmed that as correct and deliberate rather than an oversight: its cadence
+// is part of the probe contract documented on opnsense_feature_available ("refreshed
+// on the cold poll tier (15m)"), and keeping the declaration beside the probe logic is
+// what stops the two drifting apart. resolvePollInterval reads the self-declaration
+// first, so the two mechanisms cannot disagree — a collectorTiers entry for it would
+// be silently dead code.
 //
 // A collector belongs in cold when its data changes only on an admin action, NOT
 // merely because its endpoint carries a body cache TTL: the tier must state the
@@ -171,6 +201,27 @@ var collectorTiers = map[string]time.Duration{
 	// #550's lane clamp this still resolves to 60s when no fast lane is configured, so
 	// the default deployment gains nothing to pay for.
 	CPUSubsystem: IntervalFast,
+	// Promoted by #569. Clause (c), and it clears the cost paragraph outright on the
+	// same footing as cpu: log_events makes NO API call at all — the syslog receiver
+	// feeds collector.LogEvents out of band and Update emits the running totals — so
+	// its firewall cost is zero and the rule's one-directional weighing leaves it
+	// judged on freshness alone. (c): grafana/tabs/log_events.py is ~18 stacked
+	// per-program event-rate graphs (firewall, sshd, audit, dhcp/dhcp6c, radius, upnp,
+	// ids, netmap ring-full, arp address moves), all $__rate_interval, and a syslog
+	// burst is exactly the shape a 60s sample flattens. It also carries the heaviest
+	// alert footprint of any collector (18 references in grafana/alerts/build_rules.py);
+	// those windows are 5m/15m so clause (b) is NOT what admits it — the panels are.
+	LogEventsSubsystem: IntervalFast,
+	// Promoted by #569, same basis as log_events. Clause (c), zero firewall cost: the
+	// NetFlow and Zenarmor receiver lanes feed collector.Flow out of band and Update
+	// emits the accumulator, so no request is issued. (c): grafana/tabs/flow.py and
+	// flow_pipeline.py are rate-shaped throughput and pipeline-counter graphs
+	// (opnsense_flow_bytes_total appears in six of them, plus records/packets, DNS-cache
+	// hit/miss, correlator emitted/matched/evicted/expired, NetFlow datagrams and
+	// decode counters) — per-flow byte rates on a busy link lose real shape at 60s. The
+	// two alerts that read it (correlator evictions, truncated logs) use 5m windows and
+	// would read the same off 60s, so clause (b) does not apply here either.
+	FlowSubsystem: IntervalFast,
 	// slow (5m)
 	FirewallRulesSubsystem: IntervalSlow,
 	AliasSubsystem:         IntervalSlow,
