@@ -294,6 +294,14 @@ func resolveOptions() (*startupConfig, []error) {
 		if err := web.Validate(*options.WebConfig.WebConfigFile); err != nil {
 			errs = append(errs, fmt.Errorf("--web.config.file: %w", err))
 		}
+		// #562: exporter-toolkit's VerifyPeerCertificate callback indexes
+		// rawCerts[0] unconditionally, and installs itself whenever
+		// client_allowed_sans is set even under a client_auth_type that lets a
+		// handshake complete with no client certificate at all. Reject that
+		// combination here, before it can ever reach a handshake.
+		if err := options.ValidateWebTLSConfig(*options.WebConfig.WebConfigFile); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	flowCfg, ferr := options.Flow()
