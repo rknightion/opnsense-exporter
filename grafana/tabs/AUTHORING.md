@@ -303,7 +303,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 `tests/test_sentinel_contract.py` catches the same drift without needing a Make run.
 
 <!-- sentinelgen:begin -->
-### Prometheus sentinels — 107 total (collector 102 / self_labeled 4 / target_join 1 / global 0)
+### Prometheus sentinels — 108 total (collector 103 / self_labeled 4 / target_join 1 / global 0)
 
 | Sentinel | Scope | Presence test | Gates (tab/row) | Query |
 |---|---|---|---|---|
@@ -364,6 +364,7 @@ build if either drifts from the registry (`git diff --exit-code`), and
 | `has_log_events_audit` | `collector` | existence (series presence) | OPNsense Exporter > Security > Authentication & Audit; OPNsense Exporter > Security > Authentication & Audit > Config / Audit | `label_values(opnsense_log_events_audit_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_carp` | `collector` | existence (series presence) | OPNsense Exporter > System > CARP / HA > Transition Events (from syslog) | `label_values(opnsense_log_events_carp_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_dhcp` | `collector` | existence (series presence) | OPNsense Exporter > Network > DHCP > Lease Events (log-derived) | `label_values(opnsense_log_events_dhcp_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
+| `has_log_events_dhcp6c` | `collector` | existence (series presence) | OPNsense Exporter > Network > DHCP > WAN DHCPv6 Client & Prefix Delegation (log-derived) | `label_values(opnsense_log_events_dhcp6c_message_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_dhcp_client` | `collector` | existence (series presence) | OPNsense Exporter > Network > DHCP > WAN DHCP Client (log-derived) | `label_values(opnsense_log_events_dhcp_client_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_firewall` | `collector` | existence (series presence) | OPNsense Exporter > Security > Firewall & PF > Firewall Events (log-derived) | `label_values(opnsense_log_events_firewall_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |
 | `has_log_events_haproxy` | `collector` | existence (series presence) | OPNsense Exporter > Services > HAProxy > HAProxy Events (log-derived) | `label_values(opnsense_log_events_haproxy_total{opnsense_instance=~"$opnsense_instance"}, __name__)` |

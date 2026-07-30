@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-wireguard-peer-down",
+    "name": "opnsense-dhcp6-prefix-expiring",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,7 +11,7 @@
     }
   },
   "spec": {
-    "title": "OPNsenseWireGuardPeerDown",
+    "title": "OPNsenseDHCP6PrefixExpiring",
     "noDataState": "Ok",
     "execErrState": "Error",
     "for": "10m0s",
@@ -19,14 +19,14 @@
       "interval": "1m"
     },
     "labels": {
-      "severity": "warning"
+      "severity": "critical"
     },
     "annotations": {
-      "summary": "OPNsense WireGuard peer {{ $labels.peer_name }} down ({{ $labels.opnsense_instance }})",
-      "description": "WireGuard peer {{ $labels.peer_name }} on {{ $labels.device_name }} has reported status 0 (down) for 10m. Status values are 1=up, 0=down, 2=unknown, 3=stale \u2014 this alert deliberately fires on 0 only, not on unknown/stale.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensewireguardpeerdown",
+      "summary": "OPNsense delegated IPv6 prefix expired on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+      "description": "The valid lifetime of the /{{ $labels.prefix_length }} prefix delegated on {{ $labels.interface }} has run out with no refresh. This is not just the WAN losing its own address: every downstream address derived from this prefix is removed, so IPv6 goes away on every LAN it was delegated to.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6prefixexpiring",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "275"
+      "__panelId__": "269"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_wireguard_peer_status",
+          "expr": "opnsense_log_events_dhcp6c_prefix_valid_expiry_timestamp_seconds - time()",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -65,7 +65,7 @@
               "evaluator": {
                 "type": "lt",
                 "params": [
-                  1,
+                  0,
                   0
                 ]
               },

@@ -38,13 +38,19 @@ func (s *captureSink) ObserveVPN(_, _, _, _ string) bool         { return true }
 func (s *captureSink) ObserveCARP(_, _, _, _, _ string) bool     { return true }
 func (s *captureSink) ObserveUPnP(_, _, _ string) bool           { return true }
 
-// The syslog-only families (#536 netmap/ARP, #541 dhclient). Zenarmor never emits
-// them; these exist so this stub still satisfies logship.MetricSink.
+// The syslog-only families (#536 netmap/ARP, #541 dhclient, #546 dhcp6c and the
+// kea-dhcp6 allocation failures). Zenarmor never emits them; these exist so this
+// stub still satisfies logship.MetricSink.
 func (s *captureSink) ObserveNetmapRingFull(_ string) bool                { return true }
 func (s *captureSink) ObserveARPMove(_ string) bool                       { return true }
 func (s *captureSink) ObserveDHCPClient(_, _ string) bool                 { return true }
 func (s *captureSink) ObserveDHCPClientScript(_, _ string) bool           { return true }
 func (s *captureSink) ObserveDHCPClientLease(_ string, _, _ float64) bool { return true }
+func (s *captureSink) ObserveDHCP6CMessage(_, _, _ string) bool           { return true }
+func (s *captureSink) ObserveDHCP6CEvent(_, _, _ string) bool             { return true }
+func (s *captureSink) ObserveDHCP6AllocFail(_ string) bool                { return true }
+
+func (s *captureSink) ObserveDHCP6CPrefix(_, _ string, _, _, _ float64) bool { return true }
 
 var _ logship.MetricSink = (*captureSink)(nil)
 

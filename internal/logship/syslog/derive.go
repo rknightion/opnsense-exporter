@@ -206,6 +206,107 @@ const (
 	dhcpClientReasonNBI      = "nbi"
 )
 
+// The `dhcp6c` family's attribute keys and its CLOSED, code-defined vocabularies
+// (#546). dhcp6c.go writes them; observeDHCP6C below reads them.
+//
+// THE DELEGATED PREFIX AND EVERY CONFIGURED IPv6 ADDRESS ARE ATTRIBUTES AND NEVER
+// LABELS — including the firewall's OWN /48. An ISP re-delegates on a circuit
+// change, which is exactly the event these metrics exist to catch, so a prefix as a
+// label would churn the series set precisely during the incident. The PREFIX LENGTH
+// is the one part that IS a label: it is the delegation SIZE, it does not change
+// when the prefix does, and it is what distinguishes a second delegation of a
+// different size on the same WAN.
+//
+// The three prefix TIMESTAMP attributes are absolute Unix seconds computed by the
+// parser from the line's own syslog timestamp plus dhcp6c's pltime/vltime, not a
+// countdown. See dhcp6c.go, and #541 for why a countdown is the wrong shape.
+const (
+	attrDHCP6CInterface    = "dhcp6c.interface"
+	attrDHCP6CDirection    = "dhcp6c.direction"
+	attrDHCP6CType         = "dhcp6c.type"
+	attrDHCP6CEvent        = "dhcp6c.event"
+	attrDHCP6CScriptReason = "dhcp6c.script.reason"
+	attrDHCP6CPrefix       = "dhcp6c.prefix"
+	attrDHCP6CPrefixLength = "dhcp6c.prefix_length"
+	attrDHCP6CAddress      = "dhcp6c.address"
+
+	attrDHCP6CPreferredSeconds = "dhcp6c.prefix.pltime_seconds"
+	attrDHCP6CValidSeconds     = "dhcp6c.prefix.vltime_seconds"
+
+	attrDHCP6CPrefixUpdatedTimestamp   = "dhcp6c.prefix.updated_timestamp"
+	attrDHCP6CPrefixPreferredTimestamp = "dhcp6c.prefix.preferred_expiry_timestamp"
+	attrDHCP6CPrefixValidTimestamp     = "dhcp6c.prefix.valid_expiry_timestamp"
+
+	// The message DIRECTION. Two values, decided by which of dhcp6c's two format
+	// strings matched — never by anything on the wire.
+	dhcp6cDirectionSent     = "sent"
+	dhcp6cDirectionReceived = "received"
+
+	// The DHCPv6 exchange vocabulary, lowercased. It is dhcp6c's own closed set: the
+	// six `Sending <Msg> on %s` literals in client6_send and the state names
+	// dhcp6_event_statestr returns, folded onto one vocabulary so a Renew and the
+	// REPLY that answers it carry the same `type`. INFOREQ and "Information Request"
+	// are the same exchange spelled two ways upstream and both map to
+	// information_request.
+	dhcp6cTypeSolicit            = "solicit"
+	dhcp6cTypeRequest            = "request"
+	dhcp6cTypeRenew              = "renew"
+	dhcp6cTypeRebind             = "rebind"
+	dhcp6cTypeRelease            = "release"
+	dhcp6cTypeInformationRequest = "information_request"
+	// dhcp6cTypeExit is reachable ONLY as a script reason: dhcp6c never sends an
+	// "Exit" message, but OPNsense's dhcp6c_script.sh handles an EXIT reason.
+	dhcp6cTypeExit = "exit"
+
+	// The dhcp6c EVENT vocabulary. Every value names a shape upstream can actually
+	// produce: prefix_created/prefix_updated are prefixconf.c's `create`/`update`
+	// literals, address_added/address_removed are common.c's `add`/`remove`, and the
+	// four script_* values are the four `logger -t dhcp6c` calls in OPNsense's
+	// dhcp6c_script.sh.
+	dhcp6cEventPrefixCreated       = "prefix_created"
+	dhcp6cEventPrefixUpdated       = "prefix_updated"
+	dhcp6cEventAddressAdded        = "address_added"
+	dhcp6cEventAddressRemoved      = "address_removed"
+	dhcp6cEventScriptExecuting     = "script_executing"
+	dhcp6cEventScriptConnected     = "script_connected"
+	dhcp6cEventScriptPrefixUpdated = "script_prefix_updated"
+	dhcp6cEventScriptIgnored       = "script_ignored"
+)
+
+// The kea-dhcp6 ALLOCATION FAILURE vocabularies (#546). dhcp.go writes them;
+// observeDHCP below reads dhcp.alloc_fail_reason to decide what counts.
+//
+// ONE FAILED ALLOCATION EMITS A BURST OF UP TO THREE LINES SHARING ONE tid, so
+// counting every ALLOC_ENGINE_V6_ALLOC_FAIL_* line would report three failures for
+// one. Kea's alloc_engine.cc (the `if (network) … else …` and `if (total_attempts ==
+// 0) … else …` pairs) guarantees that exactly ONE scope line
+// (SHARED_NETWORK|SUBNET) and exactly ONE cause line (NO_POOLS|the bare ALLOC_FAIL)
+// fire per failure, with CLASSES an optional extra. The CAUSE line is what is
+// counted: it is one-per-failure like the scope line, and unlike it, it carries the
+// actionable reason. The scope and classes lines are parsed onto the record and
+// deliberately counted nowhere.
+//
+// THE DUID, THE TRANSACTION ID AND THE SUBNET PREFIX ARE ATTRIBUTES AND NEVER
+// LABELS. A DUID is unbounded and identifies a client; a tid is unique per exchange
+// and would mint a series per failure; the subnet is an IPv6 prefix, which this
+// exporter does not put on labels.
+const (
+	keaEventAllocFail = "alloc_fail"
+
+	keaAllocFailLineSubnet        = "subnet"
+	keaAllocFailLineSharedNetwork = "shared_network"
+	keaAllocFailLineNoPools       = "no_pools"
+	keaAllocFailLineExhausted     = "exhausted"
+	keaAllocFailLineClasses       = "classes"
+
+	// The two COUNTED reasons, and the only two: exactly one of them fires per failed
+	// allocation. no_pools means no configured pool was usable for this client at all
+	// (a classification or configuration problem); exhausted means pools were tried
+	// and every candidate address was already taken.
+	keaAllocFailReasonNoPools   = "no_pools"
+	keaAllocFailReasonExhausted = "exhausted"
+)
+
 // family is the derived metric family a syslog program belongs to (#258).
 // familyUnknown is the zero value: a program not in programFamily below.
 type family int
@@ -240,6 +341,15 @@ const (
 	// indistinguishable from LAN lease churn, which is precisely the incident #541 was
 	// filed for.
 	familyDHCPClient
+	// familyDHCP6C is the WAN-side DHCPv6 CLIENT (#546) — the IPv6 twin of
+	// familyDHCPClient, and separate from it for the same reason familyDHCPClient is
+	// separate from familyDHCP. A v4 and a v6 uplink fail independently and their
+	// message vocabularies do not overlap (discover/request/ack against
+	// solicit/renew/rebind), so folding them into one counter would both mix two closed
+	// vocabularies into one open-looking label and make a v6-only outage invisible
+	// behind a healthy v4 rate. It also carries what v4 has no equivalent of: the
+	// delegated PREFIX and its independent lifetimes.
+	familyDHCP6C
 )
 
 // programFamily maps every program name a parser in this package registers
@@ -299,6 +409,10 @@ var programFamily = map[string]family{
 	// `dhclient` is the WAN DHCP CLIENT (#541). It is NOT familyDHCP: see the
 	// familyDHCPClient comment above.
 	"dhclient": familyDHCPClient,
+
+	// `dhcp6c` is the WAN DHCPv6 CLIENT (#546). Same reasoning as dhclient above: it is
+	// NOT familyDHCP, which is the DHCP SERVERS this firewall runs.
+	"dhcp6c": familyDHCP6C,
 }
 
 // programPrefixFamily is programFamily for PREFIX registrations
@@ -405,12 +519,7 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		return sink.ObserveSSHD(result, attrs["auth.method"], attrs["src.scope"])
 
 	case familyDHCP:
-		action := attrs["dhcp.action"]
-		if action == "" {
-			return false
-		}
-		iface := firstNonEmpty(attrs["interface.name"], attrs["interface"])
-		return sink.ObserveDHCP(action, iface, attrs["dhcp.server_ip"])
+		return observeDHCP(sink, attrs)
 
 	case familyAudit:
 		event := attrs["event"]
@@ -478,6 +587,9 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 
 	case familyDHCPClient:
 		return observeDHCPClient(sink, attrs)
+
+	case familyDHCP6C:
+		return observeDHCP6C(sink, attrs)
 
 	case familyUPnP:
 		// event and result are both required: they are the two closed dimensions the
@@ -587,6 +699,72 @@ func observeDHCPClient(sink logship.MetricSink, attrs map[string]string) bool {
 	// dhclient-script(8), lowercased.
 	if reason := attrs[attrDHCPClientScriptReason]; reason != "" {
 		counted = sink.ObserveDHCPClientScript(attrs[attrDHCPClientInterface], reason) || counted
+	}
+
+	return counted
+}
+
+// observeDHCP counts ONE record from a DHCP SERVER program (dhcpd, dnsmasq-dhcp, the
+// kea-dhcp{4,6} pair, dhcrelay). Like observeDHCPClient it can fire more than one
+// observation, because kea's allocation-failure lines are a different question from
+// its lease lines and arrive on the same program.
+func observeDHCP(sink logship.MetricSink, attrs map[string]string) bool {
+	counted := false
+
+	if action := attrs["dhcp.action"]; action != "" {
+		iface := firstNonEmpty(attrs["interface.name"], attrs["interface"])
+		counted = sink.ObserveDHCP(action, iface, attrs["dhcp.server_ip"]) || counted
+	}
+
+	// The DHCPv6 allocation-failure counter. The gate is deliberately the REASON and
+	// not the more general dhcp.alloc_fail_line: only the two CAUSE lines set a reason,
+	// so the scope and classes lines of the same burst reach here, find nothing to
+	// count, and leave the failure counted exactly once. See the keaAllocFail* block.
+	if reason := attrs["dhcp.alloc_fail_reason"]; reason != "" {
+		counted = sink.ObserveDHCP6AllocFail(reason) || counted
+	}
+
+	return counted
+}
+
+// observeDHCP6C counts ONE dhcp6c record (#546). Like observeDHCPClient it can fire
+// more than one observation for a single record: a prefix line is both a
+// configuration event and the moment three lifetime deadlines are re-established.
+//
+// Every branch is gated on an attribute dhcp6c.go only sets after a captured or
+// source-verified shape matched, so the daemon's other chatter reaches this function
+// carrying none of them and is not counted.
+func observeDHCP6C(sink logship.MetricSink, attrs map[string]string) bool {
+	counted := false
+
+	// The wire-message counter. direction and type are both closed code-defined
+	// vocabularies resolved through maps, so no wire token can reach a label. interface
+	// is EMPTY on a `Received REPLY` the PID correlation could not resolve — the honest
+	// answer, not a missing one.
+	if direction := attrs[attrDHCP6CDirection]; direction != "" {
+		counted = sink.ObserveDHCP6CMessage(attrs[attrDHCP6CInterface], direction, attrs[attrDHCP6CType]) || counted
+	}
+
+	// The configuration/script event counter. reason is legitimately EMPTY on the
+	// prefix and address events, which have none, and on script_ignored, whose REASON
+	// is a token no capture closes — so it must not gate the observation.
+	if event := attrs[attrDHCP6CEvent]; event != "" {
+		counted = sink.ObserveDHCP6CEvent(attrs[attrDHCP6CInterface], event, attrs[attrDHCP6CScriptReason]) || counted
+	}
+
+	// The prefix-delegation gauges. All three are absolute Unix seconds already
+	// computed by the parser, so nothing here does wall-clock arithmetic. They are set
+	// TOGETHER or not at all: they come from one line, and a refresh time without its
+	// two deadlines leaves "the delegation stopped being renewed" with nothing to
+	// compare against.
+	updated, updatedOK := parseUnixSeconds(attrs[attrDHCP6CPrefixUpdatedTimestamp])
+	preferred, preferredOK := parseUnixSeconds(attrs[attrDHCP6CPrefixPreferredTimestamp])
+	valid, validOK := parseUnixSeconds(attrs[attrDHCP6CPrefixValidTimestamp])
+	if updatedOK && preferredOK && validOK {
+		counted = sink.ObserveDHCP6CPrefix(
+			attrs[attrDHCP6CInterface], attrs[attrDHCP6CPrefixLength],
+			updated, preferred, valid,
+		) || counted
 	}
 
 	return counted

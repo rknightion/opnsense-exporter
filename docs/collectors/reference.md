@@ -42,7 +42,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
 | Local Auth | auth | 6 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
-| Log-derived Events | log_events | 22 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
+| Log-derived Events | log_events | 28 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
 | Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 17 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
 | NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |

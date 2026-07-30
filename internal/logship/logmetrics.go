@@ -158,6 +158,74 @@ type MetricSink interface {
 	// the leased address is this firewall's own public IP and both change under exactly
 	// the conditions this metric is watching for. They stay on the shipped record.
 	ObserveDHCPClientLease(iface string, bound, renewal float64) bool
+	// ObserveDHCP6CMessage counts ONE DHCPv6 message this firewall's own WAN client
+	// (dhcp6c) sent or received (#546). direction is sent|received; msgType is a CLOSED
+	// code-defined vocabulary folded from dhcp6c's two spellings of the same exchange
+	// (solicit, request, renew, rebind, release, information_request), so a Renew and
+	// the REPLY answering it share a type.
+	//
+	// iface is the WAN interface, EMPTY on a `Received REPLY` whose daemon PID could
+	// not be correlated back to the `Sending … on <iface>` that named it — the honest
+	// answer when the exporter started mid-lease, not a guess.
+	//
+	// This is a SEPARATE family from ObserveDHCPClient, which is the IPv4 WAN client. A
+	// v4 and a v6 uplink fail independently, and the two message vocabularies do not
+	// overlap.
+	ObserveDHCP6CMessage(iface, direction, msgType string) bool
+	// ObserveDHCP6CEvent counts ONE dhcp6c configuration or script event (#546). event
+	// is a CLOSED code-defined vocabulary: prefix_created, prefix_updated,
+	// address_added, address_removed, script_executing, script_connected,
+	// script_prefix_updated, script_ignored. reason is the OPNsense dhcp6c_script
+	// REASON, from the script's own `case` set and lowercased onto the same vocabulary
+	// as msgType above; it is EMPTY on the prefix and address events, which have none,
+	// and on script_ignored, whose REASON is by definition a token nobody has closed.
+	//
+	// iface MEANS DIFFERENT THINGS PER EVENT, and the event label says which: for the
+	// prefix and script events it is the WAN interface dhcp6c is renewing on, and for
+	// the address events it is the DOWNSTREAM interface the delegated prefix was
+	// applied to (ixl0, ixl0_vlan100). That is the honest reading of each line — an
+	// address really is configured on the LAN device — and the tuple is self-describing
+	// because address_* is exactly the set with downstream semantics.
+	//
+	// The configured address and the delegated prefix are NEVER passed here and must
+	// never be added; they stay on the shipped log record.
+	ObserveDHCP6CEvent(iface, event, reason string) bool
+	// ObserveDHCP6CPrefix records this firewall's DELEGATED PREFIX state (#546) — the
+	// IPv6 signal with no IPv4 equivalent, because a PD's lifetimes are independent of
+	// the WAN address and every downstream network's addressing is derived from it.
+	// Like ObserveDHCPClientLease this feeds GAUGES: updated, preferredExpiry and
+	// validExpiry are absolute Unix seconds already computed by the parser from the log
+	// line's own timestamp plus dhcp6c's pltime and vltime.
+	//
+	// TIMESTAMPS RATHER THAN COUNTDOWNS, for the reason ObserveDHCPClientLease states.
+	// All three are set TOGETHER or not at all: they come from one line, and a refresh
+	// time with no deadlines leaves the "it stopped renewing" query nothing to compare
+	// against.
+	//
+	// THE PREFIX ITSELF IS NEVER PASSED HERE and must never be added — not even though
+	// it is the firewall's own rather than a client's. It changes on re-delegation,
+	// which is precisely the event this metric watches for, so it would churn the
+	// series set during the incident. prefixLength IS passed: it is the delegation
+	// SIZE, it does not change when the prefix does, and it is what distinguishes a
+	// second delegation of a different size on the same WAN. Two delegations of the
+	// SAME size on one WAN collapse onto one series, last write wins.
+	ObserveDHCP6CPrefix(iface, prefixLength string, updated, preferredExpiry, validExpiry float64) bool
+	// ObserveDHCP6AllocFail counts ONE failed DHCPv6 lease allocation by this
+	// firewall's kea-dhcp6 SERVER (#546) — a v6 client that was refused a lease.
+	// reason is a CLOSED code-defined vocabulary of exactly two values: no_pools (not
+	// one configured pool was usable for this client) and exhausted (pools were tried
+	// and every candidate was taken).
+	//
+	// EXACTLY ONE CALL PER FAILED ALLOCATION, and that is the whole design. Kea emits a
+	// BURST of up to three ALLOC_ENGINE_V6_ALLOC_FAIL_* lines for one failure, sharing
+	// one transaction id; counting all of them would triple-report. The deriver counts
+	// only the CAUSE line, which alloc_engine.cc guarantees fires exactly once per
+	// failure and which is the one that carries the reason.
+	//
+	// THE DUID, THE TRANSACTION ID AND THE SUBNET ARE NEVER PASSED HERE and must never
+	// be added: a DUID is unbounded and identifies a client, a tid is unique per
+	// exchange, and the subnet is an IPv6 prefix. All three stay on the shipped record.
+	ObserveDHCP6AllocFail(reason string) bool
 	// ObserveUPnP counts one miniupnpd mapping event (#409). All three values are
 	// CLOSED code-defined vocabularies resolved by the parser and deriver: event =
 	// expired|cleanup_failed|unauthorized|lease_file_error; result = ok (expired only)
@@ -246,6 +314,12 @@ func (NopMetricSink) ObserveDHCPClient(_, _ string) bool        { return true }
 func (NopMetricSink) ObserveDHCPClientScript(_, _ string) bool  { return true }
 
 func (NopMetricSink) ObserveDHCPClientLease(_ string, _, _ float64) bool { return true }
+
+func (NopMetricSink) ObserveDHCP6CMessage(_, _, _ string) bool { return true }
+func (NopMetricSink) ObserveDHCP6CEvent(_, _, _ string) bool   { return true }
+func (NopMetricSink) ObserveDHCP6AllocFail(_ string) bool      { return true }
+
+func (NopMetricSink) ObserveDHCP6CPrefix(_, _ string, _, _, _ float64) bool { return true }
 
 func (NopMetricSink) ObserveUPnP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

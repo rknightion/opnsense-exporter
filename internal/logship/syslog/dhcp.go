@@ -101,6 +101,45 @@ var (
 	keaLeaseRE = regexp.MustCompile(`lease (?:for address )?([^\s,]+)`)
 	// keaSecsRE reads the duration, spelled "for 4000 s" or "for 3869 seconds".
 	keaSecsRE = regexp.MustCompile(`\bfor (\d+) (?:s|secs?|seconds?)\b`)
+
+	// keaAllocFailV6RE matches the DHCPv6 allocation-failure message ids (#546). It is
+	// anchored on V6 on purpose: kea spells the v4 family ALLOC_ENGINE_V4_ALLOC_FAIL_*,
+	// and a loosened `V[46]` here would count LAN IPv4 exhaustion on the IPv6 counter.
+	// The optional suffix group is empty for the bare ALLOC_FAIL.
+	keaAllocFailV6RE = regexp.MustCompile(`^ALLOC_ENGINE_V6_ALLOC_FAIL(|_SHARED_NETWORK|_SUBNET|_NO_POOLS|_CLASSES)$`)
+	// keaAllocFailSubnetRE reads the subnet and its id out of the SUBNET scope line
+	// ("…: failed to allocate an IPv6 lease in the subnet 2001:db8::/64, subnet-id 1,
+	// shared network (none)"). Both are ATTRIBUTES; the subnet is an IPv6 prefix and
+	// this exporter never puts one on a label.
+	keaAllocFailSubnetRE = regexp.MustCompile(`in the subnet (\S+), subnet-id (\d+)`)
+	// keaAllocFailClassesRE reads the client-class list off the CLASSES line. An
+	// attribute: the list is named by whoever wrote the classification rules.
+	keaAllocFailClassesRE = regexp.MustCompile(`with classes: (\S.*)$`)
+)
+
+// keaAllocFailLines maps kea's ALLOC_ENGINE_V6_ALLOC_FAIL* suffix onto the closed
+// line vocabulary, and keaAllocFailCountedReasons says which of those lines is the
+// authoritative one-per-failure signal.
+//
+// Kea's alloc_engine.cc emits, for ONE failed allocation: exactly one SCOPE line
+// (SHARED_NETWORK when the client is in a shared network, SUBNET otherwise), exactly
+// one CAUSE line (NO_POOLS when zero pools were even attempted, the bare ALLOC_FAIL
+// otherwise), and optionally CLASSES. All three share one tid. Counting every line
+// would report three failures for one, so only the CAUSE pair is counted — it is
+// one-per-failure like the scope pair, and unlike it, it carries the reason.
+var (
+	keaAllocFailLines = map[string]string{
+		"_SUBNET":         keaAllocFailLineSubnet,
+		"_SHARED_NETWORK": keaAllocFailLineSharedNetwork,
+		"_NO_POOLS":       keaAllocFailLineNoPools,
+		"":                keaAllocFailLineExhausted,
+		"_CLASSES":        keaAllocFailLineClasses,
+	}
+
+	keaAllocFailCountedReasons = map[string]string{
+		keaAllocFailLineNoPools:   keaAllocFailReasonNoPools,
+		keaAllocFailLineExhausted: keaAllocFailReasonExhausted,
+	}
 )
 
 // dhcpFields is the backend-independent shape all three parsers produce. The final
@@ -119,7 +158,17 @@ type dhcpFields struct {
 	tid         string // Kea transaction id (0x…)
 	messageType string // DHCP message type on a PACKET_RECEIVED line (RENEW, REQUEST, …)
 	keaCommand  string // control-plane command on a COMMAND_RECEIVED line
-	keaEvent    string // packet_received | command_received
+	keaEvent    string // packet_received | command_received | alloc_fail
+
+	// The DHCPv6 allocation-failure group (#546). allocFailLine names WHICH line of
+	// the burst this is; allocFailReason is set ONLY on the two cause lines and is what
+	// the deriver counts, so the scope and classes lines of the same burst cannot
+	// double-count the failure.
+	allocFailLine     string
+	allocFailReason   string
+	allocFailSubnet   string
+	allocFailSubnetID string
+	allocFailClasses  string
 }
 
 // parseDHCP dispatches on the shape of the line, not on the program name: a box
@@ -168,6 +217,13 @@ func parseDHCP(env Envelope, snap *enrich.Snapshot, _ func(table string)) (logsh
 	set("dhcp.message_type", f.messageType)
 	set("dhcp.kea_command", f.keaCommand)
 	set("dhcp.kea_event", f.keaEvent)
+	// The DHCPv6 allocation-failure group. dhcp.alloc_fail_reason is the ONLY one the
+	// deriver reads; the rest are diagnostics on the shipped record.
+	set("dhcp.alloc_fail_line", f.allocFailLine)
+	set("dhcp.alloc_fail_reason", f.allocFailReason)
+	set("dhcp.alloc_fail_subnet", f.allocFailSubnet)
+	set("dhcp.alloc_fail_subnet_id", f.allocFailSubnetID)
+	set("dhcp.alloc_fail_classes", f.allocFailClasses)
 
 	if name, ok := ifaceName(snap, f.iface); ok {
 		set("interface.name", name)
@@ -379,6 +435,36 @@ func parseKeaDHCP(msg string) (dhcpFields, bool) {
 		// client or the message type, else ship it generic.
 		if f.duid == "" && f.messageType == "" {
 			return dhcpFields{}, false
+		}
+		return f, true
+	}
+
+	// A DHCPv6 allocation failure: a v6 client was refused a lease (#546). Identified
+	// by DUID and transaction id, neither of which may ever become a label.
+	if am := keaAllocFailV6RE.FindStringSubmatch(id); am != nil {
+		line, ok := keaAllocFailLines[am[1]]
+		if !ok {
+			return dhcpFields{}, false
+		}
+		f.keaEvent = keaEventAllocFail
+		f.allocFailLine = line
+		// Set ONLY on the two cause lines. This is the whole de-duplication: the burst's
+		// scope and classes lines parse and ship, but reach the deriver with no reason and
+		// so count nothing.
+		f.allocFailReason = keaAllocFailCountedReasons[line]
+
+		if d := keaDUIDRE.FindStringSubmatch(rest); d != nil {
+			f.duid = d[1]
+		}
+		if t := keaTIDRE.FindStringSubmatch(rest); t != nil {
+			f.tid = t[1]
+		}
+		if sm := keaAllocFailSubnetRE.FindStringSubmatch(rest); sm != nil {
+			f.allocFailSubnet = sm[1]
+			f.allocFailSubnetID = sm[2]
+		}
+		if cm := keaAllocFailClassesRE.FindStringSubmatch(rest); cm != nil {
+			f.allocFailClasses = cm[1]
 		}
 		return f, true
 	}

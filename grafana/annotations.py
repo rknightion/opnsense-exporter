@@ -404,6 +404,19 @@ NOT_ANNOTATED: dict = {
         "on a timeline. Excluded for now only because annotating it means adding a kind "
         "to internal/annotations, which is outside #541's scope rather than wrong in "
         "principle. Until then it is read as an age on the DHCP tab.",
+    "opnsense_log_events_dhcp6c_prefix_preferred_expiry_timestamp_seconds":
+        "Future-dated by construction - it is the deadline the delegated prefix stops "
+        "being preferred at, so a marker would sit ahead of now, same as the v4 renewal "
+        "deadline above. Its value is as a COUNTDOWN on the DHCP tab.",
+    "opnsense_log_events_dhcp6c_prefix_valid_expiry_timestamp_seconds":
+        "Future-dated by construction - the hard deadline at which every downstream "
+        "address derived from this prefix is removed. Read as a countdown, not a marker; "
+        "OPNsenseDHCP6PrefixExpiring is what fires on it.",
+    "opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds":
+        "A genuine point-in-time event and a fair future annotation candidate, for the "
+        "same reason and with the same blocker as the v4 bound timestamp above: "
+        "annotating it means adding a kind to internal/annotations, which is outside "
+        "#546's scope rather than wrong in principle. Read as an age until then.",
     "opnsense_exporter_collector_snapshot_timestamp_seconds":
         "Advances whenever a collector's buffer is replaced — a per-poll heartbeat.",
     "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds":

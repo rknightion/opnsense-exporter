@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **53 alert rules** and **14 recording rules**.
+Total: **56 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -672,6 +672,95 @@ sum by (interface, reason, opnsense_instance) (rate(opnsense_log_events_dhcp_cli
 
 **Verify recovery:**
 - A bound or renew reason follows and the interface regains an address
+
+## OPNsenseDHCP6PrefixExpiring
+
+**Severity:** critical  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-dhcp6-prefix-expiring`
+
+**Expression:**
+```promql
+opnsense_log_events_dhcp6c_prefix_valid_expiry_timestamp_seconds - time()
+```
+
+**What it measures:** The valid-lifetime deadline dhcp6c last reported for the delegated prefix, minus now. Negative means it has passed with nothing refreshing it.
+
+**Threshold & window:** lt 0 sustained for 10m. The prefix is already gone at 0 - the for_min is there so a renewal landing a moment late does not page, not to add headroom.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No series means no prefix-delegation line has been seen since the exporter started, which is the normal state on a WAN with no PD or no IPv6 at all.
+
+**First checks:**
+- Check the WAN DHCPv6 Client Messages panel for sent renew climbing with no matching received - that is the upstream having stopped answering, and it would have been visible for hours
+- Check whether the preferred-lifetime countdown went negative first; if both crossed together the prefix was withdrawn rather than allowed to age out
+- Confirm the v4 side is healthy - if both stopped at once this is a link or PPPoE problem, not a DHCPv6 one
+
+**Likely causes:**
+- The upstream DHCPv6 server stopped answering Renew, so the delegation was never refreshed
+- The ISP withdrew or re-delegated the prefix
+- dhcp6c died or is wedged on the WAN interface
+
+**Verify recovery:**
+- A prefix_updated event appears and both lifetime countdowns reset to positive values
+- Downstream interfaces regain their IPv6 addresses
+
+## OPNsenseDHCP6PrefixNotRefreshing
+
+**Severity:** warning  
+**Pending window:** 15m0s  
+**Rule name:** `opnsense-dhcp6-prefix-not-refreshing`
+
+**Expression:**
+```promql
+time() - opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds
+```
+
+**What it measures:** Time since the last prefix create/update line from dhcp6c for this interface.
+
+**Threshold & window:** gt 7200s (2h), for_min=15. Sized as roughly 2x the observed refresh interval - the reference box renews hourly (pltime=3600), so two missed refreshes. Retune if your ISP hands out a longer lifetime; the honest threshold is 2x whatever pltime the prefix actually carries.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No series means no prefix delegation on this box, which is normal on a WAN without PD.
+
+**First checks:**
+- Check the WAN DHCPv6 Client Messages panel: sent renew with no received reply means the upstream has gone quiet
+- Check the valid and preferred countdowns for how much time is actually left before it matters
+
+**Likely causes:**
+- The upstream DHCPv6 server has stopped responding to Renew
+- dhcp6c is wedged - it may still be sending without processing replies
+
+**Verify recovery:**
+- A prefix_updated event lands and the age drops back to near zero
+
+## OPNsenseDHCP6AllocationFailures
+
+**Severity:** warning  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-dhcp6-alloc-failures`
+
+**Expression:**
+```promql
+sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[15m]))
+```
+
+**What it measures:** Rate of DHCPv6 allocation failures reported by kea-dhcp6, by reason. Counted once per failed allocation - kea emits up to three lines per failure sharing a tid, and only the cause line is counted.
+
+**Threshold & window:** gt 0 sustained for 10m. Must be a rate: a single refusal from a client that has since been served is not worth paging on, a sustained one is.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No series means kea-dhcp6 has refused nothing, which is the normal state.
+
+**First checks:**
+- reason=no_pools: check that the subnet the client is on actually has a v6 pool defined - this one never resolves itself
+- reason=exhausted: check pool utilisation against the lease count on the DHCP tab, and whether the lease time is long enough to be holding addresses for departed clients
+- Check whether the failures correlate with the delegated prefix changing - a re-delegation invalidates the pool the old subnet was carved from
+
+**Likely causes:**
+- The v6 pool is genuinely full
+- No pool is configured for the subnet or client class in question
+- The delegated prefix changed and the configured pools still reference the old one
+
+**Verify recovery:**
+- The failure rate returns to zero and clients obtain leases again
 
 ## OPNsenseNetisrQueueDrops
 
@@ -1545,7 +1634,7 @@ max by (opnsense_instance, database) (time() - opnsense_flow_geoip_database_buil
 
 **What it measures:** Age in seconds of the loaded GeoIP database, per database (country, asn), against MaxMind's own BUILD date rather than the download time - a re-download of the same build correctly does NOT reset it.
 
-**Threshold & window:** gt 1209600s (14d), for_min=60. GeoLite2 rebuilds twice a week, so 14d is four missed builds - past any weekly-cron jitter, and still recent enough that the data is only slightly wrong when it fires.
+**Threshold & window:** gt 3888000s (45d), for_min=60. Raised from 14d by #549: the image now ships DB-IP Lite, which republishes MONTHLY, so 14d would fire on a healthy stock deployment for half of every month. 45d clears a ~31d publish interval plus refresh lag for every database the exporter can load.
 
 **Absent / no-data semantics:** Default noDataState (Ok). The gauge is omitted entirely for a database that is not loaded (a zero would read as "built in 1970" and fire permanently), so a deployment with --geoip.enabled off has no series here and cannot false-fire.
 
@@ -1553,6 +1642,7 @@ max by (opnsense_instance, database) (time() - opnsense_flow_geoip_database_buil
 - Check opnsense_flow_geoip_downloads_total: a rising result="failure" rate is a fetch problem, while a flat counter with --geoip.download.enabled set means the updater goroutine is not running at all
 - With the built-in downloader: verify the MaxMind license key has not expired and that the exporter has egress to download.maxmind.com
 - With operator-managed files: confirm the geoipupdate cron / sidecar is still running and writing to the configured --geoip.country-database and --geoip.asn-database paths
+- On a stock deployment using the database bundled in the image, no updater exists to fix - the image is what is old, so pull a current one
 - Check opnsense_flow_geoip_reloads_total for result="failure" - a corrupt replacement leaves the OLD database serving, which looks exactly like no update at all
 - Confirm the download directory is persistent: a volume lost on restart re-downloads every start and can exhaust the daily limit
 
@@ -1561,6 +1651,7 @@ max by (opnsense_instance, database) (time() - opnsense_flow_geoip_database_buil
 - Egress to download.maxmind.com blocked, or the daily download limit exhausted
 - A geoipupdate cron / sidecar stopped running, or its output path no longer matches the exporter configuration
 - A corrupt or truncated replacement file that fails to parse, leaving the previous database serving indefinitely
+- A stock deployment running an image that has not been pulled for over 45 days, so the bundled DB-IP Lite copy is simply as old as the image
 
 **Verify recovery:**
 - opnsense_flow_geoip_database_build_timestamp_seconds advances to a recent build

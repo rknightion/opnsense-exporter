@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-wireguard-peer-down",
+    "name": "opnsense-dhcp6-prefix-not-refreshing",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,10 +11,10 @@
     }
   },
   "spec": {
-    "title": "OPNsenseWireGuardPeerDown",
+    "title": "OPNsenseDHCP6PrefixNotRefreshing",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "10m0s",
+    "for": "15m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -22,11 +22,11 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense WireGuard peer {{ $labels.peer_name }} down ({{ $labels.opnsense_instance }})",
-      "description": "WireGuard peer {{ $labels.peer_name }} on {{ $labels.device_name }} has reported status 0 (down) for 10m. Status values are 1=up, 0=down, 2=unknown, 3=stale \u2014 this alert deliberately fires on 0 only, not on unknown/stale.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensewireguardpeerdown",
+      "summary": "OPNsense delegated IPv6 prefix has not refreshed on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+      "description": "Nothing has created or refreshed the delegated prefix on {{ $labels.interface }} for over two hours. The prefix is still valid, so nothing has broken yet - this is the leading indicator that fires while there is still time to act, ahead of OPNsenseDHCP6PrefixExpiring.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6prefixnotrefreshing",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "275"
+      "__panelId__": "269"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_wireguard_peer_status",
+          "expr": "time() - opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,9 +63,9 @@
           "conditions": [
             {
               "evaluator": {
-                "type": "lt",
+                "type": "gt",
                 "params": [
-                  1,
+                  7200,
                   0
                 ]
               },

@@ -98,6 +98,32 @@ func (f *fakeSink) ObserveDHCPClientLease(iface string, bound, renewal float64) 
 	return true
 }
 
+func (f *fakeSink) ObserveDHCP6CMessage(iface, direction, msgType string) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp6c_message", []string{iface, direction, msgType}})
+	return true
+}
+
+func (f *fakeSink) ObserveDHCP6CEvent(iface, event, reason string) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp6c_event", []string{iface, event, reason}})
+	return true
+}
+
+func (f *fakeSink) ObserveDHCP6CPrefix(iface, prefixLength string, updated, preferredExpiry, validExpiry float64) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp6c_prefix", []string{
+		iface,
+		prefixLength,
+		strconv.FormatFloat(updated, 'f', -1, 64),
+		strconv.FormatFloat(preferredExpiry, 'f', -1, 64),
+		strconv.FormatFloat(validExpiry, 'f', -1, 64),
+	}})
+	return true
+}
+
+func (f *fakeSink) ObserveDHCP6AllocFail(reason string) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp6_alloc_fail", []string{reason}})
+	return true
+}
+
 func (f *fakeSink) ObserveUPnP(event, result, protocol string) bool {
 	f.calls = append(f.calls, fakeCall{"upnp", []string{event, result, protocol}})
 	return true

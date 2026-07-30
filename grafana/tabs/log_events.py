@@ -222,6 +222,80 @@ def dhcp_client_row(b: Builder):
                  present="has_log_events_dhcp_client")
 
 
+def dhcp6_client_row(b: Builder):
+    """WAN DHCPv6 client and prefix delegation (#546) — the v6 twin of the row above.
+
+    Kept separate from dhcp_client_row rather than folded into it: a v4 and a v6
+    uplink fail independently, their message vocabularies do not overlap, and
+    merging them would hide a v6-only outage behind a healthy v4 rate.
+
+    Delegation is the part with no v4 equivalent. A delegated prefix carries its
+    own preferred and valid lifetimes, independent of the WAN address, and losing
+    it takes down every downstream v6 prefix rather than just this box's uplink.
+    """
+    b.sentinel("has_log_events_dhcp6c", metric="opnsense_log_events_dhcp6c_message_total")
+    dhcp6c_msgs = b.ts(
+        "WAN DHCPv6 Client Messages (rate)",
+        [(f'sum {grp("type", "direction", "interface")} '
+          f'(rate({sel("opnsense_log_events_dhcp6c_message_total")}[{RATE}]))',
+          "{{type}} {{direction}} / {{interface}}")],
+        unit="ops",
+        desc="opnsense_log_events_dhcp6c_message_total: dhcp6c message rate on the WAN by type "
+             "and direction. The pairing is the signal, not the absolute rate: sent renew "
+             "climbing while received stays flat is the v6 uplink going away, and it shows up "
+             "hours before the prefix lifetimes below run out.",
+    )
+    dhcp6c_events = b.ts(
+        "WAN DHCPv6 Client Events (rate)",
+        [(f'sum {grp("event", "reason", "interface")} '
+          f'(rate({sel("opnsense_log_events_dhcp6c_event_total")}[{RATE}]))',
+          "{{event}} {{reason}} / {{interface}}")],
+        unit="ops",
+        desc="opnsense_log_events_dhcp6c_event_total: prefix-delegation, address-configuration "
+             "and script events. reason is legitimately EMPTY on every prefix_* and address_* "
+             "event and on script_ignored — it is a script reason, and those lines carry none. "
+             "Note interface means the WAN for prefix and script events but the DOWNSTREAM "
+             "device for address_added/address_removed, which is the honest reading of each "
+             "line: the address really is configured on the LAN device.",
+    )
+    prefix_lifetimes = b.ts(
+        "Delegated IPv6 Prefix Lifetimes",
+        [
+            (f'{sel("opnsense_log_events_dhcp6c_prefix_preferred_expiry_timestamp_seconds")} - time()',
+             "{{interface}} /{{prefix_length}} until deprecated"),
+            (f'{sel("opnsense_log_events_dhcp6c_prefix_valid_expiry_timestamp_seconds")} - time()',
+             "{{interface}} /{{prefix_length}} until invalid"),
+            (f'time() - {sel("opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds")}',
+             "{{interface}} /{{prefix_length}} since last refresh"),
+        ],
+        unit="s",
+        desc="Time until the delegated prefix stops being PREFERRED and until it stops being "
+             "VALID, plus time since it was last refreshed. Two separate deadlines on purpose: "
+             "an ISP deprecating a prefix ahead of withdrawal shortens the preferred lifetime "
+             "first, and collapsing them into one series would hide exactly that warning. "
+             "Exported as absolute *_timestamp_seconds gauges and turned into a countdown here, "
+             "the same reasoning as the v4 row above — a countdown computed in the exporter "
+             "keeps counting down from a stale value, so a dead dhcp6c would look healthy. The "
+             "prefix itself is never a label (it changes on re-delegation, which is the very "
+             "event this watches); prefix_length is, because a /48 stays a /48.",
+    )
+    alloc_fail = b.ts(
+        "DHCPv6 Server Allocation Failures (rate)",
+        [(f'sum {grp("reason")} (rate({sel("opnsense_log_events_dhcp6_alloc_fail_total")}[{RATE}]))',
+          "{{reason}}")],
+        unit="ops",
+        desc="opnsense_log_events_dhcp6_alloc_fail_total: v6 lease requests kea-dhcp6 REFUSED. "
+             "The opposite direction from the panels beside it — this is the box failing its "
+             "own v6 clients, not failing upstream. exhausted means the pool is full; no_pools "
+             "means the subnet has no pool configured for that client at all, which is a "
+             "configuration fault rather than capacity. Counted once per failed allocation: kea "
+             "emits up to three lines per failure sharing a tid, and only the cause line counts.",
+    )
+    return b.row("WAN DHCPv6 Client & Prefix Delegation (log-derived)",
+                 [dhcp6c_msgs, dhcp6c_events, prefix_lifetimes, alloc_fail],
+                 present="has_log_events_dhcp6c")
+
+
 def netmap_row(b: Builder):
     """Zenarmor's netmap datapath reporting a full host TX ring (#536)."""
     b.sentinel("has_log_events_netmap", metric="opnsense_log_events_netmap_ring_full_events_total")
