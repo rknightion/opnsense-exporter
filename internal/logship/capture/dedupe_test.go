@@ -20,8 +20,8 @@ func TestNormaliseShapeFoldsTheRealFirehoseFamilies(t *testing.T) {
 	}{
 		{
 			name: "arpresolve differs only by the bracketed counter and the address",
-			a:    "<7>[367655] arpresolve: can't allocate llinfo for 86.31.203.106",
-			b:    "<7>[412900] arpresolve: can't allocate llinfo for 86.31.203.7",
+			a:    "<7>[367655] arpresolve: can't allocate llinfo for 198.51.100.106",
+			b:    "<7>[412900] arpresolve: can't allocate llinfo for 198.51.100.7",
 			same: true,
 		},
 		{
@@ -44,8 +44,8 @@ func TestNormaliseShapeFoldsTheRealFirehoseFamilies(t *testing.T) {
 		},
 		{
 			name: "different messages from the same program stay distinct",
-			a:    "arpresolve: can't allocate llinfo for 86.31.203.106",
-			b:    "arplookup 86.31.203.106 failed: host is not on local network",
+			a:    "arpresolve: can't allocate llinfo for 198.51.100.106",
+			b:    "arplookup 198.51.100.106 failed: host is not on local network",
 			same: false,
 		},
 		{

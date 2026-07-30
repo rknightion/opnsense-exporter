@@ -130,6 +130,66 @@ func TestUnhandledEndpointWarnsWithoutCapture(t *testing.T) {
 	}
 }
 
+// TestUnhandledEndpointCapture_RedactsAuthorization: with Basic auth AND capture both
+// enabled, an authenticated request to an unhandled endpoint must not leak the
+// reusable Basic credential into the NDJSON capture — the exact scenario in #561.
+// Non-sensitive diagnostic headers (Content-Type, User-Agent) must still survive.
+func TestUnhandledEndpointCapture_RedactsAuthorization(t *testing.T) {
+	dir := t.TempDir()
+	cap := newCapturer(t, dir)
+
+	srv := newServer(Config{AuthUser: "zenarmor", AuthPassword: "s3cret-basic-pw"},
+		func(string, []byte, netip.Addr) {}, nil, slog.Default())
+	srv.cap = cap
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/zenarmor_0000000000_019695d7_conn/_mapping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.SetBasicAuth("zenarmor", "s3cret-basic-pw")
+	req.Header.Set("User-Agent", "ipdrstreamer/1.0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (auth must have succeeded for this test to be meaningful)", resp.StatusCode)
+	}
+
+	if err := cap.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs := readCaptures(t, dir)
+	if len(recs) != 1 {
+		t.Fatalf("capture records = %d, want 1: %+v", len(recs), recs)
+	}
+	headersRaw, ok := recs[0]["headers"].(map[string]any)
+	if !ok {
+		t.Fatalf("headers not captured or wrong shape: %+v", recs[0]["headers"])
+	}
+
+	authVals, ok := headersRaw["Authorization"].([]any)
+	if !ok || len(authVals) != 1 {
+		t.Fatalf("Authorization header missing or malformed in capture: %+v", headersRaw["Authorization"])
+	}
+	authStr, _ := authVals[0].(string)
+	if strings.Contains(authStr, "Basic ") || strings.Contains(authStr, "s3cret-basic-pw") {
+		t.Fatalf("reversible/complete credential reached the capture: %q", authStr)
+	}
+	rawB64 := "emVuYXJtb3I6czNjcmV0LWJhc2ljLXB3" // base64("zenarmor:s3cret-basic-pw")
+	if strings.Contains(authStr, rawB64) {
+		t.Fatalf("base64 Basic credential leaked into capture: %q", authStr)
+	}
+
+	uaVals, ok := headersRaw["User-Agent"].([]any)
+	if !ok || len(uaVals) != 1 || uaVals[0] != "ipdrstreamer/1.0" {
+		t.Fatalf("non-sensitive User-Agent header did not survive: %+v", headersRaw["User-Agent"])
+	}
+}
+
 // TestUnknownFamilyCaptured: a bulk document addressed to an index whose family we do
 // not recognise is captured as unknown_family, with the raw document embedded.
 func TestUnknownFamilyCaptured(t *testing.T) {

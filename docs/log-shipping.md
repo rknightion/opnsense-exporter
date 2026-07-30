@@ -415,9 +415,13 @@ best-effort and never block ingest: if the disk cannot keep up, entries are drop
 and counted rather than stalling a receiver.
 
 **The capture files carry real network data** - client addresses, DNS queries, TLS
-SNI, HTTP hosts - so they are written `0600` and should be treated as sensitive.
-Point the directory at a writable bind mount and remove the captures once you are
-done with them. For the containerised exporter (runs as UID/GID `65532` nonroot):
+SNI, HTTP hosts - so they are written `0600` and should be treated as sensitive. They
+do **not** carry reusable authentication credentials: `Authorization`,
+`Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` and `X-Auth-Token` header
+values are redacted to a fixed placeholder before a captured request ever reaches
+disk, whatever receiver or auth scheme captured it. Point the directory at a writable
+bind mount and remove the captures once you are done with them. For the containerised
+exporter (runs as UID/GID `65532` nonroot):
 
 ```yaml
 # docker-compose.yml
@@ -577,7 +581,7 @@ Zenarmor captures sharing it - and a starved capture looks exactly like a quiet 
 
 So the syslog lane keeps the **first example of each message shape per 15-minute
 window** and counts the rest as `reason=duplicate_shape`. A shape is the message with
-its varying parts collapsed, so `arpresolve: ... for 86.31.203.106` and the same line
+its varying parts collapsed, so `arpresolve: ... for 198.51.100.106` and the same line
 for another address are one shape. A shape never seen before is always captured
 immediately, and the suppressed count is what tells you the difference between a quiet
 lane and a busy one - a small capture file no longer means silence.

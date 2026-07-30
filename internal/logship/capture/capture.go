@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"sort"
@@ -290,8 +291,69 @@ func (s *ReceiverSink) CaptureShape(kind, shape string, fields map[string]any) {
 	s.c.CaptureShape(s.receiver, kind, shape, fields)
 }
 
+// redactedPlaceholder replaces every sensitive header value. It is a fixed constant
+// rather than any function of the original value (a length, a truncated prefix, a
+// hash) — #561's bar is IRREVERSIBLE, and a hash with no salt is a rainbow-table
+// lookup away from reversible for anything low-entropy (a short Basic password), so
+// the only value that carries no information about the secret is one that does not
+// depend on it at all.
+const redactedPlaceholder = "[REDACTED]"
+
+// sensitiveHeaderNames is the closed, code-defined set of header names redacted from
+// any captured "headers" field before it reaches the enqueue channel (#561). This is
+// deliberately a single named table rather than scattered string comparisons at each
+// capture call site, and it covers every receiver, not just Zenarmor's Basic auth:
+//
+//   - Authorization, Proxy-Authorization: reusable Basic/Bearer/Digest credentials —
+//     the #561 finding.
+//   - Cookie, Set-Cookie: session identifiers that are just as reusable as a bearer
+//     token; Set-Cookie is a response header and would only appear here if some future
+//     caller ever captures a response, but the cost of including it now is zero.
+//   - X-Api-Key, X-Auth-Token: the two other conventional bearer-style header names —
+//     no current receiver accepts either, but the whole point of fixing this at the
+//     capture chokepoint (rather than in Zenarmor's unhandled-request path alone) is
+//     that a future receiver's auth headers are covered without having to remember to
+//     add a redaction call at its own capture site.
+var sensitiveHeaderNames = map[string]bool{
+	textproto.CanonicalMIMEHeaderKey("Authorization"):       true,
+	textproto.CanonicalMIMEHeaderKey("Proxy-Authorization"): true,
+	textproto.CanonicalMIMEHeaderKey("Cookie"):              true,
+	textproto.CanonicalMIMEHeaderKey("Set-Cookie"):          true,
+	textproto.CanonicalMIMEHeaderKey("X-Api-Key"):           true,
+	textproto.CanonicalMIMEHeaderKey("X-Auth-Token"):        true,
+}
+
+// redactSensitiveHeaders returns a copy of a captured "headers" value with every
+// sensitive header's values replaced by redactedPlaceholder. Header names are matched
+// via textproto.CanonicalMIMEHeaderKey rather than assumed pre-canonicalised: net/http
+// canonicalises http.Header for us today, but this is the shared chokepoint for every
+// receiver's capture call, and nothing guarantees a future caller hands it a
+// http.Header rather than some other case a wire sender chose. Non-map values are
+// returned unchanged so a caller's malformed "headers" field is not itself an error
+// here — capture must never fail a request over its own diagnostics.
+func redactSensitiveHeaders(v any) any {
+	src, ok := v.(map[string][]string)
+	if !ok {
+		return v
+	}
+	out := make(map[string][]string, len(src))
+	for k, vals := range src {
+		if sensitiveHeaderNames[textproto.CanonicalMIMEHeaderKey(k)] {
+			out[k] = []string{redactedPlaceholder}
+			continue
+		}
+		out[k] = vals
+	}
+	return out
+}
+
 // copyFields returns a shallow copy of fields with every []byte / json.RawMessage
-// value duplicated, so the returned map shares no backing array with caller memory.
+// value duplicated, so the returned map shares no backing array with caller memory,
+// and with any "headers" field redacted per redactSensitiveHeaders. This is the
+// chokepoint every Capture/CaptureShape call passes through before the entry reaches
+// the enqueue channel (#561): fixing it here, rather than at each receiver's own
+// capture call site, means a raw credential can never reach the sink through any
+// call path — present or future — that builds a "headers" field.
 func copyFields(fields map[string]any) map[string]any {
 	if len(fields) == 0 {
 		return nil
@@ -305,6 +367,9 @@ func copyFields(fields map[string]any) map[string]any {
 			out[k] = embedBytes(b)
 		default:
 			out[k] = v
+		}
+		if k == "headers" {
+			out[k] = redactSensitiveHeaders(out[k])
 		}
 	}
 	return out

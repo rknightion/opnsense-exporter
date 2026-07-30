@@ -74,7 +74,7 @@ const (
 // stop 11,485 identical facts becoming 11,485 capture entries. Three rules:
 //
 //   - a run of decimal digits collapses, so a counter, a byte count, a PID, a port
-//     and each octet of an address all fold ([367655] -> [#], 86.31.203.106 -> #.#.#.#);
+//     and each octet of an address all fold ([367655] -> [#], 198.51.100.106 -> #.#.#.#);
 //   - a hex-looking token collapses whole — an 0x-prefixed literal, or an all-hex
 //     token of at least minHexRun characters that contains a digit (the digit is
 //     what keeps English words out: no word of that length is written in [a-f] and
