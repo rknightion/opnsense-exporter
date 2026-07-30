@@ -88,11 +88,29 @@ type FirewallRuleStats struct {
 	Action      string
 	Interface   string
 	Direction   string
+	Protocol    string
 	PfRules     int64
 	Evaluations int64
 	Packets     int64
 	Bytes       int64
 	States      int64
+}
+
+// normalizeFirewallRuleProtocol bounds the per-rule protocol label to a small,
+// closed set (tcp/udp/icmp/esp/any/... — see firewallRule.Protocol) rather than
+// passing the API's raw casing through unchanged: live payloads mix case
+// ("TCP", "any"), and a label set is only meaningfully bounded if equal values
+// compare equal regardless of how the API happened to render them. An
+// empty/all-whitespace value (a rule with no search-result match, or a payload
+// that genuinely omits the field) becomes the sentinel "unknown" — this label
+// must never be emitted empty, matching the "unknown" convention used
+// elsewhere (opnsense/crowdsec.go, opnsense/bpf_statistics.go).
+func normalizeFirewallRuleProtocol(raw string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	if trimmed == "" {
+		return "unknown"
+	}
+	return trimmed
 }
 
 type FirewallRulesData struct {
@@ -131,6 +149,7 @@ func (c *Client) FetchFirewallRuleStats(detailsEnabled bool) (FirewallRulesData,
 			data.Rules = append(data.Rules, FirewallRuleStats{
 				UUID:        id,
 				Description: "system",
+				Protocol:    normalizeFirewallRuleProtocol(""),
 				PfRules:     stat.PfRules,
 				Evaluations: stat.Evaluations,
 				Packets:     stat.Packets,
@@ -183,8 +202,10 @@ func (c *Client) FetchFirewallRuleStats(detailsEnabled bool) (FirewallRulesData,
 			rs.Action = rule.Action
 			rs.Interface = rule.HumanInterface
 			rs.Direction = rule.Direction
+			rs.Protocol = normalizeFirewallRuleProtocol(rule.Protocol)
 		} else {
 			rs.Description = "system"
+			rs.Protocol = normalizeFirewallRuleProtocol("")
 		}
 
 		data.Rules = append(data.Rules, rs)

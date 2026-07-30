@@ -353,6 +353,21 @@ def build(b: Builder):
         desc="Top 20 rules by number of PF rules generated.",
     )
 
+    # #558: the "protocol" label added to the per-rule metrics is the grouping
+    # dimension the free-text description/uuid labels above cannot provide —
+    # a bounded (tcp/udp/icmp/any/...) breakdown of rule hits.
+    fw_rule_proto = b.piechart(
+        "Rule Hits by Protocol",
+        [(f'sum {grp("protocol")} (rate({sel("opnsense_firewall_rule_packets_total")}[{RATE}]))',
+          "{{protocol}}")],
+        unit="pps",
+        w=8, h=10,
+        desc="opnsense_firewall_rule_packets_total matched-packet rate grouped by the rule's "
+             "configured protocol (tcp/udp/icmp/esp/any/...). A rule with no search-result match "
+             "(the 'system' rows) or an empty protocol value reports as 'unknown' rather than an "
+             "empty label.",
+    )
+
     # ══════════════════════════════════════════════════════════════════════
     # GeoIP alias-database freshness (#221) — always on, cheap/cached
     # ══════════════════════════════════════════════════════════════════════
@@ -469,7 +484,7 @@ def build(b: Builder):
         b.row("Firewall Rules (top 20)",
               [fw_rules_count, rules_configured, fw_rule_evals,
                fw_rule_pkts, fw_rule_bytes,
-               fw_rule_states, fw_rule_pf],
+               fw_rule_states, fw_rule_pf, fw_rule_proto],
               present="has_firewall_rules"),
         b.row("GeoIP Alias-Database Freshness",
               [geoip_usages, geoip_addresses, geoip_files, geoip_age, geoip_last_update]),

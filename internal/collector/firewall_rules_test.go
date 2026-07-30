@@ -110,6 +110,82 @@ func TestFirewallRulesCollector_Update_WithDetails(t *testing.T) {
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
+
+	// #558: the fixture's protocol "any" must surface as the "protocol" label
+	// on every per-rule metric.
+	evals := metricsByDesc(metrics, "opnsense_firewall_rule_evaluations_total")
+	if len(evals) != 1 {
+		t.Fatalf("expected 1 evaluations_total series, got %d", len(evals))
+	}
+	if got := getMetricLabels(evals[0])["protocol"]; got != "any" {
+		t.Errorf("expected protocol=any, got %q", got)
+	}
+}
+
+// TestFirewallRulesCollector_Update_ProtocolSentinel covers #558: a rule
+// found in the search results with a mixed-case protocol is lowercased, and a
+// stats entry with no matching search row (the "system" case) gets the
+// "unknown" sentinel rather than an empty label value.
+func TestFirewallRulesCollector_Update_ProtocolSentinel(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/firewall/filter_util/rule_stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"stats": {
+				"uuid-1": {"pf_rules": 1, "evaluations": 1, "packets": 1, "bytes": 1, "states": 1},
+				"uuid-system": {"pf_rules": 1, "evaluations": 1, "packets": 1, "bytes": 1, "states": 1}
+			}
+		}`))
+	})
+
+	mux.HandleFunc("/api/firewall/filter/search_rule", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{
+					"uuid": "uuid-1",
+					"description": "Allow HTTP",
+					"action": "pass",
+					"interface": "igb0",
+					"%interface": "LAN",
+					"direction": "in",
+					"protocol": "TCP",
+					"enabled": "1"
+				}
+			]
+		}`))
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &firewallRulesCollector{subsystem: FirewallRulesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+
+	states := metricsByDesc(metrics, "opnsense_firewall_rule_states")
+	if len(states) != 2 {
+		t.Fatalf("expected 2 states series, got %d", len(states))
+	}
+
+	protoByUUID := map[string]string{}
+	for _, m := range states {
+		labels := getMetricLabels(m)
+		protoByUUID[labels["uuid"]] = labels["protocol"]
+	}
+	if protoByUUID["uuid-1"] != "tcp" {
+		t.Errorf("expected uuid-1 protocol=tcp, got %q", protoByUUID["uuid-1"])
+	}
+	if protoByUUID["uuid-system"] != "unknown" {
+		t.Errorf("expected uuid-system protocol=unknown, got %q", protoByUUID["uuid-system"])
+	}
 }
 
 // TestFirewallRulesCollector_Update_EmptyArrayStats reproduces #481 at the

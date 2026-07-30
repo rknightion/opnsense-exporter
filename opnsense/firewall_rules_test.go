@@ -143,6 +143,9 @@ func TestFetchFirewallRuleStats_DetailsDisabled(t *testing.T) {
 		if rule.Description != "system" {
 			t.Errorf("expected Description='system' when details disabled, got %q", rule.Description)
 		}
+		if rule.Protocol != "unknown" {
+			t.Errorf("expected Protocol='unknown' when details disabled, got %q", rule.Protocol)
+		}
 		// Action, Interface, Direction should be empty
 		if rule.Action != "" {
 			t.Errorf("expected empty Action when details disabled, got %q", rule.Action)
@@ -293,6 +296,67 @@ func TestFetchFirewallRuleStats_DetailsEnabled(t *testing.T) {
 	}
 	if sysRule.Action != "" {
 		t.Errorf("expected empty Action for unmatched rule, got %q", sysRule.Action)
+	}
+}
+
+// TestFetchFirewallRuleStats_ProtocolNormalization covers #558: Protocol is
+// decoded from the search_rule payload and normalized to a bounded, lowercase
+// label. Mixed-case API values ("TCP") must compare equal to their lowercase
+// form, and a rule with no search-result match (or an empty/whitespace
+// protocol) must get the "unknown" sentinel rather than an empty label.
+func TestFetchFirewallRuleStats_ProtocolNormalization(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/firewall/filter_util/rule_stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"status": "ok",
+			"stats": {
+				"uuid-tcp": {"pf_rules": 1, "evaluations": 1, "packets": 1, "bytes": 1, "states": 1},
+				"uuid-any": {"pf_rules": 1, "evaluations": 1, "packets": 1, "bytes": 1, "states": 1},
+				"uuid-blank": {"pf_rules": 1, "evaluations": 1, "packets": 1, "bytes": 1, "states": 1},
+				"uuid-system": {"pf_rules": 1, "evaluations": 1, "packets": 1, "bytes": 1, "states": 1}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/firewall/filter/search_rule", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 3, "rowCount": 3, "current": 1,
+			"rows": [
+				{"uuid": "uuid-tcp", "description": "d", "action": "pass", "interface": "lan", "%interface": "LAN", "direction": "in", "protocol": "TCP", "enabled": "1"},
+				{"uuid": "uuid-any", "description": "d", "action": "pass", "interface": "lan", "%interface": "LAN", "direction": "in", "protocol": "any", "enabled": "1"},
+				{"uuid": "uuid-blank", "description": "d", "action": "pass", "interface": "lan", "%interface": "LAN", "direction": "in", "protocol": "  ", "enabled": "1"}
+			]
+		}`))
+	})
+
+	data, err := client.FetchFirewallRuleStats(true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byUUID := make(map[string]FirewallRuleStats, len(data.Rules))
+	for _, r := range data.Rules {
+		byUUID[r.UUID] = r
+	}
+
+	tests := []struct {
+		uuid string
+		want string
+	}{
+		{"uuid-tcp", "tcp"},        // mixed-case API value lowercased
+		{"uuid-any", "any"},        // genuine "any" value passed through
+		{"uuid-blank", "unknown"},  // whitespace-only protocol -> sentinel
+		{"uuid-system", "unknown"}, // no search-result match at all -> sentinel
+	}
+	for _, tt := range tests {
+		rule, ok := byUUID[tt.uuid]
+		if !ok {
+			t.Fatalf("%s not found in decoded rules", tt.uuid)
+		}
+		if rule.Protocol != tt.want {
+			t.Errorf("%s: expected Protocol=%q, got %q", tt.uuid, tt.want, rule.Protocol)
+		}
 	}
 }
 

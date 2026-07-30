@@ -43,23 +43,23 @@ func (c *firewallRulesCollector) Register(namespace, instanceLabel string, log *
 	)
 	c.evaluationsTotal = buildPrometheusDesc(c.subsystem, "evaluations_total",
 		"Total number of rule evaluations per firewall rule",
-		[]string{"uuid", "description", "action", "interface", "direction"},
+		[]string{"uuid", "description", "action", "interface", "direction", "protocol"},
 	)
 	c.packetsTotal = buildPrometheusDesc(c.subsystem, "packets_total",
 		"Total number of packets matched per firewall rule",
-		[]string{"uuid", "description", "action", "interface", "direction"},
+		[]string{"uuid", "description", "action", "interface", "direction", "protocol"},
 	)
 	c.bytesTotal = buildPrometheusDesc(c.subsystem, "bytes_total",
 		"Total number of bytes matched per firewall rule",
-		[]string{"uuid", "description", "action", "interface", "direction"},
+		[]string{"uuid", "description", "action", "interface", "direction", "protocol"},
 	)
 	c.states = buildPrometheusDesc(c.subsystem, "states",
 		"Current number of active states per firewall rule",
-		[]string{"uuid", "description", "action", "interface", "direction"},
+		[]string{"uuid", "description", "action", "interface", "direction", "protocol"},
 	)
 	c.pfRules = buildPrometheusDesc(c.subsystem, "pf_rules",
 		"Number of PF rules generated per firewall rule",
-		[]string{"uuid", "description", "action", "interface", "direction"},
+		[]string{"uuid", "description", "action", "interface", "direction", "protocol"},
 	)
 	c.configuredRules = buildPrometheusDesc(c.subsystem, "configured_rules",
 		"Number of configured firewall filter rules by enabled state. Only emitted when --exporter.enable-firewall-rules-details is set.",
@@ -114,6 +114,7 @@ func (c *firewallRulesCollector) Update(ctx context.Context, client *opnsense.Cl
 				rule.Action,
 				rule.Interface,
 				rule.Direction,
+				rule.Protocol,
 				c.instance,
 			)
 			ch <- prometheus.MustNewConstMetric(
@@ -125,6 +126,7 @@ func (c *firewallRulesCollector) Update(ctx context.Context, client *opnsense.Cl
 				rule.Action,
 				rule.Interface,
 				rule.Direction,
+				rule.Protocol,
 				c.instance,
 			)
 			ch <- prometheus.MustNewConstMetric(
@@ -136,6 +138,7 @@ func (c *firewallRulesCollector) Update(ctx context.Context, client *opnsense.Cl
 				rule.Action,
 				rule.Interface,
 				rule.Direction,
+				rule.Protocol,
 				c.instance,
 			)
 			ch <- prometheus.MustNewConstMetric(
@@ -147,6 +150,7 @@ func (c *firewallRulesCollector) Update(ctx context.Context, client *opnsense.Cl
 				rule.Action,
 				rule.Interface,
 				rule.Direction,
+				rule.Protocol,
 				c.instance,
 			)
 			ch <- prometheus.MustNewConstMetric(
@@ -158,6 +162,7 @@ func (c *firewallRulesCollector) Update(ctx context.Context, client *opnsense.Cl
 				rule.Action,
 				rule.Interface,
 				rule.Direction,
+				rule.Protocol,
 				c.instance,
 			)
 		}
