@@ -44,8 +44,6 @@ services:
     #   - --log.level
     #   Output format of log messages. One of: [logfmt, json]
     #   - --log.format
-    #   Use systemd socket activation listeners instead of port listeners (Linux only).
-    #   - --web.systemd-socket
 
     environment:
       # ==========================================================================
@@ -376,7 +374,6 @@ services:
       # Exclude metrics about the exporter itself (process_*, go_*).
       # OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS: ""
       # --web.listen-address has no env var - see the flag-only settings note above command:.
-      # --web.systemd-socket has no env var - see the flag-only settings note above command:.
       # Path under which to expose metrics.
       # OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH: "/metrics"
 

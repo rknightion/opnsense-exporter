@@ -1,6 +1,41 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/rknightion/opnsense-exporter/internal/options"
+)
+
+// TestDocumentedFlagsAreNotPlatformDependent pins the one flag whose presence in
+// the kingpin model depends on GOOS: exporter-toolkit registers
+// --web.systemd-socket only when GOOS=linux. While it was documented, docs
+// regenerated on macOS failed `make docs-check` on a Linux CI runner, red-ing
+// main for a day (#532) — every generated artifact renders from the flag set, so
+// a platform-dependent entry makes the artifacts platform-dependent too.
+//
+// internal/options hides it, and this asserts BOTH halves: that docgen does not
+// document it, and that hiding is the reason. The second half is what catches a
+// future edit removing the Hidden() call — without it, this test still passes on
+// macOS (where the flag was never registered) and fails only in CI.
+func TestDocumentedFlagsAreNotPlatformDependent(t *testing.T) {
+	for _, f := range collectAllFlags() {
+		if f.Name == "web.systemd-socket" {
+			t.Error("web.systemd-socket is documented but registers only on GOOS=linux: " +
+				"generated docs would differ by platform (#532). It must stay hidden in " +
+				"internal/options, not be re-synthesized here.")
+		}
+	}
+
+	// GetFlag returns nil on non-Linux, where the flag is never registered.
+	options.RegisterAllFlags()
+	if f := kingpin.CommandLine.GetFlag("web.systemd-socket"); f != nil {
+		if !f.Model().Hidden {
+			t.Error("web.systemd-socket is registered but not hidden: restore the " +
+				"Hidden() call in internal/options/exporter.go (#532)")
+		}
+	}
+}
 
 func TestCollectAllFlagsFindsKnownFlags(t *testing.T) {
 	flags := collectAllFlags()

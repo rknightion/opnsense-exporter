@@ -47,23 +47,13 @@ func collectAllFlags() []FlagDoc {
 	if len(out) < 50 {
 		fatal("kingpin model returned only %d flags; expected the full exporter flag set", len(out))
 	}
-	// exporter-toolkit registers --web.systemd-socket only when GOOS=linux.
-	// Generated docs must not depend on the platform docgen runs on, so
-	// synthesize the entry (text copied from vendor/.../web/kingpinflag/flag.go)
-	// when absent.
-	hasSystemdSocket := false
-	for _, f := range out {
-		if f.Name == "web.systemd-socket" {
-			hasSystemdSocket = true
-			break
-		}
-	}
-	if !hasSystemdSocket {
-		out = append(out, FlagDoc{
-			Name: "web.systemd-socket",
-			Help: "Use systemd socket activation listeners instead of port listeners (Linux only).",
-		})
-	}
+	// --web.systemd-socket used to be synthesized here when absent, because
+	// exporter-toolkit registers it only when GOOS=linux and generated docs must
+	// not depend on the platform docgen runs on. That patched presence only, and
+	// two renderers reading the live kingpin model still diverged by platform
+	// (#532). internal/options now hides the flag instead, so the Hidden skip
+	// above drops it on Linux and it is simply absent everywhere else — one
+	// documented flag set on every platform, with nothing to synthesize.
 	return out
 }
 

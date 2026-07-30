@@ -150,7 +150,6 @@ In containers and orchestrated environments, credentials can be read from files:
 | `--web.config.file` | -- | -- | Path to configuration file that can enable TLS or authentication. See: https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md |
 | `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
-| `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
 | `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
 | `--web.ui-disable-config` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_CONFIG` | `false` | Hide the /config page. |
 | `--web.ui-disable-devices` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_DEVICES` | `false` | Hide the /devices page (exposes MAC/hostname). |
@@ -754,7 +753,6 @@ Every flag the exporter accepts, generated from the binary's own flag definition
 | `--web.config.file` | -- | -- | Path to configuration file that can enable TLS or authentication. See: https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md |
 | `--web.disable-exporter-metrics` | `OPNSENSE_EXPORTER_DISABLE_EXPORTER_METRICS` | -- | Exclude metrics about the exporter itself (process_*, go_*). |
 | `--web.listen-address` | -- | `:8080` | Addresses on which to expose metrics and web interface. Repeatable for multiple addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock |
-| `--web.systemd-socket` | -- | -- | Use systemd socket activation listeners instead of port listeners (Linux only). |
 | `--web.telemetry-path` | `OPNSENSE_EXPORTER_WEB_TELEMETRY_PATH` | `/metrics` | Path under which to expose metrics. |
 | `--web.ui-disable-config` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_CONFIG` | `false` | Hide the /config page. |
 | `--web.ui-disable-devices` | `OPNSENSE_EXPORTER_WEB_UI_DISABLE_DEVICES` | `false` | Hide the /devices page (exposes MAC/hostname). |

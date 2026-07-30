@@ -230,9 +230,14 @@ func (c *availabilityCollector) Update(ctx context.Context, client *opnsense.Cli
 	var wg sync.WaitGroup
 	for _, probe := range featureAvailabilityProbes {
 		// Already answered by the collector's own traffic: record and move on.
+		// Under resultsMu like every other write: probe goroutines spawned by
+		// earlier iterations are already writing this map concurrently, so an
+		// unguarded write here races them (#532).
 		if enabledFn(probe.Feature) && observedFn != nil {
 			if exists, known := observedFn(probe.Endpoint); known {
+				resultsMu.Lock()
 				results[probe.Feature] = exists
+				resultsMu.Unlock()
 				continue
 			}
 		}

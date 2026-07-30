@@ -464,9 +464,6 @@ settings:
   # addresses. Examples: `:9100` or `[::1]:9100` for http, `vsock://:9100` for vsock
   # web.listen-address: [":8080"]  # LIST -- one --web.listen-address=value arg per element
   #
-  # Use systemd socket activation listeners instead of port listeners (Linux only).
-  # web.systemd-socket: ""
-  #
   # Path under which to expose metrics.
   # web.telemetry-path: "/metrics"
 

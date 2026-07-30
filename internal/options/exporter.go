@@ -69,6 +69,38 @@ var (
 	WebConfig = kingpinflag.AddFlags(kingpin.CommandLine, ":8080")
 )
 
+// hideSystemdSocketFlag hides exporter-toolkit's --web.systemd-socket.
+//
+// Two reasons, and the second is the load-bearing one:
+//
+//   - No deployment path this repo ships uses systemd socket activation. There is
+//     no .socket unit in the tree and the documented service unit listens on a
+//     port (docs/deployment/systemd.md). Advertising it in every generated
+//     example config is noise for the container and Helm audiences, who cannot
+//     use it at all.
+//   - exporter-toolkit registers the flag ONLY when GOOS=linux, so its mere
+//     presence in the kingpin model made generated docs depend on the platform
+//     docgen ran on: docs regenerated on macOS then failed `make docs-check` on
+//     a Linux CI runner (#532). Hiding it removes that divergence at the source,
+//     since docgen skips hidden flags — rather than compensating for it in each
+//     renderer that reads the live model.
+//
+// It is HIDDEN, not removed: it cannot be removed without giving up
+// kingpinflag.AddFlags (which also provides --web.listen-address and
+// --web.config.file), and a hidden kingpin flag still parses. An operator who
+// writes their own .socket unit keeps working behaviour; it just stops being
+// documented.
+//
+// Runs as package init rather than inside RegisterAllFlags so it cannot be
+// missed by a caller that reads the kingpin model without calling that first.
+// Package-level var initialisation (the AddFlags call above) completes before
+// any init function, so the flag exists by the time this runs.
+func init() {
+	if f := kingpin.CommandLine.GetFlag("web.systemd-socket"); f != nil {
+		f.Hidden()
+	}
+}
+
 // ValidateMetricsPath checks the resolved --web.telemetry-path value. An empty or
 // non-"/"-prefixed value would make net/http.ServeMux.register panic with a raw stack
 // trace (e.g. when a Helm/env template renders the flag blank); reject it here so the
