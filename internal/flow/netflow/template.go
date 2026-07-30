@@ -1,6 +1,7 @@
 package netflow
 
 import (
+	"container/list"
 	"encoding/binary"
 	"net/netip"
 )
@@ -34,6 +35,13 @@ type templateField struct {
 type template struct {
 	fields []templateField
 	recLen int
+
+	// elem is this template's node in Decoder.order, the LRU list that bounds
+	// the cache (#564). It is set exactly once, the moment the template is
+	// first stored, and never nil afterwards — a replacement re-shapes the
+	// template in place and reuses the same node, since the key (and so the
+	// node's identity) has not changed.
+	elem *list.Element
 }
 
 // sameShape reports whether two templates declare an identical element list.
@@ -138,25 +146,70 @@ func (d *Decoder) learnTemplates(set []byte, exporter netip.Addr, sourceID uint3
 // already held. Counting those as replacements would make TemplatesReplaced a
 // clock rather than the drift signal it exists to be: a non-zero rate there must
 // mean the sender genuinely changed its export shape.
+//
+// A genuinely NEW key is the only path that can grow the cache, so it is the
+// only path checked against maxCachedTemplates (#564): a refresh or a
+// same-key replacement reuses the existing map entry and list node and never
+// consumes capacity, however full the cache already is — an attacker cannot
+// turn a legitimate sender's own re-send into eviction pressure, and a
+// legitimate re-send is never itself rejected.
 func (d *Decoder) store(k templateKey, t *template) bool {
 	old, ok := d.templates[k]
 	switch {
 	case !ok:
+		if len(d.templates) >= maxCachedTemplates {
+			d.evictLRU()
+		}
 		d.stats.TemplatesLearned++
+		t.elem = d.order.PushFront(k)
+		d.templates[k] = t
+		return true
 	case old.sameShape(t):
-		// Refresh. Nothing to do — keeping the existing pointer avoids churning a
-		// slice that every in-flight record decode is reading from.
+		// Refresh. Nothing to do to the template itself — keeping the existing
+		// pointer avoids churning a slice that every in-flight record decode is
+		// reading from — but it IS recent activity, so the LRU list moves on.
+		d.order.MoveToFront(old.elem)
 		return false
 	default:
 		d.stats.TemplatesReplaced++
+		t.elem = old.elem
+		d.order.MoveToFront(old.elem)
+		d.templates[k] = t
 	}
-	d.templates[k] = t
 	return true
+}
+
+// evictLRU removes the least-recently-used template — the back of d.order — to
+// make room for a new key at the ceiling (#564). Callers hold d.mu and must
+// call this only when d.templates is at capacity; it is a silent no-op on an
+// empty cache (unreachable in practice, since store only calls it when full).
+func (d *Decoder) evictLRU() {
+	back := d.order.Back()
+	if back == nil {
+		return
+	}
+	key, _ := back.Value.(templateKey)
+	d.order.Remove(back)
+	delete(d.templates, key)
+	d.stats.TemplatesEvicted++
 }
 
 // lookup returns the cached template for a data flowset, if one has been
 // learned. Callers hold d.mu.
+//
+// A hit is activity: it moves the entry to the front of the LRU list (#564),
+// so an observation domain that is actively sending data — but for whatever
+// reason has not resent its template recently — is not the one evicted just
+// because it went quiet on the template flowset alone.
 func (d *Decoder) lookup(exporter netip.Addr, sourceID uint32, id uint16) (*template, bool) {
 	t, ok := d.templates[templateKey{exporter: exporter, sourceID: sourceID, id: id}]
+	// t.elem is nil only for a template inserted directly into the map rather
+	// than through store() — every production path goes through store(), but a
+	// handful of existing tests build a template literal to pin decode behavior
+	// in isolation from the cache. Guard rather than require every such test to
+	// know about the LRU list.
+	if ok && t.elem != nil {
+		d.order.MoveToFront(t.elem)
+	}
 	return t, ok
 }

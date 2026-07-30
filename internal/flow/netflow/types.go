@@ -134,6 +134,15 @@ type Stats struct {
 	TemplatesLearned   uint64
 	TemplatesReplaced  uint64 // a known template id re-sent with a DIFFERENT shape
 
+	// TemplatesEvicted counts a genuinely NEW key learned while the cache was at
+	// maxCachedTemplates (#564): the least-recently-used entry was dropped to
+	// make room. Zero in every real deployment — the ceiling is ~40x a large
+	// legitimate fleet's true template count — so any non-zero rate here means
+	// either an attacker is minting novel keys, or the ceiling needs revisiting.
+	// Never incremented by a refresh or a same-key replacement, however full the
+	// cache is; see Decoder.store.
+	TemplatesEvicted uint64
+
 	// UnexpectedOutBytes counts records carrying a non-zero OUT_BYTES/OUT_PKTS.
 	// #346 proved these are always zero on this export, and the decoder ignores
 	// them entirely rather than adding them to Bytes. Reading them as a fallback

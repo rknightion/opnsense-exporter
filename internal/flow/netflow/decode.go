@@ -1,6 +1,7 @@
 package netflow
 
 import (
+	"container/list"
 	"encoding/binary"
 	"errors"
 	"net/netip"
@@ -30,6 +31,22 @@ const (
 	// truncated counter is a fabricated value, and no NetFlow v9 element this
 	// decoder consumes is ever declared wider than 8 bytes.
 	maxIntWidth = 8
+
+	// maxCachedTemplates bounds the v9 template cache (#564). NetFlow has no
+	// authentication, so the (exporter, source_id, template_id) key is entirely
+	// attacker-selected by anyone who can reach the listener: a validated attack
+	// inserted 20,000 distinct templates from one exporter by varying source ids
+	// alone, and the pre-#564 cache had no ceiling at all.
+	//
+	// A real deployment's true template count is tiny — one firewall's ng_netflow
+	// exports a handful of shapes (IPv4, IPv6, occasionally IPv6-with-VLAN) per
+	// (exporter, source_id) pair, so even dozens of firewalls each running a
+	// few ng_netflow instances stays two orders of magnitude below this. This is
+	// a fixed internal budget, not an operator knob: it costs at most a few
+	// hundred KB of heap (~150 bytes/template) at the ceiling, which is cheap
+	// enough to not need tuning, and a CLI flag here would be attacker-facing
+	// surface for no real benefit.
+	maxCachedTemplates = 4096
 )
 
 // Decoder decodes NetFlow v5 and v9 datagrams and owns the v9 template cache.
@@ -45,15 +62,24 @@ const (
 // re-sends every template roughly every 2 minutes (#346), so a cold start
 // recovers on its own within that window. Stats.NoTemplate is what makes the
 // window observable.
+//
+// The cache is bounded at maxCachedTemplates (#564) via order, an
+// least-recently-used list shared across every key regardless of which
+// exporter, source id or template id it belongs to. "Used" means either
+// learned/refreshed (store) or looked up for a data flowset (lookup) — an
+// observation domain that is actively sending data stays warm even if it
+// never resends its template within the window, and one that has gone quiet
+// is the first evicted when a genuinely new key needs room.
 type Decoder struct {
 	mu        sync.Mutex
 	templates map[templateKey]*template
+	order     *list.List // list.Element.Value is a templateKey; front = most recently used
 	stats     Stats
 }
 
 // New returns a Decoder with an empty template cache.
 func New() *Decoder {
-	return &Decoder{templates: make(map[templateKey]*template)}
+	return &Decoder{templates: make(map[templateKey]*template), order: list.New()}
 }
 
 // Stats returns a snapshot of the decoder's counters by value.

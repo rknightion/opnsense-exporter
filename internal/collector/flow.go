@@ -291,9 +291,10 @@ type flowCollector struct {
 	logTruncated *prometheus.Desc
 	logDropped   *prometheus.Desc
 
-	uniqueDests *prometheus.Desc
-	topTalker   *prometheus.Desc
-	deltaRatio  *prometheus.Desc
+	uniqueDests       *prometheus.Desc
+	uniqueDestsCapped *prometheus.Desc
+	topTalker         *prometheus.Desc
+	deltaRatio        *prometheus.Desc
 
 	dnsCacheEntries  *prometheus.Desc
 	dnsCacheHits     *prometheus.Desc
@@ -403,6 +404,16 @@ func (c *flowCollector) registerExtras() {
 			"internal per-interface cap; a value pinned at the cap means the true count is at least "+
 			"that high, which is itself a scanning/fan-out signal.",
 		ifaceLabel,
+	)
+	c.uniqueDestsCapped = buildPrometheusDesc(c.subsystem, "unique_destinations_capped_total",
+		"Observations folded into the __other__ interface bucket because a previously unseen "+
+			"interface label arrived when the distinct-destination tracker was already at its "+
+			"interface budget. The interface and VLAN strings are chosen by the Zenarmor sender, so "+
+			"without an outer bound an admitted sender could mint one map and one series per novel "+
+			"combination (#563). A rising value means interface labels beyond the budget are being "+
+			"merged, so per-interface distinct-destination counts are no longer complete - either "+
+			"the box genuinely has more interfaces than the budget, or a sender is inventing them.",
+		nil,
 	)
 	c.topTalker = buildPrometheusDesc(c.subsystem, "top_talker_bytes_total",
 		"Bytes per internal host and direction, top-N with an __other__ remainder per direction so a "+
@@ -643,7 +654,12 @@ func (c *flowCollector) registerNetflow() {
 		"NetFlow v9 template events. \"learned\" is a template id seen for the first time; "+
 			"\"replaced\" is a known id re-sent with a DIFFERENT field shape, which invalidates the "+
 			"decoder's understanding of every record behind it. A steady replaced rate means the "+
-			"exporter is flapping between configurations.",
+			"exporter is flapping between configurations. \"evicted\" is a template dropped because "+
+			"the cache was already at its budget when a new (exporter, source id, template id) "+
+			"arrived: the listener is unauthenticated, so an admitted sender could otherwise grow "+
+			"the cache without bound (#564). Eviction is least-recently-used, and a refresh of an "+
+			"existing key never evicts — so a non-zero rate here means either genuinely more "+
+			"observation domains than the budget allows, or a sender minting novel ids.",
 		resultLabel,
 	)
 	c.nfUnexpected = buildPrometheusDesc(c.subsystem, "netflow_unexpected_field_total",
@@ -866,6 +882,7 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.logTruncated
 	ch <- c.logDropped
 	ch <- c.uniqueDests
+	ch <- c.uniqueDestsCapped
 	ch <- c.topTalker
 	ch <- c.deltaRatio
 	ch <- c.dnsCacheEntries
@@ -919,6 +936,10 @@ func (c *flowCollector) Update(_ context.Context, _ *opnsense.Client, ch chan<- 
 func (c *flowCollector) collectExtras(ch chan<- prometheus.Metric) {
 	for iface, n := range c.store.uniqueDests.Snapshot() {
 		ch <- prometheus.MustNewConstMetric(c.uniqueDests, prometheus.GaugeValue, float64(n), iface, c.instance)
+	}
+	{
+		st := c.store.uniqueDests.Stats()
+		ch <- prometheus.MustNewConstMetric(c.uniqueDestsCapped, prometheus.CounterValue, float64(st.Capped), c.instance)
 	}
 	for _, e := range c.store.topTalkers.Snapshot() {
 		ch <- prometheus.MustNewConstMetric(c.topTalker, prometheus.CounterValue, float64(e.Bytes),
@@ -993,6 +1014,7 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 
 	counter(c.nfTemplates, nf.Decoder.TemplatesLearned, "learned")
 	counter(c.nfTemplates, nf.Decoder.TemplatesReplaced, "replaced")
+	counter(c.nfTemplates, nf.Decoder.TemplatesEvicted, "evicted")
 	counter(c.nfUnexpected, nf.Decoder.UnexpectedOutBytes, "out_bytes")
 	counter(c.nfUnidentified, nf.Decoder.UnknownFields, "unknown_field")
 	counter(c.nfUnidentified, nf.Decoder.OptionsTemplates, "options_template")
