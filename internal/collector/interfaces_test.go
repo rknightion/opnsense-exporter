@@ -772,3 +772,49 @@ func TestInterfacesCollector_AddressFamilyAndOutputQueueDrops(t *testing.T) {
 		t.Error("ixl0 output_queue_drops missing; a healthy zero must still be emitted")
 	}
 }
+
+// TestInterfacesCollector_WrappedQueueDropsAreAbsent pins the emit side of #548:
+// a queue-drop figure that has wrapped through an unsigned 32-bit field must
+// produce NO series for that interface, not a clamped 0. ixl1 carries the real
+// captured prod value; ixl0 alongside it proves the suppression is per-interface
+// and does not blank the family for the healthy ones.
+func TestInterfacesCollector_WrappedQueueDropsAreAbsent(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/traffic/interface", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"interfaces": {
+				"ixl0": {
+					"device": "ixl0", "name": "LAN", "type": "Ethernet", "link state": "2",
+					"mtu": "1500", "input queue drops": "7", "send queue drops": "0"
+				},
+				"ixl1": {
+					"device": "ixl1", "name": "WAN", "type": "Ethernet", "link state": "2",
+					"mtu": "1500", "input queue drops": "4294958080", "send queue drops": "0"
+				}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"rows":[]}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	ic := &interfacesCollector{subsystem: InterfacesSubsystem}
+	ic.Register(namespace, "test", promslog.NewNopLogger())
+
+	devices := map[string]float64{}
+	for _, m := range collectMetrics(t, ic, newCollectorTestClient(t, server)) {
+		if !hasFqName(m, "opnsense_interfaces_input_queue_drops_total") {
+			continue
+		}
+		devices[getMetricLabels(m)["device"]] = getMetricValue(m)
+	}
+
+	if got, ok := devices["ixl0"]; !ok || got != 7 {
+		t.Errorf("ixl0 input_queue_drops = %v (present=%v), want 7", got, ok)
+	}
+	if got, ok := devices["ixl1"]; ok {
+		t.Errorf("ixl1 published a wrapped input_queue_drops of %v; the series must be absent", got)
+	}
+}

@@ -1171,3 +1171,64 @@ func TestFetchInterfaces_StatedIndex(t *testing.T) {
 		})
 	}
 }
+
+// TestFetchInterfaces_QueueDropsRejectWrapped32 pins #548. Prod ixl1 reports
+// `input queue drops = 4294958080`, which is 2^32 - 9216: a small negative that
+// has wrapped through an unsigned 32-bit field somewhere below us, in the driver
+// or the netstat plumbing. Published verbatim as a counter it reads as 4.29
+// billion drops on a healthy interface, and any rate() spanning the wrap — or a
+// later move back toward zero, which looks like a counter reset — is nonsense.
+//
+// So an implausible value is treated as ABSENT rather than as data. A fabricated
+// 0 would be worse than nothing: it claims the interface reported no drops.
+//
+// The tolerant safeAtoi convention (#102: 0 on a missing or non-numeric field)
+// is deliberately kept for the missing/malformed cases, matching every other
+// counter on this struct. Only the implausible-value case is rejected.
+func TestFetchInterfaces_QueueDropsRejectWrapped32(t *testing.T) {
+	cases := []struct {
+		name      string
+		value     string
+		wantValid bool
+		wantValue int64
+	}{
+		{"prod ixl1 wrapped negative", "4294958080", false, 0},
+		{"exactly 2^31, the smallest wrap", "2147483648", false, 0},
+		{"2^32-1, all ones", "4294967295", false, 0},
+		{"already negative on the wire", "-9216", false, 0},
+		{"plausible large count", "2147483647", true, 2147483647},
+		{"ordinary count", "9216", true, 9216},
+		{"genuine zero", "0", true, 0},
+		{"missing", "", true, 0},
+		{"malformed", "not-a-number", true, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			field := ""
+			if tc.value != "" {
+				field = `"input queue drops":"` + tc.value + `","send queue drops":"` + tc.value + `",`
+			}
+			server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte(`{"interfaces":{"x0":{"device":"x0","name":"X0","type":"Ethernet","link state":"2",` + field + `"mtu":"1500"}}}`))
+			})
+			defer server.Close()
+
+			data, err := client.FetchInterfaces()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(data.Interfaces) != 1 {
+				t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+			}
+			got := data.Interfaces[0]
+			if got.InputQueueDropsValid != tc.wantValid || got.InputQueueDrops != tc.wantValue {
+				t.Errorf("input queue drops %q: got (%d, valid=%v), want (%d, valid=%v)",
+					tc.value, got.InputQueueDrops, got.InputQueueDropsValid, tc.wantValue, tc.wantValid)
+			}
+			if got.SendQueueDropsValid != tc.wantValid || got.SendQueueDrops != tc.wantValue {
+				t.Errorf("send queue drops %q: got (%d, valid=%v), want (%d, valid=%v)",
+					tc.value, got.SendQueueDrops, got.SendQueueDropsValid, tc.wantValue, tc.wantValid)
+			}
+		})
+	}
+}

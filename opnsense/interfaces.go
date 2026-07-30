@@ -94,10 +94,18 @@ type Interface struct {
 	Collisions            int64
 	SendQueueLength       int64
 	SendQueueMaxLength    int64
-	SendQueueDrops        int64
-	InputQueueDrops       int64
-	LinkState             int   // 0=down, 1=up, 2=unknown — derived enum, cannot overflow; stays int
-	LineRate              int64 // bits per second (10 Gbit > int32)
+
+	// SendQueueDrops/InputQueueDrops carry a Valid companion because the box can
+	// report a value that is not a count at any scale. Prod ixl1 reports an input
+	// queue drops figure of 4294958080 = 2^32 - 9216, i.e. -9216 wrapped through
+	// an unsigned 32-bit field below us. Callers MUST check Valid before emitting;
+	// see parseQueueDropCounter for why absent beats a fabricated 0 (#548).
+	SendQueueDrops       int64
+	SendQueueDropsValid  bool
+	InputQueueDrops      int64
+	InputQueueDropsValid bool
+	LinkState            int   // 0=down, 1=up, 2=unknown — derived enum, cannot overflow; stays int
+	LineRate             int64 // bits per second (10 Gbit > int32)
 
 	// UnknownProtocolPackets is the kernel's "packets for unknown protocol"
 	// counter: traffic delivered to this interface that the network stack
@@ -137,6 +145,36 @@ func parseAttachOrStatResetUptime(s string) (int64, bool) {
 	}
 	v, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// parseQueueDropCounter parses a queue-drop counter and rejects a value that
+// cannot be a count, returning ok=false so the caller emits no series at all.
+//
+// Prod ixl1 reports `input queue drops = 4294958080`. That is exactly 2^32 -
+// 9216: a small negative that has wrapped through an unsigned 32-bit field in
+// the driver or the netstat plumbing, not something we introduced. Published
+// verbatim as a counter it reads as 4.29 billion drops on a healthy interface,
+// any rate() spanning the wrap is garbage, and a later move back toward zero
+// looks to Prometheus like a counter reset and produces an enormous fake spike.
+//
+// Absent is honest here; a clamped 0 is not, because 0 asserts the interface
+// reported no drops. The test pins the real captured value (#548).
+//
+// The threshold is the whole 32-bit negative half — any value that reinterprets
+// as a negative int32. No interface has genuinely dropped 2.1 billion packets on
+// a queue, so nothing real is suppressed by taking the whole range rather than
+// guessing at how "small" the negative should be.
+//
+// Missing and malformed values deliberately keep the tolerant safeAtoi
+// convention (0, ok=true) that every other counter on this struct uses (#102):
+// this function narrows only the implausible-value case, and widening it to
+// absence would silently drop series on boxes that merely omit the column.
+func parseQueueDropCounter(s string) (int64, bool) {
+	v := safeAtoi(s)
+	if v < 0 || (v >= 1<<31 && v < 1<<32) {
 		return 0, false
 	}
 	return v, true
@@ -184,6 +222,8 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 		}
 
 		attachOrResetUptime, attachOrResetValid := parseAttachOrStatResetUptime(v.UptimeAtAttachOrStatReset)
+		sendQueueDrops, sendQueueDropsValid := parseQueueDropCounter(v.SendQueueDrops)
+		inputQueueDrops, inputQueueDropsValid := parseQueueDropCounter(v.InputQueueDrops)
 
 		data.Interfaces = append(data.Interfaces, Interface{
 			Name:                    v.Name,
@@ -202,8 +242,10 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			Collisions:              safeAtoi(v.Collisions),
 			SendQueueLength:         safeAtoi(v.SendQueueLength),
 			SendQueueMaxLength:      safeAtoi(v.SendQueueMaxLength),
-			SendQueueDrops:          safeAtoi(v.SendQueueDrops),
-			InputQueueDrops:         safeAtoi(v.InputQueueDrops),
+			SendQueueDrops:          sendQueueDrops,
+			SendQueueDropsValid:     sendQueueDropsValid,
+			InputQueueDrops:         inputQueueDrops,
+			InputQueueDropsValid:    inputQueueDropsValid,
 			LinkState:               linkState,
 			LineRate:                parseLineRateBits(v.LineRate),
 			UnknownProtocolPackets:  safeAtoi(v.PacketsForUnknownProtocol),

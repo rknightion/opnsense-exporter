@@ -124,11 +124,11 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		[]string{"interface", "device", "type"},
 	)
 	c.sendQueueDrops = buildPrometheusDesc(c.subsystem, "send_queue_drops_total",
-		"Send queue drops on this interface by interface name and device",
+		"Send queue drops on this interface by interface name and device. Not emitted for an interface whose reported figure has wrapped through an unsigned 32-bit field (see input_queue_drops_total). Note this counter reads the legacy if_snd.ifq_drops and is structurally always 0 on modern buf_ring drivers, so it is not worth alerting on.",
 		[]string{"interface", "device", "type"},
 	)
 	c.inputQueueDrops = buildPrometheusDesc(c.subsystem, "input_queue_drops_total",
-		"Input queue drops on this interface by interface name and device",
+		"Input queue drops on this interface by interface name and device. A value that reinterprets as a negative int32 has wrapped through an unsigned 32-bit field below the exporter (prod ixl1 reports 4294958080, which is -9216) and is suppressed rather than published: the series is absent for that interface, since a fabricated 0 would falsely assert it reported no drops.",
 		[]string{"interface", "device", "type"},
 	)
 	c.linkState = buildPrometheusDesc(c.subsystem, "link_state",
@@ -314,8 +314,17 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		c.update(ch, c.transmittedPackets, prometheus.CounterValue, float64(iface.PacketsTransmitted), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.sendQueueLength, prometheus.GaugeValue, float64(iface.SendQueueLength), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.sendQueueMaxLength, prometheus.GaugeValue, float64(iface.SendQueueMaxLength), iface.Name, iface.Device, iface.Type, c.instance)
-		c.update(ch, c.sendQueueDrops, prometheus.CounterValue, float64(iface.SendQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
-		c.update(ch, c.inputQueueDrops, prometheus.CounterValue, float64(iface.InputQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
+		// Presence-gated: the box can report a queue-drop figure that has wrapped
+		// through an unsigned 32-bit field (prod ixl1 sends 4294958080 = -9216),
+		// which is not a count at any scale. Emitting nothing is honest; emitting
+		// it verbatim reads as 4.29 billion drops on a healthy interface and makes
+		// every rate() over the wrap garbage (#548).
+		if iface.SendQueueDropsValid {
+			c.update(ch, c.sendQueueDrops, prometheus.CounterValue, float64(iface.SendQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
+		}
+		if iface.InputQueueDropsValid {
+			c.update(ch, c.inputQueueDrops, prometheus.CounterValue, float64(iface.InputQueueDrops), iface.Name, iface.Device, iface.Type, c.instance)
+		}
 		c.update(ch, c.linkState, prometheus.GaugeValue, float64(iface.LinkState), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.lineRate, prometheus.GaugeValue, float64(iface.LineRate), iface.Name, iface.Device, iface.Type, c.instance)
 		c.update(ch, c.unknownProtocolPackets, prometheus.CounterValue, float64(iface.UnknownProtocolPackets), iface.Name, iface.Device, iface.Type, c.instance)
