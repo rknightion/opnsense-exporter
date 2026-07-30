@@ -152,8 +152,8 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		[]string{"interface", "device"},
 	)
 	c.info = buildPrometheusDesc(c.subsystem, "info",
-		"Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology). Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series.",
-		[]string{"interface", "device", "identifier", "media", "link_type", "vlan_tag", "vlan_parent", "physical"},
+		"Interface identity from the interfaces overview API (media/duplex, link type, VLAN topology) plus the kernel driver name and HW offload capability set from the traffic API. Value is always 1. Join on the device label. The media label can change on link renegotiation, starting a new series. driver is the kernel driver name (e.g. igb, ixl, ixgbe) — ixl/ixgbe/igb override IFCOUNTER_OQDROPS in their own if_get_counter, so a per-driver caveat on output_queue_drops_total and on a wrapped input_queue_drops_total figure can be checked against it. hw_offload_capabilities is the box's checksum/TSO/LRO offload state, comma-joined and sorted for stability; both are empty when the device has no matching row in the traffic API fetch.",
+		[]string{"interface", "device", "identifier", "media", "link_type", "vlan_tag", "vlan_parent", "physical", "driver", "hw_offload_capabilities"},
 	)
 
 	familyLabels := []string{"device", "family"}
@@ -337,6 +337,20 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		}
 	}
 
+	// driverByDevice/hwOffloadByDevice join the traffic-endpoint fetch above
+	// onto the overview-endpoint info metric below by device name: Driver and
+	// HWOffloadCapabilities are only decoded from api/diagnostics/traffic/interface
+	// (data.Interfaces), not from the overview endpoint, so the info metric's
+	// per-device loop needs a lookup rather than a field already on hand. A
+	// device present in the overview but absent from the traffic fetch (e.g. an
+	// unassigned VLAN sub-interface) degrades to empty labels, never an error.
+	driverByDevice := make(map[string]string, len(data.Interfaces))
+	hwOffloadByDevice := make(map[string]string, len(data.Interfaces))
+	for _, iface := range data.Interfaces {
+		driverByDevice[iface.Device] = iface.Driver
+		hwOffloadByDevice[iface.Device] = iface.HWOffloadCapabilities
+	}
+
 	overview, oerr := client.FetchInterfacesOverview()
 	if oerr != nil {
 		// Partial tolerance: the traffic metrics above were already emitted, so keep
@@ -363,7 +377,8 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 		}
 		c.update(ch, c.info, prometheus.GaugeValue, 1,
 			iface.Description, iface.Device, iface.Identifier, iface.Media,
-			iface.LinkType, iface.VlanTag, iface.VlanParent, physical, c.instance)
+			iface.LinkType, iface.VlanTag, iface.VlanParent, physical,
+			driverByDevice[iface.Device], hwOffloadByDevice[iface.Device], c.instance)
 	}
 
 	// LAGG, bridge and SFP data are all hardware/config-dependent (absent on

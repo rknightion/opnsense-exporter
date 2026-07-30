@@ -239,6 +239,12 @@ func TestFetchInterfaces_Success(t *testing.T) {
 	if wan.InputQueueDrops != 3 {
 		t.Errorf("expected InputQueueDrops=3, got %d", wan.InputQueueDrops)
 	}
+	if wan.Driver != "igb" {
+		t.Errorf("expected Driver=igb, got %q", wan.Driver)
+	}
+	if wan.HWOffloadCapabilities != "RXCSUM,TXCSUM" {
+		t.Errorf("expected HWOffloadCapabilities=RXCSUM,TXCSUM, got %q", wan.HWOffloadCapabilities)
+	}
 
 	// LAN checks
 	if lan.LinkState != 0 {
@@ -249,6 +255,41 @@ func TestFetchInterfaces_Success(t *testing.T) {
 	}
 	if lan.LineRate != 500 {
 		t.Errorf("expected LineRate=500, got %d", lan.LineRate)
+	}
+	if lan.Driver != "igb" {
+		t.Errorf("expected Driver=igb, got %q", lan.Driver)
+	}
+	if lan.HWOffloadCapabilities != "" {
+		t.Errorf("expected HWOffloadCapabilities='', got %q", lan.HWOffloadCapabilities)
+	}
+}
+
+// TestNormalizeHWOffloadCapabilities covers the sort-and-dedupe normalization
+// applied to the raw "HW offload capabilities" comma list. The wire value is
+// already comma-separated but its ordering is not documented as stable, so a
+// naive pass-through would let the box's own reordering churn the label value
+// on unrelated polls; sorting makes the series stable across polls that
+// report the same capability set in a different order.
+func TestNormalizeHWOffloadCapabilities(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: ""},
+		{name: "already sorted", input: "RXCSUM,TXCSUM", want: "RXCSUM,TXCSUM"},
+		{name: "out of order", input: "TXCSUM,RXCSUM", want: "RXCSUM,TXCSUM"},
+		{name: "extra whitespace", input: "TXCSUM, RXCSUM ,  TSO4", want: "RXCSUM,TSO4,TXCSUM"},
+		{name: "duplicate entries collapsed", input: "TXCSUM,TXCSUM,RXCSUM", want: "RXCSUM,TXCSUM"},
+		{name: "trailing comma / empty tokens dropped", input: "RXCSUM,TXCSUM,", want: "RXCSUM,TXCSUM"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeHWOffloadCapabilities(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeHWOffloadCapabilities(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 

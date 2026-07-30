@@ -82,6 +82,23 @@ type Interface struct {
 	// reports no index or an unparseable one.
 	Index int
 
+	// Driver is the kernel driver name for this device (e.g. "igb", "ixl",
+	// "ixgbe"). It exists so an operator can tell whether a per-driver
+	// counter caveat applies to a given interface: ixl/ixgbe/igb override
+	// IFCOUNTER_OQDROPS in their own if_get_counter, so output_queue_drops_total
+	// reports the driver figure and never surfaces a netmap drop on those NICs
+	// (see the outputQueueDrops metric caveat in the collector), and it is how
+	// a wrapped input-queue-drops figure (#548) can be checked for a driver
+	// correlation. Empty when the box omits the column.
+	Driver string
+
+	// HWOffloadCapabilities is the box's "HW offload capabilities" column
+	// (checksum/TSO/LRO offload state), normalized (sorted, deduplicated,
+	// comma-joined — see normalizeHWOffloadCapabilities) so the label is
+	// stable across polls even if the box's own ordering is not. Empty when
+	// the interface reports no offload capabilities.
+	HWOffloadCapabilities string
+
 	MTU                   int64
 	PacketsReceived       int64
 	PacketsTransmitted    int64
@@ -180,6 +197,35 @@ func parseQueueDropCounter(s string) (int64, bool) {
 	return v, true
 }
 
+// normalizeHWOffloadCapabilities sorts and deduplicates the raw "HW offload
+// capabilities" comma list. The wire value is already comma-separated but its
+// ordering is not a documented contract, so passing it through verbatim would
+// let the box's own reordering churn the label value across otherwise
+// identical polls (#555) — sorting keeps the series stable. Empty and
+// whitespace-only tokens (a trailing comma, doubled separators) are dropped
+// rather than preserved as empty entries.
+func normalizeHWOffloadCapabilities(s string) string {
+	if s == "" {
+		return ""
+	}
+	parts := strings.Split(s, ",")
+	seen := make(map[string]struct{}, len(parts))
+	caps := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		caps = append(caps, p)
+	}
+	sort.Strings(caps)
+	return strings.Join(caps, ",")
+}
+
 func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 	var resp interfaceResponse
 	var data Interfaces
@@ -229,6 +275,8 @@ func (c *Client) FetchInterfaces() (Interfaces, *APICallError) {
 			Name:                    v.Name,
 			Device:                  v.Device,
 			Type:                    v.Type,
+			Driver:                  v.Driver,
+			HWOffloadCapabilities:   normalizeHWOffloadCapabilities(v.HWOffloadCapabilities),
 			Index:                   int(safeAtoi(v.Index)),
 			MTU:                     safeAtoi(v.MTU),
 			BytesReceived:           safeAtoi(v.BytesReceived),

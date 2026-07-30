@@ -200,10 +200,16 @@ def build(b: Builder):
             "vlan_tag": "VLAN Tag",
             "vlan_parent": "VLAN Parent",
             "physical": "Physical",
+            "driver": "Driver",
+            "hw_offload_capabilities": "HW Offload Capabilities",
         },
         sort_by="Interface",
         desc="opnsense_interfaces_info: interface identity from the overview API "
-             "(media/duplex, link type, VLAN topology).",
+             "(media/duplex, link type, VLAN topology) plus the kernel driver name and "
+             "HW offload capability set from the traffic API (#555). Driver is what "
+             "tells you whether the ixl/ixgbe/igb oqdrops-override caveat below applies "
+             "to a given device, and whether a wrapped input-queue-drops figure (#548) "
+             "correlates with a known driver.",
     )
 
     # ---- Row 6: LAGG (link aggregation) ------------------------------------

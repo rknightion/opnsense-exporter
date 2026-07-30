@@ -444,6 +444,7 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 	}
 
 	foundVlanInfo := false
+	foundIxl0Info := false
 	for _, m := range metrics {
 		if !strings.Contains(m.Desc().String(), `fqName: "opnsense_interfaces_info"`) {
 			continue
@@ -458,6 +459,10 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 				"interface": "MGMT", "identifier": "opt3",
 				"media": "10Gbase-SR <full-duplex>", "link_type": "static",
 				"vlan_tag": "100", "vlan_parent": "ixl0", "physical": "false",
+				// ixl0_vlan100 has no entry in the traffic-endpoint fetch above
+				// (only "ixl0" does), so the driver/offload join must degrade to
+				// empty labels rather than erroring or borrowing another device's.
+				"driver": "", "hw_offload_capabilities": "",
 			}
 			for k, v := range want {
 				if labels[k] != v {
@@ -465,6 +470,21 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 				}
 			}
 		}
+		if labels["device"] == "ixl0" {
+			foundIxl0Info = true
+			// ixl0 IS present in the traffic-endpoint fetch ("driver": "ixl",
+			// "HW offload capabilities": ""), so its info row must carry that
+			// driver name and an empty (not missing) offload-capabilities label.
+			if labels["driver"] != "ixl" {
+				t.Errorf("info label driver: expected %q, got %q", "ixl", labels["driver"])
+			}
+			if labels["hw_offload_capabilities"] != "" {
+				t.Errorf("info label hw_offload_capabilities: expected empty, got %q", labels["hw_offload_capabilities"])
+			}
+		}
+	}
+	if !foundIxl0Info {
+		t.Error("expected info metric for ixl0")
 	}
 	if !foundVlanInfo {
 		t.Error("expected info metric for ixl0_vlan100")
