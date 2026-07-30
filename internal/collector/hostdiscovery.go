@@ -39,17 +39,20 @@ func (c *hostDiscoveryCollector) Register(namespace, instance string, log *slog.
 	c.log.Debug("Registering collector", "collector", c.Name())
 
 	c.hosts = buildPrometheusDesc(c.subsystem, "hosts",
-		"Number of hosts in the discovered-host inventory, by interface and source. "+
+		"Number of hosts in the discovered-host inventory, by interface, source and manufacturer. "+
 			"source is \"discovery\" when the hostwatch daemon is enabled (persistent inventory, "+
 			"survives reboots and cache expiry) or \"arp-ndp\" when it is disabled (a live fallback "+
-			"that duplicates the arp_table/ndp collectors). Aggregate only: never a per-host series.",
-		[]string{"interface", "source"},
+			"that duplicates the arp_table/ndp collectors). manufacturer is the OUI vendor lookup of "+
+			"the MAC (organization_name), same label name/convention as arp_table/ndp's manufacturer "+
+			"label; \"unknown\" when the box could not resolve an OUI (e.g. a randomized-MAC device). "+
+			"Aggregate only: never a per-host series.",
+		[]string{"interface", "source", "manufacturer"},
 	)
 	c.hostsRecent = buildPrometheusDesc(c.subsystem, "hosts_recent",
 		"Number of hosts in the discovered-host inventory whose last_seen falls within a 15 minute "+
-			"window, by interface and source. Always 0 for source=\"arp-ndp\" rows, which carry no "+
-			"last_seen timestamp to judge recency from.",
-		[]string{"interface", "source"},
+			"window, by interface, source and manufacturer. Always 0 for source=\"arp-ndp\" rows, "+
+			"which carry no last_seen timestamp to judge recency from.",
+		[]string{"interface", "source", "manufacturer"},
 	)
 }
 
@@ -66,10 +69,10 @@ func (c *hostDiscoveryCollector) Update(_ context.Context, client *opnsense.Clie
 
 	for _, g := range data.Groups {
 		ch <- prometheus.MustNewConstMetric(
-			c.hosts, prometheus.GaugeValue, float64(g.Hosts), g.Interface, g.Source, c.instance,
+			c.hosts, prometheus.GaugeValue, float64(g.Hosts), g.Interface, g.Source, g.Manufacturer, c.instance,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			c.hostsRecent, prometheus.GaugeValue, float64(g.RecentHosts), g.Interface, g.Source, c.instance,
+			c.hostsRecent, prometheus.GaugeValue, float64(g.RecentHosts), g.Interface, g.Source, g.Manufacturer, c.instance,
 		)
 	}
 

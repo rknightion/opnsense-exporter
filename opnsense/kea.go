@@ -14,10 +14,13 @@ import (
 // stats:{active,inactive,total}, all JSON numbers. "active" is lease state 0;
 // "inactive" is every non-zero state combined (declined + expired-reclaimed
 // are not split out here — only the per-row `state` field distinguishes
-// them; see keaLeaseStateLabel). Decoded for schema completeness; the
-// opnsense_kea_dhcp{4,6}_leases_by_state metric is derived from the per-row
-// `state` field instead, since that is the only source for the 3-way
-// active/declined/expired-reclaimed split.
+// them; see keaLeaseStateLabel). The 3-way active/declined/expired-reclaimed
+// split (opnsense_kea_dhcp{4,6}_leases_by_state) still comes from the
+// per-row `state` field, since that is the only source for it. This block
+// is ALSO exported directly (#557) as opnsense_kea_dhcp{4,6}_lease_pool_stats:
+// it is Kea's own accounting computed over the full lease population before
+// the bootgrid search paginates `rows`, so unlike a row-derived count it is
+// authoritative and never truncated by the page size.
 type keaLeaseStats struct {
 	Active   flexInt `json:"active"`
 	Inactive flexInt `json:"inactive"`
@@ -112,6 +115,15 @@ type KeaLeases struct {
 	// unknown). Rows with an empty `type` (always true for DHCPv4) are
 	// excluded, so this stays empty for FetchKeaLeases4.
 	LeasesByType map[string]int
+	// StatsActive / StatsInactive / StatsTotal are Kea's OWN pool accounting
+	// (the response's top-level `stats` object, computed over the full lease
+	// population before bootgrid pages `rows`), NOT re-derived from the
+	// decoded rows -- the two answer different questions and neither
+	// replaces the other (#557). Zero-valued when the box sends no `stats`
+	// object at all.
+	StatsActive   int
+	StatsInactive int
+	StatsTotal    int
 }
 
 // keaLeaseStateLabel maps Kea's raw lease-state integer to the bounded label
@@ -163,6 +175,9 @@ func (c *Client) fetchKeaLeases(endpointName EndpointName) (KeaLeases, *APICallE
 	data.LeasesByInterface = make(map[string]int)
 	data.LeasesByState = make(map[string]int)
 	data.LeasesByType = make(map[string]int)
+	data.StatsActive = resp.Stats.Active.Int()
+	data.StatsInactive = resp.Stats.Inactive.Int()
+	data.StatsTotal = resp.Stats.Total.Int()
 
 	for _, row := range resp.Rows {
 		reserved := row.IsReserved.Bool()

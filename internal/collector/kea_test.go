@@ -91,11 +91,10 @@ func TestKeaCollector_Update(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// v4: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN)
-	//     + 1 leasesByState (active) = 5
-	// v6: 1 leasesTotal + 1 reservedTotal + 1 dynamicTotal + 1 leasesByIface (LAN)
-	//     + 1 leasesByState (active) = 5 (no leasesByType: rows carry no "type")
-	// + 1 kea_service_running = 11
-	expectedCount := 11
+	//     + 1 leasesByState (active) + 3 lease_pool_stats (active/inactive/total) = 8
+	// v6: same shape = 8 (no leasesByType: rows carry no "type")
+	// + 1 kea_service_running = 17
+	expectedCount := 17
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -136,6 +135,25 @@ func TestKeaCollector_Update(t *testing.T) {
 				t.Errorf("expected dhcp6_leases_by_state{state=active}=1, got state=%q value=%v", labels["state"], value)
 			}
 		}
+	}
+
+	v4PoolStats := map[string]float64{}
+	v6PoolStats := map[string]float64{}
+	for _, m := range metrics {
+		labels := getMetricLabels(m)
+		value := getMetricValue(m)
+		switch {
+		case hasFqName(m, "opnsense_kea_dhcp4_lease_pool_stats"):
+			v4PoolStats[labels["pool_state"]] = value
+		case hasFqName(m, "opnsense_kea_dhcp6_lease_pool_stats"):
+			v6PoolStats[labels["pool_state"]] = value
+		}
+	}
+	if v4PoolStats["active"] != 2 || v4PoolStats["inactive"] != 0 || v4PoolStats["total"] != 2 {
+		t.Errorf("expected dhcp4_lease_pool_stats active=2 inactive=0 total=2, got %+v", v4PoolStats)
+	}
+	if v6PoolStats["active"] != 1 || v6PoolStats["inactive"] != 0 || v6PoolStats["total"] != 1 {
+		t.Errorf("expected dhcp6_lease_pool_stats active=1 inactive=0 total=1, got %+v", v6PoolStats)
 	}
 }
 
@@ -194,10 +212,10 @@ func TestKeaCollector_Update_WithDetails(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 3 summary + 1 leasesByIface (LAN) + 1 leasesByState (active) + 2 leaseInfo = 7
-	// v6: 3 summary + 1 leasesByIface (LAN) + 1 leasesByState (active) + 1 leaseInfo = 6
-	// + 1 kea_service_running = 14
-	expectedCount := 14
+	// v4: 3 summary + 1 leasesByIface (LAN) + 1 leasesByState (active) + 2 leaseInfo + 3 lease_pool_stats = 10
+	// v6: 3 summary + 1 leasesByIface (LAN) + 1 leasesByState (active) + 1 leaseInfo + 3 lease_pool_stats = 9
+	// + 1 kea_service_running = 20
+	expectedCount := 20
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -245,10 +263,10 @@ func TestKeaCollector_Update_Empty(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState (no rows)
-	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState (no rows)
-	// + 1 kea_service_running = 7
-	expectedCount := 7
+	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState (no rows), 3 lease_pool_stats
+	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState (no rows), 3 lease_pool_stats
+	// + 1 kea_service_running = 13
+	expectedCount := 13
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -309,10 +327,10 @@ func TestKeaCollector_Update_KeaDisabled(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState
-	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState
-	// + 1 kea_service_running (value=0, stopped) = 7
-	expectedCount := 7
+	// v4: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState, 3 lease_pool_stats
+	// v6: 3 summary (total=0, reserved=0, dynamic=0), no leasesByIface, no leasesByState, 3 lease_pool_stats
+	// + 1 kea_service_running (value=0, stopped) = 13
+	expectedCount := 13
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

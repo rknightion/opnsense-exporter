@@ -449,6 +449,69 @@ func TestFetchKeaLeases6_TypeAndState(t *testing.T) {
 	if data.Leases[1].Type != "IA_PD" {
 		t.Errorf("expected lease[1].Type=IA_PD, got %q", data.Leases[1].Type)
 	}
+
+	if data.StatsActive != 2 || data.StatsInactive != 2 || data.StatsTotal != 4 {
+		t.Errorf("expected top-level stats active=2 inactive=2 total=4, got active=%d inactive=%d total=%d",
+			data.StatsActive, data.StatsInactive, data.StatsTotal)
+	}
+}
+
+// TestFetchKeaLeases_StatsIsAuthoritativeNotRowDerived proves the exported
+// StatsActive/StatsInactive/StatsTotal come from Kea's own top-level `stats`
+// object rather than being re-derived by counting rows -- the two
+// deliberately disagree in this fixture (rows describe only 1 lease; stats
+// claims a much larger pool), which is exactly why the stats block is
+// authoritative: bootgrid rows can page, the stats block is computed by Kea
+// over the full lease population and never truncated (#557).
+func TestFetchKeaLeases_StatsIsAuthoritativeNotRowDerived(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{"address":"10.0.0.5","hwaddr":"aa:bb:cc:dd:ee:01","hostname":"h1","expire":1,"if_descr":"LAN","is_reserved":"0","type":"","state":0}
+			],
+			"stats": {"active": 900, "inactive": 100, "total": 1000}
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Leases) != 1 {
+		t.Fatalf("expected 1 decoded row, got %d", len(data.Leases))
+	}
+	if data.StatsActive != 900 || data.StatsInactive != 100 || data.StatsTotal != 1000 {
+		t.Errorf("expected stats active=900 inactive=100 total=1000 (independent of the 1 decoded row), got active=%d inactive=%d total=%d",
+			data.StatsActive, data.StatsInactive, data.StatsTotal)
+	}
+}
+
+// TestFetchKeaLeases_StatsAbsent proves an older/degenerate response with no
+// `stats` object leaves the stats fields at their zero value rather than
+// erroring, since flexInt already tolerates an absent key.
+func TestFetchKeaLeases_StatsAbsent(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases4/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"total": 0, "rowCount": 0, "current": 1, "rows": []}`))
+	})
+
+	data, err := client.FetchKeaLeases4()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.StatsActive != 0 || data.StatsInactive != 0 || data.StatsTotal != 0 {
+		t.Errorf("expected zero-valued stats when absent, got active=%d inactive=%d total=%d",
+			data.StatsActive, data.StatsInactive, data.StatsTotal)
+	}
 }
 
 // TestFetchKeaLeases4_NoTypeField covers the DHCPv4 side: get_kea_leases.py

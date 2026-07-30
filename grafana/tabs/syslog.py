@@ -90,6 +90,35 @@ def build(b: Builder):
                      "{{source_id}} {{stat}}")],
                    unit="bytes", w=8, h=8)
 
+    # Bounded state per target: always 1, one row per SourceName/SourceId/
+    # SourceInstance. state comes from syslog-ng's own closed vocabulary
+    # (active/dynamic/orphaned); anything unrecognized reads "unknown".
+    target_state = b.table(
+        "Target States",
+        [sel("opnsense_syslog_target_state")],
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "source_name": "Source",
+            "source_id": "Source ID",
+            "source_instance": "Instance Detail",
+            "state": "State",
+            "opnsense_instance": "Firewall",
+        },
+        sort_by="Source",
+        sort_desc=False,
+        w=8,
+        h=8,
+        desc=(
+            "opnsense_syslog_target_state: current lifecycle state of each syslog-ng "
+            "source/target object. active = alive and receiving stat updates; dynamic = a "
+            "runtime-created object that may cease to exist; orphaned = the underlying "
+            "config element was removed but its last-known counters are retained. A target "
+            "reading orphaned while its byte/message counters have gone flat is the stall "
+            "this metric exists to surface -- that combination is otherwise indistinguishable "
+            "from an idle-but-healthy active target."
+        ),
+    )
+
     raw_logs = b.logs("Raw syslog stream", SYSLOG_STREAM,
                    desc=(
                         "The live shipped log lines from Loki, scoped to the selected firewall "
@@ -113,6 +142,7 @@ def build(b: Builder):
         b.row("Syslog-ng Throughput",
               [processed, dropped, truncated_bytes, written, memory, msgsize],
               present="has_syslog"),
+        b.row("Syslog-ng Target States", [target_state], present="has_syslog"),
         b.row("Shipped Syslog Logs", [raw_logs, lines_by_subsystem],
               present="has_syslog_logs"),
     ])

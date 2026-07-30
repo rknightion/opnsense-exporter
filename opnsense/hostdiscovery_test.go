@@ -13,7 +13,7 @@ import (
 const hostDiscoveryFixtureTemplate = `{"total":5,"rowCount":5,"current":1,"rows":[
   {"source":"discovery","interface_name":"LAN","ether_address":"bc:24:11:c1:d5:12","ip_address":"10.0.0.114","organization_name":"Proxmox Server Solutions GmbH","first_seen":"2026-07-12T15:23:06Z","last_seen":%q},
   {"source":"discovery","interface_name":"LAN","ether_address":"3e:13:8f:ef:ae:26","ip_address":"10.0.0.113","organization_name":null,"first_seen":"2026-07-12T16:16:49Z","last_seen":%q},
-  {"source":"discovery","interface_name":"LAN","ether_address":"8c:1f:64:f4:92:1b","ip_address":"2001:8b0:1f05::1007","organization_name":"IEEE Registration Authority","first_seen":"2026-07-12T15:21:09Z","last_seen":%q},
+  {"source":"discovery","interface_name":"LAN","ether_address":"8c:1f:64:f4:92:1b","ip_address":"2001:db8::1007","organization_name":"IEEE Registration Authority","first_seen":"2026-07-12T15:21:09Z","last_seen":%q},
   {"source":"discovery","interface_name":"WAN","ether_address":"bc:24:11:25:6f:8f","ip_address":"10.0.0.11","organization_name":"Proxmox Server Solutions GmbH","first_seen":"2026-07-12T18:38:29Z","last_seen":%q},
   {"source":"discovery","interface_name":"TESTLAN","ether_address":"00:00:5e:00:01:09","ip_address":"172.16.9.254","organization_name":"ICANN, IANA Department","first_seen":"2026-07-12T16:06:47Z","last_seen":%q}
 ]}`
@@ -47,30 +47,47 @@ func TestFetchHostDiscovery_AggregatesByInterfaceAndRecency(t *testing.T) {
 		t.Fatalf("FetchHostDiscovery: %v", err)
 	}
 
-	if len(data.Groups) != 3 {
-		t.Fatalf("expected 3 interface groups (LAN, WAN, TESTLAN), got %d: %+v", len(data.Groups), data.Groups)
+	// LAN now splits into 3 groups because organization_name (manufacturer) is
+	// part of the grouping key: "Proxmox Server Solutions GmbH" (IPv4 row),
+	// "unknown" (the null-organization_name row), and "IEEE Registration
+	// Authority" (the IPv6 row) are three distinct manufacturers on LAN.
+	if len(data.Groups) != 5 {
+		t.Fatalf("expected 5 groups (LAN x3 manufacturers, WAN, TESTLAN), got %d: %+v", len(data.Groups), data.Groups)
 	}
 
-	byIface := map[string]HostDiscoveryGroup{}
+	byKey := map[string]HostDiscoveryGroup{}
 	for _, g := range data.Groups {
-		byIface[g.Interface] = g
+		byKey[g.Interface+"|"+g.Manufacturer] = g
 	}
 
-	lan, ok := byIface["LAN"]
+	lanProxmox, ok := byKey["LAN|Proxmox Server Solutions GmbH"]
 	if !ok {
-		t.Fatalf("no LAN group in %+v", data.Groups)
+		t.Fatalf("no LAN/Proxmox group in %+v", data.Groups)
 	}
-	if lan.Source != "discovery" {
-		t.Errorf("LAN.Source = %q, want discovery", lan.Source)
+	if lanProxmox.Source != "discovery" {
+		t.Errorf("LAN/Proxmox.Source = %q, want discovery", lanProxmox.Source)
 	}
-	if lan.Hosts != 3 {
-		t.Errorf("LAN.Hosts = %d, want 3", lan.Hosts)
-	}
-	if lan.RecentHosts != 2 {
-		t.Errorf("LAN.RecentHosts = %d, want 2 (2 of 3 rows within 15m)", lan.RecentHosts)
+	if lanProxmox.Hosts != 1 || lanProxmox.RecentHosts != 1 {
+		t.Errorf("LAN/Proxmox = %+v, want Hosts=1 RecentHosts=1", lanProxmox)
 	}
 
-	wan, ok := byIface["WAN"]
+	lanUnknown, ok := byKey["LAN|unknown"]
+	if !ok {
+		t.Fatalf("no LAN/unknown group in %+v", data.Groups)
+	}
+	if lanUnknown.Hosts != 1 || lanUnknown.RecentHosts != 0 {
+		t.Errorf("LAN/unknown = %+v, want Hosts=1 RecentHosts=0 (stale, null organization_name)", lanUnknown)
+	}
+
+	lanIEEE, ok := byKey["LAN|IEEE Registration Authority"]
+	if !ok {
+		t.Fatalf("no LAN/IEEE group in %+v", data.Groups)
+	}
+	if lanIEEE.Hosts != 1 || lanIEEE.RecentHosts != 1 {
+		t.Errorf("LAN/IEEE = %+v, want Hosts=1 RecentHosts=1", lanIEEE)
+	}
+
+	wan, ok := byKey["WAN|Proxmox Server Solutions GmbH"]
 	if !ok {
 		t.Fatalf("no WAN group in %+v", data.Groups)
 	}
@@ -78,12 +95,43 @@ func TestFetchHostDiscovery_AggregatesByInterfaceAndRecency(t *testing.T) {
 		t.Errorf("WAN = %+v, want Hosts=1 RecentHosts=0 (stale)", wan)
 	}
 
-	testlan, ok := byIface["TESTLAN"]
+	testlan, ok := byKey["TESTLAN|ICANN, IANA Department"]
 	if !ok {
 		t.Fatalf("no TESTLAN group in %+v", data.Groups)
 	}
 	if testlan.Hosts != 1 || testlan.RecentHosts != 1 {
 		t.Errorf("TESTLAN = %+v, want Hosts=1 RecentHosts=1 (recent)", testlan)
+	}
+}
+
+// TestFetchHostDiscovery_OrganizationNameSentinel proves a null
+// organization_name (a randomized-MAC device the OUI lookup cannot resolve)
+// becomes the "unknown" sentinel rather than an empty label, and a present
+// value passes through unchanged.
+func TestFetchHostDiscovery_OrganizationNameSentinel(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"total":2,"rowCount":2,"current":1,"rows":[
+			{"source":"discovery","interface_name":"LAN","ether_address":"aa:bb:cc:dd:ee:01","ip_address":"10.0.0.1","organization_name":null,"first_seen":"","last_seen":""},
+			{"source":"discovery","interface_name":"LAN","ether_address":"aa:bb:cc:dd:ee:02","ip_address":"10.0.0.2","organization_name":"Vendor A","first_seen":"","last_seen":""}
+		]}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchHostDiscovery()
+	if err != nil {
+		t.Fatalf("FetchHostDiscovery: %v", err)
+	}
+
+	byManufacturer := map[string]HostDiscoveryGroup{}
+	for _, g := range data.Groups {
+		byManufacturer[g.Manufacturer] = g
+	}
+
+	if g, ok := byManufacturer["unknown"]; !ok || g.Hosts != 1 {
+		t.Errorf("expected a manufacturer=unknown group with 1 host, got %+v", data.Groups)
+	}
+	if g, ok := byManufacturer["Vendor A"]; !ok || g.Hosts != 1 {
+		t.Errorf("expected a manufacturer=Vendor A group with 1 host, got %+v", data.Groups)
 	}
 }
 

@@ -114,12 +114,17 @@ def build(b: Builder):
             "hostname": "Hostname",
             "hwaddr": "MAC Address",
             "interface": "Interface",
+            "device": "Device",
+            "vendor": "Vendor",
             "Value": "Expires",
         },
         unit_overrides={"Expires": "dateTimeAsIso"},
         sort_by="Interface",
         desc=(
             "Per-lease detail. The Expires column shows the lease expiry as an ISO date. "
+            "Device is the raw logical interface id (only Device, not Interface, joins "
+            "against the interfaces metrics on VLANs/bridges); Vendor is an offline IEEE OUI "
+            "lookup (empty when the OUI is unknown), mirroring the Kea lease tables below. "
             "Only emitted when --exporter.enable-dnsmasq-details is set. "
             "Filter by interface with the $interface variable."
         ),
@@ -200,6 +205,23 @@ def build(b: Builder):
         unit="short", w=12, h=4, orient="horizontal",
         desc=(
             "Kea DHCPv6 leases by lease type: IA_NA (address) vs IA_PD (prefix delegation)."
+        ),
+    )
+
+    kea_pool_stats = b.bargauge(
+        "Kea Lease Pool Accounting (server-reported)",
+        [(sel("opnsense_kea_dhcp4_lease_pool_stats"), "v4 {{pool_state}}"),
+         (sel("opnsense_kea_dhcp6_lease_pool_stats"), "v6 {{pool_state}}")],
+        unit="short", w=12, h=4, orient="horizontal",
+        desc=(
+            "Kea's OWN pool accounting, as reported by the server, rather than a count of the "
+            "lease rows we decoded. The two answer different questions and are both worth having: "
+            "a row count says what the exporter could see, this says what Kea believes it has "
+            "handed out. active climbing toward total is the pool-exhaustion signal — and it is "
+            "authoritative in a way a row count is not, because a truncated or filtered lease "
+            "query silently lowers the row count without changing what Kea thinks. A persistent "
+            "gap between this and the by-state panels above means the two views disagree, which "
+            "is worth chasing rather than averaging."
         ),
     )
 
@@ -385,13 +407,16 @@ def build(b: Builder):
             "hostname": "Hostname",
             "mac": "MAC Address",
             "interface": "Interface",
+            "device": "Device",
             "type": "Type",
             "state": "State",
             "status": "Status",
         },
         sort_by="Interface",
         desc=(
-            "Per-lease ISC DHCPv4 detail (value is always 1; use label columns). "
+            "Per-lease ISC DHCPv4 detail (value is always 1; use label columns). Device is the "
+            "raw logical interface id (only Device, not Interface, joins against the interfaces "
+            "metrics on VLANs/bridges). "
             "Only emitted with --exporter.enable-dhcpv4-details."
         ),
     )
@@ -449,13 +474,16 @@ def build(b: Builder):
             "mac": "MAC Address",
             "duid": "DUID",
             "if_descr": "Interface",
+            "device": "Device",
             "state": "State",
             "status": "Status",
             "type": "Type",
         },
         sort_by="Interface",
         desc=(
-            "Per-lease ISC DHCPv6 detail (value is always 1; use label columns). "
+            "Per-lease ISC DHCPv6 detail (value is always 1; use label columns). Device is the "
+            "raw logical interface id (only Device, not Interface, joins against the interfaces "
+            "metrics on VLANs/bridges). "
             "Only emitted with --exporter.enable-dhcpv6-details."
         ),
     )
@@ -474,7 +502,7 @@ def build(b: Builder):
         b.row("Kea DHCP",
               [kea4_total, kea4_reserved, kea4_dynamic, kea4_by_iface,
                kea6_total, kea6_reserved, kea6_dynamic, kea6_by_iface,
-               kea4_by_state, kea6_by_state, kea6_by_type,
+               kea4_by_state, kea6_by_state, kea6_by_type, kea_pool_stats,
                kea_svc, kea4_pool, kea6_pool, kea_util,
                kea4_pool_used, kea6_pool_used, kea_subnet_util],
               present="has_kea"),

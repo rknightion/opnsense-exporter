@@ -36,30 +36,40 @@ func TestHostDiscoveryCollector_Update(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 	assertNoDuplicateSeries(t, metrics)
 
-	// 2 interfaces (LAN, WAN) x 2 metrics (hosts, hosts_recent) = 4 series.
-	if len(metrics) != 4 {
-		t.Fatalf("expected 4 metrics, got %d", len(metrics))
+	// LAN splits into 2 manufacturer groups ("Vendor A", "unknown" for the
+	// null organization_name row) + WAN's 1 ("Vendor B") = 3 groups x 2
+	// metrics (hosts, hosts_recent) = 6 series.
+	if len(metrics) != 6 {
+		t.Fatalf("expected 6 metrics, got %d", len(metrics))
 	}
 
-	foundLANHosts, foundLANRecent, foundWANHosts := false, false, false
+	foundLANHosts, foundLANUnknown, foundLANRecent, foundWANHosts := false, false, false, false
 	for _, m := range metrics {
 		labels := getMetricLabels(m)
 		value := getMetricValue(m)
 		switch {
-		case hasFqName(m, "opnsense_hostdiscovery_hosts") && labels["interface"] == "LAN":
+		case hasFqName(m, "opnsense_hostdiscovery_hosts") && labels["interface"] == "LAN" && labels["manufacturer"] == "Vendor A":
 			foundLANHosts = true
-			if value != 2 {
-				t.Errorf("LAN hosts = %v, want 2", value)
+			if value != 1 {
+				t.Errorf("LAN/Vendor A hosts = %v, want 1", value)
 			}
-		case hasFqName(m, "opnsense_hostdiscovery_hosts_recent") && labels["interface"] == "LAN":
+		case hasFqName(m, "opnsense_hostdiscovery_hosts") && labels["interface"] == "LAN" && labels["manufacturer"] == "unknown":
+			foundLANUnknown = true
+			if value != 1 {
+				t.Errorf("LAN/unknown hosts = %v, want 1", value)
+			}
+		case hasFqName(m, "opnsense_hostdiscovery_hosts_recent") && labels["interface"] == "LAN" && labels["manufacturer"] == "Vendor A":
 			foundLANRecent = true
 			if value != 1 {
-				t.Errorf("LAN hosts_recent = %v, want 1 (one row is decades stale)", value)
+				t.Errorf("LAN/Vendor A hosts_recent = %v, want 1", value)
 			}
 		case hasFqName(m, "opnsense_hostdiscovery_hosts") && labels["interface"] == "WAN":
 			foundWANHosts = true
 			if value != 1 {
 				t.Errorf("WAN hosts = %v, want 1", value)
+			}
+			if labels["manufacturer"] != "Vendor B" {
+				t.Errorf("WAN manufacturer = %q, want Vendor B", labels["manufacturer"])
 			}
 		}
 		if labels["source"] != "discovery" {
@@ -68,10 +78,14 @@ func TestHostDiscoveryCollector_Update(t *testing.T) {
 		if labels["opnsense_instance"] != "test" {
 			t.Errorf("expected instance label = test, got %q", labels["opnsense_instance"])
 		}
+		if labels["manufacturer"] == "" {
+			t.Errorf("manufacturer label must never be empty, got labels %+v", labels)
+		}
 	}
 
-	if !foundLANHosts || !foundLANRecent || !foundWANHosts {
-		t.Errorf("missing expected series: LANHosts=%v LANRecent=%v WANHosts=%v", foundLANHosts, foundLANRecent, foundWANHosts)
+	if !foundLANHosts || !foundLANUnknown || !foundLANRecent || !foundWANHosts {
+		t.Errorf("missing expected series: LANHosts=%v LANUnknown=%v LANRecent=%v WANHosts=%v",
+			foundLANHosts, foundLANUnknown, foundLANRecent, foundWANHosts)
 	}
 }
 

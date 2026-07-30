@@ -48,15 +48,28 @@ func TestMbufCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 7 gauge metrics (mbufCurrent, mbufCache, mbufTotal, clusterCurrent, clusterCache, clusterTotal, clusterMax)
+	// 8 gauge metrics (mbufCurrent, mbufCache, mbufTotal, mbufMax, clusterCurrent, clusterCache, clusterTotal, clusterMax)
 	// 6 failures by type (mbuf, cluster, packet, jumbop, jumbo9, jumbo16)
 	// 6 sleeps by type (mbuf, cluster, packet, jumbop, jumbo9, jumbo16)
 	// 2 bytes metrics (bytesInUse, bytesTotal)
 	// 3 sendfile metrics (syscalls, ioCount, pagesSent)
-	// Total: 7 + 6 + 6 + 2 + 3 = 24
-	expectedCount := 24
+	// Total: 8 + 6 + 6 + 2 + 3 = 25
+	expectedCount := 25
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	foundMbufMax := false
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_mbuf_max") {
+			foundMbufMax = true
+			if getMetricValue(m) != 131072 {
+				t.Errorf("expected opnsense_mbuf_max=131072, got %v", getMetricValue(m))
+			}
+		}
+	}
+	if !foundMbufMax {
+		t.Error("expected an opnsense_mbuf_max series")
 	}
 }
 

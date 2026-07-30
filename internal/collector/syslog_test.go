@@ -37,12 +37,13 @@ func TestSyslogCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 6 stat rows emitted (unknown type skipped) + service_running = 7
-	if len(metrics) != 7 {
-		t.Fatalf("expected 7 metrics, got %d", len(metrics))
+	// 6 stat rows emitted (unknown type skipped) + service_running + 7 distinct
+	// target_state series (one per distinct SourceName/SourceId/SourceInstance) = 14
+	if len(metrics) != 14 {
+		t.Fatalf("expected 14 metrics, got %d", len(metrics))
 	}
 
-	var sawProcessed, sawEPS, sawMsgSize, sawRunning bool
+	var sawProcessed, sawEPS, sawMsgSize, sawRunning, sawTargetState bool
 	for _, m := range metrics {
 		desc := m.Desc().String()
 		labels := getMetricLabels(m)
@@ -67,10 +68,60 @@ func TestSyslogCollector_Update(t *testing.T) {
 			if getMetricValue(m) != 1 {
 				t.Errorf("expected service_running=1, got %v", getMetricValue(m))
 			}
+		case strings.Contains(desc, "syslog_target_state"):
+			sawTargetState = true
+			if getMetricValue(m) != 1 {
+				t.Errorf("expected target_state=1, got %v", getMetricValue(m))
+			}
+			if labels["state"] != "active" {
+				t.Errorf("expected state=active, got %v", labels)
+			}
+			if labels["source_name"] == "" {
+				t.Errorf("target_state must carry a non-empty source_name label, got %v", labels)
+			}
 		}
 	}
-	if !sawProcessed || !sawEPS || !sawMsgSize || !sawRunning {
-		t.Errorf("missing expected metrics: processed=%v eps=%v msgsize=%v running=%v",
-			sawProcessed, sawEPS, sawMsgSize, sawRunning)
+	if !sawProcessed || !sawEPS || !sawMsgSize || !sawRunning || !sawTargetState {
+		t.Errorf("missing expected metrics: processed=%v eps=%v msgsize=%v running=%v targetState=%v",
+			sawProcessed, sawEPS, sawMsgSize, sawRunning, sawTargetState)
+	}
+}
+
+// TestSyslogCollector_TargetStateUnknownSentinel proves an unrecognized raw
+// state code surfaces as the "unknown" sentinel rather than an empty label.
+func TestSyslogCollector_TargetStateUnknownSentinel(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/syslog/service/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{"#":"a1","SourceName":"destination","SourceId":"d_local_firewall","SourceInstance":"","State":"","Type":"processed","Number":"180"}
+			]
+		}`))
+	})
+	mux.HandleFunc("/api/syslog/service/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"running"}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &syslogCollector{subsystem: SyslogSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	foundTargetState := false
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), "syslog_target_state") {
+			foundTargetState = true
+			labels := getMetricLabels(m)
+			if labels["state"] != "unknown" {
+				t.Errorf("expected state=unknown for a blank raw State, got %q", labels["state"])
+			}
+		}
+	}
+	if !foundTargetState {
+		t.Error("expected a syslog_target_state series")
 	}
 }

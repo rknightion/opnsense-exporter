@@ -9,7 +9,11 @@ type mbufStatisticsData struct {
 	MbufCurrent int `json:"mbuf-current"`
 	MbufCache   int `json:"mbuf-cache"`
 	MbufTotal   int `json:"mbuf-total"`
-	// ≤26.1.x only: removed upstream, reads zero on ≥26.1.11 (unused by any metric).
+	// MbufMax is exported (#557), matching how ClusterMax/JumboPageMax are
+	// already exported as ceilings. ≤26.1.x only: removed upstream, reads
+	// zero on ≥26.1.11 -- per the #543 "limit==0 means no ceiling
+	// configured" lesson, a consumer computing a current/max ratio must
+	// guard the denominator rather than trusting a bare 0.
 	MbufMax        int `json:"mbuf-max"`
 	ClusterCurrent int `json:"cluster-current"`
 	ClusterCache   int `json:"cluster-cache"`
@@ -116,9 +120,13 @@ type memoryStatisticsResponse struct {
 }
 
 type MbufStatistics struct {
-	MbufCurrent    int
-	MbufCache      int
-	MbufTotal      int
+	MbufCurrent int
+	MbufCache   int
+	MbufTotal   int
+	// MbufMax may legitimately read 0 on OPNsense >=26.1.11, where upstream
+	// removed the key -- that means "no ceiling reported", not "ceiling of
+	// zero" (#543). Guard any current/max ratio against a zero denominator.
+	MbufMax        int
 	ClusterCurrent int
 	ClusterCache   int
 	ClusterTotal   int
@@ -161,6 +169,7 @@ func (c *Client) FetchMbufStatistics() (MbufStatistics, *APICallError) {
 	data.MbufCurrent = s.MbufCurrent
 	data.MbufCache = s.MbufCache
 	data.MbufTotal = s.MbufTotal
+	data.MbufMax = s.MbufMax
 	data.ClusterCurrent = s.ClusterCurrent
 	data.ClusterCache = s.ClusterCache
 	data.ClusterTotal = s.ClusterTotal

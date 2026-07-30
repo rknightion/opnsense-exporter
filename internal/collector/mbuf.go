@@ -14,6 +14,7 @@ type mbufCollector struct {
 	mbufCurrent       *prometheus.Desc
 	mbufCache         *prometheus.Desc
 	mbufTotal         *prometheus.Desc
+	mbufMax           *prometheus.Desc
 	clusterCurrent    *prometheus.Desc
 	clusterCache      *prometheus.Desc
 	clusterTotal      *prometheus.Desc
@@ -55,6 +56,13 @@ func (c *mbufCollector) Register(namespace, instanceLabel string, log *slog.Logg
 	)
 	c.mbufTotal = buildPrometheusDesc(c.subsystem, "total",
 		"Total number of mbufs available",
+		nil,
+	)
+	c.mbufMax = buildPrometheusDesc(c.subsystem, "max",
+		"Maximum number of mbufs (the mbuf pool's ceiling, mirroring cluster_max). May read 0 on "+
+			"OPNsense >=26.1.11, where upstream removed this key -- that means no ceiling was "+
+			"reported, not a ceiling of zero, so guard any current/max ratio against a zero "+
+			"denominator (#543).",
 		nil,
 	)
 	c.clusterCurrent = buildPrometheusDesc(c.subsystem, "cluster_current",
@@ -107,6 +115,7 @@ func (c *mbufCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.mbufCurrent
 	ch <- c.mbufCache
 	ch <- c.mbufTotal
+	ch <- c.mbufMax
 	ch <- c.clusterCurrent
 	ch <- c.clusterCache
 	ch <- c.clusterTotal
@@ -142,6 +151,12 @@ func (c *mbufCollector) Update(ctx context.Context, client *opnsense.Client, ch 
 		c.mbufTotal,
 		prometheus.GaugeValue,
 		float64(data.MbufTotal),
+		c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.mbufMax,
+		prometheus.GaugeValue,
+		float64(data.MbufMax),
 		c.instance,
 	)
 	ch <- prometheus.MustNewConstMetric(

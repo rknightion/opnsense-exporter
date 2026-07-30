@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -47,7 +48,14 @@ type hostDiscoverySearchResponse struct {
 type HostDiscoveryGroup struct {
 	Interface string
 	Source    string
-	// Hosts is the total number of host entries in this interface+source group.
+	// Manufacturer is the OUI vendor lookup of the MAC (organization_name),
+	// canonicalized via organizationLabel: a small bounded set, matching the
+	// `manufacturer` label #534 already ships on arp_table/ndp. A null
+	// organization_name (an OUI the box could not resolve, e.g. a
+	// randomized-MAC device) becomes the "unknown" sentinel rather than an
+	// empty label.
+	Manufacturer string
+	// Hosts is the total number of host entries in this interface+source+manufacturer group.
 	Hosts int
 	// RecentHosts is the subset of Hosts whose last_seen falls within
 	// hostDiscoveryRecentWindow of the fetch time. Rows with an empty or
@@ -64,6 +72,23 @@ type HostDiscoveryInventory struct {
 // hostDiscoveryRecentWindow is the client-side recency threshold behind the
 // opnsense_hostdiscovery_hosts_recent gauge (#223).
 const hostDiscoveryRecentWindow = 15 * time.Minute
+
+// organizationLabel resolves a hostDiscoveryRow's organization_name to the
+// `manufacturer` label value: a nil pointer (JSON null -- an OUI the box
+// could not resolve) or an empty/whitespace-only string both collapse to the
+// "unknown" sentinel, matching the convention used across the codebase
+// (canonicalizeFirmwareCheckState, keaLeaseStateLabel, etc.) so this label is
+// never emitted empty.
+func organizationLabel(name *string) string {
+	if name == nil {
+		return "unknown"
+	}
+	trimmed := strings.TrimSpace(*name)
+	if trimmed == "" {
+		return "unknown"
+	}
+	return trimmed
+}
 
 // FetchHostDiscovery calls the core hostwatch inventory endpoint
 // (api/hostdiscovery/service/search) and aggregates its rows into per
@@ -85,9 +110,9 @@ const hostDiscoveryRecentWindow = 15 * time.Minute
 // comment was wrong to lump it in as "unbounded cardinality". It is the OUI
 // vendor of the MAC — a small bounded set that #534 already ships as a
 // `manufacturer` label on arp_table/ndp — and the global series budget is 100k
-// against roughly 4.6k in use. It is unread because nobody has exported it yet,
-// not because it was rejected on cardinality grounds; cmd/fieldaudit's ledger
-// records it as such.
+// against roughly 4.6k in use. It is exported here (#557) as an additional
+// grouping dimension on the aggregate hosts/hosts_recent series, via
+// organizationLabel().
 func (c *Client) FetchHostDiscovery() (HostDiscoveryInventory, *APICallError) {
 	var resp hostDiscoverySearchResponse
 	var data HostDiscoveryInventory
@@ -109,19 +134,22 @@ func (c *Client) FetchHostDiscovery() (HostDiscoveryInventory, *APICallError) {
 	}
 
 	type groupKey struct {
-		iface  string
-		source string
+		iface        string
+		source       string
+		manufacturer string
 	}
 	index := map[groupKey]int{}
 	now := time.Now()
 
 	for _, row := range resp.Rows {
-		k := groupKey{row.InterfaceName, row.Source}
+		manufacturer := organizationLabel(row.OrganizationName)
+		k := groupKey{row.InterfaceName, row.Source, manufacturer}
 		i, ok := index[k]
 		if !ok {
 			data.Groups = append(data.Groups, HostDiscoveryGroup{
-				Interface: row.InterfaceName,
-				Source:    row.Source,
+				Interface:    row.InterfaceName,
+				Source:       row.Source,
+				Manufacturer: manufacturer,
 			})
 			i = len(data.Groups) - 1
 			index[k] = i

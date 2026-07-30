@@ -20,6 +20,7 @@ type syslogCollector struct {
 	memoryUsageBytes       *prometheus.Desc
 	eventsPerSecond        *prometheus.Desc
 	messageSizeBytes       *prometheus.Desc
+	targetState            *prometheus.Desc
 	serviceRunning         *prometheus.Desc
 
 	subsystem string
@@ -70,6 +71,16 @@ func (c *syslogCollector) Register(namespace, instanceLabel string, log *slog.Lo
 	c.messageSizeBytes = buildPrometheusDesc(c.subsystem, "message_size_bytes",
 		"syslog-ng message size in bytes (stat = avg or max)",
 		append(append([]string{}, srcLabels...), "stat"))
+	c.targetState = buildPrometheusDesc(c.subsystem, "target_state",
+		"Current lifecycle state of a syslog-ng source/target object (always 1; one series per "+
+			"SourceName/SourceId/SourceInstance). state is drawn from syslog-ng's closed state "+
+			"vocabulary -- active (currently alive and receiving stat updates), dynamic (a "+
+			"runtime-created object that may cease to exist), orphaned (the underlying config "+
+			"element was removed but its last-known counters are retained) -- and anything "+
+			"unrecognized collapses to unknown. A target's byte/message counters going flat while "+
+			"this reads orphaned (rather than active) is exactly the stall this metric exists to "+
+			"distinguish from an idle-but-fine target.",
+		append(append([]string{}, srcLabels...), "state"))
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
 		"Whether the syslog-ng service is running (1 = running, 0 = stopped/disabled)",
 		nil)
@@ -85,6 +96,7 @@ func (c *syslogCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.memoryUsageBytes
 	ch <- c.eventsPerSecond
 	ch <- c.messageSizeBytes
+	ch <- c.targetState
 	ch <- c.serviceRunning
 }
 
@@ -136,6 +148,11 @@ func (c *syslogCollector) Update(ctx context.Context, client *opnsense.Client, c
 		default:
 			c.log.Debug("syslog: skipping unknown stat type", "type", s.Type)
 		}
+	}
+
+	for _, ts := range data.TargetStates {
+		ch <- prometheus.MustNewConstMetric(c.targetState, prometheus.GaugeValue,
+			1, ts.SourceName, ts.SourceID, ts.SourceInstance, ts.State, c.instance)
 	}
 
 	status, sErr := client.FetchServiceStatus("syslogServiceStatus")

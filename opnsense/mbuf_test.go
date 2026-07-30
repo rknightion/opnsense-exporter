@@ -368,6 +368,9 @@ func TestFetchMbufStatistics_Success(t *testing.T) {
 	if data.ClusterMax != 1024 {
 		t.Errorf("expected ClusterMax=1024, got %d", data.ClusterMax)
 	}
+	if data.MbufMax != 4096 {
+		t.Errorf("expected MbufMax=4096, got %d", data.MbufMax)
+	}
 	// API reports KB; FetchMbufStatistics converts to bytes (×1024).
 	if data.BytesInUse != 65536*1024 {
 		t.Errorf("expected BytesInUse=%d, got %d", 65536*1024, data.BytesInUse)
@@ -400,6 +403,31 @@ func TestFetchMbufStatistics_Success(t *testing.T) {
 		if got := data.SleepsByType[k]; got != want {
 			t.Errorf("SleepsByType[%q] = %d; want %d", k, got, want)
 		}
+	}
+}
+
+// TestFetchMbufStatistics_MbufMaxAbsentOnModernRelease proves that on an
+// OPNsense >=26.1.11 box, where mbuf-max was removed upstream, MbufMax reads
+// 0 rather than erroring -- the #543 "limit==0 means NO CEILING CONFIGURED,
+// not a ceiling of zero" lesson applies to any consumer computing a
+// current/max ratio from this value: guard the denominator, don't treat 0 as
+// a real ceiling.
+func TestFetchMbufStatistics_MbufMaxAbsentOnModernRelease(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"mbuf-statistics": {` + modernMbufFields + `}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchMbufStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.MbufMax != 0 {
+		t.Errorf("expected MbufMax=0 on a release that omits mbuf-max, got %d", data.MbufMax)
+	}
+	// cluster-max survives the rename and should still read normally.
+	if data.ClusterMax != 1024 {
+		t.Errorf("expected ClusterMax=1024, got %d", data.ClusterMax)
 	}
 }
 

@@ -19,6 +19,7 @@ type keaCollector struct {
 	dhcp4DynamicTotal  *prometheus.Desc
 	dhcp4LeasesByState *prometheus.Desc
 	dhcp4LeaseInfo     *prometheus.Desc
+	dhcp4PoolStats     *prometheus.Desc
 
 	dhcp6LeasesTotal   *prometheus.Desc
 	dhcp6LeasesByIface *prometheus.Desc
@@ -27,6 +28,7 @@ type keaCollector struct {
 	dhcp6LeasesByState *prometheus.Desc
 	dhcp6LeasesByType  *prometheus.Desc
 	dhcp6LeaseInfo     *prometheus.Desc
+	dhcp6PoolStats     *prometheus.Desc
 
 	serviceRunning *prometheus.Desc
 	dhcp4PoolSize  *prometheus.Desc
@@ -80,6 +82,13 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		"Per-lease DHCPv4 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set.",
 		[]string{"address", "hostname", "hwaddr", "interface", "vendor", "valid_lifetime", "client_id"},
 	)
+	c.dhcp4PoolStats = buildPrometheusDesc(c.subsystem, "dhcp4_lease_pool_stats",
+		"Kea's own DHCPv4 lease pool accounting (the response's top-level `stats` object, computed "+
+			"over the FULL lease population), by pool_state (active/inactive/total). Authoritative and "+
+			"never truncated by bootgrid pagination, unlike a row-derived count -- a complement to the "+
+			"other DHCPv4 lease metrics in this collector, not a replacement for any of them.",
+		[]string{"pool_state"},
+	)
 
 	// DHCPv6 metrics
 	c.dhcp6LeasesTotal = buildPrometheusDesc(c.subsystem, "dhcp6_leases_total",
@@ -113,6 +122,13 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		// 61), so on v6 it would always be an empty label — dropped rather
 		// than modeled as dead weight.
 		[]string{"address", "hostname", "hwaddr", "interface", "vendor", "valid_lifetime"},
+	)
+	c.dhcp6PoolStats = buildPrometheusDesc(c.subsystem, "dhcp6_lease_pool_stats",
+		"Kea's own DHCPv6 lease pool accounting (the response's top-level `stats` object, computed "+
+			"over the FULL lease population), by pool_state (active/inactive/total). Authoritative and "+
+			"never truncated by bootgrid pagination, unlike a row-derived count -- a complement to the "+
+			"other DHCPv6 lease metrics in this collector, not a replacement for any of them.",
+		[]string{"pool_state"},
 	)
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
@@ -152,6 +168,7 @@ func (c *keaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp4DynamicTotal
 	ch <- c.dhcp4LeasesByState
 	ch <- c.dhcp4LeaseInfo
+	ch <- c.dhcp4PoolStats
 
 	ch <- c.dhcp6LeasesTotal
 	ch <- c.dhcp6LeasesByIface
@@ -160,6 +177,7 @@ func (c *keaCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp6LeasesByState
 	ch <- c.dhcp6LeasesByType
 	ch <- c.dhcp6LeaseInfo
+	ch <- c.dhcp6PoolStats
 
 	ch <- c.serviceRunning
 	ch <- c.dhcp4PoolSize
@@ -186,6 +204,7 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			c.dhcp4LeasesByState,
 			nil, // DHCPv4 leases have no lease-type concept
 			c.dhcp4LeaseInfo,
+			c.dhcp4PoolStats,
 			true, // includeClientID: genuine DHCPv4 option 61
 		)
 	}
@@ -206,6 +225,7 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			c.dhcp6LeasesByState,
 			c.dhcp6LeasesByType,
 			c.dhcp6LeaseInfo,
+			c.dhcp6PoolStats,
 			false, // includeClientID: always "" on v6, dropped rather than modeled
 		)
 	}
@@ -308,7 +328,7 @@ func pdPoolSubnetLabel(pool opnsense.KeaPdPool, byUUID map[string]string) string
 func (c *keaCollector) emitLeaseMetrics(
 	ch chan<- prometheus.Metric,
 	data opnsense.KeaLeases,
-	leasesTotal, reservedTotal, dynamicTotal, leasesByIface, leasesByState, leasesByType, leaseInfo *prometheus.Desc,
+	leasesTotal, reservedTotal, dynamicTotal, leasesByIface, leasesByState, leasesByType, leaseInfo, poolStats *prometheus.Desc,
 	includeClientID bool,
 ) {
 	ch <- prometheus.MustNewConstMetric(
@@ -328,6 +348,16 @@ func (c *keaCollector) emitLeaseMetrics(
 		prometheus.GaugeValue,
 		float64(data.DynamicCount),
 		c.instance,
+	)
+
+	ch <- prometheus.MustNewConstMetric(
+		poolStats, prometheus.GaugeValue, float64(data.StatsActive), "active", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		poolStats, prometheus.GaugeValue, float64(data.StatsInactive), "inactive", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		poolStats, prometheus.GaugeValue, float64(data.StatsTotal), "total", c.instance,
 	)
 
 	for iface, count := range data.LeasesByInterface {
