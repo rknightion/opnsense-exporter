@@ -83,6 +83,28 @@ def go_watched_metrics() -> set:
     return set(re.findall(r'"(opnsense_[a-z0-9_]+)"', source))
 
 
+def go_watch_defaults() -> dict:
+    """`metric -> pushed by default?` from the Go emitter's catalogue.
+
+    Parsed out of the source for the same reason as the tag constant: the two sides
+    are one contract with no runtime that checks it. The `DefaultOff` field is the
+    Go side of the per-kind push set, and a watch without it is pushed.
+    """
+    source = (GRAFANA_DIR.parent / "internal" / "annotations" / "catalog.go").read_text()
+    block = source.split("var Watches = []Watch{", 1)
+    assert len(block) == 2, "Watches catalogue not found in internal/annotations/catalog.go"
+    out = {}
+    for literal in re.findall(r"\n\t\{(.*?)\n\t\},", block[1], re.S):
+        metric = re.search(r'Metric:\s*"(opnsense_[a-z0-9_]+)"', literal)
+        # The reboot watch names its metric through the BootMetric constant.
+        name = metric.group(1) if metric else (
+            "opnsense_system_boot_timestamp_seconds"
+            if re.search(r"Metric:\s*BootMetric", literal) else None)
+        assert name, f"cannot read the metric out of watch literal: {literal[:80]}"
+        out[name] = not re.search(r"DefaultOff:\s*true", literal)
+    return out
+
+
 def epoch_metrics():
     return [n for n in build_dashboard.load_catalogue() if EPOCH_METRIC.search(n)]
 
@@ -299,6 +321,27 @@ class AnnotationLedgerTest(unittest.TestCase):
         for entry in ann.ANNOTATIONS:
             derived.update(entry.metrics)
         self.assertEqual(sorted(go_watched_metrics()), sorted(derived))
+
+    def test_the_push_default_matches_the_dashboards_own_default(self):
+        """The bug this guards (#540): the dashboard's per-kind toggle governs only
+        the DERIVED layer. The pushed copy of the same event reaches the dashboard
+        through `Exporter-pushed events`, a catch-all on the base tag, so a kind that
+        is default-off here but pushed by default renders anyway and the toggle looks
+        broken. Q-Feeds was exactly that — off on the dashboard, written to Grafana's
+        store every twenty minutes. The two defaults are therefore one decision, and
+        a new default-off layer needs `DefaultOff: true` on its Go watch."""
+        derived = {}
+        for entry in ann.ANNOTATIONS:
+            for metric in entry.metrics:
+                derived[metric] = derived.get(metric, False) or entry.enable
+        for metric, pushed in go_watch_defaults().items():
+            with self.subTest(metric=metric):
+                self.assertIn(metric, derived)
+                self.assertEqual(
+                    pushed, derived[metric],
+                    f"{metric} is {'pushed' if pushed else 'not pushed'} by default but its "
+                    f"dashboard layer is {'on' if derived[metric] else 'off'} — set "
+                    "DefaultOff on the Go watch, or enable the layer")
 
     def test_annotation_metrics_exist_in_the_catalogue(self):
         catalogue = set(build_dashboard.load_catalogue())

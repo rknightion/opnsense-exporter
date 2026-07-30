@@ -444,6 +444,16 @@ func dispatchSubcommand(args []string, stdout, stderr io.Writer) (code int, hand
 // but an operator who wants GeoIP on flow records only sets --logs.syslog.geoip=false,
 // and this is where that is honoured — the syslog package's enricher is left nil
 // rather than wired to db.
+// annotationKinds resolves the configured push set for the startup log line. An
+// operator debugging "why is there no annotation for X" reads that line first, and
+// an empty --annotations.kinds means the defaults, not nothing.
+func annotationKinds(configured []string) []string {
+	if len(configured) == 0 {
+		return annotations.DefaultKinds()
+	}
+	return configured
+}
+
 func startGeoIP(cfg options.GeoIPConfig, logsGeoIPEnabled bool, logger *slog.Logger) func() {
 	if !cfg.Enabled {
 		return nil
@@ -1208,13 +1218,15 @@ func main() {
 			Timeout:     cfg.Annotations.Timeout,
 			Lookback:    cfg.Annotations.Lookback,
 			ExtraTags:   cfg.Annotations.ExtraTags,
+			Kinds:       cfg.Annotations.Kinds,
 			MaxPerCycle: cfg.Annotations.MaxPerCycle,
 		}, collectorRegistry, logship.SelfMetricsRegisterer(selfMetricsRegistry, instanceLabel), logger)
 		go annotationWatcher.Run(annotationCtx)
 		logger.Info("grafana annotation writing enabled",
 			"url", cfg.Annotations.GrafanaURL,
 			"interval", cfg.Annotations.Interval.String(),
-			"lookback", cfg.Annotations.Lookback.String())
+			"lookback", cfg.Annotations.Lookback.String(),
+			"kinds", strings.Join(annotationKinds(cfg.Annotations.Kinds), ","))
 	}
 
 	// metricsRecorder passively captures the collector family set of each real

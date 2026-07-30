@@ -33,6 +33,19 @@ type Watch struct {
 	Text      string // annotation text; %s is filled from LabelKeys, in order
 	LabelKeys []string
 
+	// DefaultOff keeps a kind out of the default push set. It is for an event whose
+	// CADENCE, not whose importance, makes it wrong to write org-wide: a pushed
+	// annotation is visible on every dashboard, in Explore and beside every alert,
+	// so an event refreshing every twenty minutes buries the timeline everywhere at
+	// once. `--annotations.kinds` turns it back on for a deployment that wants it.
+	//
+	// This flag exists to keep the push set and the dashboard's default layer set in
+	// agreement (#540): the dashboard's per-kind toggle only ever governed the
+	// DERIVED copy, so a kind that is default-off there and pushed here reaches the
+	// dashboard anyway through the catch-all tag query, and the toggle looks broken.
+	// `grafana/tests/test_annotations.py` fails if the two sides disagree.
+	DefaultOff bool
+
 	// UptimeOffsetOf names a metric whose value is a system-uptime reading rather
 	// than an epoch, to be added to this Watch's metric to get the instant. The
 	// interface attach/reset marker is the one case: the kernel reports it as
@@ -113,7 +126,60 @@ var Watches = []Watch{
 		Kind:      "threat-feed-update",
 		Text:      "Threat feed %s updated",
 		LabelKeys: []string{"feed"},
+		// Q-Feeds refreshes on a much tighter schedule than an IDS ruleset — a
+		// live box writes one of these every twenty minutes per feed — which is
+		// exactly why the dashboard layer is default-off too.
+		DefaultOff: true,
 	},
+}
+
+// KnownKinds is every event kind in the catalogue, for validating
+// `--annotations.kinds` at startup rather than silently writing nothing.
+func KnownKinds() []string {
+	kinds := make([]string, 0, len(Watches))
+	for _, watch := range Watches {
+		kinds = append(kinds, watch.Kind)
+	}
+	return kinds
+}
+
+// DefaultOffKinds is the complement of DefaultKinds, for naming them in the flag
+// help rather than making an operator diff two lists to find them.
+func DefaultOffKinds() []string {
+	kinds := make([]string, 0, len(Watches))
+	for _, watch := range Watches {
+		if watch.DefaultOff {
+			kinds = append(kinds, watch.Kind)
+		}
+	}
+	return kinds
+}
+
+// DefaultKinds is what an unconfigured deployment writes: the catalogue minus the
+// DefaultOff entries.
+func DefaultKinds() []string {
+	kinds := make([]string, 0, len(Watches))
+	for _, watch := range Watches {
+		if !watch.DefaultOff {
+			kinds = append(kinds, watch.Kind)
+		}
+	}
+	return kinds
+}
+
+// enabledKindSet resolves the configured kinds into a lookup set. An empty list is
+// "unconfigured", which is the default set — NOT "write nothing", because a
+// deployment that wants nothing written turns `--annotations.enabled` off instead.
+func enabledKindSet(configured []string) map[string]bool {
+	kinds := configured
+	if len(kinds) == 0 {
+		kinds = DefaultKinds()
+	}
+	set := make(map[string]bool, len(kinds))
+	for _, kind := range kinds {
+		set[kind] = true
+	}
+	return set
 }
 
 // BaseTag is on every annotation this exporter writes, and is what a dashboard

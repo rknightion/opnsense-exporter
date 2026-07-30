@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+
+	"github.com/rknightion/opnsense-exporter/internal/annotations"
 )
 
 var (
@@ -53,6 +55,15 @@ var (
 		"Extra tag to add to every written annotation (repeatable), e.g. env:prod. Every "+
 			"annotation already carries opnsense-exporter, the event kind and instance:<name>.",
 	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_EXTRA_TAGS").Strings()
+	annotationsKinds = kingpin.Flag(
+		"annotations.kinds",
+		"Event kind to write, repeatable (comma-separated in the environment variable). "+
+			"When set this is the EXACT set written, overriding the defaults in both "+
+			"directions. Unset writes every kind except the default-off ones, which are "+
+			"excluded for their cadence rather than their importance: "+
+			strings.Join(annotations.DefaultOffKinds(), ", ")+". Known kinds: "+
+			strings.Join(annotations.KnownKinds(), ", ")+".",
+	).Envar("OPNSENSE_EXPORTER_ANNOTATIONS_KINDS").Strings()
 	annotationsMaxPerCycle = kingpin.Flag(
 		"annotations.max-per-cycle",
 		"Maximum annotation posts ATTEMPTED per check, successful or not. A guard "+
@@ -75,6 +86,7 @@ type AnnotationsConfig struct {
 	Lookback    time.Duration
 	Timeout     time.Duration
 	ExtraTags   []string
+	Kinds       []string
 	MaxPerCycle int
 }
 
@@ -116,6 +128,18 @@ func (c *AnnotationsConfig) Validate() error {
 			return fmt.Errorf("annotations.extra-tags contains an empty tag")
 		}
 	}
+	// A typo here has no symptom at runtime — the kind simply never matches a
+	// watch, so the exporter writes nothing for it and looks healthy doing so.
+	known := map[string]bool{}
+	for _, kind := range annotations.KnownKinds() {
+		known[kind] = true
+	}
+	for _, kind := range c.Kinds {
+		if !known[kind] {
+			return fmt.Errorf("annotations.kinds contains unknown event kind %q; known kinds are %s",
+				kind, strings.Join(annotations.KnownKinds(), ", "))
+		}
+	}
 	return nil
 }
 
@@ -136,6 +160,13 @@ func Annotations() (*AnnotationsConfig, bool, error) {
 		tags = append(tags, strings.TrimSpace(tag))
 	}
 
+	kinds := make([]string, 0, len(*annotationsKinds))
+	for _, kind := range *annotationsKinds {
+		if trimmed := strings.TrimSpace(kind); trimmed != "" {
+			kinds = append(kinds, trimmed)
+		}
+	}
+
 	cfg := &AnnotationsConfig{
 		GrafanaURL:  strings.TrimSpace(*annotationsGrafanaURL),
 		Token:       strings.TrimSpace(token),
@@ -143,6 +174,7 @@ func Annotations() (*AnnotationsConfig, bool, error) {
 		Lookback:    *annotationsLookback,
 		Timeout:     *annotationsTimeout,
 		ExtraTags:   tags,
+		Kinds:       kinds,
 		MaxPerCycle: *annotationsMaxPerCycle,
 	}
 	if err := cfg.Validate(); err != nil {

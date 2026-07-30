@@ -855,3 +855,80 @@ func TestWatcherPrunesTheDedupeSet(t *testing.T) {
 		t.Errorf("pruning must not let the event be rewritten: %d writes", got)
 	}
 }
+
+// --- per-kind push filter (#540) ------------------------------------------
+
+// TestWatcherSkipsDefaultOffKinds is the regression this filter exists for: the
+// dashboard's own Threat feed layer is default-off because Q-Feeds refreshes every
+// twenty minutes, but the pushed copy reached every dashboard through the catch-all
+// tag query regardless, so the toggle looked broken.
+func TestWatcherSkipsDefaultOffKinds(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, series{
+		name:   "opnsense_qfeeds_feed_last_update_timestamp_seconds",
+		labels: map[string]string{instanceLabel: "fw-a", "feed": "malware_ip"},
+		value:  float64(now.Add(-time.Hour).Unix()),
+	})
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	if got := len(f.writes()); got != 0 {
+		t.Fatalf("expected no annotation for a default-off kind, got %d", got)
+	}
+}
+
+func TestWatcherWritesDefaultOffKindsWhenConfigured(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, series{
+		name:   "opnsense_qfeeds_feed_last_update_timestamp_seconds",
+		labels: map[string]string{instanceLabel: "fw-a", "feed": "malware_ip"},
+		value:  float64(now.Add(-time.Hour).Unix()),
+	})
+	w.cfg.Kinds = []string{"threat-feed-update"}
+	w.enabledKinds = enabledKindSet(w.cfg.Kinds)
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	writes := f.writes()
+	if len(writes) != 1 {
+		t.Fatalf("expected 1 annotation once the kind is configured, got %d", len(writes))
+	}
+	assertTags(t, writes[0].Tags, BaseTag, "threat-feed-update", "instance:fw-a", "feed:malware_ip")
+}
+
+// An explicit Kinds list is the exact push set, so it turns kinds OFF as well as on.
+func TestWatcherKindsListIsExclusive(t *testing.T) {
+	f := newFakeGrafana(t)
+	now := time.Now()
+	w := newTestWatcher(t, f, now, series{
+		name:   "opnsense_system_config_last_change",
+		labels: map[string]string{instanceLabel: "fw-a"},
+		value:  float64(now.Add(-time.Hour).Unix()),
+	})
+	w.cfg.Kinds = []string{"reboot"}
+	w.enabledKinds = enabledKindSet(w.cfg.Kinds)
+	w.reconcile(context.Background())
+	w.tick(context.Background())
+
+	if got := len(f.writes()); got != 0 {
+		t.Fatalf("config-change is not in the configured Kinds, want 0 writes, got %d", got)
+	}
+}
+
+func TestDefaultKindsExcludeOnlyDefaultOffWatches(t *testing.T) {
+	defaults := map[string]bool{}
+	for _, kind := range DefaultKinds() {
+		defaults[kind] = true
+	}
+	for _, watch := range Watches {
+		if watch.DefaultOff == defaults[watch.Kind] {
+			t.Errorf("kind %q: DefaultOff=%v but in DefaultKinds()=%v",
+				watch.Kind, watch.DefaultOff, defaults[watch.Kind])
+		}
+	}
+	if len(KnownKinds()) != len(Watches) {
+		t.Errorf("KnownKinds() has %d entries, want one per watch (%d)", len(KnownKinds()), len(Watches))
+	}
+}

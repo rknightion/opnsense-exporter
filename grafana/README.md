@@ -109,12 +109,12 @@ long-lived gauge value producing a marker per sample, but it drops events: the l
 `config_change` records inside the same second. Duplicate markers at one instant collapse visually;
 a missing config change is a wrong answer to the question the layer exists to answer.
 
-**Default on:** Reboot, Config change, Interface counter reset, Boot environment created (upgrade),
-Certificate renewed, GeoIP database updated, nginx config reloaded, Public IP updated, Gateway alarm,
-CARP transition, Exporter-pushed events, and External change events.
-**Default off:** IDS ruleset updated and Threat feed updated (scheduled churn on a box tracking many
-feeds), Config change detail (duplicates Config change's timestamps; turning it on is asking for the
-audit detail), Tunnel lifecycle (a box with many road-warrior peers reconnects them all day).
+**Default on:** everything except the one layer below — Reboot, Config change, Interface counter
+reset, Boot environment created (upgrade), Certificate renewed, GeoIP database updated, nginx config
+reloaded, Public IP updated, IDS ruleset updated, Config change detail, Gateway alarm, CARP
+transition, Tunnel lifecycle, Exporter-pushed events, and External change events (#523).
+**Default off:** Threat feed updated — Q-Feeds refreshes on a far tighter schedule than an IDS
+ruleset, so its markers are the ones that would bury the rest of the timeline.
 
 No annotation tags an address, a hostname or a raw log body — tags are indexed and queryable across
 dashboards, which is a far wider exposure than annotation text an operator has to hover to read. The
@@ -156,6 +156,12 @@ How it works, and why it is built this way:
   is refused.
 - **A failed write is retried**, because it is only marked as seen once Grafana has accepted it, and
   `--annotations.max-per-cycle` caps one bad reading at a bounded number of writes.
+- **The push set follows the dashboard's own defaults.** A watch marked `DefaultOff` in
+  `internal/annotations/catalog.go` is not written, and `tests/test_annotations.py` fails if that
+  flag and the layer's `enable` disagree. This is not cosmetic: **`Exporter-pushed events` is a
+  catch-all** on the single `opnsense-exporter` tag, so a pushed kind renders on this dashboard no
+  matter what its per-kind toggle says — the toggle only governs the derived layer (#540). Override
+  the set with `--annotations.kinds`, which is exact once given.
 - **Tags are closed vocabularies**: `opnsense-exporter`, the event kind, `instance:<name>`, and any
   identifier named in the catalogue (`interface:LAN`, `ruleset:…`). Never an address, an identity or
   free text. `--annotations.extra-tags` adds your own.

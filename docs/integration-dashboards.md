@@ -94,12 +94,12 @@ Every tab shares one event timeline, so a step in a graph can be attributed with
 | GeoIP database updated | Country rules matching differently | `opnsense_firewall_geoip_last_update_timestamp_seconds` |
 | nginx config reloaded | nginx's vts counters zeroing | `opnsense_nginx_config_load_timestamp_seconds` |
 | Public IP updated | The WAN address changing | `opnsense_dyndns_account_last_update_timestamp_seconds` |
-| IDS ruleset updated (off) | Alert rate changing under a static config | `opnsense_ids_ruleset_last_updated_timestamp_seconds` |
+| IDS ruleset updated | Alert rate changing under a static config | `opnsense_ids_ruleset_last_updated_timestamp_seconds` |
 | Threat feed updated (off) | Blocklist contents changing | `opnsense_qfeeds_feed_last_update_timestamp_seconds` |
 | Gateway alarm | `dpinger` declaring a gateway down or recovered | shipped `gateways` log records |
 | CARP transition | A failover, demotion or promotion | shipped `kernel` log records |
-| Config change detail (off) | Which API endpoint changed the config | shipped `audit` log records |
-| Tunnel lifecycle (off) | A VPN tunnel coming up or going down | shipped `vpn`/`ipsec` log records |
+| Config change detail | Which API endpoint changed the config | shipped `audit` log records |
+| Tunnel lifecycle | A VPN tunnel coming up or going down | shipped `vpn`/`ipsec` log records |
 | Exporter-pushed events | Everything above, as written by the exporter | Grafana's annotation store, tag `opnsense-exporter` |
 | External change events | Changes your own automation records | Grafana's annotation store, deployment-local tags |
 
@@ -139,6 +139,21 @@ for an event older than `--annotations.lookback` (default 24h), so enabling it o
 firewall does not backfill a reboot from months ago. Watch
 `opnsense_exporter_annotations_written_total` and `opnsense_exporter_annotations_failed_total` to
 confirm it is working — a quiet firewall legitimately writes nothing for days.
+
+**Which kinds are written.** The default push set is every kind above except the ones the dashboard
+itself defaults off, currently `threat-feed-update` — Q-Feeds refreshes every twenty minutes or so,
+and a pushed annotation is org-wide, so it would land on every dashboard and beside every alert.
+`--annotations.kinds` overrides that in both directions and is the exact set once given:
+
+```bash
+--annotations.kinds=reboot --annotations.kinds=config-change   # only these two
+--annotations.kinds=threat-feed-update,...                     # env var form is comma-separated
+```
+
+**`Exporter-pushed events` is a catch-all**, not a per-kind layer: it queries the single
+`opnsense-exporter` tag, so it shows every kind the exporter writes regardless of the per-kind
+toggles above, which govern the derived layers only. That is why what gets pushed is controlled at
+the exporter rather than on the dashboard.
 
 ## Example PromQL queries
 

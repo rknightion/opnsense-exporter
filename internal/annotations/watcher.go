@@ -61,6 +61,10 @@ type Watcher struct {
 	log      *slog.Logger
 	metrics  *selfMetrics
 
+	// enabledKinds is cfg.Kinds resolved once, since detect() consults it per
+	// watch per tick.
+	enabledKinds map[string]bool
+
 	// seen is the dedupe set, keyed by series identity AND instant, so an event
 	// is written once while a value that flaps between two instants still
 	// produces one annotation per distinct instant. Values are the instant, so
@@ -94,13 +98,14 @@ type Watcher struct {
 // the snapshot the poll scheduler already filled.
 func New(cfg Config, gatherer prometheus.Gatherer, registerer prometheus.Registerer, log *slog.Logger) *Watcher {
 	w := &Watcher{
-		cfg:      cfg,
-		gatherer: gatherer,
-		client:   newClient(cfg),
-		log:      log,
-		metrics:  newSelfMetrics(registerer),
-		seen:     map[string]int64{},
-		now:      time.Now,
+		cfg:          cfg,
+		gatherer:     gatherer,
+		client:       newClient(cfg),
+		log:          log,
+		metrics:      newSelfMetrics(registerer),
+		enabledKinds: enabledKindSet(cfg.Kinds),
+		seen:         map[string]int64{},
+		now:          time.Now,
 	}
 	// Routed through the closure rather than assigned directly, so a test that
 	// replaces w.now after construction also moves the clock the client resolves an
@@ -310,6 +315,9 @@ func (w *Watcher) detect() ([]Event, error) {
 
 	var events []Event
 	for _, watch := range Watches {
+		if !w.enabledKinds[watch.Kind] {
+			continue
+		}
 		family, ok := byName[watch.Metric]
 		if !ok {
 			continue

@@ -543,6 +543,14 @@ services:
       # late an annotation is WRITTEN, never where it is PLACED — each annotation
       # carries the event's own timestamp.
       # OPNSENSE_EXPORTER_ANNOTATIONS_INTERVAL: "60s"
+      # Event kind to write, repeatable (comma-separated in the environment variable).
+      # When set this is the EXACT set written, overriding the defaults in both
+      # directions. Unset writes every kind except the default-off ones, which are
+      # excluded for their cadence rather than their importance: threat-feed-update.
+      # Known kinds: reboot, config-change, interface-reset, upgrade,
+      # certificate-renewal, geoip-update, nginx-reload, public-ip-change,
+      # ids-ruleset-update, threat-feed-update.
+      # OPNSENSE_EXPORTER_ANNOTATIONS_KINDS: ""
       # How old an event may be and still be worth annotating, and how far back the
       # startup reconciliation looks for annotations this exporter already wrote. Keeps
       # a fresh deployment from annotating a reboot that happened months ago. Read this

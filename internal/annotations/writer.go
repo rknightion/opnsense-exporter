@@ -34,6 +34,11 @@ type Config struct {
 	// ExtraTags are added to every annotation, for deployments that want to
 	// separate environments or overlay these on an existing tag scheme.
 	ExtraTags []string
+	// Kinds is the exact set of event kinds to write. Empty means DefaultKinds()
+	// — the catalogue minus its DefaultOff entries — and a non-empty list
+	// overrides that in BOTH directions, so it enables a default-off kind and
+	// disables a default-on one.
+	Kinds []string
 	// MaxPerCycle caps posts per detection pass. A guard, not a feature: without
 	// it, one bad gather (every watched series appearing to change at once) would
 	// write hundreds of annotations before anyone noticed.
