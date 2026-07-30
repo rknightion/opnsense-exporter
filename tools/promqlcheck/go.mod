@@ -2,7 +2,7 @@ module github.com/rknightion/opnsense-exporter/tools/promqlcheck
 
 go 1.26
 
-require github.com/prometheus/prometheus v0.313.1
+require github.com/prometheus/prometheus v0.313.2
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -16,6 +16,6 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
