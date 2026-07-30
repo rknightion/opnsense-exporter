@@ -199,6 +199,13 @@ func (s *Stream) Snapshot() Snapshot {
 func (s *Stream) run(ctx context.Context) {
 	defer s.wg.Done()
 
+	// A nil opener would panic inside connectOnce, and a panic in a background
+	// goroutine takes the whole exporter down over a metric nobody would miss.
+	if s.open == nil {
+		s.log.Error("cpu usage stream has no opener; no CPU counters will be produced")
+		return
+	}
+
 	backoff := s.cfg.MinBackoff
 	first := true
 	for ctx.Err() == nil {

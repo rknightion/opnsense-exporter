@@ -78,7 +78,11 @@ func (c *cpuCollector) Register(namespace, instanceLabel string, log *slog.Logge
 			"reconstruction from integer-percentage samples, NOT a kernel tick counter: each "+
 			"sample carries up to +/-0.5% quantisation noise, which is unbiased and so does not "+
 			"accumulate systematically. Absent while the stream has been silent for longer than "+
-			"its grace window, because a frozen counter is indistinguishable from an idle CPU.",
+			"its grace window, because a frozen counter is indistinguishable from an idle CPU. "+
+			"NOTE the difference from node_exporter's identically-named metric: OPNsense reports "+
+			"CPU AGGREGATED ACROSS ALL CORES, not per core, so there is no cpu label and "+
+			"sum(rate(...)) by mode is 1, not the core count. Multiply a rate by 100 to read it as "+
+			"a percentage of the whole machine.",
 		[]string{"mode"},
 	)
 	c.streamUp = buildPrometheusDesc(c.subsystem, "stream_up",
