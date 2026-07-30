@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 928
-- **Gauges:** 594
-- **Counters:** 334
+- **Total metrics:** 935
+- **Gauges:** 600
+- **Counters:** 335
 
 ## General
 
@@ -85,6 +85,13 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_activity_arc_component_bytes | Gauge | component | ZFS ARC size by component (MFU, MRU, anonymous, header, other), from top's ARC header. MFU versus MRU is the standard read on whether the cache is serving a working set or thrashing. Absent entirely on a non-ZFS install. The ARC total is opnsense_system_memory_arc_bytes. | --exporter.disable-activity |
 | opnsense_activity_arc_compressed_bytes | Gauge | --- | Size of ZFS ARC contents as held in memory, compressed. Divide the uncompressed figure by this to get the compression ratio at query time. | --exporter.disable-activity |
 | opnsense_activity_arc_uncompressed_bytes | Gauge | --- | Logical size of ZFS ARC contents before compression. Absent when top reports no compression line. | --exporter.disable-activity |
+| opnsense_activity_user_cpu_percent | Gauge | user | Weighted CPU percentage summed across every thread owned by this username, from top's WCPU column. Sums per thread, so a busy multi-threaded process can exceed 100.  | --exporter.disable-activity |
+| opnsense_activity_user_memory_bytes | Gauge | user | Resident memory summed across the processes owned by this username, from top's RES column. Counted once per PROCESS: top prints one row per thread and every thread repeats its process's RES, so the rows are deduplicated by PID before summing.  | --exporter.disable-activity |
+| opnsense_activity_command_cpu_percent | Gauge | command | Weighted CPU percentage summed across every thread of this command, from top's WCPU column. The command name is normalised: the {thread-name} suffix and [] kernel brackets are stripped.   | --exporter.disable-activity |
+| opnsense_activity_command_memory_bytes | Gauge | command | Resident memory summed across the processes running this command, from top's RES column. Counted once per PROCESS, deduplicated by PID — every thread row repeats its process's RES, so summing the rows would multiply a process's memory by its thread count.   | --exporter.disable-activity |
+| opnsense_activity_command_threads | Gauge | command | Number of threads running this command. The one signal here that no other exported metric carries: a process leaking threads is invisible everywhere else.   | --exporter.disable-activity |
+| opnsense_activity_commands_tracked | Gauge | --- | Number of distinct command labels in the process aggregates this poll, against a cap of 128. At the cap the label set has saturated and new commands are invisible except through the __other__ bucket. | --exporter.disable-activity |
+| opnsense_activity_commands_capped_total | Counter | --- | Cumulative count of process-table rows folded into command=\"__other__\" because the command label set was already at its cap. Zero on any normal firewall; a rising rate means the aggregates are no longer naming everything they measure. | --exporter.disable-activity |
 
 ## BPF Statistics
 

@@ -31,6 +31,15 @@ var (
 	arcCompressionRegex = regexp.MustCompile(`(\S+)\s+Compressed,\s+(\S+)\s+Uncompressed`)
 	// A size as top writes it: a number with an optional single-letter unit.
 	topSizeRegex = regexp.MustCompile(`^([\d.]+)([BKMGTP]?)$`)
+
+	// A WCPU cell as top writes it ("98.27%"). The percent sign is optional so a
+	// future top that drops it still parses.
+	topPercentRegex = regexp.MustCompile(`^([\d.]+)%?$`)
+
+	// The `{...}` thread-name suffix top -H appends to a COMMAND
+	// ("python3{python3}", "[idle{idle: cpu10}]"). Stripped before the name is used
+	// as a label, or every thread of a process would be its own label value.
+	threadNameSuffixRegex = regexp.MustCompile(`\{[^}]*\}`)
 )
 
 // parseTopSize parses a size as top prints it ("483M", "11G", "512") into bytes.
@@ -108,6 +117,193 @@ func parseThreadStates(header string) [][]string {
 	return threadStateRegex.FindAllStringSubmatch(header, threadStateMatchLimit)
 }
 
+// activityCommandCap bounds the distinct normalised COMMAND label set (#552).
+//
+// The command name comes off a process table the appliance controls, so nothing in
+// the payload bounds how many distinct values one poll can contain: a box under a
+// fork bomb, or one running a build, can mint hundreds of one-shot binaries between
+// two scrapes. Past this ceiling a novel command folds into activityOtherCommand
+// rather than minting another label value.
+//
+// Sized generously rather than down toward cardinality scarcity (the exporter runs
+// ~4.6k of a 100k global series budget): a real firewall runs a few dozen distinct
+// binaries, so 128 covers every normal box with room to spare while still giving a
+// fixed ceiling instead of an open one. `top` emits its rows in descending CPU order,
+// so the commands that survive the cap are the busiest ones — the ones a panel is
+// asking about.
+const activityCommandCap = 128
+
+// activityOtherCommand is the overflow bucket for commands past activityCommandCap,
+// using the same fixed label the flow rollup uses for its own overflow.
+const activityOtherCommand = "__other__"
+
+// activityIdleCommand is the kernel idle thread, excluded from every aggregation.
+// On a healthy box these are the TOP rows by WCPU — one per core at ~98% — so
+// including them would dominate every panel and hide all real work.
+const activityIdleCommand = "idle"
+
+// normalizeCommand turns a `top -aHSTn` COMMAND cell into a stable label value:
+// the `{thread-name}` suffix goes, then the `[]` kernel brackets, then whitespace.
+// "[idle{idle: cpu10}]" -> "idle", "python3{python3}" -> "python3".
+func normalizeCommand(raw string) string {
+	s := threadNameSuffixRegex.ReplaceAllString(raw, "")
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSuffix(s, "]")
+	return strings.TrimSpace(s)
+}
+
+// parseTopPercent parses a WCPU cell ("98.27%") into a percentage. Reports false for
+// anything unparseable so the caller skips the row rather than counting it as zero.
+func parseTopPercent(s string) (float64, bool) {
+	m := topPercentRegex.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
+}
+
+// ProcessAggregate is the process table from get_activity, aggregated to bounded
+// label sets (#552). The payload was already being fetched and thrown away; this
+// makes it useful without costing the firewall anything extra.
+//
+// Never per-PID and never per-THR. Those churn on a timescale of minutes, and an
+// abandoned series makes rate() meaningless — so the only exported dimensions are
+// the owning username and the normalised command name.
+//
+// THE MEMORY TRAP. `top -aHSTn` prints one row per THREAD, and every thread of a
+// process reports that PROCESS's RES. Summing RES across rows therefore multiplies a
+// process's memory by its thread count. Memory is deduplicated by PID: each distinct
+// PID contributes its RES exactly once per bucket. WCPU is genuinely per-thread and
+// is summed as-is.
+type ProcessAggregate struct {
+	CPUPercentByUser     map[string]float64
+	MemoryBytesByUser    map[string]float64
+	CPUPercentByCommand  map[string]float64
+	MemoryBytesByCommand map[string]float64
+	ThreadsByCommand     map[string]float64
+
+	// capped counts rows folded into activityOtherCommand because the command label
+	// set was already at its ceiling. Without it a saturated set is invisible: the
+	// panels would simply stop gaining commands with nothing to say why.
+	capped uint64
+}
+
+// ProcessAggregateStats is the aggregation's own health — how many command labels are
+// live against the budget, and how many rows have been folded into the overflow
+// bucket. Mirrors flow.DistinctDestsStats.
+type ProcessAggregateStats struct {
+	Commands    int
+	MaxCommands int
+	Capped      uint64
+}
+
+// Stats returns the aggregation's current health.
+func (p ProcessAggregate) Stats() ProcessAggregateStats {
+	return ProcessAggregateStats{
+		Commands:    len(p.CPUPercentByCommand),
+		MaxCommands: activityCommandCap,
+		Capped:      p.capped,
+	}
+}
+
+func newProcessAggregate() ProcessAggregate {
+	return ProcessAggregate{
+		CPUPercentByUser:     map[string]float64{},
+		MemoryBytesByUser:    map[string]float64{},
+		CPUPercentByCommand:  map[string]float64{},
+		MemoryBytesByCommand: map[string]float64{},
+		ThreadsByCommand:     map[string]float64{},
+	}
+}
+
+// commandKey returns the label value this command should be filed under, folding it
+// into the overflow bucket once the label set is at its ceiling. A command already in
+// the set always keeps its own key.
+func (p *ProcessAggregate) commandKey(command string) string {
+	if _, ok := p.CPUPercentByCommand[command]; ok {
+		return command
+	}
+	if len(p.CPUPercentByCommand) >= activityCommandCap {
+		p.capped++
+		return activityOtherCommand
+	}
+	return command
+}
+
+// activityRowString reads one cell from a details row. The endpoint sends every cell
+// as a string; anything else is treated as absent rather than coerced.
+func activityRowString(row map[string]any, key string) string {
+	s, ok := row[key].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+// parseActivityDetails folds the `top` process table into bounded aggregates.
+//
+// A row that does not parse is SKIPPED, never counted as zero — a fabricated zero
+// would silently drag a command's figures down with nothing to say it had happened.
+func parseActivityDetails(rows []any) ProcessAggregate {
+	agg := newProcessAggregate()
+
+	// Per-bucket PID sets: the memory dedupe. A PID contributes its RES once per
+	// user bucket and once per command bucket, however many thread rows it has.
+	seenUserPID := make(map[string]struct{}, len(rows))
+	seenCommandPID := make(map[string]struct{}, len(rows))
+
+	for _, raw := range rows {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		command := normalizeCommand(activityRowString(row, "COMMAND"))
+		if command == "" || command == activityIdleCommand {
+			continue
+		}
+		user := activityRowString(row, "USERNAME")
+		pid := activityRowString(row, "PID")
+		if user == "" || pid == "" {
+			// Without a PID the memory dedupe cannot be performed for this row, and
+			// counting it undeduplicated is exactly the bug this guards against.
+			continue
+		}
+		cpu, ok := parseTopPercent(activityRowString(row, "WCPU"))
+		if !ok {
+			continue
+		}
+		res, ok := parseTopSize(activityRowString(row, "RES"))
+		if !ok {
+			continue
+		}
+
+		command = agg.commandKey(command)
+
+		// WCPU is per-thread and sums correctly across rows.
+		agg.CPUPercentByUser[user] += cpu
+		agg.CPUPercentByCommand[command] += cpu
+		agg.ThreadsByCommand[command]++
+
+		// RES is per-PROCESS, repeated on every one of its thread rows.
+		if _, dup := seenUserPID[user+"\x00"+pid]; !dup {
+			seenUserPID[user+"\x00"+pid] = struct{}{}
+			agg.MemoryBytesByUser[user] += res
+		}
+		if _, dup := seenCommandPID[command+"\x00"+pid]; !dup {
+			seenCommandPID[command+"\x00"+pid] = struct{}{}
+			agg.MemoryBytesByCommand[command] += res
+		}
+	}
+
+	return agg
+}
+
 type activityResponse struct {
 	Headers []string `json:"headers"`
 	Details []any    `json:"details"`
@@ -127,6 +323,10 @@ type SystemActivity struct {
 	ThreadsSleeping int
 	ThreadsWaiting  int
 	ARC             ARCStats
+
+	// Processes is the `top` process table aggregated to bounded label sets (#552).
+	// Free data: this endpoint already returns it and the exporter used to discard it.
+	Processes ProcessAggregate
 }
 
 func (c *Client) FetchActivity() (SystemActivity, *APICallError) {
@@ -182,6 +382,8 @@ func (c *Client) FetchActivity() (SystemActivity, *APICallError) {
 
 		data.parseARCHeader(header)
 	}
+
+	data.Processes = parseActivityDetails(resp.Details)
 
 	return data, nil
 }

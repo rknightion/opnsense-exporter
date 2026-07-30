@@ -4,7 +4,8 @@ System & Resources tab for the OPNsense Exporter dashboard.
 Covers:
   - System subsystem (12 metrics)
   - General health: opnsense_system_subsystem_status_code (per-subsystem health-check detail)
-  - Activity subsystem (7 metrics) — thread-state counts + ZFS ARC composition (#551)
+  - Activity subsystem (14 metrics) — thread-state counts, ZFS ARC composition (#551)
+    and the aggregated `top` process table by user/command (#552)
   - CPU subsystem (6 metrics) — cumulative counters + SSE stream health (#559)
   - Mbuf subsystem (14 metrics)
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
@@ -365,6 +366,107 @@ def build(b: Builder):
             cpu_stream_published,
             cpu_stream_rates,
         ],
+    )
+
+    # =========================================================================
+    # Row: Processes (aggregated)
+    # =========================================================================
+    # #552: the get_activity payload already carries the full `top -aHSTn` process
+    # table and the exporter used to discard it. It is aggregated exporter-side to
+    # username and to a normalised command name — never per-PID or per-thread, which
+    # churn on a timescale of minutes and leave abandoned series behind.
+    #
+    # Two things to know when reading these panels:
+    #   * The kernel idle threads are EXCLUDED. On a healthy box they are the top rows
+    #     at ~98% CPU, one per core, and would dominate every panel here.
+    #   * CPU sums per THREAD, so a busy multi-threaded process legitimately exceeds
+    #     100%. Memory is deduplicated per PROCESS, because top repeats a process's RES
+    #     on every one of its thread rows.
+    proc_cpu_user = b.ts(
+        "CPU by User",
+        [(sel("opnsense_activity_user_cpu_percent"), "{{user}}")],
+        unit="percent",
+        stack=True,
+        w=12,
+        h=7,
+        desc="opnsense_activity_user_cpu_percent: weighted CPU summed across every thread owned by "
+        "each username, from top's WCPU column. Sums per thread, so values above 100 are normal on a "
+        "multi-core box. Kernel idle threads are excluded.",
+    )
+
+    proc_mem_user = b.ts(
+        "Memory by User",
+        [(sel("opnsense_activity_user_memory_bytes"), "{{user}}")],
+        unit="bytes",
+        stack=True,
+        w=12,
+        h=7,
+        desc="opnsense_activity_user_memory_bytes: resident memory summed per username, counted once "
+        "per PROCESS. top prints one row per thread and repeats the process's RES on each, so these "
+        "rows are deduplicated by PID before summing — summing them raw multiplies a process's memory "
+        "by its thread count.",
+    )
+
+    proc_table = b.table(
+        "Top Commands by CPU",
+        [
+            f'topk {grp()} (20, {sel("opnsense_activity_command_cpu_percent")})',
+            sel("opnsense_activity_command_memory_bytes"),
+            sel("opnsense_activity_command_threads"),
+        ],
+        excludes=["Value", "__name__", "job", "instance"],
+        renames={
+            "command": "Command",
+            "Value #A": "CPU %",
+            "Value #B": "Memory",
+            "Value #C": "Threads",
+            "opnsense_instance": "Instance",
+        },
+        unit_overrides={"CPU %": "percent", "Memory": "bytes"},
+        sort_by="CPU %",
+        w=14,
+        h=8,
+        desc="The 20 busiest commands. The command name is normalised — the {thread-name} suffix and "
+        "[] kernel brackets are stripped — so all threads of one binary land on one row. Commands "
+        "past the label cap appear as __other__.",
+    )
+
+    proc_threads = b.ts(
+        "Threads by Command (top 10)",
+        [(f'topk {grp()} (10, {sel("opnsense_activity_command_threads")})', "{{command}}")],
+        w=10,
+        h=8,
+        desc="opnsense_activity_command_threads: the one signal here no other exported metric carries. "
+        "A process leaking threads shows as a steadily climbing line and is invisible everywhere else "
+        "in this dashboard.",
+    )
+
+    proc_commands_tracked = b.stat(
+        "Command Labels Tracked",
+        sel("opnsense_activity_commands_tracked"),
+        w=4,
+        h=4,
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 100}, {"color": "red", "value": 128}],
+        # Explicit boundary (#415): the cap is a real, code-defined ceiling of 128, so
+        # 100/128 marks "approaching saturation" / "saturated" rather than an invented
+        # severity. At 128 new commands are only visible through the __other__ bucket.
+        desc="opnsense_activity_commands_tracked: distinct command labels in the aggregates this poll, "
+        "against a hard cap of 128. At the cap the label set has saturated.",
+    )
+
+    proc_commands_capped = b.ts(
+        "Commands Folded into __other__",
+        [(f'rate({sel("opnsense_activity_commands_capped_total")}[{RATE}])', "Folded/sec")],
+        w=10,
+        h=4,
+        desc="opnsense_activity_commands_capped_total: rows folded into command=\"__other__\" because "
+        "the command label set was already at its cap. Flat zero on any normal firewall; a rising rate "
+        "means these panels are no longer naming everything they measure.",
+    )
+
+    row_processes = b.row(
+        "Processes (aggregated)",
+        [proc_cpu_user, proc_mem_user, proc_table, proc_threads, proc_commands_tracked, proc_commands_capped],
     )
 
     # =========================================================================
@@ -1080,6 +1182,7 @@ def build(b: Builder):
         row_subsystem_health,
         row_mem,
         row_cpu,
+        row_processes,
         row_disk,
         row_firmware,
         row_firmware_details,

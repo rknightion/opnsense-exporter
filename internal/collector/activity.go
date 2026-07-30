@@ -29,6 +29,20 @@ type activityCollector struct {
 	arcCompressed   *prometheus.Desc
 	arcUncompressed *prometheus.Desc
 
+	userCPU        *prometheus.Desc
+	userMemory     *prometheus.Desc
+	commandCPU     *prometheus.Desc
+	commandMemory  *prometheus.Desc
+	commandThreads *prometheus.Desc
+
+	commandsTracked *prometheus.Desc
+	commandsCapped  *prometheus.Desc
+
+	// commandsCappedTotal accumulates the per-poll fold counts into the monotonic
+	// counter the metric exposes. The aggregation itself is rebuilt from scratch on
+	// every poll, so its own figure is a per-poll delta, not a running total.
+	commandsCappedTotal float64
+
 	subsystem string
 	instance  string
 }
@@ -83,6 +97,58 @@ func (c *activityCollector) Register(namespace, instanceLabel string, log *slog.
 		"Logical size of ZFS ARC contents before compression. Absent when top reports no compression line.",
 		nil,
 	)
+
+	// Process-table aggregates (#552), free from the payload this collector already
+	// fetches. Aggregated only — never one series per PID or per thread, because those
+	// identifiers churn on a timescale of minutes and abandoned series make rate()
+	// meaningless.
+	const idleNote = "The kernel idle threads are EXCLUDED from every process aggregate: on a healthy box " +
+		"they are the top rows at ~98% CPU, one per core, and would dominate every panel. Their absence " +
+		"is deliberate, not a gap."
+	const cappedNote = "The command label set is bounded; commands past the cap fold into command=\"__other__\" " +
+		"and are counted by opnsense_activity_commands_capped_total."
+
+	c.userCPU = buildPrometheusDesc(c.subsystem, "user_cpu_percent",
+		"Weighted CPU percentage summed across every thread owned by this username, from top's WCPU "+
+			"column. Sums per thread, so a busy multi-threaded process can exceed 100. "+idleNote,
+		[]string{"user"},
+	)
+	c.userMemory = buildPrometheusDesc(c.subsystem, "user_memory_bytes",
+		"Resident memory summed across the processes owned by this username, from top's RES column. "+
+			"Counted once per PROCESS: top prints one row per thread and every thread repeats its "+
+			"process's RES, so the rows are deduplicated by PID before summing. "+idleNote,
+		[]string{"user"},
+	)
+	c.commandCPU = buildPrometheusDesc(c.subsystem, "command_cpu_percent",
+		"Weighted CPU percentage summed across every thread of this command, from top's WCPU column. "+
+			"The command name is normalised: the {thread-name} suffix and [] kernel brackets are "+
+			"stripped. "+idleNote+" "+cappedNote,
+		[]string{"command"},
+	)
+	c.commandMemory = buildPrometheusDesc(c.subsystem, "command_memory_bytes",
+		"Resident memory summed across the processes running this command, from top's RES column. "+
+			"Counted once per PROCESS, deduplicated by PID — every thread row repeats its process's "+
+			"RES, so summing the rows would multiply a process's memory by its thread count. "+
+			idleNote+" "+cappedNote,
+		[]string{"command"},
+	)
+	c.commandThreads = buildPrometheusDesc(c.subsystem, "command_threads",
+		"Number of threads running this command. The one signal here that no other exported metric "+
+			"carries: a process leaking threads is invisible everywhere else. "+idleNote+" "+cappedNote,
+		[]string{"command"},
+	)
+	c.commandsTracked = buildPrometheusDesc(c.subsystem, "commands_tracked",
+		"Number of distinct command labels in the process aggregates this poll, against a cap of "+
+			"128. At the cap the label set has saturated and new commands are invisible except "+
+			"through the __other__ bucket.",
+		nil,
+	)
+	c.commandsCapped = buildPrometheusDesc(c.subsystem, "commands_capped_total",
+		"Cumulative count of process-table rows folded into command=\"__other__\" because the "+
+			"command label set was already at its cap. Zero on any normal firewall; a rising rate "+
+			"means the aggregates are no longer naming everything they measure.",
+		nil,
+	)
 }
 
 func (c *activityCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -93,6 +159,13 @@ func (c *activityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.arcComponent
 	ch <- c.arcCompressed
 	ch <- c.arcUncompressed
+	ch <- c.userCPU
+	ch <- c.userMemory
+	ch <- c.commandCPU
+	ch <- c.commandMemory
+	ch <- c.commandThreads
+	ch <- c.commandsTracked
+	ch <- c.commandsCapped
 }
 
 func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -126,6 +199,8 @@ func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client,
 		c.instance,
 	)
 
+	c.collectProcesses(data.Processes, ch)
+
 	// Absent means absent. A UFS box has no ARC at all, and it does not announce that
 	// by omitting the header — it emits a bare "ARC: " with nothing after it — so
 	// publishing zeros here would show every non-ZFS firewall as having a real,
@@ -150,4 +225,34 @@ func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client,
 			c.arcUncompressed, prometheus.GaugeValue, data.ARC.UncompressedBytes, c.instance)
 	}
 	return nil
+}
+
+// collectProcesses emits the aggregated process-table series (#552).
+//
+// The aggregation is rebuilt from the payload on every poll, so a command that stops
+// running goes ABSENT on the next scrape rather than freezing at its last value —
+// which is the correct reading of "this process is no longer here".
+func (c *activityCollector) collectProcesses(p opnsense.ProcessAggregate, ch chan<- prometheus.Metric) {
+	for user, value := range p.CPUPercentByUser {
+		ch <- prometheus.MustNewConstMetric(c.userCPU, prometheus.GaugeValue, value, user, c.instance)
+	}
+	for user, value := range p.MemoryBytesByUser {
+		ch <- prometheus.MustNewConstMetric(c.userMemory, prometheus.GaugeValue, value, user, c.instance)
+	}
+	for command, value := range p.CPUPercentByCommand {
+		ch <- prometheus.MustNewConstMetric(c.commandCPU, prometheus.GaugeValue, value, command, c.instance)
+	}
+	for command, value := range p.MemoryBytesByCommand {
+		ch <- prometheus.MustNewConstMetric(c.commandMemory, prometheus.GaugeValue, value, command, c.instance)
+	}
+	for command, value := range p.ThreadsByCommand {
+		ch <- prometheus.MustNewConstMetric(c.commandThreads, prometheus.GaugeValue, value, command, c.instance)
+	}
+
+	stats := p.Stats()
+	c.commandsCappedTotal += float64(stats.Capped)
+	ch <- prometheus.MustNewConstMetric(
+		c.commandsTracked, prometheus.GaugeValue, float64(stats.Commands), c.instance)
+	ch <- prometheus.MustNewConstMetric(
+		c.commandsCapped, prometheus.CounterValue, c.commandsCappedTotal, c.instance)
 }

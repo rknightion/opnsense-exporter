@@ -109,10 +109,6 @@ var Exemptions = map[string]string{
 	"opnsense.acmeCertificateSearchResponse.RowCount": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
 		"so the live-box schema canary keeps validating the envelope's shape.",
-	// opnsense/activity.go:43  json:"details"
-	"opnsense.activityResponse.Details": "The full top-process table from the activity endpoint. Deliberately not exported: " +
-		"one series per process is unbounded and churns on every scrape. The collector " +
-		"exports the aggregate counts.",
 	// opnsense/alias.go:24  json:"status"
 	"opnsense.aliasTableSizeResponse.Status": "configd/MVC envelope status string. The client's failure signal is the transport " +
 		"result and the decode itself, never this field; decoded so the live-box schema " +

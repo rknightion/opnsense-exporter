@@ -2,6 +2,7 @@ package opnsense
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -317,4 +318,219 @@ func TestFetchActivity_AllSevenThreadStatesParse(t *testing.T) {
 		t.Errorf("expected running/sleeping/waiting = 13/802/34, got %d/%d/%d",
 			data.ThreadsRunning, data.ThreadsSleeping, data.ThreadsWaiting)
 	}
+}
+
+// activityDetailsFixture is a small, realistic `top -aHSTn` details table. The row
+// shape is the real capture quoted in #552.
+//
+// It is deliberately built so that a NAIVE implementation fails:
+//
+//   - PID 100 (python3) has FOUR thread rows, and every one of them reports the
+//     PROCESS's RES of 512M. Summing RES across rows gives 2048M — four times the
+//     truth. The correct answer counts each distinct PID's RES exactly once per
+//     bucket.
+//   - WCPU is genuinely per-thread and DOES sum: 4 x 5.00% = 20.00%.
+//   - The two [idle{...}] rows are the top rows by WCPU on any healthy box and must
+//     be excluded from every aggregation, or they dominate all three.
+const activityDetailsFixture = `[
+	{"C":"10","PID":"11","THR":"100013","USERNAME":"root","PRI":"199","NICE":"ki31",
+	 "SIZE":"0B","RES":"192K","STATE":"CPU10","TIME":"41.7H","WCPU":"98.27%",
+	 "COMMAND":"[idle{idle: cpu10}]"},
+	{"C":"11","PID":"11","THR":"100014","USERNAME":"root","PRI":"199","NICE":"ki31",
+	 "SIZE":"0B","RES":"192K","STATE":"CPU11","TIME":"41.6H","WCPU":"97.13%",
+	 "COMMAND":"[idle{idle: cpu11}]"},
+	{"C":"0","PID":"100","THR":"100201","USERNAME":"www","PRI":"20","NICE":"0",
+	 "SIZE":"1024M","RES":"512M","STATE":"nanslp","TIME":"1:02","WCPU":"5.00%",
+	 "COMMAND":"python3{python3}"},
+	{"C":"1","PID":"100","THR":"100202","USERNAME":"www","PRI":"20","NICE":"0",
+	 "SIZE":"1024M","RES":"512M","STATE":"nanslp","TIME":"1:02","WCPU":"5.00%",
+	 "COMMAND":"python3{python3}"},
+	{"C":"2","PID":"100","THR":"100203","USERNAME":"www","PRI":"20","NICE":"0",
+	 "SIZE":"1024M","RES":"512M","STATE":"nanslp","TIME":"1:02","WCPU":"5.00%",
+	 "COMMAND":"python3{python3}"},
+	{"C":"3","PID":"100","THR":"100204","USERNAME":"www","PRI":"20","NICE":"0",
+	 "SIZE":"1024M","RES":"512M","STATE":"nanslp","TIME":"1:02","WCPU":"5.00%",
+	 "COMMAND":"python3{python3}"},
+	{"C":"4","PID":"200","THR":"100301","USERNAME":"root","PRI":"20","NICE":"0",
+	 "SIZE":"64M","RES":"32M","STATE":"select","TIME":"0:10","WCPU":"1.50%",
+	 "COMMAND":"unbound"},
+	{"C":"5","PID":"300","THR":"100401","USERNAME":"root","PRI":"-8","NICE":"0",
+	 "SIZE":"0B","RES":"16M","STATE":"-","TIME":"0:01","WCPU":"0.20%",
+	 "COMMAND":"[zfskern{txg_thread_enter}]"}
+]`
+
+const mib = 1024 * 1024
+
+// TestParseActivityDetails_DedupesResidentMemoryByPID is the acceptance proof for
+// #552's memory trap. `top -aHSTn` prints one row per THREAD and every thread of a
+// process reports that PROCESS's RES, so naive summation multiplies a process's
+// memory by its thread count. This fails under naive summation (2048M) and passes
+// only with per-PID dedupe (512M).
+func TestParseActivityDetails_DedupesResidentMemoryByPID(t *testing.T) {
+	agg := parseActivityDetailsJSON(t, activityDetailsFixture)
+
+	if got, want := agg.MemoryBytesByCommand["python3"], float64(512*mib); got != want {
+		t.Errorf("MemoryBytesByCommand[python3] = %v, want %v (naive per-thread summation gives %v)",
+			got, want, float64(4*512*mib))
+	}
+	if got, want := agg.MemoryBytesByUser["www"], float64(512*mib); got != want {
+		t.Errorf("MemoryBytesByUser[www] = %v, want %v (naive per-thread summation gives %v)",
+			got, want, float64(4*512*mib))
+	}
+	// root owns two distinct PIDs, so its memory is a genuine sum of two RES values.
+	if got, want := agg.MemoryBytesByUser["root"], float64(32*mib+16*mib); got != want {
+		t.Errorf("MemoryBytesByUser[root] = %v, want %v", got, want)
+	}
+}
+
+// TestParseActivityDetails_SumsWCPUPerThread pins the other half of the trap: WCPU is
+// genuinely per-thread, so it must NOT be deduped by PID.
+func TestParseActivityDetails_SumsWCPUPerThread(t *testing.T) {
+	agg := parseActivityDetailsJSON(t, activityDetailsFixture)
+
+	if got, want := agg.CPUPercentByCommand["python3"], 20.0; got != want {
+		t.Errorf("CPUPercentByCommand[python3] = %v, want %v (4 threads x 5.00%%)", got, want)
+	}
+	if got, want := agg.CPUPercentByUser["www"], 20.0; got != want {
+		t.Errorf("CPUPercentByUser[www] = %v, want %v", got, want)
+	}
+	if got, want := agg.CPUPercentByUser["root"], 1.7; got < want-0.001 || got > want+0.001 {
+		t.Errorf("CPUPercentByUser[root] = %v, want %v", got, want)
+	}
+}
+
+func TestParseActivityDetails_ThreadsPerCommand(t *testing.T) {
+	agg := parseActivityDetailsJSON(t, activityDetailsFixture)
+
+	for command, want := range map[string]float64{"python3": 4, "unbound": 1, "zfskern": 1} {
+		if got := agg.ThreadsByCommand[command]; got != want {
+			t.Errorf("ThreadsByCommand[%s] = %v, want %v", command, got, want)
+		}
+	}
+}
+
+// TestParseActivityDetails_ExcludesIdle pins that the kernel idle threads are dropped
+// entirely. They are the top rows by WCPU at ~98% on every healthy box, so leaving
+// them in would dominate all three aggregations and make every panel useless.
+func TestParseActivityDetails_ExcludesIdle(t *testing.T) {
+	agg := parseActivityDetailsJSON(t, activityDetailsFixture)
+
+	if _, ok := agg.CPUPercentByCommand["idle"]; ok {
+		t.Error("idle must be excluded from CPUPercentByCommand")
+	}
+	if _, ok := agg.ThreadsByCommand["idle"]; ok {
+		t.Error("idle must be excluded from ThreadsByCommand")
+	}
+	if _, ok := agg.MemoryBytesByCommand["idle"]; ok {
+		t.Error("idle must be excluded from MemoryBytesByCommand")
+	}
+	// root's CPU must not carry the two idle threads' ~195%.
+	if agg.CPUPercentByUser["root"] > 50 {
+		t.Errorf("idle threads leaked into CPUPercentByUser[root] = %v", agg.CPUPercentByUser["root"])
+	}
+}
+
+func TestNormalizeCommand(t *testing.T) {
+	for raw, want := range map[string]string{
+		"[idle{idle: cpu10}]":         "idle",
+		"[zfskern{txg_thread_enter}]": "zfskern",
+		"python3{python3}":            "python3",
+		"unbound":                     "unbound",
+		"[kernel{if_io_tqg_3}]":       "kernel",
+		"  /usr/local/sbin/haproxy  ": "/usr/local/sbin/haproxy",
+		"[intr{irq264: virtio_pci2}]": "intr",
+		"":                            "",
+	} {
+		if got := normalizeCommand(raw); got != want {
+			t.Errorf("normalizeCommand(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// TestParseActivityDetails_SkipsUnparseableRows pins rule G: a row whose WCPU or RES
+// cannot be parsed is SKIPPED, never counted as a zero. A fabricated zero would drag
+// a command's memory figure down without any signal that it had done so.
+func TestParseActivityDetails_SkipsUnparseableRows(t *testing.T) {
+	agg := parseActivityDetailsJSON(t, `[
+		{"PID":"1","USERNAME":"root","RES":"not-a-size","WCPU":"1.00%","COMMAND":"bad-res"},
+		{"PID":"2","USERNAME":"root","RES":"8M","WCPU":"n/a","COMMAND":"bad-cpu"},
+		{"PID":"3","USERNAME":"root","RES":"8M","WCPU":"1.00%","COMMAND":""},
+		{"PID":"","USERNAME":"root","RES":"8M","WCPU":"1.00%","COMMAND":"no-pid"},
+		{"PID":"5","USERNAME":"","RES":"8M","WCPU":"1.00%","COMMAND":"no-user"},
+		{"PID":"6","USERNAME":"root","RES":"8M","WCPU":"2.00%","COMMAND":"good"}
+	]`)
+
+	if len(agg.CPUPercentByCommand) != 1 {
+		t.Fatalf("expected exactly one surviving command, got %v", agg.CPUPercentByCommand)
+	}
+	if got := agg.CPUPercentByCommand["good"]; got != 2.0 {
+		t.Errorf("CPUPercentByCommand[good] = %v, want 2", got)
+	}
+	if got := agg.MemoryBytesByUser["root"]; got != float64(8*mib) {
+		t.Errorf("MemoryBytesByUser[root] = %v, want %v — an unparseable row must be skipped, not zeroed",
+			got, float64(8*mib))
+	}
+}
+
+// TestParseActivityDetails_CapsCommandLabelSet pins the bound on the COMMAND label
+// set. Past the cap a novel command folds into the fixed __other__ bucket and the
+// fold is counted, so a saturated label set is visible instead of silent.
+func TestParseActivityDetails_CapsCommandLabelSet(t *testing.T) {
+	var rows []string
+	for i := 0; i < activityCommandCap+10; i++ {
+		rows = append(rows, fmt.Sprintf(
+			`{"PID":"%d","USERNAME":"root","RES":"1M","WCPU":"1.00%%","COMMAND":"cmd%d"}`, i, i))
+	}
+	agg := parseActivityDetailsJSON(t, "["+strings.Join(rows, ",")+"]")
+
+	if _, ok := agg.CPUPercentByCommand[activityOtherCommand]; !ok {
+		t.Fatalf("expected an %s overflow bucket, got %d commands", activityOtherCommand, len(agg.CPUPercentByCommand))
+	}
+	if got := agg.CPUPercentByCommand[activityOtherCommand]; got != 10.0 {
+		t.Errorf("%s CPU = %v, want 10 (ten folded rows at 1.00%% each)", activityOtherCommand, got)
+	}
+	stats := agg.Stats()
+	if stats.Capped != 10 {
+		t.Errorf("Stats().Capped = %d, want 10", stats.Capped)
+	}
+	if stats.MaxCommands != activityCommandCap {
+		t.Errorf("Stats().MaxCommands = %d, want %d", stats.MaxCommands, activityCommandCap)
+	}
+	if stats.Commands != activityCommandCap+1 {
+		t.Errorf("Stats().Commands = %d, want %d (the cap plus the overflow bucket)",
+			stats.Commands, activityCommandCap+1)
+	}
+}
+
+// TestFetchActivity_ParsesDetails pins that the aggregation is wired into the fetch —
+// the whole point of #552 is that this payload is already fetched and was discarded.
+func TestFetchActivity_ParsesDetails(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(w, `{"headers":["849 threads:   13 running, 802 sleeping, 34 waiting"],"details":%s}`,
+			activityDetailsFixture)
+	})
+	defer server.Close()
+
+	data, err := client.FetchActivity()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := data.Processes.MemoryBytesByCommand["python3"], float64(512*mib); got != want {
+		t.Errorf("MemoryBytesByCommand[python3] = %v, want %v", got, want)
+	}
+	if got, want := data.Processes.ThreadsByCommand["python3"], 4.0; got != want {
+		t.Errorf("ThreadsByCommand[python3] = %v, want %v", got, want)
+	}
+}
+
+// parseActivityDetailsJSON decodes a details array exactly as the client does — into
+// []any — and aggregates it, so the test exercises the same decode path as a live
+// response rather than a convenient typed shortcut.
+func parseActivityDetailsJSON(t *testing.T, raw string) ProcessAggregate {
+	t.Helper()
+	var rows []any
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		t.Fatalf("fixture is not valid JSON: %v", err)
+	}
+	return parseActivityDetails(rows)
 }

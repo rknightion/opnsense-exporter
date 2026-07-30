@@ -32,9 +32,11 @@ func TestActivityCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 4 thread gauges + 5 ARC components + 2 ARC compression figures. The fixture
-	// carries a ZFS ARC header, so the composition series (#551) are present.
-	expectedCount := 11
+	// 4 thread gauges + 5 ARC components + 2 ARC compression figures + the 2
+	// process-aggregate health series (#552). The fixture carries a ZFS ARC header,
+	// so the composition series (#551) are present; its details array is empty, so
+	// no per-user or per-command series are produced.
+	expectedCount := 13
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -46,6 +48,8 @@ func TestActivityCollector_Update(t *testing.T) {
 		"opnsense_activity_threads_waiting":        34,
 		"opnsense_activity_arc_compressed_bytes":   7809 * 1024 * 1024,
 		"opnsense_activity_arc_uncompressed_bytes": 13 * 1024 * 1024 * 1024,
+		"opnsense_activity_commands_tracked":       0,
+		"opnsense_activity_commands_capped_total":  0,
 	}
 
 	arcComponents := map[string]float64{}
@@ -111,8 +115,8 @@ func TestActivityCollector_ARCAbsentOnNonZFS(t *testing.T) {
 	c.Register(namespace, "test", promslog.NewNopLogger())
 	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
 
-	if len(metrics) != 4 {
-		t.Fatalf("expected only the 4 thread gauges on a non-ZFS box, got %d", len(metrics))
+	if len(metrics) != 6 {
+		t.Fatalf("expected only the 4 thread gauges plus the 2 process-aggregate health series on a non-ZFS box, got %d", len(metrics))
 	}
 	for _, m := range metrics {
 		if containsString(m.Desc().String(), "arc") {
@@ -137,7 +141,7 @@ func TestActivityCollector_Update_EmptyHeaders(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 4
+	expectedCount := 6
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -162,4 +166,81 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestActivityCollector_ProcessAggregates is the collector-level acceptance proof for
+// #552's memory trap, end to end from the wire.
+//
+// `top -aHSTn` prints ONE ROW PER THREAD, and every thread of a process reports that
+// PROCESS's RES. The fixture's PID 100 has four thread rows at 512M each; a naive
+// implementation exports 2048M for it. CPU is genuinely per-thread and DOES sum, so
+// the same process is 4 x 5.00% = 20%. The two [idle{...}] rows — the top rows by CPU
+// on any healthy box — must not appear at all.
+func TestActivityCollector_ProcessAggregates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"headers":["849 threads:   13 running, 802 sleeping, 34 waiting"],"details":[
+			{"C":"10","PID":"11","THR":"100013","USERNAME":"root","RES":"192K","WCPU":"98.27%","COMMAND":"[idle{idle: cpu10}]"},
+			{"C":"11","PID":"11","THR":"100014","USERNAME":"root","RES":"192K","WCPU":"97.13%","COMMAND":"[idle{idle: cpu11}]"},
+			{"C":"0","PID":"100","THR":"100201","USERNAME":"www","RES":"512M","WCPU":"5.00%","COMMAND":"python3{python3}"},
+			{"C":"1","PID":"100","THR":"100202","USERNAME":"www","RES":"512M","WCPU":"5.00%","COMMAND":"python3{python3}"},
+			{"C":"2","PID":"100","THR":"100203","USERNAME":"www","RES":"512M","WCPU":"5.00%","COMMAND":"python3{python3}"},
+			{"C":"3","PID":"100","THR":"100204","USERNAME":"www","RES":"512M","WCPU":"5.00%","COMMAND":"python3{python3}"},
+			{"C":"4","PID":"200","THR":"100301","USERNAME":"root","RES":"32M","WCPU":"1.50%","COMMAND":"unbound"}
+		]}`))
+	}))
+	defer server.Close()
+
+	c := &activityCollector{subsystem: ActivitySubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	metrics := collectMetrics(t, c, newCollectorTestClient(t, server))
+
+	const mib = 1024 * 1024
+	// family -> label value -> value
+	got := map[string]map[string]float64{}
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		for _, family := range []string{
+			"opnsense_activity_user_cpu_percent",
+			"opnsense_activity_user_memory_bytes",
+			"opnsense_activity_command_cpu_percent",
+			"opnsense_activity_command_memory_bytes",
+			"opnsense_activity_command_threads",
+		} {
+			if !containsString(desc, family) {
+				continue
+			}
+			key := labels["user"] + labels["command"]
+			if got[family] == nil {
+				got[family] = map[string]float64{}
+			}
+			got[family][key] = getMetricValue(m)
+		}
+	}
+
+	want := map[string]map[string]float64{
+		"opnsense_activity_user_cpu_percent":     {"www": 20, "root": 1.5},
+		"opnsense_activity_user_memory_bytes":    {"www": 512 * mib, "root": 32 * mib},
+		"opnsense_activity_command_cpu_percent":  {"python3": 20, "unbound": 1.5},
+		"opnsense_activity_command_memory_bytes": {"python3": 512 * mib, "unbound": 32 * mib},
+		"opnsense_activity_command_threads":      {"python3": 4, "unbound": 1},
+	}
+	for family, wantValues := range want {
+		if len(got[family]) != len(wantValues) {
+			t.Errorf("%s: got %v, want %v", family, got[family], wantValues)
+			continue
+		}
+		for key, wantValue := range wantValues {
+			if g := got[family][key]; g != wantValue {
+				t.Errorf("%s{%s} = %v, want %v", family, key, g, wantValue)
+			}
+		}
+	}
+
+	// The idle threads must not have produced a series anywhere.
+	for _, m := range metrics {
+		if getMetricLabels(m)["command"] == "idle" {
+			t.Errorf("idle must never be exported: %s", m.Desc().String())
+		}
+	}
 }
