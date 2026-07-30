@@ -126,13 +126,20 @@ def build(b: Builder):
 
     uniquedest = b.ts(
         "Unique Destinations per Interface",
-        [(f'{sel("opnsense_flow_unique_destinations")}', "{{interface}}")],
+        [(f'{sel("opnsense_flow_unique_destinations")}', "{{interface}}"),
+         (f'sum {grp()} (rate({sel("opnsense_flow_unique_destinations_capped_total")}[{RATE}]))',
+          "folded — interface budget reached")],
         unit="short",
         desc="opnsense_flow_unique_destinations: distinct destination addresses seen per interface — a "
              "bounded stand-in for per-destination series (one gauge per interface, never one per "
              "destination). A set, not a sum, so a destination reported by both lanes counts once. A "
              "value pinned at the internal per-interface cap means the true count is at least that "
-             "high, which is itself a scanning/fan-out signal worth an alert.",
+             "high, which is itself a scanning/fan-out signal worth an alert. The second series is the "
+             "OUTER bound: the interface and VLAN strings come from the Zenarmor sender, so past a "
+             "fixed interface budget a previously unseen label folds into __other__ instead of minting "
+             "another map and another series (#563). Non-zero means the per-interface counts above are "
+             "no longer complete — either the box has more interfaces than the budget, or a sender is "
+             "inventing them.",
     )
 
     toptalkers = b.table(
