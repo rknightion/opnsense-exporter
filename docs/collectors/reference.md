@@ -28,7 +28,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 15 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
-| Flow Volume | flow | 53 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
+| Flow Volume | flow | 54 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
 | Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
 | HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
@@ -39,12 +39,12 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
 | Interfaces | interfaces | 38 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
-| Kea DHCP | kea | 19 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
+| Kea DHCP | kea | 21 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
 | Local Auth | auth | 6 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
-| Log-derived Events | log_events | 28 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
-| Mbuf | mbuf | 14 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
+| Log-derived Events | log_events | 31 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
+| Mbuf | mbuf | 15 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 17 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
 | NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
 | NTP | ntp | 11 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
@@ -61,7 +61,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | SMART Disk Health | smart | 14 | Disabled | --exporter.enable-smart | OPNSENSE_EXPORTER_ENABLE_SMART |
 | Services | services | 3 | Enabled | --exporter.disable-services | OPNSENSE_EXPORTER_DISABLE_SERVICES |
 | Siproxd | siproxd | 1 | Enabled | --exporter.disable-siproxd | OPNSENSE_EXPORTER_DISABLE_SIPROXD |
-| Syslog | syslog | 10 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
+| Syslog | syslog | 11 | Enabled | --exporter.disable-syslog | OPNSENSE_EXPORTER_DISABLE_SYSLOG |
 | System | system | 13 | Enabled | --exporter.disable-system | OPNSENSE_EXPORTER_DISABLE_SYSTEM |
 | Tailscale | tailscale | 11 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |

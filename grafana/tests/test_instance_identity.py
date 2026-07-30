@@ -320,10 +320,12 @@ class InstanceIdentityTest(unittest.TestCase):
         exprs = [(r["metric"], r["expr"]) for r in RECORDING]
         exprs += [(r["name"], r["A"]) for r in RULES]
         self.assertEqual(len(exprs), len(RECORDING) + len(RULES))
-        # 57 alerts + 14 recording. Bump deliberately when a rule is added — the
+        # 59 alerts + 14 recording. Bump deliberately when a rule is added — the
         # literal is here so an accidentally emptied RULES/RECORDING cannot make the
-        # offender scan below pass by having nothing to scan.
-        self.assertEqual(len(exprs), 71)
+        # offender scan below pass by having nothing to scan. 71 -> 73 when #560 added
+        # OPNsenseDHCP6AddressExpiring and OPNsenseDHCP6AddressNotRefreshing, the IA_NA
+        # twins of the prefix pair.
+        self.assertEqual(len(exprs), 73)
         offenders = {
             name: f"{op} {kind or 'no-clause'}({','.join(sorted(labels))})"
             for name, expr in exprs

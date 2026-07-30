@@ -26,7 +26,7 @@
       "description": "Failover/secondary WAN gateway {{ $labels.name }} ({{ $labels.address }}) offline (status 0) for 15m. Lower urgency \u2014 primary WAN unaffected. The 15m window tolerates a router reboot / slow secondary-WAN re-establish.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensegatewaydownfailover",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "189"
+      "__panelId__": "190"
     },
     "expressions": {
       "A": {

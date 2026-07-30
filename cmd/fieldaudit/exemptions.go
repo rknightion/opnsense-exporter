@@ -74,19 +74,10 @@ var Exemptions = map[string]string{
 	"opnsense.InterfaceDetails.Datalen": "ifconfig link-layer geometry (address/header length, datalen). Constant per media " +
 		"type and of no operational interest; decoded so the canary validates the whole " +
 		"interfaces_info detail block.",
-	// opnsense/interfaces.go:22  json:"driver"
-	"opnsense.InterfaceDetails.Driver": "SHOULD BE EXPORTED, tracked by #555. The driver name is what tells an operator " +
-		"whether a device-level caveat applies — #544 item 4 had to document the oqdrops " +
-		"override in prose because the driver is not on any series. One bounded label on the " +
-		"existing interface info metric.",
 	// opnsense/interfaces.go:24  json:"flags"
 	"opnsense.InterfaceDetails.Flags": "ifconfig flag string on the interface detail payload. The exported interface metrics " +
 		"carry link/status directly; the raw flag word duplicates them in a form nothing " +
 		"parses.",
-	// opnsense/interfaces.go:49  json:"HW offload capabilities"
-	"opnsense.InterfaceDetails.HWOffloadCapabilities": "SHOULD BE EXPORTED, tracked by #555. Checksum/TSO/LRO offload state explains " +
-		"whole classes of throughput and pcap oddity, is stable per device, and is already " +
-		"being fetched. It is a bounded info-metric label, not a counter.",
 	// opnsense/interfaces.go:31  json:"header length"
 	"opnsense.InterfaceDetails.HeaderLength": "ifconfig link-layer geometry (address/header length, datalen). Constant per media " +
 		"type and of no operational interest; decoded so the canary validates the whole " +
@@ -212,11 +203,6 @@ var Exemptions = map[string]string{
 	"opnsense.dhcpv4LeaseRow.Ends": "Per-lease detail. The DHCP collectors export lease COUNTS grouped by interface and " +
 		"state, never a series per lease, so per-lease timestamps and client identifiers have " +
 		"nowhere to go without a per-host series.",
-	// opnsense/dhcpv4.go:27  json:"if"
-	"opnsense.dhcpv4LeaseRow.If": "SHOULD BE EXPORTED, tracked by #556. This is the #544 item-5 pattern again: the " +
-		"raw logical interface id is discarded in favour of the human description (if_descr), " +
-		"and the two diverge on VLANs and bridges — only the raw id joins against the " +
-		"interface metrics.",
 	// opnsense/dhcpv4.go:29  json:"man"
 	"opnsense.dhcpv4LeaseRow.Man": "Per-lease detail. The DHCP collectors export lease COUNTS grouped by interface and " +
 		"state, never a series per lease, so per-lease timestamps and client identifiers have " +
@@ -252,10 +238,6 @@ var Exemptions = map[string]string{
 	"opnsense.dhcpv6LeaseRow.IAIDDuid": "Per-lease detail. The DHCP collectors export lease COUNTS grouped by interface and " +
 		"state, never a series per lease, so per-lease timestamps and client identifiers have " +
 		"nowhere to go without a per-host series.",
-	// opnsense/dhcpv6.go:25  json:"if"
-	"opnsense.dhcpv6LeaseRow.If": "SHOULD BE EXPORTED, tracked by #556. Same as the DHCPv4 case: the raw logical " +
-		"interface id is dropped in favour of the description, and only the raw id joins " +
-		"against the interface metrics.",
 	// opnsense/dhcpv6.go:31  json:"man"
 	"opnsense.dhcpv6LeaseRow.Man": "Per-lease detail. The DHCP collectors export lease COUNTS grouped by interface and " +
 		"state, never a series per lease, so per-lease timestamps and client identifiers have " +
@@ -315,18 +297,10 @@ var Exemptions = map[string]string{
 	"opnsense.dnsmasqLeaseRow.IAID": "Per-lease detail. The DHCP collectors export lease COUNTS grouped by interface and " +
 		"state, never a series per lease, so per-lease timestamps and client identifiers have " +
 		"nowhere to go without a per-host series.",
-	// opnsense/dnsmasq.go:10  json:"if"
-	"opnsense.dnsmasqLeaseRow.If": "SHOULD BE EXPORTED, tracked by #556. Same as the DHCPv4 case: the raw logical " +
-		"interface id is dropped in favour of the description, and only the raw id joins " +
-		"against the interface metrics.",
 	// opnsense/dnsmasq.go:12  json:"if_name"
 	"opnsense.dnsmasqLeaseRow.IfName": "The kernel device name for a dnsmasq lease, the third spelling of the same interface " +
 		"alongside if and if_descr. Whichever of these becomes a label, it should be one of " +
 		"them, not all three.",
-	// opnsense/dnsmasq.go:13  json:"mac_info"
-	"opnsense.dnsmasqLeaseRow.MacInfo": "SHOULD BE EXPORTED, tracked by #556. Same OUI vendor enrichment as #534's " +
-		"manufacturer label — the Kea collector already reads its identical mac_info field " +
-		"into a Vendor field, so dnsmasq is simply inconsistent with it.",
 	// opnsense/dyndns.go:32  json:"current"
 	"opnsense.dyndnsAccountSearchResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
@@ -345,10 +319,6 @@ var Exemptions = map[string]string{
 		"protocol-statistics payload, not just the slice we export. Which counters become " +
 		"metrics is a catalogue decision (five sections are consumed today, #545); the field " +
 		"is not a dropped dimension of anything already exported.",
-	// opnsense/firewall_rules.go:81  json:"protocol"
-	"opnsense.firewallRule.Protocol": "SHOULD BE EXPORTED, tracked by #558. Per-rule protocol is a bounded label " +
-		"(tcp/udp/icmp/any) on rules that already carry a series, and it is the dimension " +
-		"that says WHAT a rule matches.",
 	// opnsense/firewall_rules.go:78  json:"interface"
 	"opnsense.firewallRule.RawInterface": "The raw interface identifier behind the resolved interface label the rule metrics " +
 		"already carry. Kept so the resolver has its input; exporting both forms would double " +
@@ -546,12 +516,6 @@ var Exemptions = map[string]string{
 	"opnsense.hostDiscoveryRow.IPAddress": "Per-host identity on an inventory row. The collector exports bounded interface x " +
 		"source group counts; a MAC/IP label would be one series per host with no aggregate " +
 		"behind it.",
-	// opnsense/hostdiscovery.go:25  json:"organization_name"
-	"opnsense.hostDiscoveryRow.OrganizationName": "SHOULD BE EXPORTED, tracked by #557. This is the same OUI vendor signal as #534's " +
-		"ARP/NDP manufacturer label, on a persistent inventory rather than a volatile table. " +
-		"The FetchHostDiscovery doc comment rejects it as unbounded cardinality, which is " +
-		"wrong: a vendor name is a small bounded set (#534 shipped exactly this label), and " +
-		"the global series budget is 100k against ~4.6k in use.",
 	// opnsense/hostdiscovery.go:36  json:"current"
 	"opnsense.hostDiscoverySearchResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
@@ -696,22 +660,6 @@ var Exemptions = map[string]string{
 	"opnsense.keaLeaseResponse.RowCount": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +
 		"so the live-box schema canary keeps validating the envelope's shape.",
-	// opnsense/kea.go:77  json:"stats"
-	"opnsense.keaLeaseResponse.Stats": "Container for the Kea stats block above — unread only because none of its fields are " +
-		"read yet. It disappears from this ledger the moment the stats are exported.",
-	// opnsense/kea.go:22  json:"active"
-	"opnsense.keaLeaseStats.Active": "SHOULD BE EXPORTED, tracked by #557. Kea's own pool accounting " +
-		"(active/inactive/total) is the pool-exhaustion signal, and the collector currently " +
-		"derives lease counts from the rows instead of reading the stats block the API " +
-		"already returns.",
-	// opnsense/kea.go:23  json:"inactive"
-	"opnsense.keaLeaseStats.Inactive": "SHOULD BE EXPORTED, tracked by #557. Kea's own pool accounting " +
-		"(active/inactive/total) is the pool-exhaustion signal the row-derived counts cannot " +
-		"express.",
-	// opnsense/kea.go:24  json:"total"
-	"opnsense.keaLeaseStats.Total": "SHOULD BE EXPORTED, tracked by #557. Kea's own pool accounting " +
-		"(active/inactive/total) is the pool-exhaustion signal the row-derived counts cannot " +
-		"express.",
 	// opnsense/mbuf.go:44  json:"percentage"
 	"opnsense.mbufStatisticsData.BytesPercent": "Percentage the API computes from figures the collector already exports as raw " +
 		"counters. A ratio belongs in PromQL, not in a series — deliberately dropped.",
@@ -719,10 +667,6 @@ var Exemptions = map[string]string{
 	"opnsense.mbufStatisticsData.MbufAndCluster": "Derivable: the API's own sum of the mbuf and cluster counts, both of which are " +
 		"already exported separately. A precomputed sum belongs in PromQL, not in its own " +
 		"series.",
-	// opnsense/mbuf.go:13  json:"mbuf-max"
-	"opnsense.mbufStatisticsData.MbufMax": "SHOULD BE EXPORTED, tracked by #557. cluster-max and jumbo-max are both exported " +
-		"as ceilings and mbuf-max is not, so the mbuf pool is the only one whose current/max " +
-		"saturation ratio cannot be computed. An inconsistency rather than a decision.",
 	// opnsense/monit.go:122  json:"pendingaction"
 	"opnsense.monitServiceXML.PendingAction": "Transient monit action id, meaningful only between a request and its execution. It " +
 		"would be zero on essentially every scrape and cannot be sampled reliably.",
@@ -1211,10 +1155,6 @@ var Exemptions = map[string]string{
 	// opnsense/syslog.go:7  json:"Description"
 	"opnsense.syslogStatRow.Description": "Human description of a syslog target. The exported identity is the target name; the " +
 		"description is free text an operator edits.",
-	// opnsense/syslog.go:11  json:"State"
-	"opnsense.syslogStatRow.State": "SHOULD BE EXPORTED, tracked by #558. Per-target syslog state — a stalled or " +
-		"errored remote target is exactly the failure this collector should catch, and only " +
-		"the byte/message counters are exported today.",
 	// opnsense/syslog.go:19  json:"current"
 	"opnsense.syslogStatsResponse.Current": "Bootgrid envelope pagination field. The exporter asks for every row in a single page " +
 		"and counts the rows it decoded, so page state is never consulted; it stays decoded " +

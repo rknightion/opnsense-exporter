@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **57 alert rules** and **14 recording rules**.
+Total: **59 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -731,6 +731,64 @@ time() - opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds
 
 **Verify recovery:**
 - A prefix_updated event lands and the age drops back to near zero
+
+## OPNsenseDHCP6AddressExpiring
+
+**Severity:** critical  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-dhcp6-address-expiring`
+
+**Expression:**
+```promql
+opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds - time()
+```
+
+**What it measures:** The valid-lifetime deadline dhcp6c last reported for the WAN address lease, minus now. Negative means it has passed with nothing refreshing it.
+
+**Threshold & window:** lt 0 sustained for 10m, same shape as OPNsenseDHCP6PrefixExpiring - the for_min exists so a renewal landing a moment late does not page.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No series means either no address-lease line has been seen since the exporter started (normal on a PD-only WAN), or the address was explicitly removed - ClearDHCP6CAddress deletes the series rather than freezing it, so absence here can mean a clean removal rather than an unreported expiry.
+
+**First checks:**
+- Check the WAN DHCPv6 Client Messages panel for sent renew climbing with no matching received
+- Check whether an address_lease_removed event landed just before the series went absent - that is a clean teardown, not a silent failure
+- Confirm the v4 side is healthy - if both stopped at once this is a link problem, not a DHCPv6 one
+
+**Likely causes:**
+- The upstream DHCPv6 server stopped answering Renew/Request, so the lease was never refreshed
+- The ISP withdrew the address
+- dhcp6c died or is wedged on the WAN interface
+
+**Verify recovery:**
+- An address_lease_created or address_lease_updated event appears and the deadline resets to a positive value
+
+## OPNsenseDHCP6AddressNotRefreshing
+
+**Severity:** warning  
+**Pending window:** 15m0s  
+**Rule name:** `opnsense-dhcp6-address-not-refreshing`
+
+**Expression:**
+```promql
+time() - opnsense_log_events_dhcp6c_address_updated_timestamp_seconds
+```
+
+**What it measures:** Time since the last address-lease create/update line from dhcp6c for this interface.
+
+**Threshold & window:** gt 7200s (2h), for_min=15 - same 2x-observed-refresh-interval sizing as OPNsenseDHCP6PrefixNotRefreshing (pltime=1125 observed on the captured box). Retune to 2x whatever pltime your ISP actually hands out.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No series means either no IA_NA address lease on this box (normal on a PD-only WAN) or the lease was cleanly removed.
+
+**First checks:**
+- Check the WAN DHCPv6 Client Messages panel: sent renew/request with no received reply means the upstream has gone quiet
+- Check the valid-expiry countdown for how much time is actually left before it matters
+
+**Likely causes:**
+- The upstream DHCPv6 server has stopped responding to Renew/Request
+- dhcp6c is wedged - it may still be sending without processing replies
+
+**Verify recovery:**
+- An address_lease_created or address_lease_updated event lands and the age drops back to near zero
 
 ## OPNsenseDHCP6AllocationFailures
 

@@ -11,11 +11,14 @@ import (
 // an OPNsense response and never read in production code. The audit must surface
 // every one of them; they are the regression set for the analysis itself, quite
 // apart from whether the ledger then exempts them.
+// The set shrinks as the audit's own findings get acted on: OrganizationName
+// (#557), Driver and HWOffloadCapabilities (#555) were all on this list and are
+// now read in production, so keeping them here would assert the opposite of what
+// is true. ndpEntry.Expire is the one that must never leave without being fixed
+// first — it is the case a textual scan misses, so it is what proves the analysis
+// is doing real type-aware work rather than grepping.
 var acceptanceFindings = []string{
 	"opnsense.ndpEntry.Expire",
-	"opnsense.hostDiscoveryRow.OrganizationName",
-	"opnsense.InterfaceDetails.Driver",
-	"opnsense.InterfaceDetails.HWOffloadCapabilities",
 }
 
 func auditOnce(t *testing.T) []Finding {

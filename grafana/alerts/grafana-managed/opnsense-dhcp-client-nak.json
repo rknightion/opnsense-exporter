@@ -26,7 +26,7 @@
       "description": "The upstream DHCP server is refusing the address this box is currently using on {{ $labels.interface }}. A NAK forces dhclient back to DISCOVER, so the WAN address is about to change or be lost.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcpclientnak",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "270"
+      "__panelId__": "272"
     },
     "expressions": {
       "A": {

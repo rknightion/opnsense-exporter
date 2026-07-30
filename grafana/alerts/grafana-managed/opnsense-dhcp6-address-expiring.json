@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-dhcp-client-lease-overdue",
+    "name": "opnsense-dhcp6-address-expiring",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,10 +11,10 @@
     }
   },
   "spec": {
-    "title": "OPNsenseDHCPClientLeaseRenewalOverdue",
+    "title": "OPNsenseDHCP6AddressExpiring",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "15m0s",
+    "for": "10m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -22,11 +22,11 @@
       "severity": "critical"
     },
     "annotations": {
-      "summary": "OPNsense WAN DHCP renewal overdue on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
-      "description": "dhclient's renewal deadline for {{ $labels.interface }} has passed without a new lease being bound. The WAN address is on borrowed time: once the full lease expires the box loses the address entirely. This fires hours before that happens, which is the entire point of it.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcpclientleaserenewaloverdue",
+      "summary": "OPNsense WAN IPv6 address lease expired on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+      "description": "The valid lifetime of the IA_NA address lease on {{ $labels.interface }} has run out with no refresh. dhcp6c has lost this firewall's own WAN IPv6 address.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6addressexpiring",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "274"
+      "__panelId__": "278"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds - time()",
+          "expr": "opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds - time()",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

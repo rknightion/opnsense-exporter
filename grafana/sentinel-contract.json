@@ -1044,6 +1044,7 @@
           "OPNsense Exporter > Services",
           "OPNsense Exporter > Services > Syslog",
           "OPNsense Exporter > Services > Syslog > Syslog-ng Overview",
+          "OPNsense Exporter > Services > Syslog > Syslog-ng Target States",
           "OPNsense Exporter > Services > Syslog > Syslog-ng Throughput"
         ]
       },

@@ -102,7 +102,7 @@ class RunbookDocumentParityTest(unittest.TestCase):
         cls.markdown = build_rules.generate_runbooks_md()
         cls.headings = _headings(cls.markdown)
 
-    def test_exact_alert_count_is_57(self):
+    def test_exact_alert_count_is_59(self):
         # Re-measured against current main (#430 audit found the tracked issue's
         # figures - 31/19 rows - stale; the epic's 2026-07-27 revalidation corrected
         # it to 42/14, confirmed again here structurally). 43 since #520 added
@@ -111,8 +111,10 @@ class RunbookDocumentParityTest(unittest.TestCase):
         # rules (#541). 53 since wave 2: two kernel-zone rules (#543) and one
         # default-route-missing (#544). 56 since wave 3: three DHCPv6 rules (#546) -
         # prefix expiring, prefix not refreshing, and kea-dhcp6 allocation failures.
-        # 57 since #559 added OPNsenseCPUStreamStalled.
-        self.assertEqual(len(build_rules.RULES), 57)
+        # 57 since #559 added OPNsenseCPUStreamStalled. 59 since #560 added
+        # OPNsenseDHCP6AddressExpiring and OPNsenseDHCP6AddressNotRefreshing, the
+        # IA_NA WAN-address-lease twin of the two #546 prefix rules.
+        self.assertEqual(len(build_rules.RULES), 59)
 
     def test_exact_recording_count_is_14(self):
         self.assertEqual(len(build_rules.RECORDING), 14)

@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-dhcp-client-lease-overdue",
+    "name": "opnsense-dhcp6-address-not-refreshing",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,7 +11,7 @@
     }
   },
   "spec": {
-    "title": "OPNsenseDHCPClientLeaseRenewalOverdue",
+    "title": "OPNsenseDHCP6AddressNotRefreshing",
     "noDataState": "Ok",
     "execErrState": "Error",
     "for": "15m0s",
@@ -19,14 +19,14 @@
       "interval": "1m"
     },
     "labels": {
-      "severity": "critical"
+      "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense WAN DHCP renewal overdue on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
-      "description": "dhclient's renewal deadline for {{ $labels.interface }} has passed without a new lease being bound. The WAN address is on borrowed time: once the full lease expires the box loses the address entirely. This fires hours before that happens, which is the entire point of it.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcpclientleaserenewaloverdue",
+      "summary": "OPNsense WAN IPv6 address lease has not refreshed on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+      "description": "Nothing has created or refreshed the WAN IPv6 address lease on {{ $labels.interface }} for over two hours. The lease is still valid, so nothing has broken yet - this is the leading indicator that fires while there is still time to act, ahead of OPNsenseDHCP6AddressExpiring.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6addressnotrefreshing",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "274"
+      "__panelId__": "278"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds - time()",
+          "expr": "time() - opnsense_log_events_dhcp6c_address_updated_timestamp_seconds",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,9 +63,9 @@
           "conditions": [
             {
               "evaluator": {
-                "type": "lt",
+                "type": "gt",
                 "params": [
-                  0,
+                  7200,
                   0
                 ]
               },
