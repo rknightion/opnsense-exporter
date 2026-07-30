@@ -78,9 +78,16 @@ const hostDiscoveryRecentWindow = 15 * time.Minute
 // negative-cached: PluginGatedEndpoints exists for plugin installs, which can
 // toggle at runtime, whereas an OPNsense version cannot.
 //
-// Never emits per-host series: ether_address/ip_address (and the free-text
-// organization_name OUI vendor) are unbounded cardinality and are decoded
-// only for schema fidelity, never surfaced as labels or otherwise used.
+// Never emits per-host series: ether_address and ip_address are one value per
+// host, so they are decoded for schema fidelity and never surfaced as labels.
+//
+// organization_name is NOT in that category, and an earlier version of this
+// comment was wrong to lump it in as "unbounded cardinality". It is the OUI
+// vendor of the MAC — a small bounded set that #534 already ships as a
+// `manufacturer` label on arp_table/ndp — and the global series budget is 100k
+// against roughly 4.6k in use. It is unread because nobody has exported it yet,
+// not because it was rejected on cardinality grounds; cmd/fieldaudit's ledger
+// records it as such.
 func (c *Client) FetchHostDiscovery() (HostDiscoveryInventory, *APICallError) {
 	var resp hostDiscoverySearchResponse
 	var data HostDiscoveryInventory

@@ -33,7 +33,7 @@ export PATH := $(TOOLS_DIR):$(PATH)
 GOEXPERIMENT ?= goroutineleakprofile
 
 .PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
-        schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
+        fieldaudit schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
         print-go-licenses-module tools-kubeconform deployment-test testbed-test
 default:
 	GOEXPERIMENT=$(GOEXPERIMENT) go build \
@@ -188,6 +188,15 @@ grafana-check:
 grafana-test:
 	cd grafana && python3 -m unittest discover -s tests -t . -q
 	go test -C tools/promqlcheck ./...
+
+# Report struct fields in package opnsense that are unmarshalled from an API
+# response and then never read — the mechanical form of the #544 mistake, where a
+# per-row payload is decoded and its identifying dimension quietly dropped. This
+# target is the readable report; the same analysis runs as a unit test
+# (cmd/fieldaudit/audit_test.go), so `make test` and CI already gate on it. Add
+# `ARGS=-all` to list the exempted fields and their written reasons too.
+fieldaudit:
+	go run ./cmd/fieldaudit $(ARGS)
 
 # Regenerate the committed structure-only golden schemas (opnsense/testdata/schemas/)
 # from the response structs (cmd/apischema). Run after changing any response
