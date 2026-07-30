@@ -852,6 +852,59 @@ RULES = [
                 'A prefix_updated event lands and the age drops back to near zero',
             ],
          )),
+    # #560: the IA_NA WAN-address-lease twin of the two prefix alerts above, for a box
+    # that takes its own WAN address directly by DHCPv6 rather than only a delegated
+    # prefix. Same reasoning throughout: absolute deadlines exported, countdown done
+    # in the alert expression, only the VALID deadline pages.
+    dict(name="opnsense-dhcp6-address-expiring", title="OPNsenseDHCP6AddressExpiring",
+         A="opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds - time()",
+         op="lt", params=[0, 0], for_min=10, severity="critical",
+         summary="OPNsense WAN IPv6 address lease expired on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="The valid lifetime of the IA_NA address lease on {{ $labels.interface }} "
+                     "has run out with no refresh. dhcp6c has lost this firewall's own WAN IPv6 "
+                     "address.",
+         runbook=dict(
+             measures='The valid-lifetime deadline dhcp6c last reported for the WAN address lease, minus now. Negative means it has passed with nothing refreshing it.',
+             threshold='lt 0 sustained for 10m, same shape as OPNsenseDHCP6PrefixExpiring - the for_min exists so a renewal landing a moment late does not page.',
+             absent='Default noDataState (Ok). No series means either no address-lease line has been seen since the exporter started (normal on a PD-only WAN), or the address was explicitly removed - ClearDHCP6CAddress deletes the series rather than freezing it, so absence here can mean a clean removal rather than an unreported expiry.',
+             checks=[
+                'Check the WAN DHCPv6 Client Messages panel for sent renew climbing with no matching received',
+                'Check whether an address_lease_removed event landed just before the series went absent - that is a clean teardown, not a silent failure',
+                'Confirm the v4 side is healthy - if both stopped at once this is a link problem, not a DHCPv6 one',
+            ],
+             causes=[
+                'The upstream DHCPv6 server stopped answering Renew/Request, so the lease was never refreshed',
+                'The ISP withdrew the address',
+                'dhcp6c died or is wedged on the WAN interface',
+            ],
+             verify=[
+                'An address_lease_created or address_lease_updated event appears and the deadline resets to a positive value',
+            ],
+         )),
+    dict(name="opnsense-dhcp6-address-not-refreshing", title="OPNsenseDHCP6AddressNotRefreshing",
+         A="time() - opnsense_log_events_dhcp6c_address_updated_timestamp_seconds",
+         op="gt", params=[7200, 0], for_min=15, severity="warning",
+         summary="OPNsense WAN IPv6 address lease has not refreshed on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="Nothing has created or refreshed the WAN IPv6 address lease on "
+                     "{{ $labels.interface }} for over two hours. The lease is still valid, so "
+                     "nothing has broken yet - this is the leading indicator that fires while "
+                     "there is still time to act, ahead of OPNsenseDHCP6AddressExpiring.",
+         runbook=dict(
+             measures='Time since the last address-lease create/update line from dhcp6c for this interface.',
+             threshold='gt 7200s (2h), for_min=15 - same 2x-observed-refresh-interval sizing as OPNsenseDHCP6PrefixNotRefreshing (pltime=1125 observed on the captured box). Retune to 2x whatever pltime your ISP actually hands out.',
+             absent='Default noDataState (Ok). No series means either no IA_NA address lease on this box (normal on a PD-only WAN) or the lease was cleanly removed.',
+             checks=[
+                'Check the WAN DHCPv6 Client Messages panel: sent renew/request with no received reply means the upstream has gone quiet',
+                'Check the valid-expiry countdown for how much time is actually left before it matters',
+            ],
+             causes=[
+                'The upstream DHCPv6 server has stopped responding to Renew/Request',
+                'dhcp6c is wedged - it may still be sending without processing replies',
+            ],
+             verify=[
+                'An address_lease_created or address_lease_updated event lands and the age drops back to near zero',
+            ],
+         )),
     dict(name="opnsense-dhcp6-alloc-failures", title="OPNsenseDHCP6AllocationFailures",
          A="sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[15m]))",
          op="gt", params=[0, 0], for_min=10, severity="warning",
@@ -2085,6 +2138,8 @@ PANEL_LINKS = {
     "OPNsenseDHCPClientScriptFailure": "WAN DHCP Client Script Events (rate)",
     "OPNsenseDHCP6PrefixExpiring": "Delegated IPv6 Prefix Lifetimes",
     "OPNsenseDHCP6PrefixNotRefreshing": "Delegated IPv6 Prefix Lifetimes",
+    "OPNsenseDHCP6AddressExpiring": "WAN IPv6 Address Lease Lifetimes",
+    "OPNsenseDHCP6AddressNotRefreshing": "WAN IPv6 Address Lease Lifetimes",
     "OPNsenseDHCP6AllocationFailures": "DHCPv6 Server Allocation Failures (rate)",
     "OPNsenseNetisrQueueDrops": "NetISR Per-CPU Queue Drops (rate)",
     "OPNsenseNetisrQueueNearLimit": "NetISR Queue Length / Watermark / Limit",

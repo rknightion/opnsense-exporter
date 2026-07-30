@@ -25,9 +25,9 @@ import (
 //	Sending Renew on pppoe0
 //	Received REPLY for RENEW
 //	dhcp6c_script: RENEW on pppoe0 executing
-//	update a prefix 2001:8b0:1f05::/48 pltime=3600, vltime=3600
-//	add an address 2001:8b0:1f05:0:9ab7:85ff:fe21:aff2/64 on ixl0
-//	add an address 2001:8b0:1f05:100:0:ff:fe00:64/64 on ixl0_vlan100
+//	update a prefix 2001:db8::/48 pltime=3600, vltime=3600
+//	add an address 2001:db8:0:9ab7:85ff:fe21:aff2/64 on ixl0
+//	add an address 2001:db8:100:0:ff:fe00:64/64 on ixl0_vlan100
 //
 // EVERY OTHER SHAPE MODELLED HERE IS READ OFF THE FORMAT STRING THAT PRODUCED THE
 // CAPTURED ONE, not guessed. Each captured line is one branch of a `%s`-driven
@@ -60,12 +60,37 @@ import (
 // grammars are matched FIRST, with their literal `dhcp6c_script: ` intact, so that
 // strip can never eat their prefix.
 //
+// THE WAN ADDRESS LEASE (IA_NA), #560. #546 deliberately left addrconf.c's
+// `create|update an address %s pltime=%u, vltime=%u` unmodelled: the reference box
+// was PD-only and never emitted it, and standing up a gauge family on a shape no
+// capture supports is how #284's phantom generation got built. A real capture has
+// since turned up on testbed VM 102 (2026-07-30) — a box that takes its WAN address
+// directly by DHCPv6 rather than only a delegated prefix — so this is now modelled
+// from that capture, not from the format string alone. The address literal in every
+// fixture and comment below is RFC 3849 documentation space (2001:db8::/32); the
+// real capture used a globally-routable prefix, anonymised here because this repo is
+// public (#565).
+//
+// THE LINE CARRIES NO INTERFACE, same trap as the prefix line, resolved the same
+// way: the daemon's PID, taught only by the preceding `Sending … on <iface>`. The
+// FOLLOWING `add an address <addr>/128 on <iface>` line (ifaddrconf.c, already
+// modelled below as a downstream address_added/removed event) happens to name the
+// interface explicitly when the address is the WAN's own, but that is a
+// happenstance of this shape and is not relied on here.
+//
+// UPDATE IS ~66x MORE COMMON THAN CREATE on the captured box, and both must produce
+// the gauge triple — a parser matching only `create` would set the gauges once and
+// then never refresh them, indistinguishable from a stalled lease.
+//
+// REMOVAL CLEARS THE GAUGES rather than leaving them frozen: a frozen lifetime gauge
+// reads as a healthy lease that simply stopped being renewed, which is a worse
+// failure mode than the series disappearing when dhcp6c has told us the lease is
+// gone. The bare `remove an address %s` (no lifetime, no interface) is addrconf.c's
+// own removal call — distinct from ifaddrconf.c's `remove an address %s/%d on %s`
+// matched by reDHCP6CAddress below, which removes a DOWNSTREAM address.
+//
 // DELIBERATELY NOT PARSED: `dhcp6c_script: missing REASON or IFNAME` (it names
-// neither, so the record would be empty of everything a query would filter on), and
-// addrconf.c's `create|update an address %s pltime=%u, vltime=%u` — the IA_NA lease
-// lifetimes. That last one is a real upstream shape, but this box is PD-only and
-// never emits it, and modelling a gauge family for a shape no capture supports is
-// how a phantom generation gets built. Both keep shipping as generic records.
+// neither, so the record would be empty of everything a query would filter on).
 var (
 	// The OPNsense shell script's four `logger` calls. Matched BEFORE the function-name
 	// strip below, because `dhcp6c_script: ` looks exactly like one.
@@ -102,6 +127,17 @@ var (
 	// teach the PID correlation table.
 	reDHCP6CAddress = regexp.MustCompile(
 		`^(add|remove) an address ([0-9a-fA-F:]+)/(\d+) on ([0-9A-Za-z._-]+)$`)
+
+	// addrconf.c's WAN ADDRESS LEASE line (#560) — the IA_NA counterpart of
+	// reDHCP6CPrefix above. No interface, no /<plen>: this is the address itself, not
+	// a downstream configuration event.
+	reDHCP6CAddressLease = regexp.MustCompile(
+		`^(create|update) an address ([0-9a-fA-F:]+) pltime=(\d+), vltime=(\d+)$`)
+
+	// addrconf.c's bare removal of the WAN address lease: no lifetime, no interface.
+	// Distinct from reDHCP6CAddress's `remove an address <addr>/<plen> on <iface>`,
+	// which is ifaddrconf.c removing a DOWNSTREAM address.
+	reDHCP6CAddressLeaseRemove = regexp.MustCompile(`^remove an address ([0-9a-fA-F:]+)$`)
 )
 
 // dhcp6cSentTypes and dhcp6cReplyTypes fold dhcp6c's two spellings of the same
@@ -151,6 +187,14 @@ var (
 	dhcp6cAddressEvents = map[string]string{
 		"add":    dhcp6cEventAddressAdded,
 		"remove": dhcp6cEventAddressRemoved,
+	}
+
+	// dhcp6cAddressLeaseEvents maps addrconf.c's create/update ternary onto the
+	// WAN address-lease event vocabulary (#560) — distinct from dhcp6cAddressEvents
+	// above, which is ifaddrconf.c's downstream add/remove.
+	dhcp6cAddressLeaseEvents = map[string]string{
+		"create": dhcp6cEventAddressLeaseCreated,
+		"update": dhcp6cEventAddressLeaseUpdated,
 	}
 
 	// dhcp6cScriptEvents maps the script's log-line suffix onto the event vocabulary.
@@ -247,6 +291,20 @@ func parseDHCP6C(env Envelope, snap *enrich.Snapshot, _ func(table string)) (log
 		return dhcp6cPrefixRecord(env, snap, m[1], m[2], m[3], m[4], m[5])
 	}
 
+	if m := reDHCP6CAddressLease.FindStringSubmatch(msg); m != nil {
+		return dhcp6cAddressLeaseRecord(env, snap, m[1], m[2], m[3], m[4])
+	}
+
+	if m := reDHCP6CAddressLeaseRemove.FindStringSubmatch(msg); m != nil {
+		rec, set := newRecord(env)
+		set(attrDHCP6CEvent, dhcp6cEventAddressLeaseRemoved)
+		set(attrDHCP6CAddress, m[1])
+		// Same PID correlation as the create/update line: this removal names no
+		// interface either.
+		setDHCP6CInterface(set, snap, dhcp6cIfaces.lookup(env.PID))
+		return rec, true
+	}
+
 	if m := reDHCP6CAddress.FindStringSubmatch(msg); m != nil {
 		event, ok := dhcp6cAddressEvents[m[1]]
 		if !ok {
@@ -315,6 +373,45 @@ func dhcp6cPrefixRecord(env Envelope, snap *enrich.Snapshot, verb, prefix, plen,
 	set(attrDHCP6CPrefixUpdatedTimestamp, strconv.FormatInt(updated, 10))
 	set(attrDHCP6CPrefixPreferredTimestamp, strconv.FormatInt(updated+pl, 10))
 	set(attrDHCP6CPrefixValidTimestamp, strconv.FormatInt(updated+vl, 10))
+	return rec, true
+}
+
+// dhcp6cAddressLeaseRecord builds the WAN address-lease record (#560) — the IA_NA
+// twin of dhcp6cPrefixRecord, for a box that takes its WAN address directly by
+// DHCPv6 rather than only a delegated prefix.
+//
+// Same absolute-timestamp reasoning as dhcp6cPrefixRecord: the base is the line's
+// OWN syslog timestamp, never time.Now(), and an undated line ships with the raw
+// lifetimes but no gauge attributes. pltime and vltime are read independently for
+// the same reason: an ISP deprecating the address ahead of withdrawing it shortens
+// the preferred lifetime first.
+func dhcp6cAddressLeaseRecord(env Envelope, snap *enrich.Snapshot, verb, addr, pltime, vltime string) (logship.Record, bool) {
+	event, ok := dhcp6cAddressLeaseEvents[verb]
+	if !ok {
+		return logship.Record{}, false
+	}
+
+	rec, set := newRecord(env)
+	set(attrDHCP6CEvent, event)
+	// The address ships as an ATTRIBUTE, never a label: it is this firewall's own WAN
+	// address and changes on re-bind, which is one of the conditions this metric
+	// watches for.
+	set(attrDHCP6CAddress, addr)
+	set(attrDHCP6CAddressLeasePreferredSeconds, pltime)
+	set(attrDHCP6CAddressLeaseValidSeconds, vltime)
+	// The line names no interface; resolved from the daemon's PID, same as the prefix
+	// line above.
+	setDHCP6CInterface(set, snap, dhcp6cIfaces.lookup(env.PID))
+
+	pl, plErr := strconv.ParseInt(pltime, 10, 64)
+	vl, vlErr := strconv.ParseInt(vltime, 10, 64)
+	if plErr != nil || vlErr != nil || env.Timestamp.IsZero() {
+		return rec, true
+	}
+	updated := env.Timestamp.Unix()
+	set(attrDHCP6CAddressLeaseUpdatedTimestamp, strconv.FormatInt(updated, 10))
+	set(attrDHCP6CAddressLeasePreferredTimestamp, strconv.FormatInt(updated+pl, 10))
+	set(attrDHCP6CAddressLeaseValidTimestamp, strconv.FormatInt(updated+vl, 10))
 	return rec, true
 }
 

@@ -237,6 +237,18 @@ const (
 	attrDHCP6CPrefixPreferredTimestamp = "dhcp6c.prefix.preferred_expiry_timestamp"
 	attrDHCP6CPrefixValidTimestamp     = "dhcp6c.prefix.valid_expiry_timestamp"
 
+	// The WAN ADDRESS-LEASE (IA_NA) attributes (#560) — addrconf.c's
+	// `create|update an address %s pltime=%u, vltime=%u`, the v6 twin of the v4 WAN
+	// lease #541 covers and the address counterpart of the prefix triple above. Same
+	// absolute-timestamp shape and same reasoning: a countdown recomputed at scrape
+	// time cannot be told apart from a stale one.
+	attrDHCP6CAddressLeasePreferredSeconds = "dhcp6c.address_lease.pltime_seconds"
+	attrDHCP6CAddressLeaseValidSeconds     = "dhcp6c.address_lease.vltime_seconds"
+
+	attrDHCP6CAddressLeaseUpdatedTimestamp   = "dhcp6c.address_lease.updated_timestamp"
+	attrDHCP6CAddressLeasePreferredTimestamp = "dhcp6c.address_lease.preferred_expiry_timestamp"
+	attrDHCP6CAddressLeaseValidTimestamp     = "dhcp6c.address_lease.valid_expiry_timestamp"
+
 	// The message DIRECTION. Two values, decided by which of dhcp6c's two format
 	// strings matched — never by anything on the wire.
 	dhcp6cDirectionSent     = "sent"
@@ -271,6 +283,14 @@ const (
 	dhcp6cEventScriptConnected     = "script_connected"
 	dhcp6cEventScriptPrefixUpdated = "script_prefix_updated"
 	dhcp6cEventScriptIgnored       = "script_ignored"
+
+	// The WAN ADDRESS-LEASE (IA_NA) events (#560): addrconf.c's `create`/`update`
+	// literals on the address-with-lifetimes line, and its bare `remove`. Distinct
+	// from address_added/address_removed above, which are ifaddrconf.c's
+	// downstream-interface configuration events and name neither a lifetime.
+	dhcp6cEventAddressLeaseCreated = "address_lease_created"
+	dhcp6cEventAddressLeaseUpdated = "address_lease_updated"
+	dhcp6cEventAddressLeaseRemoved = "address_lease_removed"
 )
 
 // The kea-dhcp6 ALLOCATION FAILURE vocabularies (#546). dhcp.go writes them;
@@ -765,6 +785,24 @@ func observeDHCP6C(sink logship.MetricSink, attrs map[string]string) bool {
 			attrs[attrDHCP6CInterface], attrs[attrDHCP6CPrefixLength],
 			updated, preferred, valid,
 		) || counted
+	}
+
+	// The WAN ADDRESS-LEASE gauges (#560), the IA_NA twin of the prefix triple above.
+	// Same together-or-not-at-all rule: they come from one line, and a refresh time
+	// with no deadlines leaves "the lease stopped renewing" with nothing to compare
+	// against.
+	addrUpdated, addrUpdatedOK := parseUnixSeconds(attrs[attrDHCP6CAddressLeaseUpdatedTimestamp])
+	addrPreferred, addrPreferredOK := parseUnixSeconds(attrs[attrDHCP6CAddressLeasePreferredTimestamp])
+	addrValid, addrValidOK := parseUnixSeconds(attrs[attrDHCP6CAddressLeaseValidTimestamp])
+	if addrUpdatedOK && addrPreferredOK && addrValidOK {
+		counted = sink.ObserveDHCP6CAddress(attrs[attrDHCP6CInterface], addrUpdated, addrPreferred, addrValid) || counted
+	}
+
+	// An explicit removal CLEARS the gauge rather than leaving a frozen deadline in
+	// place: a frozen lifetime gauge reads as a healthy lease that simply stopped
+	// being renewed, which is worse than the series going absent.
+	if attrs[attrDHCP6CEvent] == dhcp6cEventAddressLeaseRemoved {
+		counted = sink.ClearDHCP6CAddress(attrs[attrDHCP6CInterface]) || counted
 	}
 
 	return counted

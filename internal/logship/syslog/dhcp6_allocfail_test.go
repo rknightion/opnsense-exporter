@@ -50,13 +50,13 @@ func TestKeaDHCP6AllocFailGrammars(t *testing.T) {
 	}{
 		{
 			name:       "captured: the SUBNET scope line - one per failure, but not the counted one",
-			message:    "WARN  [kea-dhcp6.alloc-engine.0x4b6ab5a79810] ALLOC_ENGINE_V6_ALLOC_FAIL_SUBNET duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0x292a15: failed to allocate an IPv6 lease in the subnet 2001:8b0:1f05::/64, subnet-id 1, shared network (none)",
+			message:    "WARN  [kea-dhcp6.alloc-engine.0x4b6ab5a79810] ALLOC_ENGINE_V6_ALLOC_FAIL_SUBNET duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0x292a15: failed to allocate an IPv6 lease in the subnet 2001:db8::/64, subnet-id 1, shared network (none)",
 			wantLine:   keaAllocFailLineSubnet,
 			wantReason: "",
 			wantExtra: map[string]string{
 				"dhcp.duid":                 keaCapturedDUID,
 				"dhcp.tid":                  "0x292a15",
-				"dhcp.alloc_fail_subnet":    "2001:8b0:1f05::/64",
+				"dhcp.alloc_fail_subnet":    "2001:db8::/64",
 				"dhcp.alloc_fail_subnet_id": "1",
 				"dhcp.kea_event":            keaEventAllocFail,
 			},
@@ -116,7 +116,7 @@ func TestKeaDHCP6AllocFailGrammars(t *testing.T) {
 // scope and classes lines are parsed but not counted.
 func TestKeaDHCP6AllocFailBurstCountsExactlyOnce(t *testing.T) {
 	burst := []string{
-		"WARN  [kea-dhcp6.alloc-engine.0x4b6ab5a79810] ALLOC_ENGINE_V6_ALLOC_FAIL_SUBNET duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0x292a15: failed to allocate an IPv6 lease in the subnet 2001:8b0:1f05::/64, subnet-id 1, shared network (none)",
+		"WARN  [kea-dhcp6.alloc-engine.0x4b6ab5a79810] ALLOC_ENGINE_V6_ALLOC_FAIL_SUBNET duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0x292a15: failed to allocate an IPv6 lease in the subnet 2001:db8::/64, subnet-id 1, shared network (none)",
 		"WARN  [kea-dhcp6.alloc-engine.0x4b6ab5a79810] ALLOC_ENGINE_V6_ALLOC_FAIL_NO_POOLS duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0x292a15: no pools were available for the lease allocation",
 		"WARN  [kea-dhcp6.alloc-engine.0x4b6ab5a79810] ALLOC_ENGINE_V6_ALLOC_FAIL_CLASSES duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0x292a15: Failed to allocate an IPv6 address for client with classes: ALL, UNKNOWN",
 	}
@@ -148,7 +148,7 @@ func TestKeaDHCP6AllocFailIdentifiersAreNeverLabels(t *testing.T) {
 
 	for _, call := range sink.calls {
 		for _, arg := range call.args {
-			for _, forbidden := range []string{keaCapturedDUID, "0x292a15", "2001:8b0:1f05::/64"} {
+			for _, forbidden := range []string{keaCapturedDUID, "0x292a15", "2001:db8::/64"} {
 				if arg == forbidden {
 					t.Errorf("%q reached a label on %s", arg, call.method)
 				}
@@ -207,7 +207,7 @@ func TestKeaDHCP4AllocFailIsNotCountedAsV6(t *testing.T) {
 // A normal lease event must keep counting exactly as it did before #546: adding the
 // alloc-fail branch must not disturb the existing dhcp family.
 func TestKeaDHCP6LeaseEventStillCountsAfterAllocFail(t *testing.T) {
-	msg := "INFO  [kea-dhcp6.leases.0x1] DHCP6_LEASE_ALLOC duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0xa492a1: lease for address 2001:8b0:1f05::1057 and iaid=0 has been allocated for 1800 seconds"
+	msg := "INFO  [kea-dhcp6.leases.0x1] DHCP6_LEASE_ALLOC duid=[" + keaCapturedDUID + "], [no hwaddr info], tid=0xa492a1: lease for address 2001:db8::1057 and iaid=0 has been allocated for 1800 seconds"
 	rec, ok := parseDHCP(keaDHCP6Env(t, msg), nil, nil)
 	if !ok {
 		t.Fatal("parseDHCP() ok = false")

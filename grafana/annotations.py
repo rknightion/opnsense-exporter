@@ -417,6 +417,21 @@ NOT_ANNOTATED: dict = {
         "same reason and with the same blocker as the v4 bound timestamp above: "
         "annotating it means adding a kind to internal/annotations, which is outside "
         "#546's scope rather than wrong in principle. Read as an age until then.",
+    "opnsense_log_events_dhcp6c_address_preferred_expiry_timestamp_seconds":
+        "The IA_NA twin of the prefix deadline above (#560), and excluded for exactly the "
+        "same reason: future-dated by construction, so a marker would sit ahead of now. "
+        "Read as a COUNTDOWN on the DHCP tab.",
+    "opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds":
+        "Future-dated by construction - the hard deadline at which the WAN's own IPv6 "
+        "address is removed, which is a connectivity event rather than a downstream one. "
+        "Read as a countdown, not a marker; OPNsenseDHCP6AddressExpiring fires on it.",
+    "opnsense_log_events_dhcp6c_address_updated_timestamp_seconds":
+        "A genuine point-in-time event and a fair future annotation candidate, with the "
+        "same blocker as its prefix and v4 siblings above: annotating it means adding a "
+        "kind to internal/annotations, which is outside #560's scope rather than wrong in "
+        "principle. Read as an age until then. Note this one moves far more often than the "
+        "prefix equivalent - on the captured corpus, address renewals outnumber creations "
+        "roughly 66:1 - so it would be the noisiest of the three as a marker.",
     "opnsense_exporter_collector_snapshot_timestamp_seconds":
         "Advances whenever a collector's buffer is replaced — a per-poll heartbeat.",
     "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds":

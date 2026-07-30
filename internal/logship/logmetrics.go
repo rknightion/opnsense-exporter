@@ -210,6 +210,28 @@ type MetricSink interface {
 	// second delegation of a different size on the same WAN. Two delegations of the
 	// SAME size on one WAN collapse onto one series, last write wins.
 	ObserveDHCP6CPrefix(iface, prefixLength string, updated, preferredExpiry, validExpiry float64) bool
+	// ObserveDHCP6CAddress records this firewall's OWN WAN IPv6 ADDRESS lease state
+	// (#560) — the IA_NA twin of ObserveDHCP6CPrefix, for a WAN that takes its address
+	// directly by DHCPv6 (addrconf.c's `create|update an address %s pltime=%u,
+	// vltime=%u`) rather than only a delegated prefix. Same GAUGE shape: updated,
+	// preferredExpiry and validExpiry are absolute Unix seconds already computed by
+	// the parser from the log line's own timestamp plus dhcp6c's pltime/vltime.
+	//
+	// TIMESTAMPS RATHER THAN COUNTDOWNS, for the reason ObserveDHCPClientLease states.
+	// All three are set TOGETHER or not at all: they come from one line.
+	//
+	// Labelled {interface} ONLY — there is no prefix_length dimension for a single
+	// address. THE ADDRESS ITSELF IS NEVER PASSED HERE and must never be added: it is
+	// this firewall's own WAN address and changes on re-bind, which is one of the
+	// conditions this metric watches for. It stays on the shipped record as
+	// dhcp6c.address.
+	ObserveDHCP6CAddress(iface string, updated, preferredExpiry, validExpiry float64) bool
+	// ClearDHCP6CAddress removes iface's address-lease gauges (#560) when dhcp6c
+	// reports the WAN address REMOVED. Unlike every gauge above, this one is
+	// deliberately allowed to make a series disappear: a frozen lifetime gauge reads
+	// as a healthy lease that simply stopped being renewed, which is a worse failure
+	// mode than the series going absent when the exporter is told the lease is gone.
+	ClearDHCP6CAddress(iface string) bool
 	// ObserveDHCP6AllocFail counts ONE failed DHCPv6 lease allocation by this
 	// firewall's kea-dhcp6 SERVER (#546) — a v6 client that was refused a lease.
 	// reason is a CLOSED code-defined vocabulary of exactly two values: no_pools (not
@@ -320,6 +342,9 @@ func (NopMetricSink) ObserveDHCP6CEvent(_, _, _ string) bool   { return true }
 func (NopMetricSink) ObserveDHCP6AllocFail(_ string) bool      { return true }
 
 func (NopMetricSink) ObserveDHCP6CPrefix(_, _ string, _, _, _ float64) bool { return true }
+
+func (NopMetricSink) ObserveDHCP6CAddress(_ string, _, _, _ float64) bool { return true }
+func (NopMetricSink) ClearDHCP6CAddress(_ string) bool                    { return true }
 
 func (NopMetricSink) ObserveUPnP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }

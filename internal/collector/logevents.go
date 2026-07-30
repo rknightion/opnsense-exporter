@@ -119,6 +119,13 @@ type (
 	// across a re-delegation, and the only thing that tells a second differently-sized
 	// delegation apart from the first.
 	dhcp6cPrefixKey struct{ iface, prefixLength string }
+	// dhcp6cAddressKey is the WAN ADDRESS-LEASE gauge family's key (#560), the IA_NA
+	// twin of dhcp6cPrefixKey — the interface alone, mirroring dhcpClientLeaseKey.
+	// THE ADDRESS ITSELF IS DELIBERATELY ABSENT: it is this firewall's own WAN
+	// address and changes on re-bind, which is one of the conditions this family
+	// watches for. There is no prefix_length dimension here — a single address has
+	// none.
+	dhcp6cAddressKey struct{ iface string }
 	// dhcp6AllocFailKey is the kea-dhcp6 allocation-failure tuple: the reason alone.
 	// THE DUID, THE TRANSACTION ID AND THE SUBNET ARE DELIBERATELY ABSENT — a DUID is
 	// unbounded and identifies a client, a tid is unique per exchange and would mint a
@@ -170,6 +177,7 @@ const (
 	logFamilyDHCP6CMessage    = "dhcp6c_message"
 	logFamilyDHCP6CEvent      = "dhcp6c_event"
 	logFamilyDHCP6CPrefix     = "dhcp6c_prefix"
+	logFamilyDHCP6CAddress    = "dhcp6c_address"
 	logFamilyDHCP6AllocFail   = "dhcp6_alloc_fail"
 	// logFamilyZenarmorDevice reports the device inventory's saturation through the
 	// same cardinality_capped/keys metrics as every counter family, so a truncated
@@ -236,6 +244,13 @@ type dhcpClientLeaseValue struct{ bound, renewal float64 }
 // and collapsing them would hide exactly that warning.
 type dhcp6cPrefixValue struct{ updated, preferredExpiry, validExpiry float64 }
 
+// dhcp6cAddressValue is the triple of absolute Unix timestamps one WAN interface's
+// OWN IA_NA address lease is described by (#560) — the address counterpart of
+// dhcp6cPrefixValue, for a box that takes its WAN address directly by DHCPv6 rather
+// than only a delegated prefix. Same together-or-not-at-all reasoning as
+// dhcp6cPrefixValue.
+type dhcp6cAddressValue struct{ updated, preferredExpiry, validExpiry float64 }
+
 // cappedGauge is a LAST-VALUE map with the same insert-time key budget as
 // cappedCounter, for families whose observation is current state rather than a
 // running total.
@@ -282,6 +297,15 @@ func (g *cappedGauge[K, V]) set(k K, v V) {
 // the owning goroutine.
 func (g *cappedGauge[K, V]) snapshot() (map[K]V, float64) { return g.m, g.overflow }
 
+// unset removes k entirely, so its series stops being emitted rather than being
+// left at a frozen last value (#560). Deliberately NOT the default behaviour for
+// every gauge family — dhcpClientLeaseKey and dhcp6cPrefixKey are current state with
+// no "the lease is gone" signal on the wire, so a vanished series there would read
+// as "the interface went away" rather than "no new bind happened". This exists only
+// for a family whose source data can say so explicitly: dhcp6c's address-lease
+// REMOVED event. A key that was never present is a no-op.
+func (g *cappedGauge[K, V]) unset(k K) { delete(g.m, k) }
+
 // setMax retunes the budget in place. Lowering it below the current size does not
 // evict, mirroring cappedCounter.setMax — and here eviction would be worse than a
 // counter reset, because a dropped gauge series simply disappears from the dashboard.
@@ -309,6 +333,8 @@ const (
 	logEventObserveDHCP6CMessage
 	logEventObserveDHCP6CEvent
 	logEventObserveDHCP6CPrefix
+	logEventObserveDHCP6CAddress
+	logEventClearDHCP6CAddress
 	logEventObserveDHCP6AllocFail
 	logEventObserveZenarmor
 	logEventObserveZenarmorDevice
@@ -353,7 +379,10 @@ type logEventSnapshot struct {
 	dhcp6cMsg []keyed[dhcp6cMessageKey]
 	dhcp6cEvt []keyed[dhcp6cEventKey]
 	// dhcp6cPrefix is the second GAUGE family: current delegation state, not drained.
-	dhcp6cPrefix   []keyedValue[dhcp6cPrefixKey, dhcp6cPrefixValue]
+	dhcp6cPrefix []keyedValue[dhcp6cPrefixKey, dhcp6cPrefixValue]
+	// dhcp6cAddr is the WAN address-lease GAUGE family (#560): current state, not
+	// drained, mirroring dhcp6cPrefix.
+	dhcp6cAddr     []keyedValue[dhcp6cAddressKey, dhcp6cAddressValue]
 	dhcp6AllocFail []keyed[dhcp6AllocFailKey]
 	zen            []keyed[zenKey]
 	zenDevs        []inventoryEntry[string, zenDeviceAttrs]
@@ -408,6 +437,7 @@ type LogEventStore struct {
 	dhcp6cMsg        *cappedCounter[dhcp6cMessageKey]
 	dhcp6cEvt        *cappedCounter[dhcp6cEventKey]
 	dhcp6cPrefix     *cappedGauge[dhcp6cPrefixKey, dhcp6cPrefixValue]
+	dhcp6cAddr       *cappedGauge[dhcp6cAddressKey, dhcp6cAddressValue]
 	dhcp6AllocFail   *cappedCounter[dhcp6AllocFailKey]
 	zen              *cappedCounter[zenKey]
 	zenDevs          *boundedInventory[string, zenDeviceAttrs]
@@ -445,6 +475,7 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		dhcp6cMsg:      newCappedCounter[dhcp6cMessageKey](defaultMaxLogEventKeys),
 		dhcp6cEvt:      newCappedCounter[dhcp6cEventKey](defaultMaxLogEventKeys),
 		dhcp6cPrefix:   newCappedGauge[dhcp6cPrefixKey, dhcp6cPrefixValue](defaultMaxLogEventKeys),
+		dhcp6cAddr:     newCappedGauge[dhcp6cAddressKey, dhcp6cAddressValue](defaultMaxLogEventKeys),
 		dhcp6AllocFail: newCappedCounter[dhcp6AllocFailKey](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 		zenDevs:        newBoundedInventory[string, zenDeviceAttrs](maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceName),
@@ -602,6 +633,23 @@ func (s *LogEventStore) ObserveDHCP6CPrefix(iface, prefixLength string, updated,
 	})
 }
 
+// ObserveDHCP6CAddress implements logship.MetricSink. A GAUGE observation, the IA_NA
+// twin of ObserveDHCP6CPrefix: all three values are absolute Unix seconds and
+// OVERWRITE this interface's previous triple rather than accumulating.
+func (s *LogEventStore) ObserveDHCP6CAddress(iface string, updated, preferredExpiry, validExpiry float64) bool {
+	return s.observe(logEventCommand{
+		kind:   logEventObserveDHCP6CAddress,
+		values: [7]string{iface},
+		nums:   [3]float64{updated, preferredExpiry, validExpiry},
+	})
+}
+
+// ClearDHCP6CAddress implements logship.MetricSink. Removes iface's row entirely
+// rather than leaving a frozen last value in place.
+func (s *LogEventStore) ClearDHCP6CAddress(iface string) bool {
+	return s.observe(logEventCommand{kind: logEventClearDHCP6CAddress, values: [7]string{iface}})
+}
+
 // ObserveDHCP6AllocFail implements logship.MetricSink.
 func (s *LogEventStore) ObserveDHCP6AllocFail(reason string) bool {
 	return s.observe(logEventCommand{kind: logEventObserveDHCP6AllocFail, values: [7]string{reason}})
@@ -692,6 +740,14 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 			preferredExpiry: cmd.nums[1],
 			validExpiry:     cmd.nums[2],
 		})
+	case logEventObserveDHCP6CAddress:
+		s.dhcp6cAddr.set(dhcp6cAddressKey{v[0]}, dhcp6cAddressValue{
+			updated:         cmd.nums[0],
+			preferredExpiry: cmd.nums[1],
+			validExpiry:     cmd.nums[2],
+		})
+	case logEventClearDHCP6CAddress:
+		s.dhcp6cAddr.unset(dhcp6cAddressKey{v[0]})
 	case logEventObserveDHCP6AllocFail:
 		s.dhcp6AllocFail.inc(dhcp6AllocFailKey{v[0]})
 	case logEventObserveZenarmor:
@@ -718,6 +774,7 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.dhcp6cMsg.setMax(cmd.maxKeys)
 		s.dhcp6cEvt.setMax(cmd.maxKeys)
 		s.dhcp6cPrefix.setMax(cmd.maxKeys)
+		s.dhcp6cAddr.setMax(cmd.maxKeys)
 		s.dhcp6AllocFail.setMax(cmd.maxKeys)
 		s.zen.setMax(cmd.maxKeys)
 		close(cmd.ack)
@@ -778,6 +835,11 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.sat = append(snap.sat, sat)
 	// The prefix GAUGES are copied, not drained, for the same reason the lease pair is.
 	snap.dhcp6cPrefix, sat = copyGaugeFamily(logFamilyDHCP6CPrefix, s.dhcp6cPrefix)
+	snap.sat = append(snap.sat, sat)
+	// The address-lease GAUGES are copied too, not drained, for the same reason —
+	// EXCEPT that ClearDHCP6CAddress can remove a row outright on an explicit removal
+	// event, which is the one deliberate way this family's series can disappear.
+	snap.dhcp6cAddr, sat = copyGaugeFamily(logFamilyDHCP6CAddress, s.dhcp6cAddr)
 	snap.sat = append(snap.sat, sat)
 	snap.dhcp6AllocFail, sat = drainFamily(logFamilyDHCP6AllocFail, s.dhcp6AllocFail)
 	snap.sat = append(snap.sat, sat)
@@ -876,6 +938,9 @@ type logEventsCollector struct {
 	dhcp6cPrefixUpdated  *prometheus.Desc
 	dhcp6cPrefixPrefExp  *prometheus.Desc
 	dhcp6cPrefixValidExp *prometheus.Desc
+	dhcp6cAddrUpdated    *prometheus.Desc
+	dhcp6cAddrPrefExp    *prometheus.Desc
+	dhcp6cAddrValidExp   *prometheus.Desc
 	dhcp6AllocFail       *prometheus.Desc
 
 	capped  *prometheus.Desc
@@ -1174,6 +1239,35 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 			"that sends pltime == vltime.",
 		[]string{"interface", "prefix_length"},
 	)
+	c.dhcp6cAddrUpdated = buildPrometheusDesc(c.subsystem, "dhcp6c_address_updated_timestamp_seconds",
+		"Unix time at which this interface's OWN WAN IPv6 address (an IA_NA lease, not a delegated "+
+			"prefix) was last created or refreshed, from dhcp6c's 'create|update an address <addr> "+
+			"pltime=<n>, vltime=<n>' line (#560) - the address counterpart of "+
+			"opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds, for a WAN that takes its "+
+			"address directly by DHCPv6 rather than only a delegated prefix. Set only by an actual "+
+			"lease update, so it stands still between renewals by design. THE ADDRESS ITSELF IS "+
+			"DELIBERATELY NOT A LABEL even though it is this firewall's own: it changes on re-bind, "+
+			"which is one of the conditions this gauge watches for. It ships as dhcp6c.address on the "+
+			"log record. There is no prefix_length dimension here - a single address has none.",
+		[]string{"interface"},
+	)
+	c.dhcp6cAddrPrefExp = buildPrometheusDesc(c.subsystem, "dhcp6c_address_preferred_expiry_timestamp_seconds",
+		"Unix time at which this interface's OWN WAN IPv6 address stops being PREFERRED: the time of "+
+			"the last address-lease line plus the pltime it carried. A DEADLINE, not a countdown, same "+
+			"reasoning as the prefix gauge beside it - a countdown recomputed at scrape time is "+
+			"indistinguishable from a stale one. Alert on it directly: '<metric> - time() < 0'.",
+		[]string{"interface"},
+	)
+	c.dhcp6cAddrValidExp = buildPrometheusDesc(c.subsystem, "dhcp6c_address_valid_expiry_timestamp_seconds",
+		"Unix time at which this interface's OWN WAN IPv6 address stops being VALID: the time of the "+
+			"last address-lease line plus the vltime it carried. Same deadline-not-countdown shape as "+
+			"the preferred gauge beside it. When it passes without a refresh, dhcp6c has lost the WAN "+
+			"address itself. THIS SERIES CAN DISAPPEAR ON PURPOSE: unlike every other gauge in this "+
+			"family, an explicit 'remove an address <addr>' line (no lifetime, no interface) clears "+
+			"this interface's row entirely rather than leaving a frozen deadline in place - a frozen "+
+			"gauge would read as a healthy lease that simply stopped renewing.",
+		[]string{"interface"},
+	)
 	c.dhcp6AllocFail = buildPrometheusDesc(c.subsystem, "dhcp6_alloc_fail_total",
 		"DHCPv6 lease allocations this firewall's kea-dhcp6 SERVER refused, by closed reason - a "+
 			"LAN client that asked for an IPv6 address or prefix and did not get one. reason is "+
@@ -1243,6 +1337,9 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dhcp6cPrefixUpdated
 	ch <- c.dhcp6cPrefixPrefExp
 	ch <- c.dhcp6cPrefixValidExp
+	ch <- c.dhcp6cAddrUpdated
+	ch <- c.dhcp6cAddrPrefExp
+	ch <- c.dhcp6cAddrValidExp
 	ch <- c.dhcp6AllocFail
 	ch <- c.capped
 	ch <- c.keys
@@ -1400,6 +1497,16 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 			p.k.iface, p.k.prefixLength, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.dhcp6cPrefixValidExp, prometheus.GaugeValue, p.v.validExpiry,
 			p.k.iface, p.k.prefixLength, c.instance)
+	}
+	// The three address-lease GAUGES come from one stored triple per interface, same
+	// together reasoning as the prefix triple above.
+	for _, p := range snap.dhcp6cAddr {
+		ch <- prometheus.MustNewConstMetric(c.dhcp6cAddrUpdated, prometheus.GaugeValue, p.v.updated,
+			p.k.iface, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.dhcp6cAddrPrefExp, prometheus.GaugeValue, p.v.preferredExpiry,
+			p.k.iface, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.dhcp6cAddrValidExp, prometheus.GaugeValue, p.v.validExpiry,
+			p.k.iface, c.instance)
 	}
 	for _, p := range snap.dhcp6AllocFail {
 		ch <- prometheus.MustNewConstMetric(c.dhcp6AllocFail, prometheus.CounterValue, p.v,

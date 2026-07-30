@@ -651,15 +651,16 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 	// inventory is exactly as invisible as a truncated counter. dhcp_client_lease is
 	// the one GAUGE family and reports through the same pair for the same reason.
 	// #546 added four more: dhcp6c_message, dhcp6c_event, the dhcp6c_prefix GAUGE
-	// family, and dhcp6_alloc_fail.
+	// family, and dhcp6_alloc_fail. #560 added a fifth: the dhcp6c_address GAUGE
+	// family, the IA_NA WAN-address-lease twin of dhcp6c_prefix.
 	// Bump it when a family is added — the point of the count is that EVERY family
 	// publishes its saturation pair from zero, so a family wired into the store without
 	// a saturation entry fails here rather than going unmonitored.
-	if len(capped) != 22 {
-		t.Errorf("capped families emitted = %d, want 22: %v", len(capped), capped)
+	if len(capped) != 23 {
+		t.Errorf("capped families emitted = %d, want 23: %v", len(capped), capped)
 	}
-	if len(keys) != 22 {
-		t.Errorf("keys families emitted = %d, want 22: %v", len(keys), keys)
+	if len(keys) != 23 {
+		t.Errorf("keys families emitted = %d, want 23: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])

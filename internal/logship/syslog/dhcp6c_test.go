@@ -74,16 +74,16 @@ func TestDHCP6CCapturedGrammars(t *testing.T) {
 		},
 		{
 			name:    "captured: an address configured on a DOWNSTREAM interface",
-			message: "add an address 2001:8b0:1f05:0:9ab7:85ff:fe21:aff2/64 on ixl0",
+			message: "add an address 2001:db8:0:9ab7:85ff:fe21:aff2/64 on ixl0",
 			want: map[string]string{
 				attrDHCP6CEvent:     dhcp6cEventAddressAdded,
 				attrDHCP6CInterface: "ixl0",
-				attrDHCP6CAddress:   "2001:8b0:1f05:0:9ab7:85ff:fe21:aff2",
+				attrDHCP6CAddress:   "2001:db8:0:9ab7:85ff:fe21:aff2",
 			},
 		},
 		{
 			name:    "captured: the same on a VLAN child device",
-			message: "add an address 2001:8b0:1f05:100:0:ff:fe00:64/64 on ixl0_vlan100",
+			message: "add an address 2001:db8:100:0:ff:fe00:64/64 on ixl0_vlan100",
 			want: map[string]string{
 				attrDHCP6CEvent:     dhcp6cEventAddressAdded,
 				attrDHCP6CInterface: "ixl0_vlan100",
@@ -117,7 +117,7 @@ func TestDHCP6CCapturedGrammars(t *testing.T) {
 		},
 		{
 			name:    "from source: remove an address",
-			message: "remove an address 2001:8b0:1f05:0:9ab7:85ff:fe21:aff2/64 on ixl0",
+			message: "remove an address 2001:db8:0:9ab7:85ff:fe21:aff2/64 on ixl0",
 			want: map[string]string{
 				attrDHCP6CEvent:     dhcp6cEventAddressRemoved,
 				attrDHCP6CInterface: "ixl0",
@@ -134,12 +134,12 @@ func TestDHCP6CCapturedGrammars(t *testing.T) {
 		},
 		{
 			name:    "from source: the script's prefix-applied line, prefix as an ATTRIBUTE",
-			message: "dhcp6c_script: RENEW on pppoe0 prefix now 2001:8b0:1f05::/48",
+			message: "dhcp6c_script: RENEW on pppoe0 prefix now 2001:db8::/48",
 			want: map[string]string{
 				attrDHCP6CEvent:        dhcp6cEventScriptPrefixUpdated,
 				attrDHCP6CScriptReason: dhcp6cTypeRenew,
 				attrDHCP6CInterface:    "pppoe0",
-				attrDHCP6CPrefix:       "2001:8b0:1f05::/48",
+				attrDHCP6CPrefix:       "2001:db8::/48",
 			},
 		},
 		{
@@ -186,7 +186,7 @@ func TestDHCP6CPrefixComputesAbsoluteExpiryTimestamps(t *testing.T) {
 	}{
 		{
 			name:          "captured: the /48 delegation refreshed at every renewal",
-			message:       "update a prefix 2001:8b0:1f05::/48 pltime=3600, vltime=3600",
+			message:       "update a prefix 2001:db8::/48 pltime=3600, vltime=3600",
 			wantEvent:     dhcp6cEventPrefixUpdated,
 			wantUpdated:   "1785398400",
 			wantPreferred: "1785402000",
@@ -194,7 +194,7 @@ func TestDHCP6CPrefixComputesAbsoluteExpiryTimestamps(t *testing.T) {
 		},
 		{
 			name:          "from source: the first delegation of a prefix says create, not update",
-			message:       "update_prefix: create a prefix 2001:8b0:1f05::/48 pltime=1800, vltime=3600",
+			message:       "update_prefix: create a prefix 2001:db8::/48 pltime=1800, vltime=3600",
 			wantEvent:     dhcp6cEventPrefixCreated,
 			wantUpdated:   "1785398400",
 			wantPreferred: "1785400200",
@@ -222,7 +222,7 @@ func TestDHCP6CPrefixComputesAbsoluteExpiryTimestamps(t *testing.T) {
 				t.Errorf("valid expiry = %q, want %q", got, tt.wantValid)
 			}
 			// The prefix and both raw lifetimes still ship on the record.
-			if got := rec.Attributes[attrDHCP6CPrefix]; got != "2001:8b0:1f05::/48" {
+			if got := rec.Attributes[attrDHCP6CPrefix]; got != "2001:db8::/48" {
 				t.Errorf("prefix = %q, want it on the record", got)
 			}
 			if got := rec.Attributes[attrDHCP6CPrefixLength]; got != "48" {
@@ -240,13 +240,143 @@ func TestDHCP6CPrefixComputesAbsoluteExpiryTimestamps(t *testing.T) {
 	}
 }
 
+// The WAN ADDRESS-LEASE gauges (#560) — the IA_NA twin of the prefix triple, from a
+// REAL capture on testbed VM 102 (2026-07-30), address anonymised to RFC 3849
+// documentation space (2001:db8::/32) in place of the real globally-routable prefix.
+// Shape, pltime/vltime values and interface names are preserved verbatim.
+func TestDHCP6CAddressLeaseComputesAbsoluteExpiryTimestamps(t *testing.T) {
+	tests := []struct {
+		name          string
+		message       string
+		wantEvent     string
+		wantUpdated   string
+		wantPreferred string
+		wantValid     string
+	}{
+		{
+			// Captured verbatim (address anonymised): "update an address
+			// 2001:db8::1004 pltime=1125, vltime=1800" — by far the most common
+			// shape on the box, ~66x more frequent than "create".
+			name:          "captured: an update refreshes the WAN address lease",
+			message:       "update an address 2001:db8::1004 pltime=1125, vltime=1800",
+			wantEvent:     dhcp6cEventAddressLeaseUpdated,
+			wantUpdated:   "1785398400",
+			wantPreferred: "1785399525",
+			wantValid:     "1785400200",
+		},
+		{
+			// Captured verbatim (address anonymised): "create an address
+			// 2001:db8::1000 pltime=1125, vltime=1800" — the first lease for a
+			// given IA_NA.
+			name:          "captured: a create establishes the WAN address lease",
+			message:       "create an address 2001:db8::1000 pltime=1125, vltime=1800",
+			wantEvent:     dhcp6cEventAddressLeaseCreated,
+			wantUpdated:   "1785398400",
+			wantPreferred: "1785399525",
+			wantValid:     "1785400200",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dhcp6cIfaces.reset()
+			rec, ok := parseDHCP6C(dhcp6cEnv(t, "18837", tt.message), nil, nil)
+			if !ok {
+				t.Fatal("parseDHCP6C() ok = false, want true")
+			}
+			if got := rec.Attributes[attrDHCP6CEvent]; got != tt.wantEvent {
+				t.Errorf("event = %q, want %q", got, tt.wantEvent)
+			}
+			if got := rec.Attributes[attrDHCP6CAddressLeaseUpdatedTimestamp]; got != tt.wantUpdated {
+				t.Errorf("updated timestamp = %q, want %q", got, tt.wantUpdated)
+			}
+			if got := rec.Attributes[attrDHCP6CAddressLeasePreferredTimestamp]; got != tt.wantPreferred {
+				t.Errorf("preferred expiry = %q, want %q", got, tt.wantPreferred)
+			}
+			if got := rec.Attributes[attrDHCP6CAddressLeaseValidTimestamp]; got != tt.wantValid {
+				t.Errorf("valid expiry = %q, want %q", got, tt.wantValid)
+			}
+			// The address and both raw lifetimes still ship on the record.
+			if got := rec.Attributes[attrDHCP6CAddress]; got != "2001:db8::1004" && got != "2001:db8::1000" {
+				t.Errorf("address = %q, want it on the record", got)
+			}
+			if rec.Attributes[attrDHCP6CAddressLeasePreferredSeconds] == "" || rec.Attributes[attrDHCP6CAddressLeaseValidSeconds] == "" {
+				t.Error("the raw pltime/vltime must still ship on the record")
+			}
+		})
+	}
+}
+
+// Two simultaneous WAN interfaces each holding their own address lease at the same
+// time (captured on testbed VM 102: ::1000 on vtnet1, ::1004 on vtnet0) must not be
+// fused onto one series — the PID correlation is per-daemon-process, and a multi-WAN
+// box runs one dhcp6c process per interface.
+func TestDHCP6CAddressLeaseDoesNotFuseTwoSimultaneousWANInterfaces(t *testing.T) {
+	dhcp6cIfaces.reset()
+
+	if _, ok := parseDHCP6C(dhcp6cEnv(t, "100", "Sending Request on vtnet1"), nil, nil); !ok {
+		t.Fatal("vtnet1's Sending line did not parse")
+	}
+	if _, ok := parseDHCP6C(dhcp6cEnv(t, "200", "Sending Request on vtnet0"), nil, nil); !ok {
+		t.Fatal("vtnet0's Sending line did not parse")
+	}
+
+	rec1, ok := parseDHCP6C(dhcp6cEnv(t, "100", "update an address 2001:db8::1000 pltime=1125, vltime=1800"), nil, nil)
+	if !ok {
+		t.Fatal("vtnet1's address-lease line did not parse")
+	}
+	rec2, ok := parseDHCP6C(dhcp6cEnv(t, "200", "update an address 2001:db8::1004 pltime=1125, vltime=1800"), nil, nil)
+	if !ok {
+		t.Fatal("vtnet0's address-lease line did not parse")
+	}
+
+	if got := rec1.Attributes[attrDHCP6CInterface]; got != "vtnet1" {
+		t.Errorf("PID 100's interface = %q, want vtnet1", got)
+	}
+	if got := rec2.Attributes[attrDHCP6CInterface]; got != "vtnet0" {
+		t.Errorf("PID 200's interface = %q, want vtnet0", got)
+	}
+}
+
+// The bare `remove an address <addr>` (no lifetime, no interface) is the WAN
+// address-lease removal — distinct from `remove an address <addr>/<plen> on
+// <iface>`, which is a downstream address. It resolves its interface the same way
+// the create/update line does, and sets NO gauge attributes: the caller is expected
+// to CLEAR the gauges on this event rather than freeze them.
+func TestDHCP6CAddressLeaseRemoveResolvesInterfaceButSetsNoGauges(t *testing.T) {
+	dhcp6cIfaces.reset()
+
+	if _, ok := parseDHCP6C(dhcp6cEnv(t, "18837", "Sending Release on vtnet1"), nil, nil); !ok {
+		t.Fatal("the Sending line did not parse")
+	}
+
+	rec, ok := parseDHCP6C(dhcp6cEnv(t, "18837", "remove an address 2001:db8::1000"), nil, nil)
+	if !ok {
+		t.Fatal("parseDHCP6C() ok = false, want true")
+	}
+	if got := rec.Attributes[attrDHCP6CEvent]; got != dhcp6cEventAddressLeaseRemoved {
+		t.Errorf("event = %q, want %q", got, dhcp6cEventAddressLeaseRemoved)
+	}
+	if got := rec.Attributes[attrDHCP6CInterface]; got != "vtnet1" {
+		t.Errorf("interface = %q, want vtnet1 from the PID correlation", got)
+	}
+	if got := rec.Attributes[attrDHCP6CAddress]; got != "2001:db8::1000" {
+		t.Errorf("address = %q, want it on the record", got)
+	}
+	for _, k := range []string{attrDHCP6CAddressLeaseUpdatedTimestamp, attrDHCP6CAddressLeasePreferredTimestamp, attrDHCP6CAddressLeaseValidTimestamp} {
+		if got := rec.Attributes[k]; got != "" {
+			t.Errorf("%s = %q on a removal, want none", k, got)
+		}
+	}
+}
+
 // An undated line (RFC5424 `-`) gets NO gauge attributes. Substituting time.Now()
 // would silently mis-date a deadline, and a wrong deadline is worse than an absent
 // one — the whole metric is "did the deadline pass".
 func TestDHCP6CPrefixWithoutTimestampSetsNoGauges(t *testing.T) {
 	dhcp6cIfaces.reset()
 
-	env, err := ParseEnvelope([]byte("<13>1 - test-firewall dhcp6c 41234 - - update a prefix 2001:8b0:1f05::/48 pltime=3600, vltime=3600"), time.Time{})
+	env, err := ParseEnvelope([]byte("<13>1 - test-firewall dhcp6c 41234 - - update a prefix 2001:db8::/48 pltime=3600, vltime=3600"), time.Time{})
 	if err != nil {
 		t.Fatalf("ParseEnvelope() error = %v", err)
 	}
@@ -275,7 +405,7 @@ func TestDHCP6CPIDCorrelationResolvesInterfacelessLines(t *testing.T) {
 
 	for _, tt := range []struct{ name, message string }{
 		{"the reply", "Received REPLY for RENEW"},
-		{"the prefix update", "update a prefix 2001:8b0:1f05::/48 pltime=3600, vltime=3600"},
+		{"the prefix update", "update a prefix 2001:db8::/48 pltime=3600, vltime=3600"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec, ok := parseDHCP6C(dhcp6cEnv(t, "41234", tt.message), nil, nil)
@@ -309,7 +439,7 @@ func TestDHCP6CAddressLineDoesNotTeachThePIDCorrelation(t *testing.T) {
 	if _, ok := parseDHCP6C(dhcp6cEnv(t, "41234", "Sending Renew on pppoe0"), nil, nil); !ok {
 		t.Fatal("the Sending line did not parse")
 	}
-	if _, ok := parseDHCP6C(dhcp6cEnv(t, "41234", "add an address 2001:8b0:1f05:0:9ab7:85ff:fe21:aff2/64 on ixl0"), nil, nil); !ok {
+	if _, ok := parseDHCP6C(dhcp6cEnv(t, "41234", "add an address 2001:db8:0:9ab7:85ff:fe21:aff2/64 on ixl0"), nil, nil); !ok {
 		t.Fatal("the address line did not parse")
 	}
 	if got := dhcp6cIfaces.lookup("41234"); got != "pppoe0" {
@@ -356,7 +486,7 @@ func TestObserveDerived_DHCP6C(t *testing.T) {
 			name:    "a prefix update counts an event AND sets the three gauges",
 			pid:     "41234",
 			setup:   "Sending Renew on pppoe0",
-			message: "update a prefix 2001:8b0:1f05::/48 pltime=3600, vltime=3600",
+			message: "update a prefix 2001:db8::/48 pltime=3600, vltime=3600",
 			want: []fakeCall{
 				{"dhcp6c_event", []string{"pppoe0", dhcp6cEventPrefixUpdated, ""}},
 				{"dhcp6c_prefix", []string{"pppoe0", "48", "1785398400", "1785402000", "1785402000"}},
@@ -366,7 +496,7 @@ func TestObserveDerived_DHCP6C(t *testing.T) {
 			name:    "an address event counts under the DOWNSTREAM interface it names",
 			pid:     "41234",
 			setup:   "Sending Renew on pppoe0",
-			message: "add an address 2001:8b0:1f05:0:9ab7:85ff:fe21:aff2/64 on ixl0",
+			message: "add an address 2001:db8:0:9ab7:85ff:fe21:aff2/64 on ixl0",
 			want:    []fakeCall{{"dhcp6c_event", []string{"ixl0", dhcp6cEventAddressAdded, ""}}},
 		},
 		{
@@ -374,6 +504,36 @@ func TestObserveDerived_DHCP6C(t *testing.T) {
 			pid:     "7351",
 			message: "dhcp6c_script: RENEW on pppoe0 executing",
 			want:    []fakeCall{{"dhcp6c_event", []string{"pppoe0", dhcp6cEventScriptExecuting, dhcp6cTypeRenew}}},
+		},
+		{
+			name:    "an address-lease update counts an event AND sets the three gauges (#560)",
+			pid:     "18837",
+			setup:   "Sending Request on vtnet1",
+			message: "update an address 2001:db8::1004 pltime=1125, vltime=1800",
+			want: []fakeCall{
+				{"dhcp6c_event", []string{"vtnet1", dhcp6cEventAddressLeaseUpdated, ""}},
+				{"dhcp6c_address", []string{"vtnet1", "1785398400", "1785399525", "1785400200"}},
+			},
+		},
+		{
+			name:    "an address-lease create counts an event AND sets the three gauges",
+			pid:     "18837",
+			setup:   "Sending Request on vtnet1",
+			message: "create an address 2001:db8::1000 pltime=1125, vltime=1800",
+			want: []fakeCall{
+				{"dhcp6c_event", []string{"vtnet1", dhcp6cEventAddressLeaseCreated, ""}},
+				{"dhcp6c_address", []string{"vtnet1", "1785398400", "1785399525", "1785400200"}},
+			},
+		},
+		{
+			name:    "an address-lease removal counts an event AND clears the gauges",
+			pid:     "18837",
+			setup:   "Sending Release on vtnet1",
+			message: "remove an address 2001:db8::1000",
+			want: []fakeCall{
+				{"dhcp6c_event", []string{"vtnet1", dhcp6cEventAddressLeaseRemoved, ""}},
+				{"dhcp6c_address_clear", []string{"vtnet1"}},
+			},
 		},
 	}
 
@@ -406,15 +566,20 @@ func TestObserveDerived_DHCP6C(t *testing.T) {
 // and does not change when the prefix does.
 func TestDHCP6CPrefixAndAddressesAreNeverLabels(t *testing.T) {
 	secrets := []string{
-		"2001:8b0:1f05::/48",
-		"2001:8b0:1f05::",
-		"2001:8b0:1f05:0:9ab7:85ff:fe21:aff2",
+		"2001:db8::/48",
+		"2001:db8::",
+		"2001:db8:0:9ab7:85ff:fe21:aff2",
+		"2001:db8::1000",
+		"2001:db8::1004",
 	}
 
 	for _, msg := range []string{
-		"update a prefix 2001:8b0:1f05::/48 pltime=3600, vltime=3600",
-		"add an address 2001:8b0:1f05:0:9ab7:85ff:fe21:aff2/64 on ixl0",
-		"dhcp6c_script: RENEW on pppoe0 prefix now 2001:8b0:1f05::/48",
+		"update a prefix 2001:db8::/48 pltime=3600, vltime=3600",
+		"add an address 2001:db8:0:9ab7:85ff:fe21:aff2/64 on ixl0",
+		"dhcp6c_script: RENEW on pppoe0 prefix now 2001:db8::/48",
+		"update an address 2001:db8::1004 pltime=1125, vltime=1800",
+		"create an address 2001:db8::1000 pltime=1125, vltime=1800",
+		"remove an address 2001:db8::1000",
 	} {
 		t.Run(msg, func(t *testing.T) {
 			dhcp6cIfaces.reset()
@@ -451,10 +616,15 @@ func TestDHCP6CUnmodelledLinesAreNotClaimed(t *testing.T) {
 		"Sending Confirm on pppoe0",
 		"Received REPLY for IDLE",
 		"Received REPLY",
-		"update a prefix 2001:8b0:1f05::/48 pltime=soon, vltime=3600",
-		"update a prefix 2001:8b0:1f05::/48",
-		"add an address 2001:8b0:1f05::1 on ixl0",
+		"update a prefix 2001:db8::/48 pltime=soon, vltime=3600",
+		"update a prefix 2001:db8::/48",
+		"add an address 2001:db8::1 on ixl0",
 		"dhcp6c_script: RENEW on pppoe0",
+		// Address-lease near misses (#560).
+		"create an address 2001:db8::1000 pltime=soon, vltime=1800",
+		"create an address 2001:db8::1000",
+		"update an address 2001:db8::1000/128 pltime=1125, vltime=1800",
+		"remove an address 2001:db8::1000/128",
 	}
 
 	for _, msg := range lines {

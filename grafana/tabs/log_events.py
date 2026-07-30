@@ -279,6 +279,28 @@ def dhcp6_client_row(b: Builder):
              "prefix itself is never a label (it changes on re-delegation, which is the very "
              "event this watches); prefix_length is, because a /48 stays a /48.",
     )
+    address_lifetimes = b.ts(
+        "WAN IPv6 Address Lease Lifetimes",
+        [
+            (f'{sel("opnsense_log_events_dhcp6c_address_preferred_expiry_timestamp_seconds")} - time()',
+             "{{interface}} until deprecated"),
+            (f'{sel("opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds")} - time()',
+             "{{interface}} until invalid"),
+            (f'time() - {sel("opnsense_log_events_dhcp6c_address_updated_timestamp_seconds")}',
+             "{{interface}} since last refresh"),
+        ],
+        unit="s",
+        desc="Time until this firewall's OWN WAN IPv6 address (an IA_NA lease, not a delegated "
+             "prefix) stops being PREFERRED and until it stops being VALID, plus time since it "
+             "was last refreshed (#560) — the address counterpart of the prefix panel beside it, "
+             "for a WAN that takes its address directly by DHCPv6. Same absolute-timestamp-to-"
+             "countdown reasoning as the prefix row: a countdown computed in the exporter keeps "
+             "counting down from a stale value, so a dead dhcp6c would look healthy. THIS SERIES "
+             "CAN DISAPPEAR ON PURPOSE — an explicit address-removal line clears it rather than "
+             "leaving a frozen deadline in place, which would otherwise read as a healthy lease "
+             "that simply stopped renewing. The address itself is never a label; it changes on "
+             "re-bind, which is one of the conditions this watches for.",
+    )
     alloc_fail = b.ts(
         "DHCPv6 Server Allocation Failures (rate)",
         [(f'sum {grp("reason")} (rate({sel("opnsense_log_events_dhcp6_alloc_fail_total")}[{RATE}]))',
@@ -292,7 +314,7 @@ def dhcp6_client_row(b: Builder):
              "emits up to three lines per failure sharing a tid, and only the cause line counts.",
     )
     return b.row("WAN DHCPv6 Client & Prefix Delegation (log-derived)",
-                 [dhcp6c_msgs, dhcp6c_events, prefix_lifetimes, alloc_fail],
+                 [dhcp6c_msgs, dhcp6c_events, prefix_lifetimes, address_lifetimes, alloc_fail],
                  present="has_log_events_dhcp6c")
 
 

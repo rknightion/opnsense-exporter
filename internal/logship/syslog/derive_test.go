@@ -119,6 +119,21 @@ func (f *fakeSink) ObserveDHCP6CPrefix(iface, prefixLength string, updated, pref
 	return true
 }
 
+func (f *fakeSink) ObserveDHCP6CAddress(iface string, updated, preferredExpiry, validExpiry float64) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp6c_address", []string{
+		iface,
+		strconv.FormatFloat(updated, 'f', -1, 64),
+		strconv.FormatFloat(preferredExpiry, 'f', -1, 64),
+		strconv.FormatFloat(validExpiry, 'f', -1, 64),
+	}})
+	return true
+}
+
+func (f *fakeSink) ClearDHCP6CAddress(iface string) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp6c_address_clear", []string{iface}})
+	return true
+}
+
 func (f *fakeSink) ObserveDHCP6AllocFail(reason string) bool {
 	f.calls = append(f.calls, fakeCall{"dhcp6_alloc_fail", []string{reason}})
 	return true

@@ -172,6 +172,105 @@ func TestLogEventStore_DHCP6CPrefixOverwritesRatherThanAccumulates(t *testing.T)
 	}
 }
 
+// The three address-lease metrics (#560) are GAUGES of absolute Unix seconds, keyed
+// by interface ALONE — there is no prefix_length dimension for a single address. The
+// address itself must fail on the label count alone.
+func TestLogEventsCollector_EmitsDHCP6CAddressGaugesTogether(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveDHCP6CAddress("vtnet1", 1785398400, 1785399525, 1785400200)
+
+	want := map[string]float64{
+		"opnsense_log_events_dhcp6c_address_updated_timestamp_seconds":          1785398400,
+		"opnsense_log_events_dhcp6c_address_preferred_expiry_timestamp_seconds": 1785399525,
+		"opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds":     1785400200,
+	}
+	seen := map[string]bool{}
+
+	for _, m := range collectMetrics(t, c, nil) {
+		for name, wantValue := range want {
+			if !hasFqName(m, name) {
+				continue
+			}
+			seen[name] = true
+			if !metricIsGauge(t, m) {
+				t.Errorf("%s is not a GAUGE; a counter would read a shortened deadline as a reset", name)
+			}
+			labels := getMetricLabels(m)
+			if len(labels) != 2 {
+				t.Fatalf("%s labels = %v, want only interface and opnsense_instance", name, labels)
+			}
+			if labels["interface"] != "vtnet1" {
+				t.Errorf("%s labels = %v, want vtnet1", name, labels)
+			}
+			if _, present := labels["address"]; present {
+				t.Errorf("%s carries an address label; the WAN address changes on re-bind", name)
+			}
+			if got := getMetricValue(m); got != wantValue {
+				t.Errorf("%s = %v, want %v", name, got, wantValue)
+			}
+		}
+	}
+
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("%s was not emitted; the three come from one line and must be published together", name)
+		}
+	}
+}
+
+// A REMOVAL clears the interface's row entirely rather than leaving a frozen
+// deadline in place — a frozen gauge reads as a healthy lease that simply stopped
+// renewing, which is worse than the series being absent (#560).
+func TestLogEventsCollector_DHCP6CAddressRemovalClearsTheGauges(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveDHCP6CAddress("vtnet1", 1785398400, 1785399525, 1785400200)
+
+	found := false
+	for _, m := range collectMetrics(t, c, nil) {
+		if hasFqName(m, "opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the gauge was not emitted before the removal")
+	}
+
+	c.store.ClearDHCP6CAddress("vtnet1")
+
+	for _, m := range collectMetrics(t, c, nil) {
+		if hasFqName(m, "opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds") {
+			t.Error("the gauge is still emitted after ClearDHCP6CAddress; it must disappear entirely")
+		}
+	}
+}
+
+// Two interfaces holding simultaneous address leases (the multi-WAN case captured on
+// testbed VM 102) must not be fused onto one series, and clearing one must not
+// disturb the other.
+func TestLogEventsCollector_DHCP6CAddressClearIsPerInterface(t *testing.T) {
+	c := &logEventsCollector{store: newTestLogEventStore(t), subsystem: LogEventsSubsystem}
+	c.Register(namespace, "opnsense.example.com", promslog.NewNopLogger())
+	c.store.ObserveDHCP6CAddress("vtnet1", 1785398400, 1785399525, 1785400200)
+	c.store.ObserveDHCP6CAddress("vtnet0", 1785398400, 1785399525, 1785400200)
+	c.store.ClearDHCP6CAddress("vtnet1")
+
+	remaining := map[string]bool{}
+	for _, m := range collectMetrics(t, c, nil) {
+		if !hasFqName(m, "opnsense_log_events_dhcp6c_address_valid_expiry_timestamp_seconds") {
+			continue
+		}
+		remaining[getMetricLabels(m)["interface"]] = true
+	}
+	if remaining["vtnet1"] {
+		t.Error("vtnet1 was cleared but is still emitted")
+	}
+	if !remaining["vtnet0"] {
+		t.Error("vtnet0 was never cleared but is missing")
+	}
+}
+
 // The DHCPv6 allocation-failure counter: reason is its ONLY dimension. The DUID, the
 // transaction id and the subnet must fail on the label count alone.
 func TestLogEventsCollector_EmitsDHCP6AllocFailCounter(t *testing.T) {
@@ -219,6 +318,7 @@ func TestLogEventsCollector_NewDHCP6FamiliesReportSaturation(t *testing.T) {
 		c.store.ObserveDHCP6CMessage("pppoe"+n, "sent", "renew")
 		c.store.ObserveDHCP6CEvent("pppoe"+n, "prefix_updated", "")
 		c.store.ObserveDHCP6CPrefix("pppoe"+n, "48", 1, 2, 3)
+		c.store.ObserveDHCP6CAddress("pppoe"+n, 1, 2, 3)
 		c.store.ObserveDHCP6AllocFail("reason-" + n)
 	}
 
@@ -234,7 +334,7 @@ func TestLogEventsCollector_NewDHCP6FamiliesReportSaturation(t *testing.T) {
 		}
 	}
 
-	for _, family := range []string{"dhcp6c_message", "dhcp6c_event", "dhcp6c_prefix", "dhcp6_alloc_fail"} {
+	for _, family := range []string{"dhcp6c_message", "dhcp6c_event", "dhcp6c_prefix", "dhcp6c_address", "dhcp6_alloc_fail"} {
 		if capped[family] != 2 {
 			t.Errorf("%s capped = %v, want 2 refused tuples folded into the overflow", family, capped[family])
 		}

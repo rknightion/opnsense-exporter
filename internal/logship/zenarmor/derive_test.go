@@ -52,6 +52,9 @@ func (s *captureSink) ObserveDHCP6AllocFail(_ string) bool                { retu
 
 func (s *captureSink) ObserveDHCP6CPrefix(_, _ string, _, _, _ float64) bool { return true }
 
+func (s *captureSink) ObserveDHCP6CAddress(_ string, _, _, _ float64) bool { return true }
+func (s *captureSink) ClearDHCP6CAddress(_ string) bool                    { return true }
+
 var _ logship.MetricSink = (*captureSink)(nil)
 
 func TestObserveDerivedPropagatesSinkAcceptance(t *testing.T) {
