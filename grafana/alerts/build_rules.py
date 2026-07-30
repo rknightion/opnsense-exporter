@@ -789,6 +789,96 @@ RULES = [
                 'A bound or renew reason follows and the interface regains an address',
             ],
          )),
+    # #546: the v6 twin of the four dhcp-client rules above, adapted for prefix
+    # delegation. Deliberately NOT folded into them: a v4 and a v6 uplink fail
+    # independently, and a firewall can hold a perfectly healthy v4 lease while every
+    # downstream v6 prefix is about to be withdrawn.
+    #
+    # Two deadlines rather than one, and only the VALID one pages. The preferred
+    # lifetime running out deprecates the prefix (existing connections survive, new
+    # ones prefer another source); the valid lifetime running out REMOVES every
+    # address derived from it. Same countdown-not-gauge reasoning as #541: the
+    # exporter exports absolute deadlines and the alert does the arithmetic, because
+    # a countdown computed at parse time keeps counting down from a stale value and a
+    # dead dhcp6c would look exactly like a healthy one.
+    dict(name="opnsense-dhcp6-prefix-expiring", title="OPNsenseDHCP6PrefixExpiring",
+         A="opnsense_log_events_dhcp6c_prefix_valid_expiry_timestamp_seconds - time()",
+         op="lt", params=[0, 0], for_min=10, severity="critical",
+         summary="OPNsense delegated IPv6 prefix expired on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="The valid lifetime of the /{{ $labels.prefix_length }} prefix delegated on "
+                     "{{ $labels.interface }} has run out with no refresh. This is not just the "
+                     "WAN losing its own address: every downstream address derived from this "
+                     "prefix is removed, so IPv6 goes away on every LAN it was delegated to.",
+         runbook=dict(
+             measures='The valid-lifetime deadline dhcp6c last reported for the delegated prefix, minus now. Negative means it has passed with nothing refreshing it.',
+             threshold='lt 0 sustained for 10m. The prefix is already gone at 0 - the for_min is there so a renewal landing a moment late does not page, not to add headroom.',
+             absent='Default noDataState (Ok). No series means no prefix-delegation line has been seen since the exporter started, which is the normal state on a WAN with no PD or no IPv6 at all.',
+             checks=[
+                'Check the WAN DHCPv6 Client Messages panel for sent renew climbing with no matching received - that is the upstream having stopped answering, and it would have been visible for hours',
+                'Check whether the preferred-lifetime countdown went negative first; if both crossed together the prefix was withdrawn rather than allowed to age out',
+                'Confirm the v4 side is healthy - if both stopped at once this is a link or PPPoE problem, not a DHCPv6 one',
+            ],
+             causes=[
+                'The upstream DHCPv6 server stopped answering Renew, so the delegation was never refreshed',
+                'The ISP withdrew or re-delegated the prefix',
+                'dhcp6c died or is wedged on the WAN interface',
+            ],
+             verify=[
+                'A prefix_updated event appears and both lifetime countdowns reset to positive values',
+                'Downstream interfaces regain their IPv6 addresses',
+            ],
+         )),
+    dict(name="opnsense-dhcp6-prefix-not-refreshing", title="OPNsenseDHCP6PrefixNotRefreshing",
+         A="time() - opnsense_log_events_dhcp6c_prefix_updated_timestamp_seconds",
+         op="gt", params=[7200, 0], for_min=15, severity="warning",
+         summary="OPNsense delegated IPv6 prefix has not refreshed on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="Nothing has created or refreshed the delegated prefix on "
+                     "{{ $labels.interface }} for over two hours. The prefix is still valid, so "
+                     "nothing has broken yet - this is the leading indicator that fires while "
+                     "there is still time to act, ahead of OPNsenseDHCP6PrefixExpiring.",
+         runbook=dict(
+             measures='Time since the last prefix create/update line from dhcp6c for this interface.',
+             threshold='gt 7200s (2h), for_min=15. Sized as roughly 2x the observed refresh interval - the reference box renews hourly (pltime=3600), so two missed refreshes. Retune if your ISP hands out a longer lifetime; the honest threshold is 2x whatever pltime the prefix actually carries.',
+             absent='Default noDataState (Ok). No series means no prefix delegation on this box, which is normal on a WAN without PD.',
+             checks=[
+                'Check the WAN DHCPv6 Client Messages panel: sent renew with no received reply means the upstream has gone quiet',
+                'Check the valid and preferred countdowns for how much time is actually left before it matters',
+            ],
+             causes=[
+                'The upstream DHCPv6 server has stopped responding to Renew',
+                'dhcp6c is wedged - it may still be sending without processing replies',
+            ],
+             verify=[
+                'A prefix_updated event lands and the age drops back to near zero',
+            ],
+         )),
+    dict(name="opnsense-dhcp6-alloc-failures", title="OPNsenseDHCP6AllocationFailures",
+         A="sum by (reason, opnsense_instance) (rate(opnsense_log_events_dhcp6_alloc_fail_total[15m]))",
+         op="gt", params=[0, 0], for_min=10, severity="warning",
+         summary="OPNsense kea-dhcp6 is refusing IPv6 leases: {{ $labels.reason }} ({{ $labels.opnsense_instance }})",
+         description="This box's own DHCPv6 SERVER has been refusing lease requests for 10m. The "
+                     "opposite direction from the prefix alerts: clients on the LAN are being "
+                     "denied IPv6 addresses. reason=exhausted means the pool is full; "
+                     "reason=no_pools means the subnet has no pool configured for that client at "
+                     "all, which is a configuration fault rather than a capacity one.",
+         runbook=dict(
+             measures='Rate of DHCPv6 allocation failures reported by kea-dhcp6, by reason. Counted once per failed allocation - kea emits up to three lines per failure sharing a tid, and only the cause line is counted.',
+             threshold='gt 0 sustained for 10m. Must be a rate: a single refusal from a client that has since been served is not worth paging on, a sustained one is.',
+             absent='Default noDataState (Ok). No series means kea-dhcp6 has refused nothing, which is the normal state.',
+             checks=[
+                'reason=no_pools: check that the subnet the client is on actually has a v6 pool defined - this one never resolves itself',
+                'reason=exhausted: check pool utilisation against the lease count on the DHCP tab, and whether the lease time is long enough to be holding addresses for departed clients',
+                'Check whether the failures correlate with the delegated prefix changing - a re-delegation invalidates the pool the old subnet was carved from',
+            ],
+             causes=[
+                'The v6 pool is genuinely full',
+                'No pool is configured for the subnet or client class in question',
+                'The delegated prefix changed and the configured pools still reference the old one',
+            ],
+             verify=[
+                'The failure rate returns to zero and clients obtain leases again',
+            ],
+         )),
     dict(name="opnsense-netisr-queue-drops", title="OPNsenseNetisrQueueDrops",
          A="sum by (protocol, opnsense_instance) (rate(opnsense_network_diag_netisr_queue_drops_total[5m]))",
          op="gt", params=[0, 0], for_min=10, severity="warning",
@@ -1610,31 +1700,49 @@ RULES = [
     # nothing else, so there is no error to notice and no metric that stops moving. Lookups
     # keep succeeding against an ever-older database. The BUILD timestamp is the only signal
     # that separates "current" from "quietly frozen", which is why it is a metric at all and
-    # why this alert exists. 14d, because GeoLite2 rebuilds twice a week: two weeks is four
-    # missed builds, well past any weekly-cron jitter but still fresh enough that the answers
-    # are only slightly wrong when it fires. The gauge is ABSENT (never zero) for a database
-    # that is not loaded, so a box with geo off cannot false-fire.
+    # why this alert exists. The gauge is ABSENT (never zero) for a database that is not
+    # loaded, so a box with geo off cannot false-fire.
+    #
+    # 45d, RAISED FROM 14d BY #549 — do not put it back without re-reading this. 14d was
+    # correct while GeoLite2 was the only database anyone could load: it rebuilds twice a
+    # week, so two weeks was four missed builds. Since #549 the image SHIPS DB-IP Lite and
+    # geo is on by default, and DB-IP republishes MONTHLY. At 14d every stock deployment
+    # would sit firing for roughly half of every month, and the alert would be describing a
+    # working updater. Worst case for the bundled path is ~31d of publish interval plus the
+    # refresh workflow's own lag, so 45d clears it with headroom.
+    #
+    # The cost is real and accepted: a MaxMind deployment whose updater dies now takes 45d
+    # to page instead of 14d. That is tolerable because this is a warning about data DRIFT,
+    # not an outage — country-level answers are barely different at 6 weeks — and because
+    # the downloads/reloads counters in the runbook below catch a broken updater far sooner
+    # for anyone actually watching. A per-provider threshold was considered and rejected:
+    # the gauge carries no provider label, and adding one to split a warning-severity drift
+    # alert into two rules is more machinery than the difference is worth.
     dict(name="opnsense-flow-geoip-database-stale", title="OPNsenseFlowGeoIPDatabaseStale",
          A="max by (opnsense_instance, database) "
            "(time() - opnsense_flow_geoip_database_build_timestamp_seconds)",
-         op="gt", params=[1209600, 0], for_min=60, severity="warning",
+         op="gt", params=[3888000, 0], for_min=60, severity="warning",
          summary="OPNsense GeoIP {{ $labels.database }} database is stale ({{ $labels.opnsense_instance }})",
-         description="The loaded MaxMind {{ $labels.database }} database was built more than 14 days "
-                     "ago. GeoLite2 rebuilds twice a week, so the updater has stopped: with "
-                     "--geoip.download.enabled that is a failed fetch (expired license key, blocked "
-                     "egress, exhausted download quota), and without it a geoipupdate cron, sidecar or "
-                     "mounted volume that is no longer refreshing the file. Enrichment is fail-open, so "
-                     "nothing has broken and no attribute has disappeared - the countries and ASNs on "
-                     "flow records are simply drifting out of date, which is exactly why this needs an "
-                     "alert rather than being noticed.",
+         description="The loaded {{ $labels.database }} database was built more than 45 days ago, which "
+                     "is past the publish interval of every database this exporter can load - GeoLite2 "
+                     "rebuilds twice a week, the bundled DB-IP Lite monthly - so whatever refreshes it "
+                     "has stopped. With --geoip.download.enabled that is a failed fetch (expired "
+                     "license key, blocked egress, exhausted download quota); with an operator-managed "
+                     "file it is a geoipupdate cron, sidecar or mounted volume that is no longer "
+                     "refreshing it; and on a stock deployment running the database baked into the "
+                     "image it means the image itself is old. Enrichment is fail-open, so nothing has "
+                     "broken and no attribute has disappeared - the countries and ASNs on flow records "
+                     "are simply drifting out of date, which is exactly why this needs an alert rather "
+                     "than being noticed.",
          runbook=dict(
              measures="Age in seconds of the loaded GeoIP database, per database (country, asn), against MaxMind's own BUILD date rather than the download time - a re-download of the same build correctly does NOT reset it.",
-             threshold='gt 1209600s (14d), for_min=60. GeoLite2 rebuilds twice a week, so 14d is four missed builds - past any weekly-cron jitter, and still recent enough that the data is only slightly wrong when it fires.',
+             threshold='gt 3888000s (45d), for_min=60. Raised from 14d by #549: the image now ships DB-IP Lite, which republishes MONTHLY, so 14d would fire on a healthy stock deployment for half of every month. 45d clears a ~31d publish interval plus refresh lag for every database the exporter can load.',
              absent='Default noDataState (Ok). The gauge is omitted entirely for a database that is not loaded (a zero would read as "built in 1970" and fire permanently), so a deployment with --geoip.enabled off has no series here and cannot false-fire.',
              checks=[
                 'Check opnsense_flow_geoip_downloads_total: a rising result="failure" rate is a fetch problem, while a flat counter with --geoip.download.enabled set means the updater goroutine is not running at all',
                 'With the built-in downloader: verify the MaxMind license key has not expired and that the exporter has egress to download.maxmind.com',
                 'With operator-managed files: confirm the geoipupdate cron / sidecar is still running and writing to the configured --geoip.country-database and --geoip.asn-database paths',
+                'On a stock deployment using the database bundled in the image, no updater exists to fix - the image is what is old, so pull a current one',
                 'Check opnsense_flow_geoip_reloads_total for result="failure" - a corrupt replacement leaves the OLD database serving, which looks exactly like no update at all',
                 'Confirm the download directory is persistent: a volume lost on restart re-downloads every start and can exhaust the daily limit',
             ],
@@ -1643,6 +1751,7 @@ RULES = [
                 'Egress to download.maxmind.com blocked, or the daily download limit exhausted',
                 'A geoipupdate cron / sidecar stopped running, or its output path no longer matches the exporter configuration',
                 'A corrupt or truncated replacement file that fails to parse, leaving the previous database serving indefinitely',
+                'A stock deployment running an image that has not been pulled for over 45 days, so the bundled DB-IP Lite copy is simply as old as the image',
             ],
              verify=[
                 'opnsense_flow_geoip_database_build_timestamp_seconds advances to a recent build',
@@ -1937,6 +2046,9 @@ PANEL_LINKS = {
     "OPNsenseDHCPClientNak": "WAN DHCP Client Messages (rate)",
     "OPNsenseDHCPClientRequestStorm": "WAN DHCP Client Messages (rate)",
     "OPNsenseDHCPClientScriptFailure": "WAN DHCP Client Script Events (rate)",
+    "OPNsenseDHCP6PrefixExpiring": "Delegated IPv6 Prefix Lifetimes",
+    "OPNsenseDHCP6PrefixNotRefreshing": "Delegated IPv6 Prefix Lifetimes",
+    "OPNsenseDHCP6AllocationFailures": "DHCPv6 Server Allocation Failures (rate)",
     "OPNsenseNetisrQueueDrops": "NetISR Per-CPU Queue Drops (rate)",
     "OPNsenseNetisrQueueNearLimit": "NetISR Queue Length / Watermark / Limit",
     "OPNsensePFStateTableNearLimit": "PF States Used %",

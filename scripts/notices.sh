@@ -61,6 +61,25 @@ compiled binary incorporates the third-party Go modules listed below. Each modul
 text — and its NOTICE file where one is provided (Apache-2.0 §4(d)) — is reproduced verbatim.
 These modules retain their own upstream licenses; the combined binary is distributed under
 Apache-2.0.
+
+## Bundled data: DB-IP Lite (#549)
+
+This section is written by hand rather than derived from go-licenses, because go-licenses
+reports only Go MODULES and the databases below are data the container image carries, not
+code the binary links. Do not delete it as "not generated" — it is a licence condition.
+
+The container image bundles the DB-IP Lite IP-to-Country and IP-to-ASN databases at
+`/usr/share/opnsense-exporter/geoip/`, fetched unmodified at image build time from
+https://db-ip.com and redistributed byte-for-byte (never adapted, merged or trimmed).
+
+**IP geolocation data by DB-IP (https://db-ip.com), licensed under CC BY 4.0
+(https://creativecommons.org/licenses/by/4.0/).**
+
+The same credit ships in the image at `/licenses/GEOIP-DB-IP-ATTRIBUTION.txt`, on the
+documentation site (docs/geoip.md) and in the operator console footer. Binary-only
+distributions (the release archives) carry no database and no obligation, but the credit is
+stated here regardless — it costs nothing and a notices file that varies by artifact is a
+notices file someone eventually ships without it.
 HDR
 
   while IFS="$(printf '\t')" read -r name version lic url path; do

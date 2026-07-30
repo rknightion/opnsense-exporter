@@ -242,6 +242,33 @@ jobs:
             exit 1
           fi
 
+      # #549: the image bundles DB-IP Lite Country + ASN at the paths that are the
+      # defaults of --geoip.country-database / --geoip.asn-database. The Dockerfile
+      # already fails its own build on a short or mistyped download, so what this
+      # adds is the seam the Dockerfile cannot check: that the files landed at the
+      # exact paths internal/geoip/bundled.go names, and that the CC BY 4.0 credit
+      # shipped beside them. Getting the path wrong is silent — enrichment just
+      # never answers, which looks identical to a quiet network.
+      - name: Verify the image bundles the DB-IP databases and their attribution
+        run: |
+          set -euo pipefail
+          cid="$(docker create opnsense-exporter:ci-test)"
+          trap 'docker rm -f "$cid" >/dev/null' EXIT
+          out="$(mktemp -d)"
+          for f in /usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb \
+                   /usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb \
+                   /licenses/GEOIP-DB-IP-ATTRIBUTION.txt; do
+            docker cp "$cid:$f" "$out/" || {
+              echo "::error::image is missing $f (#549)"; exit 1; }
+          done
+          for db in dbip-country-lite.mmdb dbip-asn-lite.mmdb; do
+            sz="$(wc -c < "$out/$db")"
+            echo "$db: $sz bytes"
+            [ "$sz" -ge 4000000 ] || { echo "::error::$db is only $sz B"; exit 1; }
+          done
+          grep -q 'db-ip.com' "$out/GEOIP-DB-IP-ATTRIBUTION.txt" || {
+            echo "::error::the bundled attribution does not credit DB-IP with a link — this is the CC BY 4.0 condition"; exit 1; }
+
       # Exercise the same plain-Compose seams published in docs/deployment/docker.md
       # (#438): file-backed secrets readable by the distroless image's non-root user,
       # exec-form native health probe, and the /-/healthy endpoint. The OPNsense

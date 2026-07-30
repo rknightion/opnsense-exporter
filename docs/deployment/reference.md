@@ -981,16 +981,21 @@ services:
       # network. Fail-open: a missing database means the attributes are absent, never a
       # failed start.
       # ==========================================================================
-      # Path to a MaxMind GeoLite2-ASN / GeoIP2-ISP database. This is the one enrichment
-      # no amount of Zenarmor coverage supplies: Zenarmor ships no ASN database on any
-      # box. Defaults to the downloaded copy when --geoip.download.enabled is set.
-      # OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE: ""
-      # Path to a MaxMind Country OR City database (GeoLite2-Country, GeoLite2-City,
-      # GeoIP2-City). A City database is a strict superset, so one path accepts either
-      # and the city/region attributes are simply absent with a Country file. Defaults
-      # to the downloaded copy when --geoip.download.enabled is set. A missing file is
-      # not an error - enrichment is fail-open and the attributes are just absent.
-      # OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE: ""
+      # Path to an ASN database in MaxMind .mmdb format (DB-IP ASN Lite, GeoLite2-ASN,
+      # GeoIP2-ISP). This is the one enrichment no amount of Zenarmor coverage supplies:
+      # Zenarmor ships no ASN database on any box. Defaults to the DB-IP ASN Lite
+      # database bundled in the container image (CC BY 4.0, https://db-ip.com), or to
+      # the downloaded copy when --geoip.download.enabled is set.
+      # OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE: "/usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb"
+      # Path to a Country OR City database in MaxMind .mmdb format (DB-IP Country/City
+      # Lite, GeoLite2-Country, GeoLite2-City, GeoIP2-City). A City database is a strict
+      # superset, so one path accepts either and the city/region attributes are simply
+      # absent with a Country file. Defaults to the DB-IP Country Lite database bundled
+      # in the container image (CC BY 4.0, https://db-ip.com); point it at your own file
+      # to override, or set --geoip.download.enabled and it defaults to the downloaded
+      # MaxMind copy instead. A missing file is not an error - enrichment is fail-open
+      # and the attributes are just absent, which is what a non-container build gets.
+      # OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE: "/usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb"
       # MaxMind account ID for the database download API (the Basic-auth username).
       # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_ACCOUNT_ID: ""
       # Directory downloaded databases are installed into, as <dir>/<edition>.mmdb. Must
@@ -1020,18 +1025,21 @@ services:
       # End-to-end timeout for one edition's download. A timeout leaves the installed
       # database untouched and is retried on the next interval.
       # OPNSENSE_EXPORTER_GEOIP_DOWNLOAD_TIMEOUT: "5m"
-      # Enable local GeoIP enrichment from MaxMind .mmdb files on disk. Adds
+      # Enable local GeoIP enrichment from MaxMind-format .mmdb files on disk. Adds
       # country/continent/city/ASN attributes to flow LOGS for external addresses, so
       # geo no longer depends on whether Zenarmor happened to see the connection. Purely
-      # local: no lookup ever touches the network. Off by default because it needs a
-      # database the exporter does not ship. BEHAVIOUR CHANGE ON UPGRADE (#528): this
-      # ALSO now covers filterlog, sshd/auth and Suricata log lines with
+      # local: no lookup ever touches the network. ON by default since #549, because the
+      # container image now bundles DB-IP Lite Country + ASN databases (CC BY 4.0,
+      # https://db-ip.com) and there is nothing left to source first. A build that is
+      # not the container image has no bundled database and enriches nothing until one
+      # is configured - that is fail-open, not an error. BEHAVIOUR CHANGE ON UPGRADE
+      # (#528): this ALSO now covers filterlog, sshd/auth and Suricata log lines with
       # country/continent/ASN/as_org (no city/region there) - filterlog is the
       # highest-volume log stream on the box, so an existing --geoip.enabled deployment
       # gains real per-line byte cost on upgrade with no config change. Set
       # --logs.syslog.geoip=false to opt those log lines back out while keeping GeoIP on
       # flow records. See docs/geoip.md.
-      # OPNSENSE_EXPORTER_GEOIP_ENABLED: "false"
+      # OPNSENSE_EXPORTER_GEOIP_ENABLED: "true"
       # How often to re-stat the database paths and hot-swap a changed file. This is
       # what makes the operator-managed path work - a geoipupdate cron, a sidecar or a
       # re-mounted volume can rewrite the files under a running exporter. Separate from

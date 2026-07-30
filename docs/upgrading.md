@@ -14,6 +14,24 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 ## Upgrading to v4.0 from v3.x
 
+- **GeoIP enrichment is now ON by default, and the image bundles a database** -
+  `--geoip.enabled` defaults to `true`, and the container image ships the DB-IP Lite
+  Country and ASN databases at `/usr/share/opnsense-exporter/geoip/`, which are the
+  new default values of `--geoip.country-database` / `--geoip.asn-database`. A
+  container deployment that had never configured GeoIP now emits
+  `<src|dst>.geo.*` attributes on flow records **and on filterlog, sshd/auth and
+  Suricata log lines** - filterlog is the highest-volume log stream on the box, so
+  this is a real per-line ingest cost (~116 B on a line that resolves, measured) with
+  no config change. Set `--geoip.enabled=false` to opt out entirely, or
+  `--logs.syslog.geoip=false` to keep geo on flow records only. MaxMind still wins
+  outright wherever it is configured, and an explicit database path is never
+  overridden. Two things to know: **DB-IP Lite is a reduced-accuracy subset** (country
+  is >95% accurate, city is not - see [GeoIP](geoip.md#accuracy-read-this-before-trusting-a-city)),
+  and **non-container builds carry no database at all** and simply enrich nothing.
+  `OPNsenseFlowGeoIPDatabaseStale` alerts at 14 days, while DB-IP republishes
+  monthly, so expect that alert to fire on the bundled databases unless you retune
+  it. Attribution: IP geolocation data by [DB-IP](https://db-ip.com), CC BY 4.0.
+
 - **Six redundant Zenarmor structured-metadata keys are no longer shipped** -
   `organization`, `policyid`, `src_geoip.latitude`, `src_geoip.longitude`,
   `dst_geoip.latitude` and `dst_geoip.longitude` are no longer attributed onto each

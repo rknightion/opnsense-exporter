@@ -1,0 +1,78 @@
+name: geoip-refresh
+
+# Refresh the DB-IP Lite databases bundled in the image (#549).
+#
+# The databases are fetched by the Dockerfile at image build time and are NOT in
+# git, so "refresh the data" and "rebuild the image" are the same act — this
+# workflow just republishes the edge :main image once DB-IP has published the new
+# month. Nothing is committed and nothing is mutated in the repository.
+#
+# Why a rebuild rather than a job that commits the new files:
+#   * The files are ~17.8 MB of binary republished monthly. Committing them would
+#     grow this repository's history by that much every month, permanently and
+#     irreversibly — which is the whole reason they are fetched at build time.
+#   * A rebuild cannot lie. The image's data is, by construction, what its own
+#     build fetched; there is no second copy in git to drift out of step with it.
+#   * Every release build already re-fetches, so tagged images get current data
+#     without this workflow existing at all. This only keeps :main current between
+#     releases.
+#
+# DB-IP publishes on the 1st of the month; this runs on the 3rd so a publish that
+# lags UTC midnight has landed. (The Dockerfile independently falls back to the
+# previous month, so an early or manual build is never a red build — see its
+# fetch loop.)
+on:
+  schedule:
+    - cron: "17 5 3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Only rebuild when there is genuinely new data. Without this the run would
+  # rebuild and republish :main on the previous month's files, which costs a
+  # pointless image push and, worse, makes the refresh look like it worked.
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+      month: ${{ steps.probe.outputs.month }}
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Probe DB-IP for this month's Lite databases
+        id: probe
+        run: |
+          set -euo pipefail
+          month="$(date -u +%Y-%m)"
+          available=true
+          for product in country asn; do
+            url="https://download.db-ip.com/free/dbip-${product}-lite-${month}.mmdb.gz"
+            if curl -fsSI --max-time 60 -o /dev/null "$url"; then
+              echo "present: ${url}"
+            else
+              echo "::notice::${url} is not published yet — skipping this refresh"
+              available=false
+            fi
+          done
+          echo "month=${month}" >> "$GITHUB_OUTPUT"
+          echo "available=${available}" >> "$GITHUB_OUTPUT"
+
+  # Same call the edge build in release-please.yml makes: release_tag "" publishes
+  # the multi-arch :main image, whose build re-fetches the databases.
+  rebuild:
+    needs: check
+    if: needs.check.outputs.available == 'true'
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      release_tag: ""

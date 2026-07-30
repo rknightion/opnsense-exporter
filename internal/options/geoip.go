@@ -30,33 +30,41 @@ const defaultGeoIPEditions = "GeoLite2-Country,GeoLite2-ASN"
 var (
 	geoipEnabled = kingpin.Flag(
 		"geoip.enabled",
-		"Enable local GeoIP enrichment from MaxMind .mmdb files on disk. Adds "+
+		"Enable local GeoIP enrichment from MaxMind-format .mmdb files on disk. Adds "+
 			"country/continent/city/ASN attributes to flow LOGS for external addresses, so geo no "+
 			"longer depends on whether Zenarmor happened to see the connection. Purely local: no "+
-			"lookup ever touches the network. Off by default because it needs a database the "+
-			"exporter does not ship. BEHAVIOUR CHANGE ON UPGRADE (#528): this ALSO now covers "+
+			"lookup ever touches the network. ON by default since #549, because the container image "+
+			"now bundles DB-IP Lite Country + ASN databases (CC BY 4.0, https://db-ip.com) and there "+
+			"is nothing left to source first. A build that is not the container image has no bundled "+
+			"database and enriches nothing until one is configured - that is fail-open, not an error. "+
+			"BEHAVIOUR CHANGE ON UPGRADE (#528): this ALSO now covers "+
 			"filterlog, sshd/auth and Suricata log lines with country/continent/ASN/as_org (no "+
 			"city/region there) - filterlog is the highest-volume log stream on the box, so an "+
 			"existing --geoip.enabled deployment gains real per-line byte cost on upgrade with no "+
 			"config change. Set --logs.syslog.geoip=false to opt those log lines back out while "+
 			"keeping GeoIP on flow records. See docs/geoip.md.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_ENABLED").Default("false").Bool()
+	).Envar("OPNSENSE_EXPORTER_GEOIP_ENABLED").Default("true").Bool()
 
 	geoipCountryDatabase = kingpin.Flag(
 		"geoip.country-database",
-		"Path to a MaxMind Country OR City database (GeoLite2-Country, GeoLite2-City, GeoIP2-City). "+
-			"A City database is a strict superset, so one path accepts either and the city/region "+
-			"attributes are simply absent with a Country file. Defaults to the downloaded copy when "+
-			"--geoip.download.enabled is set. A missing file is not an error - enrichment is fail-open "+
-			"and the attributes are just absent.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE").Default("").String()
+		"Path to a Country OR City database in MaxMind .mmdb format (DB-IP Country/City Lite, "+
+			"GeoLite2-Country, GeoLite2-City, GeoIP2-City). A City database is a strict superset, so "+
+			"one path accepts either and the city/region attributes are simply absent with a Country "+
+			"file. Defaults to the DB-IP Country Lite database bundled in the container image "+
+			"(CC BY 4.0, https://db-ip.com); point it at your own file to override, or set "+
+			"--geoip.download.enabled and it defaults to the downloaded MaxMind copy instead. "+
+			"A missing file is not an error - enrichment is fail-open and the attributes are just "+
+			"absent, which is what a non-container build gets.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_COUNTRY_DATABASE").Default(geoip.BundledCountryPath).String()
 
 	geoipASNDatabase = kingpin.Flag(
 		"geoip.asn-database",
-		"Path to a MaxMind GeoLite2-ASN / GeoIP2-ISP database. This is the one enrichment no amount "+
-			"of Zenarmor coverage supplies: Zenarmor ships no ASN database on any box. Defaults to the "+
-			"downloaded copy when --geoip.download.enabled is set.",
-	).Envar("OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE").Default("").String()
+		"Path to an ASN database in MaxMind .mmdb format (DB-IP ASN Lite, GeoLite2-ASN, GeoIP2-ISP). "+
+			"This is the one enrichment no amount of Zenarmor coverage supplies: Zenarmor ships no ASN "+
+			"database on any box. Defaults to the DB-IP ASN Lite database bundled in the container "+
+			"image (CC BY 4.0, https://db-ip.com), or to the downloaded copy when "+
+			"--geoip.download.enabled is set.",
+	).Envar("OPNSENSE_EXPORTER_GEOIP_ASN_DATABASE").Default(geoip.BundledASNPath).String()
 
 	geoipReloadInterval = kingpin.Flag(
 		"geoip.reload-interval",
@@ -207,9 +215,16 @@ func GeoIP() (GeoIPConfig, error) {
 	return c, nil
 }
 
-// applyDownloadDefaults points the unset database paths at what the downloader will
-// install, so an operator who configures only the downloader gets a working setup
-// rather than a downloaded file nothing reads.
+// applyDownloadDefaults points the unclaimed database paths at what the downloader
+// will install, so an operator who configures only the downloader gets a working
+// setup rather than a downloaded file nothing reads.
+//
+// "Unclaimed" is empty OR one of the bundled DB-IP paths (#549). Those paths are
+// now the flag DEFAULTS, so an operator who supplies MaxMind credentials would
+// otherwise keep reading the bundled DB-IP files forever and never see the
+// database they configured. That is precedence rule 1 — MaxMind wins outright —
+// and it is why this cannot simply test for empty any more. An EXPLICIT
+// --geoip.country-database still wins over the downloader, unchanged.
 //
 // The edition-to-role mapping is by NAME, and City beats Country when both are
 // listed: a City database answers every Country question too, so loading the Country
@@ -218,20 +233,21 @@ func (c *GeoIPConfig) applyDownloadDefaults() {
 	if !c.DownloadEnabled || c.DownloadDir == "" {
 		return
 	}
+	unclaimed := func(path string) bool { return path == "" || geoip.IsBundledPath(path) }
 	for _, ed := range c.DownloadEditions {
 		lower := strings.ToLower(ed)
 		switch {
 		case strings.Contains(lower, "asn") || strings.Contains(lower, "isp"):
-			if c.ASNPath == "" {
+			if unclaimed(c.ASNPath) {
 				c.ASNPath = geoip.DatabasePath(c.DownloadDir, ed)
 			}
 		case strings.Contains(lower, "city"):
 			// City wins outright, overriding a Country default set on an earlier pass.
-			if c.CountryPath == "" || isDefaultedTo(c.CountryPath, c.DownloadDir, "country") {
+			if unclaimed(c.CountryPath) || isDefaultedTo(c.CountryPath, c.DownloadDir, "country") {
 				c.CountryPath = geoip.DatabasePath(c.DownloadDir, ed)
 			}
 		case strings.Contains(lower, "country"):
-			if c.CountryPath == "" {
+			if unclaimed(c.CountryPath) {
 				c.CountryPath = geoip.DatabasePath(c.DownloadDir, ed)
 			}
 		}

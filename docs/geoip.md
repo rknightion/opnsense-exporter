@@ -1,18 +1,38 @@
 # GeoIP enrichment
 
-Optional, purely **local** geolocation and autonomous-system enrichment of flow
-records **and of the filterlog/sshd/Suricata log lines** described below, from
-MaxMind `.mmdb` files on disk. No lookup ever touches the network: a lookup is a
-radix-tree walk costing well under a microsecond.
+Purely **local** geolocation and autonomous-system enrichment of flow records **and
+of the filterlog/sshd/Suricata log lines** described below, from `.mmdb` databases
+on disk. No lookup ever touches the network: a lookup is a radix-tree walk costing
+well under a microsecond.
+
+**On by default since v4, and it works out of the box**: the container image bundles
+the DB-IP Lite Country and ASN databases, so a stock deployment gets countries and
+autonomous systems with no database to source and no account to create. MaxMind is
+still fully supported and still more accurate - see
+[Bundled databases](#bundled-databases-db-ip-lite) and
+[Switching to MaxMind](#switching-to-maxmind).
+
+!!! info "Attribution"
+
+    IP geolocation data by [DB-IP](https://db-ip.com), licensed under
+    [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The same credit ships
+    in the image at `/licenses/GEOIP-DB-IP-ATTRIBUTION.txt` and in the operator
+    console footer.
 
 !!! warning "Behaviour change on upgrade"
 
-    `--geoip.enabled` now covers **both** flow records and the filterlog/sshd/auth/
+    **`--geoip.enabled` now defaults to `true`.** With databases in the image there
+    is nothing left to source first, so geo is on unless you turn it off. Combined
+    with the change below, an upgraded container deployment that had never
+    configured GeoIP at all now emits geo attributes on flow records **and on
+    filterlog lines**, which costs real per-line bytes on the highest-volume log
+    stream on the box - see [the measured cost](#measured-per-line-cost). Set
+    `--geoip.enabled=false` to opt out entirely, or `--logs.syslog.geoip=false` to
+    keep geo on flow records only.
+
+    `--geoip.enabled` also covers **both** flow records and the filterlog/sshd/auth/
     Suricata log lines (see [Logs](#logs-filterlog-sshdauth-suricata) below) - one
-    switch means geo, everywhere it can reach. An existing deployment that already
-    runs `--geoip.enabled` for flow records gains real per-line byte cost on
-    filterlog, the highest-volume log stream on the box, **with no config change**.
-    Set `--logs.syslog.geoip=false` to keep GeoIP on flow records only.
+    switch means geo, everywhere it can reach.
 
 It exists to close an asymmetry. Zenarmor's `conn` documents carry geo from
 Zenarmor's own database; NetFlow-derived flows carry bare addresses and no geo at
@@ -33,27 +53,134 @@ exporter's own database, whether or not Zenarmor exists.
     They are unrelated to this page, and the MaxMind license key in their
     descriptions is one configured on the firewall, not here.
 
-## Enabling it
+## Bundled databases (DB-IP Lite)
 
-Off by default, because it needs a database the exporter does not ship.
+The container image ships two databases, fetched unmodified from DB-IP when the
+image is built and installed read-only:
+
+| path | contents | size |
+| --- | --- | --- |
+| `/usr/share/opnsense-exporter/geoip/dbip-country-lite.mmdb` | country + continent | ~8.2 MB |
+| `/usr/share/opnsense-exporter/geoip/dbip-asn-lite.mmdb` | ASN + organization | ~9.6 MB |
+
+Those two paths are the **default values** of `--geoip.country-database` and
+`--geoip.asn-database`, so nothing needs configuring to use them.
+
+**Why DB-IP and not GeoLite2.** GeoLite2 cannot legally be bundled: redistributing
+it inside a product needs MaxMind's paid, signed Commercial Redistribution License
+*and* obliges the redistributor to bind every downstream user to a restrictive
+EULA, which is impossible for an Apache-2.0 public image. DB-IP Lite is plain
+CC BY 4.0 - redistributable as long as DB-IP is credited.
+
+**They are not in the git repository.** They are ~17.8 MB of binary republished
+monthly; committing them would grow this repository's history by that much every
+month, permanently. So they are fetched at **image build time**, which has one
+consequence worth stating plainly:
+
+!!! warning "A non-container build has no bundled database"
+
+    `make`, `go build`, `go run .` and the release **binary archives** never run the
+    image build, so nothing exists at those paths. With `--geoip.enabled` on by
+    default, that is the default configuration of every such build - and it is
+    **fail-open**: the exporter starts normally, every geo attribute is simply
+    absent, and no error is raised. Point `--geoip.country-database` /
+    `--geoip.asn-database` at your own files, or use the container image.
+
+**Refresh.** DB-IP republishes on the 1st of each month. A scheduled workflow
+rebuilds and republishes the `:main` image on the 3rd once the new files are
+published, and every tagged release build fetches current data as a matter of
+course. The database's own build date is exported as
+`opnsense_flow_geoip_database_build_timestamp_seconds{database}`, so freshness is a
+query rather than a claim - and `OPNsenseFlowGeoIPDatabaseStale` fires on it.
+
+### Accuracy: read this before trusting a city
+
+DB-IP publishes Lite as an explicitly **reduced-coverage, reduced-accuracy subset**
+of their commercial data, and the accuracy is not uniform across fields:
+
+| field | free-tier accuracy, broadly |
+| --- | --- |
+| country | **>95%** everywhere, across every free provider tested independently |
+| city | **~70-78%** in North America and Western Europe, and worse elsewhere |
+
+Country is the only field that may ever become a **metric label**, and it is the
+field that holds up. City and region are log attributes only. Treat a city as a
+hint worth having, not as a fact worth alerting on, and use MaxMind's commercial
+tiers if you need better.
+
+### City is supported, but is not bundled
+
+DB-IP City Lite is **125 MB** uncompressed against Country Lite's 8.2 MB, and it
+would *replace* the country database rather than add to it (a City database is a
+strict superset, and one flag accepts either). That is roughly +117 MB on every
+image pull, forever, for data that reaches no metric - so it is not bundled.
+
+To use it, download it yourself and point the same flag at it:
 
 ```bash
---geoip.enabled \
---geoip.country-database=/var/lib/geoip/GeoLite2-Country.mmdb \
---geoip.asn-database=/var/lib/geoip/GeoLite2-ASN.mmdb
+curl -fSL -o /var/lib/geoip/dbip-city-lite.mmdb.gz \
+  https://download.db-ip.com/free/dbip-city-lite-$(date -u +%Y-%m).mmdb.gz
+gunzip /var/lib/geoip/dbip-city-lite.mmdb.gz
 ```
 
-Two supply paths, and both are supported:
+```bash
+--geoip.country-database=/var/lib/geoip/dbip-city-lite.mmdb
+```
 
-* **Operator-managed files** (the default): a `geoipupdate` cron, a sidecar, or a
-  mounted volume writes the files, and `--geoip.reload-interval` (15m) notices when
-  one changes and hot-swaps it under the running exporter.
+!!! warning "`region` is always empty with DB-IP City data"
+
+    DB-IP City Lite's `subdivisions[]` entries carry only `names` - there is **no**
+    `iso_code` key in the object at all. The exporter's `<src|dst>.geo.region`
+    attribute is an ISO 3166-2 code, so it decodes **empty on every record** against
+    a DB-IP City database even where the city name resolved fine. This is a property
+    of DB-IP's Lite tier, verified against the real file, not a bug.
+
+    Reading the subdivision *name* into that field instead is deliberately not done:
+    it would silently change `region` from a code to free text and break every
+    MaxMind consumer of it. A MaxMind City database populates it correctly.
+
+## Switching to MaxMind
+
+MaxMind is more accurate, fully supported, and **wins outright** over the bundled
+copies. Two supply paths:
+
+* **Operator-managed files**: point the flags at your own files. A `geoipupdate`
+  cron, a sidecar, or a mounted volume writes them, and `--geoip.reload-interval`
+  (15m) notices when one changes and hot-swaps it under the running exporter.
+
+  ```bash
+  --geoip.country-database=/var/lib/geoip/GeoLite2-Country.mmdb \
+  --geoip.asn-database=/var/lib/geoip/GeoLite2-ASN.mmdb
+  ```
+
 * **The built-in downloader** (`--geoip.download.enabled`): the exporter fetches
   from MaxMind directly, so no sidecar is needed. Requires
   `--geoip.download.account-id` and a license key. Conditional requests mean an
   unchanged database costs a 304 and no download quota. Leave
-  `--geoip.country-database` / `--geoip.asn-database` unset and they default to
-  what the downloader installs.
+  `--geoip.country-database` / `--geoip.asn-database` at their defaults and they
+  switch to what the downloader installs - the bundled paths are treated as
+  unclaimed precisely so this works without extra flags.
+
+### Precedence
+
+Resolved in this order, first match wins:
+
+1. **MaxMind via `--geoip.download.enabled`** - configuring the downloader
+   repoints both database paths at what it installs, overriding the bundled copies.
+2. **An explicit `--geoip.country-database` / `--geoip.asn-database`** - your path
+   is never overridden by anything.
+3. **The bundled DB-IP Lite copies** - the flag defaults, used when you set neither
+   of the above.
+
+### Turning it off
+
+```bash
+--geoip.enabled=false
+```
+
+Every geo attribute disappears from flow records and log lines, and the `country`
+metric label resolves to off with it (see `--flow.geoip.metric-dims` below). The
+~18 MB of databases are simply never read.
 
 The two schedules are independent because they answer different questions.
 `--geoip.download.interval` is "has MaxMind published a newer build?"; a network
@@ -61,10 +188,11 @@ question, worth asking daily since GeoLite2 rebuilds twice a week.
 `--geoip.reload-interval` is "has the file on disk changed?"; a local `stat`, and
 the only thing that makes the operator-managed path work at all.
 
-## Which editions to ship
+## Which MaxMind editions to download
 
-Default is **Country + ASN**. The resident cost is real and is the reason City is
-not default:
+Applies to `--geoip.download.enabled` only; the bundled DB-IP copies are covered
+above. Default is **Country + ASN**. The resident cost is real and is the reason
+City is not default:
 
 | edition | resident | what it adds |
 | --- | --- | --- |
@@ -155,13 +283,16 @@ it carries nothing.
 
 which adds a single `country` label to `opnsense_flow_bytes_total`,
 `_packets_total` and `_records_total`, naming the **remote** end of the flow.
-Off by default and it should usually stay off: country is a ~250-value dimension
-multiplied against every existing flow label, so this can multiply the family's
-cardinality roughly 250-fold. `--flow.top-n` and `--flow.max-keys` still bound the
-result, which means the practical effect on a busy box is that real series start
-folding into `__other__` rather than that the family grows without limit.
+**On by default since #537**, with `--flow.top-n` and `--flow.max-keys` raised 10x
+in the same change to hold it: in practice a box talks to a few dozen countries,
+not the ~250 the dimension can hold, but at the old bounds even that would have
+folded real series into `__other__`. Set it to `false` to drop the label; the flow
+families then carry the dimensions they did before the label existed.
 
-**ASN and city never become labels at any setting.** With the opt-in off, every
+With `--geoip.enabled=false` the label resolves to off rather than refusing to
+start, so turning geo off never costs you a startup.
+
+**ASN and city never become labels at any setting.** With the label off, every
 series carries `country=""`, which Prometheus treats as an absent label - so the
 family reads exactly as it did before this feature existed.
 
@@ -270,9 +401,19 @@ why these exist:
 | `opnsense_flow_geoip_downloads_total{result}` | `unmodified` is the healthy steady state |
 | `opnsense_flow_geoip_country_comparisons_total{result}` | what is ours-wins costing? |
 
-The build timestamp is MaxMind's **build** date, not the download time, so it is the
-right staleness signal - and `OPNsenseFlowGeoIPDatabaseStale` fires on it at 14
-days, which is four missed GeoLite2 builds.
+The build timestamp is the database's own **build** date, read from its metadata,
+not the download or image-build time - so it is the right staleness signal for a
+bundled copy as much as a downloaded one, and it is how you tell what data an image
+actually carries. `OPNsenseFlowGeoIPDatabaseStale` fires on it at **45 days**, a
+threshold chosen to cover every database the exporter can load: DB-IP Lite
+republishes monthly, so anything tighter would fire on a perfectly healthy stock
+deployment. It does mean a broken MaxMind updater takes 45 days to page rather than
+14 - watch `opnsense_flow_geoip_downloads_total` and
+`opnsense_flow_geoip_reloads_total` if you want that sooner, since a failing fetch
+shows up there immediately.
+
+On a stock deployment there is no updater to fix when this fires: the bundled copy
+is exactly as old as the image, so the answer is to pull a current one.
 
 ## Notes
 
@@ -300,6 +441,16 @@ normally runs on a different host entirely, so those paths do not exist where th
 code runs. It ships its own database or it has none.
 
 **No database is committed to this repository.** They are tens of megabytes each,
-rebuilt twice a week, and covered by the GeoLite End User License Agreement. The
-only `.mmdb` files in the tree are MaxMind's own synthetic test fixtures, used by
-the unit tests.
+republished monthly (DB-IP) or twice a week (MaxMind), and GeoLite2 is covered by
+the GeoLite End User License Agreement besides. The bundled DB-IP files are fetched
+by the **Dockerfile at image build time**; the only `.mmdb` files in the tree are
+MaxMind's own synthetic test fixtures, used by the unit tests.
+
+**The three-way country fallback is inert against DB-IP.** The exporter prefers
+`country.iso_code`, falling back to `registered_country` then `represented_country`
+- MaxMind omits `country` entirely for a large slice of the internet (1.1.1.1 is
+the canonical example) and without the fallback every Cloudflare-fronted address
+would read as unknown. DB-IP models neither fallback key at all and fills
+`country.iso_code` on every record it has, including 1.1.1.1. So with the bundled
+databases the fallback never fires; it stays because it is load-bearing the moment
+an operator supplies MaxMind.

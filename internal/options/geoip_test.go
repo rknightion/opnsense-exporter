@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 )
 
 func TestGeoIPValidate(t *testing.T) {
@@ -114,6 +117,93 @@ func TestGeoIPValidateAcceptsAMissingDatabaseFile(t *testing.T) {
 	c := GeoIPConfig{Enabled: true, CountryPath: "/definitely/not/here.mmdb"}
 	if err := c.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil for a not-yet-present database", err)
+	}
+}
+
+// #549: the image ships DB-IP Lite Country + ASN, so the flags default to the
+// bundled copies and --geoip.enabled defaults ON. These are the three registered
+// defaults the Dockerfile has to agree with; asserting them off the real kingpin
+// model is what catches a default edited on one side only.
+func TestGeoIPFlagDefaultsPointAtTheBundledDatabases(t *testing.T) {
+	RegisterAllFlags()
+	want := map[string]string{
+		"geoip.enabled":          "true",
+		"geoip.country-database": geoip.BundledCountryPath,
+		"geoip.asn-database":     geoip.BundledASNPath,
+	}
+	seen := map[string]bool{}
+	for _, f := range kingpin.CommandLine.Model().Flags {
+		w, ok := want[f.Name]
+		if !ok {
+			continue
+		}
+		seen[f.Name] = true
+		if len(f.Default) != 1 || f.Default[0] != w {
+			t.Errorf("--%s default = %q, want [%q]", f.Name, f.Default, w)
+		}
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("--%s is not registered", name)
+		}
+	}
+}
+
+// The stock container configuration — everything defaulted — must validate. With
+// --geoip.enabled defaulting on and --flow.geoip.metric-dims already default-true
+// since #537, a rejection here would be a refusal to start for every deployment
+// that changed nothing, which is exactly the regression #537 shipped once already.
+func TestGeoIPStockDefaultsValidate(t *testing.T) {
+	c := GeoIPConfig{
+		Enabled:          true,
+		CountryPath:      geoip.BundledCountryPath,
+		ASNPath:          geoip.BundledASNPath,
+		ReloadInterval:   15 * time.Minute,
+		DownloadEditions: splitEditions(defaultGeoIPEditions),
+		DownloadDir:      "/var/lib/opnsense-exporter/geoip",
+		DownloadInterval: 24 * time.Hour,
+		DownloadTimeout:  5 * time.Minute,
+		MetricDims:       true,
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil for the stock defaults", err)
+	}
+}
+
+// Precedence rule 1: MaxMind wins outright. Before #549 that fell out of the
+// paths being empty; now they carry the bundled defaults, so the download
+// defaulting has to recognise a bundled path as unclaimed or an operator who
+// configures MaxMind credentials keeps reading the DB-IP files and never sees the
+// database they paid for.
+func TestGeoIPMaxMindDownloadBeatsTheBundledDefaults(t *testing.T) {
+	c := GeoIPConfig{
+		CountryPath:      geoip.BundledCountryPath,
+		ASNPath:          geoip.BundledASNPath,
+		DownloadEnabled:  true,
+		DownloadDir:      "/state/geoip",
+		DownloadEditions: []string{"GeoLite2-Country", "GeoLite2-ASN"},
+	}
+	c.applyDownloadDefaults()
+	if c.CountryPath != "/state/geoip/GeoLite2-Country.mmdb" {
+		t.Errorf("CountryPath = %q, want the downloaded MaxMind database", c.CountryPath)
+	}
+	if c.ASNPath != "/state/geoip/GeoLite2-ASN.mmdb" {
+		t.Errorf("ASNPath = %q, want the downloaded MaxMind database", c.ASNPath)
+	}
+}
+
+// Precedence rule 2: an explicit --geoip.*-database still beats the downloader,
+// unchanged by #549. Only a BUNDLED path is treated as unclaimed.
+func TestGeoIPExplicitPathBeatsTheDownloaderStill(t *testing.T) {
+	c := GeoIPConfig{
+		CountryPath:      "/mnt/mine/city.mmdb",
+		DownloadEnabled:  true,
+		DownloadDir:      "/state/geoip",
+		DownloadEditions: []string{"GeoLite2-Country"},
+	}
+	c.applyDownloadDefaults()
+	if c.CountryPath != "/mnt/mine/city.mmdb" {
+		t.Errorf("CountryPath = %q, want the operator's own path", c.CountryPath)
 	}
 }
 

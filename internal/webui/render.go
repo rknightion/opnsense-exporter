@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 )
 
@@ -16,6 +17,7 @@ var templatesFS embed.FS
 // funcMap is used by the single-page console template for first-paint rendering
 // (the JS mirrors these helpers for its live-refresh rebuild).
 var funcMap = template.FuncMap{
+	"geoipCredit":   geoipCredit,
 	"sparkline":     sparkline,
 	"outcomeStrip":  outcomeStrip,
 	"healthClass":   healthClass,
@@ -47,6 +49,28 @@ type view struct {
 // renderPage renders the single console page from the pre-parsed template.
 func renderPage(w io.Writer, v view) error {
 	return pageTmpl.Execute(w, v)
+}
+
+// geoipCredit renders the CC BY 4.0 attribution for the bundled DB-IP Lite
+// databases into the console footer (#549).
+//
+// It is unconditional and it is a template FUNC rather than a view field on
+// purpose. Unconditional because the console cannot know which database answered
+// a lookup — an operator may have pointed the flags at MaxMind — and a credit
+// that appears only sometimes is one that is missing sometimes; crediting DB-IP
+// on an image that ships their data is correct whatever else is also loaded. A
+// func because it needs no state from the request, so no handler, no Deps field
+// and no wiring in main can accidentally drop it.
+//
+// Built from the geoip constants, never from a literal typed here, so the console
+// and the image's /licenses copy cannot drift apart.
+func geoipCredit() template.HTML {
+	return template.HTML(fmt.Sprintf(
+		`IP geolocation data by <a href="%s" rel="noopener noreferrer">%s</a> (<a href="%s" rel="noopener noreferrer">%s</a>)`,
+		template.HTMLEscapeString(geoip.BundledProviderURL),
+		template.HTMLEscapeString(geoip.BundledProvider),
+		template.HTMLEscapeString(geoip.BundledLicenseURL),
+		template.HTMLEscapeString(geoip.BundledLicense)))
 }
 
 // freshClass maps a collector freshness state to a badge modifier class.

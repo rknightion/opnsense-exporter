@@ -15,6 +15,7 @@ import (
 	"github.com/rknightion/opnsense-exporter/internal/metricsnap"
 
 	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/geoip"
 	"github.com/rknightion/opnsense-exporter/internal/options"
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
@@ -169,3 +170,20 @@ func TestHandler_Healthz(t *testing.T) {
 
 // compile-time proof the render helper writes to any io.Writer.
 var _ = func(w io.Writer) { _ = renderPage(w, view{}) }
+
+// CC BY 4.0 requires the credit wherever the data or its results are shown, and
+// the console is the exporter's one human-facing surface (#549). It renders on
+// every page, unconditionally: the console cannot know which database answered a
+// given lookup, and a credit that appears only sometimes is a credit that is
+// missing sometimes.
+func TestConsoleCreditsTheBundledGeoIPProvider(t *testing.T) {
+	srv := NewServer(testDeps())
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, want := range []string{geoip.BundledProviderURL, geoip.BundledProvider, geoip.BundledLicense, geoip.BundledLicenseURL} {
+		if !strings.Contains(body, want) {
+			t.Errorf("console page does not carry the DB-IP attribution fragment %q", want)
+		}
+	}
+}

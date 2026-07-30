@@ -475,12 +475,14 @@ func (c *flowCollector) registerGeoIP() {
 		resultLabel,
 	)
 	c.geoBuildTime = buildPrometheusDesc(c.subsystem, "geoip_database_build_timestamp_seconds",
-		"Unix timestamp of the loaded GeoIP database's build, per database. This is MaxMind's BUILD "+
-			"date, not when the file was downloaded, so it is the right thing to alert staleness on: "+
-			"time() - this > 14d catches an updater that has silently stopped working, which the "+
-			"fail-open design makes otherwise invisible. ABSENT for a database that is not loaded, "+
-			"rather than zero - a zero would read as \"built in 1970\" and fire every staleness alert "+
-			"ever written against it.",
+		"Unix timestamp of the loaded GeoIP database's build, per database. This is the publisher's "+
+			"BUILD date, not when the file was downloaded, so it is the right thing to alert staleness "+
+			"on: time() - this > 45d catches a refresh that has silently stopped, which the fail-open "+
+			"design makes otherwise invisible. 45d rather than something tighter because it has to "+
+			"cover every database the exporter can load, and the DB-IP Lite copy bundled in the image "+
+			"republishes monthly while GeoLite2 rebuilds twice a week. ABSENT for a database that is "+
+			"not loaded, rather than zero - a zero would read as \"built in 1970\" and fire every "+
+			"staleness alert ever written against it.",
 		dbLabel,
 	)
 	c.geoEnriched = buildPrometheusDesc(c.subsystem, "geoip_enriched_records_total",

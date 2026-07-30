@@ -104,6 +104,14 @@ func (r Result) Empty() bool { return r == Result{} }
 // the registering ISP). 1.1.1.1 is the canonical example: no `country` object at all.
 // Without the fallback in countryFrom, every Cloudflare-fronted address reads as
 // unknown.
+//
+// That is a statement about MAXMIND data specifically, and it is NOT true of the
+// bundled DB-IP Lite databases (#549). DB-IP's schema does not model
+// registered/represented country at all — neither key appears anywhere in the file
+// — and it populates `country.iso_code` directly on every record it has, including
+// 1.1.1.1 (`AU`, decoded from the real 2026-07 file). Both fields therefore always
+// decode empty against DB-IP. Inert, not broken: the primary path is populated, and
+// the fallback still earns its place for MaxMind. Verified field-by-field on #549.
 type countryRecord struct {
 	Continent struct {
 		Code string `maxminddb:"code"`
@@ -139,6 +147,15 @@ type asnRecord struct {
 // physical location over the registering ISP's country over the represented country
 // (embassies, military bases). See the countryRecord doc for why the fallback chain
 // is load-bearing rather than defensive.
+//
+// DO NOT "simplify" the chain away after reading a DB-IP file. Against the bundled
+// DB-IP Lite databases it is INERT — DB-IP always fills country.iso_code and models
+// neither of the other two — so every branch below the first looks dead. It is not:
+// it is the only thing that gives a country to Cloudflare-fronted addresses when an
+// operator supplies a MaxMind database, which is a fully supported and better-
+// accuracy configuration. Removing it would break MaxMind users silently, and the
+// tests that cover it use MaxMind's fixtures precisely because DB-IP cannot express
+// the case.
 func countryFrom(rec countryRecord) (iso, continent string) {
 	iso = rec.Country.ISOCode
 	if iso == "" {
@@ -162,6 +179,13 @@ func countryFrom(rec countryRecord) (iso, continent string) {
 // returns ~17 significant figures, the four keys measured 145-149 B/line on the flow
 // family, and no consumer ranks by anything but country or city. Re-add them only for
 // a map panel that plots them.
+// RegionISO is empty against DB-IP City data, always (#549). DB-IP City Lite's
+// subdivisions[] entries carry only `names` — there is no `iso_code` key in the
+// object at all — while the city name itself decodes fine. That is a property of
+// DB-IP's Lite tier, not a bug here, and it is documented in docs/geoip.md so a
+// blank region is met by an answer rather than an issue. Reading names.en instead
+// would change RegionISO from an ISO 3166-2 code to free text and break every
+// MaxMind consumer of the field, so it is deliberately not done.
 func cityFrom(rec countryRecord) (city, regionISO string) {
 	city = rec.City.Names["en"]
 	// Subdivisions run least- to most-specific ("England" then a county), so the LAST
