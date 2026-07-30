@@ -150,8 +150,31 @@ type client struct {
 // exporter's only outbound WRITE, carrying a token that can create annotations in
 // the org, so an operator behind a private CA should trust the CA
 // (SSL_CERT_FILE/SSL_CERT_DIR) rather than turn verification off for it.
+//
+// Never follow a redirect (#566, mirroring #306/#307's fix to the OPNsense API
+// client and #381's fix to the Pyroscope client). Every request carries the
+// annotation token in an Authorization header, and Go's stdlib only strips
+// that header when the redirect target's HOSTNAME differs —
+// shouldCopyHeaderOnRedirect compares hostname ONLY, not scheme and not port.
+// So a redirect from https://grafana/api/annotations to another port on the
+// same host, a subdomain, a different host entirely, or a plain-http URL on
+// the same host would forward the bearer token to it; a 307/308 additionally
+// replays the annotation body. Grafana's /api/annotations never legitimately
+// redirects, so nothing real is lost. ErrUseLastResponse hands the 3xx back
+// to do(), which treats any non-2xx — including an unfollowed redirect — as
+// the existing httpError path, so a rejected redirect surfaces as a normal
+// annotation-write error rather than a panic or a silent success.
 func newClient(cfg Config) *client {
-	return &client{cfg: cfg, http: &http.Client{Timeout: cfg.Timeout}, now: time.Now}
+	return &client{
+		cfg: cfg,
+		http: &http.Client{
+			Timeout: cfg.Timeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		now: time.Now,
+	}
 }
 
 func (c *client) endpoint(path string) string {
