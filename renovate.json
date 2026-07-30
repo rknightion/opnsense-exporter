@@ -52,6 +52,13 @@
       "matchManagers": ["gomod"],
       "matchPackageNames": ["github.com/prometheus/**"],
       "groupName": "prometheus"
+    },
+    {
+      "description": "No major updates for go.yaml.in/yaml: the major is part of the module path, so v2 -> v3 is a different module, not an upgrade. Renovate got this wrong in #527 and added v3 to the direct require block alongside v2 with no importer at all. Migrating is pointless anyway — vendored prometheus/common and exporter-toolkit both require v2, so pointing our one first-party import (scripts/docgen/compose_reference_test.go) at v3 would ADD a second yaml module rather than replace one. Revisit only when those dependencies move (#533).",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["go.yaml.in/yaml/**"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }
