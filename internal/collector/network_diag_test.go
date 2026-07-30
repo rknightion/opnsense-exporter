@@ -487,7 +487,7 @@ func TestNetworkDiagCollector_DescribeCoversNetisr(t *testing.T) {
 // family, a VLAN child whose netif differs from its description, and a
 // blackhole route.
 const routesCollectorFixture = `[
- {"proto":"ipv4","destination":"default","gateway":"81.187.81.187","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
+ {"proto":"ipv4","destination":"default","gateway":"203.0.113.187","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
  {"proto":"ipv4","destination":"10.0.100.0/24","gateway":"link#5","flags":"U","netif":"ixl0_vlan100","intf_description":"MGMT"},
  {"proto":"ipv4","destination":"192.0.2.0/24","gateway":"127.0.0.1","flags":"USB","netif":"lo0","intf_description":"Loopback"},
  {"proto":"ipv6","destination":"default","gateway":"fe80::1%pppoe0","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"}
@@ -572,7 +572,7 @@ func TestNetworkDiagCollector_DefaultRoutePresence(t *testing.T) {
 	if present["ipv4"] != 1 || present["ipv6"] != 1 {
 		t.Errorf("default_route_present = %v, want both 1", present)
 	}
-	if info["ipv4|pppoe0|AAISP|81.187.81.187"] != 1 {
+	if info["ipv4|pppoe0|AAISP|203.0.113.187"] != 1 {
 		t.Errorf("ipv4 default_route_info missing: %v", info)
 	}
 	if info["ipv6|pppoe0|AAISP|fe80::1%pppoe0"] != 1 {

@@ -44,6 +44,9 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
+      - name: Check for un-allowlisted globally routable IP literals (#565)
+        run: make check-public-ips
+
   # Dedicated race-detector gate. Runs the FULL suite under -race across every package,
   # with no command-line -skip exception (#295): the one assertion that cannot survive
   # race instrumentation — TestEnrichMessageAllocations — is excluded via a `//go:build

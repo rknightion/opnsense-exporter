@@ -113,7 +113,7 @@ func TestRepeatedUnparsedLinesCapturedOnce(t *testing.T) {
 	// The real thing: same shape, different counter and address every time.
 	for i := range 3 {
 		line := fmt.Appendf(nil,
-			`<7>1 2026-07-14T19:50:0%d+01:00 opnsense kernel 42 - - [36765%d] arpresolve: can't allocate llinfo for 86.31.203.%d`,
+			`<7>1 2026-07-14T19:50:0%d+01:00 opnsense kernel 42 - - [36765%d] arpresolve: can't allocate llinfo for 198.51.100.%d`,
 			i, i, 100+i)
 		s.handle(line, netip.MustParseAddr("10.0.0.1"))
 	}
@@ -145,7 +145,7 @@ func TestNovelUnparsedShapeCapturedImmediately(t *testing.T) {
 	s.emit = func(logship.Record) {}
 
 	for range 5 {
-		s.handle([]byte(`<7>1 2026-07-14T19:50:01+01:00 opnsense kernel 42 - - [367655] arpresolve: can't allocate llinfo for 86.31.203.106`),
+		s.handle([]byte(`<7>1 2026-07-14T19:50:01+01:00 opnsense kernel 42 - - [367655] arpresolve: can't allocate llinfo for 198.51.100.106`),
 			netip.MustParseAddr("10.0.0.1"))
 	}
 	s.handle([]byte(`<134>1 2026-07-14T19:50:01+01:00 opnsense mystery-plugin 42 - - something entirely new`),

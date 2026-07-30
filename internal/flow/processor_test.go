@@ -33,7 +33,7 @@ func testIfaces() []enrich.IfaceInfo {
 	ifs = append(ifs, blank(3)...) // indices 2-4: unassigned rows still occupy a slot
 	ifs = append(ifs, enrich.IfaceInfo{
 		Device: "igb0", Name: "WAN2", Identifier: "opt6", IsWAN: true,
-		Addrs: []netip.Addr{netip.MustParseAddr("86.31.203.106")},
+		Addrs: []netip.Addr{netip.MustParseAddr("198.51.100.106")},
 	})
 	ifs = append(ifs, blank(7)...) // indices 6-12
 	ifs = append(ifs, enrich.IfaceInfo{

@@ -28,7 +28,7 @@ func TestFetchDynDNSAccounts_Success(t *testing.T) {
 					"interface": "opt7",
 					"%interface": "AAISP",
 					"description": "Home IP",
-					"current_ip": "81.187.237.31",
+					"current_ip": "198.51.100.31",
 					"current_mtime": "2026-05-29T21:37:38+01:00",
 					"password": "$2y$10$hashed",
 					"%password": "***"
@@ -86,8 +86,8 @@ func TestFetchDynDNSAccounts_Success(t *testing.T) {
 	if a1.Description != "Home IP" {
 		t.Errorf("expected description 'Home IP', got %q", a1.Description)
 	}
-	if a1.CurrentIP != "81.187.237.31" {
-		t.Errorf("expected current_ip '81.187.237.31', got %q", a1.CurrentIP)
+	if a1.CurrentIP != "198.51.100.31" {
+		t.Errorf("expected current_ip '198.51.100.31', got %q", a1.CurrentIP)
 	}
 	if !a1.HasLastUpdate {
 		t.Errorf("expected HasLastUpdate=true for account with current_mtime")

@@ -65,21 +65,23 @@ type anonymizer struct {
 	nV6Pub, nV6ULA, nV6LL, nV6Mcast          uint32
 }
 
-// pinnedMap fixes the anonymised value of the addresses the fixture's assertions
+// pinnedMap fixes the anonymised value of the two addresses the fixture's assertions
 // depend on, so the replay test can name them as documented constants rather than
 // chasing an allocation order. Everything else is allocated sequentially.
 //
-//   - 86.31.203.106 is the box's WAN2 NAT address (on ixl1 as of 2026-07-24; it was
-//     igb0 when this capture was taken, before the router moved to the SFP cage —
-//     the ADDRESS is what the fixture pins, not the device); the egress-correction case
-//     turns on the replay test's IfMap owning it, so it is pinned to a stable
-//     documentation address.
-//   - 135.181.211.203 is the destination of that mislabelled WAN2 flow; pinned only
-//     for a readable fixture.
+// The keys are placeholders in the RFC 2544 benchmark-testing range
+// (198.18.0.0/15 — reserved by IANA for exactly this, never real assigned
+// infrastructure), standing in for whatever two addresses a fresh capture actually
+// contains: the source of the flow the egress-correction case depends on, and that
+// flow's destination. Regenerating the fixture from a NEW capture means updating
+// these keys to that capture's own addresses — a fresh capture is a different
+// stream, so the frame selection above needs re-deriving too either way. The two
+// output values below (RFC 5737) are load-bearing: internal/flow/replay_test.go and
+// this package's own tests name them as constants, so they must not change.
 func pinnedMap() map[netip.Addr]netip.Addr {
 	return map[netip.Addr]netip.Addr{
-		netip.MustParseAddr("86.31.203.106"):   netip.MustParseAddr("198.51.100.6"),
-		netip.MustParseAddr("135.181.211.203"): netip.MustParseAddr("203.0.113.203"),
+		netip.MustParseAddr("198.18.0.5"): netip.MustParseAddr("198.51.100.6"),
+		netip.MustParseAddr("198.18.0.9"): netip.MustParseAddr("203.0.113.203"),
 	}
 }
 

@@ -24,9 +24,9 @@ import (
 // THE CAPTURED GRAMMARS, verbatim from the production box (OPNsense 26.7.1_1,
 // WAN = ixl1). These four are the only shapes OBSERVED:
 //
-//	DHCPREQUEST on ixl1 to 80.1.23.233 port 67
-//	DHCPACK from 80.1.23.233
-//	bound to 82.7.80.148 -- renewal in 302400 seconds.
+//	DHCPREQUEST on ixl1 to 203.0.113.233 port 67
+//	DHCPACK from 203.0.113.233
+//	bound to 203.0.113.148 -- renewal in 302400 seconds.
 //	dhclient-script: Reason RENEW on ixl1 executing
 //
 // The remaining message types (DISCOVER, OFFER, NAK, DECLINE, RELEASE, INFORM) and

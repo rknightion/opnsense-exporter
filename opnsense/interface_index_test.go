@@ -125,7 +125,7 @@ const liveInterfaceStatisticsFixture = `{"statistics":{
  "[LAN] (ixl0) / 98:b7:85:21:af:f2":{"name":"ixl0","flags":"0x8943","mtu":1500,"network":"<Link#1>","address":"98:b7:85:21:af:f2","received-packets":419866764,"received-errors":50,"dropped-packets":0,"received-bytes":383093557281,"sent-packets":381907348,"send-errors":0,"sent-bytes":316537354094,"collisions":0},
  "[LAN] (ixl0) / 10.0.0.254":{"name":"ixl0","flags":"0x8943","network":"10.0.0.0/24","address":"10.0.0.254","received-packets":15603611,"received-bytes":2369675284,"sent-packets":25173485,"sent-bytes":23846528514},
  "[LAN] (ixl0) / fe80::9ab7:85ff:fe21:aff2%ixl0":{"name":"ixl0","flags":"0x8943","network":"fe80::%ixl0/64","address":"fe80::9ab7:85ff:fe21:aff2%ixl0","received-packets":214444,"received-bytes":18089655,"sent-packets":257888,"sent-bytes":21509007},
- "[LAN] (ixl0) / 2001:8b0:1f05::1":{"name":"ixl0","flags":"0x8943","network":"2001:8b0:1f05::/64","address":"2001:8b0:1f05::1","received-packets":8658484,"received-bytes":1614698995,"sent-packets":188695,"sent-bytes":27324379},
+ "[LAN] (ixl0) / 2001:db8::1":{"name":"ixl0","flags":"0x8943","network":"2001:db8::/64","address":"2001:db8::1","received-packets":8658484,"received-bytes":1614698995,"sent-packets":188695,"sent-bytes":27324379},
  "[tailscale] (tailscale0)":{"name":"tailscale0","flags":"0x8051","mtu":1280,"network":"<Link#16>","address":"","received-packets":1000,"received-errors":0,"dropped-packets":8,"received-bytes":2000,"sent-packets":3000,"send-errors":0,"sent-bytes":4000,"collisions":0}
 }}`
 

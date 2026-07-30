@@ -134,7 +134,7 @@ func TestNDPCollector_Name(t *testing.T) {
 func TestNDPCollector_ManufacturerAndDeviceLabels(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`[
-		 {"mac":"98:b7:85:21:af:f2","ip":"2001:8b0:1f05::1","intf":"ixl0_vlan100",
+		 {"mac":"98:b7:85:21:af:f2","ip":"2001:db8::1","intf":"ixl0_vlan100",
 		  "manufacturer":"Intel Corporate","intf_description":"MGMT"},
 		 {"mac":"0e:40:69:ec:4d:9a","ip":"fe80::d6:761:6510:f3a6%ixl0","intf":"ixl0",
 		  "manufacturer":"","intf_description":"LAN"}
@@ -154,7 +154,7 @@ func TestNDPCollector_ManufacturerAndDeviceLabels(t *testing.T) {
 		}
 		labels := getMetricLabels(m)
 		switch labels["ip"] {
-		case "2001:8b0:1f05::1":
+		case "2001:db8::1":
 			seen++
 			if labels["manufacturer"] != "Intel Corporate" {
 				t.Errorf("manufacturer = %q", labels["manufacturer"])

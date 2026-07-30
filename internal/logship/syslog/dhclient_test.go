@@ -46,11 +46,11 @@ func TestDHCPClientCapturedGrammars(t *testing.T) {
 	}{
 		{
 			name:    "captured: DHCPREQUEST names the interface and the server",
-			message: "DHCPREQUEST on ixl1 to 80.1.23.233 port 67",
+			message: "DHCPREQUEST on ixl1 to 203.0.113.233 port 67",
 			want: map[string]string{
 				attrDHCPClientType:      dhcpClientTypeRequest,
 				attrDHCPClientInterface: "ixl1",
-				attrDHCPClientServer:    "80.1.23.233",
+				attrDHCPClientServer:    "203.0.113.233",
 			},
 		},
 		{
@@ -72,11 +72,11 @@ func TestDHCPClientCapturedGrammars(t *testing.T) {
 		},
 		{
 			name:    "from source: DHCPRELEASE",
-			message: "DHCPRELEASE on ixl1 to 80.1.23.233 port 67",
+			message: "DHCPRELEASE on ixl1 to 203.0.113.233 port 67",
 			want: map[string]string{
 				attrDHCPClientType:      dhcpClientTypeRelease,
 				attrDHCPClientInterface: "ixl1",
-				attrDHCPClientServer:    "80.1.23.233",
+				attrDHCPClientServer:    "203.0.113.233",
 			},
 		},
 	}
@@ -109,11 +109,11 @@ func TestDHCPClientPIDCorrelationResolvesInterfacelessLines(t *testing.T) {
 	dhcpClientIfaces.reset()
 
 	// The captured renewal, in order, all from PID 97927.
-	if _, ok := parseDHCPClient(dhclientEnv(t, "97927", "DHCPREQUEST on ixl1 to 80.1.23.233 port 67"), nil, nil); !ok {
+	if _, ok := parseDHCPClient(dhclientEnv(t, "97927", "DHCPREQUEST on ixl1 to 203.0.113.233 port 67"), nil, nil); !ok {
 		t.Fatal("the DHCPREQUEST that teaches the correlation did not parse")
 	}
 
-	ack, ok := parseDHCPClient(dhclientEnv(t, "97927", "DHCPACK from 80.1.23.233"), nil, nil)
+	ack, ok := parseDHCPClient(dhclientEnv(t, "97927", "DHCPACK from 203.0.113.233"), nil, nil)
 	if !ok {
 		t.Fatal("parseDHCPClient(DHCPACK) ok = false, want true")
 	}
@@ -124,7 +124,7 @@ func TestDHCPClientPIDCorrelationResolvesInterfacelessLines(t *testing.T) {
 		t.Errorf("DHCPACK type = %q, want %q", got, dhcpClientTypeAck)
 	}
 
-	bound, ok := parseDHCPClient(dhclientEnv(t, "97927", "bound to 82.7.80.148 -- renewal in 302400 seconds."), nil, nil)
+	bound, ok := parseDHCPClient(dhclientEnv(t, "97927", "bound to 203.0.113.148 -- renewal in 302400 seconds."), nil, nil)
 	if !ok {
 		t.Fatal("parseDHCPClient(bound to) ok = false, want true")
 	}
@@ -141,11 +141,11 @@ func TestDHCPClientUncorrelatedInterfaceIsEmptyNeverGuessed(t *testing.T) {
 	dhcpClientIfaces.reset()
 
 	// A DIFFERENT process taught the table about a different interface.
-	if _, ok := parseDHCPClient(dhclientEnv(t, "11111", "DHCPREQUEST on ixl1 to 80.1.23.233 port 67"), nil, nil); !ok {
+	if _, ok := parseDHCPClient(dhclientEnv(t, "11111", "DHCPREQUEST on ixl1 to 203.0.113.233 port 67"), nil, nil); !ok {
 		t.Fatal("setup DHCPREQUEST did not parse")
 	}
 
-	ack, ok := parseDHCPClient(dhclientEnv(t, "22222", "DHCPACK from 80.1.23.233"), nil, nil)
+	ack, ok := parseDHCPClient(dhclientEnv(t, "22222", "DHCPACK from 203.0.113.233"), nil, nil)
 	if !ok {
 		t.Fatal("parseDHCPClient(DHCPACK) ok = false, want true")
 	}
@@ -180,19 +180,19 @@ func TestDHCPClientBoundComputesAbsoluteLeaseTimestamps(t *testing.T) {
 	}{
 		{
 			name:        "captured: a full 302400s renewal window",
-			message:     "bound to 82.7.80.148 -- renewal in 302400 seconds.",
+			message:     "bound to 203.0.113.148 -- renewal in 302400 seconds.",
 			wantBound:   "1785012780",
 			wantRenewal: "1785315180",
 		},
 		{
 			name:        "captured: a partial window, mid-lease",
-			message:     "bound to 82.7.80.148 -- renewal in 213071 seconds.",
+			message:     "bound to 203.0.113.148 -- renewal in 213071 seconds.",
 			wantBound:   "1785012780",
 			wantRenewal: "1785225851",
 		},
 		{
 			name:        "the trailing full stop is optional",
-			message:     "bound to 82.7.80.148 -- renewal in 51044 seconds",
+			message:     "bound to 203.0.113.148 -- renewal in 51044 seconds",
 			wantBound:   "1785012780",
 			wantRenewal: "1785063824",
 		},
@@ -212,7 +212,7 @@ func TestDHCPClientBoundComputesAbsoluteLeaseTimestamps(t *testing.T) {
 				t.Errorf("renewal timestamp = %q, want %q", got, tt.wantRenewal)
 			}
 			// The leased address and the raw countdown still ship on the record.
-			if got := rec.Attributes[attrDHCPClientAddress]; got != "82.7.80.148" {
+			if got := rec.Attributes[attrDHCPClientAddress]; got != "203.0.113.148" {
 				t.Errorf("leased address = %q, want it on the record", got)
 			}
 			if rec.Attributes[attrDHCPClientRenewalSeconds] == "" {
@@ -233,7 +233,7 @@ func TestDHCPClientBoundComputesAbsoluteLeaseTimestamps(t *testing.T) {
 func TestDHCPClientBoundWithoutTimestampSetsNoGauges(t *testing.T) {
 	dhcpClientIfaces.reset()
 
-	env, err := ParseEnvelope([]byte("<30>1 - test-firewall dhclient 97927 - - bound to 82.7.80.148 -- renewal in 302400 seconds."), time.Time{})
+	env, err := ParseEnvelope([]byte("<30>1 - test-firewall dhclient 97927 - - bound to 203.0.113.148 -- renewal in 302400 seconds."), time.Time{})
 	if err != nil {
 		t.Fatalf("ParseEnvelope() error = %v", err)
 	}
@@ -265,28 +265,28 @@ func TestObserveDerived_DHCPClient(t *testing.T) {
 		{
 			name:    "a sent message counts one dhcp_client observation",
 			pid:     "97927",
-			message: "DHCPREQUEST on ixl1 to 80.1.23.233 port 67",
+			message: "DHCPREQUEST on ixl1 to 203.0.113.233 port 67",
 			want:    []fakeCall{{"dhcp_client", []string{"ixl1", dhcpClientTypeRequest}}},
 		},
 		{
 			name:    "a received message counts under the correlated interface",
 			pid:     "97927",
-			setup:   "DHCPREQUEST on ixl1 to 80.1.23.233 port 67",
-			message: "DHCPACK from 80.1.23.233",
+			setup:   "DHCPREQUEST on ixl1 to 203.0.113.233 port 67",
+			message: "DHCPACK from 203.0.113.233",
 			want:    []fakeCall{{"dhcp_client", []string{"ixl1", dhcpClientTypeAck}}},
 		},
 		{
 			name:    "a NAK counts as its own type - the alertable one",
 			pid:     "97927",
-			setup:   "DHCPREQUEST on ixl1 to 80.1.23.233 port 67",
-			message: "DHCPNAK from 80.1.23.233",
+			setup:   "DHCPREQUEST on ixl1 to 203.0.113.233 port 67",
+			message: "DHCPNAK from 203.0.113.233",
 			want:    []fakeCall{{"dhcp_client", []string{"ixl1", dhcpClientTypeNak}}},
 		},
 		{
 			name:    "a bind sets the lease gauges and counts no message type",
 			pid:     "97927",
-			setup:   "DHCPREQUEST on ixl1 to 80.1.23.233 port 67",
-			message: "bound to 82.7.80.148 -- renewal in 302400 seconds.",
+			setup:   "DHCPREQUEST on ixl1 to 203.0.113.233 port 67",
+			message: "bound to 203.0.113.148 -- renewal in 302400 seconds.",
 			want:    []fakeCall{{"dhcp_client_lease", []string{"ixl1", "1785012780", "1785315180"}}},
 		},
 		{
@@ -340,8 +340,8 @@ func TestDHCPClientAddressesAreNeverLabels(t *testing.T) {
 	dhcpClientIfaces.reset()
 
 	for _, msg := range []string{
-		"DHCPREQUEST on ixl1 to 80.1.23.233 port 67",
-		"bound to 82.7.80.148 -- renewal in 302400 seconds.",
+		"DHCPREQUEST on ixl1 to 203.0.113.233 port 67",
+		"bound to 203.0.113.148 -- renewal in 302400 seconds.",
 	} {
 		rec, ok := parseDHCPClient(dhclientEnv(t, "97927", msg), nil, nil)
 		if !ok {
@@ -351,7 +351,7 @@ func TestDHCPClientAddressesAreNeverLabels(t *testing.T) {
 		observeDerived(sink, "dhclient", rec.Attributes)
 		for _, call := range sink.calls {
 			for _, arg := range call.args {
-				if arg == "80.1.23.233" || arg == "82.7.80.148" {
+				if arg == "203.0.113.233" || arg == "203.0.113.148" {
 					t.Errorf("%q reached a label on %s", arg, call.method)
 				}
 			}
@@ -359,8 +359,8 @@ func TestDHCPClientAddressesAreNeverLabels(t *testing.T) {
 	}
 
 	// Both still ship on the record, which is where an operator finds them.
-	rec, _ := parseDHCPClient(dhclientEnv(t, "97927", "bound to 82.7.80.148 -- renewal in 302400 seconds."), nil, nil)
-	if rec.Attributes[attrDHCPClientAddress] != "82.7.80.148" {
+	rec, _ := parseDHCPClient(dhclientEnv(t, "97927", "bound to 203.0.113.148 -- renewal in 302400 seconds."), nil, nil)
+	if rec.Attributes[attrDHCPClientAddress] != "203.0.113.148" {
 		t.Error("the leased address must still ship as a record attribute")
 	}
 }
@@ -374,14 +374,14 @@ func TestDHCPClientUnmodelledLinesAreNotClaimed(t *testing.T) {
 		"dhclient-script: New Hostname (ixl1): opnsense",
 		"dhclient-script: Creating resolv.conf",
 		// Near misses.
-		"DHCPREQUEST on ixl1 to 80.1.23.233",
-		"DHCPWHATEVER on ixl1 to 80.1.23.233 port 67",
-		"DHCPACK from 80.1.23.233 trailing junk",
-		"bound to 82.7.80.148 -- renewal in soon seconds.",
+		"DHCPREQUEST on ixl1 to 203.0.113.233",
+		"DHCPWHATEVER on ixl1 to 203.0.113.233 port 67",
+		"DHCPACK from 203.0.113.233 trailing junk",
+		"bound to 203.0.113.148 -- renewal in soon seconds.",
 		"dhclient-script: Reason RENEW on ixl1",
 		// A verb the regex accepts but the label vocabulary deliberately refuses: a
 		// relay-agent message a client never sends, so there is no honest label for it.
-		"DHCPLEASEQUERY on ixl1 to 80.1.23.233 port 67",
+		"DHCPLEASEQUERY on ixl1 to 203.0.113.233 port 67",
 	}
 
 	for _, msg := range lines {

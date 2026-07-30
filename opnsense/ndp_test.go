@@ -115,7 +115,7 @@ func TestFetchNDPTable_ServerError(t *testing.T) {
 // manufacturer — so the fixture omits them deliberately.
 const liveNDPFixture = `[
  {"mac":"0e:40:69:ec:4d:9a","ip":"fe80::d6:761:6510:f3a6%ixl0","intf":"ixl0","manufacturer":"","intf_description":"LAN"},
- {"mac":"98:b7:85:21:af:f2","ip":"2001:8b0:1f05::1","intf":"ixl0_vlan100","manufacturer":"Intel Corporate","intf_description":"MGMT"}
+ {"mac":"98:b7:85:21:af:f2","ip":"2001:db8::1","intf":"ixl0_vlan100","manufacturer":"Intel Corporate","intf_description":"MGMT"}
 ]`
 
 func TestFetchNDPTable_CarriesManufacturerAndDevice(t *testing.T) {
@@ -136,10 +136,10 @@ func TestFetchNDPTable_CarriesManufacturerAndDevice(t *testing.T) {
 	for _, e := range table.Entries {
 		byIP[e.IP] = e
 	}
-	if got := byIP["2001:8b0:1f05::1"].Manufacturer; got != "Intel Corporate" {
+	if got := byIP["2001:db8::1"].Manufacturer; got != "Intel Corporate" {
 		t.Errorf("manufacturer = %q, want %q", got, "Intel Corporate")
 	}
-	if got := byIP["2001:8b0:1f05::1"].Device; got != "ixl0_vlan100" {
+	if got := byIP["2001:db8::1"].Device; got != "ixl0_vlan100" {
 		t.Errorf("device = %q, want %q", got, "ixl0_vlan100")
 	}
 	if got := byIP["fe80::d6:761:6510:f3a6%ixl0"].Manufacturer; got != "" {

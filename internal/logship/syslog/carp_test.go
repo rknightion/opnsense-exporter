@@ -404,7 +404,7 @@ func TestCARPUnrelatedKernelLinesAreNotClaimed(t *testing.T) {
 		// (debugcapture_test.go), on a box with no CARP involvement whatsoever. Note it
 		// carries the counter prefix WITHOUT the `<pri>` part, which is why
 		// carpKernelPrefix makes the two halves independently optional.
-		"[367650] arpresolve: can't allocate llinfo for 86.31.203.100",
+		"[367650] arpresolve: can't allocate llinfo for 198.51.100.100",
 		// Ordinary FreeBSD kernel traffic.
 		"<6>[369283] vtnet2: link state changed to DOWN",
 		"<6>[369285] vtnet2: link state changed to UP",

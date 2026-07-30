@@ -46,12 +46,12 @@ func TestUnboundVerbatimLines(t *testing.T) {
 	}{
 		{
 			name: "SRV transparent ipv4 (the dominant shape)",
-			msg:  "[46775:2] info: rob-knight.net. transparent 10.0.0.141@51967 _ldap._tcp.dc._msdcs.rob-knight.net. SRV IN",
+			msg:  "[46775:2] info: example.com. transparent 10.0.0.141@51967 _ldap._tcp.dc._msdcs.example.com. SRV IN",
 			want: map[string]string{
-				"dns.query_name":   "_ldap._tcp.dc._msdcs.rob-knight.net.",
+				"dns.query_name":   "_ldap._tcp.dc._msdcs.example.com.",
 				"dns.query_type":   "SRV",
 				"dns.query_class":  "IN",
-				"dns.local_zone":   "rob-knight.net.",
+				"dns.local_zone":   "example.com.",
 				"dns.local_action": "transparent",
 				"src.ip":           "10.0.0.141",
 				"src.port":         "51967",
@@ -81,20 +81,20 @@ func TestUnboundVerbatimLines(t *testing.T) {
 		},
 		{
 			name: "AAAA ipv4 client",
-			msg:  "[46775:9] info: rob-knight.net. transparent 10.0.0.5@44038 haos.rob-knight.net. AAAA IN",
+			msg:  "[46775:9] info: example.com. transparent 10.0.0.5@44038 haos.example.com. AAAA IN",
 			want: map[string]string{
-				"dns.query_name": "haos.rob-knight.net.",
+				"dns.query_name": "haos.example.com.",
 				"dns.query_type": "AAAA",
 				"src.ip":         "10.0.0.5",
 			},
 		},
 		{
 			name: "PTR ipv6 client (colons in the address)",
-			msg:  "[46775:1] info: rob-knight.net. transparent 2001:8b0:1f05::105b@52824 lb._dns-sd._udp.rob-knight.net. PTR IN",
+			msg:  "[46775:1] info: example.com. transparent 2001:db8::105b@52824 lb._dns-sd._udp.example.com. PTR IN",
 			want: map[string]string{
-				"dns.query_name": "lb._dns-sd._udp.rob-knight.net.",
+				"dns.query_name": "lb._dns-sd._udp.example.com.",
 				"dns.query_type": "PTR",
-				"src.ip":         "2001:8b0:1f05::105b",
+				"src.ip":         "2001:db8::105b",
 				"src.port":       "52824",
 			},
 		},
@@ -129,7 +129,7 @@ func TestUnboundVerbatimLines(t *testing.T) {
 // silent for an unknown one.
 func TestUnboundClientEnrichment(t *testing.T) {
 	rec, ok := parseUnbound(
-		unboundEnv("[46775:2] info: rob-knight.net. transparent 10.0.0.141@51967 x.rob-knight.net. A IN"),
+		unboundEnv("[46775:2] info: example.com. transparent 10.0.0.141@51967 x.example.com. A IN"),
 		unboundSnapshot(), func(string) {})
 	if !ok {
 		t.Fatal("ok=false")
@@ -209,7 +209,7 @@ func TestUnboundNonQueryLinesDegrade(t *testing.T) {
 // TestUnboundThroughBuildRecord: exercised end-to-end via the dispatcher, the line
 // is parsed (not generic) and carries subsystem=dns.
 func TestUnboundThroughBuildRecord(t *testing.T) {
-	env := unboundEnv("[46775:2] info: rob-knight.net. transparent 10.0.0.141@51967 host.rob-knight.net. A IN")
+	env := unboundEnv("[46775:2] info: example.com. transparent 10.0.0.141@51967 host.example.com. A IN")
 	rec, parsed := buildRecord(env, unboundSnapshot(), func(string) {})
 	if !parsed {
 		t.Fatal("buildRecord reported the unbound query line as unparsed")

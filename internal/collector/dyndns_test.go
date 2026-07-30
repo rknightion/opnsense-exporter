@@ -32,8 +32,8 @@ func TestDynDNSCollector_LastUpdateUniquePerInterface(t *testing.T) {
 	accountsResponse := `{
 		"total": 2, "rowCount": 2, "current": 1,
 		"rows": [
-			{"uuid":"a","enabled":"1","service":"cloudflare","%service":"Cloudflare","hostnames":"dyn.example.com","zone":"example.com","interface":"wan","%interface":"WAN","description":"dual","current_ip":"1.1.1.1","current_mtime":"2026-05-29T21:37:38+01:00"},
-			{"uuid":"b","enabled":"1","service":"cloudflare","%service":"Cloudflare","hostnames":"dyn.example.com","zone":"example.com","interface":"wan2","%interface":"WAN2","description":"dual","current_ip":"2.2.2.2","current_mtime":"2026-05-29T22:37:38+01:00"}
+			{"uuid":"a","enabled":"1","service":"cloudflare","%service":"Cloudflare","hostnames":"dyn.example.com","zone":"example.com","interface":"wan","%interface":"WAN","description":"dual","current_ip":"198.51.100.11","current_mtime":"2026-05-29T21:37:38+01:00"},
+			{"uuid":"b","enabled":"1","service":"cloudflare","%service":"Cloudflare","hostnames":"dyn.example.com","zone":"example.com","interface":"wan2","%interface":"WAN2","description":"dual","current_ip":"198.51.100.12","current_mtime":"2026-05-29T22:37:38+01:00"}
 		]
 	}`
 	mux := dyndnsTestMux(t, accountsResponse, `{"status": "running"}`)
@@ -75,9 +75,9 @@ func TestDynDNSCollector_Update_Normal(t *testing.T) {
 				"hostnames": "dyn.example.com",
 				"zone": "example.com",
 				"interface": "opt7",
-				"%interface": "AAISP",
+				"%interface": "HomeISP",
 				"description": "Home IP",
-				"current_ip": "81.187.237.31",
+				"current_ip": "198.51.100.31",
 				"current_mtime": "2026-05-29T21:37:38+01:00"
 			},
 			{
@@ -187,8 +187,8 @@ func TestDynDNSCollector_Update_Normal(t *testing.T) {
 			t.Errorf("expected account_info=1, got %v", val)
 		}
 		if labels["description"] == "Home IP" {
-			if labels["current_ip"] != "81.187.237.31" {
-				t.Errorf("expected current_ip='81.187.237.31', got %q", labels["current_ip"])
+			if labels["current_ip"] != "198.51.100.31" {
+				t.Errorf("expected current_ip='198.51.100.31', got %q", labels["current_ip"])
 			}
 			if labels["service"] != "cloudflare" {
 				t.Errorf("expected service='cloudflare', got %q", labels["service"])

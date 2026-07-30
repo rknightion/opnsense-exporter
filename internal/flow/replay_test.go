@@ -11,7 +11,7 @@ package flow
 // The ifIndex map is the one VERIFIED LIVE on the box (#346), reproduced here so the
 // anonymised addresses in the fixture resolve to the interfaces they really crossed.
 // The one anonymisation-dependent value is WAN2's address: the anonymiser pins the
-// box's real WAN2 NAT address (86.31.203.106) to 198.51.100.6, so the map's igb0 must
+// box's real WAN2 NAT address (198.51.100.106) to 198.51.100.6, so the map's igb0 must
 // own that.
 
 import (

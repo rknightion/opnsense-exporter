@@ -34,7 +34,7 @@ GOEXPERIMENT ?= goroutineleakprofile
 
 .PHONY: default docgen docs docs-check dashboard rules grafana-check grafana-test install-hooks capture \
         fieldaudit schemas coverage notices sbom tools-licensing tools-sbom print-go-licenses-version \
-        print-go-licenses-module tools-kubeconform deployment-test testbed-test
+        print-go-licenses-module tools-kubeconform deployment-test testbed-test check-public-ips
 default:
 	GOEXPERIMENT=$(GOEXPERIMENT) go build \
 	-tags osusergo,netgo \
@@ -203,6 +203,16 @@ fieldaudit:
 # struct; opnsense.TestSchemasUpToDate fails CI when these are stale.
 schemas:
 	go run ./cmd/apischema
+
+# This repository is public, so a globally routable IP literal committed in source,
+# a test, a fixture or a doc is durable public metadata about whoever's box produced
+# it (#565). Rejects any such literal not covered by a justified entry in
+# scripts/public-ip-allowlist.json; private/RFC1918, loopback, link-local, CGNAT
+# (100.64.0.0/10), multicast and the RFC 5737 / RFC 3849 documentation ranges are
+# never flagged. Runs the checker's own unit tests first (scripts/check_public_ips_test.py).
+check-public-ips:
+	python3 scripts/check_public_ips.py --selftest
+	python3 scripts/check_public_ips.py
 
 # Capture live-box responses for the response-shape canary (cmd/apicapture).
 # Writes to the gitignored opnsense/testdata/captures/ scratch dir; then run

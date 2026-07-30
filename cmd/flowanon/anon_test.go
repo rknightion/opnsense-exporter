@@ -31,12 +31,12 @@ func cat(parts ...[]byte) []byte {
 func TestMapAddr_StableAndBijective(t *testing.T) {
 	a := newAnonymizer()
 	inputs := []string{
-		"86.31.203.106", "135.181.211.203", "1.1.1.1", "8.8.8.8", // public v4
+		"198.18.0.5", "198.18.0.9", "1.1.1.1", "8.8.8.8", // public v4
 		"10.0.0.5", "172.16.0.1", "192.168.1.1", // private v4
-		"100.64.0.1",                      // CGNAT
-		"239.255.255.250",                 // v4 multicast
-		"169.254.1.1",                     // v4 link-local
-		"2606:4700::1111", "2a00:dd80::1", // public v6
+		"100.64.0.1",                              // CGNAT
+		"239.255.255.250",                         // v4 multicast
+		"169.254.1.1",                             // v4 link-local
+		"2606:4700::1111", "2001:4860:4860::8888", // public v6
 		"fd12:3456::1", // ULA
 		"fe80::1",      // v6 link-local
 		"ff02::fb",     // v6 multicast
@@ -73,7 +73,7 @@ func TestMapAddr_CategoryPreserved(t *testing.T) {
 		want func(netip.Addr) bool
 		why  string
 	}{
-		{"86.31.203.106", func(x netip.Addr) bool { return x.Is4() && inDoc(x) }, "public v4 -> RFC 5737"},
+		{"198.18.0.5", func(x netip.Addr) bool { return x.Is4() && inDoc(x) }, "public v4 -> RFC 5737"},
 		{"2606:4700::1", func(x netip.Addr) bool { return x.Is6() && inDoc(x) }, "public v6 -> RFC 3849"},
 		{"10.9.8.7", func(x netip.Addr) bool { return x.IsPrivate() }, "RFC1918 stays private"},
 		{"172.20.1.1", func(x netip.Addr) bool { return x.IsPrivate() }, "RFC1918 stays private"},
@@ -100,10 +100,10 @@ func TestMapAddr_CategoryPreserved(t *testing.T) {
 
 func TestPins_Honored(t *testing.T) {
 	a := newAnonymizer()
-	if got := a.mapAddr(netip.MustParseAddr("86.31.203.106")); got.String() != "198.51.100.6" {
+	if got := a.mapAddr(netip.MustParseAddr("198.18.0.5")); got.String() != "198.51.100.6" {
 		t.Fatalf("WAN2 pin: got %v, want 198.51.100.6", got)
 	}
-	if got := a.mapAddr(netip.MustParseAddr("135.181.211.203")); got.String() != "203.0.113.203" {
+	if got := a.mapAddr(netip.MustParseAddr("198.18.0.9")); got.String() != "203.0.113.203" {
 		t.Fatalf("dst pin: got %v, want 203.0.113.203", got)
 	}
 }
@@ -142,12 +142,12 @@ func TestRewriteDatagram_AnonymisesEveryAddressElement(t *testing.T) {
 	// IPv4 template 256: SRC(8,4) DST(12,4) NEXTHOP(15,4) SRCPORT(7,2) DSTPORT(11,2)
 	// FIRST(22,4) IN_BYTES(1,4).
 	v4Fields := [][2]uint16{{8, 4}, {12, 4}, {15, 4}, {7, 2}, {11, 2}, {22, 4}, {1, 4}}
-	v4rec := cat(addr4("86.31.203.106"), addr4("135.181.211.203"), addr4("192.168.1.1"),
+	v4rec := cat(addr4("198.18.0.5"), addr4("198.18.0.9"), addr4("192.168.1.1"),
 		be16(443), be16(54321), be32(0xDEADBEEF), be32(15000))
 
 	// IPv6 template 259: SRC(27,16) DST(28,16) NEXTHOP(62,16) IN_BYTES(1,4).
 	v6Fields := [][2]uint16{{27, 16}, {28, 16}, {62, 16}, {1, 4}}
-	v6rec := cat(addr16("2606:4700::1"), addr16("2a00:dd80::1"), addr16("fe80::1"), be32(200))
+	v6rec := cat(addr16("2606:4700::1"), addr16("2001:4860:4860::8888"), addr16("fe80::1"), be32(200))
 
 	pkt := v9(1700000000,
 		templateFlowset(256, v4Fields),

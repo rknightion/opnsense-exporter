@@ -549,16 +549,16 @@ with `|` after it:
   | opnsense_subsystem="firewall" | action="block" | src_scope="remote"
 ```
 
-A real record from a live box, as it lands:
+A record, as it lands:
 
 ```json
 {
   "action": "pass", "direction": "in",
-  "interface": "pppoe0", "interface_name": "AAISP",
-  "rule_description": "[AAISP] Allow inbound ICMP (monitors)",
+  "interface": "pppoe0", "interface_name": "WAN2",
+  "rule_description": "[WAN2] Allow inbound ICMP (monitors)",
   "rule_id": "7ed3ec06-ecf8-4ca8-9a2a-bb346967850f",
-  "src_ip": "3.123.217.248", "src_scope": "remote",
-  "dst_ip": "81.187.237.31", "dst_scope": "self",
+  "src_ip": "203.0.113.55", "src_scope": "remote",
+  "dst_ip": "198.51.100.23", "dst_scope": "self",
   "protocol": "icmp", "ip_version": "4", "network_type": "ipv4",
   "opnsense_source": "syslog", "opnsense_subsystem": "firewall"
 }

@@ -17,9 +17,9 @@ import (
 //
 // e.g.
 //
-//	[46775:2] info: rob-knight.net. transparent 10.0.0.141@51967 _ldap._tcp.dc._msdcs.rob-knight.net. SRV IN
+//	[46775:2] info: example.com. transparent 10.0.0.141@51967 _ldap._tcp.dc._msdcs.example.com. SRV IN
 //	[46775:0] info: 10.in-addr.arpa. typetransparent 127.0.0.1@7365 20.100.0.10.in-addr.arpa. PTR IN
-//	[46775:1] info: rob-knight.net. transparent 2001:8b0:1f05::105b@52824 lb._dns-sd._udp.rob-knight.net. PTR IN
+//	[46775:1] info: example.com. transparent 2001:db8::105b@52824 lb._dns-sd._udp.example.com. PTR IN
 //
 // Attributes emitted:
 //

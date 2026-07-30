@@ -592,8 +592,8 @@ func TestNetisrProtocolStats_DerivedEdgeCases(t *testing.T) {
 // intf_description (a VLAN child and a PPPoE link) — the exact divergence that
 // makes the raw netif worth carrying.
 const liveRoutesFixture = `[
- {"proto":"ipv4","destination":"default","gateway":"81.187.81.187","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
- {"proto":"ipv4","destination":"8.8.8.8","gateway":"82.7.80.1","flags":"UGHS","netif":"ixl1","intf_description":"VIRGIN"},
+ {"proto":"ipv4","destination":"default","gateway":"203.0.113.187","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
+ {"proto":"ipv4","destination":"8.8.8.8","gateway":"203.0.113.1","flags":"UGHS","netif":"ixl1","intf_description":"VIRGIN"},
  {"proto":"ipv4","destination":"10.0.100.0/24","gateway":"link#5","flags":"U","netif":"ixl0_vlan100","intf_description":"MGMT"},
  {"proto":"ipv4","destination":"192.0.2.0/24","gateway":"127.0.0.1","flags":"USB","netif":"lo0","intf_description":"Loopback"},
  {"proto":"ipv6","destination":"default","gateway":"fe80::9e89:1eff:fe2e:0%pppoe0","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
@@ -675,7 +675,7 @@ func TestFetchRouteStatistics_FindsDefaultRoutes(t *testing.T) {
 		byProto[d.Proto] = d
 	}
 	v4 := byProto["ipv4"]
-	if v4.Gateway != "81.187.81.187" || v4.Device != "pppoe0" || v4.Interface != "AAISP" {
+	if v4.Gateway != "203.0.113.187" || v4.Device != "pppoe0" || v4.Interface != "AAISP" {
 		t.Errorf("ipv4 default route = %+v", v4)
 	}
 	v6 := byProto["ipv6"]

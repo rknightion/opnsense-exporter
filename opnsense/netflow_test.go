@@ -243,7 +243,7 @@ const liveGetconfigPayload = `{"netflow": {"capture": {"interfaces": {"opt7": {"
 	`"opt1": {"value": "tailscale", "selected": 0}, "opt6": {"value": "VIRGIN", "selected": 1}, ` +
 	`"opt5": {"value": "zenoverlay", "selected": 0}}, "version": {"v5": {"value": "v5", "selected": 0}, ` +
 	`"v9": {"value": "v9", "selected": 1}}, "targets": {"10.0.0.5:9995": {"value": "10.0.0.5:9995", "selected": 1}, ` +
-	`"162.159.65.1:2055": {"value": "162.159.65.1:2055", "selected": 1}, ` +
+	`"198.51.100.5:2055": {"value": "198.51.100.5:2055", "selected": 1}, ` +
 	`"10.0.0.5:2055": {"value": "10.0.0.5:2055", "selected": 1}}}, "collect": {"enable": "0"}, ` +
 	`"activeTimeout": "1800", "inactiveTimeout": "15"}}`
 
