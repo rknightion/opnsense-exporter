@@ -7,8 +7,8 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 917
-- **Gauges:** 584
+- **Total metrics:** 920
+- **Gauges:** 587
 - **Counters:** 333
 
 ## General
@@ -82,6 +82,9 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_activity_threads_running | Gauge | --- | Number of running threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_sleeping | Gauge | --- | Number of sleeping threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_waiting | Gauge | --- | Number of waiting threads on the system | --exporter.disable-activity |
+| opnsense_activity_arc_component_bytes | Gauge | component | ZFS ARC size by component (MFU, MRU, anonymous, header, other), from top's ARC header. MFU versus MRU is the standard read on whether the cache is serving a working set or thrashing. Absent entirely on a non-ZFS install. The ARC total is opnsense_system_memory_arc_bytes. | --exporter.disable-activity |
+| opnsense_activity_arc_compressed_bytes | Gauge | --- | Size of ZFS ARC contents as held in memory, compressed. Divide the uncompressed figure by this to get the compression ratio at query time. | --exporter.disable-activity |
+| opnsense_activity_arc_uncompressed_bytes | Gauge | --- | Logical size of ZFS ARC contents before compression. Absent when top reports no compression line. | --exporter.disable-activity |
 
 ## BPF Statistics
 

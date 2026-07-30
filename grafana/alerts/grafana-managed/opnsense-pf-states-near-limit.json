@@ -26,7 +26,7 @@
       "description": "PF state table is over 90% of its configured limit for 10m.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensepfstatetablenearlimit",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "148"
+      "__panelId__": "150"
     },
     "expressions": {
       "A": {

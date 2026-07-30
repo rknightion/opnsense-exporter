@@ -25,6 +25,10 @@ type activityCollector struct {
 	threadsSleeping *prometheus.Desc
 	threadsWaiting  *prometheus.Desc
 
+	arcComponent    *prometheus.Desc
+	arcCompressed   *prometheus.Desc
+	arcUncompressed *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -60,6 +64,25 @@ func (c *activityCollector) Register(namespace, instanceLabel string, log *slog.
 		"Number of waiting threads on the system",
 		nil,
 	)
+	// ZFS ARC composition (#551), free from the payload this collector already
+	// fetches. The ARC TOTAL stays on opnsense_system_memory_arc_bytes and is
+	// deliberately not re-exported here — one series with two differently-timed
+	// sources would disagree with itself. These series are ABSENT on a non-ZFS box.
+	c.arcComponent = buildPrometheusDesc(c.subsystem, "arc_component_bytes",
+		"ZFS ARC size by component (MFU, MRU, anonymous, header, other), from top's ARC header. "+
+			"MFU versus MRU is the standard read on whether the cache is serving a working set or "+
+			"thrashing. Absent entirely on a non-ZFS install. The ARC total is opnsense_system_memory_arc_bytes.",
+		[]string{"component"},
+	)
+	c.arcCompressed = buildPrometheusDesc(c.subsystem, "arc_compressed_bytes",
+		"Size of ZFS ARC contents as held in memory, compressed. Divide the uncompressed figure by "+
+			"this to get the compression ratio at query time.",
+		nil,
+	)
+	c.arcUncompressed = buildPrometheusDesc(c.subsystem, "arc_uncompressed_bytes",
+		"Logical size of ZFS ARC contents before compression. Absent when top reports no compression line.",
+		nil,
+	)
 }
 
 func (c *activityCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -67,6 +90,9 @@ func (c *activityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.threadsRunning
 	ch <- c.threadsSleeping
 	ch <- c.threadsWaiting
+	ch <- c.arcComponent
+	ch <- c.arcCompressed
+	ch <- c.arcUncompressed
 }
 
 func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -99,5 +125,29 @@ func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client,
 		float64(data.ThreadsWaiting),
 		c.instance,
 	)
+
+	// Absent means absent. A UFS box has no ARC at all, and it does not announce that
+	// by omitting the header — it emits a bare "ARC: " with nothing after it — so
+	// publishing zeros here would show every non-ZFS firewall as having a real,
+	// permanently empty cache.
+	if !data.ARC.Present {
+		return nil
+	}
+	for component, value := range map[string]float64{
+		"mfu":    data.ARC.MFUBytes,
+		"mru":    data.ARC.MRUBytes,
+		"anon":   data.ARC.AnonBytes,
+		"header": data.ARC.HeaderBytes,
+		"other":  data.ARC.OtherBytes,
+	} {
+		ch <- prometheus.MustNewConstMetric(
+			c.arcComponent, prometheus.GaugeValue, value, component, c.instance)
+	}
+	if data.ARC.HasCompression {
+		ch <- prometheus.MustNewConstMetric(
+			c.arcCompressed, prometheus.GaugeValue, data.ARC.CompressedBytes, c.instance)
+		ch <- prometheus.MustNewConstMetric(
+			c.arcUncompressed, prometheus.GaugeValue, data.ARC.UncompressedBytes, c.instance)
+	}
 	return nil
 }

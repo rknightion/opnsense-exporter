@@ -4,7 +4,7 @@ System & Resources tab for the OPNsense Exporter dashboard.
 Covers:
   - System subsystem (12 metrics)
   - General health: opnsense_system_subsystem_status_code (per-subsystem health-check detail)
-  - Activity subsystem (4 metrics) — thread-state counts only
+  - Activity subsystem (7 metrics) — thread-state counts + ZFS ARC composition (#551)
   - CPU subsystem (6 metrics) — cumulative counters + SSE stream health (#559)
   - Mbuf subsystem (14 metrics)
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
@@ -207,7 +207,40 @@ def build(b: Builder):
         desc="opnsense_system_swap_*_bytes: swap utilisation per device.",
     )
 
-    row_mem = b.row("Memory & Swap", [mem_pct, mem_ts, swap_ts])
+    # ---- ZFS ARC composition (#551) -----------------------------------------
+    # Free data: the activity poll already fetches this payload and used to discard
+    # these two header lines. ABSENT on a non-ZFS install, which is deliberate — a
+    # UFS box emits a bare "ARC: " header, so publishing zeros would show every such
+    # firewall as having a real, permanently empty cache.
+    arc_composition = b.ts(
+        "ZFS ARC Composition",
+        [
+            (sel("opnsense_activity_arc_component_bytes"), "{{component}}"),
+        ],
+        unit="bytes",
+        stack=True,
+        w=12,
+        h=6,
+        desc="opnsense_activity_arc_component_bytes: ARC size by component. MFU versus MRU is the "
+        "standard read on whether the cache is serving a working set or thrashing — a healthy box "
+        "sits mostly in MFU. Absent on non-ZFS installs. The ARC total is on the Memory Over Time panel.",
+    )
+
+    arc_compression = b.ts(
+        "ZFS ARC Compression",
+        [
+            (sel("opnsense_activity_arc_compressed_bytes"), "In memory (compressed)"),
+            (sel("opnsense_activity_arc_uncompressed_bytes"), "Logical (uncompressed)"),
+        ],
+        unit="bytes",
+        w=8,
+        h=6,
+        desc="opnsense_activity_arc_compressed_bytes / _uncompressed_bytes: what ARC compression is "
+        "actually buying. The gap between the two lines is memory saved; their ratio is the "
+        "compression factor, derived at query time rather than exported as a unitless number.",
+    )
+
+    row_mem = b.row("Memory & Swap", [mem_pct, mem_ts, swap_ts, arc_composition, arc_compression])
 
     # =========================================================================
     # Row: CPU & Threads

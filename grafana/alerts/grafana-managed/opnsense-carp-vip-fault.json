@@ -26,7 +26,7 @@
       "description": "CARP VIP {{ $labels.vip }} on {{ $labels.interface }} has been outside the normal MASTER(1)/BACKUP(0) range for 5m \u2014 status 2 (INIT) or -1 (unknown). BACKUP is a normal, healthy state and does not fire; this only fires on INIT/unknown. Suppressed while opnsense_carp_maintenance_mode is 1, and DISABLED(3) VIPs are excluded outright.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecarpvipfault",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "479"
+      "__panelId__": "481"
     },
     "expressions": {
       "A": {

@@ -26,7 +26,7 @@
       "description": "Filesystem {{ $labels.mountpoint }} ({{ $labels.device }}) usage above 90% for 15m.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensediskusagehigh",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "43"
+      "__panelId__": "45"
     },
     "expressions": {
       "A": {

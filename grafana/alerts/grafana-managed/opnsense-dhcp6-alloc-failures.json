@@ -26,7 +26,7 @@
       "description": "This box's own DHCPv6 SERVER has been refusing lease requests for 10m. The opposite direction from the prefix alerts: clients on the LAN are being denied IPv6 addresses. reason=exhausted means the pool is full; reason=no_pools means the subnet has no pool configured for that client at all, which is a configuration fault rather than a capacity one.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcp6allocationfailures",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "274"
+      "__panelId__": "276"
     },
     "expressions": {
       "A": {
