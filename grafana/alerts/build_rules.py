@@ -960,6 +960,43 @@ RULES = [
                 'opnsense_firewall_pf_states_current stabilises at a sustainable level',
             ],
          )),
+    # The stall alert, not an "is it connected" alert (#559). The documented failure
+    # mode of SSE on this box is that keepalives keep flowing after the data has
+    # stopped, so the socket looks perfectly healthy while the stream is dead.
+    # stream_up would still read 1 through exactly that. Frame age is the only signal
+    # that separates them.
+    dict(name="opnsense-cpu-stream-stalled", title="OPNsenseCPUStreamStalled",
+         A="opnsense_cpu_stream_last_frame_age_seconds",
+         op="gt", params=[120, 0], for_min=5, severity="warning",
+         summary="OPNsense CPU usage stream stalled ({{ $labels.opnsense_instance }})",
+         description="No CPU sample has arrived from the api/diagnostics/cpu_usage SSE stream for "
+                     "over 2 minutes ({{ $values.A.Value | printf \"%.0f\" }}s). Frames normally arrive "
+                     "about once a second. The exporter's own watchdog tears down and re-dials a stalled "
+                     "connection, so this firing means recovery is ALSO failing - the firewall is "
+                     "unreachable, rebooting, or refusing the stream. cpu_seconds_total has already been "
+                     "withdrawn (opnsense_cpu_stream_counters_published=0), so CPU panels read absent "
+                     "rather than a misleading flat zero.",
+         runbook=dict(
+             measures='opnsense_cpu_stream_last_frame_age_seconds: seconds since the last CPU sample arrived over the SSE stream.',
+             threshold='gt 120 for 5m. Two minutes is well past the 10s stall watchdog and one full re-dial cycle, so an ordinary reconnect never fires this.',
+             absent='Default noDataState (Ok) - the series is absent before the first frame ever arrives and on a box with --exporter.disable-cpu set.',
+             checks=[
+                'Read opnsense_cpu_stream_up for the same instance: 0 means the exporter cannot establish the connection at all, 1 means it connected and the data stopped anyway',
+                'Read rate(opnsense_cpu_stream_reconnects_total[5m]): a high rate means the connection is being established and torn down repeatedly rather than never established',
+                'Check opnsense_up - a firewall that is wholly unreachable explains this and much else besides',
+                'On the firewall, confirm lighttpd and configd are running and that php-cgi worker capacity is not exhausted (max-procs x PHP_FCGI_CHILDREN)',
+            ],
+             causes=[
+                'The firewall is rebooting or applying a firmware update, so there is nothing to reconnect to',
+                'configd or the iostat process behind the stream has wedged',
+                'php-cgi worker capacity on the firewall is exhausted, so the stream cannot be re-established',
+                'The API credentials were revoked, so every re-dial is rejected',
+            ],
+             verify=[
+                'opnsense_cpu_stream_last_frame_age_seconds drops back under a few seconds',
+                'opnsense_cpu_stream_counters_published returns to 1 and the CPU Usage panel stops reading absent',
+            ],
+         )),
     dict(name="opnsense-memory-high", title="OPNsenseMemoryHigh",
          A="opnsense_system_memory_used_bytes / (opnsense_system_memory_total_bytes > 0)",
          op="gt", params=[0.9, 0], for_min=15, severity="warning",

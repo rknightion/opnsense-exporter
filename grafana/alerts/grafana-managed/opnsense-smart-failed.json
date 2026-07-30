@@ -26,7 +26,7 @@
       "description": "SMART overall-health for {{ $labels.device }} ({{ $labels.model }}) reports FAILED.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensesmarthealthfailed",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "64"
+      "__panelId__": "68"
     },
     "expressions": {
       "A": {

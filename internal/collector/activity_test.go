@@ -32,21 +32,16 @@ func TestActivityCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 9
+	expectedCount := 4
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
 
 	expectedValues := map[string]float64{
-		"opnsense_activity_threads_total":         849,
-		"opnsense_activity_threads_running":       13,
-		"opnsense_activity_threads_sleeping":      802,
-		"opnsense_activity_threads_waiting":       34,
-		"opnsense_activity_cpu_user_percent":      1.3,
-		"opnsense_activity_cpu_nice_percent":      0.0,
-		"opnsense_activity_cpu_system_percent":    2.2,
-		"opnsense_activity_cpu_interrupt_percent": 0.1,
-		"opnsense_activity_cpu_idle_percent":      96.4,
+		"opnsense_activity_threads_total":    849,
+		"opnsense_activity_threads_running":  13,
+		"opnsense_activity_threads_sleeping": 802,
+		"opnsense_activity_threads_waiting":  34,
 	}
 
 	for _, m := range metrics {
@@ -90,7 +85,7 @@ func TestActivityCollector_Update_EmptyHeaders(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	expectedCount := 9
+	expectedCount := 4
 	if len(metrics) != expectedCount {
 		t.Fatalf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}

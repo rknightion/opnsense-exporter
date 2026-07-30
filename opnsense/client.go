@@ -151,6 +151,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"pfStatsMemory":                 "api/diagnostics/firewall/pf_statistics/memory",
 		"pfStatsTimeouts":               "api/diagnostics/firewall/pf_statistics/timeouts",
 		"cpuType":                       "api/diagnostics/cpu_usage/getCPUType",
+		"cpuUsageStream":                "api/diagnostics/cpu_usage/stream",
 		"systemInformation":             "api/diagnostics/system/system_information",
 		"memoryStatistics":              "api/diagnostics/interface/get_memory_statistics",
 		"ndpTable":                      "api/diagnostics/interface/get_ndp",

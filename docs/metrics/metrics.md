@@ -7,9 +7,9 @@ The `opnsense_instance` label is applied to all metrics.
 
 ## Summary
 
-- **Total metrics:** 916
-- **Gauges:** 586
-- **Counters:** 330
+- **Total metrics:** 917
+- **Gauges:** 584
+- **Counters:** 333
 
 ## General
 
@@ -82,11 +82,6 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_activity_threads_running | Gauge | --- | Number of running threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_sleeping | Gauge | --- | Number of sleeping threads on the system | --exporter.disable-activity |
 | opnsense_activity_threads_waiting | Gauge | --- | Number of waiting threads on the system | --exporter.disable-activity |
-| opnsense_activity_cpu_user_percent | Gauge | --- | CPU user usage percentage | --exporter.disable-activity |
-| opnsense_activity_cpu_nice_percent | Gauge | --- | CPU nice usage percentage | --exporter.disable-activity |
-| opnsense_activity_cpu_system_percent | Gauge | --- | CPU system usage percentage | --exporter.disable-activity |
-| opnsense_activity_cpu_interrupt_percent | Gauge | --- | CPU interrupt usage percentage | --exporter.disable-activity |
-| opnsense_activity_cpu_idle_percent | Gauge | --- | CPU idle percentage | --exporter.disable-activity |
 
 ## BPF Statistics
 
@@ -114,6 +109,17 @@ The `opnsense_instance` label is applied to all metrics.
 | opnsense_carp_vip_status | Gauge | interface, vhid, vip | CARP VIP status (1 = MASTER, 0 = BACKUP, 2 = INIT, 3 = DISABLED, -1 = unknown) | --exporter.disable-carp |
 | opnsense_carp_vip_advbase_seconds | Gauge | interface, vhid, vip | CARP VIP advertisement base interval in seconds | --exporter.disable-carp |
 | opnsense_carp_vip_advskew | Gauge | interface, vhid, vip | CARP VIP advertisement skew | --exporter.disable-carp |
+
+## CPU
+
+| Metric Name | Type | Labels | Description | Disable Flag |
+|-------------|------|--------|-------------|--------------|
+| opnsense_cpu_seconds_total | Counter | mode | Cumulative CPU seconds by mode, reconstructed from the api/diagnostics/cpu_usage SSE stream as (percent/100 * measured elapsed time between frames). This is a reconstruction from integer-percentage samples, NOT a kernel tick counter: each sample carries up to +/-0.5% quantisation noise, which is unbiased and so does not accumulate systematically. Absent while the stream has been silent for longer than its grace window, because a frozen counter is indistinguishable from an idle CPU. | --exporter.disable-cpu |
+| opnsense_cpu_stream_up | Gauge | --- | 1 when the CPU usage SSE stream is connected, 0 otherwise. Always exported, including while seconds_total is absent, so a stalled stream is visible rather than inferred. | --exporter.disable-cpu |
+| opnsense_cpu_stream_last_frame_age_seconds | Gauge | --- | Seconds since the last CPU sample was received. Absent until the first frame ever arrives. This is the signal to alert on: the documented failure mode of this endpoint is that keepalives keep flowing after the data has stopped, so connection liveness alone proves nothing. | --exporter.disable-cpu |
+| opnsense_cpu_stream_reconnects_total | Counter | --- | Number of times the CPU usage stream has been re-dialled since exporter start. A steadily climbing value means the connection is being torn down repeatedly. | --exporter.disable-cpu |
+| opnsense_cpu_stream_frames_total | Counter | --- | Number of CPU samples accepted from the stream since exporter start. | --exporter.disable-cpu |
+| opnsense_cpu_stream_counters_published | Gauge | --- | 1 when seconds_total is being published, 0 when it has been withdrawn because the stream went silent for longer than the grace window. | --exporter.disable-cpu |
 
 ## Captive Portal
 

@@ -132,6 +132,13 @@ var (
 		"exporter.disable-activity",
 		"Disable the scraping of system activity metrics (CPU percentages, thread counts)",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_ACTIVITY").Default("false").Bool()
+	cpuCollectorDisabled = kingpin.Flag(
+		"exporter.disable-cpu",
+		"Disable CPU metrics. These come from a long-lived Server-Sent Events connection to "+
+			"api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one stream open and "+
+			"accumulates its 1-second samples into cumulative cpu_seconds_total{mode} counters. Disabling "+
+			"this closes that connection and leaves the firewall with no CPU utilisation series at all.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_CPU").Default("false").Bool()
 	keaCollectorDisabled = kingpin.Flag(
 		"exporter.disable-kea",
 		"Disable the scraping of Kea DHCP lease metrics",
@@ -456,6 +463,7 @@ type CollectorsDisableSwitch struct {
 	Certificates           bool
 	CARP                   bool
 	Activity               bool
+	CPU                    bool
 	Kea                    bool
 	KeaDetails             bool
 	NetworkDiagnostics     bool
@@ -549,6 +557,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Certificates:           !*certificatesCollectorDisabled,
 		CARP:                   !*carpCollectorDisabled,
 		Activity:               !*activityCollectorDisabled,
+		CPU:                    !*cpuCollectorDisabled,
 		Kea:                    !*keaCollectorDisabled,
 		KeaDetails:             *keaDetailsEnabled,
 		NetworkDiagnostics:     *networkDiagnosticsEnabled,
@@ -658,6 +667,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-certificates", Subsystem: "certificate"},
 	{Flag: "exporter.disable-carp", Subsystem: "carp"},
 	{Flag: "exporter.disable-activity", Subsystem: "activity"},
+	{Flag: "exporter.disable-cpu", Subsystem: "cpu"},
 	{Flag: "exporter.disable-kea", Subsystem: "kea"},
 	{Flag: "exporter.enable-kea-details", Subsystem: "kea", Detail: true, Reason: "high cardinality on large networks (per-lease detail metrics)"},
 	{Flag: "exporter.enable-network-diagnostics", Subsystem: "network_diag", Reason: "not needed by every deployment; adds netisr/socket/route diagnostics collection"},

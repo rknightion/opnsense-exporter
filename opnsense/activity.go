@@ -13,7 +13,6 @@ var (
 	// scanned independently by threadStateRegex below.
 	threadsHeaderRegex = regexp.MustCompile(`(\d+)\s+threads:`)
 	threadStateRegex   = regexp.MustCompile(`(\d+)\s+(starting|running|sleeping|stopped|zombie|waiting|lock)\b`)
-	cpuRegex           = regexp.MustCompile(`([\d.]+)%\s+user,\s+([\d.]+)%\s+nice,\s+([\d.]+)%\s+system,\s+([\d.]+)%\s+interrupt,\s+([\d.]+)%\s+idle`)
 )
 
 // threadStateMatchLimit caps how many thread-state segments are materialized
@@ -43,16 +42,19 @@ type activityResponse struct {
 	Details []any    `json:"details"`
 }
 
+// SystemActivity carries the thread-state counts parsed from `top`'s header.
+//
+// CPU utilisation deliberately does NOT live here any more (#559). It now comes from
+// the api/diagnostics/cpu_usage SSE stream as cumulative counters, which gives 100%
+// timeline coverage against this endpoint's ~13% and costs the firewall essentially
+// nothing against this endpoint's measured 2.15 s per call. Thread-state counts are
+// the only thing get_activity uniquely provides, and they are instantaneous gauges
+// with no sub-minute alerting story — which is why this collector is now medium tier.
 type SystemActivity struct {
 	ThreadsTotal    int
 	ThreadsRunning  int
 	ThreadsSleeping int
 	ThreadsWaiting  int
-	CPUUser         float64
-	CPUNice         float64
-	CPUSystem       float64
-	CPUInterrupt    float64
-	CPUIdle         float64
 }
 
 func (c *Client) FetchActivity() (SystemActivity, *APICallError) {
@@ -104,39 +106,6 @@ func (c *Client) FetchActivity() (SystemActivity, *APICallError) {
 					data.ThreadsWaiting = n
 				}
 			}
-		}
-
-		if matches := cpuRegex.FindStringSubmatch(header); matches != nil {
-			user, err := strconv.ParseFloat(matches[1], 64)
-			if err != nil {
-				c.log.Warn("failed to parse CPU user", "value", matches[1], "err", err)
-				continue
-			}
-			nice, err := strconv.ParseFloat(matches[2], 64)
-			if err != nil {
-				c.log.Warn("failed to parse CPU nice", "value", matches[2], "err", err)
-				continue
-			}
-			system, err := strconv.ParseFloat(matches[3], 64)
-			if err != nil {
-				c.log.Warn("failed to parse CPU system", "value", matches[3], "err", err)
-				continue
-			}
-			interrupt, err := strconv.ParseFloat(matches[4], 64)
-			if err != nil {
-				c.log.Warn("failed to parse CPU interrupt", "value", matches[4], "err", err)
-				continue
-			}
-			idle, err := strconv.ParseFloat(matches[5], 64)
-			if err != nil {
-				c.log.Warn("failed to parse CPU idle", "value", matches[5], "err", err)
-				continue
-			}
-			data.CPUUser = user
-			data.CPUNice = nice
-			data.CPUSystem = system
-			data.CPUInterrupt = interrupt
-			data.CPUIdle = idle
 		}
 	}
 

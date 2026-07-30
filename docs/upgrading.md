@@ -14,6 +14,41 @@ migrating from the upstream AthennaMind exporter. Full details for every release
 
 ## Upgrading to v4.0 from v3.x
 
+- **CPU metrics are now cumulative counters fed by a stream, not percentage gauges** -
+  `opnsense_activity_cpu_user_percent` and its `nice`/`system`/`interrupt`/`idle`
+  siblings are **removed**. CPU utilisation now comes from
+  `opnsense_cpu_seconds_total{mode="user|nice|system|interrupt|idle"}`, so a panel or
+  alert reading the old gauges must become
+  `100 * rate(opnsense_cpu_seconds_total[$__rate_interval])`. The bundled dashboard
+  and rules are already migrated.
+
+  This is a better number, not merely a renamed one. The old gauges came from
+  `diagnostics/activity/get_activity`, which is a **2.15-second** call on the firewall
+  because OPNsense runs `top -aHSTn -d2` and waits out top's inter-display delay - a
+  permanent 14% firewall duty cycle at a 15s poll, 1.9 GB/day of payload, and it
+  sampled two seconds in every fifteen, so **87% of the timeline was never observed**.
+  The exporter now holds one Server-Sent Events connection to
+  `api/diagnostics/cpu_usage/stream` (`iostat -w 1`), sees **every** second, and costs
+  the firewall about 70 bytes/sec and no process-table walk. The `activity` collector
+  survives for thread-state counts only and has moved to the 60s tier.
+
+  Two operational consequences worth knowing before you upgrade:
+
+    - **A new outbound long-lived connection ships on by default.** It holds one
+      php-cgi worker on the firewall (~2.5% of the measured 40-worker capacity) plus a
+      persistent `iostat`, permanently. Disable it with `--exporter.disable-cpu`,
+      which leaves the box with no CPU utilisation series at all.
+    - **`cpu_seconds_total` goes ABSENT, not flat, when the stream dies.** The
+      exporter re-dials on a stall, but recovery bounds an outage rather than removing
+      it - during a firewall reboot there is nothing to reconnect to. After one export
+      interval of silence the counters are withdrawn, because a frozen counter reads
+      as an idle CPU under `rate()` and is silently wrong. `opnsense_cpu_stream_up`,
+      `opnsense_cpu_stream_last_frame_age_seconds` and
+      `opnsense_cpu_stream_counters_published` are exported throughout so the cause is
+      visible; `OPNsenseCPUStreamStalled` alerts on frame age, not on connectedness,
+      because this endpoint's documented failure mode is keepalives continuing after
+      the data stops.
+
 - **GeoIP enrichment is now ON by default, and the image bundles a database** -
   `--geoip.enabled` defaults to `true`, and the container image ships the DB-IP Lite
   Country and ASN databases at `/usr/share/opnsense-exporter/geoip/`, which are the

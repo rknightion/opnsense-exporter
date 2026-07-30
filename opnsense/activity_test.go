@@ -46,21 +46,6 @@ func TestFetchActivity_Success(t *testing.T) {
 	if data.ThreadsWaiting != 34 {
 		t.Errorf("expected ThreadsWaiting=34, got %d", data.ThreadsWaiting)
 	}
-	if data.CPUUser != 1.3 {
-		t.Errorf("expected CPUUser=1.3, got %f", data.CPUUser)
-	}
-	if data.CPUNice != 0.0 {
-		t.Errorf("expected CPUNice=0.0, got %f", data.CPUNice)
-	}
-	if data.CPUSystem != 2.2 {
-		t.Errorf("expected CPUSystem=2.2, got %f", data.CPUSystem)
-	}
-	if data.CPUInterrupt != 0.1 {
-		t.Errorf("expected CPUInterrupt=0.1, got %f", data.CPUInterrupt)
-	}
-	if data.CPUIdle != 96.4 {
-		t.Errorf("expected CPUIdle=96.4, got %f", data.CPUIdle)
-	}
 }
 
 func TestFetchActivity_EmptyHeaders(t *testing.T) {
@@ -92,21 +77,6 @@ func TestFetchActivity_EmptyHeaders(t *testing.T) {
 	if data.ThreadsWaiting != 0 {
 		t.Errorf("expected ThreadsWaiting=0, got %d", data.ThreadsWaiting)
 	}
-	if data.CPUUser != 0.0 {
-		t.Errorf("expected CPUUser=0.0, got %f", data.CPUUser)
-	}
-	if data.CPUNice != 0.0 {
-		t.Errorf("expected CPUNice=0.0, got %f", data.CPUNice)
-	}
-	if data.CPUSystem != 0.0 {
-		t.Errorf("expected CPUSystem=0.0, got %f", data.CPUSystem)
-	}
-	if data.CPUInterrupt != 0.0 {
-		t.Errorf("expected CPUInterrupt=0.0, got %f", data.CPUInterrupt)
-	}
-	if data.CPUIdle != 0.0 {
-		t.Errorf("expected CPUIdle=0.0, got %f", data.CPUIdle)
-	}
 }
 
 func TestFetchActivity_MalformedHeaders(t *testing.T) {
@@ -135,12 +105,6 @@ func TestFetchActivity_MalformedHeaders(t *testing.T) {
 	}
 	if data.ThreadsRunning != 0 {
 		t.Errorf("expected ThreadsRunning=0, got %d", data.ThreadsRunning)
-	}
-	if data.CPUUser != 0.0 {
-		t.Errorf("expected CPUUser=0.0, got %f", data.CPUUser)
-	}
-	if data.CPUIdle != 0.0 {
-		t.Errorf("expected CPUIdle=0.0, got %f", data.CPUIdle)
 	}
 }
 
@@ -177,9 +141,6 @@ func TestFetchActivity_ZombieBetweenSleepingAndWaiting(t *testing.T) {
 		t.Errorf("expected ThreadsWaiting=34, got %d", data.ThreadsWaiting)
 	}
 	// CPU must still parse from the following header despite the thread-state change.
-	if data.CPUIdle != 96.4 {
-		t.Errorf("expected CPUIdle=96.4, got %f", data.CPUIdle)
-	}
 }
 
 // TestFetchActivity_WaitingAbsent guards #82: top only prints non-zero states, so

@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **56 alert rules** and **14 recording rules**.
+Total: **57 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -856,6 +856,39 @@ opnsense_firewall_pf_states_current / (opnsense_firewall_pf_states_limit > 0)
 **Verify recovery:**
 - The ratio drops back under 0.9 and stays there for 10m
 - opnsense_firewall_pf_states_current stabilises at a sustainable level
+
+## OPNsenseCPUStreamStalled
+
+**Severity:** warning  
+**Pending window:** 5m0s  
+**Rule name:** `opnsense-cpu-stream-stalled`
+
+**Expression:**
+```promql
+opnsense_cpu_stream_last_frame_age_seconds
+```
+
+**What it measures:** opnsense_cpu_stream_last_frame_age_seconds: seconds since the last CPU sample arrived over the SSE stream.
+
+**Threshold & window:** gt 120 for 5m. Two minutes is well past the 10s stall watchdog and one full re-dial cycle, so an ordinary reconnect never fires this.
+
+**Absent / no-data semantics:** Default noDataState (Ok) - the series is absent before the first frame ever arrives and on a box with --exporter.disable-cpu set.
+
+**First checks:**
+- Read opnsense_cpu_stream_up for the same instance: 0 means the exporter cannot establish the connection at all, 1 means it connected and the data stopped anyway
+- Read rate(opnsense_cpu_stream_reconnects_total[5m]): a high rate means the connection is being established and torn down repeatedly rather than never established
+- Check opnsense_up - a firewall that is wholly unreachable explains this and much else besides
+- On the firewall, confirm lighttpd and configd are running and that php-cgi worker capacity is not exhausted (max-procs x PHP_FCGI_CHILDREN)
+
+**Likely causes:**
+- The firewall is rebooting or applying a firmware update, so there is nothing to reconnect to
+- configd or the iostat process behind the stream has wedged
+- php-cgi worker capacity on the firewall is exhausted, so the stream cannot be re-established
+- The API credentials were revoked, so every re-dial is rejected
+
+**Verify recovery:**
+- opnsense_cpu_stream_last_frame_age_seconds drops back under a few seconds
+- opnsense_cpu_stream_counters_published returns to 1 and the CPU Usage panel stops reading absent
 
 ## OPNsenseMemoryHigh
 

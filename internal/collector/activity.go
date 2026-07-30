@@ -8,6 +8,15 @@ import (
 	"github.com/rknightion/opnsense-exporter/opnsense"
 )
 
+// activityCollector exports thread-state counts from api/diagnostics/activity.
+//
+// CPU utilisation used to live here too and no longer does (#559): it comes from the
+// cpu_usage SSE stream as cumulative counters instead. What remains is the only thing
+// this endpoint uniquely provides — and it is expensive, at a measured 2.15 s of
+// firewall work per call, because OPNsense's activity.py runs `top -aHSTn -d2` and
+// waits out top's inter-display delay. Thread counts are instantaneous gauges with no
+// sub-minute alerting story, so the collector sits on the medium tier: that alone
+// takes this endpoint from a 14% firewall duty cycle to 3.6%.
 type activityCollector struct {
 	log *slog.Logger
 
@@ -15,11 +24,6 @@ type activityCollector struct {
 	threadsRunning  *prometheus.Desc
 	threadsSleeping *prometheus.Desc
 	threadsWaiting  *prometheus.Desc
-	cpuUser         *prometheus.Desc
-	cpuNice         *prometheus.Desc
-	cpuSystem       *prometheus.Desc
-	cpuInterrupt    *prometheus.Desc
-	cpuIdle         *prometheus.Desc
 
 	subsystem string
 	instance  string
@@ -56,26 +60,6 @@ func (c *activityCollector) Register(namespace, instanceLabel string, log *slog.
 		"Number of waiting threads on the system",
 		nil,
 	)
-	c.cpuUser = buildPrometheusDesc(c.subsystem, "cpu_user_percent",
-		"CPU user usage percentage",
-		nil,
-	)
-	c.cpuNice = buildPrometheusDesc(c.subsystem, "cpu_nice_percent",
-		"CPU nice usage percentage",
-		nil,
-	)
-	c.cpuSystem = buildPrometheusDesc(c.subsystem, "cpu_system_percent",
-		"CPU system usage percentage",
-		nil,
-	)
-	c.cpuInterrupt = buildPrometheusDesc(c.subsystem, "cpu_interrupt_percent",
-		"CPU interrupt usage percentage",
-		nil,
-	)
-	c.cpuIdle = buildPrometheusDesc(c.subsystem, "cpu_idle_percent",
-		"CPU idle percentage",
-		nil,
-	)
 }
 
 func (c *activityCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -83,11 +67,6 @@ func (c *activityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.threadsRunning
 	ch <- c.threadsSleeping
 	ch <- c.threadsWaiting
-	ch <- c.cpuUser
-	ch <- c.cpuNice
-	ch <- c.cpuSystem
-	ch <- c.cpuInterrupt
-	ch <- c.cpuIdle
 }
 
 func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -120,36 +99,5 @@ func (c *activityCollector) Update(ctx context.Context, client *opnsense.Client,
 		float64(data.ThreadsWaiting),
 		c.instance,
 	)
-	ch <- prometheus.MustNewConstMetric(
-		c.cpuUser,
-		prometheus.GaugeValue,
-		data.CPUUser,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.cpuNice,
-		prometheus.GaugeValue,
-		data.CPUNice,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.cpuSystem,
-		prometheus.GaugeValue,
-		data.CPUSystem,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.cpuInterrupt,
-		prometheus.GaugeValue,
-		data.CPUInterrupt,
-		c.instance,
-	)
-	ch <- prometheus.MustNewConstMetric(
-		c.cpuIdle,
-		prometheus.GaugeValue,
-		data.CPUIdle,
-		c.instance,
-	)
-
 	return nil
 }

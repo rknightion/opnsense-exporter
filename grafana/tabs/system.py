@@ -4,7 +4,8 @@ System & Resources tab for the OPNsense Exporter dashboard.
 Covers:
   - System subsystem (12 metrics)
   - General health: opnsense_system_subsystem_status_code (per-subsystem health-check detail)
-  - Activity subsystem (9 metrics)
+  - Activity subsystem (4 metrics) — thread-state counts only
+  - CPU subsystem (6 metrics) — cumulative counters + SSE stream health (#559)
   - Mbuf subsystem (14 metrics)
   - Temperature subsystem (1 metric) — gated by has_temperature sentinel
   - SMART subsystem (4 metrics) — gated by has_smart sentinel
@@ -211,20 +212,27 @@ def build(b: Builder):
     # =========================================================================
     # Row: CPU & Threads
     # =========================================================================
+    # CPU is a CUMULATIVE counter fed by the cpu_usage SSE stream (#559), not the
+    # instantaneous percentage gauges it replaced. rate() over it is a true average
+    # across the whole window with no sampling loss, because every 1-second sample
+    # from the stream is folded in — where the old gauges showed a 2-second snapshot
+    # taken every 15 seconds, covering ~13% of the timeline.
+    #
+    # One rate() over all modes; Grafana splits by the mode label. Multiply by 100 to
+    # read as a percentage of one core-second per second, which is what the old panel
+    # showed, so the y-axis means the same thing it always did.
     cpu_ts = b.ts(
         "CPU Usage",
         [
-            (sel("opnsense_activity_cpu_user_percent"), "User"),
-            (sel("opnsense_activity_cpu_nice_percent"), "Nice"),
-            (sel("opnsense_activity_cpu_system_percent"), "System"),
-            (sel("opnsense_activity_cpu_interrupt_percent"), "Interrupt"),
-            (sel("opnsense_activity_cpu_idle_percent"), "Idle"),
+            (f'100 * rate({sel("opnsense_cpu_seconds_total")}[{RATE}])', "{{mode}}"),
         ],
         unit="percent",
         stack=True,
         w=12,
         h=8,
-        desc="CPU time breakdown across user, nice, system, interrupt, idle.",
+        desc="opnsense_cpu_seconds_total: CPU time breakdown across user, nice, system, "
+        "interrupt and idle, as a rate over cumulative counters reconstructed from the "
+        "api/diagnostics/cpu_usage SSE stream. Goes ABSENT (not flat) when the stream stalls.",
     )
 
     threads_total = b.stat(
@@ -260,7 +268,71 @@ def build(b: Builder):
         desc="opnsense_activity_threads_waiting: number of threads waiting on I/O or locks.",
     )
 
-    row_cpu = b.row("CPU & Threads", [cpu_ts, threads_total, threads_running, threads_sleeping, threads_waiting])
+    # ---- CPU stream health --------------------------------------------------
+    # The stream's known failure mode is a SILENT stall: keepalives keep flowing
+    # while the data has stopped, so the connection looks perfectly healthy. Last
+    # frame age is therefore the signal to watch, not stream_up.
+    cpu_stream_up = b.stat(
+        "CPU Stream",
+        sel("opnsense_cpu_stream_up"),
+        w=3,
+        h=4,
+        mappings=UPDOWN,
+        desc="opnsense_cpu_stream_up: 1 while the CPU usage SSE connection is established. "
+        "Up alone does not prove the data is flowing — see CPU Stream Last Frame Age.",
+    )
+
+    cpu_stream_age = b.stat(
+        "CPU Stream Last Frame Age",
+        sel("opnsense_cpu_stream_last_frame_age_seconds"),
+        w=3,
+        h=4,
+        unit="s",
+        thresholds=[{"color": "green", "value": None}, {"color": "yellow", "value": 10}, {"color": "red", "value": 60}],
+        desc="opnsense_cpu_stream_last_frame_age_seconds: seconds since the last CPU sample. "
+        "Frames arrive about once a second, so anything above a few seconds means the stream "
+        "has stalled even if it still reports up. Past the grace window the CPU counters are "
+        "withdrawn rather than frozen.",
+    )
+
+    cpu_stream_published = b.stat(
+        "CPU Counters Published",
+        sel("opnsense_cpu_stream_counters_published"),
+        w=3,
+        h=4,
+        mappings=YESNO_GOOD,
+        desc="opnsense_cpu_stream_counters_published: 0 means cpu_seconds_total has been "
+        "deliberately withdrawn because the stream went silent past its grace window. A frozen "
+        "counter would read as an idle CPU, so absent is the honest answer.",
+    )
+
+    cpu_stream_rates = b.ts(
+        "CPU Stream Frames & Reconnects",
+        [
+            (f'rate({sel("opnsense_cpu_stream_frames_total")}[{RATE}])', "Frames/sec"),
+            (f'rate({sel("opnsense_cpu_stream_reconnects_total")}[{RATE}])', "Reconnects/sec"),
+        ],
+        w=12,
+        h=6,
+        desc="opnsense_cpu_stream_frames_total / opnsense_cpu_stream_reconnects_total: frame "
+        "arrival should sit near 1/sec. A non-zero reconnect rate means the connection is "
+        "being torn down repeatedly — by the firewall, or by the stall watchdog.",
+    )
+
+    row_cpu = b.row(
+        "CPU & Threads",
+        [
+            cpu_ts,
+            threads_total,
+            threads_running,
+            threads_sleeping,
+            threads_waiting,
+            cpu_stream_up,
+            cpu_stream_age,
+            cpu_stream_published,
+            cpu_stream_rates,
+        ],
+    )
 
     # =========================================================================
     # Row: Disk

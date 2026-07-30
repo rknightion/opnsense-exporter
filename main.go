@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/rknightion/opnsense-exporter/internal/annotations"
 	"github.com/rknightion/opnsense-exporter/internal/collector"
+	"github.com/rknightion/opnsense-exporter/internal/cpustream"
 	"github.com/rknightion/opnsense-exporter/internal/flow"
 	"github.com/rknightion/opnsense-exporter/internal/flow/netflow"
 	"github.com/rknightion/opnsense-exporter/internal/geoip"
@@ -905,6 +906,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutActivityCollector())
 		logger.Info("activity collector disabled")
 	}
+	if !collectorsSwitches.CPU {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutCPUCollector())
+		logger.Info("cpu collector disabled")
+	}
 	if !collectorsSwitches.Kea {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutKeaCollector())
 		logger.Info("kea collector disabled")
@@ -1213,6 +1218,32 @@ func main() {
 	// scrape. /metrics (ScrapeView) and the OTLP bridge both replay that snapshot with
 	// no live API call. StopPolling is invoked from gracefulShutdown.
 	collectorInstance.StartPolling(context.Background())
+
+	var stopCPUStream func()
+	// The CPU stream is the one collector that is fed by a connection rather than a
+	// poll (#559). It holds a single long-lived SSE connection to
+	// api/diagnostics/cpu_usage/stream and accumulates its 1-second samples into
+	// cumulative counters; the cpu collector's Update just copies the accumulator,
+	// so the scheduler and the serving path need no special case.
+	//
+	// The grace window is one export interval: long enough that a reconnect covered
+	// by it never gaps the graph, short enough that a real outage withdraws the
+	// counters rather than freezing them at a value that reads as an idle CPU.
+	if collectorsSwitches.CPU {
+		grace := cpustream.DefaultGracePeriod
+		if otlpEnabled && otlpCfg.ExportInterval > grace {
+			grace = otlpCfg.ExportInterval
+		}
+		stream := cpustream.New(opnsenseClient.OpenCPUStream, cpustream.Config{
+			GracePeriod: grace,
+			Logger:      logger,
+		})
+		collector.CPUStream.Configure(stream.Snapshot)
+		stream.Start(context.Background())
+		stopCPUStream = stream.Close
+		logger.Info("cpu usage stream enabled",
+			"endpoint", "api/diagnostics/cpu_usage/stream", "grace_period", grace.String())
+	}
 
 	// Annotation writing is opt-in (--annotations.enabled). It diffs the watched
 	// instant-valued metrics on the SAME registry the OTLP bridge gathers, so it
@@ -1848,7 +1879,7 @@ func main() {
 	for {
 		select {
 		case sig := <-term:
-			gracefulShutdown(srv, sig, collectorInstance.StopPolling, stopLogs, stopOTLP,
+			gracefulShutdown(srv, sig, collectorInstance.StopPolling, stopCPUStream, stopLogs, stopOTLP,
 				stopProfiling, stopAnnotations, logger)
 			return
 		case <-srvClose:
@@ -1861,19 +1892,22 @@ func main() {
 // telemetry and returning, so a scrape landing mid-response during a rollout/redeploy
 // finishes instead of being severed (which Prometheus records as up=0). The log line
 // reports the actual signal received rather than a hardcoded "SIGTERM" (#161).
-func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopLogs, stopOTLP, stopProfiling, stopAnnotations func(), logger *slog.Logger) {
+func gracefulShutdown(srv *http.Server, sig os.Signal, stopPolling, stopCPUStream, stopLogs, stopOTLP, stopProfiling, stopAnnotations func(), logger *slog.Logger) {
 	logger.Info("received signal, shutting down gracefully", "signal", sig.String())
 	ctx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("graceful HTTP shutdown failed; in-flight scrapes may have been cut", "err", err)
 	}
-	// Order: drain HTTP -> stop the poll scheduler (no new firewall API calls) -> stop
-	// log pollers + flush the sink -> flush OTLP metrics -> flush profiling. Logs drain
-	// before OTLP metrics so a final scrape's data and the last log batch both leave
-	// before the process exits.
+	// Order: drain HTTP -> stop the poll scheduler and the CPU stream (no new firewall
+	// API calls, and the held php-cgi worker released) -> stop log pollers + flush the
+	// sink -> flush OTLP metrics -> flush profiling. Logs drain before OTLP metrics so
+	// a final scrape's data and the last log batch both leave before the process exits.
 	if stopPolling != nil {
 		stopPolling()
+	}
+	if stopCPUStream != nil {
+		stopCPUStream()
 	}
 	if stopLogs != nil {
 		stopLogs()

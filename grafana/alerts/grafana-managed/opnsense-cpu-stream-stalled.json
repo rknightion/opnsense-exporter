@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-gateway-alarm-flapping",
+    "name": "opnsense-cpu-stream-stalled",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,10 +11,10 @@
     }
   },
   "spec": {
-    "title": "OPNsenseGatewayAlarmFlapping",
+    "title": "OPNsenseCPUStreamStalled",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "0s",
+    "for": "5m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -22,11 +22,9 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense gateway {{ $labels.gateway }} alarm is flapping ({{ $labels.opnsense_instance }})",
-      "description": "dpinger emitted three or more alarm_started transitions for gateway {{ $labels.gateway }} in 15m. This is transition evidence from syslog, not an assertion that the gateway is currently down; check OPNsenseGatewayDown and the Gateway Status panel for current state.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensegatewayalarmflapping",
-      "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "188"
+      "summary": "OPNsense CPU usage stream stalled ({{ $labels.opnsense_instance }})",
+      "description": "No CPU sample has arrived from the api/diagnostics/cpu_usage SSE stream for over 2 minutes ({{ $values.A.Value | printf \"%.0f\" }}s). Frames normally arrive about once a second. The exporter's own watchdog tears down and re-dials a stalled connection, so this firing means recovery is ALSO failing - the firewall is unreachable, rebooting, or refusing the stream. cpu_seconds_total has already been withdrawn (opnsense_cpu_stream_counters_published=0), so CPU panels read absent rather than a misleading flat zero.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensecpustreamstalled"
     },
     "expressions": {
       "A": {
@@ -41,7 +39,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "sum by (opnsense_instance, gateway) (increase(opnsense_log_events_gateway_total{event=\"alarm_started\"}[15m]))",
+          "expr": "opnsense_cpu_stream_last_frame_age_seconds",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -65,7 +63,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  2,
+                  120,
                   0
                 ]
               },

@@ -526,6 +526,14 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-system-login-logout", Name: "Lobby: Dashboard", Origin: "core", Pattern: "api/diagnostics/cpu_usage/*", Scope: ACLScopeWildcard},
 		},
 	},
+	"cpuUsageStream": {
+		Consumer:  "cpu",
+		Component: "core",
+		Status:    ACLStatusKnown,
+		Privileges: []ACLPrivilege{
+			{Key: "page-system-login-logout", Name: "Lobby: Dashboard", Origin: "core", Pattern: "api/diagnostics/cpu_usage/*", Scope: ACLScopeWildcard},
+		},
+	},
 	"cronJobs": {
 		Consumer:  "cron",
 		Component: "core",

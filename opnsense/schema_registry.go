@@ -378,6 +378,11 @@ var schemaExemptEndpoints = map[EndpointName]string{
 	// it is not JSON at all, so no structural schema applies. FetchCrowdSecStatus
 	// parses it tolerantly (parseCrowdSecVersion); the live canary has no
 	// coverage for this endpoint (#205).
+	// A never-ending text/event-stream of SSE frames, not a JSON document — there is
+	// no response body to derive a structure from, and holding it open is exactly
+	// what the live-box schema canary must not do. The frame payload's shape is
+	// pinned by internal/cpustream's parser tests instead (#559).
+	"cpuUsageStream":  "SSE stream (text/event-stream), not a JSON document — no structural schema applies",
 	"crowdsecVersion": "raw multi-line cscli version text, not JSON — no structural schema applies",
 }
 

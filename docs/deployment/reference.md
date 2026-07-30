@@ -229,6 +229,12 @@ services:
       # Disable the scraping of ClamAV engine version and signature database freshness
       # metrics (silent when the os-clamav plugin is absent)
       # OPNSENSE_EXPORTER_DISABLE_CLAMAV: "false"
+      # Disable CPU metrics. These come from a long-lived Server-Sent Events connection
+      # to api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one
+      # stream open and accumulates its 1-second samples into cumulative
+      # cpu_seconds_total{mode} counters. Disabling this closes that connection and
+      # leaves the firewall with no CPU utilisation series at all.
+      # OPNSENSE_EXPORTER_DISABLE_CPU: "false"
       # Disable the scraping of the cron table
       # OPNSENSE_EXPORTER_DISABLE_CRON_TABLE: "false"
       # Disable the scraping of CrowdSec alert/decision/bouncer/machine counts (silent

@@ -9,9 +9,10 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | ACME Client | acme | 6 | Enabled | --exporter.disable-acme | OPNSENSE_EXPORTER_DISABLE_ACME |
 | APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPNSENSE_EXPORTER_DISABLE_APCUPSD |
 | ARP Table | arp_table | 2 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
-| Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
+| Activity | activity | 4 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
 | BPF Statistics | bpf | 10 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
+| CPU | cpu | 6 | Enabled | --exporter.disable-cpu | OPNSENSE_EXPORTER_DISABLE_CPU |
 | Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
 | Chrony | chrony | 21 | Enabled | --exporter.disable-chrony | OPNSENSE_EXPORTER_DISABLE_CHRONY |

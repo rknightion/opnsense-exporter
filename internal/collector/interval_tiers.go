@@ -34,8 +34,8 @@ const (
 //
 // Rationale by tier:
 //   - fast: per-second-ish live counters/states where freshness is alerting-critical
-//     (gateway RTT/loss, interface + protocol + pf counters, live activity, netflow,
-//     CARP failover state).
+//     (gateway RTT/loss, interface + protocol + pf counters, netflow, CARP failover
+//     state).
 //   - slow: data that drifts over minutes, or is comparatively expensive to fetch
 //     (rule hit-counters, alias table contents, NTP/chrony peers, dyndns/qfeeds status,
 //     shaper pipes, siproxd registrations, tor circuits, LLDP neighbours).
@@ -50,15 +50,28 @@ const (
 // hardware, system, crowdsec, tor), the tier follows the LIVE half and the body
 // cache handles the static endpoints — a per-collector interval cannot split them
 // (#344).
+//
+// The activity collector is deliberately ABSENT from this table (medium, #559). It
+// was fast, at a measured 2.15 s of firewall work per call — a permanent 14% duty
+// cycle at 15s — for CPU percentages that now come from the cpu_usage SSE stream
+// instead. What is left is thread-state counts: instantaneous gauges with no
+// sub-minute alerting story, where 60s loses nothing.
 var collectorTiers = map[string]time.Duration{
 	// fast (15s)
 	GatewaysSubsystem:   IntervalFast,
 	InterfacesSubsystem: IntervalFast,
 	ProtocolSubsystem:   IntervalFast,
 	PFStatsSubsystem:    IntervalFast,
-	ActivitySubsystem:   IntervalFast,
 	NetflowSubsystem:    IntervalFast,
 	CARPSubsystem:       IntervalFast,
+	// The one fast-tier collector that costs the firewall NOTHING: it makes no API
+	// call at all, reading an accumulator the cpu_usage SSE stream fills out of band
+	// (#559). Fast so that an operator running --otlp.fast-export-interval gets 15s
+	// CPU resolution for free, and so a stalled stream shows up in
+	// cpu_stream_last_frame_age_seconds within 15s rather than 60s. Under #550's lane
+	// clamp this still resolves to 60s when no fast lane is configured, so the
+	// default deployment gains nothing to pay for.
+	CPUSubsystem: IntervalFast,
 	// slow (5m)
 	FirewallRulesSubsystem: IntervalSlow,
 	AliasSubsystem:         IntervalSlow,

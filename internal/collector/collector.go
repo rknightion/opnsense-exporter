@@ -49,6 +49,7 @@ const (
 	CertificatesSubsystem  = "certificate"
 	CARPSubsystem          = "carp"
 	ActivitySubsystem      = "activity"
+	CPUSubsystem           = "cpu"
 	KeaSubsystem           = "kea"
 	Dhcpv4Subsystem        = "dhcpv4"
 	NetworkDiagSubsystem   = "network_diag"
@@ -136,6 +137,7 @@ var SubsystemDisplayNames = map[string]string{
 	CertificatesSubsystem:        "Certificates",
 	CARPSubsystem:                "CARP",
 	ActivitySubsystem:            "Activity",
+	CPUSubsystem:                 "CPU",
 	KeaSubsystem:                 "Kea DHCP",
 	Dhcpv4Subsystem:              "ISC DHCPv4",
 	NetworkDiagSubsystem:         "Network Diagnostics",
@@ -620,6 +622,12 @@ func WithoutCertificatesCollector() Option {
 // removes the carp collector from the list of collectors
 func WithoutCARPCollector() Option {
 	return withoutCollectorInstance(CARPSubsystem)
+}
+
+// WithoutCPUCollector Option
+// removes the cpu collector from the list of collectors
+func WithoutCPUCollector() Option {
+	return withoutCollectorInstance(CPUSubsystem)
 }
 
 // WithoutActivityCollector Option

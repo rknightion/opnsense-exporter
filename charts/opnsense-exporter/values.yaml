@@ -272,6 +272,13 @@ settings:
   # (silent when the os-clamav plugin is absent)
   # exporter.disable-clamav: false
   #
+  # Disable CPU metrics. These come from a long-lived Server-Sent Events connection to
+  # api/diagnostics/cpu_usage/stream, not from polling: the exporter holds one stream open
+  # and accumulates its 1-second samples into cumulative cpu_seconds_total{mode} counters.
+  # Disabling this closes that connection and leaves the firewall with no CPU utilisation
+  # series at all.
+  # exporter.disable-cpu: false
+  #
   # Disable the scraping of the cron table
   # exporter.disable-cron-table: false
   #

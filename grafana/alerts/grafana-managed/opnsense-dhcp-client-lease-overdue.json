@@ -26,7 +26,7 @@
       "description": "dhclient's renewal deadline for {{ $labels.interface }} has passed without a new lease being bound. The WAN address is on borrowed time: once the full lease expires the box loses the address entirely. This fires hours before that happens, which is the entire point of it.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedhcpclientleaserenewaloverdue",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "266"
+      "__panelId__": "270"
     },
     "expressions": {
       "A": {
