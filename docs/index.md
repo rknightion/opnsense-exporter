@@ -1,6 +1,6 @@
 ---
 title: OPNsense Exporter
-description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 885 metrics across 63 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
+description: Prometheus and OpenTelemetry exporter for OPNsense firewalls with 910 metrics across 64 collectors, native OTLP metrics and logs, a syslog receiver, and NetFlow and Zenarmor flow shipping
 image: assets/social-card.png
 ---
 
@@ -10,7 +10,7 @@ image: assets/social-card.png
 
 **Prometheus and OpenTelemetry metrics for OPNsense firewalls**
 
-A Prometheus exporter that polls OPNsense REST APIs and exposes 885 metrics across 63 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
+A Prometheus exporter that polls OPNsense REST APIs and exposes 910 metrics across 64 concurrent collectors: firewall statistics, network interfaces, gateways, VPN tunnels, DHCP leases, DNS resolver stats, system resources, hardware temperatures, certificate expiry, and more. It also pushes native OpenTelemetry metrics and logs over OTLP, receives and enriches syslog, and turns NetFlow and Zenarmor records into bounded flow-volume metrics.
 
 <div class="hero-badges" markdown>
 
@@ -45,7 +45,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 885 metrics acro
 
     ---
 
-    Browse all 885 Prometheus metrics with types, labels, and PromQL examples.
+    Browse all 910 Prometheus metrics with types, labels, and PromQL examples.
 
     [:octicons-arrow-right-24: Metrics](metrics/index.md)
 
@@ -53,7 +53,7 @@ A Prometheus exporter that polls OPNsense REST APIs and exposes 885 metrics acro
 
     ---
 
-    63 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
+    64 sub-collectors running concurrently, each targeting a specific OPNsense subsystem.
 
     [:octicons-arrow-right-24: Collectors](collectors/index.md)
 
@@ -81,7 +81,7 @@ OPNsense Exporter targets OPNsense specifically, covering the firewall, its plug
 
 Key highlights:
 
-- **63 collectors** covering every major OPNsense subsystem
+- **64 collectors** covering every major OPNsense subsystem
 - **Independent background polling** with snapshot replay for fast, API-free scrapes
 - **High-availability support** with CARP/VIP monitoring
 - **Opt-in high-cardinality metrics** for per-lease DHCP and per-rule firewall detail

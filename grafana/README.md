@@ -36,10 +36,10 @@ datasource carrying the exporter's shipped logs is selected.
 
 ## The dashboard
 
-Two dashboards, 46 tabs grouped by feature (generated list, do not hand-edit). The operational dashboard runs from the first `Overview` to `Siproxd`; the health companion starts at the SECOND `Overview` and runs to `Recording rules`:
+Two dashboards, 47 tabs grouped by feature (generated list, do not hand-edit). The operational dashboard runs from the first `Overview` to `Siproxd`; the health companion starts at the SECOND `Overview` and runs to `Recording rules`:
 
 <!-- docgen:begin:dashboard-tabs -->
-Overview, System & Resources, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, Flow Volume, FRR Routing, Captive Portal, Firewall & PF, Authentication & Audit, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Overview, Scrape & Poll, OPNsense API, Metrics & OTLP, Log Shipping, Flow Pipeline, Exporter Runtime, Recording rules
+Overview, System & Resources, Kernel Memory, Services, Cron & DynDNS, Certificates, UPS, Monit, HA Sync, CARP / HA, Interfaces, Gateways & WAN, DNS - Unbound, DHCP, Routing & Neighbors, Protocol Stats, NTP, Chrony, Traffic Shaper, NetFlow, Flow Volume, FRR Routing, Captive Portal, Firewall & PF, Authentication & Audit, Aliases, IDS/IPS, CrowdSec, ClamAV, Q-Feeds, Zenarmor, VPN, Tailscale, NetBird, Tor, Syslog, HAProxy, Relayd, Nginx, Siproxd, Overview, Scrape & Poll, OPNsense API, Metrics & OTLP, Log Shipping, Flow Pipeline, Exporter Runtime, Recording rules
 <!-- docgen:end:dashboard-tabs -->
 
 covering **every** metric the exporter emits (a coverage gate in `build_dashboard.py` fails the
@@ -283,7 +283,7 @@ reading as missing.
 
 ## Alerts & recording rules
 
-`alerts/` contains **50 alert rules** and **14 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **53 alert rules** and **14 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format - it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
@@ -339,7 +339,7 @@ new exporter protects itself once it has been up an hour. The cost is that a **d
 decommissioned instance keeps alerting until it has been absent for 1h**; silence it until
 then, or wait it out.
 
-`alerts/` contains **50 alert rules** covering exporter/instance liveness, collector health,
+`alerts/` contains **53 alert rules** covering exporter/instance liveness, collector health,
 gateways, system resources, certificates, services, log shipping, OTLP delivery, VPN/HA/CARP, IDS,
 and flow capture. The full list - trigger condition, threshold and window, absent/no-data
 semantics, first checks, likely causes, and recovery verification for every single one - is

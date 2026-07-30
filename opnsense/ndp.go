@@ -11,10 +11,19 @@ type ndpEntry struct {
 }
 
 type NDPEntry struct {
-	Mac             string
-	IP              string
+	Mac string
+	IP  string
+	// Device is the raw kernel device (the payload's `intf`), distinct from
+	// IntfDescription: on VLAN children and bridges the two diverge, and only
+	// the raw device joins against the interface metrics (#544).
+	Device string
+	// Manufacturer is the OUI lookup for Mac. Populated on 72 of 83 entries on
+	// the reference box (#534).
+	Manufacturer    string
 	IntfDescription string
-	Type            string
+	// Type is modelled but the reference box (OPNsense 26.1) sends no `type`
+	// key on this endpoint at all, so it reads empty there.
+	Type string
 }
 
 type NDPTable struct {
@@ -43,6 +52,8 @@ func (c *Client) FetchNDPTable() (NDPTable, *APICallError) {
 		data.Entries = append(data.Entries, NDPEntry{
 			Mac:             entry.Mac,
 			IP:              entry.IP,
+			Device:          entry.Intf,
+			Manufacturer:    entry.Manufacturer,
 			IntfDescription: entry.IntfDescription,
 			Type:            entry.Type,
 		})

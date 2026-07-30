@@ -16,12 +16,36 @@
       "kind": "object"
     },
     {
+      "path": "statistics.*.address",
+      "kind": "string"
+    },
+    {
+      "path": "statistics.*.dropped-packets",
+      "kind": "number"
+    },
+    {
       "path": "statistics.*.name",
       "kind": "string"
     },
     {
       "path": "statistics.*.network",
       "kind": "string"
+    },
+    {
+      "path": "statistics.*.received-bytes",
+      "kind": "number"
+    },
+    {
+      "path": "statistics.*.received-packets",
+      "kind": "number"
+    },
+    {
+      "path": "statistics.*.sent-bytes",
+      "kind": "number"
+    },
+    {
+      "path": "statistics.*.sent-packets",
+      "kind": "number"
     }
   ]
 }

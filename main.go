@@ -881,6 +881,10 @@ func main() {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutMbufCollector())
 		logger.Info("mbuf collector disabled")
 	}
+	if !collectorsSwitches.KernelMemory {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutKernelMemoryCollector())
+		logger.Info("kernel memory collector disabled")
+	}
 	if !collectorsSwitches.NTP {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNTPCollector())
 		logger.Info("ntp collector disabled")

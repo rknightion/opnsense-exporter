@@ -23,9 +23,16 @@ type arpSearchResponse struct {
 }
 
 type Arp struct {
-	Mac             string
-	IP              string
-	Type            string
+	Mac string
+	IP  string
+	// Device is the raw kernel device (the payload's `intf`), distinct from
+	// IntfDescription: on VLAN children and bridges the two diverge, and only
+	// the raw device joins against the interface metrics (#544).
+	Device string
+	Type   string
+	// Manufacturer is the OUI lookup for Mac. Populated on 88 of 101 entries on
+	// the reference box, whereas Hostname is empty on ALL of them (#534).
+	Manufacturer    string
 	Hostname        string
 	IntfDescription string
 	Expired         bool
@@ -65,6 +72,8 @@ func (c *Client) FetchArpTable() (ArpTable, *APICallError) {
 			Expires:         arp.Expires,
 			Permanent:       arp.Permanent,
 			Type:            arp.Type,
+			Device:          arp.Intf,
+			Manufacturer:    arp.Manufacturer,
 			Hostname:        arp.Hostname,
 			IntfDescription: arp.IntfDescription,
 		}

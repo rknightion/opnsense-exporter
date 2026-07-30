@@ -176,12 +176,64 @@ type SocketCounts struct {
 // --- route types ---
 
 type routeEntry struct {
-	Proto string `json:"proto"`
+	Proto           string `json:"proto"`
+	Destination     string `json:"destination"`
+	Gateway         string `json:"gateway"`
+	Flags           string `json:"flags"`
+	NetIf           string `json:"netif"`
+	IntfDescription string `json:"intf_description"`
 }
 
-// RouteCounts holds route counts grouped by protocol.
+// RouteInterfaceKey identifies a route group by address family and egress
+// interface. Device is the raw kernel device (netif) and Interface the
+// human-assigned description; they diverge on VLAN children, PPPoE links and
+// anything unassigned, and only the raw device joins against the interface
+// metrics.
+type RouteInterfaceKey struct {
+	Proto     string
+	Device    string
+	Interface string
+}
+
+// RouteFlagsKey identifies a route group by address family and netstat flag
+// string. The flag vocabulary is closed and short (U, G, H, S, B, 1 ...), so
+// this stays bounded regardless of table size.
+type RouteFlagsKey struct {
+	Proto string
+	Flags string
+}
+
+// DefaultRoute is one default route as the box reports it. There is normally
+// one per address family; more than one means multiple default routes are
+// installed, and none at all is a total-outage condition for that family.
+type DefaultRoute struct {
+	Proto     string
+	Device    string
+	Interface string
+	Gateway   string
+}
+
+// RouteCounts holds route counts grouped by protocol, plus the per-interface
+// and per-flags breakdowns and the default routes. ByProto is the original
+// aggregate and is kept exactly as it was.
 type RouteCounts struct {
-	ByProto map[string]int
+	ByProto       map[string]int
+	ByInterface   map[RouteInterfaceKey]int
+	ByFlags       map[RouteFlagsKey]int
+	DefaultRoutes []DefaultRoute
+}
+
+// isDefaultDestination reports whether a route's destination is the default
+// route for its family. netstat's libxo output renders it as the literal
+// "default" on every release observed (26.1, 26.7.1, 27.1.a); the CIDR forms
+// are accepted as well so a rendering change cannot silently blind the
+// default-route signal rather than merely renaming it.
+func isDefaultDestination(dst string) bool {
+	switch dst {
+	case "default", "0.0.0.0/0", "::/0":
+		return true
+	}
+	return false
 }
 
 // FetchNetisrStatistics retrieves netisr statistics from OPNsense and
@@ -308,12 +360,22 @@ func (c *Client) FetchSocketStatistics() (SocketCounts, *APICallError) {
 	return data, nil
 }
 
-// FetchRouteStatistics retrieves the routing table from OPNsense and
-// counts entries by protocol.
+// FetchRouteStatistics retrieves the routing table from OPNsense and counts
+// entries by protocol, by egress interface and by netstat flag string, and
+// picks out the default route of each address family.
+//
+// Per-route values (destination, gateway) are deliberately NOT carried per row:
+// a router's table is dominated by dynamically learned host routes that come and
+// go, so a series per destination would churn continuously for no diagnostic
+// gain. The one exception is the default route's gateway, which is carried
+// because there are only ever one or two of them and a change to it is itself
+// the event an operator wants to see.
 func (c *Client) FetchRouteStatistics() (RouteCounts, *APICallError) {
 	var resp []routeEntry
 	data := RouteCounts{
-		ByProto: make(map[string]int),
+		ByProto:     make(map[string]int),
+		ByInterface: make(map[RouteInterfaceKey]int),
+		ByFlags:     make(map[RouteFlagsKey]int),
 	}
 
 	url, ok := c.endpoints["routingTable"]
@@ -331,6 +393,20 @@ func (c *Client) FetchRouteStatistics() (RouteCounts, *APICallError) {
 
 	for _, entry := range resp {
 		data.ByProto[entry.Proto]++
+		data.ByInterface[RouteInterfaceKey{
+			Proto:     entry.Proto,
+			Device:    entry.NetIf,
+			Interface: entry.IntfDescription,
+		}]++
+		data.ByFlags[RouteFlagsKey{Proto: entry.Proto, Flags: entry.Flags}]++
+		if isDefaultDestination(entry.Destination) {
+			data.DefaultRoutes = append(data.DefaultRoutes, DefaultRoute{
+				Proto:     entry.Proto,
+				Device:    entry.NetIf,
+				Interface: entry.IntfDescription,
+				Gateway:   entry.Gateway,
+			})
+		}
 	}
 
 	return data, nil

@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-hasync-unreachable",
+    "name": "opnsense-kernel-zone-near-limit",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,10 +11,10 @@
     }
   },
   "spec": {
-    "title": "OPNsenseHASyncUnreachable",
+    "title": "OPNsenseKernelZoneNearLimit",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "10m0s",
+    "for": "15m0s",
     "trigger": {
       "interval": "1m"
     },
@@ -22,11 +22,11 @@
       "severity": "warning"
     },
     "annotations": {
-      "summary": "OPNsense HA sync peer unreachable ({{ $labels.opnsense_instance }})",
-      "description": "opnsense_hasync_remote_reachable has been 0 for 10m on a box where HA sync is configured (remote_services_total > 0). The guard excludes boxes with HA sync unconfigured, where reachable=0 is the normal, expected reading.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensehasyncunreachable",
+      "summary": "OPNsense kernel zone {{ $labels.zone }} over 80% of its limit ({{ $labels.opnsense_instance }})",
+      "description": "A UMA zone has been above 80% of its configured ceiling for 15m. This is the leading indicator for OPNsenseKernelZoneAllocationFailure - it fires while allocations still succeed.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensekernelzonenearlimit",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "667"
+      "__panelId__": "92"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) (opnsense_hasync_remote_services_total > 0)",
+          "expr": "opnsense_kernel_memory_zone_used / (opnsense_kernel_memory_zone_limit > 0)",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,9 +63,9 @@
           "conditions": [
             {
               "evaluator": {
-                "type": "lt",
+                "type": "gt",
                 "params": [
-                  1,
+                  0.8,
                   0
                 ]
               },

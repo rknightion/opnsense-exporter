@@ -34,6 +34,12 @@ type interfacesCollector struct {
 	adminUp *prometheus.Desc
 	info    *prometheus.Desc
 
+	familyReceivedPackets *prometheus.Desc
+	familyReceivedBytes   *prometheus.Desc
+	familySentPackets     *prometheus.Desc
+	familySentBytes       *prometheus.Desc
+	outputQueueDrops      *prometheus.Desc
+
 	laggActivePorts      *prometheus.Desc
 	laggFlapping         *prometheus.Desc
 	laggInfo             *prometheus.Desc
@@ -150,6 +156,44 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 		[]string{"interface", "device", "identifier", "media", "link_type", "vlan_tag", "vlan_parent", "physical"},
 	)
 
+	familyLabels := []string{"device", "family"}
+	familyCaveat := " Counted per LOCAL ADDRESS, so this is traffic to and from the firewall's own " +
+		"addresses only: forwarded transit traffic is not attributed to any local address and does " +
+		"NOT appear here. On the reference box ixl0's device total read 419.9M received packets " +
+		"while its address rows summed to 24.5M, about 6%. Read this as which address family the " +
+		"box itself is talking, not as a split of what the interface forwards — for the device " +
+		"total use the received_packets_total/received_bytes_total families, which have no such " +
+		"split available from any endpoint. Addresses of the same family on one device are summed; " +
+		"the address itself is deliberately not a label."
+
+	c.familyReceivedPackets = buildPrometheusDesc(c.subsystem, "address_family_received_packets_total",
+		"Packets received on this device's addresses of this family (ipv4/ipv6)."+familyCaveat,
+		familyLabels,
+	)
+	c.familyReceivedBytes = buildPrometheusDesc(c.subsystem, "address_family_received_bytes_total",
+		"Bytes received on this device's addresses of this family (ipv4/ipv6)."+familyCaveat,
+		familyLabels,
+	)
+	c.familySentPackets = buildPrometheusDesc(c.subsystem, "address_family_sent_packets_total",
+		"Packets sent from this device's addresses of this family (ipv4/ipv6)."+familyCaveat,
+		familyLabels,
+	)
+	c.familySentBytes = buildPrometheusDesc(c.subsystem, "address_family_sent_bytes_total",
+		"Bytes sent from this device's addresses of this family (ipv4/ipv6)."+familyCaveat,
+		familyLabels,
+	)
+	c.outputQueueDrops = buildPrometheusDesc(c.subsystem, "output_queue_drops_total",
+		"Packets the kernel dropped on this device's output queue (netstat's Drop column, "+
+			"IFCOUNTER_OQDROPS). CAVEAT, and it matters: on ixl, ixgbe and igb the driver overrides "+
+			"IFCOUNTER_OQDROPS in its own if_get_counter and reports its own figure, so on those "+
+			"NICs a flat zero here does NOT prove nothing is dropping — netmap's drops in "+
+			"particular are invisible. Treat a non-zero value as real and a zero on those drivers "+
+			"as no information. Covers every device netstat reports, including unassigned ports and "+
+			"pseudo-devices that send_queue_drops_total omits entirely (on the dev boxes tailscale0 "+
+			"is the only device with non-zero drops and the only one missing from that metric).",
+		[]string{"device"},
+	)
+
 	c.laggInfo = buildPrometheusDesc(c.subsystem, "lagg_info",
 		"LAGG (link aggregation) interface protocol/hash configuration. Value is always 1. Only emitted for interfaces that are themselves a lagg device. Join on the device label.",
 		[]string{"device", "protocol", "hash"},
@@ -225,6 +269,11 @@ func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.attachOrStatResetUptime
 	ch <- c.adminUp
 	ch <- c.info
+	ch <- c.familyReceivedPackets
+	ch <- c.familyReceivedBytes
+	ch <- c.familySentPackets
+	ch <- c.familySentBytes
+	ch <- c.outputQueueDrops
 	ch <- c.laggInfo
 	ch <- c.laggActivePorts
 	ch <- c.laggFlapping
@@ -362,6 +411,36 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 			if lane.TXBiasPresent {
 				c.update(ch, c.sfpLaneTXBias, prometheus.GaugeValue, lane.TXBiasMA, sfp.Device, lane.Lane, c.instance)
 			}
+		}
+	}
+
+	// get_interface_statistics is a SECOND API call on this collector's poll. It
+	// is the only source for the per-address-family split and for oqdrops on
+	// devices the traffic endpoint omits, and it is a plain netstat read, but it
+	// is not free — see the collector's poll tier.
+	//
+	// Unlike the overview fetch above, a failure here is logged and swallowed
+	// rather than returned. The overview carries core identity (admin_up, info)
+	// whose absence is a real gap; this endpoint is purely additive, and failing
+	// the whole collector for it would flip scrape_collector_success to 0 while
+	// every metric that already exists is being collected perfectly well.
+	stats, serr := client.FetchInterfaceStatistics()
+	if serr != nil {
+		c.log.Warn("failed to fetch interface statistics; skipping address-family and output-queue-drop metrics", "err", serr)
+		return nil
+	}
+	for _, f := range stats.Families {
+		c.update(ch, c.familyReceivedPackets, prometheus.CounterValue, f.ReceivedPackets, f.Device, f.Family, c.instance)
+		c.update(ch, c.familyReceivedBytes, prometheus.CounterValue, f.ReceivedBytes, f.Device, f.Family, c.instance)
+		c.update(ch, c.familySentPackets, prometheus.CounterValue, f.SentPackets, f.Device, f.Family, c.instance)
+		c.update(ch, c.familySentBytes, prometheus.CounterValue, f.SentBytes, f.Device, f.Family, c.instance)
+	}
+	for _, l := range stats.Links {
+		// Presence-gated: a device whose AF_LINK row carries no dropped-packets
+		// key must emit no series rather than a fabricated zero, which would be
+		// indistinguishable from a healthy device.
+		if l.OutputQueueDropsPresent {
+			c.update(ch, c.outputQueueDrops, prometheus.CounterValue, l.OutputQueueDrops, l.Device, c.instance)
 		}
 	}
 

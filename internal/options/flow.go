@@ -38,24 +38,59 @@ var (
 	//
 	// Sized from the live corpus: 24 app_category values across ~5 interfaces, 4
 	// directions, ~4 transports, 3 actions and 4 scopes is ~24,000 combinations in
-	// theory and 500-2,000 occupied in practice. 1,000 emits essentially everything
-	// real while still bounding the family; 2,500 caps the live map just above
-	// realistic occupancy, so novelty is bounded without steady-state traffic ever
-	// being folded.
+	// theory and 500-2,000 occupied in practice.
+	//
+	// RAISED (#537) because `country` is now a DEFAULT label on these families.
+	// Country multiplies the occupied space by however many countries the box
+	// actually talks to - a few dozen in practice, not the ~250 the dimension can
+	// theoretically hold - which takes realistic occupancy to roughly 5,000-15,000.
+	// The old 1,000/2,500 pair would have quietly folded most of that into __other__
+	// and traded away detail on the dimensions that were already working.
+	//
+	// THE TWO MUST MOVE TOGETHER. maxKeys bounds what the accumulator tracks at all,
+	// so a topN above maxKeys is dead configuration: the extra series can never
+	// exist to be emitted.
+	//
+	// The 10:1 ratio is the deliberate part. Tracking far more keys than are emitted
+	// is not waste - it is what makes the top-N selection correct. A combination
+	// sitting at rank 10,001 keeps accumulating, so when it grows it enters the
+	// top-N with its real history rather than from zero, and rollup_capped_total
+	// stays at zero because nothing is refused at first sight. A ratio near 1:1
+	// would make the cap, not the volume, decide what gets reported.
+	//
+	// Safe at this size because EVERY dimension is closed: interface and category are
+	// configuration-scale, direction/action/scope/source are code-defined, country is
+	// bounded by the MMDB, and transportName() folds unknown protocol numbers to
+	// "other" specifically because the NetFlow listener is unauthenticated and
+	// attacker-controlled. Nothing on the wire can mint an unbounded key, so maxKeys
+	// guards combinatorial fan-out rather than an open label.
+	//
+	// Cost: ~250-350 bytes per tracked key (the 8 key strings all point at small
+	// interned sets, so the backing bytes are shared rather than per-key), so 100,000
+	// keys is roughly 25-35 MB resident. Emission is bounded separately at
+	// 10,000 x 3 volume families = 30,000 series against a 100,000 global budget -
+	// and that is the CAP, not the expectation.
 	flowTopN = kingpin.Flag(
 		"flow.top-n",
 		"Maximum flow series emitted per scrape. Everything beyond folds into a single __other__ "+
 			"series per source, so the family still sums exactly at any limit. 0 emits every tracked "+
-			"combination.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_TOP_N").Default("1000").Int()
+			"combination. Raise --flow.max-keys with this: a value above max-keys has no effect, "+
+			"because the accumulator never tracks the combinations it would emit. Lower it if the "+
+			"flow families are more series than you want - opnsense_flow_rollup_capped_total tells "+
+			"you what folding is costing you.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_TOP_N").Default("10000").Int()
 
 	flowMaxKeys = kingpin.Flag(
 		"flow.max-keys",
 		"Maximum distinct label combinations the flow accumulator tracks in memory. A separate "+
 			"bound from --flow.top-n: this caps memory between scrapes, that caps emitted series. "+
 			"Combinations first seen at the cap fold into __other__ and are counted by "+
-			"opnsense_flow_rollup_capped_total. 0 is unbounded.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_KEYS").Default("2500").Int()
+			"opnsense_flow_rollup_capped_total. 0 is unbounded. Keep it WELL above --flow.top-n: "+
+			"below it, that flag is silently capped by this one, and near it the cap rather than "+
+			"actual volume decides which combinations get reported, because a combination refused "+
+			"at first sight can never accumulate its way into the top-N. The default runs 10:1 for "+
+			"that reason. Roughly 250-350 bytes per tracked key, so the default is ~25-35 MB.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_MAX_KEYS").Default("100000").Int()
 
 	// The NetFlow lane is opt-in, and stays opt-in even though --flow.enabled is not.
 	// The difference is real rather than stylistic: the Zenarmor lane derives records

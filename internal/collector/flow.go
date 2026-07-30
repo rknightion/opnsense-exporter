@@ -342,7 +342,11 @@ func (c *flowCollector) Register(namespace, instanceLabel string, log *slog.Logg
 			"alternative is freezing it at its last value forever. From phase 2 this family carries "+
 			"BOTH sources' measurement of the same traffic: pin source= in any query or it "+
 			"double-counts. IPs, ports, hostnames, application names, domains and connection ids are "+
-			"never labels; they stay as structured metadata on the shipped record.",
+			"never labels; they stay as structured metadata on the shipped record. The country label "+
+			"is populated by default (#537) and names the REMOTE end of the flow whichever end that "+
+			"is; it reads empty where GeoIP cannot answer, and on a deployment without "+
+			"--geoip.enabled it is empty on every series. Set --flow.geoip.metric-dims=false to drop "+
+			"it entirely.",
 		labels,
 	)
 	c.packets = buildPrometheusDesc(c.subsystem, "packets_total",

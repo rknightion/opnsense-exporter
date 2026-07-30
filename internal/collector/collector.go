@@ -44,6 +44,7 @@ const (
 	TemperatureSubsystem   = "temperature"
 	FirewallRulesSubsystem = "firewall_rule"
 	MbufSubsystem          = "mbuf"
+	KernelMemorySubsystem  = "kernel_memory"
 	NTPSubsystem           = "ntp"
 	CertificatesSubsystem  = "certificate"
 	CARPSubsystem          = "carp"
@@ -130,6 +131,7 @@ var SubsystemDisplayNames = map[string]string{
 	TemperatureSubsystem:         "Temperature",
 	FirewallRulesSubsystem:       "Firewall Rules",
 	MbufSubsystem:                "Mbuf",
+	KernelMemorySubsystem:        "Kernel Memory (UMA zones and malloc types)",
 	NTPSubsystem:                 "NTP",
 	CertificatesSubsystem:        "Certificates",
 	CARPSubsystem:                "CARP",
@@ -571,6 +573,12 @@ func WithoutFirewallRulesCollector() Option {
 // removes the mbuf collector from the list of collectors
 func WithoutMbufCollector() Option {
 	return withoutCollectorInstance(MbufSubsystem)
+}
+
+// WithoutKernelMemoryCollector Option
+// removes the kernel_memory collector from the list of collectors
+func WithoutKernelMemoryCollector() Option {
+	return withoutCollectorInstance(KernelMemorySubsystem)
 }
 
 // WithoutNTPCollector Option

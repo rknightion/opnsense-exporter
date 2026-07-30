@@ -102,14 +102,15 @@ class RunbookDocumentParityTest(unittest.TestCase):
         cls.markdown = build_rules.generate_runbooks_md()
         cls.headings = _headings(cls.markdown)
 
-    def test_exact_alert_count_is_50(self):
+    def test_exact_alert_count_is_53(self):
         # Re-measured against current main (#430 audit found the tracked issue's
         # figures - 31/19 rows - stale; the epic's 2026-07-27 revalidation corrected
         # it to 42/14, confirmed again here structurally). 43 since #520 added
         # OPNsenseFlowGeoIPDatabaseStale. 50 since the kernel-telemetry wave: two
         # netisr rules (#538), one netmap ring-full (#536) and four WAN DHCP client
-        # rules (#541).
-        self.assertEqual(len(build_rules.RULES), 50)
+        # rules (#541). 53 since wave 2: two kernel-zone rules (#543) and one
+        # default-route-missing (#544).
+        self.assertEqual(len(build_rules.RULES), 53)
 
     def test_exact_recording_count_is_14(self):
         self.assertEqual(len(build_rules.RECORDING), 14)

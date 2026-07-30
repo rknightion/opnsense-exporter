@@ -128,6 +128,7 @@ func defaultEndpoints() map[EndpointName]EndpointPath {
 		"firewallRules":                 "api/firewall/filter/search_rule",
 		"firewallRuleIDs":               "api/diagnostics/firewall/list_rule_ids",
 		"systemMbuf":                    "api/diagnostics/system/systemMbuf",
+		"systemMemory":                  "api/diagnostics/system/memory",
 		"ntpStatus":                     "api/ntpd/service/status",
 		"certificates":                  "api/trust/cert/search",
 		"unboundBlocklistPolicies":      "api/unbound/overview/get_policies",

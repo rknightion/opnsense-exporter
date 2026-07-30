@@ -95,7 +95,7 @@ func TestComposeReferenceKnownDefaults(t *testing.T) {
 	for _, tc := range []struct{ envar, want string }{
 		{"OPNSENSE_EXPORTER_OTLP_PROTOCOL", `# OPNSENSE_EXPORTER_OTLP_PROTOCOL: "http/protobuf"`},
 		{"OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP", `# OPNSENSE_EXPORTER_LOGS_SYSLOG_LISTEN_UDP: ":5514"`},
-		{"OPNSENSE_EXPORTER_FLOW_TOP_N", `# OPNSENSE_EXPORTER_FLOW_TOP_N: "1000"`},
+		{"OPNSENSE_EXPORTER_FLOW_TOP_N", `# OPNSENSE_EXPORTER_FLOW_TOP_N: "10000"`},
 	} {
 		if !strings.Contains(content, tc.want) {
 			t.Errorf("expected line %q not found for %s", tc.want, tc.envar)

@@ -10,12 +10,15 @@ import (
 // response. Values are JSON numbers.
 //
 // VERIFICATION: verified live against OPNsense 26.1 at 10.0.0.254 per todos.txt
-// TODO 23. The pid, direction, and optional boolean fields (immediate,
-// header-complete, locked) are intentionally not modeled — pid churns on
-// process restart (D9), and the booleans are not needed for the metrics.
+// TODO 23. The pid and the optional boolean fields (immediate, header-complete,
+// locked) are intentionally not modeled — pid churns on process restart (D9),
+// and the booleans are not needed for the metrics. `direction` IS modelled as of
+// #544: it is a closed three-value vocabulary and summing it away hid that
+// lldpd's descriptors are input-only while filterlog's is bidirectional.
 type bpfEntry struct {
 	InterfaceName   string  `json:"interface-name"`
 	Process         string  `json:"process"`
+	Direction       string  `json:"direction"`
 	ReceivedPackets float64 `json:"received-packets"`
 	DroppedPackets  float64 `json:"dropped-packets"`
 	FilterPackets   float64 `json:"filter-packets"`
@@ -32,10 +35,33 @@ type BPFListener struct {
 	StoreBufferBytes, HoldBufferBytes               float64
 }
 
+// BPFDirectionListener is the same aggregation as BPFListener but keyed by
+// (process, interface, direction) as well — the capture direction the kernel
+// recorded for the descriptor. Direction is one of "input", "output",
+// "bidirectional", or "unknown" when the box did not report one.
+type BPFDirectionListener struct {
+	Process, Interface, Direction                   string
+	Listeners                                       int
+	ReceivedPackets, DroppedPackets, MatchedPackets float64
+}
+
 // BPFStatistics holds the result of FetchBPFStatistics.
 type BPFStatistics struct {
 	ListenersTotal int // raw entry count BEFORE aggregation
 	Listeners      []BPFListener
+	// ByDirection is the same data as Listeners with the capture direction kept
+	// on the key instead of summed away. Listeners is retained unchanged
+	// because dashboards and alerts already read it.
+	ByDirection []BPFDirectionListener
+}
+
+// bpfDirection normalises the wire value. An absent direction still has to
+// produce a row: dropping it would silently lose a listener from the breakdown.
+func bpfDirection(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }
 
 // bpfStatisticsResponse mirrors the outer JSON envelope returned by
@@ -150,6 +176,38 @@ func (c *Client) FetchBPFStatistics() (BPFStatistics, *APICallError) {
 	data.Listeners = make([]BPFListener, 0, len(keyOrder))
 	for _, k := range keyOrder {
 		data.Listeners = append(data.Listeners, *agg[k])
+	}
+
+	// Same aggregation with direction kept on the key.
+	type dirKey struct{ process, iface, dir string }
+	dirAgg := make(map[dirKey]*BPFDirectionListener)
+	dirOrder := make([]dirKey, 0, len(entries))
+	for _, e := range entries {
+		k := dirKey{e.Process, e.InterfaceName, bpfDirection(e.Direction)}
+		l, exists := dirAgg[k]
+		if !exists {
+			l = &BPFDirectionListener{Process: k.process, Interface: k.iface, Direction: k.dir}
+			dirAgg[k] = l
+			dirOrder = append(dirOrder, k)
+		}
+		l.Listeners++
+		l.ReceivedPackets += e.ReceivedPackets
+		l.DroppedPackets += e.DroppedPackets
+		l.MatchedPackets += e.FilterPackets
+	}
+	sort.Slice(dirOrder, func(i, j int) bool {
+		a, b := dirOrder[i], dirOrder[j]
+		if a.process != b.process {
+			return a.process < b.process
+		}
+		if a.iface != b.iface {
+			return a.iface < b.iface
+		}
+		return a.dir < b.dir
+	})
+	data.ByDirection = make([]BPFDirectionListener, 0, len(dirOrder))
+	for _, k := range dirOrder {
+		data.ByDirection = append(data.ByDirection, *dirAgg[k])
 	}
 
 	return data, nil

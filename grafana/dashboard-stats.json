@@ -1,10 +1,11 @@
 {
-  "metrics": 922,
-  "panels": 801,
-  "tabs": 46,
+  "metrics": 947,
+  "panels": 824,
+  "tabs": 47,
   "tab_names": [
     "Overview",
     "System & Resources",
+    "Kernel Memory",
     "Services, Cron & DynDNS",
     "Certificates",
     "UPS",
@@ -63,11 +64,12 @@
     {
       "uid": "opnsense-exporter",
       "title": "OPNsense Exporter",
-      "panels": 708,
-      "tabs": 38,
+      "panels": 731,
+      "tabs": 39,
       "tab_names": [
         "Overview",
         "System & Resources",
+        "Kernel Memory",
         "Services, Cron & DynDNS",
         "Certificates",
         "UPS",

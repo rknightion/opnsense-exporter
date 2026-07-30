@@ -118,14 +118,27 @@ var (
 	// --geoip.enabled. Log attributes are free; a metric label is not.
 	geoipMetricDims = kingpin.Flag(
 		"flow.geoip.metric-dims",
-		"Add a `country` label to the flow volume metrics. OFF by default and it should usually stay "+
-			"off: country is a ~250-value dimension multiplied against every existing flow series, so "+
-			"turning it on can multiply opnsense_flow_bytes_total's cardinality roughly 250-fold. "+
-			"--flow.top-n and --flow.max-keys still bound the result, which means the practical effect "+
-			"on a busy box is that real series start folding into __other__ rather than that the family "+
-			"grows without limit. ASN and city NEVER become labels at any setting. Geo on flow LOGS "+
-			"needs no flag - it is unconditional whenever --geoip.enabled is set.",
-	).Envar("OPNSENSE_EXPORTER_FLOW_GEOIP_METRIC_DIMS").Default("false").Bool()
+		"Add a `country` label to the flow volume metrics. ON by default since #537, and "+
+			"--flow.top-n/--flow.max-keys were raised 10x in the same change to hold it: country "+
+			"multiplies the occupied key space by the number of countries the box actually talks to "+
+			"(a few dozen in practice, not the ~250 the dimension can hold), and at the previous "+
+			"1,000/2,500 bounds that would have folded real series into __other__ and cost detail on "+
+			"the dimensions that already worked. Set it false to drop the label; the flow families "+
+			"then carry the same dimensions they did before. It produces values only where GeoIP can "+
+			"answer, so with --geoip.enabled off the label is present and empty. ASN and city NEVER "+
+			"become labels at any setting. Geo on flow LOGS needs no flag - it is unconditional "+
+			"whenever --geoip.enabled is set.",
+	).Envar("OPNSENSE_EXPORTER_FLOW_GEOIP_METRIC_DIMS").Default("true").
+		IsSetByUser(&geoipMetricDimsUserSet).Bool()
+
+	// Whether the operator actually typed --flow.geoip.metric-dims (or set its env
+	// var), as opposed to inheriting the default. Since #537 made the default true,
+	// the two cases must be told apart: a DEFAULT true alongside --geoip.enabled=false
+	// resolves quietly to false, because that is every stock deployment and refusing
+	// to start would be absurd. An EXPLICIT true in the same situation still refuses,
+	// which is the whole point of the check in Validate - the operator asked for a
+	// country label and there is no country to put in it.
+	geoipMetricDimsUserSet bool
 )
 
 // geoipLicenseKey resolves the MaxMind license key through the same secret precedence
@@ -179,6 +192,13 @@ func GeoIP() (GeoIPConfig, error) {
 		DownloadInterval: *geoipDownloadInterval,
 		DownloadTimeout:  *geoipDownloadTimeout,
 		MetricDims:       *geoipMetricDims,
+	}
+	// Resolve the default-true against GeoIP being off BEFORE Validate sees it, so
+	// the stock configuration (metric-dims defaulted on, no MaxMind database shipped)
+	// starts cleanly with the label simply unpopulated, while an explicit request
+	// still hits the error below.
+	if !c.Enabled && !geoipMetricDimsUserSet {
+		c.MetricDims = false
 	}
 	c.applyDownloadDefaults()
 	if err := c.Validate(); err != nil {

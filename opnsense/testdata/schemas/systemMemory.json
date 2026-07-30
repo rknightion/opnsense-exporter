@@ -1,0 +1,104 @@
+{
+  "endpoint": "systemMemory",
+  "method": "GET",
+  "path": "api/diagnostics/system/memory",
+  "topLevelKind": "object",
+  "knownTopLevelKeys": [
+    "__version",
+    "vmstat"
+  ],
+  "fields": [
+    {
+      "path": "__version",
+      "kind": "string"
+    },
+    {
+      "path": "vmstat",
+      "kind": "object"
+    },
+    {
+      "path": "vmstat.malloc-statistics",
+      "kind": "object"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory",
+      "kind": "array"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[]",
+      "kind": "object"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[].in-use",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[].memory-use",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[].requests",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[].size",
+      "kind": "array"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[].size[]",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.malloc-statistics.memory[].type",
+      "kind": "string"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics",
+      "kind": "object"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone",
+      "kind": "array"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[]",
+      "kind": "object"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].fail",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].free",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].limit",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].name",
+      "kind": "string"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].requests",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].size",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].sleep",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].used",
+      "kind": "numeric"
+    },
+    {
+      "path": "vmstat.memory-zone-statistics.zone[].xdomain",
+      "kind": "numeric"
+    }
+  ]
+}

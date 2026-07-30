@@ -39,9 +39,15 @@ func (c *arpTableCollector) Register(namespace, instance string, log *slog.Logge
 		nil,
 	)
 	c.entries = buildPrometheusDesc(c.subsystem, "entries",
-		"Arp entries by ip, mac, hostname, interface description, type, expired and permanent. "+
-			"Only emitted when --exporter.enable-arp-details is set (high, churning cardinality).",
-		[]string{"ip", "mac", "hostname", "interface_description", "type", "expired", "permanent"},
+		"One series per ARP table entry (value is always 1). Only emitted when "+
+			"--exporter.enable-arp-details is set (high, churning cardinality). "+
+			"`manufacturer` is the OUI lookup for the MAC and is the label that actually identifies "+
+			"a device: `hostname` is empty on every entry on the reference box and is frequently "+
+			"empty upstream in general, so do not build a panel that depends on it. "+
+			"`device` is the raw kernel device and `interface_description` the assigned name; they "+
+			"diverge on VLAN children and bridges, and only `device` joins against the interfaces "+
+			"metrics.",
+		[]string{"ip", "mac", "hostname", "interface_description", "type", "expired", "permanent", "manufacturer", "device"},
 	)
 }
 
@@ -82,6 +88,8 @@ func (c *arpTableCollector) Update(ctx context.Context, client *opnsense.Client,
 			arp.Type,
 			fmt.Sprintf("%t", arp.Expired),
 			fmt.Sprintf("%t", arp.Permanent),
+			arp.Manufacturer,
+			arp.Device,
 			c.instance,
 		)
 	}

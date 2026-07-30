@@ -49,6 +49,10 @@ Coverage:
   opnsense_network_diag_sockets_active
   opnsense_network_diag_sockets_unix_total
   opnsense_network_diag_routes_total
+  opnsense_network_diag_interface_routes
+  opnsense_network_diag_routes_by_flags
+  opnsense_network_diag_default_route_present
+  opnsense_network_diag_default_route_info
   opnsense_network_diag_pfsync_nodes_total
   opnsense_network_diag_pfsync_node_info
 """
@@ -367,6 +371,45 @@ def build(b: Builder):
         graph="none",
         desc="Total number of active Unix domain sockets (instantaneous count, not a counter).",
     )
+    default_route_stat = b.ts(
+        "Default Route Present",
+        [(sel("opnsense_network_diag_default_route_present"), "{{proto}}")],
+        unit="short", w=12, h=8,
+        desc="1 when a default route exists for the address family, 0 when it does not. Emitted for "
+             "a FIXED ipv4/ipv6 set every scrape rather than only when a route exists - the one case "
+             "worth alerting on is the route GOING AWAY, and an absent series cannot be alerted on. "
+             "Losing the default route is a total-outage condition that had no signal before this.",
+    )
+    default_route_table = b.table(
+        "Default Route Detail",
+        [sel("opnsense_network_diag_default_route_info")],
+        w=12, h=8,
+        excludes=["Value", "__name__", "job", "instance", "env"],
+        renames={
+            "proto": "Family", "device": "Device", "interface": "Interface",
+            "gateway": "Gateway", "opnsense_instance": "Instance"},
+        sort_by="Family",
+        desc="Which gateway and interface currently carry the default route. `gateway` is a label "
+             "HERE and nowhere else in this family: there are only ever one or two of these series, "
+             "and a default gateway changing is itself the event worth seeing. Per-route destination "
+             "is deliberately never a label - 52 of the 76 routes on the prod box are transient UHS "
+             "host routes and would churn.",
+    )
+    routes_by_iface = b.bargauge(
+        "Routes by Interface",
+        [(sel("opnsense_network_diag_interface_routes"), "{{interface}} ({{proto}})")],
+        unit="short", w=12, h=8, orient="horizontal", instant=True,
+        desc="Routing-table entries per interface and address family. Answers which interface a "
+             "route count belongs to, which the protocol-only total cannot.",
+    )
+    routes_by_flags = b.bargauge(
+        "Routes by Flags",
+        [(sel("opnsense_network_diag_routes_by_flags"), "{{flags}} ({{proto}})")],
+        unit="short", w=12, h=8, orient="horizontal", instant=True,
+        desc="Routing entries grouped by their BSD route flags (U up, G gateway, H host, S static, "
+             "and so on). A sudden growth in host routes usually means a VPN or peer-discovery "
+             "process is churning entries.",
+    )
     routes_bg = b.bargauge(
         "Routing Table Entries by Protocol",
         [(sel("opnsense_network_diag_routes_total"), "{{proto}}")],
@@ -420,6 +463,9 @@ def build(b: Builder):
             netisr_percpu_work_ts, netisr_policy_table],
               present="has_network_diag"),
         b.row("Sockets & Routes", [sockets_active_bg, sockets_unix_stat, routes_bg],
+              present="has_network_diag"),
+        b.row("Routing Table Detail", [
+            default_route_stat, default_route_table, routes_by_iface, routes_by_flags],
               present="has_network_diag"),
         b.row("pfsync", [pfsync_nodes_stat, pfsync_node_table],
               present="has_network_diag"),

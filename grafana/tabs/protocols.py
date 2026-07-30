@@ -621,6 +621,39 @@ def build(b: Builder):
     )
 
     # -------------------------------------------------------------------------
+    # BPF split by capture direction (#544 item 3)
+    # -------------------------------------------------------------------------
+    bpf_dir_listeners = b.ts(
+        "BPF Listeners by Direction",
+        [(sel("opnsense_bpf_direction_listeners"),
+          "{{process}}/{{interface}} {{direction}}")],
+        unit="short", w=12, h=8,
+        desc=(
+            "BPF descriptors by capture direction — input, output or bidirectional. The direction "
+            "was previously summed into the aggregation key and lost, so a process capturing only "
+            "outbound traffic looked identical to one capturing both. The aggregate families above "
+            "are unchanged and still carry the totals."
+        ),
+    )
+    bpf_dir_pkts = b.ts(
+        "BPF Packets by Direction (rate)",
+        [
+            (f"rate({sel('opnsense_bpf_direction_received_packets_total')}[{RATE}])",
+             "{{process}}/{{interface}} {{direction}} received"),
+            (f"rate({sel('opnsense_bpf_direction_matched_packets_total')}[{RATE}])",
+             "{{process}}/{{interface}} {{direction}} matched"),
+            (f"rate({sel('opnsense_bpf_direction_dropped_packets_total')}[{RATE}])",
+             "{{process}}/{{interface}} {{direction}} dropped"),
+        ],
+        unit="pps", w=12, h=8,
+        desc=(
+            "Per-descriptor packet rates split by capture direction. Dropped means the kernel had "
+            "nowhere to put the packet because the consumer was not reading fast enough — a "
+            "capture-side loss, not a forwarding-side one."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
     # Assemble the tab
     # -------------------------------------------------------------------------
     b.tab("Protocol Stats", [
@@ -641,4 +674,5 @@ def build(b: Builder):
         b.row("CARP Protocol", [carp_traffic, carp_drops]),
         b.row("pfsync Protocol", [pfsync_traffic, pfsync_errors, pfsync_drops]),
         b.row("BPF Statistics", [bpf_listeners, bpf_pkts, bpf_buffers]),
+        b.row("BPF by Direction", [bpf_dir_listeners, bpf_dir_pkts]),
     ])

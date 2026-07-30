@@ -584,3 +584,134 @@ func TestNetisrProtocolStats_DerivedEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// liveRoutesFixture is trimmed verbatim from the prod box (OPNsense 26.1,
+// api/diagnostics/interface/get_routes). It carries both address families, a
+// default route on each, a gatewayed host route, a directly-connected prefix,
+// a blackhole route and two devices whose netif differs from the human
+// intf_description (a VLAN child and a PPPoE link) — the exact divergence that
+// makes the raw netif worth carrying.
+const liveRoutesFixture = `[
+ {"proto":"ipv4","destination":"default","gateway":"81.187.81.187","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
+ {"proto":"ipv4","destination":"8.8.8.8","gateway":"82.7.80.1","flags":"UGHS","netif":"ixl1","intf_description":"VIRGIN"},
+ {"proto":"ipv4","destination":"10.0.100.0/24","gateway":"link#5","flags":"U","netif":"ixl0_vlan100","intf_description":"MGMT"},
+ {"proto":"ipv4","destination":"192.0.2.0/24","gateway":"127.0.0.1","flags":"USB","netif":"lo0","intf_description":"Loopback"},
+ {"proto":"ipv6","destination":"default","gateway":"fe80::9e89:1eff:fe2e:0%pppoe0","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
+ {"proto":"ipv6","destination":"fe80::%ixl0/64","gateway":"link#1","flags":"U","netif":"ixl0","intf_description":"LAN"}
+]`
+
+func TestFetchRouteStatistics_CountsPerInterface(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(liveRoutesFixture))
+	})
+	defer server.Close()
+
+	data, err := client.FetchRouteStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := map[RouteInterfaceKey]int{
+		{Proto: "ipv4", Device: "pppoe0", Interface: "AAISP"}:      1,
+		{Proto: "ipv4", Device: "ixl1", Interface: "VIRGIN"}:       1,
+		{Proto: "ipv4", Device: "ixl0_vlan100", Interface: "MGMT"}: 1,
+		{Proto: "ipv4", Device: "lo0", Interface: "Loopback"}:      1,
+		{Proto: "ipv6", Device: "pppoe0", Interface: "AAISP"}:      1,
+		{Proto: "ipv6", Device: "ixl0", Interface: "LAN"}:          1,
+	}
+	if len(data.ByInterface) != len(want) {
+		t.Fatalf("ByInterface has %d keys, want %d: %v", len(data.ByInterface), len(want), data.ByInterface)
+	}
+	for k, n := range want {
+		if data.ByInterface[k] != n {
+			t.Errorf("ByInterface[%+v] = %d, want %d", k, data.ByInterface[k], n)
+		}
+	}
+	// The aggregate must be untouched — dashboards read it.
+	if data.ByProto["ipv4"] != 4 || data.ByProto["ipv6"] != 2 {
+		t.Errorf("ByProto = %v, want ipv4=4 ipv6=2", data.ByProto)
+	}
+}
+
+func TestFetchRouteStatistics_CountsPerFlags(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(liveRoutesFixture))
+	})
+	defer server.Close()
+
+	data, _ := client.FetchRouteStatistics()
+
+	want := map[RouteFlagsKey]int{
+		{Proto: "ipv4", Flags: "UGS"}:  1,
+		{Proto: "ipv4", Flags: "UGHS"}: 1,
+		{Proto: "ipv4", Flags: "U"}:    1,
+		{Proto: "ipv4", Flags: "USB"}:  1,
+		{Proto: "ipv6", Flags: "UGS"}:  1,
+		{Proto: "ipv6", Flags: "U"}:    1,
+	}
+	if len(data.ByFlags) != len(want) {
+		t.Fatalf("ByFlags has %d keys, want %d: %v", len(data.ByFlags), len(want), data.ByFlags)
+	}
+	for k, n := range want {
+		if data.ByFlags[k] != n {
+			t.Errorf("ByFlags[%+v] = %d, want %d", k, data.ByFlags[k], n)
+		}
+	}
+}
+
+func TestFetchRouteStatistics_FindsDefaultRoutes(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(liveRoutesFixture))
+	})
+	defer server.Close()
+
+	data, _ := client.FetchRouteStatistics()
+
+	if len(data.DefaultRoutes) != 2 {
+		t.Fatalf("got %d default routes, want 2: %+v", len(data.DefaultRoutes), data.DefaultRoutes)
+	}
+	byProto := map[string]DefaultRoute{}
+	for _, d := range data.DefaultRoutes {
+		byProto[d.Proto] = d
+	}
+	v4 := byProto["ipv4"]
+	if v4.Gateway != "81.187.81.187" || v4.Device != "pppoe0" || v4.Interface != "AAISP" {
+		t.Errorf("ipv4 default route = %+v", v4)
+	}
+	v6 := byProto["ipv6"]
+	if v6.Gateway != "fe80::9e89:1eff:fe2e:0%pppoe0" || v6.Device != "pppoe0" {
+		t.Errorf("ipv6 default route = %+v", v6)
+	}
+}
+
+// Losing the default route is the total-outage case this exists to catch, so an
+// otherwise healthy table with no default must report none rather than nothing.
+func TestFetchRouteStatistics_NoDefaultRoute(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[{"proto":"ipv4","destination":"10.0.0.0/24","gateway":"link#1","flags":"U","netif":"ixl0","intf_description":"LAN"}]`))
+	})
+	defer server.Close()
+
+	data, _ := client.FetchRouteStatistics()
+	if len(data.DefaultRoutes) != 0 {
+		t.Errorf("got %d default routes on a table with none: %+v", len(data.DefaultRoutes), data.DefaultRoutes)
+	}
+}
+
+// netstat renders the default route as the literal "default", but the CIDR forms
+// are accepted too so a libxo rendering change cannot silently blind the
+// default-route signal.
+func TestFetchRouteStatistics_DefaultRouteCIDRForms(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[
+		 {"proto":"ipv4","destination":"0.0.0.0/0","gateway":"10.0.0.1","flags":"UGS","netif":"ixl0","intf_description":"WAN"},
+		 {"proto":"ipv6","destination":"::/0","gateway":"fe80::1","flags":"UGS","netif":"ixl0","intf_description":"WAN"}
+		]`))
+	})
+	defer server.Close()
+
+	data, _ := client.FetchRouteStatistics()
+	if len(data.DefaultRoutes) != 2 {
+		t.Fatalf("CIDR-form default routes not recognised: %+v", data.DefaultRoutes)
+	}
+}

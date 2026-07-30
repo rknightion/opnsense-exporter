@@ -71,8 +71,16 @@ func TestGeoIPValidate(t *testing.T) {
 		// The metric label is a flow-family flag an operator could reasonably believe
 		// took effect on its own, so it is the ONE setting that is an error rather
 		// than a silent no-op when geo is off.
+		//
+		// Since #537 the flag DEFAULTS to true, so this case only survives for an
+		// EXPLICIT request: GeoIPConfig() resolves a defaulted true down to false when
+		// --geoip.enabled is off, before Validate ever runs. That resolution is what
+		// keeps every stock deployment (default-on label, no MaxMind database shipped)
+		// starting cleanly, and main_test.go's production-equivalent config covers it.
+		// Validate itself must keep rejecting the explicit form, which is what this
+		// case pins - reaching it with MetricDims still true means the operator asked.
 		{
-			name:    "metric dims without geoip enabled",
+			name:    "metric dims explicitly set without geoip enabled",
 			mutate:  func(c *GeoIPConfig) { c.Enabled = false; c.MetricDims = true },
 			wantErr: "--flow.geoip.metric-dims requires --geoip.enabled",
 		},

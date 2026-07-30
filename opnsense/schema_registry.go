@@ -336,6 +336,7 @@ var schemaRegistry = map[EndpointName]any{
 	"systemDisk":             systemDiskResponse{},
 	"systemInformation":      systemInformationResponse{},
 	"systemMbuf":             mbufResponse{},
+	"systemMemory":           systemMemoryResponse{},
 	"systemResources":        systemResourcesResponse{},
 	"systemSwap":             systemSwapResponse{},
 	"systemTemperature":      []temperatureReading{},

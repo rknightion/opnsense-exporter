@@ -128,3 +128,51 @@ func TestNDPCollector_Name(t *testing.T) {
 		t.Errorf("expected %s, got %s", NDPSubsystem, c.Name())
 	}
 }
+
+// #534 / #544: manufacturer and the raw device belong on the NDP entry series
+// for the same reasons they do on ARP.
+func TestNDPCollector_ManufacturerAndDeviceLabels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[
+		 {"mac":"98:b7:85:21:af:f2","ip":"2001:8b0:1f05::1","intf":"ixl0_vlan100",
+		  "manufacturer":"Intel Corporate","intf_description":"MGMT"},
+		 {"mac":"0e:40:69:ec:4d:9a","ip":"fe80::d6:761:6510:f3a6%ixl0","intf":"ixl0",
+		  "manufacturer":"","intf_description":"LAN"}
+		]`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &ndpCollector{subsystem: NDPSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	seen := 0
+	for _, m := range collectMetrics(t, c, client) {
+		if !hasFqName(m, "opnsense_ndp_entries") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		switch labels["ip"] {
+		case "2001:8b0:1f05::1":
+			seen++
+			if labels["manufacturer"] != "Intel Corporate" {
+				t.Errorf("manufacturer = %q", labels["manufacturer"])
+			}
+			if labels["device"] != "ixl0_vlan100" {
+				t.Errorf("device = %q, want ixl0_vlan100", labels["device"])
+			}
+		case "fe80::d6:761:6510:f3a6%ixl0":
+			seen++
+			if labels["manufacturer"] != "" {
+				t.Errorf("manufacturer = %q, want empty", labels["manufacturer"])
+			}
+			if labels["device"] != "ixl0" {
+				t.Errorf("device = %q, want ixl0", labels["device"])
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("matched %d per-entry series, want 2", seen)
+	}
+}

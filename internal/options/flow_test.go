@@ -63,8 +63,8 @@ func TestFlowConfig_ShippedDefaults(t *testing.T) {
 		// absent on every deployment.
 		"flow.enabled":  "true",
 		"flow.zenarmor": "true",
-		"flow.top-n":    "1000",
-		"flow.max-keys": "2500",
+		"flow.top-n":    "10000",
+		"flow.max-keys": "100000",
 		// The NetFlow receiver is OFF by default and stays that way: unlike the
 		// Zenarmor lane it opens an unauthenticated UDP socket, and NetFlow has no
 		// authentication of any kind, so switching it on is a deliberate act.

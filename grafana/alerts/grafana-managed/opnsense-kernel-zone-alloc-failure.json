@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-hasync-unreachable",
+    "name": "opnsense-kernel-zone-alloc-failure",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,22 +11,22 @@
     }
   },
   "spec": {
-    "title": "OPNsenseHASyncUnreachable",
+    "title": "OPNsenseKernelZoneAllocationFailure",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "10m0s",
+    "for": "5m0s",
     "trigger": {
       "interval": "1m"
     },
     "labels": {
-      "severity": "warning"
+      "severity": "critical"
     },
     "annotations": {
-      "summary": "OPNsense HA sync peer unreachable ({{ $labels.opnsense_instance }})",
-      "description": "opnsense_hasync_remote_reachable has been 0 for 10m on a box where HA sync is configured (remote_services_total > 0). The guard excludes boxes with HA sync unconfigured, where reachable=0 is the normal, expected reading.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensehasyncunreachable",
+      "summary": "OPNsense kernel could not allocate {{ $labels.zone }} ({{ $labels.opnsense_instance }})",
+      "description": "The FreeBSD UMA allocator has been failing to satisfy allocations in the {{ $labels.zone }} zone for 5m. This is silent, consequential loss: no new pf state means a dropped connection, no socket means a refused one, and neither produces a log line.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensekernelzoneallocationfailure",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "667"
+      "__panelId__": "89"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) (opnsense_hasync_remote_services_total > 0)",
+          "expr": "sum by (zone, opnsense_instance) (rate(opnsense_kernel_memory_zone_failures_total{zone=~\"pf states|pf state keys|pf source nodes|socket|tcp_inpcb|udp_inpcb|tcpreass\"}[5m]))",
           "instant": true,
           "range": false,
           "intervalMs": 60000,
@@ -63,9 +63,9 @@
           "conditions": [
             {
               "evaluator": {
-                "type": "lt",
+                "type": "gt",
                 "params": [
-                  1,
+                  0,
                   0
                 ]
               },

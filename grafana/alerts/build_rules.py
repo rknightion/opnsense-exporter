@@ -577,6 +577,86 @@ RULES = [
                 'The ratio drops back to 1 or below and stays there for 10m',
             ],
          )),
+    dict(name="opnsense-kernel-zone-alloc-failure", title="OPNsenseKernelZoneAllocationFailure",
+         A="sum by (zone, opnsense_instance) (rate(opnsense_kernel_memory_zone_failures_total"
+           "{zone=~\"pf states|pf state keys|pf source nodes|socket|tcp_inpcb|udp_inpcb|tcpreass\"}[5m]))",
+         op="gt", params=[0, 0], for_min=5, severity="critical",
+         summary="OPNsense kernel could not allocate {{ $labels.zone }} ({{ $labels.opnsense_instance }})",
+         description="The FreeBSD UMA allocator has been failing to satisfy allocations in the "
+                     "{{ $labels.zone }} zone for 5m. This is silent, consequential loss: no new pf "
+                     "state means a dropped connection, no socket means a refused one, and neither "
+                     "produces a log line.",
+         runbook=dict(
+             measures='rate of UMA allocation failures in the zones whose exhaustion has a direct operational consequence.',
+             threshold='gt 0 for 5m, SCOPED to pf states, pf state keys, pf source nodes, socket, tcp_inpcb, udp_inpcb and tcpreass. The scoping is essential and must not be widened to all zones: UMA bucket zones, vm pgcache and vmem btag fail BY DESIGN and fall back to a slower path, and they account for all 158,488 failures on a healthy prod box. An unscoped rule would page continuously and immediately.',
+             absent='Default noDataState (Ok). The zone set follows loaded kernel modules, so a zone can legitimately be absent on a box that does not use the feature.',
+             checks=[
+                'Check the zone occupancy panel on the Kernel Memory tab for whether this zone is at a configured ceiling or simply out of memory',
+                'Remember limit=0 means NO CEILING CONFIGURED, not a ceiling of zero - a zero limit does not mean the zone is capped',
+                'Check overall memory pressure on System & Resources, since a zone can fail because the machine is out of memory rather than because the zone is capped',
+                'For pf states specifically, cross-check OPNsensePFStateTableNearLimit, which watches the same exhaustion from the pf side',
+            ],
+             causes=[
+                'The zone has hit a configured limit and the workload genuinely needs more',
+                'System-wide memory exhaustion, so no zone can grow',
+                'A traffic flood opening connections faster than the box can allocate state for them',
+            ],
+             verify=[
+                'The failure rate returns to zero and stays there',
+                'Zone occupancy falls back below its ceiling, or the ceiling is raised deliberately',
+            ],
+         )),
+    dict(name="opnsense-kernel-zone-near-limit", title="OPNsenseKernelZoneNearLimit",
+         A="opnsense_kernel_memory_zone_used / (opnsense_kernel_memory_zone_limit > 0)",
+         op="gt", params=[0.8, 0], for_min=15, severity="warning",
+         summary="OPNsense kernel zone {{ $labels.zone }} over 80% of its limit ({{ $labels.opnsense_instance }})",
+         description="A UMA zone has been above 80% of its configured ceiling for 15m. This is the "
+                     "leading indicator for OPNsenseKernelZoneAllocationFailure - it fires while "
+                     "allocations still succeed.",
+         runbook=dict(
+             measures='zone occupancy as a fraction of its configured ceiling, across every zone that HAS a ceiling.',
+             threshold='gt 0.8 sustained for 15m. The `> 0` division guard is load-bearing: limit=0 means no ceiling configured rather than a ceiling of zero, and 113 of 242 zones on a real box report limit=0 with non-zero use, so an unguarded division would evaluate +Inf on half of them and fire permanently.',
+             absent='Default noDataState (Ok). A zone with no configured limit produces no series here at all, by design.',
+             checks=[
+                'Identify the zone and whether its growth is a trend or a spike',
+                'Check whether the workload changed - more concurrent connections, a new plugin, a traffic flood',
+                'Ignore pf anchors and pf Ethernet anchors: their limit is 2147483647 (INT_MAX), so they can never approach it and never fire here',
+            ],
+             causes=[
+                'Legitimate growth in the resource the zone backs',
+                'A limit left at a default that is undersized for this box',
+                'A leak in whatever allocates from the zone',
+            ],
+             verify=[
+                'Occupancy falls back below 80% and stays there',
+            ],
+         )),
+    dict(name="opnsense-default-route-missing", title="OPNsenseDefaultRouteMissing",
+         A="opnsense_network_diag_default_route_present",
+         op="lt", params=[1, 0], for_min=5, severity="critical",
+         summary="OPNsense has no {{ $labels.proto }} default route ({{ $labels.opnsense_instance }})",
+         description="The routing table carries no default route for {{ $labels.proto }}. For a "
+                     "firewall that is a total outage for that address family - nothing off-subnet "
+                     "is reachable. There was no signal for this condition before #544.",
+         runbook=dict(
+             measures='whether a default route exists per address family: 1 present, 0 absent.',
+             threshold='lt 1 for 5m. The metric is emitted for a FIXED ipv4/ipv6 set every scrape rather than only when a route exists, precisely so the absent case is a 0 that can be alerted on rather than a missing series that cannot.',
+             absent='Default noDataState (Ok). No series at all means the network diagnostics collector is off (it is opt-in), not that the route is fine.',
+             checks=[
+                'Check the Default Route Detail table for what the gateway and interface were before it vanished',
+                'Check gateway health - a dpinger-driven failover that found no healthy member can leave no default route at all',
+                'For IPv6 specifically, check whether the WAN still holds a delegated prefix and a router advertisement',
+            ],
+             causes=[
+                'The WAN interface went down and took its default route with it',
+                'Gateway failover removed the failed route and had no healthy alternative to install',
+                'A DHCP or PPPoE lease expired without renewing',
+                'For IPv6, the RA or prefix delegation lapsed',
+            ],
+             verify=[
+                'The metric returns to 1 and the Default Route Detail table shows a plausible gateway',
+            ],
+         )),
     dict(name="opnsense-netmap-ring-full", title="OPNsenseNetmapRingFull",
          A="sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[15m]))",
          op="gt", params=[0, 0], for_min=30, severity="warning",
@@ -1849,6 +1929,9 @@ PANEL_LINKS = {
     "OPNsenseGatewayHighLoss": "Packet Loss %",
     "OPNsenseGatewayHighRTT": ("Gateway RTT", "Gateways & WAN"),
     # --- system resources ------------------------------------------------------
+    "OPNsenseKernelZoneAllocationFailure": "Allocation Failures — zones that matter (rate)",
+    "OPNsenseKernelZoneNearLimit": "Zone Saturation (used / limit)",
+    "OPNsenseDefaultRouteMissing": "Default Route Present",
     "OPNsenseNetmapRingFull": "Netmap Host Ring Full Events (rate)",
     "OPNsenseDHCPClientLeaseRenewalOverdue": "WAN DHCP Lease Renewal Countdown",
     "OPNsenseDHCPClientNak": "WAN DHCP Client Messages (rate)",

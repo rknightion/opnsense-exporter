@@ -10,7 +10,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | APC UPS (apcupsd) | apcupsd | 14 | Enabled | --exporter.disable-apcupsd | OPNSENSE_EXPORTER_DISABLE_APCUPSD |
 | ARP Table | arp_table | 2 | Enabled | --exporter.disable-arp-table | OPNSENSE_EXPORTER_DISABLE_ARP_TABLE |
 | Activity | activity | 9 | Enabled | --exporter.disable-activity | OPNSENSE_EXPORTER_DISABLE_ACTIVITY |
-| BPF Statistics | bpf | 6 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
+| BPF Statistics | bpf | 10 | Enabled | --exporter.disable-bpf | OPNSENSE_EXPORTER_DISABLE_BPF |
 | CARP | carp | 7 | Enabled | --exporter.disable-carp | OPNSENSE_EXPORTER_DISABLE_CARP |
 | Captive Portal | captiveportal | 6 | Enabled | --exporter.disable-captiveportal | OPNSENSE_EXPORTER_DISABLE_CAPTIVEPORTAL |
 | Certificates | certificate | 7 | Enabled | --exporter.disable-certificates | OPNSENSE_EXPORTER_DISABLE_CERTIFICATES |
@@ -37,8 +37,9 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | IPsec | ipsec | 26 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
-| Interfaces | interfaces | 33 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
+| Interfaces | interfaces | 38 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
 | Kea DHCP | kea | 19 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
+| Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
 | Local Auth | auth | 6 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
 | Log-derived Events | log_events | 22 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
@@ -49,7 +50,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | NUT UPS | nut | 15 | Enabled | --exporter.disable-nut | OPNSENSE_EXPORTER_DISABLE_NUT |
 | NetBird | netbird | 15 | Enabled | --exporter.disable-netbird | OPNSENSE_EXPORTER_DISABLE_NETBIRD |
 | NetFlow | netflow | 11 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
-| Network Diagnostics | network_diag | 25 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
+| Network Diagnostics | network_diag | 29 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
 | Nginx | nginx | 33 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
 | OpenVPN | openvpn | 9 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |

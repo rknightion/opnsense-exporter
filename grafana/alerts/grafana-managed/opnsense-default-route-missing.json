@@ -2,7 +2,7 @@
   "apiVersion": "rules.alerting.grafana.app/v0alpha1",
   "kind": "AlertRule",
   "metadata": {
-    "name": "opnsense-hasync-unreachable",
+    "name": "opnsense-default-route-missing",
     "annotations": {
       "grafana.app/folder": "opnsense-alerts"
     },
@@ -11,22 +11,22 @@
     }
   },
   "spec": {
-    "title": "OPNsenseHASyncUnreachable",
+    "title": "OPNsenseDefaultRouteMissing",
     "noDataState": "Ok",
     "execErrState": "Error",
-    "for": "10m0s",
+    "for": "5m0s",
     "trigger": {
       "interval": "1m"
     },
     "labels": {
-      "severity": "warning"
+      "severity": "critical"
     },
     "annotations": {
-      "summary": "OPNsense HA sync peer unreachable ({{ $labels.opnsense_instance }})",
-      "description": "opnsense_hasync_remote_reachable has been 0 for 10m on a box where HA sync is configured (remote_services_total > 0). The guard excludes boxes with HA sync unconfigured, where reachable=0 is the normal, expected reading.",
-      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensehasyncunreachable",
+      "summary": "OPNsense has no {{ $labels.proto }} default route ({{ $labels.opnsense_instance }})",
+      "description": "The routing table carries no default route for {{ $labels.proto }}. For a firewall that is a total outage for that address family - nothing off-subnet is reachable. There was no signal for this condition before #544.",
+      "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensedefaultroutemissing",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "667"
+      "__panelId__": "347"
     },
     "expressions": {
       "A": {
@@ -41,7 +41,7 @@
             "uid": "grafanacloud-prom"
           },
           "editorMode": "code",
-          "expr": "opnsense_hasync_remote_reachable == 0 and on(opnsense_instance) (opnsense_hasync_remote_services_total > 0)",
+          "expr": "opnsense_network_diag_default_route_present",
           "instant": true,
           "range": false,
           "intervalMs": 60000,

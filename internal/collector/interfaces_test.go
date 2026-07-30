@@ -704,3 +704,71 @@ func TestInterfacesCollector_Update_SFPRXPowerPartial(t *testing.T) {
 		t.Errorf("expected dBm=-3.16, got %v", v)
 	}
 }
+
+// #544 item 4: get_interface_statistics was decoded for the kernel index only.
+// Its per-address rows carry the only obtainable per-family split, and its
+// AF_LINK row the only oqdrops figure for devices the traffic endpoint omits.
+func TestInterfacesCollector_AddressFamilyAndOutputQueueDrops(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/traffic/interface", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"interfaces":{}}`))
+	})
+	mux.HandleFunc("/api/interfaces/overview/interfaces_info", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"rows":[]}`))
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_interface_statistics", func(w http.ResponseWriter, _ *http.Request) {
+		// Trimmed from the prod box, plus tailscale0 from a dev box — the only
+		// device on any observed box with a non-zero oqdrops, and one the
+		// traffic endpoint does not report at all.
+		w.Write([]byte(`{"statistics":{
+		 "[LAN] (ixl0) / 98:b7:85:21:af:f2":{"name":"ixl0","network":"<Link#1>","address":"98:b7:85:21:af:f2","received-packets":419866764,"dropped-packets":0,"received-bytes":383093557281,"sent-packets":381907348,"sent-bytes":316537354094},
+		 "[LAN] (ixl0) / 10.0.0.254":{"name":"ixl0","network":"10.0.0.0/24","address":"10.0.0.254","received-packets":15603611,"received-bytes":2369675284,"sent-packets":25173485,"sent-bytes":23846528514},
+		 "[LAN] (ixl0) / fe80::1%ixl0":{"name":"ixl0","network":"fe80::%ixl0/64","address":"fe80::1%ixl0","received-packets":214444,"received-bytes":18089655,"sent-packets":257888,"sent-bytes":21509007},
+		 "[tailscale] (tailscale0)":{"name":"tailscale0","network":"<Link#16>","address":"","dropped-packets":8,"received-packets":1,"received-bytes":2,"sent-packets":3,"sent-bytes":4}
+		}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &interfacesCollector{subsystem: InterfacesSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	fam := map[string]float64{}
+	drops := map[string]float64{}
+	for _, m := range collectMetrics(t, c, client) {
+		l := getMetricLabels(m)
+		switch {
+		case hasFqName(m, "opnsense_interfaces_address_family_received_packets_total"):
+			fam["rxp|"+l["device"]+"|"+l["family"]] = getMetricValue(m)
+		case hasFqName(m, "opnsense_interfaces_address_family_received_bytes_total"):
+			fam["rxb|"+l["device"]+"|"+l["family"]] = getMetricValue(m)
+		case hasFqName(m, "opnsense_interfaces_address_family_sent_packets_total"):
+			fam["txp|"+l["device"]+"|"+l["family"]] = getMetricValue(m)
+		case hasFqName(m, "opnsense_interfaces_address_family_sent_bytes_total"):
+			fam["txb|"+l["device"]+"|"+l["family"]] = getMetricValue(m)
+		case hasFqName(m, "opnsense_interfaces_output_queue_drops_total"):
+			drops[l["device"]] = getMetricValue(m)
+		}
+	}
+
+	if fam["rxp|ixl0|ipv4"] != 15603611 {
+		t.Errorf("ixl0 ipv4 rx packets = %v", fam["rxp|ixl0|ipv4"])
+	}
+	if fam["rxp|ixl0|ipv6"] != 214444 {
+		t.Errorf("ixl0 ipv6 rx packets = %v", fam["rxp|ixl0|ipv6"])
+	}
+	if fam["txb|ixl0|ipv4"] != 23846528514 {
+		t.Errorf("ixl0 ipv4 tx bytes = %v", fam["txb|ixl0|ipv4"])
+	}
+	// The AF_LINK row must not become a family row; its address is a MAC.
+	if fam["rxp|ixl0|ipv6"] == 419866764 {
+		t.Error("AF_LINK row classified as an address family row")
+	}
+	if drops["tailscale0"] != 8 {
+		t.Errorf("tailscale0 output queue drops = %v, want 8", drops["tailscale0"])
+	}
+	if _, ok := drops["ixl0"]; !ok {
+		t.Error("ixl0 output_queue_drops missing; a healthy zero must still be emitted")
+	}
+}

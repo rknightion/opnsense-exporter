@@ -70,6 +70,11 @@ var collectorTiers = map[string]time.Duration{
 	TorSubsystem:           IntervalSlow,
 	ChronySubsystem:        IntervalSlow,
 	LLDPSubsystem:          IntervalSlow,
+	// Zone occupancy drifts over minutes, and the failure/sleep counters are
+	// cumulative since boot, so a 5m sample loses nothing an alert needs. Slow is
+	// also what makes the collector affordable enough to ship default-ON: one extra
+	// GET every five minutes rather than one per scrape.
+	KernelMemorySubsystem: IntervalSlow,
 	// cold (15m)
 	FirmwareSubsystem:     IntervalCold,
 	CertificatesSubsystem: IntervalCold,

@@ -97,9 +97,11 @@ func TestNetworkDiagCollector_Update(t *testing.T) {
 	// 3 socket types (tcp4, udp4, unix) active = 3
 	// 1 unix total = 1
 	// 2 route protos (IPv4, IPv6) = 2
+	// route breakdowns from a fixture whose rows carry no netif/flags: 2 per-interface
+	//   + 2 per-flags + 2 default_route_present (always one per family) = 6
 	// 1 pfsync nodes total + 2 pfsync node info = 3
-	// Total: 16 + 10 + 3 + 1 + 2 + 3 = 35
-	expectedCount := 35
+	// Total: 16 + 10 + 3 + 1 + 2 + 6 + 3 = 41
+	expectedCount := 41
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -493,5 +495,130 @@ func TestNetworkDiagCollector_DescribeCoversNetisr(t *testing.T) {
 				t.Errorf("netisrPerCPU=%v: Describe() omitted %s", enabled, name)
 			}
 		}
+	}
+}
+
+// #544 item 2: the whole routing table collapsed to routes_total{proto}. This
+// fixture is trimmed from the prod box and keeps the default route on each
+// family, a VLAN child whose netif differs from its description, and a
+// blackhole route.
+const routesCollectorFixture = `[
+ {"proto":"ipv4","destination":"default","gateway":"81.187.81.187","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"},
+ {"proto":"ipv4","destination":"10.0.100.0/24","gateway":"link#5","flags":"U","netif":"ixl0_vlan100","intf_description":"MGMT"},
+ {"proto":"ipv4","destination":"192.0.2.0/24","gateway":"127.0.0.1","flags":"USB","netif":"lo0","intf_description":"Loopback"},
+ {"proto":"ipv6","destination":"default","gateway":"fe80::1%pppoe0","flags":"UGS","netif":"pppoe0","intf_description":"AAISP"}
+]`
+
+func routesOnlyCollector(t *testing.T, body string) []prometheus.Metric {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/interface/get_netisr_statistics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"netisr":{"protocol":[],"workstream":[]}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_socket_statistics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"statistics":{}}`))
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_routes", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(body))
+	})
+	mux.HandleFunc("/api/diagnostics/interface/get_pfsync_nodes", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"total":0,"rowCount":0,"current":1,"rows":[]}`))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	client := newCollectorTestClient(t, server)
+	c := &networkDiagCollector{subsystem: NetworkDiagSubsystem, netisrPerCPU: false}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	return collectMetrics(t, c, client)
+}
+
+func TestNetworkDiagCollector_RoutesPerInterfaceAndFlags(t *testing.T) {
+	metrics := routesOnlyCollector(t, routesCollectorFixture)
+
+	perInterface := map[string]float64{}
+	perFlags := map[string]float64{}
+	for _, m := range metrics {
+		l := getMetricLabels(m)
+		switch {
+		case hasFqName(m, "opnsense_network_diag_interface_routes"):
+			perInterface[l["proto"]+"|"+l["device"]+"|"+l["interface"]] = getMetricValue(m)
+		case hasFqName(m, "opnsense_network_diag_routes_by_flags"):
+			perFlags[l["proto"]+"|"+l["flags"]] = getMetricValue(m)
+		}
+	}
+
+	wantIface := map[string]float64{
+		"ipv4|pppoe0|AAISP":      1,
+		"ipv4|ixl0_vlan100|MGMT": 1,
+		"ipv4|lo0|Loopback":      1,
+		"ipv6|pppoe0|AAISP":      1,
+	}
+	if len(perInterface) != len(wantIface) {
+		t.Fatalf("got %d per-interface series, want %d: %v", len(perInterface), len(wantIface), perInterface)
+	}
+	for k, v := range wantIface {
+		if perInterface[k] != v {
+			t.Errorf("interface_routes[%s] = %v, want %v", k, perInterface[k], v)
+		}
+	}
+	if perFlags["ipv4|USB"] != 1 {
+		t.Errorf("routes_by_flags[ipv4|USB] = %v, want 1 (the blackhole route)", perFlags["ipv4|USB"])
+	}
+	if perFlags["ipv4|UGS"] != 1 || perFlags["ipv6|UGS"] != 1 {
+		t.Errorf("routes_by_flags default-route flags = %v", perFlags)
+	}
+}
+
+func TestNetworkDiagCollector_DefaultRoutePresence(t *testing.T) {
+	metrics := routesOnlyCollector(t, routesCollectorFixture)
+
+	present := map[string]float64{}
+	info := map[string]float64{}
+	for _, m := range metrics {
+		l := getMetricLabels(m)
+		switch {
+		case hasFqName(m, "opnsense_network_diag_default_route_present"):
+			present[l["proto"]] = getMetricValue(m)
+		case hasFqName(m, "opnsense_network_diag_default_route_info"):
+			info[l["proto"]+"|"+l["device"]+"|"+l["interface"]+"|"+l["gateway"]] = getMetricValue(m)
+		}
+	}
+
+	if present["ipv4"] != 1 || present["ipv6"] != 1 {
+		t.Errorf("default_route_present = %v, want both 1", present)
+	}
+	if info["ipv4|pppoe0|AAISP|81.187.81.187"] != 1 {
+		t.Errorf("ipv4 default_route_info missing: %v", info)
+	}
+	if info["ipv6|pppoe0|AAISP|fe80::1%pppoe0"] != 1 {
+		t.Errorf("ipv6 default_route_info missing: %v", info)
+	}
+}
+
+// Losing the default route is a total outage with no other signal, so the
+// series must be emitted as 0 rather than disappearing — an absent series
+// cannot be alerted on without an `absent()` rule nobody writes.
+func TestNetworkDiagCollector_DefaultRouteAbsentIsZeroNotMissing(t *testing.T) {
+	metrics := routesOnlyCollector(t, `[{"proto":"ipv4","destination":"10.0.0.0/24","gateway":"link#1","flags":"U","netif":"ixl0","intf_description":"LAN"}]`)
+
+	present := map[string]float64{}
+	infoCount := 0
+	for _, m := range metrics {
+		if hasFqName(m, "opnsense_network_diag_default_route_present") {
+			present[getMetricLabels(m)["proto"]] = getMetricValue(m)
+		}
+		if hasFqName(m, "opnsense_network_diag_default_route_info") {
+			infoCount++
+		}
+	}
+	if len(present) != 2 {
+		t.Fatalf("got %d default_route_present series, want one per family: %v", len(present), present)
+	}
+	if present["ipv4"] != 0 || present["ipv6"] != 0 {
+		t.Errorf("default_route_present = %v, want both 0", present)
+	}
+	if infoCount != 0 {
+		t.Errorf("got %d default_route_info series with no default route", infoCount)
 	}
 }

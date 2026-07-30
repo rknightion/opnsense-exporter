@@ -38,9 +38,14 @@ func (c *ndpCollector) Register(namespace, instance string, log *slog.Logger) {
 		nil,
 	)
 	c.entries = buildPrometheusDesc(c.subsystem, "entries",
-		"NDP entries by ip, mac, interface description, and type. Only emitted when "+
-			"--exporter.enable-ndp-details is set (high, churning cardinality from IPv6 privacy addresses).",
-		[]string{"ip", "mac", "interface_description", "type"},
+		"One series per NDP neighbour entry (value is always 1). Only emitted when "+
+			"--exporter.enable-ndp-details is set (high, churning cardinality from IPv6 privacy "+
+			"addresses). `manufacturer` is the OUI lookup for the MAC and is the label that "+
+			"identifies a device. `device` is the raw kernel device and `interface_description` the "+
+			"assigned name; they diverge on VLAN children and bridges, and only `device` joins "+
+			"against the interfaces metrics. `type` reads empty on OPNsense 26.1, which sends no "+
+			"type key on this endpoint.",
+		[]string{"ip", "mac", "interface_description", "type", "manufacturer", "device"},
 	)
 }
 
@@ -78,6 +83,8 @@ func (c *ndpCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			entry.Mac,
 			entry.IntfDescription,
 			entry.Type,
+			entry.Manufacturer,
+			entry.Device,
 			c.instance,
 		)
 	}

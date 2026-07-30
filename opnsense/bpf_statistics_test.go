@@ -134,3 +134,113 @@ func TestFetchBPFStatistics_SingleEntryAsObject(t *testing.T) {
 		t.Errorf("expected 500 received packets, got %v", data.Listeners[0].ReceivedPackets)
 	}
 }
+
+// liveBPFDirectionFixture is trimmed verbatim from the prod box (OPNsense 26.1,
+// api/diagnostics/interface/get_bpf_statistics). lldpd holds a separate
+// input-only descriptor per physical port while filterlog holds one
+// bidirectional descriptor on pflog0 — the split the (process, interface)
+// aggregate erased. dhclient appears twice on one interface in two directions,
+// which is the case that proves direction is part of the key and not a
+// property of the pair.
+const liveBPFDirectionFixture = `{
+  "bpf-statistics": {
+    "bpf-entry": [
+      {"pid": 2759, "interface-name": "pflog0", "header-complete": true, "direction": "bidirectional",
+       "received-packets": 648272, "dropped-packets": 0, "filter-packets": 648272,
+       "store-buffer-length": 13452, "hold-buffer-length": 0, "process": "filterlog"},
+      {"pid": 59070, "interface-name": "igb1", "immediate": true, "header-complete": true,
+       "direction": "input", "locked": true,
+       "received-packets": 11, "dropped-packets": 1, "filter-packets": 7,
+       "store-buffer-length": 0, "hold-buffer-length": 0, "process": "lldpd"},
+      {"pid": 59070, "interface-name": "ixl1", "direction": "input",
+       "received-packets": 22, "dropped-packets": 2, "filter-packets": 14,
+       "store-buffer-length": 0, "hold-buffer-length": 0, "process": "lldpd"},
+      {"pid": 41000, "interface-name": "ixl1", "direction": "input",
+       "received-packets": 100, "dropped-packets": 3, "filter-packets": 50,
+       "store-buffer-length": 0, "hold-buffer-length": 0, "process": "dhclient"},
+      {"pid": 41001, "interface-name": "ixl1", "direction": "bidirectional",
+       "received-packets": 200, "dropped-packets": 4, "filter-packets": 60,
+       "store-buffer-length": 0, "hold-buffer-length": 0, "process": "dhclient"}
+    ]
+  }
+}`
+
+func TestFetchBPFStatistics_KeepsDirection(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(liveBPFDirectionFixture))
+	})
+	defer server.Close()
+
+	data, err := client.FetchBPFStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.ByDirection) != 5 {
+		t.Fatalf("got %d direction rows, want 5: %+v", len(data.ByDirection), data.ByDirection)
+	}
+
+	type key struct{ process, iface, dir string }
+	got := make(map[key]BPFDirectionListener, len(data.ByDirection))
+	for _, d := range data.ByDirection {
+		got[key{d.Process, d.Interface, d.Direction}] = d
+	}
+
+	// dhclient on ixl1 must NOT collapse: two rows, one per direction.
+	in := got[key{"dhclient", "ixl1", "input"}]
+	bi := got[key{"dhclient", "ixl1", "bidirectional"}]
+	if in.ReceivedPackets != 100 || in.DroppedPackets != 3 || in.MatchedPackets != 50 {
+		t.Errorf("dhclient/ixl1/input = %+v", in)
+	}
+	if bi.ReceivedPackets != 200 || bi.DroppedPackets != 4 || bi.MatchedPackets != 60 {
+		t.Errorf("dhclient/ixl1/bidirectional = %+v", bi)
+	}
+	if in.Listeners != 1 || bi.Listeners != 1 {
+		t.Errorf("listener counts = %d/%d, want 1/1", in.Listeners, bi.Listeners)
+	}
+
+	// The existing (process, interface) aggregate must still sum both.
+	for _, l := range data.Listeners {
+		if l.Process == "dhclient" && l.Interface == "ixl1" {
+			if l.ReceivedPackets != 300 || l.DroppedPackets != 7 {
+				t.Errorf("aggregated dhclient/ixl1 = %+v; the aggregate must be unchanged", l)
+			}
+		}
+	}
+}
+
+func TestFetchBPFStatistics_DirectionRowsAreSorted(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(liveBPFDirectionFixture))
+	})
+	defer server.Close()
+
+	data, _ := client.FetchBPFStatistics()
+	for i := 1; i < len(data.ByDirection); i++ {
+		a, b := data.ByDirection[i-1], data.ByDirection[i]
+		if a.Process > b.Process ||
+			(a.Process == b.Process && a.Interface > b.Interface) ||
+			(a.Process == b.Process && a.Interface == b.Interface && a.Direction > b.Direction) {
+			t.Fatalf("ByDirection not sorted at %d: %+v then %+v", i, a, b)
+		}
+	}
+}
+
+// A descriptor with no direction still has to produce a series; dropping it
+// would silently lose a listener from the breakdown.
+func TestFetchBPFStatistics_MissingDirectionIsLabelledUnknown(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"bpf-statistics":{"bpf-entry":[
+		 {"interface-name":"igb0","received-packets":5,"dropped-packets":0,"filter-packets":5,"process":"tcpdump"}
+		]}}`))
+	})
+	defer server.Close()
+
+	data, _ := client.FetchBPFStatistics()
+	if len(data.ByDirection) != 1 {
+		t.Fatalf("got %d direction rows, want 1: %+v", len(data.ByDirection), data.ByDirection)
+	}
+	if data.ByDirection[0].Direction != "unknown" {
+		t.Errorf("direction = %q, want %q", data.ByDirection[0].Direction, "unknown")
+	}
+}

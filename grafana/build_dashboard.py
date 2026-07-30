@@ -80,8 +80,8 @@ TAB_GROUPS = [
     # strict leaf-assignment check (#431 step 3).
     (None, ("Overview",)),
     ("System", (
-        "System & Resources", "Services, Cron & DynDNS", "Certificates", "UPS",
-        "Monit", "HA Sync", "CARP / HA",
+        "System & Resources", "Kernel Memory", "Services, Cron & DynDNS", "Certificates",
+        "UPS", "Monit", "HA Sync", "CARP / HA",
     )),
     ("Network", (
         "Interfaces", "Gateways & WAN", "DNS - Unbound", "DHCP",
@@ -1244,7 +1244,7 @@ def organize_tabs(b: Builder, tab_groups=TAB_GROUPS):
 # appears in exactly one list: building it onto both dashboards would produce two
 # copies of the same tab that drift independently.
 MAIN_TAB_MODULES = [
-    "system", "interfaces", "firewall", "auth_audit", "alias", "gateways",
+    "system", "kernel_memory", "interfaces", "firewall", "auth_audit", "alias", "gateways",
     "dns_unbound", "dhcp", "vpn", "tailscale", "netbird", "routing", "protocols",
     "ntp", "certificates", "clamav", "services_cron", "syslog", "qfeeds", "netflow",
     "carp", "haproxy", "relayd", "nginx", "frr", "monit", "crowdsec", "ids", "ups",

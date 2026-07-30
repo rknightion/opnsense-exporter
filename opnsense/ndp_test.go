@@ -108,3 +108,41 @@ func TestFetchNDPTable_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+// liveNDPFixture is trimmed verbatim from the prod box (OPNsense 26.1,
+// api/diagnostics/interface/get_ndp). NOTE: the live payload carries NO `type`
+// and NO `expire` key at all — only mac, ip, intf, intf_description and
+// manufacturer — so the fixture omits them deliberately.
+const liveNDPFixture = `[
+ {"mac":"0e:40:69:ec:4d:9a","ip":"fe80::d6:761:6510:f3a6%ixl0","intf":"ixl0","manufacturer":"","intf_description":"LAN"},
+ {"mac":"98:b7:85:21:af:f2","ip":"2001:8b0:1f05::1","intf":"ixl0_vlan100","manufacturer":"Intel Corporate","intf_description":"MGMT"}
+]`
+
+func TestFetchNDPTable_CarriesManufacturerAndDevice(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(liveNDPFixture))
+	})
+	defer server.Close()
+
+	table, err := client.FetchNDPTable()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(table.Entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(table.Entries))
+	}
+
+	byIP := make(map[string]NDPEntry, len(table.Entries))
+	for _, e := range table.Entries {
+		byIP[e.IP] = e
+	}
+	if got := byIP["2001:8b0:1f05::1"].Manufacturer; got != "Intel Corporate" {
+		t.Errorf("manufacturer = %q, want %q", got, "Intel Corporate")
+	}
+	if got := byIP["2001:8b0:1f05::1"].Device; got != "ixl0_vlan100" {
+		t.Errorf("device = %q, want %q", got, "ixl0_vlan100")
+	}
+	if got := byIP["fe80::d6:761:6510:f3a6%ixl0"].Manufacturer; got != "" {
+		t.Errorf("unresolved manufacturer = %q, want empty", got)
+	}
+}

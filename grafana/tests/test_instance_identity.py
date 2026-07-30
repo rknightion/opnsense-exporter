@@ -320,10 +320,10 @@ class InstanceIdentityTest(unittest.TestCase):
         exprs = [(r["metric"], r["expr"]) for r in RECORDING]
         exprs += [(r["name"], r["A"]) for r in RULES]
         self.assertEqual(len(exprs), len(RECORDING) + len(RULES))
-        # 50 alerts + 14 recording. Bump deliberately when a rule is added — the
+        # 53 alerts + 14 recording. Bump deliberately when a rule is added — the
         # literal is here so an accidentally emptied RULES/RECORDING cannot make the
         # offender scan below pass by having nothing to scan.
-        self.assertEqual(len(exprs), 64)
+        self.assertEqual(len(exprs), 67)
         offenders = {
             name: f"{op} {kind or 'no-clause'}({','.join(sorted(labels))})"
             for name, expr in exprs

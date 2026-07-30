@@ -23,6 +23,7 @@ TOP_LEVEL_TITLES = [
 LEAF_TITLES = {
     "Overview",
     "System & Resources",
+    "Kernel Memory",
     "Interfaces",
     "Firewall & PF",
     "Aliases",

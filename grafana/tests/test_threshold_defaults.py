@@ -224,7 +224,7 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
     def test_true_bargauge_panel_count(self):
         """Pins the real count so a stale '39' in old planning docs/issues cannot
         silently drift further from what the builder actually produces."""
-        self.assertEqual(len(_bargauge_panels(self.builder)), 38)
+        self.assertEqual(len(_bargauge_panels(self.builder)), 40)
 
     def test_neutral_bytes_panel_has_no_severity_boundary(self):
         panel = self._panel("eve Log File Sizes")

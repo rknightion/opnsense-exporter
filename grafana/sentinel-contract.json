@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 106,
+    "total": 107,
     "by_scope": {
-      "collector": 101,
+      "collector": 102,
       "self_labeled": 4,
       "target_join": 1,
       "global": 0
@@ -541,6 +541,19 @@
         ]
       },
       {
+        "name": "has_kernel_memory",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_kernel_memory_zone_failures_all_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter > System > Kernel Memory > Allocation Failures",
+          "OPNsense Exporter > System > Kernel Memory > Churn & Sizing",
+          "OPNsense Exporter > System > Kernel Memory > Malloc Types",
+          "OPNsense Exporter > System > Kernel Memory > Saturation"
+        ]
+      },
+      {
         "name": "has_lagg",
         "datasource": "prometheus",
         "scope": "collector",
@@ -776,6 +789,7 @@
         "gates": [
           "OPNsense Exporter > Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem)",
           "OPNsense Exporter > Network > Routing & Neighbors > NetISR Per-CPU Distribution",
+          "OPNsense Exporter > Network > Routing & Neighbors > Routing Table Detail",
           "OPNsense Exporter > Network > Routing & Neighbors > Sockets & Routes",
           "OPNsense Exporter > Network > Routing & Neighbors > pfsync"
         ]

@@ -114,3 +114,56 @@ func TestArpTableCollector_Name(t *testing.T) {
 		t.Errorf("expected %s, got %s", ArpTableSubsystem, c.Name())
 	}
 }
+
+// #534: manufacturer is populated on the overwhelming majority of entries while
+// hostname is empty on every one, so the label set has to carry it. #544 adds
+// the raw device alongside the description.
+func TestArpTableCollector_ManufacturerAndDeviceLabels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"total":2,"rowCount":2,"current":1,"rows":[
+		 {"mac":"48:25:67:13:97:33","ip":"10.0.0.139","intf":"ixl0","type":"ethernet",
+		  "manufacturer":"Poly","hostname":"","intf_description":"LAN",
+		  "permanent":false,"expired":false,"expires":1192},
+		 {"mac":"00:11:32:aa:bb:cc","ip":"10.0.50.10","intf":"ixl0_vlan50","type":"ethernet",
+		  "manufacturer":"","hostname":"","intf_description":"IOT",
+		  "permanent":false,"expired":false,"expires":900}
+		]}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &arpTableCollector{subsystem: ArpTableSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	seen := 0
+	for _, m := range collectMetrics(t, c, client) {
+		if !hasFqName(m, "opnsense_arp_table_entries") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		switch labels["ip"] {
+		case "10.0.0.139":
+			seen++
+			if labels["manufacturer"] != "Poly" {
+				t.Errorf("manufacturer = %q, want Poly", labels["manufacturer"])
+			}
+			if labels["device"] != "ixl0" {
+				t.Errorf("device = %q, want ixl0", labels["device"])
+			}
+		case "10.0.50.10":
+			seen++
+			// An unresolved OUI must still emit the series with an empty label.
+			if labels["manufacturer"] != "" {
+				t.Errorf("manufacturer = %q, want empty", labels["manufacturer"])
+			}
+			// The VLAN case: device and description genuinely differ.
+			if labels["device"] != "ixl0_vlan50" || labels["interface_description"] != "IOT" {
+				t.Errorf("device/description = %q/%q", labels["device"], labels["interface_description"])
+			}
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("matched %d per-entry series, want 2", seen)
+	}
+}

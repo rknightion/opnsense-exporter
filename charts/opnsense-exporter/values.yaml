@@ -346,6 +346,14 @@ settings:
   # Disable the scraping of Kea DHCP lease metrics
   # exporter.disable-kea: false
   #
+  # Disable the kernel-memory collector (every FreeBSD UMA zone and malloc type from
+  # api/diagnostics/system/memory). On by default: UMA fail/sleep is the kernel's canonical
+  # could-not-allocate signal, covering pf state, socket and mbuf exhaustion, and a failure
+  # counter nobody has switched on is a failure counter nobody sees. About 2,600 series on a
+  # live 26.1 firewall (228 zones + 258 malloc types), against a 100k global budget, fetched
+  # by one extra GET on the 5-minute poll tier.
+  # exporter.disable-kernel-memory: false
+  #
   # Disable the scraping of LLDP neighbor table metrics (silent when the os-lldpd plugin is
   # absent)
   # exporter.disable-lldpd: false
@@ -1038,15 +1046,17 @@ settings:
   # collector entirely.
   # flow.enabled: true
   #
-  # Add a `country` label to the flow volume metrics. OFF by default and it should usually
-  # stay off: country is a ~250-value dimension multiplied against every existing flow
-  # series, so turning it on can multiply opnsense_flow_bytes_total's cardinality roughly
-  # 250-fold. --flow.top-n and --flow.max-keys still bound the result, which means the
-  # practical effect on a busy box is that real series start folding into __other__ rather
-  # than that the family grows without limit. ASN and city NEVER become labels at any
-  # setting. Geo on flow LOGS needs no flag - it is unconditional whenever --geoip.enabled
-  # is set.
-  # flow.geoip.metric-dims: false
+  # Add a `country` label to the flow volume metrics. ON by default since #537, and
+  # --flow.top-n/--flow.max-keys were raised 10x in the same change to hold it: country
+  # multiplies the occupied key space by the number of countries the box actually talks to
+  # (a few dozen in practice, not the ~250 the dimension can hold), and at the previous
+  # 1,000/2,500 bounds that would have folded real series into __other__ and cost detail on
+  # the dimensions that already worked. Set it false to drop the label; the flow families
+  # then carry the same dimensions they did before. It produces values only where GeoIP can
+  # answer, so with --geoip.enabled off the label is present and empty. ASN and city NEVER
+  # become labels at any setting. Geo on flow LOGS needs no flag - it is unconditional
+  # whenever --geoip.enabled is set.
+  # flow.geoip.metric-dims: true
   #
   # Flow log emission: "per_flow" ships one OTLP log record per correlated flow on the
   # shared log pipeline; "off" ships none while still deriving all metrics. Zenarmor conn
@@ -1056,8 +1066,12 @@ settings:
   # Maximum distinct label combinations the flow accumulator tracks in memory. A separate
   # bound from --flow.top-n: this caps memory between scrapes, that caps emitted series.
   # Combinations first seen at the cap fold into __other__ and are counted by
-  # opnsense_flow_rollup_capped_total. 0 is unbounded.
-  # flow.max-keys: "2500"
+  # opnsense_flow_rollup_capped_total. 0 is unbounded. Keep it WELL above --flow.top-n:
+  # below it, that flag is silently capped by this one, and near it the cap rather than
+  # actual volume decides which combinations get reported, because a combination refused at
+  # first sight can never accumulate its way into the top-N. The default runs 10:1 for that
+  # reason. Roughly 250-350 bytes per tracked key, so the default is ~25-35 MB.
+  # flow.max-keys: "100000"
   #
   # Cap on flow log records shipped per minute; excess is TRUNCATED (never sampled) and
   # counted. A flood guard on the unauthenticated NetFlow ingress. 0 is unlimited. Metrics
@@ -1066,8 +1080,11 @@ settings:
   #
   # Maximum flow series emitted per scrape. Everything beyond folds into a single __other__
   # series per source, so the family still sums exactly at any limit. 0 emits every tracked
-  # combination.
-  # flow.top-n: "1000"
+  # combination. Raise --flow.max-keys with this: a value above max-keys has no effect,
+  # because the accumulator never tracks the combinations it would emit. Lower it if the
+  # flow families are more series than you want - opnsense_flow_rollup_capped_total tells
+  # you what folding is costing you.
+  # flow.top-n: "10000"
   #
   # Emit opnsense_flow_top_talker_bytes_total: bytes per internal host and direction, top-N
   # with an __other__ remainder. OFF by default because the host label is high cardinality;

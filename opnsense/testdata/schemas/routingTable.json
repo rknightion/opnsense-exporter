@@ -9,6 +9,26 @@
       "kind": "object"
     },
     {
+      "path": "[].destination",
+      "kind": "string"
+    },
+    {
+      "path": "[].flags",
+      "kind": "string"
+    },
+    {
+      "path": "[].gateway",
+      "kind": "string"
+    },
+    {
+      "path": "[].intf_description",
+      "kind": "string"
+    },
+    {
+      "path": "[].netif",
+      "kind": "string"
+    },
+    {
       "path": "[].proto",
       "kind": "string"
     }

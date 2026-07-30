@@ -112,6 +112,10 @@ var (
 		"exporter.disable-mbuf",
 		"Disable the scraping of mbuf statistics",
 	).Envar("OPNSENSE_EXPORTER_DISABLE_MBUF").Default("false").Bool()
+	kernelMemoryCollectorDisabled = kingpin.Flag(
+		"exporter.disable-kernel-memory",
+		"Disable the kernel-memory collector (every FreeBSD UMA zone and malloc type from api/diagnostics/system/memory). On by default: UMA fail/sleep is the kernel's canonical could-not-allocate signal, covering pf state, socket and mbuf exhaustion, and a failure counter nobody has switched on is a failure counter nobody sees. About 2,600 series on a live 26.1 firewall (228 zones + 258 malloc types), against a 100k global budget, fetched by one extra GET on the 5-minute poll tier.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY").Default("false").Bool()
 	ntpCollectorDisabled = kingpin.Flag(
 		"exporter.disable-ntp",
 		"Disable the scraping of NTP peer metrics",
@@ -447,6 +451,7 @@ type CollectorsDisableSwitch struct {
 	System                 bool
 	Temperature            bool
 	Mbuf                   bool
+	KernelMemory           bool
 	NTP                    bool
 	Certificates           bool
 	CARP                   bool
@@ -539,6 +544,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		System:                 !*systemCollectorDisabled,
 		Temperature:            !*temperatureCollectorDisabled,
 		Mbuf:                   !*mbufCollectorDisabled,
+		KernelMemory:           !*kernelMemoryCollectorDisabled,
 		NTP:                    !*ntpCollectorDisabled,
 		Certificates:           !*certificatesCollectorDisabled,
 		CARP:                   !*carpCollectorDisabled,
@@ -647,6 +653,7 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-firewall-rules", Subsystem: "firewall_rule"},
 	{Flag: "exporter.enable-firewall-rules-details", Subsystem: "firewall_rule", Detail: true, Reason: "high cardinality on large rulesets (per-rule detail metrics)"},
 	{Flag: "exporter.disable-mbuf", Subsystem: "mbuf"},
+	{Flag: "exporter.disable-kernel-memory", Subsystem: "kernel_memory"},
 	{Flag: "exporter.disable-ntp", Subsystem: "ntp"},
 	{Flag: "exporter.disable-certificates", Subsystem: "certificate"},
 	{Flag: "exporter.disable-carp", Subsystem: "carp"},

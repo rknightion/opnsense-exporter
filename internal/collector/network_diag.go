@@ -48,7 +48,11 @@ type networkDiagCollector struct {
 	socketsUnixTotal *prometheus.Desc
 
 	// route metrics
-	routesTotal *prometheus.Desc
+	routesTotal         *prometheus.Desc
+	interfaceRoutes     *prometheus.Desc
+	routesByFlags       *prometheus.Desc
+	defaultRoutePresent *prometheus.Desc
+	defaultRouteInfo    *prometheus.Desc
 
 	// pfsync metrics
 	pfsyncNodesTotal *prometheus.Desc
@@ -217,6 +221,44 @@ func (c *networkDiagCollector) Register(namespace, instanceLabel string, log *sl
 		"Number of routing table entries by protocol",
 		[]string{"proto"},
 	)
+	c.interfaceRoutes = buildPrometheusDesc(c.subsystem, "interface_routes",
+		"Number of routing table entries whose egress interface is this one, by address family. "+
+			"Per-interface breakdown of routes_total, which remains the sum. `device` is the raw "+
+			"kernel device and `interface` the assigned description; they diverge on VLAN children, "+
+			"PPPoE links and unassigned devices, and only `device` joins against the interfaces "+
+			"metrics. A count collapsing to near zero on a WAN device is a link that has dropped its "+
+			"learned routes.",
+		[]string{"proto", "device", "interface"},
+	)
+	c.routesByFlags = buildPrometheusDesc(c.subsystem, "routes_by_flags",
+		"Number of routing table entries carrying this exact netstat flag string, by address "+
+			"family. The flag vocabulary is closed and short, so this stays bounded regardless of "+
+			"table size. The letters are netstat's: U up, G gatewayed, H host route, S static, "+
+			"B blackhole (traffic silently discarded), 1 protocol-specific. `B` is the one worth "+
+			"watching — blackhole routes are usually deliberate but a growing count is traffic "+
+			"being dropped with no other signal. The flags are matched as a whole string, not per "+
+			"letter, so use a regex matcher to select a single flag.",
+		[]string{"proto", "flags"},
+	)
+	c.defaultRoutePresent = buildPrometheusDesc(c.subsystem, "default_route_present",
+		"Whether a default route exists for this address family (1) or not (0). Losing the default "+
+			"route is a total-outage condition for that family with no other signal in this "+
+			"exporter, so the series is emitted as 0 rather than disappearing — alert on == 0 "+
+			"directly, no absent() rule needed. Emitted for both ipv4 and ipv6 on every scrape; a "+
+			"box with no IPv6 upstream legitimately and permanently reads 0 for ipv6, so scope any "+
+			"alert to the families the box is expected to route.",
+		[]string{"proto"},
+	)
+	c.defaultRouteInfo = buildPrometheusDesc(c.subsystem, "default_route_info",
+		"Identity of each installed default route (value is always 1): which interface it leaves by "+
+			"and which gateway it points at. There is normally exactly one series per address "+
+			"family; two or more means multiple default routes are installed. The gateway IS "+
+			"carried as a label here — unlike every other route, of which there may be hundreds and "+
+			"whose destinations churn — because a change of default gateway is itself the event an "+
+			"operator wants to see. No series is emitted for a family with no default route; read "+
+			"default_route_present for that.",
+		[]string{"proto", "device", "interface", "gateway"},
+	)
 
 	c.pfsyncNodesTotal = buildPrometheusDesc(c.subsystem, "pfsync_nodes_total",
 		"Total number of pfsync cluster nodes",
@@ -253,6 +295,10 @@ func (c *networkDiagCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.socketsActive
 	ch <- c.socketsUnixTotal
 	ch <- c.routesTotal
+	ch <- c.interfaceRoutes
+	ch <- c.routesByFlags
+	ch <- c.defaultRoutePresent
+	ch <- c.defaultRouteInfo
 	ch <- c.pfsyncNodesTotal
 	ch <- c.pfsyncNodeInfo
 }
@@ -420,6 +466,53 @@ func (c *networkDiagCollector) Update(ctx context.Context, client *opnsense.Clie
 			c.routesTotal,
 			prometheus.GaugeValue,
 			float64(count),
+			proto,
+			c.instance,
+		)
+	}
+	for key, count := range routeData.ByInterface {
+		ch <- prometheus.MustNewConstMetric(
+			c.interfaceRoutes,
+			prometheus.GaugeValue,
+			float64(count),
+			key.Proto, key.Device, key.Interface,
+			c.instance,
+		)
+	}
+	for key, count := range routeData.ByFlags {
+		ch <- prometheus.MustNewConstMetric(
+			c.routesByFlags,
+			prometheus.GaugeValue,
+			float64(count),
+			key.Proto, key.Flags,
+			c.instance,
+		)
+	}
+
+	// Emitted for a FIXED set of families rather than for the families the
+	// payload happens to contain: the case worth alerting on is exactly the one
+	// where the default route is gone, and deriving the family set from the data
+	// would make that case emit nothing at all.
+	haveDefault := map[string]bool{}
+	for _, d := range routeData.DefaultRoutes {
+		haveDefault[d.Proto] = true
+		ch <- prometheus.MustNewConstMetric(
+			c.defaultRouteInfo,
+			prometheus.GaugeValue,
+			1,
+			d.Proto, d.Device, d.Interface, d.Gateway,
+			c.instance,
+		)
+	}
+	for _, proto := range []string{"ipv4", "ipv6"} {
+		v := 0.0
+		if haveDefault[proto] {
+			v = 1
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.defaultRoutePresent,
+			prometheus.GaugeValue,
+			v,
 			proto,
 			c.instance,
 		)

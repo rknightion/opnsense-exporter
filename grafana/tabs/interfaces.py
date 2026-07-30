@@ -423,6 +423,57 @@ def build(b: Builder):
         to_tab("Gateway state over the same window", "Network", "Gateways & WAN"),
     ])
 
+    # ---------------------------------------------------------------------
+    # Per-address-family traffic and output-queue drops (#544 item 4)
+    # ---------------------------------------------------------------------
+    addr_family_pkts = b.ts(
+        "Locally-Addressed Traffic by Family (packets/s)",
+        [
+            (f"rate({sel('opnsense_interfaces_address_family_received_packets_total')}[{RATE}])",
+             "{{device}} {{family}} rx"),
+            (f"rate({sel('opnsense_interfaces_address_family_sent_packets_total')}[{RATE}])",
+             "{{device}} {{family}} tx"),
+        ],
+        unit="pps", w=12, h=8,
+        desc=(
+            "IPv4-vs-IPv6 split per device — the only such breakdown the API offers. READ THE "
+            "TITLE LITERALLY: this counts only traffic addressed to or from a LOCAL address on "
+            "the device, so forwarded transit is attributed to no address row and is absent. On "
+            "the prod box ixl0 shows 24.5M packets here against a device total of 419.9M, about "
+            "6%. It answers 'how much v6 does this box itself speak', not 'how much of my traffic "
+            "is v6'."
+        ),
+    )
+    addr_family_bytes = b.ts(
+        "Locally-Addressed Traffic by Family (bytes/s)",
+        [
+            (f"rate({sel('opnsense_interfaces_address_family_received_bytes_total')}[{RATE}])",
+             "{{device}} {{family}} rx"),
+            (f"rate({sel('opnsense_interfaces_address_family_sent_bytes_total')}[{RATE}])",
+             "{{device}} {{family}} tx"),
+        ],
+        unit="Bps", w=12, h=8,
+        desc=(
+            "Byte-rate counterpart of the panel beside it, with the same locally-addressed-only "
+            "caveat. Addresses within the same family on one device are summed; the address "
+            "itself is never a label."
+        ),
+    )
+    oqdrops = b.ts(
+        "Output Queue Drops (rate)",
+        [(f"rate({sel('opnsense_interfaces_output_queue_drops_total')}[{RATE}])", "{{device}}")],
+        unit="pps", w=12, h=8,
+        desc=(
+            "Packets the kernel discarded on transmit (oqdrops). Two caveats that decide whether "
+            "a zero here means anything. First, ixl, ixgbe and igb OVERRIDE this counter in their "
+            "own if_get_counter and return the driver's own figure, so it will NOT show netmap "
+            "ring-full drops on exactly the 10G interfaces where those happen — use the netmap "
+            "ring-full events metric there instead. Second, this endpoint covers devices that "
+            "diagnostics/traffic/interface omits entirely, which is why it earns its own family: "
+            "tailscale0 on the dev box reports drops here and appears nowhere else."
+        ),
+    )
+
     b.tab("Interfaces", [
         b.row("Throughput", [rx_bps, tx_bps]),
         b.row("Packets & Errors", [rx_pkts, tx_pkts, multicasts, errors, collisions]),
@@ -437,6 +488,7 @@ def build(b: Builder):
               [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power_dbm, sfp_rx_power_mw, sfp_tx_bias],
               present="has_sfp"),
         b.row("Diagnostics", [unknown_protocol_packets, attach_or_reset_age]),
+        b.row("Address-Family Split & Output Drops", [addr_family_pkts, addr_family_bytes, oqdrops]),
         # #536: netmap ring-full is per-device packet loss that no interface counter
         # on this tab can show - the ixl driver shadows the kernel oqdrops increment.
         log_events.netmap_row(b),

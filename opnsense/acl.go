@@ -1521,6 +1521,12 @@ var endpointACL = map[EndpointName]aclEntry{
 			{Key: "page-system-login-logout", Name: "Lobby: Dashboard", Origin: "core", Pattern: "api/diagnostics/system/system_information", Scope: ACLScopeWildcard},
 		},
 	},
+	"systemMemory": {
+		Consumer:  "kernel_memory",
+		Component: "core",
+		Status:    ACLStatusUnknown,
+		Note:      "the Core ACL's Lobby: Dashboard privilege lists the seven api/diagnostics/system/system_* URLs individually and carries no wildcard; api/diagnostics/system/memory (SystemController::memoryAction) appears in no pattern in either audited core release, so it is covered by no privilege except page-all. Re-checked against core stable/26.7 and master on 2026-07-30.",
+	},
 	"systemMbuf": {
 		Consumer:  "mbuf",
 		Component: "core",
