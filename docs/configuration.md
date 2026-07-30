@@ -169,6 +169,10 @@ Because the response cache is consumed by polls, **set its TTL longer than the p
 
 A plugin-gated endpoint's `404` is remembered separately, under the same `--exporter.cache-ttl`. That is a fact about the route (the plugin is not installed), not about payload freshness, so it applies regardless of how a collector polls.
 
+#### Before you move a collector onto the 15-second tier
+
+`--collector.poll-interval-override` will happily put any collector on a 15s cadence, and the firewall pays for it 5,760 times a day - every request costs it two configd RPCs and two audit lines regardless of how small the response is. The exporter applies a written admission rule when deciding which collectors ship on that tier, and it is the same test worth applying to an override. The rule lives next to `collectorTiers` in [`internal/collector/interval_tiers.go`](https://github.com/rknightion/opnsense-exporter/blob/main/internal/collector/interval_tiers.go), with each shipped fast-tier collector annotated with the clause that admits it. In short, a collector earns 15s when **a change in its value is itself the event you alert on** (a CARP failover, a gateway going down), when it feeds a **rate or delta read at sub-minute resolution**, or when a **dashboard panel genuinely reads differently** at 15s than at 60s - a stacked throughput or protocol-counter graph does, an instantaneous gauge does not. Freshness that nothing consumes is not a reason, and the more the endpoint costs the box - per request, and per byte or unit of work to build the payload - the stronger that case has to be.
+
 ## Health endpoints & scrape filtering
 
 The exporter serves two probe endpoints alongside `/metrics`:
