@@ -2089,6 +2089,10 @@ PANEL_LINKS = {
     "OPNsenseNetisrQueueDrops": "NetISR Per-CPU Queue Drops (rate)",
     "OPNsenseNetisrQueueNearLimit": "NetISR Queue Length / Watermark / Limit",
     "OPNsensePFStateTableNearLimit": "PF States Used %",
+    # Points at the AGE panel, not "CPU Stream" (up/down): the failure this alert
+    # exists for is a stall with the socket still up, so stream_up is exactly the
+    # panel that will look fine while the alert is firing.
+    "OPNsenseCPUStreamStalled": "CPU Stream Last Frame Age",
     "OPNsenseMemoryHigh": "Memory Used %",
     "OPNsenseDiskUsageHigh": "Disk Usage % by Mountpoint",
     "OPNsenseHighTemperature": "Temperature",
