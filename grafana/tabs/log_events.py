@@ -173,6 +173,94 @@ def dhcp_row(b: Builder):
     return b.row("Lease Events (log-derived)", [dhcp], present="has_log_events_dhcp")
 
 
+def dhcp_client_row(b: Builder):
+    """WAN DHCP client lifecycle (#541) — belongs beside the DHCP server panels.
+
+    Distinct from dhcp_row above: that one counts leases this box HANDS OUT, this one
+    tracks the lease this box HOLDS on its own WAN. A firewall can be a perfectly
+    healthy DHCP server right up to the moment its own upstream lease expires.
+    """
+    b.sentinel("has_log_events_dhcp_client", metric="opnsense_log_events_dhcp_client_total")
+    dhcp_client = b.ts(
+        "WAN DHCP Client Messages (rate)",
+        [(f'sum {grp("type", "interface")} (rate({sel("opnsense_log_events_dhcp_client_total")}[{RATE}]))',
+          "{{type}} / {{interface}}")],
+        unit="ops",
+        desc="opnsense_log_events_dhcp_client_total: dhclient message rate on the WAN by type. "
+             "A sustained climb in request without matching ack is a renewal storm — the "
+             "leading indicator of a WAN outage, typically hours ahead of the lease actually "
+             "expiring. Any nak at all is worth attention: the server is refusing the address "
+             "this box is currently using.",
+    )
+    dhcp_client_script = b.ts(
+        "WAN DHCP Client Script Events (rate)",
+        [(f'sum {grp("reason", "interface")} (rate({sel("opnsense_log_events_dhcp_client_script_total")}[{RATE}]))',
+          "{{reason}} / {{interface}}")],
+        unit="ops",
+        desc="opnsense_log_events_dhcp_client_script_total: dhclient-script invocations by "
+             "reason. bound/renew/rebind are the healthy cadence; expire, fail and timeout mean "
+             "the box has lost or is losing its WAN address.",
+    )
+    lease_countdown = b.ts(
+        "WAN DHCP Lease Renewal Countdown",
+        [
+            (f'{sel("opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds")} - time()',
+             "{{interface}} until renewal due"),
+            (f'time() - {sel("opnsense_log_events_dhcp_client_lease_bound_timestamp_seconds")}',
+             "{{interface}} since last bind"),
+        ],
+        unit="s",
+        desc="Seconds until dhclient's renewal (T1) deadline, and time since the last successful "
+             "bind. These are exported as absolute *_timestamp_seconds gauges and turned into a "
+             "countdown here on purpose: a countdown computed in the exporter would keep "
+             "counting down from a stale value, so a dead dhclient would look identical to a "
+             "healthy one. Here the line crossing zero IS the fault. Note this is the renewal "
+             "deadline, not absolute lease expiry — dhclient never logs the latter.",
+    )
+    return b.row("WAN DHCP Client (log-derived)",
+                 [dhcp_client, dhcp_client_script, lease_countdown],
+                 present="has_log_events_dhcp_client")
+
+
+def netmap_row(b: Builder):
+    """Zenarmor's netmap datapath reporting a full host TX ring (#536)."""
+    b.sentinel("has_log_events_netmap", metric="opnsense_log_events_netmap_ring_full_events_total")
+    netmap = b.ts(
+        "Netmap Host Ring Full Events (rate)",
+        [(f'sum {grp("device")} (rate({sel("opnsense_log_events_netmap_ring_full_events_total")}[{RATE}]))',
+          "{{device}}")],
+        unit="ops",
+        desc="opnsense_log_events_netmap_ring_full_events_total: intervals in which the kernel "
+             "reported the netmap host TX ring full on this device — Zenarmor's packet-capture "
+             "datapath dropping traffic. READ THE UNITS CAREFULLY: the kernel rate-limits this "
+             "log line to 2 per second, so this counts OCCURRENCES, not dropped packets, and it "
+             "saturates exactly when the problem is worst. Treat any sustained nonzero rate as "
+             "serious and never infer a packet volume from it. The matching interface "
+             "drop counter cannot help here either — the ixl driver overrides the kernel's "
+             "oqdrops counter, so netmap's increment is invisible on precisely the 10G "
+             "interfaces this tends to happen on.",
+    )
+    return b.row("Netmap Datapath (log-derived)", [netmap], present="has_log_events_netmap")
+
+
+def arp_moves_row(b: Builder):
+    """Kernel ARP address-move detection (#536) — belongs beside the ARP table."""
+    b.sentinel("has_log_events_arp_moves", metric="opnsense_log_events_arp_address_moves_total")
+    arp_moves = b.ts(
+        "ARP Address Moves (rate)",
+        [(f'sum {grp("interface")} (rate({sel("opnsense_log_events_arp_address_moves_total")}[{RATE}]))',
+          "{{interface}}")],
+        unit="ops",
+        desc="opnsense_log_events_arp_address_moves_total: the kernel observing an IP move "
+             "between MAC addresses — its own duplicate-IP, MAC-flap and ARP-spoof detector. "
+             "The ARP table above CANNOT show this: polling only ever sees whichever MAC won "
+             "the race, so a host flapping faster than the poll interval looks perfectly stable "
+             "there. Labelled by interface only; the IP and both MACs stay on the log line, "
+             "where they belong.",
+    )
+    return b.row("ARP Address Moves (log-derived)", [arp_moves], present="has_log_events_arp_moves")
+
+
 def ids_row(b: Builder):
     b.sentinel("has_log_events_ids", metric="opnsense_log_events_ids_total")
     ids = b.ts(

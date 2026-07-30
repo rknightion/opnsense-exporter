@@ -609,6 +609,26 @@ func WithoutNetworkDiagnosticsCollector() Option {
 	return withoutCollectorInstance(NetworkDiagSubsystem)
 }
 
+// WithoutNetisrPerCPU turns OFF the per-workstream netisr series, leaving the
+// per-protocol aggregates, the derived summaries and netisr_protocol_info in
+// place. Default-ON and opt-OUT, deliberately: the per-CPU dimension is the whole
+// diagnosis for a netisr drop. Collapsed to protocol alone, a firewall dropping
+// every packet on one saturated workstream while eleven others sit idle looks
+// identical to one that is uniformly overloaded, and the two have opposite
+// remedies (CPU affinity vs queue size). Shipping that off by default would mean
+// the operator who most needs the data is the one least likely to have it.
+func WithoutNetisrPerCPU() Option {
+	return func(o *Collector) error {
+		for _, c := range o.collectors {
+			if nd, ok := c.(*networkDiagCollector); ok {
+				nd.SetNetisrPerCPUEnabled(false)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
 // WithoutNetflowCollector Option
 // removes the netflow collector from the list of collectors
 func WithoutNetflowCollector() Option {

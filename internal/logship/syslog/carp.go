@@ -86,13 +86,16 @@ var carpStates = map[string]string{
 	"INIT":   carpStateInit,
 }
 
-func init() {
-	// WithBodyEnrichment: this parser extracts no address of its own — it emits a
-	// vhid, an OS device name and a free-text cause — so the generic body scan must
-	// keep running. Kernel lines have carried peer.*/interface.* since #250 and must
-	// not lose them the moment a CARP line starts parsing structurally.
-	RegisterParserWithBodyEnrichment(parseCARP, "kernel")
-}
+// THERE IS NO init() HERE, and its absence is deliberate (#536). `kernel` is a
+// single fixed app-name and RegisterParser panics on a duplicate program, so the
+// three kernel grammars — CARP, netmap and ARP — cannot each register themselves.
+// kernel.go owns the one registration (still WithBodyEnrichment, for the reason
+// below) and calls parseCARP first. Re-adding a registration here panics at startup.
+//
+// The body-enrichment opt-in this parser needs: it extracts no address of its own —
+// a vhid, an OS device name and a free-text cause — so the generic body scan must
+// keep running. Kernel lines have carried peer.*/interface.* since #250 and must not
+// lose them the moment a CARP line starts parsing structurally.
 
 func parseCARP(env Envelope, _ *enrich.Snapshot, _ func(table string)) (logship.Record, bool) {
 	if m := reCARPStateChange.FindStringSubmatch(env.Message); m != nil {

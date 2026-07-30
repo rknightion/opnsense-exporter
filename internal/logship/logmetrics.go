@@ -86,6 +86,78 @@ type MetricSink interface {
 	// are likewise never passed: they are unbounded integers. All three stay as
 	// structured attributes on the shipped log record, where they are still queryable.
 	ObserveCARP(event, from, to, iface, vhid string) bool
+	// ObserveNetmapRingFull counts ONE kernel report that a netmap host TX ring was
+	// full (#536). device is the OS device the ring belongs to (ixl0) and is the only
+	// label; it is configuration-scale and bounded by the implementation's per-family
+	// key budget.
+	//
+	// THIS IS AN OCCURRENCE COUNT, NOT A PACKET COUNT, and an implementation's help
+	// text must say so. netmap_transmit() logs through nm_prlim(2, ...), which
+	// rate-limits the kernel to 2 lines per second, so this counter FLAT-TOPS at 2/s
+	// and under-reports hardest exactly when the condition is worst. Naming anything
+	// derived from it `drops` is forbidden: it would produce a number that looks like
+	// packets and is not.
+	//
+	// hwcur, hwtail and qlen are NEVER passed here and must never be added. They are
+	// ring indices that change on every occurrence, so a label built from any of them
+	// mints a series per log line; they stay on the shipped record, where they are
+	// still the diagnostic (hwcur == hwtail is a completely full ring).
+	ObserveNetmapRingFull(device string) bool
+	// ObserveARPMove counts ONE kernel report that an IP address moved from one MAC to
+	// another (#536) — the kernel's own duplicate-address / MAC-flap / ARP-spoof
+	// detector. iface is the OS device and is the ONLY label.
+	//
+	// The contested IP and BOTH MAC addresses are NEVER passed here and must never be
+	// added: they name whichever hosts are fighting over the address, so the value set
+	// is unbounded and PII-shaped. They stay on the shipped log record.
+	//
+	// Polling the ARP table cannot replace this. A flap that resolves inside one poll
+	// interval leaves a single MAC in the table, so the scrape sees a healthy entry;
+	// only the kernel's own event names the transition.
+	ObserveARPMove(iface string) bool
+	// ObserveDHCPClient counts ONE DHCP message the firewall's own WAN client sent or
+	// received (#541). msgType is a CLOSED code-defined vocabulary resolved from
+	// dhclient's wire verb through a map (discover, request, ack, nak, offer, decline,
+	// release, inform); an unrecognised verb never reaches a label.
+	//
+	// iface is EMPTY on a received message that named none. dhclient's `DHCPACK from
+	// <ip>` carries no interface, and it is resolved by correlating the daemon's PID
+	// with the interface its preceding `DHCPREQUEST on <iface>` named; when the
+	// exporter started mid-lease and never saw that line, empty is the honest answer
+	// rather than a guess.
+	//
+	// The DHCP SERVER's address is NEVER passed here and must never be added: it
+	// changes when the ISP re-homes the circuit, which is one of the conditions this
+	// counter is watching for. It stays on the shipped record.
+	//
+	// This is a separate family from ObserveDHCP, which counts the DHCP SERVERS this
+	// firewall runs. Folding the two together would make a WAN renewal storm
+	// indistinguishable from LAN lease churn.
+	ObserveDHCPClient(iface, msgType string) bool
+	// ObserveDHCPClientScript counts ONE dhclient-script invocation (#541). reason is
+	// dhclient-script(8)'s OWN closed vocabulary, lowercased (bound, renew, rebind,
+	// reboot, expire, fail, timeout, stop, release, preinit, arpcheck, arpsend, medium,
+	// nbi) — resolved through a code-defined map, so a wire token can never become a
+	// label. iface is the interface the script was invoked for.
+	ObserveDHCPClientScript(iface, reason string) bool
+	// ObserveDHCPClientLease records the firewall's OWN WAN lease state (#541). Unlike
+	// every other method here this feeds GAUGES, not counters: bound and renewal are
+	// absolute Unix seconds — the time of the last successful bind, and the time the
+	// next renewal is due — already computed by the parser from the log line's own
+	// timestamp plus dhclient's `renewal in N seconds`.
+	//
+	// TIMESTAMPS RATHER THAN A COUNTDOWN, deliberately. A countdown gauge has to be
+	// recomputed against wall-clock at scrape time, and a stale countdown is
+	// indistinguishable from a fresh one — which is the exact failure the metric exists
+	// to catch. An absolute deadline survives a scrape gap unchanged and makes "the
+	// countdown stopped" directly expressible as `renewal_timestamp - time() < 0`.
+	//
+	// The two are set TOGETHER or not at all: they come from one `bound to` line, and a
+	// bind time with no renewal deadline leaves that query with nothing to compare
+	// against. The leased address and the DHCP server's address are NEVER passed here —
+	// the leased address is this firewall's own public IP and both change under exactly
+	// the conditions this metric is watching for. They stay on the shipped record.
+	ObserveDHCPClientLease(iface string, bound, renewal float64) bool
 	// ObserveUPnP counts one miniupnpd mapping event (#409). All three values are
 	// CLOSED code-defined vocabularies resolved by the parser and deriver: event =
 	// expired|cleanup_failed|unauthorized|lease_file_error; result = ok (expired only)
@@ -158,16 +230,23 @@ type ZenarmorObservation struct {
 // log_events collector is turned off). Every method is a no-op.
 type NopMetricSink struct{}
 
-func (NopMetricSink) ObserveFirewall(_, _, _, _, _ string) bool  { return true }
-func (NopMetricSink) ObserveHAProxy(_, _, _, _, _ string) bool   { return true }
-func (NopMetricSink) ObserveSSHD(_, _, _ string) bool            { return true }
-func (NopMetricSink) ObserveDHCP(_, _, _ string) bool            { return true }
-func (NopMetricSink) ObserveAudit(_, _ string) bool              { return true }
-func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool          { return true }
-func (NopMetricSink) ObserveGateway(_, _ string) bool            { return true }
-func (NopMetricSink) ObserveRADIUS(_, _, _ string) bool          { return true }
-func (NopMetricSink) ObserveVPN(_, _, _, _ string) bool          { return true }
-func (NopMetricSink) ObserveCARP(_, _, _, _, _ string) bool      { return true }
+func (NopMetricSink) ObserveFirewall(_, _, _, _, _ string) bool { return true }
+func (NopMetricSink) ObserveHAProxy(_, _, _, _, _ string) bool  { return true }
+func (NopMetricSink) ObserveSSHD(_, _, _ string) bool           { return true }
+func (NopMetricSink) ObserveDHCP(_, _, _ string) bool           { return true }
+func (NopMetricSink) ObserveAudit(_, _ string) bool             { return true }
+func (NopMetricSink) ObserveIDS(_, _, _, _ string) bool         { return true }
+func (NopMetricSink) ObserveGateway(_, _ string) bool           { return true }
+func (NopMetricSink) ObserveRADIUS(_, _, _ string) bool         { return true }
+func (NopMetricSink) ObserveVPN(_, _, _, _ string) bool         { return true }
+func (NopMetricSink) ObserveCARP(_, _, _, _, _ string) bool     { return true }
+func (NopMetricSink) ObserveNetmapRingFull(_ string) bool       { return true }
+func (NopMetricSink) ObserveARPMove(_ string) bool              { return true }
+func (NopMetricSink) ObserveDHCPClient(_, _ string) bool        { return true }
+func (NopMetricSink) ObserveDHCPClientScript(_, _ string) bool  { return true }
+
+func (NopMetricSink) ObserveDHCPClientLease(_ string, _, _ float64) bool { return true }
+
 func (NopMetricSink) ObserveUPnP(_, _, _ string) bool            { return true }
 func (NopMetricSink) ObserveZenarmor(_ ZenarmorObservation) bool { return true }
 func (NopMetricSink) ObserveZenarmorDevice(_, _, _ string) bool  { return true }

@@ -257,3 +257,68 @@ func TestFetchFirewallStats_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+// TestFetchPFStatsByInterface_SkippedFlag covers #542: pfctl appends a literal
+// " (skip)" suffix to any device with pf "skip on interface" enabled. The suffix
+// is stripped out of the interface name (so toggling the pf option does not rename
+// the series, #105) but the skip state itself is real information — pf is not
+// filtering that interface at all — so it must be carried on the parsed row rather
+// than thrown away.
+//
+// The fixture is the real prod key set and shape captured from
+// api/diagnostics/firewall/pf_statistics/interfaces on 10.0.0.254 (OPNsense 26.1):
+// two skipped devices, one ordinary populated device, one all-zero device, and the
+// "all" aggregate row.
+func TestFetchPFStatsByInterface_SkippedFlag(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"interfaces": {
+				"pppoe0":       {"references": 486, "in4_pass_packets": 10},
+				"igb0":         {"references": 0},
+				"lo0 (skip)":   {"references": 28},
+				"pfsync0 (skip)": {"references": 0},
+				"all":          {"references": 42}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchPFStatsByInterface()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	byName := make(map[string]FirewallPFStat, len(data.Interfaces))
+	for _, iface := range data.Interfaces {
+		byName[iface.InterfaceName] = iface
+	}
+
+	if _, ok := byName["all"]; ok {
+		t.Error(`the "all" aggregate row must never be returned as an interface: it is a sum of the others, so emitting it would double every total in any panel that aggregates the family`)
+	}
+
+	tests := []struct {
+		name           string
+		wantReferences int
+		wantSkipped    bool
+	}{
+		{name: "pppoe0", wantReferences: 486, wantSkipped: false},
+		{name: "igb0", wantReferences: 0, wantSkipped: false},
+		{name: "lo0", wantReferences: 28, wantSkipped: true},
+		{name: "pfsync0", wantReferences: 0, wantSkipped: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := byName[tt.name]
+			if !ok {
+				t.Fatalf("expected an interface named %q, got %v", tt.name, byName)
+			}
+			if got.References != tt.wantReferences {
+				t.Errorf("References = %d, want %d", got.References, tt.wantReferences)
+			}
+			if got.Skipped != tt.wantSkipped {
+				t.Errorf("Skipped = %v, want %v", got.Skipped, tt.wantSkipped)
+			}
+		})
+	}
+}

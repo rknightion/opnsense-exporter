@@ -6,6 +6,15 @@ type FirewallPFStat struct {
 	InterfaceName string `json:"interface,omitempty"` // We will populate this field with the key of the map
 	References    int    `json:"references"`
 
+	// Skipped is derived from the map key, not a wire field: pfctl appends a
+	// literal " (skip)" suffix to any device with pf "skip on interface" enabled.
+	// The suffix is stripped out of InterfaceName so toggling the pf option does
+	// not rename the series (#105), but the state itself is real information —
+	// pf is not filtering that interface at all — so it is carried here rather
+	// than discarded (#542). No json tag: the API never sends this key, and
+	// tagging it would add a phantom path to the reflected golden schema.
+	Skipped bool `json:"-"`
+
 	// int64 so large byte/packet counters (>2^31) unmarshal correctly on 32-bit
 	// source builds instead of failing the whole fetch (#103).
 	In4PassPackets   int64 `json:"in4_pass_packets"`
@@ -71,6 +80,7 @@ func (c *Client) FetchPFStatsByInterface() (FirewallPFStats, *APICallError) {
 			continue
 		}
 		v.InterfaceName = name
+		v.Skipped = name != k
 		data.Interfaces = append(data.Interfaces, v)
 	}
 	return data, nil

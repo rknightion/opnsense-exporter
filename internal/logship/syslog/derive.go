@@ -118,6 +118,94 @@ const (
 	upnpProtocolUDP = "udp"
 )
 
+// The `kernel` family's netmap and ARP attribute keys and their CLOSED,
+// code-defined event vocabularies (#536). kernel.go writes them; observeDerived
+// below reads them. Same reason they live here as the blocks above: a parser and
+// its deriver spelling one key two different ways fails silently into an empty
+// label.
+//
+// THE NETMAP RING COUNTERS ARE ATTRIBUTES AND NEVER LABELS. hwcur, hwtail and qlen
+// are ring indices that change on every occurrence, so a label built from any of
+// them would mint a series per log line. They are genuinely useful diagnostics —
+// hwcur == hwtail is a completely full ring, and qlen tells you how deep the host
+// ring was — so they ship on the record.
+//
+// THE ARP LINE'S IP AND BOTH MAC ADDRESSES ARE ATTRIBUTES AND NEVER LABELS either.
+// A duplicate-address event names whichever host is fighting over the address, so
+// the value set is unbounded and PII-shaped. Only the interface is a label.
+const (
+	attrNetmapEvent  = "netmap.event"
+	attrNetmapDevice = "netmap.device"
+	attrNetmapHWCur  = "netmap.hwcur"
+	attrNetmapHWTail = "netmap.hwtail"
+	attrNetmapQLen   = "netmap.qlen"
+
+	// netmapEventRingFull is the ONLY netmap event modelled. It is deliberately named
+	// for the REPORT, not for a packet: the kernel rate-limits this line (see
+	// kernel.go), so it can never be read as a drop count.
+	netmapEventRingFull = "ring_full"
+
+	attrARPEvent       = "arp.event"
+	attrARPInterface   = "arp.interface"
+	attrARPAddress     = "arp.address"
+	attrARPMACPrevious = "arp.mac.previous"
+	attrARPMACCurrent  = "arp.mac.current"
+
+	arpEventAddressMoved = "address_moved"
+)
+
+// The `dhcp_client` family's attribute keys and its two CLOSED, code-defined
+// vocabularies (#541). dhclient.go writes them; observeDerived below reads them.
+//
+// THE SERVER AND LEASED ADDRESSES ARE ATTRIBUTES AND NEVER LABELS. A WAN DHCP
+// server address changes when the ISP re-homes the circuit and the leased address
+// changes on every re-bind, so both would churn a metric's series set. They stay on
+// the record, where they are still queryable — and where the leased address, which
+// is the box's own public IP, is not being copied into a metric that outlives it.
+//
+// The two lease TIMESTAMP attributes are absolute Unix seconds computed by the
+// parser from the line's own syslog timestamp, not the raw "renewal in N seconds"
+// countdown. See dhclient.go for why the gauges are timestamps.
+const (
+	attrDHCPClientType             = "dhcp_client.type"
+	attrDHCPClientInterface        = "dhcp_client.interface"
+	attrDHCPClientServer           = "dhcp_client.server"
+	attrDHCPClientAddress          = "dhcp_client.address"
+	attrDHCPClientRenewalSeconds   = "dhcp_client.lease.renewal_seconds"
+	attrDHCPClientBoundTimestamp   = "dhcp_client.lease.bound_timestamp"
+	attrDHCPClientRenewalTimestamp = "dhcp_client.lease.renewal_timestamp"
+	attrDHCPClientScriptReason     = "dhcp_client.script.reason"
+
+	// The DHCP message-type vocabulary, lowercased. Closed by construction:
+	// dhclient.go resolves a wire token through a map, so an unrecognised verb can
+	// never reach a label even if a regex is loosened.
+	dhcpClientTypeDiscover = "discover"
+	dhcpClientTypeRequest  = "request"
+	dhcpClientTypeAck      = "ack"
+	dhcpClientTypeNak      = "nak"
+	dhcpClientTypeOffer    = "offer"
+	dhcpClientTypeDecline  = "decline"
+	dhcpClientTypeRelease  = "release"
+	dhcpClientTypeInform   = "inform"
+
+	// dhclient-script's REASON vocabulary, lowercased. It is dhclient's own closed
+	// set (dhclient-script(8)), not a taxonomy invented here.
+	dhcpClientReasonMedium   = "medium"
+	dhcpClientReasonPreinit  = "preinit"
+	dhcpClientReasonArpcheck = "arpcheck"
+	dhcpClientReasonArpsend  = "arpsend"
+	dhcpClientReasonBound    = "bound"
+	dhcpClientReasonRenew    = "renew"
+	dhcpClientReasonRebind   = "rebind"
+	dhcpClientReasonReboot   = "reboot"
+	dhcpClientReasonExpire   = "expire"
+	dhcpClientReasonFail     = "fail"
+	dhcpClientReasonTimeout  = "timeout"
+	dhcpClientReasonStop     = "stop"
+	dhcpClientReasonRelease  = "release"
+	dhcpClientReasonNBI      = "nbi"
+)
+
 // family is the derived metric family a syslog program belongs to (#258).
 // familyUnknown is the zero value: a program not in programFamily below.
 type family int
@@ -133,8 +221,25 @@ const (
 	familyGateway
 	familyRADIUS
 	familyVPN
-	familyCARP
+	// familyKernel is the FreeBSD kernel's family. It covers THREE observations that
+	// share one program name — CARP transitions (#405), netmap host-ring-full reports
+	// and ARP address moves (#536) — because `kernel` is a single app-name and a
+	// program maps to exactly one family. Which observation fires is decided by which
+	// parser's event attribute is present on the record, not by the program.
+	//
+	// It was `familyCARP` until #536. The rename is not cosmetic: a family named for
+	// one of three co-tenants invites the next lane to assume every kernel line is a
+	// CARP line, which is the exact mistake the catch-all program name makes easy.
+	familyKernel
 	familyUPnP
+	// familyDHCPClient is the WAN-side DHCP CLIENT (#541), and it is deliberately
+	// separate from familyDHCP, which is the DHCP SERVER families (kea, dnsmasq,
+	// dhcpd, dhcrelay). They answer opposite questions — "is this firewall handing out
+	// leases" versus "does this firewall still have its own WAN address" — and folding
+	// the client into the server counter would make the WAN's renewal storm
+	// indistinguishable from LAN lease churn, which is precisely the incident #541 was
+	// filed for.
+	familyDHCPClient
 )
 
 // programFamily maps every program name a parser in this package registers
@@ -175,16 +280,25 @@ var programFamily = map[string]family{
 
 	"charon": familyVPN,
 
-	// `kernel` is the FreeBSD CARP source (#405), and it is the ONE entry in this map
-	// whose program is a catch-all: every kernel line on the box lands on
-	// familyCARP, not just the CARP ones. That is safe only because carp.go returns
-	// ok=false for everything that is not one of the two captured CARP shapes, so an
-	// unrelated kernel line arrives here as a GENERIC record with no carp.event, and
-	// the familyCARP case below refuses to count it. If that parser is ever loosened,
-	// this entry becomes a way to count link-state changes as CARP transitions.
-	"kernel": familyCARP,
+	// `kernel` is the FreeBSD CARP (#405), netmap and ARP (#536) source, and it is the
+	// ONE entry in this map whose program is a catch-all: every kernel line on the box
+	// lands on familyKernel, not just the ones we model. That is safe only because the
+	// kernel parsers return ok=false for everything outside a captured shape, so an
+	// unrelated kernel line arrives here as a GENERIC record with no carp.event, no
+	// netmap.event and no arp.event, and the familyKernel case below refuses to count
+	// it. If those parsers are ever loosened, this entry becomes a way to count
+	// link-state changes as CARP transitions.
+	//
+	// Facility-14 CONSOLE output is mis-attributed to `kernel` on OPNsense — rc-script
+	// output, interface summaries, SSH host-key fingerprints, Zenarmor's embedded
+	// Elasticsearch startup — so the catch-all is wider than "things the kernel said".
+	"kernel": familyKernel,
 
 	"miniupnpd": familyUPnP,
+
+	// `dhclient` is the WAN DHCP CLIENT (#541). It is NOT familyDHCP: see the
+	// familyDHCPClient comment above.
+	"dhclient": familyDHCPClient,
 }
 
 // programPrefixFamily is programFamily for PREFIX registrations
@@ -359,32 +473,11 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 		connection := firstNonEmpty(attrs["ipsec.connection"], attrs["openvpn.instance"])
 		return sink.ObserveVPN(backend, event, result, connection)
 
-	case familyCARP:
-		// carp.event is the ONLY gate, and it carries the whole weight of the `kernel`
-		// program being a catch-all: every kernel line on the box reaches this case, and
-		// the ones carp.go declined to parse have no carp.event, so they are not counted.
-		// Its presence is therefore the proof that a captured CARP shape matched.
-		event := attrs[attrCARPEvent]
-		if event == "" {
-			return false
-		}
-		// from/to/interface/vhid are LEGITIMATELY EMPTY on a demotion record —
-		// FreeBSD's carp_demote_adj is global to the node and names neither an
-		// interface nor a vhid — so unlike the vpn case above, they must NOT gate the
-		// observation. Requiring them would silently drop half the captured evidence.
-		//
-		// attrCARPReason, attrCARPDemotionDelta and attrCARPDemotionTotal are
-		// deliberately NOT passed. The cause is open-ended free text from the kernel
-		// across FreeBSD versions, and the delta/total are unbounded integers; all
-		// three stay on the shipped record. Bucketing the cause into a reason_class
-		// would invent a taxonomy no capture supports.
-		return sink.ObserveCARP(
-			event,
-			attrs[attrCARPStatePrevious],
-			attrs[attrCARPStateCurrent],
-			attrs[attrCARPInterface],
-			attrs[attrCARPVHID],
-		)
+	case familyKernel:
+		return observeKernel(sink, attrs)
+
+	case familyDHCPClient:
+		return observeDHCPClient(sink, attrs)
 
 	case familyUPnP:
 		// event and result are both required: they are the two closed dimensions the
@@ -408,6 +501,110 @@ func observeDerived(sink logship.MetricSink, program string, attrs map[string]st
 	}
 
 	return false
+}
+
+// observeKernel routes ONE kernel record to whichever of the three co-tenant
+// observations its event attribute names (#536).
+//
+// The dispatch is on the ATTRIBUTE, never on the message text, and every branch is
+// gated on an event key the parser only ever sets after a captured shape matched.
+// That gate carries the whole weight of `kernel` being a catch-all app-name: every
+// kernel line on the box — plus the facility-14 console output OPNsense
+// mis-attributes to `kernel` — reaches this function, and the ones no parser
+// claimed carry none of these keys, so they fall through uncounted and keep
+// shipping as the generic records they always were.
+func observeKernel(sink logship.MetricSink, attrs map[string]string) bool {
+	if event := attrs[attrNetmapEvent]; event != "" {
+		// The DEVICE is the only label. hwcur/hwtail/qlen are ring indices that change
+		// on every occurrence and stay on the record.
+		return sink.ObserveNetmapRingFull(attrs[attrNetmapDevice])
+	}
+	if event := attrs[attrARPEvent]; event != "" {
+		// The INTERFACE is the only label. The contested IP and both MAC addresses are
+		// unbounded and PII-shaped, and stay on the record.
+		return sink.ObserveARPMove(attrs[attrARPInterface])
+	}
+	{
+		// carp.event is the gate for the CARP co-tenant, exactly as it was before #536
+		// split this out of the inline case: its presence is the proof that a captured
+		// CARP shape matched.
+		event := attrs[attrCARPEvent]
+		if event == "" {
+			return false
+		}
+		// from/to/interface/vhid are LEGITIMATELY EMPTY on a demotion record —
+		// FreeBSD's carp_demote_adj is global to the node and names neither an
+		// interface nor a vhid — so unlike the vpn case above, they must NOT gate the
+		// observation. Requiring them would silently drop half the captured evidence.
+		//
+		// attrCARPReason, attrCARPDemotionDelta and attrCARPDemotionTotal are
+		// deliberately NOT passed. The cause is open-ended free text from the kernel
+		// across FreeBSD versions, and the delta/total are unbounded integers; all
+		// three stay on the shipped record. Bucketing the cause into a reason_class
+		// would invent a taxonomy no capture supports.
+		return sink.ObserveCARP(
+			event,
+			attrs[attrCARPStatePrevious],
+			attrs[attrCARPStateCurrent],
+			attrs[attrCARPInterface],
+			attrs[attrCARPVHID],
+		)
+	}
+}
+
+// observeDHCPClient counts ONE dhclient record (#541). Unlike every other family
+// here it can fire MORE THAN ONE observation for a single record, because a
+// dhclient line legitimately carries more than one thing worth recording: the
+// `bound to` line is both a successful bind (two gauges) and the start of a new
+// renewal window.
+//
+// Each branch is gated on an attribute dhclient.go only sets after a captured shape
+// matched, so the daemon's other chatter — `New Hostname (ixl1): opnsense`,
+// `Creating resolv.conf` — reaches this function with none of them and is not
+// counted.
+func observeDHCPClient(sink logship.MetricSink, attrs map[string]string) bool {
+	counted := false
+
+	// The message-type counter. `type` is dhclient.go's closed vocabulary, resolved
+	// through a map from the wire verb, so an unrecognised verb never reaches a label.
+	// interface is EMPTY when the line named none and no PID correlation was available
+	// — see dhclient.go. An empty interface is the honest answer, not a missing one.
+	if t := attrs[attrDHCPClientType]; t != "" {
+		counted = sink.ObserveDHCPClient(attrs[attrDHCPClientInterface], t) || counted
+	}
+
+	// The lease gauges. Both are absolute Unix seconds already computed by the parser,
+	// so nothing here does wall-clock arithmetic. They are set TOGETHER or not at all:
+	// they come from one `bound to` line, and a bound time without its renewal deadline
+	// would leave the "renewal stopped" query with nothing to compare against.
+	bound, boundOK := parseUnixSeconds(attrs[attrDHCPClientBoundTimestamp])
+	renewal, renewalOK := parseUnixSeconds(attrs[attrDHCPClientRenewalTimestamp])
+	if boundOK && renewalOK {
+		counted = sink.ObserveDHCPClientLease(attrs[attrDHCPClientInterface], bound, renewal) || counted
+	}
+
+	// dhclient-script's Reason lines. reason is dhclient's own closed vocabulary from
+	// dhclient-script(8), lowercased.
+	if reason := attrs[attrDHCPClientScriptReason]; reason != "" {
+		counted = sink.ObserveDHCPClientScript(attrs[attrDHCPClientInterface], reason) || counted
+	}
+
+	return counted
+}
+
+// parseUnixSeconds reads one of the parser's absolute lease timestamps back out of
+// the record's string attributes. ok is false for an absent or unparseable value,
+// which is what stops a malformed attribute setting a gauge to zero — a zero
+// timestamp reads as 1970 and would make every "renewal is overdue" query fire.
+func parseUnixSeconds(s string) (float64, bool) {
+	if s == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return float64(n), true
 }
 
 // firstNonEmpty returns a, falling back to b when a is empty.

@@ -77,6 +77,31 @@ type (
 	// any kind: an event stream cannot reconstruct authoritative active-mapping state,
 	// and expired is a decrement with no matching increment.
 	upnpKey struct{ event, result, protocol string }
+	// netmapKey carries the OS device alone (#536). hwcur, hwtail and qlen are
+	// deliberately absent and must stay absent: they are ring indices that change on
+	// every occurrence, so any of them as a label mints a series per log line. They
+	// remain structured fields on the shipped record, where they are still the
+	// diagnostic.
+	netmapKey struct{ device string }
+	// arpKey carries the OS interface alone (#536). THE CONTESTED IP AND BOTH MAC
+	// ADDRESSES ARE DELIBERATELY ABSENT AND MUST STAY ABSENT: a duplicate-address event
+	// names whichever hosts are fighting over the address, so the value set is
+	// unbounded and PII-shaped. They remain on the shipped log record.
+	arpKey struct{ iface string }
+	// dhcpClientKey is the WAN DHCP CLIENT tuple (#541), distinct from dhcpKey, which
+	// is the DHCP SERVERS this firewall runs. msgType is a closed code-defined
+	// vocabulary; iface is deployment-scale and EMPTY on a received message whose PID
+	// could not be correlated to an interface. The DHCP server's address is
+	// deliberately absent — it changes when the ISP re-homes the circuit, which is one
+	// of the conditions this counter watches for.
+	dhcpClientKey struct{ iface, msgType string }
+	// dhcpClientScriptKey pairs the interface with dhclient-script(8)'s OWN closed
+	// reason vocabulary, lowercased. Neither dimension is free text.
+	dhcpClientScriptKey struct{ iface, reason string }
+	// dhcpClientLeaseKey is the WAN lease GAUGE family's key — the interface alone.
+	// Its value is a pair of absolute Unix timestamps, not a running total, which is
+	// why it lives in a cappedGauge rather than a cappedCounter.
+	dhcpClientLeaseKey struct{ iface string }
 	// zenKey is Zenarmor's tuple, and Zenarmor is the highest-cardinality data this
 	// exporter touches: app_name, IPs, ports, ja3, session_id, community_id and
 	// conn_uuid are deliberately absent and must stay absent. Of what is left,
@@ -113,6 +138,12 @@ const (
 	logFamilyCARP     = "carp"
 	logFamilyUPnP     = "upnp"
 	logFamilyZenarmor = "zenarmor"
+
+	logFamilyNetmap           = "netmap"
+	logFamilyARP              = "arp"
+	logFamilyDHCPClient       = "dhcp_client"
+	logFamilyDHCPClientScript = "dhcp_client_script"
+	logFamilyDHCPClientLease  = "dhcp_client_lease"
 	// logFamilyZenarmorDevice reports the device inventory's saturation through the
 	// same cardinality_capped/keys metrics as every counter family, so a truncated
 	// inventory is visible without a metric of its own.
@@ -156,6 +187,66 @@ const (
 	zenarmorDeviceTTL = 24 * time.Hour
 )
 
+// dhcpClientLeaseValue is the pair of absolute Unix timestamps one WAN interface's
+// lease is described by (#541): when it last bound, and when its renewal is due.
+//
+// A pair rather than two families because they are set by ONE `bound to` log line
+// and are only meaningful together — a bind time with no deadline leaves "the
+// renewal stopped" with nothing to compare against, and a deadline with no bind time
+// cannot be distinguished from one left over from a previous process.
+type dhcpClientLeaseValue struct{ bound, renewal float64 }
+
+// cappedGauge is a LAST-VALUE map with the same insert-time key budget as
+// cappedCounter, for families whose observation is current state rather than a
+// running total.
+//
+// It exists because LogEventStore was counter-shaped and the WAN lease timestamps do
+// not fit that shape: a lease deadline is not something you add up, and faking it as
+// a counter (or dropping it) would have been the two wrong answers. `set` OVERWRITES
+// rather than accumulating, and the snapshot is NOT drained — a gauge that vanished
+// between scrapes would read as "the interface went away", not "no new bind
+// happened", and nothing re-emits it.
+//
+// The budget is insert-time for the same reason cappedCounter's is: the receivers are
+// push-based and syslog over UDP has a spoofable source, so a sender must not be able
+// to grow this map for the life of the process. A refused NOVEL key folds into a
+// counted overflow, reported through the same
+// opnsense_log_events_cardinality_capped_total{family} as every counter family — so
+// saturation here is visible on exactly the same alert. Keys already present keep
+// being updated, so a steady-state working set is never affected.
+//
+// Not safe for concurrent use on its own: every caller is on LogEventStore's single
+// map-owning goroutine.
+type cappedGauge[K comparable, V any] struct {
+	m        map[K]V
+	max      int
+	overflow float64
+}
+
+func newCappedGauge[K comparable, V any](max int) *cappedGauge[K, V] {
+	return &cappedGauge[K, V]{m: map[K]V{}, max: max}
+}
+
+// set records the latest value for k, folding into the overflow total when k is
+// novel and the budget is already met. max <= 0 disables the budget.
+func (g *cappedGauge[K, V]) set(k K, v V) {
+	if _, ok := g.m[k]; !ok && g.max > 0 && len(g.m) >= g.max {
+		g.overflow++
+		return
+	}
+	g.m[k] = v
+}
+
+// snapshot returns the live keys and the folded overflow total. Same contract as
+// cappedCounter.snapshot: the map is the live one and the caller copies out of it on
+// the owning goroutine.
+func (g *cappedGauge[K, V]) snapshot() (map[K]V, float64) { return g.m, g.overflow }
+
+// setMax retunes the budget in place. Lowering it below the current size does not
+// evict, mirroring cappedCounter.setMax — and here eviction would be worse than a
+// counter reset, because a dropped gauge series simply disappears from the dashboard.
+func (g *cappedGauge[K, V]) setMax(max int) { g.max = max }
+
 type logEventCommandKind uint8
 
 const (
@@ -170,6 +261,11 @@ const (
 	logEventObserveVPN
 	logEventObserveCARP
 	logEventObserveUPnP
+	logEventObserveNetmap
+	logEventObserveARP
+	logEventObserveDHCPClient
+	logEventObserveDHCPClientScript
+	logEventObserveDHCPClientLease
 	logEventObserveZenarmor
 	logEventObserveZenarmorDevice
 	logEventSetMaxKeys
@@ -179,8 +275,12 @@ const (
 )
 
 type logEventCommand struct {
-	kind     logEventCommandKind
-	values   [7]string
+	kind   logEventCommandKind
+	values [7]string
+	// nums carries the numeric payload of a GAUGE observation (#541). The existing
+	// families are all counters, whose entire payload is their label tuple, so this is
+	// zero for every one of them.
+	nums     [2]float64
 	maxKeys  int
 	clock    func() time.Time
 	snapshot chan<- logEventSnapshot
@@ -199,10 +299,16 @@ type logEventSnapshot struct {
 	vpn     []keyed[vpnKey]
 	carp    []keyed[carpKey]
 	upnp    []keyed[upnpKey]
-	zen     []keyed[zenKey]
-	zenDevs []inventoryEntry[string, zenDeviceAttrs]
-	sat     []familySaturation
-	dropped uint64
+	netmap  []keyed[netmapKey]
+	arp     []keyed[arpKey]
+	dhcpCli []keyed[dhcpClientKey]
+	dhcpScr []keyed[dhcpClientScriptKey]
+	// dhcpLease is the one GAUGE family: current state, so it is not drained.
+	dhcpLease []keyedValue[dhcpClientLeaseKey, dhcpClientLeaseValue]
+	zen       []keyed[zenKey]
+	zenDevs   []inventoryEntry[string, zenDeviceAttrs]
+	sat       []familySaturation
+	dropped   uint64
 }
 
 // LogEventStore hands receiver observations to one goroutine that owns every map.
@@ -244,6 +350,11 @@ type LogEventStore struct {
 	vpn              *cappedCounter[vpnKey]
 	carp             *cappedCounter[carpKey]
 	upnp             *cappedCounter[upnpKey]
+	netmap           *cappedCounter[netmapKey]
+	arp              *cappedCounter[arpKey]
+	dhcpCli          *cappedCounter[dhcpClientKey]
+	dhcpScr          *cappedCounter[dhcpClientScriptKey]
+	dhcpLease        *cappedGauge[dhcpClientLeaseKey, dhcpClientLeaseValue]
 	zen              *cappedCounter[zenKey]
 	zenDevs          *boundedInventory[string, zenDeviceAttrs]
 	// now is the inventory clock, a test seam. Production stores leave it nil and
@@ -272,6 +383,11 @@ func newLogEventStoreWithCapacity(capacity int, beforeSnapshot func()) *LogEvent
 		vpn:            newCappedCounter[vpnKey](defaultMaxLogEventKeys),
 		carp:           newCappedCounter[carpKey](defaultMaxLogEventKeys),
 		upnp:           newCappedCounter[upnpKey](defaultMaxLogEventKeys),
+		netmap:         newCappedCounter[netmapKey](defaultMaxLogEventKeys),
+		arp:            newCappedCounter[arpKey](defaultMaxLogEventKeys),
+		dhcpCli:        newCappedCounter[dhcpClientKey](defaultMaxLogEventKeys),
+		dhcpScr:        newCappedCounter[dhcpClientScriptKey](defaultMaxLogEventKeys),
+		dhcpLease:      newCappedGauge[dhcpClientLeaseKey, dhcpClientLeaseValue](defaultMaxLogEventKeys),
 		zen:            newCappedCounter[zenKey](defaultMaxLogEventKeys),
 		zenDevs:        newBoundedInventory[string, zenDeviceAttrs](maxZenarmorDevices, zenarmorDeviceTTL, compareZenDeviceName),
 	}
@@ -376,6 +492,37 @@ func (s *LogEventStore) ObserveUPnP(event, result, protocol string) bool {
 	return s.observe(logEventCommand{kind: logEventObserveUPnP, values: [7]string{event, result, protocol}})
 }
 
+// ObserveNetmapRingFull implements logship.MetricSink.
+func (s *LogEventStore) ObserveNetmapRingFull(device string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveNetmap, values: [7]string{device}})
+}
+
+// ObserveARPMove implements logship.MetricSink.
+func (s *LogEventStore) ObserveARPMove(iface string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveARP, values: [7]string{iface}})
+}
+
+// ObserveDHCPClient implements logship.MetricSink.
+func (s *LogEventStore) ObserveDHCPClient(iface, msgType string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveDHCPClient, values: [7]string{iface, msgType}})
+}
+
+// ObserveDHCPClientScript implements logship.MetricSink.
+func (s *LogEventStore) ObserveDHCPClientScript(iface, reason string) bool {
+	return s.observe(logEventCommand{kind: logEventObserveDHCPClientScript, values: [7]string{iface, reason}})
+}
+
+// ObserveDHCPClientLease implements logship.MetricSink. The only GAUGE observation:
+// bound and renewal are absolute Unix seconds and OVERWRITE the interface's previous
+// pair rather than accumulating.
+func (s *LogEventStore) ObserveDHCPClientLease(iface string, bound, renewal float64) bool {
+	return s.observe(logEventCommand{
+		kind:   logEventObserveDHCPClientLease,
+		values: [7]string{iface},
+		nums:   [2]float64{bound, renewal},
+	})
+}
+
 // ObserveZenarmor implements logship.MetricSink.
 func (s *LogEventStore) ObserveZenarmor(o logship.ZenarmorObservation) bool {
 	return s.observe(logEventCommand{kind: logEventObserveZenarmor, values: [7]string{o.Family, o.Action, o.Category, o.Interface, o.RCode, o.Severity, o.StatusClass}})
@@ -441,6 +588,16 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.carp.inc(carpKey{v[0], v[1], v[2], v[3], v[4]})
 	case logEventObserveUPnP:
 		s.upnp.inc(upnpKey{v[0], v[1], v[2]})
+	case logEventObserveNetmap:
+		s.netmap.inc(netmapKey{v[0]})
+	case logEventObserveARP:
+		s.arp.inc(arpKey{v[0]})
+	case logEventObserveDHCPClient:
+		s.dhcpCli.inc(dhcpClientKey{v[0], v[1]})
+	case logEventObserveDHCPClientScript:
+		s.dhcpScr.inc(dhcpClientScriptKey{v[0], v[1]})
+	case logEventObserveDHCPClientLease:
+		s.dhcpLease.set(dhcpClientLeaseKey{v[0]}, dhcpClientLeaseValue{bound: cmd.nums[0], renewal: cmd.nums[1]})
 	case logEventObserveZenarmor:
 		s.zen.inc(zenKey{v[0], v[1], v[2], v[3], v[4], v[5], v[6]})
 	case logEventObserveZenarmorDevice:
@@ -457,6 +614,11 @@ func (s *LogEventStore) apply(cmd logEventCommand) {
 		s.vpn.setMax(cmd.maxKeys)
 		s.carp.setMax(cmd.maxKeys)
 		s.upnp.setMax(cmd.maxKeys)
+		s.netmap.setMax(cmd.maxKeys)
+		s.arp.setMax(cmd.maxKeys)
+		s.dhcpCli.setMax(cmd.maxKeys)
+		s.dhcpScr.setMax(cmd.maxKeys)
+		s.dhcpLease.setMax(cmd.maxKeys)
 		s.zen.setMax(cmd.maxKeys)
 		close(cmd.ack)
 	case logEventTakeSnapshot:
@@ -496,6 +658,19 @@ func (s *LogEventStore) buildSnapshot() logEventSnapshot {
 	snap.carp, sat = drainFamily(logFamilyCARP, s.carp)
 	snap.sat = append(snap.sat, sat)
 	snap.upnp, sat = drainFamily(logFamilyUPnP, s.upnp)
+	snap.sat = append(snap.sat, sat)
+	snap.netmap, sat = drainFamily(logFamilyNetmap, s.netmap)
+	snap.sat = append(snap.sat, sat)
+	snap.arp, sat = drainFamily(logFamilyARP, s.arp)
+	snap.sat = append(snap.sat, sat)
+	snap.dhcpCli, sat = drainFamily(logFamilyDHCPClient, s.dhcpCli)
+	snap.sat = append(snap.sat, sat)
+	snap.dhcpScr, sat = drainFamily(logFamilyDHCPClientScript, s.dhcpScr)
+	snap.sat = append(snap.sat, sat)
+	// The lease GAUGES are copied, not drained: they are current state. A gauge that
+	// disappeared between scrapes would read as "the interface went away" rather than
+	// "no new bind happened", and only a `bound to` line ever re-sets it.
+	snap.dhcpLease, sat = copyGaugeFamily(logFamilyDHCPClientLease, s.dhcpLease)
 	snap.sat = append(snap.sat, sat)
 	snap.zen, sat = drainFamily(logFamilyZenarmor, s.zen)
 	snap.sat = append(snap.sat, sat)
@@ -579,6 +754,13 @@ type logEventsCollector struct {
 	upnp        *prometheus.Desc
 	zenarmor    *prometheus.Desc
 	zenarmorDev *prometheus.Desc
+
+	netmapRingFull *prometheus.Desc
+	arpMoves       *prometheus.Desc
+	dhcpClient     *prometheus.Desc
+	dhcpClientScr  *prometheus.Desc
+	dhcpLeaseBound *prometheus.Desc
+	dhcpLeaseRenew *prometheus.Desc
 
 	capped  *prometheus.Desc
 	keys    *prometheus.Desc
@@ -713,6 +895,91 @@ func (c *logEventsCollector) Register(namespace, instanceLabel string, log *slog
 		[]string{"device_name", "device_category", "interface"},
 	)
 
+	c.netmapRingFull = buildPrometheusDesc(c.subsystem, "netmap_ring_full_events_total",
+		"Intervals in which the FreeBSD kernel reported a netmap host transmit ring full on this "+
+			"device - Zenarmor's packet-capture datapath having nowhere to put a packet. "+
+			"THIS COUNTS OCCURRENCES, NOT DROPPED PACKETS, and the difference matters: "+
+			"netmap_transmit() logs through nm_prlim(2, ...), which rate-limits the kernel to 2 "+
+			"lines per second, so this counter FLAT-TOPS at 2/s and under-reports hardest exactly "+
+			"when the condition is worst. Read a rise as 'the ring is filling', never as a packet "+
+			"count, and read a flat 2/s as saturation rather than as a bounded problem. Absence of "+
+			"growth means no report, NOT no drops. There is no true drop counter available for "+
+			"this: the kernel bumps IFCOUNTER_OQDROPS, but the ixl driver overrides that counter in "+
+			"its own if_get_counter, so netmap's increment is invisible on the exact 10G interface "+
+			"that drops - live-corroborated, 14 kernel reports since boot against an API-reported "+
+			"dropped-packets of 0. The ring indices from the log line (hwcur, hwtail, qlen) are NOT "+
+			"labels - they change on every occurrence and would mint a series per line - and ship "+
+			"as netmap.hwcur / netmap.hwtail / netmap.qlen on the log record, where hwcur == hwtail "+
+			"is a completely full ring.",
+		[]string{"device"},
+	)
+	c.arpMoves = buildPrometheusDesc(c.subsystem, "arp_address_moves_total",
+		"Times the FreeBSD kernel reported an IP address moving from one MAC address to another on "+
+			"this interface - its own duplicate-address, MAC-flap and ARP-spoof detector. Polling "+
+			"the ARP table CANNOT replace this: a flap that resolves inside one poll interval "+
+			"leaves a single MAC in the table, so the scrape sees a perfectly healthy entry and the "+
+			"event is invisible. A steady rate usually means two hosts claiming one address, a "+
+			"gateway failing over, or a VM live-migrating; a burst on a user VLAN is worth "+
+			"investigating. The contested IP and BOTH MAC addresses are deliberately NOT labels - "+
+			"they name whichever hosts are fighting over the address, so the value set is unbounded "+
+			"and identifies individual machines - and ship as arp.address / arp.mac.previous / "+
+			"arp.mac.current on the log record, which is where to look to find out who.",
+		[]string{"interface"},
+	)
+	c.dhcpClient = buildPrometheusDesc(c.subsystem, "dhcp_client_total",
+		"DHCP messages this firewall's OWN WAN client sent or received, by interface and message "+
+			"type. This is the CLIENT holding the firewall's uplink address, not the DHCP servers it "+
+			"runs for the LAN - those are opnsense_log_events_dhcp_total, and folding the two "+
+			"together would make a WAN renewal storm indistinguishable from LAN lease churn. type is "+
+			"a closed vocabulary resolved in code: discover, request, ack, nak, offer, decline, "+
+			"release, inform. The signal to watch is the REQUEST rate: a healthy lease renews at "+
+			"T1, so a sustained rise is a retransmit storm and a leading indicator of losing the WAN "+
+			"address hours before the lease actually expires (production ran an 11-12 hour storm at "+
+			"~100x baseline on 2026-07-30 with no telemetry at all). Any nak deserves attention on "+
+			"its own. interface is EMPTY on a received message that named none - dhclient's 'DHCPACK "+
+			"from <ip>' carries no interface, and it is resolved by correlating the daemon PID with "+
+			"the interface its preceding DHCPREQUEST named; empty means the exporter never saw that "+
+			"line, not that the message had no interface. The DHCP server's address is NOT a label "+
+			"and ships as dhcp_client.server on the record.",
+		[]string{"interface", "type"},
+	)
+	c.dhcpClientScr = buildPrometheusDesc(c.subsystem, "dhcp_client_script_total",
+		"dhclient-script invocations on this firewall's WAN client, by interface and reason. reason "+
+			"is dhclient-script(8)'s OWN closed vocabulary, lowercased (bound, renew, rebind, "+
+			"reboot, expire, fail, timeout, stop, release, preinit, arpcheck, arpsend, medium, nbi); "+
+			"an unrecognised token is never turned into a label. This is the lease STATE MACHINE "+
+			"rather than the wire traffic: renew is the healthy steady state, while expire and fail "+
+			"mean the client has given up on the lease and the uplink address is gone or going. "+
+			"Only renew is observed on the production box - a working WAN never reaches the failure "+
+			"reasons - so the rest are modelled from dhclient-script's documented set, not from "+
+			"capture.",
+		[]string{"interface", "reason"},
+	)
+	c.dhcpLeaseBound = buildPrometheusDesc(c.subsystem, "dhcp_client_lease_bound_timestamp_seconds",
+		"Unix time at which this interface's WAN DHCP lease last successfully bound, from dhclient's "+
+			"'bound to <address> -- renewal in <n> seconds' line. Set only by an actual bind, so it "+
+			"stands still between renewals by design - time() minus this is how long the current "+
+			"lease has been held. Read it alongside "+
+			"opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds, which is set from the "+
+			"same line. The leased address itself is deliberately NOT a label (it is this "+
+			"firewall's own public IP and changes on re-bind) and ships as dhcp_client.address on "+
+			"the log record.",
+		[]string{"interface"},
+	)
+	c.dhcpLeaseRenew = buildPrometheusDesc(c.subsystem, "dhcp_client_lease_renewal_timestamp_seconds",
+		"Unix time at which this interface's WAN DHCP lease renewal is next due: the time of the "+
+			"last 'bound to' line plus the renewal interval that line carried. A DEADLINE, not a "+
+			"countdown, on purpose - a countdown gauge has to be recomputed against wall-clock at "+
+			"scrape time and a stale one is indistinguishable from a fresh one, which is the exact "+
+			"failure this metric exists to catch. Alert on it directly: "+
+			"'<metric> - time() < 0' means the renewal deadline passed without dhclient reporting a "+
+			"new bind, which is the WAN losing its address in slow motion. This is a deliberate "+
+			"deviation from #541's proposed dhcp_client_lease_expiry_seconds countdown. Note this is "+
+			"the RENEWAL (T1) deadline dhclient reports, not the absolute lease expiry - dhclient "+
+			"does not log the latter, so it is not invented here.",
+		[]string{"interface"},
+	)
+
 	c.capped = buildPrometheusDesc(c.subsystem, "cardinality_capped_total",
 		"Log events counted into a family's overflow total instead of their own series, because the "+
 			"label tuple was new and the family already held --logs.max-metric-keys distinct tuples. "+
@@ -750,6 +1017,12 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.upnp
 	ch <- c.zenarmor
 	ch <- c.zenarmorDev
+	ch <- c.netmapRingFull
+	ch <- c.arpMoves
+	ch <- c.dhcpClient
+	ch <- c.dhcpClientScr
+	ch <- c.dhcpLeaseBound
+	ch <- c.dhcpLeaseRenew
 	ch <- c.capped
 	ch <- c.keys
 	ch <- c.dropped
@@ -760,6 +1033,14 @@ func (c *logEventsCollector) Describe(ch chan<- *prometheus.Desc) {
 type keyed[K comparable] struct {
 	k K
 	v float64
+}
+
+// keyedValue is keyed for a GAUGE family: a label tuple and its last-observed value,
+// which is a struct rather than a float because one interface's lease is described
+// by a PAIR of timestamps set together.
+type keyedValue[K comparable, V any] struct {
+	k K
+	v V
 }
 
 // familySaturation is one family's cardinality state, emitted under the family label.
@@ -776,6 +1057,18 @@ func drainFamily[K comparable](family string, c *cappedCounter[K]) ([]keyed[K], 
 	out := make([]keyed[K], 0, len(m))
 	for k, v := range m {
 		out = append(out, keyed[K]{k, v})
+	}
+	return out, familySaturation{family: family, capped: overflow, keys: float64(len(m))}
+}
+
+// copyGaugeFamily is drainFamily for a cappedGauge. It reports its saturation through
+// the SAME familySaturation shape, so a capped gauge family shows up on the existing
+// opnsense_log_events_cardinality_capped_total alert with no special case.
+func copyGaugeFamily[K comparable, V any](family string, g *cappedGauge[K, V]) ([]keyedValue[K, V], familySaturation) {
+	m, overflow := g.snapshot()
+	out := make([]keyedValue[K, V], 0, len(m))
+	for k, v := range m {
+		out = append(out, keyedValue[K, V]{k, v})
 	}
 	return out, familySaturation{family: family, capped: overflow, keys: float64(len(m))}
 }
@@ -842,6 +1135,31 @@ func (c *logEventsCollector) Update(_ context.Context, _ *opnsense.Client, ch ch
 	for _, p := range snap.upnp {
 		ch <- prometheus.MustNewConstMetric(c.upnp, prometheus.CounterValue, p.v,
 			p.k.event, p.k.result, p.k.protocol, c.instance)
+	}
+	for _, p := range snap.netmap {
+		ch <- prometheus.MustNewConstMetric(c.netmapRingFull, prometheus.CounterValue, p.v,
+			p.k.device, c.instance)
+	}
+	for _, p := range snap.arp {
+		ch <- prometheus.MustNewConstMetric(c.arpMoves, prometheus.CounterValue, p.v,
+			p.k.iface, c.instance)
+	}
+	for _, p := range snap.dhcpCli {
+		ch <- prometheus.MustNewConstMetric(c.dhcpClient, prometheus.CounterValue, p.v,
+			p.k.iface, p.k.msgType, c.instance)
+	}
+	for _, p := range snap.dhcpScr {
+		ch <- prometheus.MustNewConstMetric(c.dhcpClientScr, prometheus.CounterValue, p.v,
+			p.k.iface, p.k.reason, c.instance)
+	}
+	// The two lease GAUGES come from one stored pair per interface, so they are emitted
+	// together — a bind time published without its deadline is exactly the half-state
+	// the pair exists to prevent.
+	for _, p := range snap.dhcpLease {
+		ch <- prometheus.MustNewConstMetric(c.dhcpLeaseBound, prometheus.GaugeValue, p.v.bound,
+			p.k.iface, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.dhcpLeaseRenew, prometheus.GaugeValue, p.v.renewal,
+			p.k.iface, c.instance)
 	}
 	for _, p := range snap.zen {
 		ch <- prometheus.MustNewConstMetric(c.zenarmor, prometheus.CounterValue, p.v,

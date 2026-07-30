@@ -103,6 +103,26 @@ type protocolCollector struct {
 	// TCP received-acks-for-data 3-way split (26.7+, #237) — presence-gated.
 	tcpReceivedAcksForDataTotal *prometheus.Desc
 
+	// SACK / hostcache / TIME_WAIT / PMTUD / TCP-MD5 (#545). Five sections that
+	// were decoded on every scrape and exported by nothing. Present on every
+	// release in the support window, so unlike the #237 group above these are
+	// unconditional, not presence-gated.
+	tcpSackRecoveryEpisodes    *prometheus.Desc
+	tcpSackSegmentRetransmits  *prometheus.Desc
+	tcpSackRetransmittedBytes  *prometheus.Desc
+	tcpSackBlocks              *prometheus.Desc
+	tcpSackScoreboardOverflows *prometheus.Desc
+	tcpSackLostRetransmissions *prometheus.Desc
+	tcpSackTsoChunkRetransmits *prometheus.Desc
+
+	tcpHostcacheEntriesAdded    *prometheus.Desc
+	tcpHostcacheBufferOverflows *prometheus.Desc
+	tcpHostcacheHits            *prometheus.Desc
+
+	tcpTimeWaitEvents       *prometheus.Desc
+	tcpPmtudBlackholeEvents *prometheus.Desc
+	tcpSignature            *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -401,6 +421,120 @@ func (c *protocolCollector) Register(namespace, instanceLabel string, log *slog.
 		"Total TCP ACKs received for data by reason. Only emitted on OPNsense 26.7+.",
 		[]string{"reason"},
 	)
+
+	// --- SACK (#545) ---
+	// The exporter already has tcp_retransmitted_{packets,bytes}_total, which count
+	// ALL retransmission including plain RTO timeouts. The SACK family below is the
+	// subset driven by selective ACK, i.e. loss the peer explicitly told us about.
+	// The two families overlap and must never be added together.
+	c.tcpSackRecoveryEpisodes = buildPrometheusDesc(c.subsystem, "tcp_sack_recovery_episodes_total",
+		"Total times TCP entered SACK-based loss recovery. Each episode is one burst of loss the peer "+
+			"reported via selective ACK, however many segments it covered — so this counts loss EVENTS "+
+			"while tcp_sack_segment_retransmits_total counts their cost. A rising rate here with a flat "+
+			"retransmit rate means frequent small losses; the reverse means rare but severe ones.",
+		nil,
+	)
+	c.tcpSackSegmentRetransmits = buildPrometheusDesc(c.subsystem, "tcp_sack_segment_retransmits_total",
+		"Total TCP segments retransmitted during SACK recovery. A subset of "+
+			"tcp_retransmitted_packets_total (which also counts plain RTO-driven retransmission) — the "+
+			"two overlap, so never sum them.",
+		nil,
+	)
+	c.tcpSackRetransmittedBytes = buildPrometheusDesc(c.subsystem, "tcp_sack_retransmitted_bytes_total",
+		"Total bytes retransmitted during TCP SACK recovery. A subset of tcp_retransmitted_bytes_total; "+
+			"the two overlap, so never sum them. Compare against tcp_sent_data_bytes_total for a "+
+			"SACK-driven retransmission ratio — a sustained rise is a direct TCP-health signal on a box "+
+			"whose job is forwarding packets.",
+		nil,
+	)
+	c.tcpSackBlocks = buildPrometheusDesc(c.subsystem, "tcp_sack_blocks_total",
+		"Total TCP SACK option blocks, by direction. direction=\"received\" is the peer telling us about "+
+			"holes in the data WE sent (outbound loss); direction=\"sent\" is us telling the peer about "+
+			"holes in the data IT sent (inbound loss). The direction that rises tells you which way the "+
+			"lossy path runs, which no other metric on this box distinguishes.",
+		[]string{"direction"},
+	)
+	c.tcpSackScoreboardOverflows = buildPrometheusDesc(c.subsystem, "tcp_sack_scoreboard_overflows_total",
+		"Total times the TCP SACK scoreboard overflowed and the kernel stopped tracking individual holes "+
+			"in a connection, falling back to coarser recovery. Should be flat at zero; any sustained rise "+
+			"means loss severe enough that SACK recovery is degrading rather than helping.",
+		nil,
+	)
+	c.tcpSackLostRetransmissions = buildPrometheusDesc(c.subsystem, "tcp_sack_lost_retransmissions_total",
+		"Total TCP retransmissions that were themselves lost, detected during SACK recovery. This is the "+
+			"severe case: the path dropped the repair packet too, so recovery stalls until a timeout fires "+
+			"and the connection visibly hangs. No other counter on this box distinguishes a lost repair "+
+			"from ordinary loss. A subset of tcp_retransmitted_packets_total and of "+
+			"tcp_sack_segment_retransmits_total — all three overlap, so never sum them.",
+		nil,
+	)
+	c.tcpSackTsoChunkRetransmits = buildPrometheusDesc(c.subsystem, "tcp_sack_tso_chunk_retransmits_total",
+		"Total TCP segments retransmitted as part of a TSO (TCP segmentation offload) chunk during SACK "+
+			"recovery, i.e. repairs the NIC re-segmented rather than the kernel. Low signal on its own; it "+
+			"exists so the sack section is modelled completely and the split between offloaded and "+
+			"kernel-driven repair is visible when tuning TSO. A subset of "+
+			"tcp_sack_segment_retransmits_total — the two overlap, so never sum them.",
+		nil,
+	)
+
+	// --- Host cache (#545) ---
+	c.tcpHostcacheEntriesAdded = buildPrometheusDesc(c.subsystem, "tcp_hostcache_entries_added_total",
+		"Total entries added to the TCP host cache, which remembers per-peer RTT/ssthresh so a new "+
+			"connection to a known peer warm-starts instead of re-probing. The add rate is a proxy for "+
+			"distinct-peer churn, not for connection volume: a repeat peer is a cache hit and adds nothing.",
+		nil,
+	)
+	c.tcpHostcacheBufferOverflows = buildPrometheusDesc(c.subsystem, "tcp_hostcache_buffer_overflows_total",
+		"Total TCP host cache insertions that overflowed a hash bucket and evicted an existing entry. "+
+			"Nonzero means the cache is under churn pressure and the kernel is losing cached path metrics, "+
+			"so affected connections restart from defaults and re-probe the path.",
+		nil,
+	)
+	c.tcpHostcacheHits = buildPrometheusDesc(c.subsystem, "tcp_hostcache_hits_total",
+		"Total TCP connections that warm-started a path metric from the host cache instead of re-probing "+
+			"it, by which metric was reused: \"rtt\" (round-trip time), \"rttvar\" (RTT variance) and "+
+			"\"ssthresh\" (slow-start threshold). Despite the name these are NOT part of the "+
+			"statistics.tcp.hostcache section — they are top-level counters "+
+			"(connections-hostcache-*) and are the hit side of the cache whose insert and eviction rates "+
+			"tcp_hostcache_entries_added_total and tcp_hostcache_buffer_overflows_total report. A high hit "+
+			"rate is good: it means repeat peers skip re-probing. Hits falling while "+
+			"tcp_hostcache_buffer_overflows_total rises means eviction pressure is destroying the cache's "+
+			"value. The three are counted independently, so they do not sum to a connection count.",
+		[]string{"metric"},
+	)
+
+	// --- TIME_WAIT (#545) ---
+	c.tcpTimeWaitEvents = buildPrometheusDesc(c.subsystem, "tcp_timewait_events_total",
+		"Total TCP TIME_WAIT state events, by kind. \"responds\" = a segment answered from TIME_WAIT "+
+			"(usually a retransmitted FIN, normal); \"recycles\" = a TIME_WAIT entry reused early to make "+
+			"room, which means state pressure from short-lived connection churn; \"resets\" = an RST issued "+
+			"from TIME_WAIT. Only recycles and resets indicate a problem — responds is ordinary close churn.",
+		[]string{"event"},
+	)
+
+	// --- PMTUD blackhole detection (#545) ---
+	c.tcpPmtudBlackholeEvents = buildPrometheusDesc(c.subsystem, "tcp_pmtud_blackhole_events_total",
+		"Total TCP path-MTU-discovery blackhole detection events, by kind. A PMTUD blackhole is a path "+
+			"that silently drops oversized packets without returning the ICMP \"fragmentation needed\" that "+
+			"would let TCP shrink its MSS — the classic cause of \"some sites load, some hang\", and "+
+			"invisible from outside the box. \"activated\" = the kernel suspected a blackhole and dropped "+
+			"MSS; \"activated_min_mss\" = it fell all the way back to the minimum MSS, so the path is badly "+
+			"broken and throughput will suffer; \"failed\" = shrinking the MSS did not fix it. Any sustained "+
+			"rise warrants investigating MTU on the upstream path.",
+		[]string{"event"},
+	)
+
+	// --- TCP-MD5 (#545) ---
+	c.tcpSignature = buildPrometheusDesc(c.subsystem, "tcp_signature_total",
+		"Total TCP-MD5 (RFC 2385) signature outcomes, by result. In practice TCP-MD5 authenticates BGP "+
+			"sessions, so on a box with no MD5-authenticated peer every result is permanently zero and that "+
+			"is correct, not a fault. \"good\" is the healthy denominator — its rate falling to zero is how "+
+			"an authenticated peer going quiet shows up. \"bad\" means a wrong or rotated key (or spoofing); "+
+			"\"make_failed\" is a local failure to generate a signature, i.e. a missing key in the kernel "+
+			"keytable; \"not_expected\" and \"not_provided\" are the two halves of an asymmetric "+
+			"configuration, where one side is signing and the other is not.",
+		[]string{"result"},
+	)
 }
 
 func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -488,6 +622,21 @@ func (c *protocolCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.tcpEcnAccEcnHandshakesTotal
 	ch <- c.tcpSyncookiesTotal
 	ch <- c.tcpReceivedAcksForDataTotal
+
+	// SACK / hostcache / TIME_WAIT / PMTUD / TCP-MD5 (#545)
+	ch <- c.tcpSackRecoveryEpisodes
+	ch <- c.tcpSackSegmentRetransmits
+	ch <- c.tcpSackRetransmittedBytes
+	ch <- c.tcpSackBlocks
+	ch <- c.tcpSackScoreboardOverflows
+	ch <- c.tcpSackLostRetransmissions
+	ch <- c.tcpSackTsoChunkRetransmits
+	ch <- c.tcpHostcacheEntriesAdded
+	ch <- c.tcpHostcacheBufferOverflows
+	ch <- c.tcpHostcacheHits
+	ch <- c.tcpTimeWaitEvents
+	ch <- c.tcpPmtudBlackholeEvents
+	ch <- c.tcpSignature
 }
 
 func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client, ch chan<- prometheus.Metric) *opnsense.APICallError {
@@ -800,6 +949,61 @@ func (c *protocolCollector) Update(ctx context.Context, client *opnsense.Client,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			c.tcpReceivedAcksForDataTotal, prometheus.CounterValue, float64(data.TCPReceivedAcksForDataBeingTooOld), "being_too_old", c.instance,
+		)
+	}
+
+	// SACK / hostcache / TIME_WAIT / PMTUD / TCP-MD5 (#545). Every one of these is
+	// a cumulative kernel counter that resets only on reboot, so all are
+	// CounterValue. Unconditional: verified present on 26.1, 26.7.1 and 27.1.a, so
+	// unlike the #237 group above there is nothing to presence-gate.
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackRecoveryEpisodes, prometheus.CounterValue, float64(data.TCPSackRecoveryEpisodes), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackSegmentRetransmits, prometheus.CounterValue, float64(data.TCPSackSegmentRetransmits), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackRetransmittedBytes, prometheus.CounterValue, float64(data.TCPSackByteRetransmits), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackBlocks, prometheus.CounterValue, float64(data.TCPSackReceivedBlocks), "received", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackBlocks, prometheus.CounterValue, float64(data.TCPSackSentOptionBlocks), "sent", c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackScoreboardOverflows, prometheus.CounterValue, float64(data.TCPSackScoreboardOverflows), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpHostcacheEntriesAdded, prometheus.CounterValue, float64(data.TCPHostcacheEntriesAdded), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackLostRetransmissions, prometheus.CounterValue, float64(data.TCPSackLostRetransmissions), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpSackTsoChunkRetransmits, prometheus.CounterValue, float64(data.TCPSackTsoChunkRetransmits), c.instance,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.tcpHostcacheBufferOverflows, prometheus.CounterValue, float64(data.TCPHostcacheBufferOverflows), c.instance,
+	)
+	for metric, count := range data.TCPHostcacheHitsByMetric {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpHostcacheHits, prometheus.CounterValue, float64(count), metric, c.instance,
+		)
+	}
+	for event, count := range data.TCPTimeWaitByEvent {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpTimeWaitEvents, prometheus.CounterValue, float64(count), event, c.instance,
+		)
+	}
+	for event, count := range data.TCPPmtudBlackholeByEvent {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpPmtudBlackholeEvents, prometheus.CounterValue, float64(count), event, c.instance,
+		)
+	}
+	for result, count := range data.TCPSignatureByResult {
+		ch <- prometheus.MustNewConstMetric(
+			c.tcpSignature, prometheus.CounterValue, float64(count), result, c.instance,
 		)
 	}
 

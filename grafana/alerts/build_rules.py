@@ -577,6 +577,196 @@ RULES = [
                 'The ratio drops back to 1 or below and stays there for 10m',
             ],
          )),
+    dict(name="opnsense-netmap-ring-full", title="OPNsenseNetmapRingFull",
+         A="sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[15m]))",
+         op="gt", params=[0, 0], for_min=30, severity="warning",
+         summary="OPNsense netmap host ring full on {{ $labels.device }} ({{ $labels.opnsense_instance }})",
+         description="The kernel has been reporting the netmap host TX ring full on "
+                     "{{ $labels.device }} for 30m - Zenarmor's packet-capture datapath is "
+                     "dropping traffic. This counts OCCURRENCES, not packets: the kernel "
+                     "rate-limits the underlying log line to 2 per second, so the metric "
+                     "saturates under sustained load and the true drop volume is unbounded above "
+                     "whatever this shows.",
+         runbook=dict(
+             measures='rate(opnsense_log_events_netmap_ring_full_events_total[15m]) - how often the kernel reported a full netmap host ring, derived from syslog rather than polled.',
+             threshold='gt 0 sustained for 30m. The long window is deliberate: an isolated burst during a traffic spike is normal, a persistent condition is not.',
+             absent='Default noDataState (Ok). Absence means no report, NOT no drops - a box with the syslog receiver disabled, or with Zenarmor not running, produces no series at all.',
+             checks=[
+                'Confirm Zenarmor is actually running and check its own engine health - it owns this datapath',
+                'Check throughput on the named device against what the box normally carries',
+                'Do NOT expect the interface drop counters to corroborate this on ixl/ixgbe/igb hardware - see causes below',
+            ],
+             causes=[
+                'Traffic volume exceeds what the Zenarmor capture ring can absorb',
+                'Zenarmor is wedged or too slow to drain the ring, so it backs up',
+                'The ring is sized for a lighter load than the box now carries',
+            ],
+             verify=[
+                'The event rate returns to zero and stays there across a full traffic peak, not just a quiet period',
+            ],
+         )),
+    dict(name="opnsense-dhcp-client-lease-overdue", title="OPNsenseDHCPClientLeaseRenewalOverdue",
+         A="opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds - time()",
+         op="lt", params=[0, 0], for_min=15, severity="critical",
+         summary="OPNsense WAN DHCP renewal overdue on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="dhclient's renewal deadline for {{ $labels.interface }} has passed without a "
+                     "new lease being bound. The WAN address is on borrowed time: once the full "
+                     "lease expires the box loses the address entirely. This fires hours before "
+                     "that happens, which is the entire point of it.",
+         runbook=dict(
+             measures='The renewal (T1) deadline dhclient last reported, minus now. Negative means the deadline has passed and nothing has rebound since.',
+             threshold='lt 0 sustained for 15m. Note this is the RENEWAL deadline, not absolute lease expiry - dhclient never logs the latter, so there is more headroom than this alert implies, not less.',
+             absent='Default noDataState (Ok). No series means no bound-lease line has been seen since the exporter started - expected on a static or PPPoE WAN, which never runs dhclient at all.',
+             checks=[
+                'Check the WAN DHCP Client Messages panel for a request storm with no matching ack - that is the upstream refusing or ignoring renewals',
+                'Check for any nak, which means the server actively rejected the current address',
+                'Confirm physical link and upstream reachability on the WAN interface',
+            ],
+             causes=[
+                'The upstream DHCP server is unreachable or not responding',
+                'The ISP changed its allocation and is refusing to renew the existing address',
+                'dhclient has died or is wedged on that interface',
+            ],
+             verify=[
+                'A fresh bind appears and the countdown resets to a positive value',
+                'Time since last bind drops back to near zero on the countdown panel',
+            ],
+         )),
+    dict(name="opnsense-dhcp-client-nak", title="OPNsenseDHCPClientNak",
+         A="sum by (interface, opnsense_instance) (rate(opnsense_log_events_dhcp_client_total{type=\"nak\"}[15m]))",
+         op="gt", params=[0, 0], for_min=5, severity="warning",
+         summary="OPNsense WAN DHCP server sent a NAK on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="The upstream DHCP server is refusing the address this box is currently "
+                     "using on {{ $labels.interface }}. A NAK forces dhclient back to DISCOVER, "
+                     "so the WAN address is about to change or be lost.",
+         runbook=dict(
+             measures='rate of DHCPNAK messages received by the WAN dhclient.',
+             threshold='gt 0 for 5m. Any NAK at all is abnormal on a stable WAN.',
+             absent='Default noDataState (Ok). No dhclient on this box means no series.',
+             checks=[
+                'Check whether the WAN address actually changed after the NAK',
+                'Check whether anything downstream is pinned to the old address (NAT rules, dynamic DNS, VPN endpoints)',
+            ],
+             causes=[
+                'The ISP moved the box to a different subnet or reclaimed the address',
+                'The upstream lease database was reset and no longer recognises this client',
+                'Two clients are presenting the same identifier upstream',
+            ],
+             verify=[
+                'A new address is bound and the NAK rate returns to zero',
+            ],
+         )),
+    dict(name="opnsense-dhcp-client-storm", title="OPNsenseDHCPClientRequestStorm",
+         A="sum by (interface, opnsense_instance) (rate(opnsense_log_events_dhcp_client_total{type=\"request\"}[15m]))",
+         op="gt", params=[0.1, 0], for_min=30, severity="warning",
+         summary="OPNsense WAN DHCP request storm on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="dhclient has been retransmitting DHCPREQUEST far above its normal cadence "
+                     "for 30m. A healthy WAN renews on the order of once per lease period; a "
+                     "sustained retransmit rate means renewals are not being answered, and is a "
+                     "leading indicator of losing the address hours before it happens.",
+         runbook=dict(
+             measures='rate of DHCPREQUEST messages sent by the WAN dhclient.',
+             threshold='gt 0.1/s (360/hour) sustained for 30m. Calibrated against a real incident: the box that motivated this alert ran a ~42/hour baseline and sustained ~4,500/hour for 11-12 hours, so this threshold sits roughly 8x above normal and 12x below the observed storm.',
+             absent='Default noDataState (Ok). No dhclient on this box means no series.',
+             checks=[
+                'Check whether acks are coming back at all - requests without acks is the storm signature',
+                'Check the lease renewal countdown: if it is still positive and being refreshed, the address is not yet at risk',
+                'Check upstream link quality - a lossy WAN produces retransmits without any DHCP fault',
+            ],
+             causes=[
+                'The upstream DHCP server is not responding to renewals',
+                'Packet loss on the WAN is eating the requests or the replies',
+                'The upstream server is rate-limiting or blocklisting this client',
+            ],
+             verify=[
+                'The request rate falls back to baseline and a fresh bind is recorded',
+            ],
+         )),
+    dict(name="opnsense-dhcp-client-script-failure", title="OPNsenseDHCPClientScriptFailure",
+         A="sum by (interface, reason, opnsense_instance) "
+           "(rate(opnsense_log_events_dhcp_client_script_total{reason=~\"expire|fail|timeout\"}[15m]))",
+         op="gt", params=[0, 0], for_min=5, severity="critical",
+         summary="OPNsense WAN DHCP {{ $labels.reason }} on {{ $labels.interface }} ({{ $labels.opnsense_instance }})",
+         description="dhclient-script ran with reason {{ $labels.reason }} on "
+                     "{{ $labels.interface }}. expire means the lease is gone and the interface "
+                     "has lost its address; fail and timeout mean dhclient gave up trying to "
+                     "obtain or renew one. Unlike the renewal-overdue alert, this is the box "
+                     "reporting the outcome rather than us inferring it.",
+         runbook=dict(
+             measures='rate of dhclient-script invocations whose reason indicates lease loss or failure.',
+             threshold='gt 0 for 5m on reason expire, fail or timeout. The healthy reasons (bound, renew, rebind, reboot) are deliberately excluded.',
+             absent='Default noDataState (Ok). No dhclient on this box means no series.',
+             checks=[
+                'Confirm whether the WAN interface still has an address at all',
+                'Check the request/ack panel for how long the renewal had been failing beforehand - OPNsenseDHCPClientRequestStorm should have fired first',
+            ],
+             causes=[
+                'The upstream DHCP server has been unreachable long enough for the full lease to run out',
+                'Physical WAN link failure',
+                'dhclient could not obtain any lease on a fresh start',
+            ],
+             verify=[
+                'A bound or renew reason follows and the interface regains an address',
+            ],
+         )),
+    dict(name="opnsense-netisr-queue-drops", title="OPNsenseNetisrQueueDrops",
+         A="sum by (protocol, opnsense_instance) (rate(opnsense_network_diag_netisr_queue_drops_total[5m]))",
+         op="gt", params=[0, 0], for_min=10, severity="warning",
+         summary="OPNsense netisr is dropping {{ $labels.protocol }} packets ({{ $labels.opnsense_instance }})",
+         description="The FreeBSD network interrupt scheduler has been dropping packets on the "
+                     "{{ $labels.protocol }} queue for 10m. This is silent packet loss - it is invisible "
+                     "from the OPNsense UI and degrades the affected protocol without any other symptom. "
+                     "Must be a rate: the counter is cumulative since boot, so an absolute threshold would "
+                     "keep alerting forever on a box that dropped packets once a year ago.",
+         runbook=dict(
+             measures='rate(opnsense_network_diag_netisr_queue_drops_total[5m]) - packets per second discarded by netisr because a workstream queue was full.',
+             threshold='gt 0 (any sustained drop rate) for 10m.',
+             absent='Default noDataState (Ok). The network diagnostics collector is opt-in (--exporter.enable-network-diagnostics), so no series at all usually means the collector is off rather than that the box is healthy.',
+             checks=[
+                'Read opnsense_network_diag_netisr_drop_concentration_ratio for this protocol FIRST. At or near 1.0 every drop is landing on ONE workstream, which is a CPU-affinity problem, not a queue-size problem',
+                'Open the NetISR Per-CPU Distribution row and find which cpu is dropping - the per-CPU drops panel names it directly',
+                'Compare opnsense_network_diag_netisr_active_workstreams against the box core count. Four active workstreams on a twelve-core box means netisr is only using a third of the machine',
+                'Check the NetISR Protocol Policy table: a policy_type of "source" is single-lane by design and cannot spread, so one busy workstream there is expected',
+                'Do NOT reach straight for net.isr.maxqlen. On the box that motivated this rule, ip6 dropped 683 packets entirely on cpu0 while cpu1-3 ran at roughly half their watermark and cpu4-11 were completely idle - raising the queue limit there would have masked an affinity problem rather than fixing it',
+            ],
+             causes=[
+                'netisr work is bound to a subset of CPUs - check net.isr.maxthreads and net.isr.bindthreads',
+                'The NIC RSS / queue configuration is steering all traffic into one hardware queue and so onto one workstream',
+                'cpu0 additionally carries interrupt and userland work the other cores do not, so it saturates first even with fewer packets queued',
+                'A genuine traffic volume increase beyond what the configured queue depth absorbs',
+            ],
+             verify=[
+                'The drop rate returns to zero and stays there for 10m',
+                'drop_concentration_ratio and queue_imbalance_ratio both fall, showing work actually spread rather than the queue merely being enlarged',
+            ],
+         )),
+    dict(name="opnsense-netisr-queue-near-limit", title="OPNsenseNetisrQueueNearLimit",
+         A="(opnsense_network_diag_netisr_queue_watermark / (opnsense_network_diag_netisr_queue_limit > 0)) "
+           "and (delta(opnsense_network_diag_netisr_queue_watermark[1h]) > 0)",
+         op="gt", params=[0.9, 0], for_min=10, severity="warning",
+         summary="OPNsense netisr {{ $labels.protocol }} queue approaching its limit ({{ $labels.opnsense_instance }})",
+         description="A netisr queue watermark is above 90% of its configured limit AND is still rising. "
+                     "This is the leading indicator - it fires before drops start.",
+         runbook=dict(
+             measures='netisr_queue_watermark divided by netisr_queue_limit - how close the deepest queue occupancy since boot has come to the configured ceiling, evaluated only while the watermark is still climbing.',
+             threshold='gt 0.9 sustained for 10m, and only while the watermark rose within the last hour. The rising-edge guard (delta over 1h) is deliberate and must not be removed: the watermark is a since-boot HIGH-WATER MARK that never decays, so a bare ratio > 0.9 would latch on the first burst and alert continuously until the next reboot whether or not anything was still wrong. This is a deviation from the rule as originally proposed in #538, made because the metric it reads does not behave like a gauge.',
+             absent='Default noDataState (Ok). The division guard means a protocol reporting limit=0 produces no series rather than a divide-by-zero artifact.',
+             checks=[
+                'Identify the protocol and check whether its watermark is climbing steadily or jumped once during a traffic burst',
+                'Check the per-CPU watermark panel: one workstream at the limit beside idle siblings is an affinity problem, all of them near the limit is genuine volume',
+                'Confirm whether drops have started yet via OPNsenseNetisrQueueDrops',
+            ],
+             causes=[
+                'Rising traffic on the affected protocol is filling the queue faster than it drains',
+                'netisr work concentrated on too few workstreams, so per-lane depth grows while total capacity sits unused',
+                'A queue limit left at a default that is undersized for this box',
+            ],
+             verify=[
+                'The ratio stops rising - the rising-edge guard clears the alert on its own once the watermark stops moving',
+                'Per-CPU watermarks even out across active workstreams',
+            ],
+             note='The rising-edge guard (delta over 1h) is deliberate and must not be removed. The watermark is a since-boot HIGH-WATER MARK that never decays, so a bare ratio > 0.9 would latch on the first burst and alert continuously until the next reboot, whether or not anything was still wrong. That is exactly the alert nobody reads. Deviation from the rule as originally proposed in #538, made because the metric it reads does not behave like a gauge.',
+         )),
     dict(name="opnsense-pf-states-near-limit", title="OPNsensePFStateTableNearLimit",
          A="opnsense_firewall_pf_states_current / (opnsense_firewall_pf_states_limit > 0)",
          op="gt", params=[0.9, 0], for_min=10, severity="warning",
@@ -1659,6 +1849,13 @@ PANEL_LINKS = {
     "OPNsenseGatewayHighLoss": "Packet Loss %",
     "OPNsenseGatewayHighRTT": ("Gateway RTT", "Gateways & WAN"),
     # --- system resources ------------------------------------------------------
+    "OPNsenseNetmapRingFull": "Netmap Host Ring Full Events (rate)",
+    "OPNsenseDHCPClientLeaseRenewalOverdue": "WAN DHCP Lease Renewal Countdown",
+    "OPNsenseDHCPClientNak": "WAN DHCP Client Messages (rate)",
+    "OPNsenseDHCPClientRequestStorm": "WAN DHCP Client Messages (rate)",
+    "OPNsenseDHCPClientScriptFailure": "WAN DHCP Client Script Events (rate)",
+    "OPNsenseNetisrQueueDrops": "NetISR Per-CPU Queue Drops (rate)",
+    "OPNsenseNetisrQueueNearLimit": "NetISR Queue Length / Watermark / Limit",
     "OPNsensePFStateTableNearLimit": "PF States Used %",
     "OPNsenseMemoryHigh": "Memory Used %",
     "OPNsenseDiskUsageHigh": "Disk Usage % by Mountpoint",

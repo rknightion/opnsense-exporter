@@ -34,6 +34,18 @@ Coverage:
   opnsense_network_diag_netisr_queue_length
   opnsense_network_diag_netisr_queue_watermark
   opnsense_network_diag_netisr_queue_limit
+  opnsense_network_diag_netisr_protocol_info
+  opnsense_network_diag_netisr_active_workstreams
+  opnsense_network_diag_netisr_workstreams_at_limit
+  opnsense_network_diag_netisr_queue_imbalance_ratio
+  opnsense_network_diag_netisr_drop_concentration_ratio
+  opnsense_network_diag_netisr_cpu_dispatched_total
+  opnsense_network_diag_netisr_cpu_hybrid_dispatched_total
+  opnsense_network_diag_netisr_cpu_queued_total
+  opnsense_network_diag_netisr_cpu_handled_total
+  opnsense_network_diag_netisr_cpu_queue_drops_total
+  opnsense_network_diag_netisr_cpu_queue_length
+  opnsense_network_diag_netisr_cpu_queue_watermark
   opnsense_network_diag_sockets_active
   opnsense_network_diag_sockets_unix_total
   opnsense_network_diag_routes_total
@@ -42,6 +54,7 @@ Coverage:
 """
 
 from builder import Builder, sel, grp, RATE
+from tabs import log_events
 
 
 def build(b: Builder):
@@ -233,6 +246,107 @@ def build(b: Builder):
     )
 
     # ======================================================================
+    # Row 5b – NetISR per-workstream distribution (gated: has_network_diag)
+    #
+    # The row above shows netisr collapsed to protocol. That view cannot tell a
+    # firewall dropping every packet on one saturated workstream apart from one
+    # that is uniformly overloaded, and the two have opposite remedies (CPU
+    # affinity vs queue size). This row is where that distinction lives.
+    # ======================================================================
+    netisr_workstreams_ts = b.ts(
+        "NetISR Active Workstreams vs At Limit",
+        [
+            (sel("opnsense_network_diag_netisr_active_workstreams"),
+             "{{protocol}} active"),
+            (sel("opnsense_network_diag_netisr_workstreams_at_limit"),
+             "{{protocol}} at limit"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc="How many netisr workstreams carry work for each protocol, and how many have hit "
+             "their configured queue limit. A protocol with a 'cpu' or 'flow' policy that shows "
+             "only one active workstream on a multi-core box is not spreading load. Protocols "
+             "with a 'source' policy are single-lane by design - check the policy table before "
+             "reading one active workstream as a fault.",
+    )
+    netisr_ratios_ts = b.ts(
+        "NetISR Queue Imbalance & Drop Concentration",
+        [
+            (sel("opnsense_network_diag_netisr_queue_imbalance_ratio"),
+             "{{protocol}} imbalance"),
+            (sel("opnsense_network_diag_netisr_drop_concentration_ratio"),
+             "{{protocol}} drop concentration"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc="Imbalance = busiest workstream's watermark divided by the mean across active "
+             "workstreams; 1.0 is perfectly even and higher means skew. Drop concentration = the "
+             "share of all drops landing on a single workstream; 1.0 means every drop hit one "
+             "lane, which points at CPU affinity rather than queue size. Both read 0 when the "
+             "measure is undefined (fewer than two active workstreams, or no drops at all) - "
+             "zero here means 'not applicable', not 'healthy'.",
+    )
+    netisr_percpu_queue_ts = b.ts(
+        "NetISR Per-CPU Queue Length & Watermark",
+        [
+            (sel("opnsense_network_diag_netisr_cpu_queue_watermark"),
+             "{{protocol}} cpu{{cpu}} watermark"),
+            (sel("opnsense_network_diag_netisr_cpu_queue_length"),
+             "{{protocol}} cpu{{cpu}} length"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc="Per-workstream queue depth. Watermark is a since-boot high-water mark and never "
+             "decays, so it records the worst moment since the last reboot rather than current "
+             "state; length is instantaneous. A watermark sitting exactly on the protocol's "
+             "queue limit is the signature of a saturated lane.",
+    )
+    netisr_percpu_drops_ts = b.ts(
+        "NetISR Per-CPU Queue Drops (rate)",
+        [
+            (f'rate({sel("opnsense_network_diag_netisr_cpu_queue_drops_total")}[{RATE}])',
+             "{{protocol}} cpu{{cpu}}"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Packets dropped per second by netisr, per protocol per workstream. This is the "
+             "panel that names the CPU - if one series is nonzero while its siblings sit at "
+             "zero, raising net.isr.maxqlen treats the symptom and leaves the imbalance.",
+    )
+    netisr_percpu_work_ts = b.ts(
+        "NetISR Per-CPU Throughput (rate)",
+        [
+            (f'rate({sel("opnsense_network_diag_netisr_cpu_handled_total")}[{RATE}])',
+             "{{protocol}} cpu{{cpu}} handled"),
+            (f'rate({sel("opnsense_network_diag_netisr_cpu_queued_total")}[{RATE}])',
+             "{{protocol}} cpu{{cpu}} queued"),
+            (f'rate({sel("opnsense_network_diag_netisr_cpu_dispatched_total")}[{RATE}])',
+             "{{protocol}} cpu{{cpu}} dispatched"),
+            (f'rate({sel("opnsense_network_diag_netisr_cpu_hybrid_dispatched_total")}[{RATE}])',
+             "{{protocol}} cpu{{cpu}} hybrid"),
+        ],
+        unit="pps",
+        w=12, h=8,
+        desc="Per-workstream packet throughput. Idle workstreams are emitted as flat zero on "
+             "purpose - 'eight of twelve CPUs never receive netisr work' is the finding, and "
+             "suppressing the empty series would hide it.",
+    )
+    netisr_policy_table = b.table(
+        "NetISR Protocol Policy",
+        [sel("opnsense_network_diag_netisr_protocol_info")],
+        w=24, h=8,
+        excludes=["Value", "__name__", "job", "instance", "env"],
+        renames={
+            "protocol": "Protocol", "protocol_id": "ID", "policy": "Policy",
+            "policy_type": "Policy Type", "flags": "Flags",
+            "opnsense_instance": "Instance"},
+        sort_by="Protocol",
+        desc="How FreeBSD distributes each protocol's work. Policy type 'cpu' and 'flow' fan out "
+             "across workstreams; 'source' is single-lane by design, so igmp, rtsock and arp "
+             "showing one active workstream is correct and must not be alerted on.",
+    )
+
+    # ======================================================================
     # Row 6 – Sockets & Routes (gated: has_network_diag)
     # ======================================================================
     sockets_active_bg = b.bargauge(
@@ -293,9 +407,17 @@ def build(b: Builder):
     b.tab("Routing & Neighbors", [
         b.row("ARP Table", [arp_count, arp_by_iface, arp_table]),
         b.row("NDP (IPv6 Neighbors)", [ndp_count, ndp_by_iface, ndp_table]),
+        # #536: a MAC flap faster than the poll interval is invisible in the table
+        # above - only the kernel sees it, and only as a log line.
+        log_events.arp_moves_row(b),
         b.row("LLDP Neighbors", [lldp_by_iface, lldp_table], present="has_lldp"),
         b.row("Host Discovery", [hostdiscovery_by_iface, hostdiscovery_recent_by_iface]),
         b.row("NetISR (Network Interrupt Subsystem)", [netisr_dispatch_ts, netisr_queue_ts, netisr_len_ts],
+              present="has_network_diag"),
+        b.row("NetISR Per-CPU Distribution", [
+            netisr_workstreams_ts, netisr_ratios_ts,
+            netisr_percpu_queue_ts, netisr_percpu_drops_ts,
+            netisr_percpu_work_ts, netisr_policy_table],
               present="has_network_diag"),
         b.row("Sockets & Routes", [sockets_active_bg, sockets_unix_stat, routes_bg],
               present="has_network_diag"),

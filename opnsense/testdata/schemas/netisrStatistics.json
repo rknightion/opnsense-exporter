@@ -20,11 +20,19 @@
       "kind": "object"
     },
     {
+      "path": "netisr.protocol[].flags",
+      "kind": "string"
+    },
+    {
       "path": "netisr.protocol[].name",
       "kind": "string"
     },
     {
       "path": "netisr.protocol[].policy",
+      "kind": "string"
+    },
+    {
+      "path": "netisr.protocol[].policy-type",
       "kind": "string"
     },
     {

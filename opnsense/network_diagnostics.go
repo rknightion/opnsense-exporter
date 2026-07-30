@@ -24,7 +24,9 @@ type netisrProtocol struct {
 	Name       string `json:"name"`
 	Protocol   int    `json:"protocol"`
 	QueueLimit int    `json:"queue-limit"`
+	PolicyType string `json:"policy-type"`
 	Policy     string `json:"policy"`
+	Flags      string `json:"flags"`
 }
 
 type netisrWorkstream struct {
@@ -40,7 +42,33 @@ type netisrResponse struct {
 	Netisr netisrData `json:"netisr"`
 }
 
-// NetisrProtocolStats holds aggregated netisr statistics per protocol.
+// NetisrWorkstreamStats holds one netisr work row: the statistics for a single
+// protocol on a single netisr workstream (and therefore, on every box observed
+// so far, a single CPU). Workstream index and CPU binding coincide in practice
+// but are not the same thing — net.isr.bindthreads can be turned off — so both
+// are carried.
+type NetisrWorkstreamStats struct {
+	Workstream       int
+	CPU              int
+	Length           int
+	Watermark        int
+	Dispatched       int64
+	HybridDispatched int64
+	QueueDrops       int64
+	Queued           int64
+	Handled          int64
+}
+
+// Active reports whether this workstream has ever carried traffic for its
+// protocol. An all-zero row means the CPU is not participating in netisr
+// processing for that protocol at all, which is itself a finding.
+func (w NetisrWorkstreamStats) Active() bool {
+	return w.Handled > 0 || w.Queued > 0 || w.Dispatched > 0 || w.HybridDispatched > 0
+}
+
+// NetisrProtocolStats holds aggregated netisr statistics per protocol, plus the
+// protocol's configuration metadata and the unaggregated per-workstream rows it
+// was aggregated from.
 type NetisrProtocolStats struct {
 	Dispatched       int64
 	HybridDispatched int64
@@ -50,6 +78,91 @@ type NetisrProtocolStats struct {
 	Length           int
 	Watermark        int
 	QueueLimit       int
+
+	// Protocol metadata, straight from the netisr.protocol array.
+	Protocol   int
+	Policy     string
+	PolicyType string
+	Flags      string
+
+	// Workstreams holds every work row the box reported for this protocol, in
+	// the order the box reported them, including entirely idle ones.
+	Workstreams []NetisrWorkstreamStats
+}
+
+// ActiveWorkstreams counts the workstreams that have carried any traffic for
+// this protocol. On a 12-CPU box a value of 4 for a cpu-policy protocol means
+// eight CPUs are sitting idle while four carry the whole load.
+func (s NetisrProtocolStats) ActiveWorkstreams() int {
+	n := 0
+	for _, w := range s.Workstreams {
+		if w.Active() {
+			n++
+		}
+	}
+	return n
+}
+
+// WorkstreamsAtLimit counts the workstreams whose high watermark has reached
+// the protocol's configured queue limit — the lanes that have actually run out
+// of queue. A zero queue limit means "unbounded/unset" and never counts.
+func (s NetisrProtocolStats) WorkstreamsAtLimit() int {
+	if s.QueueLimit <= 0 {
+		return 0
+	}
+	n := 0
+	for _, w := range s.Workstreams {
+		if w.Watermark >= s.QueueLimit {
+			n++
+		}
+	}
+	return n
+}
+
+// QueueImbalanceRatio is the maximum watermark over the ACTIVE workstreams
+// divided by the mean watermark over those same rows. 1.0 is a perfectly even
+// spread; higher means one lane is absorbing disproportionately more depth.
+// Idle rows are excluded deliberately — including them would dilute the mean
+// and make an affinity problem look milder the more CPUs the box has.
+// Returns 0 when the ratio is undefined (fewer than two active rows, or every
+// active watermark is zero).
+func (s NetisrProtocolStats) QueueImbalanceRatio() float64 {
+	var sum, max int
+	n := 0
+	for _, w := range s.Workstreams {
+		if !w.Active() {
+			continue
+		}
+		n++
+		sum += w.Watermark
+		if w.Watermark > max {
+			max = w.Watermark
+		}
+	}
+	if n < 2 || sum == 0 {
+		return 0
+	}
+	mean := float64(sum) / float64(n)
+	return float64(max) / mean
+}
+
+// DropConcentrationRatio is the largest queue-drop count on any single
+// workstream divided by the total across all of them. 1.0 means every drop
+// landed on one lane, which points at CPU affinity rather than queue depth;
+// a value near 1/N means the whole protocol is genuinely over its queue limit.
+// Returns 0 when nothing has dropped.
+func (s NetisrProtocolStats) DropConcentrationRatio() float64 {
+	var total, max int64
+	for _, w := range s.Workstreams {
+		total += w.QueueDrops
+		if w.QueueDrops > max {
+			max = w.QueueDrops
+		}
+	}
+	if total == 0 {
+		return 0
+	}
+	return float64(max) / float64(total)
 }
 
 // --- socket types ---
@@ -90,13 +203,15 @@ func (c *Client) FetchNetisrStatistics() (map[string]NetisrProtocolStats, *APICa
 		return data, err
 	}
 
-	// Build queue-limit lookup from protocol array
-	queueLimits := make(map[string]int, len(resp.Netisr.Protocol))
+	// Build protocol-metadata lookup from protocol array
+	protoMeta := make(map[string]netisrProtocol, len(resp.Netisr.Protocol))
 	for _, p := range resp.Netisr.Protocol {
-		queueLimits[p.Name] = p.QueueLimit
+		protoMeta[p.Name] = p
 	}
 
-	// Aggregate work items across all workstreams per protocol name
+	// Aggregate work items across all workstreams per protocol name, keeping
+	// the unaggregated rows alongside (idle rows included — "these CPUs do no
+	// netisr work" is exactly the signal a per-CPU view exists to surface).
 	for _, ws := range resp.Netisr.Workstream {
 		for _, w := range ws.Work {
 			s := data[w.Name]
@@ -111,14 +226,29 @@ func (c *Client) FetchNetisrStatistics() (map[string]NetisrProtocolStats, *APICa
 			if w.Watermark > s.Watermark {
 				s.Watermark = w.Watermark
 			}
+			s.Workstreams = append(s.Workstreams, NetisrWorkstreamStats{
+				Workstream:       w.Workstream,
+				CPU:              w.CPU,
+				Length:           w.Length,
+				Watermark:        w.Watermark,
+				Dispatched:       w.Dispatched,
+				HybridDispatched: w.HybridDispatched,
+				QueueDrops:       w.QueueDrops,
+				Queued:           w.Queued,
+				Handled:          w.Handled,
+			})
 			data[w.Name] = s
 		}
 	}
 
-	// Set queue-limit from the protocol array
+	// Set queue-limit and protocol metadata from the protocol array
 	for name, s := range data {
-		if ql, ok := queueLimits[name]; ok {
-			s.QueueLimit = ql
+		if p, ok := protoMeta[name]; ok {
+			s.QueueLimit = p.QueueLimit
+			s.Protocol = p.Protocol
+			s.Policy = p.Policy
+			s.PolicyType = p.PolicyType
+			s.Flags = p.Flags
 			data[name] = s
 		}
 	}

@@ -283,7 +283,7 @@ reading as missing.
 
 ## Alerts & recording rules
 
-`alerts/` contains **43 alert rules** and **14 recording rules**, shipped as **Grafana-managed
+`alerts/` contains **50 alert rules** and **14 recording rules**, shipped as **Grafana-managed
 alerting** manifests. Grafana-managed is the only supported format - it carries `noDataState`
 (so the exporter-down / NoData case actually fires) and Grafana templating, neither of which a
 portable Prometheus rule-group file can express. Alerts carry a `severity` label and runbook
@@ -339,7 +339,7 @@ new exporter protects itself once it has been up an hour. The cost is that a **d
 decommissioned instance keeps alerting until it has been absent for 1h**; silence it until
 then, or wait it out.
 
-`alerts/` contains **43 alert rules** covering exporter/instance liveness, collector health,
+`alerts/` contains **50 alert rules** covering exporter/instance liveness, collector health,
 gateways, system resources, certificates, services, log shipping, OTLP delivery, VPN/HA/CARP, IDS,
 and flow capture. The full list - trigger condition, threshold and window, absent/no-data
 semantics, first checks, likely causes, and recovery verification for every single one - is

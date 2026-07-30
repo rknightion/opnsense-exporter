@@ -10,6 +10,9 @@ Rows:
   TCP ECN & SYN Cookies (26.1.11+/26.7+) — ECN packets by direction/mark, AccECN
                          handshakes, SYN cookies by result, acks-for-data by reason (#237)
   TCP Connection State (gauge) — statetimeline + piechart of current state distribution
+  TCP Recovery, Host Cache & Path MTU (#545) — SACK recovery + retransmitted bytes;
+                         host-cache adds/overflows/hits; TIME_WAIT events and PMTUD
+                         blackhole detection; TCP-MD5 signature outcomes
   UDP                 — delivered/output/received rate ts + dropped-by-reason table
   IP                  — received/forwarded/sent/fragment rate ts + dropped-by-reason table
   ARP (Activity)      — sent-req/recv-req/sent-reply/recv-reply/recv-packets rate ts
@@ -520,6 +523,104 @@ def build(b: Builder):
     )
 
     # -------------------------------------------------------------------------
+    # TCP — SACK recovery, host cache, TIME_WAIT, path MTU, TCP-MD5 (#545)
+    # -------------------------------------------------------------------------
+    tcp_sack = b.ts(
+        "TCP SACK Recovery (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_sack_recovery_episodes_total')}[{RATE}])",
+             "recovery episodes"),
+            (f"rate({sel('opnsense_protocol_tcp_sack_segment_retransmits_total')}[{RATE}])",
+             "segment retransmits"),
+            (f"rate({sel('opnsense_protocol_tcp_sack_blocks_total')}[{RATE}])",
+             "blocks {{direction}}"),
+            (f"rate({sel('opnsense_protocol_tcp_sack_scoreboard_overflows_total')}[{RATE}])",
+             "scoreboard overflows"),
+            (f"rate({sel('opnsense_protocol_tcp_sack_lost_retransmissions_total')}[{RATE}])",
+             "lost retransmissions"),
+            (f"rate({sel('opnsense_protocol_tcp_sack_tso_chunk_retransmits_total')}[{RATE}])",
+             "TSO chunk retransmits"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc=(
+            "Selective-acknowledgement recovery activity. Lost retransmissions are the "
+            "expensive ones — a retransmitted segment that was itself dropped costs a full "
+            "RTO before anything else can happen. Scoreboard overflows mean the kernel ran out "
+            "of room to track holes and fell back to coarser recovery. These counters overlap "
+            "the general tcp_retransmitted_* families (which also count plain RTO "
+            "retransmission), so never sum them together on one panel."
+        ),
+    )
+    tcp_sack_bytes = b.ts(
+        "TCP SACK Retransmitted Bytes (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_sack_retransmitted_bytes_total')}[{RATE}])",
+             "SACK retransmitted"),
+        ],
+        unit="Bps",
+        w=12, h=8,
+        desc=(
+            "Bytes retransmitted specifically by SACK recovery. A subset of "
+            "tcp_retransmitted_bytes_total — do not add the two."
+        ),
+    )
+    tcp_hostcache = b.ts(
+        "TCP Host Cache (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_hostcache_entries_added_total')}[{RATE}])",
+             "entries added"),
+            (f"rate({sel('opnsense_protocol_tcp_hostcache_buffer_overflows_total')}[{RATE}])",
+             "buffer overflows"),
+            (f"rate({sel('opnsense_protocol_tcp_hostcache_hits_total')}[{RATE}])",
+             "hit {{metric}}"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc=(
+            "The kernel's per-destination TCP tuning cache. Hits mean a new connection "
+            "started from a remembered RTT, RTT variance or slow-start threshold instead of "
+            "from defaults. Sustained buffer overflows mean the cache is churning and those "
+            "hits are being lost — connections then re-learn path characteristics from scratch. "
+            "The three hit counters are independent and do not sum to a connection count."
+        ),
+    )
+    tcp_tw_pmtud = b.ts(
+        "TCP TIME_WAIT & Path MTU Discovery (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_timewait_events_total')}[{RATE}])",
+             "TIME_WAIT {{event}}"),
+            (f"rate({sel('opnsense_protocol_tcp_pmtud_blackhole_events_total')}[{RATE}])",
+             "PMTUD blackhole {{event}}"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc=(
+            "PMTUD blackhole detection is the one to watch: it activates when the kernel "
+            "concludes an ICMP-fragmentation-needed message is not getting through and starts "
+            "clamping MSS. That is the classic cause of 'some sites load, some hang forever' — "
+            "invisible from the box itself and very hard to diagnose from outside. TIME_WAIT "
+            "recycles and resets indicate connection-slot pressure; responds is ordinary "
+            "retransmitted-FIN handling and is the baseline the other two spike against."
+        ),
+    )
+    tcp_signature = b.ts(
+        "TCP-MD5 Signature (rate)",
+        [
+            (f"rate({sel('opnsense_protocol_tcp_signature_total')}[{RATE}])",
+             "{{result}}"),
+        ],
+        unit="short",
+        w=12, h=8,
+        desc=(
+            "TCP-MD5 (RFC 2385) signature outcomes, used almost exclusively by BGP sessions. "
+            "Flat zero on a box that runs no signed sessions is the expected reading. Anything "
+            "in bad, make_failed or not_provided on a box that does run them points at a key "
+            "mismatch between the peers."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
     # Assemble the tab
     # -------------------------------------------------------------------------
     b.tab("Protocol Stats", [
@@ -529,6 +630,8 @@ def build(b: Builder):
         b.row("TCP ECN & SYN Cookies (26.1.11+/26.7+)",
               [tcp_ecn, tcp_accecn, tcp_syncookies, tcp_acks_for_data]),
         b.row("TCP Connection State", [tcp_state_tl]),
+        b.row("TCP Recovery, Host Cache & Path MTU",
+              [tcp_sack, tcp_sack_bytes, tcp_hostcache, tcp_tw_pmtud, tcp_signature]),
         b.row("UDP", [udp_traffic, udp_drops]),
         b.row("IP", [ip_traffic, ip_frags, ip_drops]),
         b.row("IPv6", [ip6_traffic, ip6_frags, ip6_drops]),

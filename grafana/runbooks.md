@@ -4,7 +4,7 @@
 
 One section per alert rule in `grafana/alerts/build_rules.py`'s `RULES`, in source order, followed by every recording rule in `RECORDING`. Each alert section states what its expression measures, its threshold and window, what absent/no-data means for that specific rule, first checks, likely causes, and how to confirm it has genuinely recovered - mined from the same source comments and descriptions that drive the generated manifests, so this document and the alert's own annotations can never contradict each other.
 
-Total: **43 alert rules** and **14 recording rules**.
+Total: **50 alert rules** and **14 recording rules**.
 
 ## OPNsenseExporterDown
 
@@ -430,6 +430,220 @@ opnsense_gateways_rtt_milliseconds / (opnsense_gateways_rtt_high_milliseconds > 
 
 **Verify recovery:**
 - The ratio drops back to 1 or below and stays there for 10m
+
+## OPNsenseNetmapRingFull
+
+**Severity:** warning  
+**Pending window:** 30m0s  
+**Rule name:** `opnsense-netmap-ring-full`
+
+**Expression:**
+```promql
+sum by (device, opnsense_instance) (rate(opnsense_log_events_netmap_ring_full_events_total[15m]))
+```
+
+**What it measures:** rate(opnsense_log_events_netmap_ring_full_events_total[15m]) - how often the kernel reported a full netmap host ring, derived from syslog rather than polled.
+
+**Threshold & window:** gt 0 sustained for 30m. The long window is deliberate: an isolated burst during a traffic spike is normal, a persistent condition is not.
+
+**Absent / no-data semantics:** Default noDataState (Ok). Absence means no report, NOT no drops - a box with the syslog receiver disabled, or with Zenarmor not running, produces no series at all.
+
+**First checks:**
+- Confirm Zenarmor is actually running and check its own engine health - it owns this datapath
+- Check throughput on the named device against what the box normally carries
+- Do NOT expect the interface drop counters to corroborate this on ixl/ixgbe/igb hardware - see causes below
+
+**Likely causes:**
+- Traffic volume exceeds what the Zenarmor capture ring can absorb
+- Zenarmor is wedged or too slow to drain the ring, so it backs up
+- The ring is sized for a lighter load than the box now carries
+
+**Verify recovery:**
+- The event rate returns to zero and stays there across a full traffic peak, not just a quiet period
+
+## OPNsenseDHCPClientLeaseRenewalOverdue
+
+**Severity:** critical  
+**Pending window:** 15m0s  
+**Rule name:** `opnsense-dhcp-client-lease-overdue`
+
+**Expression:**
+```promql
+opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds - time()
+```
+
+**What it measures:** The renewal (T1) deadline dhclient last reported, minus now. Negative means the deadline has passed and nothing has rebound since.
+
+**Threshold & window:** lt 0 sustained for 15m. Note this is the RENEWAL deadline, not absolute lease expiry - dhclient never logs the latter, so there is more headroom than this alert implies, not less.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No series means no bound-lease line has been seen since the exporter started - expected on a static or PPPoE WAN, which never runs dhclient at all.
+
+**First checks:**
+- Check the WAN DHCP Client Messages panel for a request storm with no matching ack - that is the upstream refusing or ignoring renewals
+- Check for any nak, which means the server actively rejected the current address
+- Confirm physical link and upstream reachability on the WAN interface
+
+**Likely causes:**
+- The upstream DHCP server is unreachable or not responding
+- The ISP changed its allocation and is refusing to renew the existing address
+- dhclient has died or is wedged on that interface
+
+**Verify recovery:**
+- A fresh bind appears and the countdown resets to a positive value
+- Time since last bind drops back to near zero on the countdown panel
+
+## OPNsenseDHCPClientNak
+
+**Severity:** warning  
+**Pending window:** 5m0s  
+**Rule name:** `opnsense-dhcp-client-nak`
+
+**Expression:**
+```promql
+sum by (interface, opnsense_instance) (rate(opnsense_log_events_dhcp_client_total{type="nak"}[15m]))
+```
+
+**What it measures:** rate of DHCPNAK messages received by the WAN dhclient.
+
+**Threshold & window:** gt 0 for 5m. Any NAK at all is abnormal on a stable WAN.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No dhclient on this box means no series.
+
+**First checks:**
+- Check whether the WAN address actually changed after the NAK
+- Check whether anything downstream is pinned to the old address (NAT rules, dynamic DNS, VPN endpoints)
+
+**Likely causes:**
+- The ISP moved the box to a different subnet or reclaimed the address
+- The upstream lease database was reset and no longer recognises this client
+- Two clients are presenting the same identifier upstream
+
+**Verify recovery:**
+- A new address is bound and the NAK rate returns to zero
+
+## OPNsenseDHCPClientRequestStorm
+
+**Severity:** warning  
+**Pending window:** 30m0s  
+**Rule name:** `opnsense-dhcp-client-storm`
+
+**Expression:**
+```promql
+sum by (interface, opnsense_instance) (rate(opnsense_log_events_dhcp_client_total{type="request"}[15m]))
+```
+
+**What it measures:** rate of DHCPREQUEST messages sent by the WAN dhclient.
+
+**Threshold & window:** gt 0.1/s (360/hour) sustained for 30m. Calibrated against a real incident: the box that motivated this alert ran a ~42/hour baseline and sustained ~4,500/hour for 11-12 hours, so this threshold sits roughly 8x above normal and 12x below the observed storm.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No dhclient on this box means no series.
+
+**First checks:**
+- Check whether acks are coming back at all - requests without acks is the storm signature
+- Check the lease renewal countdown: if it is still positive and being refreshed, the address is not yet at risk
+- Check upstream link quality - a lossy WAN produces retransmits without any DHCP fault
+
+**Likely causes:**
+- The upstream DHCP server is not responding to renewals
+- Packet loss on the WAN is eating the requests or the replies
+- The upstream server is rate-limiting or blocklisting this client
+
+**Verify recovery:**
+- The request rate falls back to baseline and a fresh bind is recorded
+
+## OPNsenseDHCPClientScriptFailure
+
+**Severity:** critical  
+**Pending window:** 5m0s  
+**Rule name:** `opnsense-dhcp-client-script-failure`
+
+**Expression:**
+```promql
+sum by (interface, reason, opnsense_instance) (rate(opnsense_log_events_dhcp_client_script_total{reason=~"expire|fail|timeout"}[15m]))
+```
+
+**What it measures:** rate of dhclient-script invocations whose reason indicates lease loss or failure.
+
+**Threshold & window:** gt 0 for 5m on reason expire, fail or timeout. The healthy reasons (bound, renew, rebind, reboot) are deliberately excluded.
+
+**Absent / no-data semantics:** Default noDataState (Ok). No dhclient on this box means no series.
+
+**First checks:**
+- Confirm whether the WAN interface still has an address at all
+- Check the request/ack panel for how long the renewal had been failing beforehand - OPNsenseDHCPClientRequestStorm should have fired first
+
+**Likely causes:**
+- The upstream DHCP server has been unreachable long enough for the full lease to run out
+- Physical WAN link failure
+- dhclient could not obtain any lease on a fresh start
+
+**Verify recovery:**
+- A bound or renew reason follows and the interface regains an address
+
+## OPNsenseNetisrQueueDrops
+
+**Severity:** warning  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-netisr-queue-drops`
+
+**Expression:**
+```promql
+sum by (protocol, opnsense_instance) (rate(opnsense_network_diag_netisr_queue_drops_total[5m]))
+```
+
+**What it measures:** rate(opnsense_network_diag_netisr_queue_drops_total[5m]) - packets per second discarded by netisr because a workstream queue was full.
+
+**Threshold & window:** gt 0 (any sustained drop rate) for 10m.
+
+**Absent / no-data semantics:** Default noDataState (Ok). The network diagnostics collector is opt-in (--exporter.enable-network-diagnostics), so no series at all usually means the collector is off rather than that the box is healthy.
+
+**First checks:**
+- Read opnsense_network_diag_netisr_drop_concentration_ratio for this protocol FIRST. At or near 1.0 every drop is landing on ONE workstream, which is a CPU-affinity problem, not a queue-size problem
+- Open the NetISR Per-CPU Distribution row and find which cpu is dropping - the per-CPU drops panel names it directly
+- Compare opnsense_network_diag_netisr_active_workstreams against the box core count. Four active workstreams on a twelve-core box means netisr is only using a third of the machine
+- Check the NetISR Protocol Policy table: a policy_type of "source" is single-lane by design and cannot spread, so one busy workstream there is expected
+- Do NOT reach straight for net.isr.maxqlen. On the box that motivated this rule, ip6 dropped 683 packets entirely on cpu0 while cpu1-3 ran at roughly half their watermark and cpu4-11 were completely idle - raising the queue limit there would have masked an affinity problem rather than fixing it
+
+**Likely causes:**
+- netisr work is bound to a subset of CPUs - check net.isr.maxthreads and net.isr.bindthreads
+- The NIC RSS / queue configuration is steering all traffic into one hardware queue and so onto one workstream
+- cpu0 additionally carries interrupt and userland work the other cores do not, so it saturates first even with fewer packets queued
+- A genuine traffic volume increase beyond what the configured queue depth absorbs
+
+**Verify recovery:**
+- The drop rate returns to zero and stays there for 10m
+- drop_concentration_ratio and queue_imbalance_ratio both fall, showing work actually spread rather than the queue merely being enlarged
+
+## OPNsenseNetisrQueueNearLimit
+
+**Severity:** warning  
+**Pending window:** 10m0s  
+**Rule name:** `opnsense-netisr-queue-near-limit`
+
+**Expression:**
+```promql
+(opnsense_network_diag_netisr_queue_watermark / (opnsense_network_diag_netisr_queue_limit > 0)) and (delta(opnsense_network_diag_netisr_queue_watermark[1h]) > 0)
+```
+
+**What it measures:** netisr_queue_watermark divided by netisr_queue_limit - how close the deepest queue occupancy since boot has come to the configured ceiling, evaluated only while the watermark is still climbing.
+
+**Threshold & window:** gt 0.9 sustained for 10m, and only while the watermark rose within the last hour. The rising-edge guard (delta over 1h) is deliberate and must not be removed: the watermark is a since-boot HIGH-WATER MARK that never decays, so a bare ratio > 0.9 would latch on the first burst and alert continuously until the next reboot whether or not anything was still wrong. This is a deviation from the rule as originally proposed in #538, made because the metric it reads does not behave like a gauge.
+
+**Absent / no-data semantics:** Default noDataState (Ok). The division guard means a protocol reporting limit=0 produces no series rather than a divide-by-zero artifact.
+
+**First checks:**
+- Identify the protocol and check whether its watermark is climbing steadily or jumped once during a traffic burst
+- Check the per-CPU watermark panel: one workstream at the limit beside idle siblings is an affinity problem, all of them near the limit is genuine volume
+- Confirm whether drops have started yet via OPNsenseNetisrQueueDrops
+
+**Likely causes:**
+- Rising traffic on the affected protocol is filling the queue faster than it drains
+- netisr work concentrated on too few workstreams, so per-lane depth grows while total capacity sits unused
+- A queue limit left at a default that is undersized for this box
+
+**Verify recovery:**
+- The ratio stops rising - the rising-edge guard clears the alert on its own once the watermark stops moving
+- Per-CPU watermarks even out across active workstreams
 
 ## OPNsensePFStateTableNearLimit
 

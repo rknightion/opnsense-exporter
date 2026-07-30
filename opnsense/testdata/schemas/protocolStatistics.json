@@ -832,6 +832,10 @@
       "kind": "numeric"
     },
     {
+      "path": "statistics.tcp.sack.lost-retransmissions",
+      "kind": "numeric"
+    },
+    {
       "path": "statistics.tcp.sack.received-blocks",
       "kind": "numeric"
     },
@@ -849,6 +853,10 @@
     },
     {
       "path": "statistics.tcp.sack.sent-option-blocks",
+      "kind": "numeric"
+    },
+    {
+      "path": "statistics.tcp.sack.tso-chunk-retransmits",
       "kind": "numeric"
     },
     {

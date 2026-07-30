@@ -3,8 +3,10 @@ package collector
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 )
 
@@ -265,8 +267,16 @@ func TestProtocolCollector_Update(t *testing.T) {
 	//   finwait2_timeout, keepalive) — this fixture sends all four
 	//   connections-dropped-by-* fields as explicit literal 0s, which counts as
 	//   present under presence-gating, so all four reasons get a series.
-	// Total: 105 + 21 + 3 + 4 = 133
-	expectedCount := 133
+	// SACK / hostcache / TIME_WAIT / PMTUD / TCP-MD5 (#545): 24 — 8 sack (episodes,
+	//   segment retransmits, retransmitted bytes, scoreboard overflows, lost
+	//   retransmissions, TSO chunk retransmits, plus blocks{received,sent} = 2
+	//   series from one family), 2 hostcache insert/evict + 3 hostcache
+	//   hits{rtt,rttvar,ssthresh}, 3 tw, 3 pmtud, 5 tcp-signature. Unconditional:
+	//   these sections are present on every release in the support window, so they
+	//   are emitted even when — as in this fixture — the payload omits them
+	//   entirely and every value reads zero.
+	// Total: 105 + 21 + 3 + 4 + 24 = 157
+	expectedCount := 157
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -354,5 +364,131 @@ func TestProtocolCollector_Name(t *testing.T) {
 	c := &protocolCollector{subsystem: ProtocolSubsystem}
 	if c.Name() != ProtocolSubsystem {
 		t.Errorf("expected %s, got %s", ProtocolSubsystem, c.Name())
+	}
+}
+
+// TestProtocolCollector_DroppedSections covers #545: the sack, hostcache, tw,
+// pmtud and tcp-signature sections were decoded on every scrape and exported by
+// nothing. The payload below is the real key set captured live from
+// api/diagnostics/interface/get_protocol_statistics on prod (10.0.0.254,
+// OPNsense 26.1); the identical key set was verified on the 26.7.1 release box and
+// the 27.1.a devel box, so these series are unconditional, not presence-gated.
+//
+// Every one of these is a cumulative kernel counter that resets only on reboot, so
+// all must be CounterValue — a Gauge here would make rate()/increase() meaningless.
+func TestProtocolCollector_DroppedSections(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"statistics": {
+				"tcp": {
+					"connections-hostcache-rtt": 41,
+					"connections-hostcache-rttvar": 17,
+					"connections-hostcache-ssthresh": 23,
+					"sack": {
+						"recovery-episodes": 9742,
+						"segment-retransmits": 41516,
+						"tso-chunk-retransmits": 12,
+						"byte-retransmits": 58377151,
+						"received-blocks": 150048,
+						"sent-option-blocks": 18266,
+						"lost-retransmissions": 31,
+						"scoreboard-overflows": 3
+					},
+					"hostcache": {"entries-added": 185, "buffer-overflows": 2},
+					"tw": {"tw_responds": 7, "tw_recycles": 4, "tw_resets": 9},
+					"pmtud": {"pmtud-activated": 11, "pmtud-activated-min-mss": 5, "pmtud-failed": 2},
+					"tcp-signature": {
+						"received-good-signature": 100,
+						"received-bad-signature": 3,
+						"failed-make-signature": 1,
+						"no-signature-expected": 6,
+						"no-signature-provided": 8
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &protocolCollector{subsystem: ProtocolSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	// key is "<metric name fragment>" or "<fragment>/<label value>".
+	got := make(map[string]float64)
+	for _, m := range collectMetrics(t, c, client) {
+		desc := m.Desc().String()
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		labels := getMetricLabels(m)
+
+		for fragment, labelName := range map[string]string{
+			"tcp_sack_recovery_episodes_total":     "",
+			"tcp_sack_segment_retransmits_total":   "",
+			"tcp_sack_retransmitted_bytes_total":   "",
+			"tcp_sack_scoreboard_overflows_total":  "",
+			"tcp_sack_lost_retransmissions_total":  "",
+			"tcp_sack_tso_chunk_retransmits_total": "",
+			"tcp_sack_blocks_total":                "direction",
+			"tcp_hostcache_entries_added_total":    "",
+			"tcp_hostcache_buffer_overflows_total": "",
+			"tcp_hostcache_hits_total":             "metric",
+			"tcp_timewait_events_total":            "event",
+			"tcp_pmtud_blackhole_events_total":     "event",
+			"tcp_signature_total":                  "result",
+		} {
+			if !strings.Contains(desc, `fqName: "opnsense_protocol_`+fragment+`"`) {
+				continue
+			}
+			if d.Counter == nil {
+				t.Errorf("%s must be a Counter (cumulative kernel counter, reset only on reboot); got %v", fragment, d)
+				continue
+			}
+			key := fragment
+			if labelName != "" {
+				key = fragment + "/" + labels[labelName]
+			}
+			got[key] = d.Counter.GetValue()
+		}
+	}
+
+	want := map[string]float64{
+		"tcp_sack_recovery_episodes_total":                   9742,
+		"tcp_sack_segment_retransmits_total":                 41516,
+		"tcp_sack_retransmitted_bytes_total":                 58377151,
+		"tcp_sack_scoreboard_overflows_total":                3,
+		"tcp_sack_lost_retransmissions_total":                31,
+		"tcp_sack_tso_chunk_retransmits_total":               12,
+		"tcp_hostcache_hits_total/rtt":                       41,
+		"tcp_hostcache_hits_total/rttvar":                    17,
+		"tcp_hostcache_hits_total/ssthresh":                  23,
+		"tcp_sack_blocks_total/received":                     150048,
+		"tcp_sack_blocks_total/sent":                         18266,
+		"tcp_hostcache_entries_added_total":                  185,
+		"tcp_hostcache_buffer_overflows_total":               2,
+		"tcp_timewait_events_total/responds":                 7,
+		"tcp_timewait_events_total/recycles":                 4,
+		"tcp_timewait_events_total/resets":                   9,
+		"tcp_pmtud_blackhole_events_total/activated":         11,
+		"tcp_pmtud_blackhole_events_total/activated_min_mss": 5,
+		"tcp_pmtud_blackhole_events_total/failed":            2,
+		"tcp_signature_total/good":                           100,
+		"tcp_signature_total/bad":                            3,
+		"tcp_signature_total/make_failed":                    1,
+		"tcp_signature_total/not_expected":                   6,
+		"tcp_signature_total/not_provided":                   8,
+	}
+	for key, wantValue := range want {
+		gotValue, ok := got[key]
+		if !ok {
+			t.Errorf("missing series %s", key)
+			continue
+		}
+		if gotValue != wantValue {
+			t.Errorf("%s = %v, want %v", key, gotValue, wantValue)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("emitted %d series in the #545 group, want %d: %v", len(got), len(want), got)
 	}
 }

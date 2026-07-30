@@ -122,6 +122,23 @@ func TestUPnPCapturedGrammars(t *testing.T) {
 			},
 		},
 		{
+			// THE REGRESSION #536 FOUND. The real production line puts WHITESPACE after
+			// `addr=` — miniupnpd right-aligns the token in a fixed-width column — and the
+			// original pattern required the token to follow the `=` immediately. Result: 572
+			// of the 706 miniupnpd lines in the 2026-07-24..30 capture window were STILL
+			// landing in the unparsed-line capture after #409 shipped, while the sibling
+			// `expired` grammar matched and made the family look healthy. Byte-verified from
+			// the capture.
+			name: "nat rule cleanup failure with the real space-padded addr token",
+			pri:  "<29>",
+			msg:  "could not find nat rule to delete iport=62001 addr= a000004",
+			want: map[string]string{
+				"upnp.event":         "cleanup_failed",
+				"upnp.result":        "failure",
+				"upnp.port.internal": "62001",
+			},
+		},
+		{
 			// #362's capture recorded this shape WITHOUT the addr= token, so the token is
 			// optional rather than required. A required token would silently stop matching
 			// on whatever build omits it.

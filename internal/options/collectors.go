@@ -140,6 +140,10 @@ var (
 		"exporter.enable-network-diagnostics",
 		"Enable the network diagnostics collector (netisr, sockets, routes). Disabled by default.",
 	).Envar("OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS").Default("false").IsSetByUser(&networkDiagnosticsEnabledUserSet).Bool()
+	netisrPerCPUDisabled = kingpin.Flag(
+		"exporter.disable-netisr-percpu",
+		"Disable the per-workstream netisr series, keeping only the per-protocol aggregates and derived summaries. On by default: the per-CPU dimension is the diagnosis for a netisr drop - one saturated workstream beside eleven idle ones is a CPU-affinity problem, and collapsed to protocol alone it is indistinguishable from uniform overload, which has the opposite remedy. Costs roughly 7 series per protocol per CPU.",
+	).Envar("OPNSENSE_EXPORTER_DISABLE_NETISR_PERCPU").Default("false").Bool()
 	netflowEnabled = kingpin.Flag(
 		"exporter.enable-netflow",
 		"Enable the netflow collector (enabled status, service status, cache stats). Disabled by default.",
@@ -450,6 +454,7 @@ type CollectorsDisableSwitch struct {
 	Kea                    bool
 	KeaDetails             bool
 	NetworkDiagnostics     bool
+	NetisrPerCPU           bool
 	Netflow                bool
 	PFStats                bool
 	NDP                    bool
@@ -541,6 +546,7 @@ func CollectorsSwitches() CollectorsDisableSwitch {
 		Kea:                    !*keaCollectorDisabled,
 		KeaDetails:             *keaDetailsEnabled,
 		NetworkDiagnostics:     *networkDiagnosticsEnabled,
+		NetisrPerCPU:           !*netisrPerCPUDisabled,
 		Netflow:                *netflowEnabled,
 		PFStats:                !*pfStatsCollectorDisabled,
 		NDP:                    !*ndpCollectorDisabled,
@@ -648,6 +654,11 @@ var CollectorFlags = []CollectorFlag{
 	{Flag: "exporter.disable-kea", Subsystem: "kea"},
 	{Flag: "exporter.enable-kea-details", Subsystem: "kea", Detail: true, Reason: "high cardinality on large networks (per-lease detail metrics)"},
 	{Flag: "exporter.enable-network-diagnostics", Subsystem: "network_diag", Reason: "not needed by every deployment; adds netisr/socket/route diagnostics collection"},
+	// The only default-ON detail flag. Every other Detail entry is an enable-*
+	// opt-in; this one is a disable-* opt-out because the dimension it controls is
+	// the diagnosis rather than an extra. It is deliberately absent from
+	// enableFlagBindings: --exporter.enable-all-available has nothing to turn on here.
+	{Flag: "exporter.disable-netisr-percpu", Subsystem: "network_diag", Detail: true},
 	{Flag: "exporter.enable-netflow", Subsystem: "netflow", Reason: "only relevant when NetFlow capture is configured on the firewall"},
 	{Flag: "exporter.disable-pf-stats", Subsystem: "pf_stats"},
 	{Flag: "exporter.disable-ndp", Subsystem: "ndp"},

@@ -213,6 +213,12 @@ type protocolStatisticsResponse struct {
 				ReceivedBlocks      json.Number `json:"received-blocks"`
 				SentOptionBlocks    json.Number `json:"sent-option-blocks"`
 				ScoreboardOverflows json.Number `json:"scoreboard-overflows"`
+				// Added in #545. Both are sent by every release in the support window
+				// (verified live on 26.1, 26.7.1 and 27.1.a) — they were simply never
+				// declared, so encoding/json silently discarded them. Declaring them
+				// changes the reflected golden schema: `make schemas` is required.
+				LostRetransmissions json.Number `json:"lost-retransmissions"`
+				TsoChunkRetransmits json.Number `json:"tso-chunk-retransmits"`
 			} `json:"sack"`
 			Ecn          ecnStatistics `json:"ecn"`
 			TCPSignature struct {
@@ -511,6 +517,51 @@ type ProtocolStatistics struct {
 	TCPReceivedAcksForDataNeverBeenSent int64
 	TCPReceivedAcksForDataBeingTooOld   int64
 
+	// TCP SACK (statistics.tcp.sack, #545). Selective-ACK recovery: how often the
+	// box entered loss recovery and how much it had to retransmit to get out. These
+	// were decoded but never mapped — byte-retransmits alone was 58.4M live on prod.
+	//
+	// NOT presence-gated: all five sections in this #545 group are present on every
+	// release in the support window (verified live on 26.1, 26.7.1 and 27.1.a), so
+	// there is no version-conditional shape to resolve here.
+	TCPSackRecoveryEpisodes    int64
+	TCPSackSegmentRetransmits  int64
+	TCPSackByteRetransmits     int64
+	TCPSackReceivedBlocks      int64
+	TCPSackSentOptionBlocks    int64
+	TCPSackScoreboardOverflows int64
+	TCPSackLostRetransmissions int64
+	TCPSackTsoChunkRetransmits int64
+
+	// TCP host cache (statistics.tcp.hostcache, #545). EntriesAdded rising is peer
+	// churn; BufferOverflows rising means the cache is full and evicting, so the
+	// kernel is losing the cached RTT/ssthresh it would otherwise warm-start with.
+	TCPHostcacheEntriesAdded    int64
+	TCPHostcacheBufferOverflows int64
+
+	// TCP host cache HITS (#545). These are the counters the issue asked for under
+	// "hostcache hits", but on the real box they are NOT inside the hostcache
+	// section — they are top-level statistics.tcp fields
+	// (connections-hostcache-{rtt,rttvar,ssthresh}), each counting connections that
+	// warm-started that one metric from a cached entry. Already decoded since
+	// before #545 and, like the sections above, exported by nothing.
+	TCPHostcacheHitsByMetric map[string]int64
+
+	// TCP TIME_WAIT recycling (statistics.tcp.tw, #545). Fixed key set, always
+	// populated — a zero is reported as a zero, never as an absent series.
+	TCPTimeWaitByEvent map[string]int64
+
+	// TCP path-MTU-discovery blackhole detection (statistics.tcp.pmtud, #545).
+	// The headline reason this issue exists: a PMTUD blackhole is the classic
+	// cause of "some sites load, some hang" and is otherwise invisible from
+	// outside the box.
+	TCPPmtudBlackholeByEvent map[string]int64
+
+	// TCP-MD5 signatures (statistics.tcp.tcp-signature, RFC 2385, #545). In
+	// practice only ever used to authenticate BGP sessions, so all five read zero
+	// on a box with no MD5-authenticated peer.
+	TCPSignatureByResult map[string]int64
+
 	// ARP detailed
 	ARPSentFailures            int64
 	ARPSentReplies             int64
@@ -743,6 +794,43 @@ func (c *Client) FetchProtocolStatistics() (ProtocolStatistics, *APICallError) {
 		TCPReceivedAcksForDataNotYetSent:    numToInt(resp.Statistics.TCP.ReceivedAcksForDataNotYetSent),
 		TCPReceivedAcksForDataNeverBeenSent: numToInt(resp.Statistics.TCP.ReceivedAcksForDataNeverBeenSent),
 		TCPReceivedAcksForDataBeingTooOld:   numToInt(resp.Statistics.TCP.ReceivedAcksForDataBeingTooOld),
+
+		// TCP SACK / hostcache / TIME_WAIT / PMTUD / TCP-MD5 (#545) — five whole
+		// sections that were decoded on the response struct but never mapped here.
+		TCPSackRecoveryEpisodes:    numToInt(resp.Statistics.TCP.Sack.RecoveryEpisodes),
+		TCPSackSegmentRetransmits:  numToInt(resp.Statistics.TCP.Sack.SegmentRetransmits),
+		TCPSackByteRetransmits:     numToInt(resp.Statistics.TCP.Sack.ByteRetransmits),
+		TCPSackReceivedBlocks:      numToInt(resp.Statistics.TCP.Sack.ReceivedBlocks),
+		TCPSackSentOptionBlocks:    numToInt(resp.Statistics.TCP.Sack.SentOptionBlocks),
+		TCPSackScoreboardOverflows: numToInt(resp.Statistics.TCP.Sack.ScoreboardOverflows),
+		TCPSackLostRetransmissions: numToInt(resp.Statistics.TCP.Sack.LostRetransmissions),
+		TCPSackTsoChunkRetransmits: numToInt(resp.Statistics.TCP.Sack.TsoChunkRetransmits),
+
+		TCPHostcacheEntriesAdded:    numToInt(resp.Statistics.TCP.Hostcache.EntriesAdded),
+		TCPHostcacheBufferOverflows: numToInt(resp.Statistics.TCP.Hostcache.BufferOverflows),
+		TCPHostcacheHitsByMetric: map[string]int64{
+			"rtt":      numToInt(resp.Statistics.TCP.ConnectionsHostcacheRtt),
+			"rttvar":   numToInt(resp.Statistics.TCP.ConnectionsHostcacheRttvar),
+			"ssthresh": numToInt(resp.Statistics.TCP.ConnectionsHostcacheSsthresh),
+		},
+
+		TCPTimeWaitByEvent: map[string]int64{
+			"responds": numToInt(resp.Statistics.TCP.Tw.TwResponds),
+			"recycles": numToInt(resp.Statistics.TCP.Tw.TwRecycles),
+			"resets":   numToInt(resp.Statistics.TCP.Tw.TwResets),
+		},
+		TCPPmtudBlackholeByEvent: map[string]int64{
+			"activated":         numToInt(resp.Statistics.TCP.Pmtud.PmtudActivated),
+			"activated_min_mss": numToInt(resp.Statistics.TCP.Pmtud.PmtudActivatedMinMss),
+			"failed":            numToInt(resp.Statistics.TCP.Pmtud.PmtudFailed),
+		},
+		TCPSignatureByResult: map[string]int64{
+			"good":         numToInt(resp.Statistics.TCP.TCPSignature.ReceivedGoodSignature),
+			"bad":          numToInt(resp.Statistics.TCP.TCPSignature.ReceivedBadSignature),
+			"make_failed":  numToInt(resp.Statistics.TCP.TCPSignature.FailedMakeSignature),
+			"not_expected": numToInt(resp.Statistics.TCP.TCPSignature.NoSignatureExpected),
+			"not_provided": numToInt(resp.Statistics.TCP.TCPSignature.NoSignatureProvided),
+		},
 
 		// ARP detailed
 		ARPSentFailures:            numToInt(resp.Statistics.Arp.SentFailures),

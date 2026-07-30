@@ -504,4 +504,7 @@ def build(b: Builder):
         # independent, so it stays populated across a Kea/dnsmasq/ISC migration that
         # blanks whichever backend rows the box stopped using.
         log_events.dhcp_row(b),
+        # #541: the lease this box HOLDS on its WAN, as opposed to the ones it hands
+        # out. A healthy DHCP server can still lose its own upstream address.
+        log_events.dhcp_client_row(b),
     ])

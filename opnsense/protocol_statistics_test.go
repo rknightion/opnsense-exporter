@@ -960,3 +960,142 @@ func TestFetchProtocolStatistics_ServerError(t *testing.T) {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
 	}
 }
+
+// TestFetchProtocolStatistics_DroppedSections covers #545: the sack, hostcache,
+// tw, pmtud and tcp-signature sections of statistics.tcp were declared on the
+// response struct but never mapped onto ProtocolStatistics, so ~20 sub-fields with
+// real nonzero values were decoded and thrown away at zero extra API cost.
+//
+// The fixture is the REAL key set and shape captured live from
+// api/diagnostics/interface/get_protocol_statistics on prod (10.0.0.254,
+// OPNsense 26.1), with the values as captured. The identical key set was verified
+// on the 26.7.1 release box and the 27.1.a devel box, so there is no
+// version-conditional shape here to resolve.
+func TestFetchProtocolStatistics_DroppedSections(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{
+			"statistics": {
+				"tcp": {
+					"connections-hostcache-rtt": 41,
+					"connections-hostcache-rttvar": 17,
+					"connections-hostcache-ssthresh": 23,
+					"sack": {
+						"recovery-episodes": 9742,
+						"segment-retransmits": 41516,
+						"tso-chunk-retransmits": 12,
+						"byte-retransmits": 58377151,
+						"received-blocks": 150048,
+						"sent-option-blocks": 18266,
+						"lost-retransmissions": 31,
+						"scoreboard-overflows": 3
+					},
+					"hostcache": {"entries-added": 185, "buffer-overflows": 2},
+					"tw": {"tw_responds": 7, "tw_recycles": 4, "tw_resets": 9},
+					"pmtud": {"pmtud-activated": 11, "pmtud-activated-min-mss": 5, "pmtud-failed": 2},
+					"tcp-signature": {
+						"received-good-signature": 100,
+						"received-bad-signature": 3,
+						"failed-make-signature": 1,
+						"no-signature-expected": 6,
+						"no-signature-provided": 8
+					}
+				}
+			}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchProtocolStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	scalars := []struct {
+		name string
+		got  int64
+		want int64
+	}{
+		{"TCPSackRecoveryEpisodes", data.TCPSackRecoveryEpisodes, 9742},
+		{"TCPSackSegmentRetransmits", data.TCPSackSegmentRetransmits, 41516},
+		{"TCPSackByteRetransmits", data.TCPSackByteRetransmits, 58377151},
+		{"TCPSackReceivedBlocks", data.TCPSackReceivedBlocks, 150048},
+		{"TCPSackSentOptionBlocks", data.TCPSackSentOptionBlocks, 18266},
+		{"TCPSackScoreboardOverflows", data.TCPSackScoreboardOverflows, 3},
+		{"TCPSackLostRetransmissions", data.TCPSackLostRetransmissions, 31},
+		{"TCPSackTsoChunkRetransmits", data.TCPSackTsoChunkRetransmits, 12},
+		{"TCPHostcacheEntriesAdded", data.TCPHostcacheEntriesAdded, 185},
+		{"TCPHostcacheBufferOverflows", data.TCPHostcacheBufferOverflows, 2},
+	}
+	for _, s := range scalars {
+		if s.got != s.want {
+			t.Errorf("%s = %d, want %d", s.name, s.got, s.want)
+		}
+	}
+
+	maps := []struct {
+		name string
+		got  map[string]int64
+		want map[string]int64
+	}{
+		{"TCPTimeWaitByEvent", data.TCPTimeWaitByEvent, map[string]int64{
+			"responds": 7, "recycles": 4, "resets": 9,
+		}},
+		{"TCPPmtudBlackholeByEvent", data.TCPPmtudBlackholeByEvent, map[string]int64{
+			"activated": 11, "activated_min_mss": 5, "failed": 2,
+		}},
+		{"TCPSignatureByResult", data.TCPSignatureByResult, map[string]int64{
+			"good": 100, "bad": 3, "make_failed": 1, "not_expected": 6, "not_provided": 8,
+		}},
+		// The hostcache HIT counters live at top-level statistics.tcp, NOT inside the
+		// hostcache section (which only carries entries-added / buffer-overflows).
+		{"TCPHostcacheHitsByMetric", data.TCPHostcacheHitsByMetric, map[string]int64{
+			"rtt": 41, "rttvar": 17, "ssthresh": 23,
+		}},
+	}
+	for _, m := range maps {
+		if len(m.got) != len(m.want) {
+			t.Errorf("%s has %d entries, want %d: %v", m.name, len(m.got), len(m.want), m.got)
+		}
+		for k, want := range m.want {
+			if m.got[k] != want {
+				t.Errorf("%s[%q] = %d, want %d", m.name, k, m.got[k], want)
+			}
+		}
+	}
+}
+
+// TestFetchProtocolStatistics_DroppedSectionsAbsent guards the zero case: a payload
+// with no tcp sections at all must decode to zeros and fully-populated maps rather
+// than panicking or producing nil entries. These five sections are present on every
+// release in the support window (verified live on 26.1, 26.7.1 and 27.1.a), so they
+// are NOT presence-gated the way the 26.7+ syncookies section is.
+func TestFetchProtocolStatistics_DroppedSectionsAbsent(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"statistics": {"tcp": {"sent-packets": 7}}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchProtocolStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data.TCPSackByteRetransmits != 0 || data.TCPHostcacheEntriesAdded != 0 {
+		t.Errorf("expected zeros for an absent payload, got sack=%d hostcache=%d",
+			data.TCPSackByteRetransmits, data.TCPHostcacheEntriesAdded)
+	}
+	for name, m := range map[string]map[string]int64{
+		"TCPTimeWaitByEvent":       data.TCPTimeWaitByEvent,
+		"TCPPmtudBlackholeByEvent": data.TCPPmtudBlackholeByEvent,
+		"TCPSignatureByResult":     data.TCPSignatureByResult,
+		"TCPHostcacheHitsByMetric": data.TCPHostcacheHitsByMetric,
+	} {
+		if len(m) == 0 {
+			t.Errorf("%s must still carry its fixed key set (as zeros) so a series never silently disappears; got %v", name, m)
+		}
+		for k, v := range m {
+			if v != 0 {
+				t.Errorf("%s[%q] = %d, want 0", name, k, v)
+			}
+		}
+	}
+}

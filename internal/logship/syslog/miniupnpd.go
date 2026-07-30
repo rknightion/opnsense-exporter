@@ -78,7 +78,20 @@ var (
 	// it is a fixed seven-character alphanumeric in every production occurrence, not an
 	// address literal, so naming it as an attribute would assert a meaning no capture
 	// proves. It still ships inside the verbatim body.
-	reUPnPNATCleanupFailed = regexp.MustCompile(`^could not find nat rule to delete iport=(\d+)(?: addr=\S+)?$`)
+	//
+	// THERE IS WHITESPACE AFTER `addr=` ON THE REAL BOX, and omitting it from this
+	// pattern is why 572 of the 706 miniupnpd lines in the 2026-07-24..30 capture
+	// window were still landing in the unparsed-line capture AFTER #409 shipped
+	// (#536). Verified byte-for-byte:
+	//
+	//	could not find nat rule to delete iport=62001 addr= a000004
+	//
+	// miniupnpd's format string right-aligns the token in a fixed-width column, so the
+	// gap is padding and its WIDTH is not fixed. ` *` rather than a single literal
+	// space for exactly that reason. The failure was silent in the worst way: the
+	// sibling `remove port mapping ... expired` grammar matched, so the family's counter
+	// moved and the parser looked healthy while its dominant record never parsed.
+	reUPnPNATCleanupFailed = regexp.MustCompile(`^could not find nat rule to delete iport=(\d+)(?: addr= *\S+)?$`)
 
 	// `could not find redirect rule to delete eport=<eport>` — the rdr-side twin of the
 	// nat-rule failure above, keyed on the EXTERNAL port.

@@ -42,6 +42,7 @@ $device, not $interface, same as the LAGG/bridge/SFP rows above.
 
 from builder import Builder, sel, RATE, UPDOWN, LINK_STATE
 from uids import focus_interface, to_tab
+from tabs import log_events
 
 
 def build(b: Builder):
@@ -436,6 +437,9 @@ def build(b: Builder):
               [sfp_info, sfp_temperature, sfp_voltage, sfp_rx_power_dbm, sfp_rx_power_mw, sfp_tx_bias],
               present="has_sfp"),
         b.row("Diagnostics", [unknown_protocol_packets, attach_or_reset_age]),
+        # #536: netmap ring-full is per-device packet loss that no interface counter
+        # on this tab can show - the ixl driver shadows the kernel oqdrops increment.
+        log_events.netmap_row(b),
         b.row("Vnstat Traffic Accounting", [vnstat_day, vnstat_month, vnstat_total],
               present="has_vnstat"),
     ])

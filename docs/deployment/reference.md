@@ -303,6 +303,13 @@ services:
       # Disable the scraping of NetBird management/signal connectivity, relay and peer
       # metrics (silent when the os-netbird plugin is absent)
       # OPNSENSE_EXPORTER_DISABLE_NETBIRD: "false"
+      # Disable the per-workstream netisr series, keeping only the per-protocol
+      # aggregates and derived summaries. On by default: the per-CPU dimension is the
+      # diagnosis for a netisr drop - one saturated workstream beside eleven idle ones
+      # is a CPU-affinity problem, and collapsed to protocol alone it is
+      # indistinguishable from uniform overload, which has the opposite remedy. Costs
+      # roughly 7 series per protocol per CPU.
+      # OPNSENSE_EXPORTER_DISABLE_NETISR_PERCPU: "false"
       # Disable the scraping of nginx VTS statistics (silent when the os-nginx plugin is
       # absent)
       # OPNSENSE_EXPORTER_DISABLE_NGINX: "false"

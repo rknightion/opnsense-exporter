@@ -411,7 +411,12 @@ func TestCARPUnrelatedKernelLinesAreNotClaimed(t *testing.T) {
 		"<6>[100] lo0: link state changed to UP",
 		"<6>[104] wg0: link state changed to UP",
 		"<6>[12] em0: Watchdog timeout -- resetting",
-		"<4>[45] arp: 192.0.2.5 moved from 00:11:22:33:44:55 to 66:77:88:99:aa:bb on igb0",
+		// NOTE: `arp: <ip> moved from <mac> to <mac> on <iface>` USED to sit in this
+		// list. It moved out in #536, which models it as a real kernel grammar — see
+		// TestARPCapturedAddressMoves. It is still not a CARP line and parseCARP must
+		// still decline it, which the parseCARP assertion below covers; what changed is
+		// that buildRecord now legitimately reports a structured parse for it, so it can
+		// no longer be asserted generic here.
 		"<6>[8] ZFS filesystem version: 5",
 		"<6>[9] ugen0.3: <Generic Flash Disk> at usbus0",
 		"<6>[70] pflog0: promiscuous mode enabled",

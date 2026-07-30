@@ -32,6 +32,7 @@ type firewallCollector struct {
 
 	pfStatesCurrent *prometheus.Desc
 	pfStatesLimit   *prometheus.Desc
+	pfInterfaceRefs *prometheus.Desc
 
 	interfaceLogEntries *prometheus.Desc
 
@@ -164,6 +165,23 @@ func (c *firewallCollector) Register(namespace, instanceLabel string, log *slog.
 		nil,
 	)
 
+	// The only per-interface breakdown of PF state-table usage the box exposes
+	// anywhere: pf_states_current is a single global number, so without this
+	// there is no way to answer "which interface is consuming the state table"
+	// without shelling into the firewall (#542).
+	c.pfInterfaceRefs = buildPrometheusDesc(c.subsystem, "pf_interface_references",
+		"Number of PF state-table entries currently referencing each interface — the per-interface "+
+			"breakdown of the global pf_states_current. A live depth, not a cumulative counter: it rises "+
+			"and falls with connection count, so never wrap it in rate()/increase(). "+
+			"skipped=\"true\" means pf \"skip on interface\" is enabled for that device, so pf is not "+
+			"filtering it at all — the reference count is still real, but no rules are being evaluated. "+
+			"The pfctl \" (skip)\" name suffix is stripped out of the interface label so toggling that "+
+			"option does not rename the series. The pfctl \"all\" aggregate row is deliberately NOT "+
+			"emitted: it is the sum of every other row, so including it would double every total in any "+
+			"panel that aggregates this family — use sum() in PromQL instead. Do not add it back.",
+		[]string{"interface", "skipped"},
+	)
+
 	// Sourced from diagnostics/firewall/stats, which counts occurrences per
 	// interface over only the most recent ~5000 firewall *log* records and
 	// returns the top 10 plus a synthetic "other" aggregate bucket. It rises and
@@ -223,6 +241,7 @@ func (c *firewallCollector) Describe(ch chan<- *prometheus.Desc) {
 
 	ch <- c.pfStatesCurrent
 	ch <- c.pfStatesLimit
+	ch <- c.pfInterfaceRefs
 
 	ch <- c.interfaceLogEntries
 
@@ -284,6 +303,16 @@ func (c *firewallCollector) Update(ctx context.Context, client *opnsense.Client,
 			float64(v.In6BlockBytes), v.InterfaceName, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.outIPv6BlockBytes, prometheus.CounterValue,
 			float64(v.Out6BlockBytes), v.InterfaceName, c.instance)
+
+		// Unlike every counter above, this one is a live depth, not a cumulative
+		// total — GaugeValue (#542). Zero-referenced interfaces are emitted too:
+		// an absent series and a genuinely idle interface must not look the same.
+		skipped := "false"
+		if v.Skipped {
+			skipped = "true"
+		}
+		ch <- prometheus.MustNewConstMetric(c.pfInterfaceRefs, prometheus.GaugeValue,
+			float64(v.References), v.InterfaceName, skipped, c.instance)
 	}
 
 	pfStates, pfErr := client.FetchPFStates()

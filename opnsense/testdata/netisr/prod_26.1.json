@@ -1,0 +1,1272 @@
+{
+    "netisr": {
+        "protocol": [
+            {
+                "name": "ip",
+                "protocol": 1,
+                "queue-limit": 3000,
+                "policy-type": "cpu",
+                "policy": "hybrid",
+                "flags": "C--"
+            },
+            {
+                "name": "igmp",
+                "protocol": 2,
+                "queue-limit": 256,
+                "policy-type": "source",
+                "policy": "default",
+                "flags": "---"
+            },
+            {
+                "name": "rtsock",
+                "protocol": 3,
+                "queue-limit": 256,
+                "policy-type": "source",
+                "policy": "default",
+                "flags": "---"
+            },
+            {
+                "name": "arp",
+                "protocol": 4,
+                "queue-limit": 256,
+                "policy-type": "source",
+                "policy": "default",
+                "flags": "---"
+            },
+            {
+                "name": "ether",
+                "protocol": 5,
+                "queue-limit": 256,
+                "policy-type": "cpu",
+                "policy": "direct",
+                "flags": "C--"
+            },
+            {
+                "name": "ip6",
+                "protocol": 6,
+                "queue-limit": 1000,
+                "policy-type": "cpu",
+                "policy": "hybrid",
+                "flags": "C--"
+            },
+            {
+                "name": "ip_direct",
+                "protocol": 9,
+                "queue-limit": 256,
+                "policy-type": "cpu",
+                "policy": "hybrid",
+                "flags": "C--"
+            },
+            {
+                "name": "ip6_direct",
+                "protocol": 10,
+                "queue-limit": 256,
+                "policy-type": "cpu",
+                "policy": "hybrid",
+                "flags": "C--"
+            }
+        ],
+        "workstream": [
+            {
+                "work": [
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 1263,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 60728623,
+                        "queue-drops": 0,
+                        "queued": 68753431,
+                        "handled": 129482054
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 1,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 1
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 2167588,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 2167588
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 304729259,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 304729259
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 1000,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 24361143,
+                        "queue-drops": 683,
+                        "queued": 21258028,
+                        "handled": 45619171
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 0,
+                        "cpu": 0,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 989,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 1801241,
+                        "queue-drops": 0,
+                        "queued": 110894700,
+                        "handled": 112695941
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 1513,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 1513
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 8875674,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 8875674
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 564,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 400822,
+                        "queue-drops": 0,
+                        "queued": 46000782,
+                        "handled": 46401604
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 1,
+                        "cpu": 1,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 1144,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 4182062,
+                        "queue-drops": 0,
+                        "queued": 177883552,
+                        "handled": 182065614
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 1,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 1
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 12864,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 12864
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 14557365,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 14557365
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 656,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 692062,
+                        "queue-drops": 0,
+                        "queued": 35774835,
+                        "handled": 36466897
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 2,
+                        "cpu": 2,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 1169,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 2468590,
+                        "queue-drops": 0,
+                        "queued": 134835384,
+                        "handled": 137303974
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 12572,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 12572
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 11868913,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 11868913
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 632,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 878166,
+                        "queue-drops": 0,
+                        "queued": 45240696,
+                        "handled": 46118862
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 3,
+                        "cpu": 3,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 28460,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 28460
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 31823724,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 31823724
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 4,
+                        "cpu": 4,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 30710,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 30710
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 28899872,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 28899872
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 5,
+                        "cpu": 5,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 21771,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 21771
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 27152192,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 27152192
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 6,
+                        "cpu": 6,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 2,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 2
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 7,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 43534,
+                        "handled": 43534
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 23074,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 23074
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 22456845,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 22456845
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 7,
+                        "cpu": 7,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 67402,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 67402
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 75683381,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 75683381
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 8,
+                        "cpu": 8,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 75033,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 75033
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 88873428,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 88873428
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 9,
+                        "cpu": 9,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 67633,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 67633
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 77892799,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 77892799
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 10,
+                        "cpu": 10,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            },
+            {
+                "work": [
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "ip",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "igmp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "rtsock",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "arp",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 75806,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 75806
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "ether",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 91846098,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 91846098
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "ip6",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "ip_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    },
+                    {
+                        "workstream": 11,
+                        "cpu": 11,
+                        "name": "ip6_direct",
+                        "length": 0,
+                        "watermark": 0,
+                        "dispatched": 0,
+                        "hybrid-dispatched": 0,
+                        "queue-drops": 0,
+                        "queued": 0,
+                        "handled": 0
+                    }
+                ]
+            }
+        ]
+    }
+}

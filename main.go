@@ -918,6 +918,10 @@ func main() {
 	} else {
 		logger.Info("network diagnostics collector enabled")
 	}
+	if !collectorsSwitches.NetisrPerCPU {
+		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetisrPerCPU())
+		logger.Info("netisr per-CPU series disabled")
+	}
 	if !collectorsSwitches.Netflow {
 		collectorOptionFuncs = append(collectorOptionFuncs, collector.WithoutNetflowCollector())
 	} else {

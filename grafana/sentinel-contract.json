@@ -1,8 +1,8 @@
 {
   "prometheus": {
-    "total": 103,
+    "total": 106,
     "by_scope": {
-      "collector": 98,
+      "collector": 101,
       "self_labeled": 4,
       "target_join": 1,
       "global": 0
@@ -571,6 +571,16 @@
         ]
       },
       {
+        "name": "has_log_events_arp_moves",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_arp_address_moves_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter > Network > Routing & Neighbors > ARP Address Moves (log-derived)"
+        ]
+      },
+      {
         "name": "has_log_events_audit",
         "datasource": "prometheus",
         "scope": "collector",
@@ -602,6 +612,16 @@
         ]
       },
       {
+        "name": "has_log_events_dhcp_client",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_dhcp_client_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter > Network > DHCP > WAN DHCP Client (log-derived)"
+        ]
+      },
+      {
         "name": "has_log_events_firewall",
         "datasource": "prometheus",
         "scope": "collector",
@@ -629,6 +649,16 @@
         "query": "label_values(opnsense_log_events_ids_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "OPNsense Exporter > Security > IDS/IPS > IDS Events (log-derived)"
+        ]
+      },
+      {
+        "name": "has_log_events_netmap",
+        "datasource": "prometheus",
+        "scope": "collector",
+        "presence": "existence",
+        "query": "label_values(opnsense_log_events_netmap_ring_full_events_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
+        "gates": [
+          "OPNsense Exporter > Network > Interfaces > Netmap Datapath (log-derived)"
         ]
       },
       {
@@ -745,6 +775,7 @@
         "query": "label_values(opnsense_network_diag_sockets_unix_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "OPNsense Exporter > Network > Routing & Neighbors > NetISR (Network Interrupt Subsystem)",
+          "OPNsense Exporter > Network > Routing & Neighbors > NetISR Per-CPU Distribution",
           "OPNsense Exporter > Network > Routing & Neighbors > Sockets & Routes",
           "OPNsense Exporter > Network > Routing & Neighbors > pfsync"
         ]

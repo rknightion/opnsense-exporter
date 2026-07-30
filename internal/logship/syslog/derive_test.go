@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -68,6 +69,35 @@ func (f *fakeSink) ObserveCARP(event, from, to, iface, vhid string) bool {
 	return true
 }
 
+func (f *fakeSink) ObserveNetmapRingFull(device string) bool {
+	f.calls = append(f.calls, fakeCall{"netmap", []string{device}})
+	return true
+}
+
+func (f *fakeSink) ObserveARPMove(iface string) bool {
+	f.calls = append(f.calls, fakeCall{"arp", []string{iface}})
+	return true
+}
+
+func (f *fakeSink) ObserveDHCPClient(iface, msgType string) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp_client", []string{iface, msgType}})
+	return true
+}
+
+func (f *fakeSink) ObserveDHCPClientScript(iface, reason string) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp_client_script", []string{iface, reason}})
+	return true
+}
+
+func (f *fakeSink) ObserveDHCPClientLease(iface string, bound, renewal float64) bool {
+	f.calls = append(f.calls, fakeCall{"dhcp_client_lease", []string{
+		iface,
+		strconv.FormatFloat(bound, 'f', -1, 64),
+		strconv.FormatFloat(renewal, 'f', -1, 64),
+	}})
+	return true
+}
+
 func (f *fakeSink) ObserveUPnP(event, result, protocol string) bool {
 	f.calls = append(f.calls, fakeCall{"upnp", []string{event, result, protocol}})
 	return true
@@ -113,7 +143,10 @@ func TestDeriveFamily(t *testing.T) {
 		{"dpinger", familyGateway, true},
 		{"radiusd", familyRADIUS, true},
 		{"charon", familyVPN, true},
-		{"kernel", familyCARP, true},
+		// `kernel` covers CARP, netmap and ARP under one app-name (#536), which is why
+		// the family is named for the kernel rather than for CARP.
+		{"kernel", familyKernel, true},
+		{"dhclient", familyDHCPClient, true},
 		// Resolved through the PREFIX table: OPNsense names one openvpn program per
 		// configured instance, so none of these can be an exact entry.
 		{"openvpn_server40", familyVPN, true},

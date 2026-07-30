@@ -393,6 +393,17 @@ NOT_ANNOTATED: dict = {
         "Same: advances on every successful poll. A freshness reading, not an event.",
     "opnsense_exporter_collector_next_poll_timestamp_seconds":
         "Future-dated by construction, so any marker would sit ahead of now.",
+    "opnsense_log_events_dhcp_client_lease_renewal_timestamp_seconds":
+        "Future-dated by construction - it is the renewal deadline dhclient is counting "
+        "down to, so a marker would sit ahead of now, the same reason "
+        "collector_next_poll is excluded. Its value is as a COUNTDOWN, which is what "
+        "OPNsenseDHCPClientLeaseRenewalOverdue alerts on.",
+    "opnsense_log_events_dhcp_client_lease_bound_timestamp_seconds":
+        "This one is a genuine point-in-time event and a fair future annotation "
+        "candidate - a WAN rebind can change the public address, which is worth seeing "
+        "on a timeline. Excluded for now only because annotating it means adding a kind "
+        "to internal/annotations, which is outside #541's scope rather than wrong in "
+        "principle. Until then it is read as an age on the DHCP tab.",
     "opnsense_exporter_collector_snapshot_timestamp_seconds":
         "Advances whenever a collector's buffer is replaced — a per-poll heartbeat.",
     "opnsense_exporter_logs_enrich_last_refresh_timestamp_seconds":

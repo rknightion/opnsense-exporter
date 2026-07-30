@@ -644,18 +644,20 @@ func TestLogEventsCollector_EmitsSaturationSeries(t *testing.T) {
 		}
 	}
 
-	// 13 families: firewall, haproxy, sshd, dhcp, audit, ids, gateway, radius, vpn,
-	// carp, upnp, zenarmor, and the zenarmor_device INVENTORY (#474) — which is not a
-	// counter family but reports saturation through the same pair, because a truncated
-	// device inventory is exactly as invisible as a truncated counter. Bump it when a
-	// family is added — the point of the count is that EVERY family publishes its
-	// saturation pair from zero, so a family wired into the store without a saturation
-	// entry fails here rather than going unmonitored.
-	if len(capped) != 13 {
-		t.Errorf("capped families emitted = %d, want 13: %v", len(capped), capped)
+	// 18 families: firewall, haproxy, sshd, dhcp, audit, ids, gateway, radius, vpn,
+	// carp, upnp, netmap, arp, dhcp_client, dhcp_client_script, dhcp_client_lease,
+	// zenarmor, and the zenarmor_device INVENTORY (#474) — which is not a counter
+	// family but reports saturation through the same pair, because a truncated device
+	// inventory is exactly as invisible as a truncated counter. dhcp_client_lease is
+	// the one GAUGE family and reports through the same pair for the same reason.
+	// Bump it when a family is added — the point of the count is that EVERY family
+	// publishes its saturation pair from zero, so a family wired into the store without
+	// a saturation entry fails here rather than going unmonitored.
+	if len(capped) != 18 {
+		t.Errorf("capped families emitted = %d, want 18: %v", len(capped), capped)
 	}
-	if len(keys) != 13 {
-		t.Errorf("keys families emitted = %d, want 13: %v", len(keys), keys)
+	if len(keys) != 18 {
+		t.Errorf("keys families emitted = %d, want 18: %v", len(keys), keys)
 	}
 	if capped[logFamilyFirewall] != 1 {
 		t.Errorf("firewall capped = %v, want 1", capped[logFamilyFirewall])

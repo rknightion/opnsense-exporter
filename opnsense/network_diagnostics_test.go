@@ -1,7 +1,10 @@
 package opnsense
 
 import (
+	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -349,5 +352,235 @@ func TestFetchPFSyncNodes_ServerError(t *testing.T) {
 	}
 	if err.StatusCode != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", err.StatusCode)
+	}
+}
+
+// --- netisr per-CPU / derived-summary tests (#539) ---
+
+// loadNetisrFixture serves a captured netisr payload from testdata.
+func loadNetisrFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "netisr", name))
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", name, err)
+	}
+	return b
+}
+
+// TestFetchNetisrStatistics_ProdCapture pins the derived netisr summaries against
+// a real OPNsense 26.1 capture from the production firewall (12 workstreams,
+// 8 protocols). The ip6 numbers are the known-firing CPU-affinity condition that
+// motivated #539: only 4 of 12 CPUs carry netisr work, cpu0 sits at its
+// queue-limit, and every single drop landed on cpu0.
+func TestFetchNetisrStatistics_ProdCapture(t *testing.T) {
+	body := loadNetisrFixture(t, "prod_26.1.json")
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	})
+	defer server.Close()
+
+	data, err := client.FetchNetisrStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data) != 8 {
+		t.Fatalf("expected 8 protocols, got %d", len(data))
+	}
+
+	// Protocol metadata must survive the aggregation.
+	ip6 := data["ip6"]
+	if ip6.Protocol != 6 {
+		t.Errorf("ip6.Protocol = %d; want 6", ip6.Protocol)
+	}
+	if ip6.Policy != "hybrid" {
+		t.Errorf("ip6.Policy = %q; want %q", ip6.Policy, "hybrid")
+	}
+	if ip6.PolicyType != "cpu" {
+		t.Errorf("ip6.PolicyType = %q; want %q", ip6.PolicyType, "cpu")
+	}
+	if ip6.Flags != "C--" {
+		t.Errorf("ip6.Flags = %q; want %q", ip6.Flags, "C--")
+	}
+	if got := len(ip6.Workstreams); got != 12 {
+		t.Fatalf("ip6 workstream rows = %d; want 12 (idle rows must NOT be dropped)", got)
+	}
+
+	// Single-lane-by-design protocols keep their source policy type.
+	if got := data["arp"].PolicyType; got != "source" {
+		t.Errorf("arp.PolicyType = %q; want %q", got, "source")
+	}
+
+	tests := []struct {
+		proto       string
+		active      int
+		atLimit     int
+		imbalance   float64
+		dropConcRat float64
+	}{
+		// cpu0 at wmark 1000 == queue-limit 1000, all 683 drops on cpu0.
+		{"ip6", 4, 1, 1000.0 / (2852.0 / 4.0), 1.0},
+		// Same 4-CPU skew, but limit 3000 is not reached and nothing drops.
+		{"ip", 4, 0, 1263.0 / (4565.0 / 4.0), 0.0},
+		// Every CPU dispatches ether/arp directly, watermarks all zero →
+		// mean 0 → imbalance defined as 0.
+		{"ether", 12, 0, 0.0, 0.0},
+		{"arp", 12, 0, 0.0, 0.0},
+		// 3 active rows but all watermarks zero.
+		{"igmp", 3, 0, 0.0, 0.0},
+		// Single active workstream → imbalance is meaningless, emit 0.
+		{"rtsock", 1, 0, 0.0, 0.0},
+		// Entirely idle protocols.
+		{"ip_direct", 0, 0, 0.0, 0.0},
+		{"ip6_direct", 0, 0, 0.0, 0.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.proto, func(t *testing.T) {
+			s := data[tt.proto]
+			if got := s.ActiveWorkstreams(); got != tt.active {
+				t.Errorf("ActiveWorkstreams() = %d; want %d", got, tt.active)
+			}
+			if got := s.WorkstreamsAtLimit(); got != tt.atLimit {
+				t.Errorf("WorkstreamsAtLimit() = %d; want %d", got, tt.atLimit)
+			}
+			if got := s.QueueImbalanceRatio(); math.Abs(got-tt.imbalance) > 1e-9 {
+				t.Errorf("QueueImbalanceRatio() = %v; want %v", got, tt.imbalance)
+			}
+			if got := s.DropConcentrationRatio(); math.Abs(got-tt.dropConcRat) > 1e-9 {
+				t.Errorf("DropConcentrationRatio() = %v; want %v", got, tt.dropConcRat)
+			}
+		})
+	}
+
+	// The pre-existing aggregate behaviour must be byte-for-byte unchanged:
+	// counters summed, length/watermark maxed, queue-limit from the protocol array.
+	var wantHandled int64
+	var wantDrops int64
+	wantWatermark := 0
+	for _, w := range ip6.Workstreams {
+		wantHandled += w.Handled
+		wantDrops += w.QueueDrops
+		if w.Watermark > wantWatermark {
+			wantWatermark = w.Watermark
+		}
+	}
+	if ip6.Handled != wantHandled {
+		t.Errorf("ip6.Handled = %d; want %d (sum over workstreams)", ip6.Handled, wantHandled)
+	}
+	if ip6.QueueDrops != wantDrops {
+		t.Errorf("ip6.QueueDrops = %d; want %d", ip6.QueueDrops, wantDrops)
+	}
+	if ip6.Watermark != wantWatermark {
+		t.Errorf("ip6.Watermark = %d; want %d (max over workstreams)", ip6.Watermark, wantWatermark)
+	}
+	if ip6.QueueLimit != 1000 {
+		t.Errorf("ip6.QueueLimit = %d; want 1000", ip6.QueueLimit)
+	}
+}
+
+// TestNetisrProtocolStats_DerivedEdgeCases covers the guards that the prod
+// capture cannot exercise on its own.
+func TestNetisrProtocolStats_DerivedEdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		stats       NetisrProtocolStats
+		active      int
+		atLimit     int
+		imbalance   float64
+		dropConcRat float64
+	}{
+		{
+			name: "zero queue limit never counts as at-limit",
+			stats: NetisrProtocolStats{
+				QueueLimit: 0,
+				Workstreams: []NetisrWorkstreamStats{
+					{Workstream: 0, CPU: 0, Watermark: 500, Handled: 10},
+					{Workstream: 1, CPU: 1, Watermark: 0, Handled: 10},
+				},
+			},
+			active: 2, atLimit: 0, imbalance: 2.0, dropConcRat: 0,
+		},
+		{
+			name: "watermark equal to limit counts, below does not",
+			stats: NetisrProtocolStats{
+				QueueLimit: 256,
+				Workstreams: []NetisrWorkstreamStats{
+					{Watermark: 256, Handled: 1},
+					{Watermark: 255, Handled: 1},
+					{Watermark: 300, Handled: 1},
+				},
+			},
+			active: 3, atLimit: 2,
+			imbalance:   3.0 * 300 / (256 + 255 + 300),
+			dropConcRat: 0,
+		},
+		{
+			name: "all rows idle",
+			stats: NetisrProtocolStats{
+				QueueLimit: 256,
+				Workstreams: []NetisrWorkstreamStats{
+					{Workstream: 0, CPU: 0},
+					{Workstream: 1, CPU: 1},
+				},
+			},
+			active: 0, atLimit: 0, imbalance: 0, dropConcRat: 0,
+		},
+		{
+			name: "single workstream protocol",
+			stats: NetisrProtocolStats{
+				QueueLimit: 256,
+				Workstreams: []NetisrWorkstreamStats{
+					{Watermark: 99, Handled: 5, QueueDrops: 3},
+				},
+			},
+			active: 1, atLimit: 0, imbalance: 0, dropConcRat: 1.0,
+		},
+		{
+			name: "drops spread evenly across four rows",
+			stats: NetisrProtocolStats{
+				QueueLimit: 256,
+				Workstreams: []NetisrWorkstreamStats{
+					{Watermark: 10, Handled: 1, QueueDrops: 5},
+					{Watermark: 10, Handled: 1, QueueDrops: 5},
+					{Watermark: 10, Handled: 1, QueueDrops: 5},
+					{Watermark: 10, Handled: 1, QueueDrops: 5},
+				},
+			},
+			active: 4, atLimit: 0, imbalance: 1.0, dropConcRat: 0.25,
+		},
+		{
+			name: "a row is active on queued alone",
+			stats: NetisrProtocolStats{
+				Workstreams: []NetisrWorkstreamStats{
+					{Queued: 1},
+					{HybridDispatched: 1},
+					{Dispatched: 1},
+					{},
+				},
+			},
+			active: 3, atLimit: 0, imbalance: 0, dropConcRat: 0,
+		},
+		{
+			name:   "no workstream rows at all",
+			stats:  NetisrProtocolStats{QueueLimit: 256},
+			active: 0, atLimit: 0, imbalance: 0, dropConcRat: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.stats.ActiveWorkstreams(); got != tt.active {
+				t.Errorf("ActiveWorkstreams() = %d; want %d", got, tt.active)
+			}
+			if got := tt.stats.WorkstreamsAtLimit(); got != tt.atLimit {
+				t.Errorf("WorkstreamsAtLimit() = %d; want %d", got, tt.atLimit)
+			}
+			if got := tt.stats.QueueImbalanceRatio(); math.Abs(got-tt.imbalance) > 1e-9 {
+				t.Errorf("QueueImbalanceRatio() = %v; want %v", got, tt.imbalance)
+			}
+			if got := tt.stats.DropConcentrationRatio(); math.Abs(got-tt.dropConcRat) > 1e-9 {
+				t.Errorf("DropConcentrationRatio() = %v; want %v", got, tt.dropConcRat)
+			}
+		})
 	}
 }

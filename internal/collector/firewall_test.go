@@ -114,8 +114,9 @@ func TestFirewallCollector_Update(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 16 metrics per interface (8 packet types + 8 byte types) + 2 pfStates (current + limit) + 2 firewallStats = 20
-	expectedCount := 20
+	// 17 metrics per interface (8 packet types + 8 byte types + pf_interface_references, #542)
+	// + 2 pfStates (current + limit) + 2 firewallStats = 21
+	expectedCount := 21
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -193,8 +194,9 @@ func TestFirewallCollector_Update_MultipleInterfaces(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// 16 metrics per interface * 2 interfaces + 2 pfStates + 2 firewallStats = 36
-	expectedCount := 36
+	// 17 metrics per interface (16 + pf_interface_references, #542) * 2 interfaces
+	// + 2 pfStates + 2 firewallStats = 38
+	expectedCount := 38
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -284,5 +286,89 @@ func TestFirewallCollector_Name(t *testing.T) {
 	c := &firewallCollector{subsystem: FirewallSubsystem}
 	if c.Name() != FirewallSubsystem {
 		t.Errorf("expected %s, got %s", FirewallSubsystem, c.Name())
+	}
+}
+
+// TestFirewallCollector_PFInterfaceReferences covers #542: the per-interface PF
+// state-table reference count is parsed on every scrape and, until this metric,
+// was read by nothing. It is the only per-interface breakdown of PF state usage
+// obtainable anywhere — the exporter otherwise has just one global
+// pf_states_current.
+//
+// The fixture reproduces the real prod key set and shape captured from
+// api/diagnostics/firewall/pf_statistics/interfaces on 10.0.0.254 (OPNsense 26.1):
+// a heavily-referenced device, an all-zero device, two " (skip)"-suffixed devices,
+// and the "all" aggregate row.
+func TestFirewallCollector_PFInterfaceReferences(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/diagnostics/firewall/pf_statistics/interfaces", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"interfaces": {
+				"pppoe0":         {"references": 486},
+				"igb0":           {"references": 0},
+				"lo0 (skip)":     {"references": 28},
+				"pfsync0 (skip)": {"references": 0},
+				"all":            {"references": 42}
+			}
+		}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/pf_states/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"current":"1","limit":"2"}`))
+	})
+	mux.HandleFunc("/api/diagnostics/firewall/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[]`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &firewallCollector{subsystem: FirewallSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	type series struct {
+		value   float64
+		skipped string
+	}
+	got := make(map[string]series)
+	for _, m := range collectMetrics(t, c, client) {
+		if !strings.Contains(m.Desc().String(), "pf_interface_references") {
+			continue
+		}
+		d := &dto.Metric{}
+		_ = m.Write(d)
+		if d.Gauge == nil {
+			t.Fatalf("pf_interface_references must be a Gauge (a live state-table depth, not a cumulative counter); got %v", d)
+		}
+		labels := getMetricLabels(m)
+		got[labels["interface"]] = series{value: d.Gauge.GetValue(), skipped: labels["skipped"]}
+	}
+
+	if _, ok := got["all"]; ok {
+		t.Error(`the "all" aggregate row must not be emitted: it is a sum of the other rows, so a panel that aggregates this family would double every total`)
+	}
+
+	tests := []struct {
+		iface       string
+		wantValue   float64
+		wantSkipped string
+	}{
+		{iface: "pppoe0", wantValue: 486, wantSkipped: "false"},
+		{iface: "igb0", wantValue: 0, wantSkipped: "false"},
+		{iface: "lo0", wantValue: 28, wantSkipped: "true"},
+		{iface: "pfsync0", wantValue: 0, wantSkipped: "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.iface, func(t *testing.T) {
+			s, ok := got[tt.iface]
+			if !ok {
+				t.Fatalf("expected a pf_interface_references series for %q, got %v", tt.iface, got)
+			}
+			if s.value != tt.wantValue {
+				t.Errorf("value = %v, want %v", s.value, tt.wantValue)
+			}
+			if s.skipped != tt.wantSkipped {
+				t.Errorf("skipped label = %q, want %q", s.skipped, tt.wantSkipped)
+			}
+		})
 	}
 }

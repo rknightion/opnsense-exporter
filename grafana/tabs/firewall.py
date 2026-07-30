@@ -171,6 +171,23 @@ def build(b: Builder):
         desc="Absolute current and limit values for active PF state table entries.",
     )
 
+    pf_iface_refs = b.ts(
+        "PF State References by Interface",
+        [
+            (sel("opnsense_firewall_pf_interface_references"),
+             "{{interface}}{{skipped}}"),
+        ],
+        unit="short", w=12, h=8,
+        desc=(
+            "PF state-table references held per interface — the only per-interface breakdown of "
+            "state usage the API exposes, and the answer to 'which interface is consuming the "
+            "state table', which otherwise needs a shell on the box. A gauge, not a counter: "
+            "plot it directly, never rate() it. skipped=\"true\" marks an interface on pf's skip "
+            "list, which pf does not filter at all. The API's aggregate 'all' key is deliberately "
+            "not emitted — sum() these instead, or every total counts twice."
+        ),
+    )
+
     # ══════════════════════════════════════════════════════════════════════
     # ROW 4 — PF state table (pf_stats)
     # ══════════════════════════════════════════════════════════════════════
@@ -442,7 +459,7 @@ def build(b: Builder):
         b.row("Traffic — Pass/Block Throughput (outbound)",
               [bw_pass_out, bw_block_out]),
         b.row("Interface Hits & PF State Table",
-              [iface_hits, pf_states_gauge, pf_states_ts]),
+              [iface_hits, pf_states_gauge, pf_states_ts, pf_iface_refs]),
         b.row("PF State Table (pf-stats)",
               [pf_entries, pf_state_ops]),
         b.row("PF Counters",
