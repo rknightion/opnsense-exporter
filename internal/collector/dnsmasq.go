@@ -56,8 +56,13 @@ func (c *dnsmasqCollector) Register(namespace, instanceLabel string, log *slog.L
 		nil,
 	)
 	c.leaseInfo = buildPrometheusDesc(c.subsystem, "lease_info",
-		"Per-lease information (value is expire timestamp). Only emitted when --exporter.enable-dnsmasq-details is set.",
-		[]string{"address", "hostname", "hwaddr", "interface"},
+		"Per-lease information (value is expire timestamp). Only emitted when "+
+			"--exporter.enable-dnsmasq-details is set. `device` is the raw logical interface id and "+
+			"`interface` the assigned description; they diverge on VLAN children and bridges, and "+
+			"only `device` joins against the interfaces metrics (the #544 item-5 pattern). `vendor` "+
+			"is the OUI vendor-name lookup (mirroring the Kea collector's identical field), empty "+
+			"whenever the OUI is unknown.",
+		[]string{"address", "hostname", "hwaddr", "interface", "device", "vendor"},
 	)
 
 	c.serviceRunning = buildPrometheusDesc(c.subsystem, "service_running",
@@ -130,6 +135,8 @@ func (c *dnsmasqCollector) Update(ctx context.Context, client *opnsense.Client, 
 				lease.Hostname,
 				lease.HWAddr,
 				lease.IfDescr,
+				lease.Device,
+				lease.Vendor,
 				c.instance,
 			)
 		}

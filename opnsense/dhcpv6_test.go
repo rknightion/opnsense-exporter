@@ -91,6 +91,9 @@ func TestFetchDHCPv6Leases_Normal(t *testing.T) {
 	if dynLease.IfDescr != "LAN" {
 		t.Errorf("expected if_descr LAN, got %q", dynLease.IfDescr)
 	}
+	if dynLease.Device != "lan" {
+		t.Errorf("expected Device 'lan', got %q", dynLease.Device)
+	}
 	if dynLease.LeaseType != "ia-na" {
 		t.Errorf("expected lease_type ia-na, got %q", dynLease.LeaseType)
 	}
@@ -132,7 +135,7 @@ func TestFetchDHCPv6Leases_ArrayQuirk(t *testing.T) {
 				"lease_type": "ia-na",
 				"duid": [],
 				"descr": [],
-				"if": "lan",
+				"if": [],
 				"if_descr": "LAN",
 				"state": "active",
 				"status": "online",
@@ -164,6 +167,10 @@ func TestFetchDHCPv6Leases_ArrayQuirk(t *testing.T) {
 	// IfDescr is non-empty from if_descr field, LeasesByInterface should have LAN=1
 	if data.LeasesByInterface["LAN"] != 1 {
 		t.Errorf("expected LeasesByInterface[LAN]=1, got %d", data.LeasesByInterface["LAN"])
+	}
+	// "if": [] must fall back to the "unknown" device sentinel (#556).
+	if data.Leases[0].Device != "unknown" {
+		t.Errorf("expected Device 'unknown' for if:[], got %q", data.Leases[0].Device)
 	}
 }
 

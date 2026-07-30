@@ -108,6 +108,9 @@ func TestFetchDHCPv4Leases_Success(t *testing.T) {
 	if l1.IfDescr != "LAN" {
 		t.Errorf("expected IfDescr 'LAN', got %q", l1.IfDescr)
 	}
+	if l1.Device != "em0" {
+		t.Errorf("expected Device 'em0', got %q", l1.Device)
+	}
 	if l1.Status != "online" {
 		t.Errorf("expected status 'online', got %q", l1.Status)
 	}
@@ -216,6 +219,15 @@ func TestFetchDHCPv4Leases_ArrayQuirks(t *testing.T) {
 	// Row with mac:[] must decode to empty string (not panic).
 	if data.Leases[0].MAC != "" {
 		t.Errorf("expected empty mac from [], got %q", data.Leases[0].MAC)
+	}
+	// Row with if:[] must fall back to the "unknown" device sentinel, never
+	// an empty label value (#556).
+	if data.Leases[0].Device != "unknown" {
+		t.Errorf("expected Device 'unknown' for if:[], got %q", data.Leases[0].Device)
+	}
+	// Row with a real if value keeps it.
+	if data.Leases[1].Device != "em0" {
+		t.Errorf("expected Device 'em0', got %q", data.Leases[1].Device)
 	}
 	// static type must still count as reserved.
 	if data.ReservedCount != 1 {

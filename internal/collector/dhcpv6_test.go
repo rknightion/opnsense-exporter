@@ -173,6 +173,9 @@ func TestDhcpv6Collector_Update_WithDetails(t *testing.T) {
 			if labels["type"] != "dynamic" {
 				t.Errorf("expected type dynamic, got %q", labels["type"])
 			}
+			if labels["device"] != "lan" {
+				t.Errorf("expected device 'lan', got %q", labels["device"])
+			}
 		}
 		if labels["address"] == "2001:db8::53" {
 			foundStatDetail = true

@@ -54,8 +54,11 @@ func (c *dhcpv4Collector) Register(namespace, instanceLabel string, log *slog.Lo
 		nil,
 	)
 	c.leaseInfo = buildPrometheusDesc(c.subsystem, "lease_info",
-		"Per-lease ISC DHCPv4 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv4-details is set.",
-		[]string{"address", "hostname", "mac", "interface", "type", "state", "status"},
+		"Per-lease ISC DHCPv4 information (value is always 1; use labels). Only emitted when "+
+			"--exporter.enable-dhcpv4-details is set. `device` is the raw logical interface id and "+
+			"`interface` the assigned description; they diverge on VLAN children and bridges, and "+
+			"only `device` joins against the interfaces metrics (the #544 item-5 pattern).",
+		[]string{"address", "hostname", "mac", "interface", "type", "state", "status", "device"},
 	)
 }
 
@@ -126,6 +129,7 @@ func (c *dhcpv4Collector) Update(ctx context.Context, client *opnsense.Client, c
 				lease.Type,
 				lease.State,
 				lease.Status,
+				lease.Device,
 				c.instance,
 			)
 		}

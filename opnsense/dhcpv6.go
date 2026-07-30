@@ -50,6 +50,10 @@ type DHCPv6Lease struct {
 	DUID      string
 	Descr     string
 	IfDescr   string
+	// Device is the raw logical interface id (the payload's `if`), distinct
+	// from IfDescr — the #544 item-5 pattern (#556). Falls back to the
+	// "unknown" sentinel when the payload's `if` decodes empty.
+	Device string
 }
 
 // DHCPv6Leases holds the aggregated result of FetchDHCPv6Leases.
@@ -93,6 +97,11 @@ func (c *Client) FetchDHCPv6Leases() (DHCPv6Leases, *APICallError) {
 	for _, row := range resp.Rows {
 		isStatic := row.Type.String() == "static"
 
+		device := row.If.String()
+		if device == "" {
+			device = "unknown"
+		}
+
 		lease := DHCPv6Lease{
 			Address:   row.Address,
 			MAC:       row.MAC.String(),
@@ -103,6 +112,7 @@ func (c *Client) FetchDHCPv6Leases() (DHCPv6Leases, *APICallError) {
 			DUID:      row.DUID.String(),
 			Descr:     row.Descr.String(),
 			IfDescr:   row.IfDescr.String(),
+			Device:    device,
 		}
 
 		data.Leases = append(data.Leases, lease)

@@ -109,7 +109,7 @@ func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
 					"if": "igb1",
 					"if_descr": "LAN",
 					"if_name": "igb1",
-					"mac_info": "",
+					"mac_info": "Dell Inc.",
 					"is_reserved": "1"
 				},
 				{
@@ -154,6 +154,27 @@ func TestDnsmasqCollector_Update_WithDetails(t *testing.T) {
 	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
+	}
+
+	foundReserved := false
+	for _, m := range metrics {
+		if !strings.Contains(m.Desc().String(), "lease_info") {
+			continue
+		}
+		labels := getMetricLabels(m)
+		if labels["address"] != "192.168.1.10" {
+			continue
+		}
+		foundReserved = true
+		if labels["device"] != "igb1" {
+			t.Errorf("expected device 'igb1', got %q", labels["device"])
+		}
+		if labels["vendor"] != "Dell Inc." {
+			t.Errorf("expected vendor 'Dell Inc.', got %q", labels["vendor"])
+		}
+	}
+	if !foundReserved {
+		t.Error("expected lease_info for 192.168.1.10")
 	}
 }
 

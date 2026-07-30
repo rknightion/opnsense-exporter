@@ -56,8 +56,11 @@ func (c *dhcpv6Collector) Register(namespace, instanceLabel string, log *slog.Lo
 		nil,
 	)
 	c.leaseInfo = buildPrometheusDesc(c.subsystem, "lease_info",
-		"Per-lease ISC DHCPv6 information (value is always 1; use labels). Only emitted when --exporter.enable-dhcpv6-details is set.",
-		[]string{"address", "mac", "duid", "if_descr", "state", "status", "type"},
+		"Per-lease ISC DHCPv6 information (value is always 1; use labels). Only emitted when "+
+			"--exporter.enable-dhcpv6-details is set. `device` is the raw logical interface id and "+
+			"`if_descr` the assigned description; they diverge on VLAN children and bridges, and "+
+			"only `device` joins against the interfaces metrics (the #544 item-5 pattern).",
+		[]string{"address", "mac", "duid", "if_descr", "state", "status", "type", "device"},
 	)
 	c.pdTotal = buildPrometheusDesc(c.subsystem, "pd_prefixes_total",
 		"Total number of ISC DHCPv6 prefix delegation entries",
@@ -141,6 +144,7 @@ func (c *dhcpv6Collector) Update(ctx context.Context, client *opnsense.Client, c
 				lease.State,
 				lease.Status,
 				lease.Type,
+				lease.Device,
 				c.instance,
 			)
 		}

@@ -47,6 +47,13 @@ type DHCPv4Lease struct {
 	Hostname string
 	Descr    string
 	IfDescr  string
+	// Device is the raw logical interface id (the payload's `if`), distinct
+	// from IfDescr: on VLAN children and bridges the two diverge, and only
+	// the raw id joins against the interface metrics — the #544 item-5
+	// pattern (#556). Falls back to the "unknown" sentinel (matching the
+	// codebase-wide convention, e.g. opnsense/firewall_rules.go) when the
+	// payload's `if` decodes empty, so a label is never emitted blank.
+	Device string
 }
 
 // DHCPv4Leases holds the aggregated result of FetchDHCPv4Leases.
@@ -94,6 +101,11 @@ func (c *Client) FetchDHCPv4Leases() (DHCPv4Leases, *APICallError) {
 	for _, row := range resp.Rows {
 		isStatic := row.Type.String() == "static"
 
+		device := row.If.String()
+		if device == "" {
+			device = "unknown"
+		}
+
 		lease := DHCPv4Lease{
 			Address:  row.Address,
 			MAC:      row.MAC.String(),
@@ -103,6 +115,7 @@ func (c *Client) FetchDHCPv4Leases() (DHCPv4Leases, *APICallError) {
 			Hostname: row.Hostname.String(),
 			Descr:    row.Descr.String(),
 			IfDescr:  row.IfDescr.String(),
+			Device:   device,
 		}
 
 		data.Leases = append(data.Leases, lease)

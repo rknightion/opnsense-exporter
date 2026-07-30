@@ -29,6 +29,17 @@ type DnsmasqLease struct {
 	IsReserved bool
 	Expire     int
 	IfDescr    string
+	// Device is the raw logical interface id (the payload's `if`), distinct
+	// from IfDescr — the #544 item-5 pattern (#556). Falls back to the
+	// "unknown" sentinel when the payload's `if` is empty.
+	Device string
+	// Vendor is the decoded mac_info OUI vendor-name lookup, mirroring the
+	// Kea collector's identical field exactly (opnsense/kea.go): populated
+	// whenever the OUI is known, empty whenever it is not — Kea's own
+	// lease_info metric already emits this label empty in that case, so
+	// dnsmasq matches that established, shipped behaviour rather than
+	// introducing a third convention.
+	Vendor string
 }
 
 type DnsmasqLeases struct {
@@ -112,6 +123,11 @@ func (c *Client) FetchDnsmasqLeases() (DnsmasqLeases, *APICallError) {
 	for _, row := range resp.Rows {
 		reserved := row.IsReserved.Bool()
 
+		device := row.If
+		if device == "" {
+			device = "unknown"
+		}
+
 		lease := DnsmasqLease{
 			Address:    row.Address,
 			HWAddr:     row.HWAddr,
@@ -119,6 +135,8 @@ func (c *Client) FetchDnsmasqLeases() (DnsmasqLeases, *APICallError) {
 			IsReserved: reserved,
 			Expire:     row.Expire,
 			IfDescr:    row.IfDescr,
+			Device:     device,
+			Vendor:     row.MacInfo,
 		}
 
 		data.Leases = append(data.Leases, lease)

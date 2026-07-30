@@ -180,6 +180,9 @@ func TestDhcpv4Collector_Update_WithDetails(t *testing.T) {
 			if labels["interface"] != "LAN" {
 				t.Errorf("expected interface 'LAN', got %q", labels["interface"])
 			}
+			if labels["device"] != "em0" {
+				t.Errorf("expected device 'em0', got %q", labels["device"])
+			}
 			if labels["type"] != "static" {
 				t.Errorf("expected type 'static', got %q", labels["type"])
 			}

@@ -25,7 +25,7 @@ func TestFetchDnsmasqLeases_Success(t *testing.T) {
 					"if": "em0",
 					"if_descr": "LAN",
 					"if_name": "em0",
-					"mac_info": "",
+					"mac_info": "Dell Inc.",
 					"is_reserved": "1"
 				},
 				{
@@ -110,11 +110,22 @@ func TestFetchDnsmasqLeases_Success(t *testing.T) {
 	if l1.IfDescr != "LAN" {
 		t.Errorf("expected IfDescr 'LAN', got %q", l1.IfDescr)
 	}
+	if l1.Device != "em0" {
+		t.Errorf("expected Device 'em0', got %q", l1.Device)
+	}
+	if l1.Vendor != "Dell Inc." {
+		t.Errorf("expected Vendor 'Dell Inc.', got %q", l1.Vendor)
+	}
 
 	// Check dynamic lease
 	l2 := data.Leases[1]
 	if l2.IsReserved {
 		t.Error("expected second lease to be dynamic (not reserved)")
+	}
+	// mac_info empty (unknown OUI) must stay empty, matching Kea's Vendor
+	// behaviour exactly rather than being forced to a sentinel (#556).
+	if l2.Vendor != "" {
+		t.Errorf("expected empty Vendor for unknown OUI, got %q", l2.Vendor)
 	}
 }
 
@@ -235,6 +246,47 @@ func TestFetchDnsmasqLeases_ArrayQuirks(t *testing.T) {
 	}
 	if data.DynamicCount != 1 {
 		t.Errorf("expected DynamicCount=1, got %d", data.DynamicCount)
+	}
+}
+
+func TestFetchDnsmasqLeases_EmptyIfFallsBackToUnknownDevice(t *testing.T) {
+	// dnsmasqLeaseRow.If is a plain string (not flexString); an empty "if"
+	// must fall back to the "unknown" device sentinel, never an empty label
+	// value (#556).
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1,
+			"rowCount": 1,
+			"current": 1,
+			"rows": [
+				{
+					"expire": 3600,
+					"hwaddr": "aa:bb:cc:dd:ee:f1",
+					"iaid": "",
+					"address": "192.168.1.10",
+					"hostname": "desktop1",
+					"client_id": "",
+					"if": "",
+					"if_descr": "",
+					"if_name": "",
+					"mac_info": "",
+					"is_reserved": "0"
+				}
+			],
+			"interfaces": {}
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchDnsmasqLeases()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Leases) != 1 {
+		t.Fatalf("expected 1 lease, got %d", len(data.Leases))
+	}
+	if data.Leases[0].Device != "unknown" {
+		t.Errorf("expected Device 'unknown' for empty if, got %q", data.Leases[0].Device)
 	}
 }
 
