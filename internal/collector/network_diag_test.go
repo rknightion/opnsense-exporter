@@ -1,7 +1,6 @@
 package collector
 
 import (
-	"context"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -182,26 +181,11 @@ func collectNetisr(t *testing.T, c *networkDiagCollector, server *httptest.Serve
 	t.Helper()
 	client := newCollectorTestClient(t, server)
 
-	// The shared collectMetrics helper buffers 500 metrics; the prod netisr
-	// capture alone produces 776 (8 aggregate + 5 derived per protocol, plus
-	// 7 x 96 per-CPU series), which would deadlock it. Drain concurrently
-	// instead of guessing a bigger buffer.
-	ch := make(chan prometheus.Metric)
-	var collected []prometheus.Metric
-	done := make(chan struct{})
-	go func() {
-		for m := range ch {
-			collected = append(collected, m)
-		}
-		close(done)
-	}()
-	if err := c.Update(context.Background(), client, ch); err != nil {
-		close(ch)
-		<-done
-		t.Fatalf("Update returned error: %v", err)
-	}
-	close(ch)
-	<-done
+	// The prod netisr capture produces 776 metrics (8 aggregate + 5 derived per
+	// protocol, plus 7 x 96 per-CPU series). That used to deadlock the shared
+	// helper's fixed 500-slot buffer, so this had its own concurrent drain; the
+	// helper drains concurrently itself since #547 and the local copy is gone.
+	collected := collectMetrics(t, c, client)
 
 	out := make(map[string][]netisrSeries)
 	for _, m := range collected {

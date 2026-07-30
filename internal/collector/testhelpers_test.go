@@ -88,17 +88,32 @@ func newCollectorTestClientForURL(t *testing.T, rawURL string) *opnsense.Client 
 	return &client
 }
 
+// collectMetrics runs one collector's Update and returns everything it emitted.
+//
+// The drain runs CONCURRENTLY with Update, and that is load-bearing rather than
+// stylistic (#547). This helper used to hand Update a fixed 500-slot buffered
+// channel and only read it after Update returned, so any collector emitting more
+// than 500 metrics from a single fixture blocked forever on the write. The
+// symptom was not an assertion failure but a 120s package timeout with nothing
+// pointing at the cause — the netisr prod capture emits 776. Draining as we go
+// removes the cap entirely, so the helper no longer cares how much a collector
+// emits and no future high-volume collector has to bump a magic number.
 func collectMetrics(t *testing.T, instance CollectorInstance, client *opnsense.Client) []prometheus.Metric {
 	t.Helper()
-	ch := make(chan prometheus.Metric, 500)
+	ch := make(chan prometheus.Metric)
+	var metrics []prometheus.Metric
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for m := range ch {
+			metrics = append(metrics, m)
+		}
+	}()
 	err := instance.Update(context.Background(), client, ch)
 	close(ch)
+	<-done
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
-	}
-	var metrics []prometheus.Metric
-	for m := range ch {
-		metrics = append(metrics, m)
 	}
 	return metrics
 }
