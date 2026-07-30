@@ -1183,6 +1183,12 @@ func main() {
 	// here.
 	collectorOptionFuncs = append(collectorOptionFuncs, collector.WithPollIntervalOverrides(cfg.PollOverrides))
 	if otlpEnabled {
+		// Poll cadence follows the lane that consumes the snapshot (#550). Without
+		// this the collector has no idea how often anything reads what it polls, and
+		// a push-only deployment polls the firewall four times per exported point.
+		collectorOptionFuncs = append(collectorOptionFuncs,
+			collector.WithExportLanes(otlpCfg.ExportInterval, otlpCfg.FastExportInterval))
+
 		gatherTimeout := *options.MaxScrapeDuration
 		if otlpCfg.ExportInterval > 0 && otlpCfg.ExportInterval < gatherTimeout {
 			gatherTimeout = otlpCfg.ExportInterval

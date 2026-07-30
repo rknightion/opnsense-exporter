@@ -52,9 +52,13 @@ func (c *Collector) healthPollInterval() time.Duration {
 	return IntervalMedium
 }
 
-// resolveInterval returns the effective poll interval for a collector: an operator
+// resolveInterval returns the DECLARED poll interval for a collector: an operator
 // override (--collector.poll-interval-override) wins, else its code tier / the global
 // default via resolvePollInterval. Always clamped.
+//
+// Declared, not effective (#550). This is what OTLP fast-lane membership is derived
+// from, so the export-lane clamp deliberately lives one layer above it in
+// effectiveInterval — see poll_lane.go for why folding it in here fails silently.
 func (c *Collector) resolveInterval(coll CollectorInstance) time.Duration {
 	if d, ok := c.pollOverrides[coll.Name()]; ok {
 		return clampInterval(d)
@@ -74,8 +78,12 @@ func (c *Collector) StartPolling(ctx context.Context) {
 	c.pollWG.Add(1)
 	go c.runHealthPoller(ctx, c.healthPollInterval())
 
+	for _, w := range c.PollLaneWarnings() {
+		c.log.Warn(w.String(), "component", "collector", "warning", w.Kind)
+	}
+
 	for _, coll := range c.collectors {
-		interval := c.resolveInterval(coll)
+		interval := c.effectiveInterval(coll)
 		if c.statusTracker != nil {
 			c.statusTracker.SetInterval(coll.Name(), interval)
 		}

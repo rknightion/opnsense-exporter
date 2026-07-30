@@ -293,6 +293,13 @@ type Collector struct {
 	// pollOverrides maps a collector name to an operator-supplied interval that wins
 	// over both its code tier and the global default. Set via WithPollIntervalOverrides.
 	pollOverrides map[string]time.Duration
+	// laneBase / laneFast are the OTLP export-lane intervals that CONSUME the
+	// snapshot (#550): --otlp.export-interval and the optional
+	// --otlp.fast-export-interval. Both zero means OTLP is not a delivery path, so
+	// no lane clamp applies. Set via WithExportLanes; read only by poll_lane.go,
+	// which owns the declared-vs-effective split.
+	laneBase time.Duration
+	laneFast time.Duration
 	// pollCancel / pollWG / pollSem are the scheduler lifecycle + concurrency cap,
 	// initialised by StartPolling.
 	pollCancel context.CancelFunc
@@ -457,6 +464,22 @@ func WithHealthPollInterval(d time.Duration) Option {
 func WithPollIntervalOverrides(m map[string]time.Duration) Option {
 	return func(o *Collector) error {
 		o.pollOverrides = m
+		return nil
+	}
+}
+
+// WithExportLanes tells the collector which OTLP export lanes consume its snapshot
+// (#550): base is --otlp.export-interval, fast is the optional
+// --otlp.fast-export-interval (zero when the second lane is off). Leave both zero —
+// the default — for a Prometheus-scrape-only deployment, where there is no lane to
+// clamp against and tier intervals stand exactly.
+//
+// Poll cadence is then max(declared tier, consuming lane), so a collector never
+// polls the firewall faster than the thing that reads the result. See poll_lane.go
+// for why this must not be folded into resolveInterval.
+func WithExportLanes(base, fast time.Duration) Option {
+	return func(o *Collector) error {
+		o.laneBase, o.laneFast = base, fast
 		return nil
 	}
 }
@@ -1608,8 +1631,11 @@ func (c *Collector) collectLane(ch chan<- prometheus.Metric, include map[string]
 			ch <- m
 		}
 		// The configured interval is known even before the first poll, so it is
-		// always emitted (feeds the console's Interval column + next-run math).
-		interval := c.resolveInterval(coll)
+		// always emitted (feeds the console's Interval column + next-run math). It
+		// is the EFFECTIVE interval (#550) — what the scheduler ticks on after the
+		// export-lane clamp — not the declared tier, which would claim a 15s cadence
+		// for a collector actually polling at 60s.
+		interval := c.effectiveInterval(coll)
 		ch <- prometheus.MustNewConstMetric(
 			c.pollInterval, prometheus.GaugeValue,
 			interval.Seconds(), name, c.instanceLabel,
@@ -1669,10 +1695,15 @@ func (c *Collector) collectLane(ch chan<- prometheus.Metric, include map[string]
 }
 
 // FastCollectorNames returns the sorted names of the enabled collectors whose
-// EFFECTIVE poll interval is at most IntervalFast — the membership of the optional
+// DECLARED poll interval is at most IntervalFast — the membership of the optional
 // fast OTLP lane (#390). It resolves through resolveInterval, so an operator
 // override moves a collector between lanes in either direction; membership is never
 // read off the static tier table.
+//
+// Declared, deliberately (#550). The export-lane clamp in effectiveInterval reads
+// this membership to pick a lane, so reading the clamped interval back here would
+// close the loop and leave any intermediate --otlp.fast-export-interval with a
+// configured-but-empty lane. See poll_lane.go.
 func (c *Collector) FastCollectorNames() []string {
 	names := make([]string, 0, len(c.collectors))
 	for _, coll := range c.collectors {

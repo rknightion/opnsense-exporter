@@ -125,6 +125,7 @@ type CollectorInstance interface {
 - **Auto-registration via `init()`** - Each sub-collector file has an `init()` function that appends itself to the global `collectorInstances` slice. No central registry to maintain.
 - **Poll/serve split (#336)** - Sub-collectors do not run on the scrape. An internal poll scheduler (`scheduler.go`) runs each collector's `Update()` on its own timer into an in-memory snapshot (`snapshot.go`); serving `/metrics` replays that snapshot and makes no API call. See [Data flow](#data-flow).
 - **Per-collector poll tiers** - Each collector's timer follows its data-volatility tier (`interval_tiers.go`): fast 15s, medium 60s (default), slow 5m, cold 15m. An operator overrides one with `--collector.poll-interval-override=<collector>=<dur>`.
+- **Poll cadence follows the consuming export lane (#550)** - When OTLP is a delivery path, a collector polls at `max(tier interval, export-lane interval)` (`poll_lane.go`), so it never fetches from the firewall faster than the lane that reads the result. The rule only ever slows polling down, an operator override still wins outright, and scrape-only deployments are untouched. The lane clamp deliberately sits *above* `resolveInterval`, because fast-lane membership is derived from the declared interval and folding the clamp in would make the two define each other.
 - **Option pattern** - Sub-collectors are removed or configured via functional options (e.g., `WithoutArpTableCollector()`, `WithFirewallRulesDetails()`).
 
 ### `internal/options/` - Configuration

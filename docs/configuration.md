@@ -319,9 +319,11 @@ Measured on a live deployment (7,226 total series, of which 494 are fast-tier):
 | `--otlp.export-interval=15s` (everything fast) | 28,904 | 4.00x |
 | `--otlp.export-interval=60s` + `--otlp.fast-export-interval=15s` | 8,708 | **1.21x** |
 
-Fast-tier membership follows each collector's **effective** poll interval, so a
-`--collector.poll-interval-override` moves a collector between lanes in either
-direction. The two lanes are disjoint by construction - the base lane carries every
+Fast-tier membership follows each collector's **declared** poll interval - its code
+tier, or a `--collector.poll-interval-override` - so an override moves a collector
+between lanes in either direction. Membership deliberately reads the declared value
+rather than the cadence the lane clamp below produces, or the two would define each
+other. The two lanes are disjoint by construction - the base lane carries every
 non-fast collector plus the health, `up` and exporter self-metrics, the fast lane
 carries fast-tier collectors only - so no series is ever exported twice. Per-collector
 scheduler metrics travel with their collector, keeping them at the same resolution as
@@ -333,6 +335,58 @@ series with a cold one will show the cold one stepping at the base interval. Tha
 already true of the underlying poll tiers - a 15m-tier collector cannot be fresher
 than 15m no matter how often it is exported - so exporting it more often only inflates
 cost, never resolution.
+
+### Poll cadence follows the export lane
+
+When OTLP is a delivery path, a collector never polls the firewall faster than the
+export lane that reads the result. The effective cadence is
+`max(tier interval, lane interval)`.
+
+Before this rule the two intervals had no relationship at all. Polling was decoupled
+from the Prometheus scrape so a scrape stopped triggering a firewall fetch, which was
+right, but nothing re-established a relationship once OTLP push became the primary
+delivery path. On a push-only deployment leaving `--otlp.export-interval` at its 60s
+default, fast-tier collectors polled every 15s into a snapshot read every 60s: three
+of every four polls were overwritten before anything read them, and each one still
+cost the firewall a request - and, because OPNsense fires two configd RPCs on the
+authentication path of every API request, two audit-log lines as well.
+
+| Collector | OTLP on, fast lane set | OTLP on, no fast lane | OTLP off (scrape only) |
+|---|---|---|---|
+| fast tier (15s) | `--otlp.fast-export-interval` | `--otlp.export-interval` | 15s, unchanged |
+| every other tier | tier interval, or `--otlp.export-interval` if that is slower | same | tier interval, unchanged |
+
+Three properties are worth stating explicitly:
+
+- **It only ever slows polling down.** `max`, never replace - a 15m cold-tier
+  collector does not start polling every 60s because the export lane is 60s.
+- **`--collector.poll-interval-override` still wins outright** and is never clamped.
+  It is explicit operator intent. If the override polls faster than the lane
+  consuming it, the exporter says so at startup rather than silently correcting it.
+- **Scrape-only deployments are untouched.** The exporter cannot know your scrape
+  interval, so there is no lane to clamp against and tier intervals stand exactly as
+  before. The accepted cost is that a scrape-only user scraping at 60s keeps
+  over-polling the fast tier and we say nothing about it.
+
+The exporter also warns at startup when `--otlp.fast-export-interval` is set but no
+enabled collector is fast-tier, which previously built a second export lane that
+carried nothing.
+
+### Why the slow and cold tiers export unchanged values
+
+A deliberate decision, recorded here so it is not filed as a bug. A cold-tier
+collector polls every 15m but exports every 60s, so the same unchanged value is sent
+roughly fifteen times per actual change. That is intentional and will not be fixed:
+
+- **It is not a cost.** Data points per minute is set by the export interval whether
+  or not a value moved, so repeated identical samples cost nothing beyond what the
+  lane already costs.
+- **The alternative is worse.** An export lane per tier would cut DPM but produce
+  sparse series, which read as gaps in Grafana. That is the same reason the poll
+  ceiling is 15m rather than something longer.
+
+The reverse case - polling faster than anything reads - is real waste and is what the
+lane clamp above removes.
 
 ### Liveness (`up`) in push mode
 
