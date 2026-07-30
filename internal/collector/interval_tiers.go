@@ -47,9 +47,13 @@ const (
 // merely because its endpoint carries a body cache TTL: the tier must state the
 // volatility on its own, so the poll stays sane at --exporter.cache-ttl=0. Where a
 // collector mixes live and static endpoints in one poll (firewall, unbound_dns,
-// hardware, system, crowdsec, tor), the tier follows the LIVE half and the body
-// cache handles the static endpoints — a per-collector interval cannot split them
-// (#344).
+// hardware, system, crowdsec, tor — and, per #567, a fast-tier collector too, given
+// a written per-endpoint justification in fastTierBodyCacheJustifications), the
+// tier follows the LIVE half and the body cache handles the static endpoints — a
+// per-collector interval cannot split them (#344). The fast tier is not exempt
+// from this arrangement; it is simply the one tier where the opt-out must be
+// justified in writing rather than assumed, because it is the tier with the most
+// to lose from a silently flat-lined series.
 //
 // The activity collector is deliberately ABSENT from this table (medium, #559). It
 // was fast, at a measured 2.15 s of firewall work per call — a permanent 14% duty
