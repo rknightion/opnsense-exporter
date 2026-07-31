@@ -12,8 +12,22 @@ import (
 // fetches the endpoint. The poll scheduler clamps every interval to at most
 // collector.IntervalCeil (15m), so both defaults sit above the slowest possible poll
 // and still elide real calls — see TestBodyCacheDefaultsOutliveThePollCeiling.
+//
+// DefaultCacheTTL was 1h until #574 shortened it to 30m. The intent is that a config
+// edit surfaces faster, under ONE global value rather than per-type knobs; the only
+// endpoints that sit apart are the ones with a justified override (firmware 12h,
+// interfacesOverview 60s, firewallRuleIDs 1m). 30m rather than the 15m gut preference
+// because the cold poll tier IS 15m: at exactly 15m every cold-collector-owned cache
+// (auth, certificates, backups, snapshots, tor, clamav) becomes a no-op that can never
+// serve a hit, which TestBodyCacheDefaultsOutliveThePollCeiling exists to reject. 30m
+// is the closest value to the preference that keeps every existing cache functional —
+// cold-tier endpoints then elide every other poll.
+//
+// The same flag bounds the negative (404) cache, so shortening it also surfaces plugin
+// INSTALLS faster, at the cost of more 404 re-probes on plugin-light boxes. That is
+// consistent with the config-visibility intent rather than a side effect to regret.
 const (
-	DefaultCacheTTL         = time.Hour
+	DefaultCacheTTL         = 30 * time.Minute
 	DefaultFirmwareCacheTTL = 12 * time.Hour
 )
 
@@ -156,6 +170,35 @@ func BodyCacheTTLs(cacheTTL, firmwareCacheTTL time.Duration) EndpointCacheTTLs {
 		ttls["natDNATRules"] = cacheTTL
 		ttls["natOneToOneRules"] = cacheTTL
 		ttls["natNPTRules"] = cacheTTL
+
+		// IDS configuration (#574): ids/settings/get is read only for the IPS-mode
+		// and promiscuous-mode flags, and list_rulesets for each installed ruleset's
+		// filename, enabled flag and last-updated stamp. Both change on an admin edit
+		// or the daily ruleset cron — never on poll cadence. The IDS collector's live
+		// half (service status, eve-log sizes, alert counts) stays uncached.
+		ttls["idsSettings"] = cacheTTL
+		ttls["idsRulesets"] = cacheTTL
+
+		// Kea/dnsmasq pool CONFIG (#574): the configured subnets, their computed pool
+		// sizes and the DHCPv6 prefix-delegation pool capacities. These are the
+		// DENOMINATORS of pool-utilisation panels; the live lease counts that form the
+		// numerators come from keaLeases4/6 and dnsmasqLeases and stay uncached, so
+		// utilisation keeps its full cadence. keaSubnets4/6 and dnsmasqRanges predate
+		// #194's survey but appear in neither its cached nor its ruled-out list — an
+		// omission, re-verified against the decoded structs here.
+		ttls["keaSubnets4"] = cacheTTL
+		ttls["keaSubnets6"] = cacheTTL
+		ttls["keaPdPools6"] = cacheTTL
+		ttls["dnsmasqRanges"] = cacheTTL
+
+		// Captive-portal voucher PROVIDERS (#574): the list of configured voucher
+		// providers, which changes only when an admin adds or removes one.
+		// Deliberately NOT captivePortalVoucherGroups alongside it: that endpoint is
+		// requested at <base>/<provider>, a path the cache — keyed on the registered
+		// base path — never sees, so a TTL there would be silently dead. Same shape as
+		// vnstatGetJsonData's ?iface= (#495). captivePortalVouchers stays uncached
+		// regardless: per-state counts and expiry timestamps are live data.
+		ttls["captivePortalVoucherProviders"] = cacheTTL
 
 		// Firewall rule-id map (#248): the rid -> description table log
 		// enrichment resolves filterlog lines against. It changes only when the

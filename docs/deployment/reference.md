@@ -427,7 +427,7 @@ services:
       # plugin, or a cert change, can take up to this long to show up. Set to 0 to fetch
       # everything on every poll. Live data (counters, rates, service run-state) is
       # never cached regardless of this setting.
-      # OPNSENSE_EXPORTER_CACHE_TTL: "1h0m0s"
+      # OPNSENSE_EXPORTER_CACHE_TTL: "30m0s"
       # How long to cache firmware API responses (status and, when enabled, package
       # details). The firmware data OPNsense serves is the stored result of the box's
       # own update check, which it refreshes roughly daily, so re-fetching it on every

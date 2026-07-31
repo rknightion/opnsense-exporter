@@ -133,6 +133,16 @@ var bodyCacheOwners = map[string]string{
 	"natDNATRules":             FirewallSubsystem,
 	"natOneToOneRules":         FirewallSubsystem,
 	"natNPTRules":              FirewallSubsystem,
+	// #574: pure-config GETs that postdate (or fell through) #194's survey. All are
+	// fetched by medium-tier collectors, so rule 1 holds against the 30m default with
+	// room to spare, and none is fast-tier so no written justification is required.
+	"idsSettings":                   IDSSubsystem,
+	"idsRulesets":                   IDSSubsystem,
+	"keaSubnets4":                   KeaSubsystem,
+	"keaSubnets6":                   KeaSubsystem,
+	"keaPdPools6":                   KeaSubsystem,
+	"dnsmasqRanges":                 DnsmasqSubsystem,
+	"captivePortalVoucherProviders": CaptivePortalSubsystem,
 	// The rule-id map is fetched by the syslog enrichment refresher (#248) when a
 	// filterlog line carries an unknown rid, never by a poll timer — which is why
 	// its TTL is deliberately capped at a minute rather than the full cache-ttl.
