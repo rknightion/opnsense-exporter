@@ -101,6 +101,38 @@ func TestFetchTrafficShaperStatistics_Normal(t *testing.T) {
 	if pipe.ActiveFlows != 1 {
 		t.Errorf("pipe.ActiveFlows = %v, want 1", pipe.ActiveFlows)
 	}
+	// #584: configured-capacity fields, from the pipe item's own bw/delay/burst
+	// (dummynet.c's DN_LINK print: "%7.3f Mbit/s", "%4d ms", humanized burst)
+	// and (for weight) folded from the template-queue row per the same
+	// attribution the flow stats above already use.
+	if !pipe.ConfiguredBandwidthOK {
+		t.Error("expected ConfiguredBandwidthOK=true for bw \"10.000 Mbit/s\"")
+	}
+	if pipe.ConfiguredBandwidthBps != 10_000_000 {
+		t.Errorf("pipe.ConfiguredBandwidthBps = %v, want 1e7 (10 Mbit/s)", pipe.ConfiguredBandwidthBps)
+	}
+	if !pipe.ConfiguredDelayOK {
+		t.Error("expected ConfiguredDelayOK=true for delay \"0\"")
+	}
+	if pipe.ConfiguredDelayMs != 0 {
+		t.Errorf("pipe.ConfiguredDelayMs = %v, want 0", pipe.ConfiguredDelayMs)
+	}
+	if !pipe.ConfiguredBurstOK {
+		t.Error("expected ConfiguredBurstOK=true for burst \"0\"")
+	}
+	if pipe.ConfiguredBurstBytes != 0 {
+		t.Errorf("pipe.ConfiguredBurstBytes = %v, want 0", pipe.ConfiguredBurstBytes)
+	}
+	if !pipe.ConfiguredWeightOK {
+		t.Error("expected ConfiguredWeightOK=true, folded from the template-queue row's weight")
+	}
+	if pipe.ConfiguredWeight != 1 {
+		t.Errorf("pipe.ConfiguredWeight = %v, want 1", pipe.ConfiguredWeight)
+	}
+	// This fixture's template queue carries no queue_size key at all.
+	if pipe.ConfiguredQueueSizeOK {
+		t.Error("expected ConfiguredQueueSizeOK=false: this fixture's template queue has no queue_size key")
+	}
 
 	// 1 queue (template row excluded)
 	if len(data.Queues) != 1 {
@@ -147,6 +179,125 @@ func TestFetchTrafficShaperStatistics_Normal(t *testing.T) {
 	// accessed_epoch (rider, #224): the fixture's rule carries 1780000000.
 	if rule.LastMatchEpoch != 1780000000 {
 		t.Errorf("rule.LastMatchEpoch = %v, want 1780000000", rule.LastMatchEpoch)
+	}
+}
+
+// TestFetchTrafficShaperStatistics_ConfiguredCapacity guards #584's unit
+// normalization across the full range of wire shapes FreeBSD's dnctl(8)/
+// dummynet.c can produce for bw/burst/queue_size, which OPNsense's
+// scripts/shaper/lib/__init__.py passes through as pre-formatted strings with
+// no separate unit field:
+//   - bw: "unlimited" (bandwidth==0, dummynet.c:634 -- a real "no cap
+//     configured", must yield ok=false, never a fabricated 0 bps)
+//   - burst: a humanize_number()-scaled byte count with a bare K/M/G/T suffix
+//     (dummynet.c:645, third humanize_number arg "" -- no "B" suffix)
+//   - queue_size: EITHER "NNN sl." (packet-slot limit) or "NNN B"/"NNN KB"
+//     (byte limit) depending on the queue's DN_QSIZE_BYTES flag
+//     (dummynet.c:477-484, print_flowset_parms) -- two different physical
+//     quantities behind the same field, disambiguated here with a unit label
+//     rather than silently picking one.
+func TestFetchTrafficShaperStatistics_ConfiguredCapacity(t *testing.T) {
+	const fixture = `{
+	  "status": "ok",
+	  "items": [
+	    {
+	      "type": "pipe",
+	      "id": "00002",
+	      "pipe": "00002",
+	      "bw": "unlimited",
+	      "delay": "20",
+	      "burst": "10K",
+	      "description": "Unlimited pipe",
+	      "flows": [],
+	      "rules": []
+	    },
+	    {
+	      "type": "queue",
+	      "id": "00002.67",
+	      "flow_set_nr": "67",
+	      "sched_nr": "00002",
+	      "queue_size": "50 sl.",
+	      "weight": "5",
+	      "description": "Slots queue",
+	      "flows": [],
+	      "rules": []
+	    },
+	    {
+	      "type": "queue",
+	      "id": "00002.68",
+	      "flow_set_nr": "68",
+	      "sched_nr": "00002",
+	      "queue_size": "16 KB",
+	      "weight": "10",
+	      "description": "Bytes queue",
+	      "flows": [],
+	      "rules": []
+	    }
+	  ]
+	}`
+
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fixture))
+	})
+	defer server.Close()
+
+	data, err := client.FetchTrafficShaperStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(data.Pipes) != 1 {
+		t.Fatalf("expected 1 pipe, got %d", len(data.Pipes))
+	}
+	pipe := data.Pipes[0]
+	if pipe.ConfiguredBandwidthOK {
+		t.Error("expected ConfiguredBandwidthOK=false for bw \"unlimited\" (no cap configured, not 0 bps)")
+	}
+	if !pipe.ConfiguredDelayOK || pipe.ConfiguredDelayMs != 20 {
+		t.Errorf("expected ConfiguredDelayMs=20 (ok=true), got %v (ok=%v)", pipe.ConfiguredDelayMs, pipe.ConfiguredDelayOK)
+	}
+	if !pipe.ConfiguredBurstOK {
+		t.Error("expected ConfiguredBurstOK=true for humanized burst \"10K\"")
+	}
+	if pipe.ConfiguredBurstBytes != 10*1024 {
+		t.Errorf("pipe.ConfiguredBurstBytes = %v, want %v (10K = 10*1024 bytes)", pipe.ConfiguredBurstBytes, 10*1024)
+	}
+
+	if len(data.Queues) != 2 {
+		t.Fatalf("expected 2 queues, got %d", len(data.Queues))
+	}
+	var slots, bytesQ TrafficShaperEntity
+	for _, q := range data.Queues {
+		switch q.Description {
+		case "Slots queue":
+			slots = q
+		case "Bytes queue":
+			bytesQ = q
+		}
+	}
+
+	if !slots.ConfiguredQueueSizeOK || slots.ConfiguredQueueSizeUnit != "packets" {
+		t.Errorf("expected Slots queue ConfiguredQueueSizeUnit=packets (ok=true), got unit=%q ok=%v",
+			slots.ConfiguredQueueSizeUnit, slots.ConfiguredQueueSizeOK)
+	}
+	if slots.ConfiguredQueueSize != 50 {
+		t.Errorf("expected Slots queue ConfiguredQueueSize=50, got %v", slots.ConfiguredQueueSize)
+	}
+	if !slots.ConfiguredWeightOK || slots.ConfiguredWeight != 5 {
+		t.Errorf("expected Slots queue ConfiguredWeight=5 (ok=true), got %v (ok=%v)", slots.ConfiguredWeight, slots.ConfiguredWeightOK)
+	}
+
+	if !bytesQ.ConfiguredQueueSizeOK || bytesQ.ConfiguredQueueSizeUnit != "bytes" {
+		t.Errorf("expected Bytes queue ConfiguredQueueSizeUnit=bytes (ok=true), got unit=%q ok=%v",
+			bytesQ.ConfiguredQueueSizeUnit, bytesQ.ConfiguredQueueSizeOK)
+	}
+	// "16 KB" -> dummynet.c divides by 1024 to print KB, so the real byte
+	// count must be multiplied back: 16 * 1024 = 16384.
+	if bytesQ.ConfiguredQueueSize != 16*1024 {
+		t.Errorf("expected Bytes queue ConfiguredQueueSize=16384 (16 KB), got %v", bytesQ.ConfiguredQueueSize)
+	}
+	if !bytesQ.ConfiguredWeightOK || bytesQ.ConfiguredWeight != 10 {
+		t.Errorf("expected Bytes queue ConfiguredWeight=10 (ok=true), got %v (ok=%v)", bytesQ.ConfiguredWeight, bytesQ.ConfiguredWeightOK)
 	}
 }
 

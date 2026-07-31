@@ -338,6 +338,9 @@ def build(b: Builder):
             "interface": "Interface",
             "vendor": "Vendor",
             "valid_lifetime": "Valid Lifetime (s)",
+            # #584: the delegated block size on an IA_PD lease. Deliberately v6-only —
+            # on dhcp4_lease_info it would always read 128 and mean nothing.
+            "prefix_len": "Prefix Length",
             "Value": "Expires",
         },
         unit_overrides={"Expires": "dateTimeAsIso"},

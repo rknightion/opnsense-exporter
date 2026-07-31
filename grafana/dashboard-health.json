@@ -3867,7 +3867,7 @@
         "spec": {
           "id": 28,
           "title": "NetFlow Decoder Health",
-          "description": "templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the exporter is re-sending a template id with a DIFFERENT field shape, which invalidates the decoder's understanding of every record behind it. unexpected_field counts records carrying a field asserted to be always-empty on this export (today OUT_BYTES, zero across all 84,513 records of the reference capture): non-zero does NOT mean volume is currently wrong, it means that assumption has expired and the decoder needs revisiting. unidentified counts what the decoder stepped over rather than interpreted \u2014 an unmodelled template element, an options template, an unknown control flowset. Stepping over is CORRECT (assuming a width would corrupt every field behind it); a non-zero unknown_field is expected, since the box's IPv4 template declares four elements we do not model, so it is a CHANGE here that means the export gained something. The element IDs are in the log line, not a label \u2014 this socket is unauthenticated. Set --flow.netflow.debug-capture=unidentified to keep the datagrams themselves.",
+          "description": "templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the exporter is re-sending a template id with a DIFFERENT field shape, which invalidates the decoder's understanding of every record behind it. unexpected_field counts records carrying a field asserted to be always-empty on this export: OUT_BYTES/OUT_PKTS (zero across all 84,513 records of the reference capture) and SRC_AS/DST_AS (#586, zero across all 131 records of the reference capture - ng_netflow hardcodes both under an explicit source comment, and a better ASN already ships via the GeoIP asn label). Non-zero does NOT mean volume is currently wrong, it means that assumption has expired and the decoder needs revisiting. unidentified counts what the decoder stepped over rather than interpreted \u2014 an unmodelled template element, an options template, an unknown control flowset. Stepping over is CORRECT (assuming a width would corrupt every field behind it); a non-zero unknown_field is expected, since the box's IPv4 template declares four elements we do not model, so it is a CHANGE here that means the export gained something. The element IDs are in the log line, not a label \u2014 this socket is unauthenticated. Set --flow.netflow.debug-capture=unidentified to keep the datagrams themselves.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -4485,7 +4485,7 @@
         "spec": {
           "id": 31,
           "title": "Flow Correlator",
-          "description": "The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) into one record per connection-window and merges Zenarmor L7 where a conn document matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is materially lower for long flows whose NetFlow records arrive up to ~30m after the connection ended. A rising force-evicted rate means --flow.correlate.max-entries is binding under load and should be raised; expired is the healthy path.",
+          "description": "The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) into one record per connection-window and merges Zenarmor L7 where a conn document matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is materially lower for long flows whose NetFlow records arrive up to ~30m after the connection ended. A rising force-evicted rate means --flow.correlate.max-entries is binding under load and should be raised; expired is the healthy path. enrichment overwrites (#590) counts a second Zenarmor conn document for the same connection-window replacing the first wholesale rather than merging - a non-zero rate means Zenarmor re-reported a connection and only the latest report survived. fragment disagreements (#590) counts a later NetFlow fragment reporting a different interface, direction, VLAN or enrichment than the entry's first fragment, whose copy of those fields is what the merged record actually carries for the connection's whole life - a non-zero rate means that dimension silently disagreed and only the first fragment's answer survived. Neither counter fires on the TCP-flags union across fragments (#585), which is a merge by design, not a loss.",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -4615,6 +4615,58 @@
                         "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_correlator_expired_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
                         "refId": "E",
                         "legendFormat": "expired/sec",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "F",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_correlator_enrichment_overwrites_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "F",
+                        "legendFormat": "enrichment overwrites/sec",
+                        "instant": false,
+                        "range": true
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "refId": "G",
+                    "hidden": false,
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "query": {
+                      "kind": "DataQuery",
+                      "version": "v0",
+                      "group": "prometheus",
+                      "datasource": {
+                        "name": "${datasource}"
+                      },
+                      "spec": {
+                        "expr": "max without (job, service_instance_id, service_name, service_version) (rate(opnsense_flow_correlator_fragment_disagreement_total{opnsense_instance=~\"$opnsense_instance\"}[$__rate_interval]))",
+                        "refId": "G",
+                        "legendFormat": "fragment disagreements/sec",
                         "instant": false,
                         "range": true
                       }

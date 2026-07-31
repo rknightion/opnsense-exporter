@@ -152,7 +152,10 @@ def build(b: Builder):
     )
     ovpn_instances = b.table(
         "OpenVPN Instances",
-        [sel("opnsense_openvpn_instances")],
+        [
+            sel("opnsense_openvpn_instances"),
+            sel("opnsense_openvpn_instance_max_clients"),
+        ],
         w=12, h=8,
         excludes=["__name__", "job", "instance"],
         renames={
@@ -160,10 +163,34 @@ def build(b: Builder):
             "role": "Role",
             "description": "Description",
             "device_type": "Device Type",
-            "Value": "Enabled",
+            "Value #A": "Enabled",
+            "Value #B": "Max Clients",
         },
         sort_by="Role",
-        desc="All configured OpenVPN instances. Value: 1 = enabled, 0 = disabled.",
+        desc=(
+            "All configured OpenVPN instances. Enabled: 1 = enabled, 0 = disabled. "
+            "Max Clients is the configured concurrent-client cap (server instances "
+            "only); blank means no cap is configured (unlimited), not a cap of zero."
+        ),
+    )
+    # #584: the utilization/headroom signal the raw maxclients gauge exists to
+    # feed -- nothing warned an operator before a capped server started
+    # refusing connections at the limit. Joined on description (both series
+    # share the OpenVPN instance's description/uuid/role/device_type label
+    # set); an uncapped or client-role instance has no max_clients series and
+    # so contributes no line here, not a fabricated 0% or divide-by-zero.
+    ovpn_utilization = b.ts(
+        "OpenVPN Utilization",
+        [(f'100 * {sel("opnsense_openvpn_sessions_by_instance")} '
+          f'/ on(description, opnsense_instance) '
+          f'{sel("opnsense_openvpn_instance_max_clients")}',
+          "{{description}}")],
+        unit="percent", w=12, h=8,
+        desc=(
+            "Live session count as a percentage of the configured concurrent-client "
+            "cap, per OpenVPN server instance. Only plotted for instances with a "
+            "cap actually configured (see OpenVPN Instances table above)."
+        ),
     )
     ovpn_sessions = b.table(
         "OpenVPN Sessions",
@@ -516,7 +543,7 @@ def build(b: Builder):
               present="has_wireguard_peers"),
         b.row("OpenVPN",
               [ovpn_sessions_total, ovpn_sessions_by_instance,
-               ovpn_instances, ovpn_sessions,
+               ovpn_instances, ovpn_utilization, ovpn_sessions,
                ovpn_instance_traffic, ovpn_session_traffic, ovpn_connected_since],
               present="has_openvpn"),
         b.row("IPsec Phase 1",

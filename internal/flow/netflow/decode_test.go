@@ -203,7 +203,7 @@ func TestDecodeV9_TemplateThenDataHappyPath(t *testing.T) {
 		inBytes: 15000, inPkts: 12, proto: 6, tos: 8, tcpFlags: 0x18,
 		srcPort: 54321, src: "192.0.2.55", srcMask: 24, inputSNMP: 3,
 		dstPort: 443, dst: "198.51.100.7", dstMask: 32, outputSNMP: 1,
-		nextHop: "192.0.2.254", srcAS: 0, dstAS: 15169,
+		nextHop: "192.0.2.254", srcAS: 0, dstAS: 0,
 		last: 3600000, first: 3599000,
 	}
 	pkt := v9Datagram(testHead(3600000),
@@ -239,7 +239,6 @@ func TestDecodeV9_TemplateThenDataHappyPath(t *testing.T) {
 		{"DstAddr", r.DstAddr, netip.MustParseAddr("198.51.100.7")},
 		{"InIfIndex", r.InIfIndex, uint32(3)},
 		{"OutIfIndex", r.OutIfIndex, uint32(1)},
-		{"DstAS", r.DstAS, uint32(15169)},
 		{"TemplateID", r.TemplateID, uint16(256)},
 	} {
 		if c.got != c.want {
@@ -251,7 +250,8 @@ func TestDecodeV9_TemplateThenDataHappyPath(t *testing.T) {
 	if s.Datagrams != 1 || s.Records != 1 || s.TemplatesLearned != 1 {
 		t.Fatalf("stats = %+v, want 1 datagram / 1 record / 1 template learned", s)
 	}
-	if s.NoTemplate != 0 || s.Malformed != 0 || s.UnexpectedOutBytes != 0 {
+	if s.NoTemplate != 0 || s.Malformed != 0 || s.UnexpectedOutBytes != 0 ||
+		s.UnexpectedSrcAS != 0 || s.UnexpectedDstAS != 0 {
 		t.Fatalf("stats = %+v, want no drops on a clean datagram", s)
 	}
 }
@@ -375,12 +375,26 @@ func TestDecodeV9_UnknownFieldSkippedByDeclaredLength(t *testing.T) {
 	}
 }
 
-// SRC_AS/DST_AS are len=4 on this export, not the usual 2. The integer reader
-// must take its width from the template, so a 32-bit ASN survives intact.
-func TestDecodeV9_ThirtyTwoBitASNumbers(t *testing.T) {
+// SRC_AS/DST_AS were deleted from Record (#586): ng_netflow hardcodes both to zero
+// on every export path under an explicit "not supported" source comment, confirmed
+// zero across all 131 records of the reference capture, and a better ASN already
+// ships via flow.Record.Geo (#549, DB-IP-derived). Storing them was dead weight the
+// audit tooling wrongly counted as modelled.
+//
+// Deleting the fields must not turn them into a decode desync. They stay in
+// modelledFields and readRecord still has to read their WIDTH from the template —
+// len=4 here, not the usual 2 — and step over them correctly, or the field that
+// follows misreads. This also proves the read-to-assert path survives the
+// deletion: a non-zero value still increments the unexpected-field counter
+// (mirroring OUT_BYTES/OUT_PKTS) rather than being silently dropped now that
+// nothing stores it.
+func TestDecodeV9_ASFieldsStepOverByWidthWithoutDesync(t *testing.T) {
 	d := New()
-	tmpl := tDef{id: 301, fields: []tField{{16, 4}, {17, 4}}}
-	rec := cat(be32(4200000000), be32(65536))
+	tmpl := tDef{id: 301, fields: []tField{{16, 4}, {17, 4}, {7, 2}}}
+	// SRC_AS/DST_AS at width 4, followed by L4_SRC_PORT. If the decoder guessed a
+	// 2-byte AS width instead of reading it from the template, the port below would
+	// misread as part of DST_AS's low bytes.
+	rec := cat(be32(4200000000), be32(65536), be16(1234))
 	pkt := v9Datagram(testHead(1000), templateFlowset(tmpl), dataFlowset(301, rec))
 
 	dg, err := d.Decode(pkt, testExporter, testNow)
@@ -388,8 +402,28 @@ func TestDecodeV9_ThirtyTwoBitASNumbers(t *testing.T) {
 		t.Fatalf("Decode() error = %v", err)
 	}
 	r := dg.Records[0]
-	if r.SrcAS != 4200000000 || r.DstAS != 65536 {
-		t.Fatalf("AS = src:%d dst:%d, want src:4200000000 dst:65536 (truncated to 16 bits?)", r.SrcAS, r.DstAS)
+	if r.SrcPort != 1234 {
+		t.Fatalf("SrcPort = %d, want 1234 (AS fields not skipped by their declared 4-byte width?)", r.SrcPort)
+	}
+	if s := d.Stats(); s.UnexpectedSrcAS != 1 || s.UnexpectedDstAS != 1 {
+		t.Fatalf("stats = %+v, want UnexpectedSrcAS=1 UnexpectedDstAS=1: a non-zero AS value must still "+
+			"be counted even though it is no longer stored", s)
+	}
+}
+
+// A zero AS value — what ng_netflow actually sends — must NOT trip the unexpected
+// counter: it is the expected case, not the drift signal.
+func TestDecodeV9_ZeroASFieldsNotCountedUnexpected(t *testing.T) {
+	d := New()
+	v := flowVals{inBytes: 1, inPkts: 1, src: "192.0.2.55", dst: "198.51.100.7",
+		nextHop: "192.0.2.254", srcAS: 0, dstAS: 0}
+	pkt := v9Datagram(testHead(1000), templateFlowset(ipv4Template()), dataFlowset(256, ipv4Record(t, v)))
+
+	if _, err := d.Decode(pkt, testExporter, testNow); err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if s := d.Stats(); s.UnexpectedSrcAS != 0 || s.UnexpectedDstAS != 0 {
+		t.Fatalf("stats = %+v, want both zero: this is ng_netflow's normal output", s)
 	}
 }
 
@@ -763,8 +797,12 @@ func TestDecodeV5_HappyPath(t *testing.T) {
 	if r.SrcPort != 54321 || r.DstPort != 443 || r.InIfIndex != 3 || r.OutIfIndex != 1 {
 		t.Errorf("record = %+v, want ports 54321->443 on ifaces 3->1", r)
 	}
-	if r.DstAS != 15169 || r.TemplateID != 0 {
-		t.Errorf("record = %+v, want DstAS 15169 and TemplateID 0", r)
+	// SrcAS/DstAS are wire bytes v5Record still encodes (#586: ng_netflow sends the
+	// element even though it hardcodes it to zero), but Record no longer stores
+	// them, so there is nothing to assert here beyond decode not desyncing — which
+	// the surrounding field checks above already cover.
+	if r.TemplateID != 0 {
+		t.Errorf("record = %+v, want TemplateID 0", r)
 	}
 	wantFirst := time.Date(2026, 7, 21, 11, 59, 59, 0, time.UTC)
 	if !r.First.Equal(wantFirst) || !r.Last.Equal(testExport) {

@@ -1105,6 +1105,7 @@
         "query": "label_values(opnsense_trafficshaper_pipes_total{opnsense_instance=~\"$opnsense_instance\"}, __name__)",
         "gates": [
           "OPNsense Exporter > Network > Traffic Shaper",
+          "OPNsense Exporter > Network > Traffic Shaper > Configured Capacity",
           "OPNsense Exporter > Network > Traffic Shaper > Pipes",
           "OPNsense Exporter > Network > Traffic Shaper > Queues",
           "OPNsense Exporter > Network > Traffic Shaper > Rules",

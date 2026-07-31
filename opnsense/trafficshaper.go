@@ -2,6 +2,8 @@ package opnsense
 
 import (
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -40,6 +42,17 @@ type tsRule struct {
 
 // tsItem mirrors one element of the api/trafficshaper/service/statistics response.
 // Items may be pipes or queues; a template queue carries the pipe's flow stats.
+//
+// Bw/Delay/Burst are dn_link (pipe) fields -- present only on type:"pipe" items,
+// straight from parse_ipfw_pipes()'s slice of a `dnctl pipe show` line
+// (FreeBSD sbin/ipfw/dummynet.c:625-649, DN_LINK case). QueueSize/Weight are
+// dn_fs (flowset/queue) fields -- present on every type:"queue" item, template
+// or not, from parse_flowset_params()'s regex over a `dnctl queue show` line
+// (dummynet.c:470-528, print_flowset_parms). None of the five carry a
+// separate machine-readable unit: the unit is baked into the formatted string
+// (see parseShaperBandwidthBps/parseShaperBurstBytes/parseShaperQueueSize),
+// which is why they sat in exemptions.json as an OPPORTUNITY rather than
+// already being modeled (#584).
 type tsItem struct {
 	Type        flexString `json:"type"`
 	ID          flexString `json:"id"`
@@ -48,6 +61,12 @@ type tsItem struct {
 	Template    flexBool   `json:"template"` // true on the synthetic per-pipe template queue
 	Flows       []tsFlow   `json:"flows"`
 	Rules       []tsRule   `json:"rules"`
+
+	Bw        flexString `json:"bw"`         // pipe only: e.g. "10.000 Mbit/s" or "unlimited"
+	Delay     flexString `json:"delay"`      // pipe only: milliseconds, plain digits
+	Burst     flexString `json:"burst"`      // pipe only: humanize_number()-scaled bytes, e.g. "10K"
+	QueueSize flexString `json:"queue_size"` // queue (incl. template) only: "NNN sl." or "NNN B"/"NNN KB"
+	Weight    flexString `json:"weight"`     // queue (incl. template) only: plain integer, no unit
 }
 
 // trafficShaperStatsResponse is the top-level API response shape.
@@ -69,6 +88,39 @@ type TrafficShaperEntity struct {
 	Bytes       float64
 	DropPackets float64
 	DropBytes   float64
+
+	// Configured-capacity fields (#584) -- the limits the live counters above
+	// are measured AGAINST, letting an operator tell "saturated" from "just
+	// busy". Every field has an OK companion and must be presence-gated by
+	// the caller: an absent/unparseable/"unlimited" value means "no cap
+	// configured", which is a real, distinct state from a cap of 0 and must
+	// never be reported as one.
+
+	// ConfiguredBandwidthBps/ConfiguredBurstBytes/ConfiguredDelayMs are
+	// PIPE-only (Kind=="pipe"): the pipe's own dn_link bandwidth/burst/delay.
+	// ConfiguredBandwidthOK is false for bw=="unlimited" (bandwidth==0 in
+	// dummynet's own model -- a real "no cap", not 0 bps).
+	ConfiguredBandwidthBps float64
+	ConfiguredBandwidthOK  bool
+	ConfiguredBurstBytes   float64
+	ConfiguredBurstOK      bool
+	ConfiguredDelayMs      float64
+	ConfiguredDelayOK      bool
+
+	// ConfiguredQueueSize/ConfiguredWeight apply to BOTH kinds: for a "queue"
+	// entity they are that queue's own flowset config; for a "pipe" entity
+	// they are folded from its auto-attached template queue (#584), the same
+	// attribution the live ActiveFlows/Packets/Bytes/Drop* fields above
+	// already use for template-queue data. ConfiguredQueueSizeUnit is
+	// "packets" or "bytes" -- dnctl reports queue depth as EITHER a packet-
+	// slot count OR a byte count depending on the queue's configured mode,
+	// two different physical quantities behind the one wire field, so the
+	// unit is never assumed.
+	ConfiguredQueueSize     float64
+	ConfiguredQueueSizeUnit string
+	ConfiguredQueueSizeOK   bool
+	ConfiguredWeight        float64
+	ConfiguredWeightOK      bool
 }
 
 // TrafficShaperRule is the normalised view of one ipfw rule counter.
@@ -92,6 +144,156 @@ type TrafficShaperStatistics struct {
 	Pipes   []TrafficShaperEntity
 	Queues  []TrafficShaperEntity
 	Rules   []TrafficShaperRule
+}
+
+// shaperBandwidthRegexp matches dnctl's pre-formatted bandwidth string:
+// FreeBSD sbin/ipfw/dummynet.c:634-643 (DN_LINK print) emits exactly one of
+// "%7.3f Gbit/s", "%7.3f Mbit/s", "%7.3f Kbit/s", "%7.3f bit/s " (trailing
+// space trimmed by OPNsense's trim_dict) or the literal "unlimited" when the
+// configured bandwidth is 0 (dummynet's own "no cap" sentinel, checked
+// separately below since it carries no numeric match at all).
+var shaperBandwidthRegexp = regexp.MustCompile(`^([0-9]+(?:\.[0-9]+)?)\s*(Gbit|Mbit|Kbit|bit)/s$`)
+
+// parseShaperBandwidthBps normalizes a dnctl pipe bandwidth string to bits
+// per second. "unlimited" (dummynet's own sentinel for a configured
+// bandwidth of exactly 0 -- i.e. no cap at all, not a 0 bps cap) and any
+// unparseable value yield ok=false; a raw number with no unit would be a bug,
+// not a metric, so nothing is emitted rather than guessing a scale.
+func parseShaperBandwidthBps(raw string) (bps float64, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" || strings.EqualFold(s, "unlimited") {
+		return 0, false
+	}
+	m := shaperBandwidthRegexp.FindStringSubmatch(s)
+	if m == nil {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0, false
+	}
+	switch m[2] {
+	case "Gbit":
+		return v * 1e9, true
+	case "Mbit":
+		return v * 1e6, true
+	case "Kbit":
+		return v * 1e3, true
+	case "bit":
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
+// parseShaperDelayMs parses the pipe's configured delay, a plain-integer
+// millisecond count with no unit ambiguity (dummynet.c:648, "%4d ms" --
+// OPNsense's python slices out the digits before "ms"). Unlike bandwidth,
+// there is no "unlimited" sentinel: 0 ms is a real, meaningful "no added
+// delay" configuration, so it is presence-gated only on the string actually
+// being a parseable integer.
+func parseShaperDelayMs(raw string) (ms float64, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// shaperHumanizedRegexp matches FreeBSD libutil's humanize_number() output as
+// dummynet.c:645-647 produces it for a pipe's burst size: an integer byte
+// count optionally followed by a single binary-scale letter (K/M/G/T/P/E =
+// *1024^n; no letter = bytes). humanize_number is called with an empty units
+// suffix (dummynet.c's third argument ""), so there is never a trailing "B" —
+// distinguishing this from queue_size's "NNN B"/"NNN KB" shape below, which
+// DOES carry a "B" unit token.
+var shaperHumanizedRegexp = regexp.MustCompile(`^([0-9]+)([KMGTPE]?)$`)
+
+var shaperBinaryScale = map[string]float64{
+	"":  1,
+	"K": 1 << 10,
+	"M": 1 << 20,
+	"G": 1 << 30,
+	"T": 1 << 40,
+	"P": 1 << 50,
+	"E": 1 << 60,
+}
+
+// parseShaperBurstBytes normalizes a pipe's humanize_number()-scaled burst
+// size to bytes. Unparseable input yields ok=false rather than a guess.
+func parseShaperBurstBytes(raw string) (bytesVal float64, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, false
+	}
+	m := shaperHumanizedRegexp.FindStringSubmatch(s)
+	if m == nil {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0, false
+	}
+	scale, known := shaperBinaryScale[m[2]]
+	if !known {
+		return 0, false
+	}
+	return v * scale, true
+}
+
+// shaperQueueSizeRegexp matches a queue's configured depth as dummynet.c:
+// 477-484 (print_flowset_parms) formats it: "%3d sl." when the queue is
+// slot/packet-count limited (the DN_QSIZE_BYTES flag is unset -- OPNsense's
+// python trims the %3d field-width padding), or "%d B"/"%d KB" when it is
+// byte limited. These are two DIFFERENT physical quantities behind the one
+// wire field, which is why the unit is returned rather than assumed.
+var shaperQueueSizeRegexp = regexp.MustCompile(`^([0-9]+)\s*(sl\.|KB|B)$`)
+
+// parseShaperQueueSize normalizes a queue's configured depth, reporting which
+// unit it was measured in ("packets" for the slot-count mode, "bytes" for
+// the byte-count mode -- dummynet.c divides by 1024 for its "KB" print, so
+// that case is scaled back up here). Unparseable input yields ok=false.
+func parseShaperQueueSize(raw string) (value float64, unit string, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, "", false
+	}
+	m := shaperQueueSizeRegexp.FindStringSubmatch(s)
+	if m == nil {
+		return 0, "", false
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0, "", false
+	}
+	switch m[2] {
+	case "sl.":
+		return v, "packets", true
+	case "B":
+		return v, "bytes", true
+	case "KB":
+		return v * 1024, "bytes", true
+	default:
+		return 0, "", false
+	}
+}
+
+// parseShaperWeight parses a queue's WF2Q+/scheduler weight: a plain integer
+// with no unit at all (dummynet.c:522, "weight %d").
+func parseShaperWeight(raw string) (weight float64, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // idPipePrefix returns the part of an item ID before the first dot, used to
@@ -158,6 +360,22 @@ func (c *Client) FetchTrafficShaperStatistics() (TrafficShaperStatistics, *APICa
 		bytes       float64
 		dropPackets float64
 		dropBytes   float64
+
+		// Configured-capacity fields (#584). bandwidth/burst/delay come from
+		// this pipe item's own bw/burst/delay; queueSize/weight are folded in
+		// below from the matching template-queue item, mirroring how the
+		// live flow stats above are already attributed.
+		bandwidthBps  float64
+		bandwidthOK   bool
+		burstBytes    float64
+		burstOK       bool
+		delayMs       float64
+		delayOK       bool
+		queueSize     float64
+		queueSizeUnit string
+		queueSizeOK   bool
+		weight        float64
+		weightOK      bool
 	}
 	pipeMap := make(map[string]*pipeAccum)
 
@@ -169,9 +387,13 @@ func (c *Client) FetchTrafficShaperStatistics() (TrafficShaperStatistics, *APICa
 		if id == "" {
 			continue
 		}
-		pipeMap[id] = &pipeAccum{
+		acc := &pipeAccum{
 			description: item.Description.String(),
 		}
+		acc.bandwidthBps, acc.bandwidthOK = parseShaperBandwidthBps(item.Bw.String())
+		acc.burstBytes, acc.burstOK = parseShaperBurstBytes(item.Burst.String())
+		acc.delayMs, acc.delayOK = parseShaperDelayMs(item.Delay.String())
+		pipeMap[id] = acc
 	}
 
 	// Second pass: process queues and rules.
@@ -230,6 +452,10 @@ func (c *Client) FetchTrafficShaperStatistics() (TrafficShaperStatistics, *APICa
 				acc.bytes = byt
 				acc.dropPackets = dropPkt
 				acc.dropBytes = dropByt
+				// Fold the template queue's own queue_size/weight onto the
+				// pipe, same attribution as the flow stats above (#584).
+				acc.queueSize, acc.queueSizeUnit, acc.queueSizeOK = parseShaperQueueSize(item.QueueSize.String())
+				acc.weight, acc.weightOK = parseShaperWeight(item.Weight.String())
 			}
 			// Template rows are NOT emitted as queue metrics.
 			continue
@@ -240,16 +466,23 @@ func (c *Client) FetchTrafficShaperStatistics() (TrafficShaperStatistics, *APICa
 		if pipeID == "" {
 			pipeID = idPipePrefix(item.ID.String())
 		}
+		queueSize, queueSizeUnit, queueSizeOK := parseShaperQueueSize(item.QueueSize.String())
+		weight, weightOK := parseShaperWeight(item.Weight.String())
 		queues = append(queues, TrafficShaperEntity{
-			Kind:        "queue",
-			ID:          item.ID.String(),
-			Pipe:        pipeID,
-			Description: item.Description.String(),
-			ActiveFlows: activeFlows,
-			Packets:     pkt,
-			Bytes:       byt,
-			DropPackets: dropPkt,
-			DropBytes:   dropByt,
+			Kind:                    "queue",
+			ID:                      item.ID.String(),
+			Pipe:                    pipeID,
+			Description:             item.Description.String(),
+			ActiveFlows:             activeFlows,
+			Packets:                 pkt,
+			Bytes:                   byt,
+			DropPackets:             dropPkt,
+			DropBytes:               dropByt,
+			ConfiguredQueueSize:     queueSize,
+			ConfiguredQueueSizeUnit: queueSizeUnit,
+			ConfiguredQueueSizeOK:   queueSizeOK,
+			ConfiguredWeight:        weight,
+			ConfiguredWeightOK:      weightOK,
 		})
 	}
 
@@ -264,15 +497,26 @@ func (c *Client) FetchTrafficShaperStatistics() (TrafficShaperStatistics, *APICa
 		}
 		acc := pipeMap[id]
 		data.Pipes = append(data.Pipes, TrafficShaperEntity{
-			Kind:        "pipe",
-			ID:          id,
-			Pipe:        id,
-			Description: acc.description,
-			ActiveFlows: acc.activeFlows,
-			Packets:     acc.packets,
-			Bytes:       acc.bytes,
-			DropPackets: acc.dropPackets,
-			DropBytes:   acc.dropBytes,
+			Kind:                    "pipe",
+			ID:                      id,
+			Pipe:                    id,
+			Description:             acc.description,
+			ActiveFlows:             acc.activeFlows,
+			Packets:                 acc.packets,
+			Bytes:                   acc.bytes,
+			DropPackets:             acc.dropPackets,
+			DropBytes:               acc.dropBytes,
+			ConfiguredBandwidthBps:  acc.bandwidthBps,
+			ConfiguredBandwidthOK:   acc.bandwidthOK,
+			ConfiguredBurstBytes:    acc.burstBytes,
+			ConfiguredBurstOK:       acc.burstOK,
+			ConfiguredDelayMs:       acc.delayMs,
+			ConfiguredDelayOK:       acc.delayOK,
+			ConfiguredQueueSize:     acc.queueSize,
+			ConfiguredQueueSizeUnit: acc.queueSizeUnit,
+			ConfiguredQueueSizeOK:   acc.queueSizeOK,
+			ConfiguredWeight:        acc.weight,
+			ConfiguredWeightOK:      acc.weightOK,
 		})
 	}
 

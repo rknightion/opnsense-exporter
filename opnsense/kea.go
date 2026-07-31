@@ -71,6 +71,16 @@ type keaLeaseRow struct {
 	// derivable from the already-modeled Expire: Expire = cltt + valid-lft
 	// and cltt is never exposed, so the sum cannot be reversed.
 	ValidLifetime flexInt `json:"valid_lifetime"`
+	// PrefixLen is the delegated prefix's block size for a DHCPv6 IA_PD
+	// (prefix-delegation) lease -- e.g. 56 for a /56 delegation. Meaningful
+	// ONLY on keaLeases6: get_kea_leases.py's shared row-builder emits this
+	// key unconditionally on both v4 and v6, but Kea's lease4-get-all has no
+	// prefix-length concept at all, so on v4 rows this is permanently the
+	// script's hardcoded default (128) rather than real data (#584,
+	// confirmed against exemptions.json's keaLeases4 note). Callers must
+	// never surface it as a v4 label -- see keaCollector.emitLeaseMetrics's
+	// includePrefixLen switch.
+	PrefixLen flexInt `json:"prefix_len"`
 }
 
 type keaLeaseResponse struct {
@@ -101,6 +111,9 @@ type KeaLease struct {
 	// ValidLifetime is Kea's valid-lft in seconds, populated on both v4 and
 	// v6 leases.
 	ValidLifetime int
+	// PrefixLen is the IA_PD delegated prefix's block size; only meaningful
+	// when this lease came from FetchKeaLeases6 (see keaLeaseRow.PrefixLen).
+	PrefixLen int
 }
 
 type KeaLeases struct {
@@ -197,6 +210,7 @@ func (c *Client) fetchKeaLeases(endpointName EndpointName) (KeaLeases, *APICallE
 			Vendor:        row.MacInfo,
 			ClientID:      row.ClientID,
 			ValidLifetime: row.ValidLifetime.Int(),
+			PrefixLen:     row.PrefixLen.Int(),
 		}
 
 		data.Leases = append(data.Leases, lease)

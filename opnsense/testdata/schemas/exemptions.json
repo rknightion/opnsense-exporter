@@ -301,14 +301,13 @@
       "rows[].sfp",
       "rows[].sfp.*"
     ],
-    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport), bridge (members) and SFP (sfp) fields are hardware/config-dependent — only served by a row that is itself a lagg(4)/bridge(4)/physical-SFP interface. Verified empirically 2026-07-13 (lagg/bridge) and 2026-07-15 (sfp) against the live box: the 26.7-devel VM is virtio-only, so no row carries an sfp block and rows[].sfp is absent wholesale. A box WITH an SFP row (e.g. the prod box's UBNT UF-RJ45-1G) serves the sfp block and validates the sfp.* subtree normally; the exemption only suppresses the box-has-no-SFP case. Box state, not a version prune (#214, #243) knownExtraPaths (#457): interfaces.go's doc comments are explicit about scope: addr4/addr6 deliberately skip the already-parsed duplicates modeled as IPv4/IPv6, mtu duplicates the already-modeled Interface.MTU from the separate FetchInterfaces (api/diagnostics/traffic/interface), and carp overlaps the dedicated CARP collector (opnsense/carp.go, internal/collector/carp.go), which has its own endpoint for VHID master/backup state. The rest (capabilities/options/supported_media/nd6/laggoptions/media_raw/macaddr*/vlan.pcp,proto/groups/config/ifctl.*/gateways/routes, and the CARP/PPP/tunnel-peer sub-fields of ipv4[]/ipv6[]) is interface identity/capability/topology configuration, matching the file's stated scope of not duplicating the traffic-stats endpoint. OPPORTUNITY: rows[].enabled is the config-level admin-enabled flag, distinct from the already-modeled AdminUp (derived from the ifconfig UP flag) and Status - could surface 'configured but administratively disabled' separately from 'down'. PRUNE TRIGGER: remove rows[].enabled from this list if it is ever modeled. BATCH (#496/#490, prod release 26.7.1_1): rows[].ifctl.prefix is the missed sibling of the three ifctl.* keys already exempted above (nameserver/router/searchdomain) - verified against OverviewController (opnsense/core, src/opnsense/mvc/app/controllers/OPNsense/Interfaces/Api/OverviewController.php, stable/26.7, lines 100-160): all four are built from the same \"ifctl received properties\" loop and share the same GUI label class (\"Dynamic <X> received\"). ifctl.prefix specifically surfaces a dynamically received IPv6 delegated prefix (DHCPv6-PD) - present only on an interface actually running PD, which is why it did not surface until this batch. Same reasoning bucket as its three siblings: dynamic config-received GUI display data, not a counter or state gauge. PRUNE TRIGGER: none.",
+    "note": "LAGG (laggproto/lagghash/laggstatistics/laggport), bridge (members) and SFP (sfp) fields are hardware/config-dependent — only served by a row that is itself a lagg(4)/bridge(4)/physical-SFP interface. Verified empirically 2026-07-13 (lagg/bridge) and 2026-07-15 (sfp) against the live box: the 26.7-devel VM is virtio-only, so no row carries an sfp block and rows[].sfp is absent wholesale. A box WITH an SFP row (e.g. the prod box's UBNT UF-RJ45-1G) serves the sfp block and validates the sfp.* subtree normally; the exemption only suppresses the box-has-no-SFP case. Box state, not a version prune (#214, #243) knownExtraPaths (#457, PRUNED #588): interfaces.go's doc comments are explicit about scope: addr4/addr6 deliberately skip the already-parsed duplicates modeled as IPv4/IPv6, mtu duplicates the already-modeled Interface.MTU from the separate FetchInterfaces (api/diagnostics/traffic/interface), and carp overlaps the dedicated CARP collector (opnsense/carp.go, internal/collector/carp.go), which has its own endpoint for VHID master/backup state. The rest (capabilities/options/supported_media/nd6/laggoptions/media_raw/macaddr*/vlan.pcp,proto/groups/config/ifctl.*/gateways/routes, and the CARP/PPP/tunnel-peer sub-fields of ipv4[]/ipv6[]) is interface identity/capability/topology configuration, matching the file's stated scope of not duplicating the traffic-stats endpoint. MODELLED (#584, concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree) and removed from this list: rows[].enabled — interfaceOverviewRow now decodes it as Enabled bool, and FetchInterfacesOverview copies it into InterfaceOverview.Enabled (opnsense/interfaces.go:770), distinct from the already-modeled AdminUp (ifconfig UP flag) and Status. Structurally modelled as of this ledger fix; not yet read by internal/collector/interfaces.go into a metric at time of writing — that wiring, if and when it lands, is a separate change and does not need a ledger entry either way. BATCH (#496/#490, prod release 26.7.1_1): rows[].ifctl.prefix is the missed sibling of the three ifctl.* keys already exempted above (nameserver/router/searchdomain) - verified against OverviewController (opnsense/core, src/opnsense/mvc/app/controllers/OPNsense/Interfaces/Api/OverviewController.php, stable/26.7, lines 100-160): all four are built from the same \"ifctl received properties\" loop and share the same GUI label class (\"Dynamic <X> received\"). ifctl.prefix specifically surfaces a dynamically received IPv6 delegated prefix (DHCPv6-PD) - present only on an interface actually running PD, which is why it did not surface until this batch. Same reasoning bucket as its three siblings: dynamic config-received GUI display data, not a counter or state gauge. PRUNE TRIGGER: none.",
     "knownExtraPaths": [
       "rows[].addr4",
       "rows[].addr6",
       "rows[].capabilities",
       "rows[].carp",
       "rows[].config",
-      "rows[].enabled",
       "rows[].gateways",
       "rows[].groups",
       "rows[].ifctl.nameserver",
@@ -441,20 +440,9 @@
       "mbuf-statistics.mbuf-max",
       "mbuf-statistics.percentage"
     ],
-    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window knownExtraPaths (#457): memoryStatistics and systemMbuf decode the SAME mbufResponse struct (schema_registry.go) from the same underlying data, so this entry mirrors systemMbuf's exactly: jumbo-page-size is a static constant (exempt); packet-count/packet-free/bytes-in-cache/jumbo9-*/jumbo16-*/sendfile-* are genuine OPPORTUNITY gaps parallel to already-modeled pool/sendfile counters. PRUNE TRIGGER: remove an entry from both this list and systemMbuf's once its field is modeled.",
+    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window knownExtraPaths (#457, PRUNED #588): memoryStatistics and systemMbuf decode the SAME mbufResponse struct (schema_registry.go), so this entry mirrors systemMbuf's exactly. MODELLED (#579, concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree) and removed from this list: bytes-in-cache, jumbo9-{cache,count,max,total} and jumbo16-{cache,count,limit,total} — mbufStatisticsData now decodes all of them, and FetchMbufStatistics feeds them into MbufStatistics.BytesInCache and the PoolCurrent/PoolCache/PoolTotal/PoolMax maps keyed by pool name (jumbo9/jumbo16/packet), also covering packet-count/packet-free the same way. jumbo-page-size stays exempt: a static per-page byte-size constant, not a moving quantity. The sendfile-{busy-encounters,no-io,pages-bogus,pages-valid,readahead,requested-readahead} counters remain a genuine OPPORTUNITY, parallel in shape to the already-modeled sendfile aggregate but untouched by #579. PRUNE TRIGGER: remove an entry from both this list and systemMbuf's once its field is modeled.",
     "knownExtraPaths": [
-      "mbuf-statistics.bytes-in-cache",
       "mbuf-statistics.jumbo-page-size",
-      "mbuf-statistics.jumbo16-cache",
-      "mbuf-statistics.jumbo16-count",
-      "mbuf-statistics.jumbo16-limit",
-      "mbuf-statistics.jumbo16-total",
-      "mbuf-statistics.jumbo9-cache",
-      "mbuf-statistics.jumbo9-count",
-      "mbuf-statistics.jumbo9-max",
-      "mbuf-statistics.jumbo9-total",
-      "mbuf-statistics.packet-count",
-      "mbuf-statistics.packet-free",
       "mbuf-statistics.sendfile-busy-encounters",
       "mbuf-statistics.sendfile-no-io",
       "mbuf-statistics.sendfile-pages-bogus",
@@ -541,9 +529,8 @@
       "nginxVersion",
       "nowMsec"
     ],
-    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list. cacheZones is BOX STATE: nginx-module-vts writes the key, calls display_set_cache(), then rewinds the buffer wholesale if nothing was written (display_json.c `s = buf; ...; if (s == buf) { buf = o; }`), so the key vanishes when the vts shared memory holds no cache node — and that shm resets on every nginx reload. The testbed HAS a cache configured (settings/get shows cache_path /var/nginx/cache/heavy) but has served nothing through it. Verified live 2026-07-17 on the 26.7-devel VM; the upstream #define for \"cacheZones\" is still present on vozlt/nginx-module-vts master. Prune once the testbed serves traffic through a proxy_cache location (#271) knownExtraPaths (#457): nginx.go's nginxVtsServerZone/nginxVtsUpstream model requestCounter/inBytes/outBytes/responses-by-code/requestMsecCounter (+ responseMsec/responseMsecCounter for upstreams) via FetchNginxVTS. sharedZones.name is just the zone-name string (identity), and upstreamZones.*[].backup is a boolean role marker, not a metric. OPPORTUNITY: the *.overCounts fields signal counter-wraparound (correctness-relevant for the existing rate() series), *.requestBuckets/responseBuckets are latency-histogram data with no current histogram metric, requestMsec/requestMsecs are additional timing values beyond the modeled counters, and failTimeout/maxFails/weight are numeric LB health/config thresholds with no current gauge. PRUNE TRIGGER: remove an entry from this list once its field is modeled.",
+    "note": "vts module identity and current-time snapshot; not modelled. loadMsec IS modelled (config_load_timestamp_seconds, #200) and removed from this list. cacheZones is BOX STATE: nginx-module-vts writes the key, calls display_set_cache(), then rewinds the buffer wholesale if nothing was written (display_json.c `s = buf; ...; if (s == buf) { buf = o; }`), so the key vanishes when the vts shared memory holds no cache node — and that shm resets on every nginx reload. The testbed HAS a cache configured (settings/get shows cache_path /var/nginx/cache/heavy) but has served nothing through it. Verified live 2026-07-17 on the 26.7-devel VM; the upstream #define for \"cacheZones\" is still present on vozlt/nginx-module-vts master. Prune once the testbed serves traffic through a proxy_cache location (#271) knownExtraPaths (#457): nginx.go's nginxVtsServerZone/nginxVtsUpstream model requestCounter/inBytes/outBytes/responses-by-code/requestMsecCounter (+ responseMsec/responseMsecCounter for upstreams) via FetchNginxVTS. sharedZones.name is just the zone-name string (identity), and upstreamZones.*[].backup is a boolean role marker, not a metric. OPPORTUNITY: the *.overCounts fields signal counter-wraparound (correctness-relevant for the existing rate() series), *.requestBuckets/responseBuckets are latency-histogram data with no current histogram metric, requestMsec/requestMsecs are additional timing values beyond the modeled counters, and failTimeout/maxFails/weight are numeric LB health/config thresholds with no current gauge. PRUNE TRIGGER: remove an entry from this list once its field is modeled. MODELLED 2026-07-31 (#584): serverZones.*.overCounts and upstreamZones.*[].overCounts are now opnsense_nginx_{server_zone,upstream_server}_counter_wraps_total, so both are pruned from knownExtraPaths. They are COUNTERS, not gauges: nginx-module-vts's add_oc macro does c->stat_X_counter_oc++ (ngx_http_vhost_traffic_status_module.h), so each _oc field is itself monotonic and resets only alongside every other vts counter on an nginx reload. Two metrics rather than the one the issue proposed, because a server zone and an upstream server entry do not share a label shape — matching this collector's existing server_zone_*/upstream_server_* split.",
     "knownExtraPaths": [
-      "serverZones.*.overCounts",
       "serverZones.*.requestBuckets",
       "serverZones.*.requestMsec",
       "serverZones.*.requestMsecs",
@@ -551,7 +538,6 @@
       "upstreamZones.*[].backup",
       "upstreamZones.*[].failTimeout",
       "upstreamZones.*[].maxFails",
-      "upstreamZones.*[].overCounts",
       "upstreamZones.*[].requestBuckets",
       "upstreamZones.*[].requestMsec",
       "upstreamZones.*[].requestMsecs",
@@ -588,7 +574,7 @@
       "statistics.tcp.syncache.receivd-cookies",
       "statistics.tcp.syncache.sent-cookies"
     ],
-    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for ≤ 26.1.10 — prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}, which are now modelled as a presence-gated counter (#237); the legacy aggregate stays decoded-only (never fed a metric). syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7, now modelled as a presence-gated counter (#237); decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window knownExtraPaths (#457): protocol_statistics.go exhaustively models nearly every FreeBSD `netstat --libxo` counter family it currently reads (TCP, UDP, IP, ICMP, CARP, Pfsync, ARP, IP6, ICMP6), including presence-gated handling of upstream renames (#237/#374); every path in this batch is an ADDITIONAL counter within an already-partially-modeled family or a whole unmodeled family, not deliberately-excluded config data. OPPORTUNITY (roadmap candidate, not exempted for a lack-of-metric reason but because triaging + modeling 36 counters is out of this issue's scope): the AH/ESP/IPComp/divert/igmp/pim/rip6 families are wholly unmodeled protocol counters; the icmp/icmp6/ip6/tcp entries extend already-partially-modeled structs with additional counters of the same shape as fields already exported. ipsec-statistics/ipsec6-statistics are likely complementary kernel-level counters to the SA/SPI tunnel-level state the dedicated IPsec collector already exposes from a different endpoint, not a duplicate - unconfirmed. PRUNE TRIGGER: file a roadmap issue to model the counters worth exporting, then remove their entries here.",
+    "note": "cross-generation tcp counters. ecn ce/ect0/ect1-packets: renamed received-* in 26.1.11, legacy kept for ≤ 26.1.10 — prune when 26.1 leaves the support window. received-acks-for-unsent-data: split in 26.7 into received-acks-for-data-{not-yet-sent,never-been-sent,being-too-old}, which are now modelled as a presence-gated counter (#237); the legacy aggregate stays decoded-only (never fed a metric). syncache receivd-cookies/sent-cookies (upstream's typo included): moved to statistics.tcp.syncookies.* in 26.7, now modelled as a presence-gated counter (#237); decoded-only, no metric impact. Prune the 26.7 pair when 26.1.11 leaves the support window knownExtraPaths (#457): protocol_statistics.go exhaustively models nearly every FreeBSD `netstat --libxo` counter family it currently reads (TCP, UDP, IP, ICMP, CARP, Pfsync, ARP, IP6, ICMP6), including presence-gated handling of upstream renames (#237/#374); every path in this batch is an ADDITIONAL counter within an already-partially-modeled family or a whole unmodeled family, not deliberately-excluded config data. OPPORTUNITY (roadmap candidate, not exempted for a lack-of-metric reason but because triaging + modeling 36 counters is out of this issue's scope): the AH/ESP/IPComp/divert/igmp/pim/rip6 families are wholly unmodeled protocol counters; the icmp/icmp6/ip6/tcp entries extend already-partially-modeled structs with additional counters of the same shape as fields already exported. ipsec-statistics/ipsec6-statistics are likely complementary kernel-level counters to the SA/SPI tunnel-level state the dedicated IPsec collector already exposes from a different endpoint, not a duplicate - unconfirmed. PRUNE TRIGGER: file a roadmap issue to model the counters worth exporting, then remove their entries here. PRUNED #588: statistics.tcp.sack.lost-retransmissions and statistics.tcp.sack.tso-chunk-retransmits removed 2026-07-31 — both are decoded (protocol_statistics.go's Sack struct) AND read, into TCPSackLostRetransmissions and its TSO-chunk sibling, so this pair was doubly stale: not merely modeled-but-unread like the rest of this OPPORTUNITY batch, but already an exported metric. Caught by TestKnownExtraPathsNotModelled (#588).",
     "knownExtraPaths": [
       "statistics.ah-statictics",
       "statistics.divert",
@@ -625,9 +611,7 @@
       "statistics.tcp.connections-dropped-due-to-progress-time",
       "statistics.tcp.received-with-dsack-bytes",
       "statistics.tcp.received-with-dsack-bytes-tlp",
-      "statistics.tcp.received-with-dsack-packets",
-      "statistics.tcp.sack.lost-retransmissions",
-      "statistics.tcp.sack.tso-chunk-retransmits"
+      "statistics.tcp.received-with-dsack-packets"
     ]
   },
   "quaggaBfdNeighbors": {
@@ -751,20 +735,9 @@
       "mbuf-statistics.mbuf-max",
       "mbuf-statistics.percentage"
     ],
-    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window knownExtraPaths (#457): mbuf.go's mbufStatisticsData/memoryStatisticsData model current/cache/total for mbuf/cluster pools plus jumbo9/jumbo16 failures+sleeps and generic sendfile syscalls/io-count/pages-sent. jumbo-page-size is a static per-page byte-size constant, not a moving quantity - exempt. OPPORTUNITY: packet-count, packet-free, bytes-in-cache, the jumbo9-{cache,count,max,total} and jumbo16-{cache,count,limit,total} pool-utilization figures, and the finer sendfile-{busy-encounters,no-io,pages-bogus,pages-valid,readahead,requested-readahead} counters parallel exactly the pool current/cache/total shape already modeled elsewhere in this struct and the already-partially-modeled sendfile aggregate - genuine gaps, not deliberately excluded. PRUNE TRIGGER: file a roadmap issue to model the counters worth exporting, then remove their entries here.",
+    "note": "legacy ≤ 26.1.10 mbuf keys: jumbop-* were renamed jumbo-* in 26.1.11, and mbuf-max/percentage/mbuf-and-cluster were removed there. Prune when 26.1 leaves the support window knownExtraPaths (#457, PRUNED #588): mbuf.go's mbufStatisticsData/memoryStatisticsData model current/cache/total for mbuf/cluster pools plus jumbo9/jumbo16 failures+sleeps and generic sendfile syscalls/io-count/pages-sent. jumbo-page-size is a static per-page byte-size constant, not a moving quantity - exempt. MODELLED (#579, concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree) and removed from this list: packet-count, packet-free, bytes-in-cache, the jumbo9-{cache,count,max,total} and jumbo16-{cache,count,limit,total} pool-utilization figures — all now decoded on mbufStatisticsData and fed into MbufStatistics.BytesInCache and the PoolCurrent/PoolCache/PoolTotal/PoolMax maps (see memoryStatistics' mirrored note for the field-by-field detail). The finer sendfile-{busy-encounters,no-io,pages-bogus,pages-valid,readahead,requested-readahead} counters remain a genuine OPPORTUNITY, untouched by #579 — same shape as the already-modeled sendfile aggregate but not yet built. PRUNE TRIGGER: file a roadmap issue to model the counters worth exporting, then remove their entries here.",
     "knownExtraPaths": [
-      "mbuf-statistics.bytes-in-cache",
       "mbuf-statistics.jumbo-page-size",
-      "mbuf-statistics.jumbo16-cache",
-      "mbuf-statistics.jumbo16-count",
-      "mbuf-statistics.jumbo16-limit",
-      "mbuf-statistics.jumbo16-total",
-      "mbuf-statistics.jumbo9-cache",
-      "mbuf-statistics.jumbo9-count",
-      "mbuf-statistics.jumbo9-max",
-      "mbuf-statistics.jumbo9-total",
-      "mbuf-statistics.packet-count",
-      "mbuf-statistics.packet-free",
       "mbuf-statistics.sendfile-busy-encounters",
       "mbuf-statistics.sendfile-no-io",
       "mbuf-statistics.sendfile-pages-bogus",
@@ -1000,7 +973,6 @@
       "rows[].keepalive_timeout",
       "rows[].local",
       "rows[].local_group",
-      "rows[].maxclients",
       "rows[].mssfix",
       "rows[].nopool",
       "rows[].ntp_servers",
@@ -1035,7 +1007,7 @@
       "rows[].verify_client_cert",
       "rows[].vpnid"
     ],
-    "note": "knownExtraPaths (#457): openVPNSearchResponse (opnsense/openvpn.go) decodes only uuid/description/role/dev_type/enabled; every cipher, auth, DNS/routing-push and keepalive knob above is VPN server/client config with no metric use, and session-level runtime data (bytes, connect time, status) is already covered separately by FetchOpenVPNSessions. OPPORTUNITY: rows[].maxclients is a configured concurrent-client cap that, compared against the already-tracked live session count, would give a utilization/headroom gauge that doesn't exist today. PRUNE TRIGGER: remove maxclients from this list if it is ever modeled as a metric."
+    "note": "knownExtraPaths (#457, PRUNED #588): openVPNSearchResponse (opnsense/openvpn.go) decodes only uuid/description/role/dev_type/enabled/maxclients; every cipher, auth, DNS/routing-push and keepalive knob above is VPN server/client config with no metric use, and session-level runtime data (bytes, connect time, status) is already covered separately by FetchOpenVPNSessions. MODELLED (#584, concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree) and removed from this list: rows[].maxclients — decoded as a string (an absent/empty key means 'no cap configured', not a cap of 0, per parseOpenVPNMaxClients) and surfaced as OpenVPN.MaxClients/.MaxClientsConfigured, giving the utilization/headroom gauge this note used to describe as a gap. PRUNE TRIGGER: none remaining — the rest of this list is config with no metric use."
   },
   "natDNATRules": {
     "knownExtraPaths": [
@@ -1384,9 +1356,6 @@
   "trafficShaperStatistics": {
     "knownExtraPaths": [
       "items[].buckets",
-      "items[].burst",
-      "items[].bw",
-      "items[].delay",
       "items[].flow_set_nr",
       "items[].flows[].BKT",
       "items[].flows[].Destination",
@@ -1396,15 +1365,13 @@
       "items[].lmax",
       "items[].pri",
       "items[].queue_params",
-      "items[].queue_size",
       "items[].rules[].accessed",
       "items[].rules[].rule_uuid",
       "items[].sched_nr",
       "items[].scheduler",
-      "items[].uuid",
-      "items[].weight"
+      "items[].uuid"
     ],
-    "note": "knownExtraPaths (#457): trafficshaper.go's tsItem/tsRule already model live flow counters (Pkt/Bytes/DropPkt/DropBytes) and rule counters (Pkts/Bytes/AccessedEpoch). uuid, ipfw scheduler-internal bookkeeping (flow_set_nr/flowset/lmax/pri/queue_params/sched_nr/scheduler) and identity twins (rules[].accessed duplicates accessed_epoch, rules[].rule_uuid duplicates the already-used rule field) are config/identity, not metrics. OPPORTUNITY: items[].bw/burst/delay/queue_size are configured pipe/queue capacity limits (bandwidth, burst size, queue depth/delay) - size/rate figures with no current field that could back configured_* gauges alongside the live usage metrics already exported; items[].weight is a queue scheduling weight, a similar numeric config value but a purely relative scheduling parameter. PRUNE TRIGGER: remove an entry from this list once its field is modeled. ADDED 2026-07-29 (#507 nightly): items[].flows[].{BKT,Destination,Prot,Source} - newly visible only because the flows array is non-empty for the first time, now that VM 112 (#502) pushes traffic through the shaper; the keys were never absent, there was simply no flow to describe. Confirmed genuine against FreeBSD sbin/ipfw/dummynet.c:417 ('BKT Prot ___Source IP/port____ ...'), the dummynet per-flow listing header: BKT is the hash-bucket index and Prot/Source/Destination are the flow's 5-tuple identity. Deliberately NOT modeled - a per-flow 5-tuple is exactly the unbounded cardinality this endpoint's item-level and rule-level counters exist to avoid, the same cardinality-avoidance call already made for the per-LSA arrays on the quagga entries. PRUNE TRIGGER: none - modeling these would be a cardinality regression, not an improvement."
+    "note": "knownExtraPaths (#457, PRUNED #588): trafficshaper.go's tsItem/tsRule already model live flow counters (Pkt/Bytes/DropPkt/DropBytes) and rule counters (Pkts/Bytes/AccessedEpoch). uuid, ipfw scheduler-internal bookkeeping (flow_set_nr/flowset/lmax/pri/queue_params/sched_nr/scheduler) and identity twins (rules[].accessed duplicates accessed_epoch, rules[].rule_uuid duplicates the already-used rule field) are config/identity, not metrics. MODELLED (concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree) and removed from this list: items[].bw/burst/delay/queue_size/weight — tsItem now decodes all five as Bw/Delay/Burst/QueueSize/Weight (flexString, since the wire values carry humanized units like '10.000 Mbit/s' or '10K') and TrafficShaperEntity surfaces them as ConfiguredBandwidthBps/ConfiguredBurstBytes/ConfiguredDelayMs/ConfiguredQueueSize/ConfiguredWeight, each with an -OK presence flag (bw==\"unlimited\" is a real 'no cap' state, not zero). ADDED 2026-07-29 (#507 nightly): items[].flows[].{BKT,Destination,Prot,Source} - newly visible only because the flows array is non-empty for the first time, now that VM 112 (#502) pushes traffic through the shaper; the keys were never absent, there was simply no flow to describe. Confirmed genuine against FreeBSD sbin/ipfw/dummynet.c:417 ('BKT Prot ___Source IP/port____ ...'), the dummynet per-flow listing header: BKT is the hash-bucket index and Prot/Source/Destination are the flow's 5-tuple identity. Deliberately NOT modeled - a per-flow 5-tuple is exactly the unbounded cardinality this endpoint's item-level and rule-level counters exist to avoid, the same cardinality-avoidance call already made for the per-LSA arrays on the quagga entries. PRUNE TRIGGER: none - modeling these would be a cardinality regression, not an improvement."
   },
   "unboundInfra": {
     "knownExtraPaths": [
@@ -1471,33 +1438,22 @@
   },
   "interfaceStatistics": {
     "knownExtraPaths": [
-      "statistics.*.address",
       "statistics.*.collisions",
-      "statistics.*.dropped-packets",
       "statistics.*.flags",
       "statistics.*.mtu",
-      "statistics.*.received-bytes",
       "statistics.*.received-errors",
-      "statistics.*.received-packets",
-      "statistics.*.send-errors",
-      "statistics.*.sent-bytes",
-      "statistics.*.sent-packets"
+      "statistics.*.send-errors"
     ],
-    "note": "knownExtraPaths (#457): interfaceStatisticsRow (opnsense/interface_index.go) decodes only name/network, used solely to derive each device's kernel ifIndex (address rows are explicitly filtered out per the file's own comment). Every counter here (bytes/packets/errors/collisions/mtu/flags) duplicates data already sourced and exposed from the richer interfaces/interfacesOverview endpoints (opnsense/interfaces.go, consumed by internal/collector/interfaces.go), so re-adding them here would be a redundant second source. OPPORTUNITY: statistics.*.dropped-packets is a packet-drop counter with no equivalent anywhere else in the codebase - genuinely unmodeled operational data. PRUNE TRIGGER: remove dropped-packets from this list if it is ever modeled (from whichever endpoint is the better source)."
+    "note": "knownExtraPaths (#457, PRUNED #588): this entry rotted. 49913c9 (#544, 2026-07-30) gave interfaceStatisticsRow (opnsense/interface_index.go) address/received-packets/received-bytes/sent-packets/sent-bytes/dropped-packets — FetchInterfaceStatistics now uses address to classify each row's family (ipv4/ipv6) and sums the counters into InterfaceFamilyTraffic, and dropped-packets feeds InterfaceLinkStats.OutputQueueDrops, both genuinely consumed (internal/collector/interfaces.go) — but this ledger was never updated to match, so it spent a day asserting 'interfaceStatisticsRow decodes only name/network' while the struct plainly did not. #588 added TestKnownExtraPathsNotModelled precisely to catch this class of rot; it flagged this entry along with 4 siblings (keaLeases6, netisrStatistics, protocolStatistics, routingTable) that had gone stale the same way. What remains genuinely unmodeled: collisions, flags, mtu, received-errors and send-errors duplicate data already sourced and exposed from the richer interfaces/interfacesOverview endpoints (opnsense/interfaces.go, consumed by internal/collector/interfaces.go), so adding them here would be a redundant second source. PRUNE TRIGGER: none of these five, unless one is modeled specifically from this endpoint."
   },
   "routingTable": {
     "knownExtraPaths": [
-      "[].destination",
       "[].expire",
-      "[].flags",
-      "[].gateway",
       "[].id",
-      "[].intf_description",
       "[].mtu",
-      "[].netif",
       "[].nhop#"
     ],
-    "note": "knownExtraPaths (#457): routeEntry (opnsense/network_diagnostics.go) decodes only proto, and FetchNetisrStatistics/route-count logic aggregates to per-protocol counts (RouteCounts.ByProto) by deliberate design to keep cardinality bounded - a full per-route dump was never intended. All per-route detail (destination, gateway, mtu, flags, expire) is topology/config data outside that design. PRUNE TRIGGER: none - reopening this means reopening the cardinality decision itself."
+    "note": "knownExtraPaths (#457, PRUNED #588): the cardinality decision this note used to describe was itself reopened by 49913c9 (#544, 2026-07-30, 'Collapsed dimensions restored') — routeEntry (opnsense/network_diagnostics.go) now decodes destination/gateway/flags/netif/intf_description too, and FetchRouteStatistics feeds them into RouteCounts.ByInterface, RouteCounts.ByFlags and DefaultRoutes (default-route detection via isDefaultDestination), all genuinely consumed (internal/collector/network_diag.go). This ledger entry was never updated when that landed, so it kept asserting 'routeEntry decodes only proto' for a stale day; caught by TestKnownExtraPathsNotModelled (#588). What remains genuinely unmodeled (unchanged from the original #457 baseline, not re-verified here beyond confirming routeEntry still has no field for any of them): expire, id, mtu and nhop# are per-route kernel detail with no consumer. PRUNE TRIGGER: none of these four, unless one gains a consumer."
   },
   "quaggaOspfv3Route": {
     "knownExtraPaths": [
@@ -1556,21 +1512,18 @@
       "rows[].duid",
       "rows[].iaid",
       "rows[].if",
-      "rows[].if_name",
-      "rows[].prefix_len"
+      "rows[].if_name"
     ],
-    "note": "knownExtraPaths (#480): the SAME eight keys as keaLeases6, and they are new on the v4 endpoint only because #460 put the first DHCPv4 client on the testbed VLAN - upstream did not change. Both endpoints share one row-builder: actions_kea.conf's [list.leases4] and [list.leases6] both run scripts/kea/get_kea_leases.py, which emits all eight keys on EVERY row regardless of protocol, so these paths are unconditionally present on v4 (stable, not box-state). THREE OF THE EIGHT ARE DEAD ON V4 and this is where the v4 and v6 verdicts diverge: Kea's lease4-get-all returns no duid, no iaid and no prefix-len, so the script's defaults stand on every v4 row - duid and iaid are always the empty string and prefix_len is always the hardcoded literal 128 (get_kea_leases.py). prefix_len is the clearest opportunity on keaLeases6 (real IA_PD block size) and carries NOTHING on keaLeases4; do not model it here. if is the intermediate raw FreeBSD ifname the script derives by matching the lease address against ifconfig CIDR ranges, and if_name is the OPNsense config interface key (lan, opt3) resolved from it - both exist only so the controller can produce if_descr, which we already model and which is this exporter's interface-labelling convention everywhere else. CORRECTION TO THE keaLeases6 NOTE (#457): it says 'mac_info duplicates hwaddr'. It does NOT. mac_info is PHP-side enrichment in LeasesController.php - an offline IEEE OUI lookup of the first three octets against the DB from scripts/interfaces/list_macdb.py - so its value is a VENDOR NAME string ('Apple, Inc.'), empty when the OUI is unknown, which is common with MAC randomisation. It is not derivable from hwaddr without an OUI database the exporter does not ship. OPPORTUNITY: mac_info, client_id (genuine DHCPv4 option 61, and upstream's own alternate reservation-matching key) and valid_lifetime (Kea's valid-lft; NOT derivable from the modelled expire, because expire = cltt + valid-lft and cltt is never exposed) all belong as labels on the already-gated per-lease opnsense_kea_dhcp4_lease_info, which is one series per lease behind --exporter.enable-kea-details, so they add no new cardinality tier. MODELLED 2026-07-28 (#482) and removed from this list: mac_info (as the 'vendor' label), client_id and valid_lifetime, all on the --exporter.enable-kea-details-gated opnsense_kea_dhcp4_lease_info. PRUNE TRIGGER for what remains: duid/iaid/prefix_len stay until Kea's lease4-get-all starts returning them (it does not today, so they are permanently defaulted rather than absent); if/if_name stay indefinitely, since modelling either would mean a second interface-naming convention alongside if_descr."
+    "note": "knownExtraPaths (#480, PRUNED #588): the SAME eight keys as keaLeases6, and they are new on the v4 endpoint only because #460 put the first DHCPv4 client on the testbed VLAN - upstream did not change. Both endpoints share one row-builder: actions_kea.conf's [list.leases4] and [list.leases6] both run scripts/kea/get_kea_leases.py, which emits all eight keys on EVERY row regardless of protocol, so these paths are unconditionally present on v4 (stable, not box-state). rows[].prefix_len removed 2026-07-31 (#584, concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree): keaLeaseRow now decodes PrefixLen (shared struct with keaLeases6, schema_registry.go), so it is structurally modelled on v4 too even though Kea's lease4-get-all sends no real prefix-length concept and the script's hardcoded default (128) stands on every v4 row — keaCollector.emitLeaseMetrics's includePrefixLen switch is what keeps that meaningless default off the v4 metric, exactly the same shared-struct-vs-metric-usage split as client_id/valid_lifetime below. duid and iaid have no such escape hatch and remain genuinely unmodeled — Kea's lease4-get-all returns neither, so the script's defaults stand on every v4 row (always empty string). if is the intermediate raw FreeBSD ifname the script derives by matching the lease address against ifconfig CIDR ranges, and if_name is the OPNsense config interface key (lan, opt3) resolved from it - both exist only so the controller can produce if_descr, which we already model and which is this exporter's interface-labelling convention everywhere else. CORRECTION TO THE keaLeases6 NOTE (#457): it says 'mac_info duplicates hwaddr'. It does NOT. mac_info is PHP-side enrichment in LeasesController.php - an offline IEEE OUI lookup of the first three octets against the DB from scripts/interfaces/list_macdb.py - so its value is a VENDOR NAME string ('Apple, Inc.'), empty when the OUI is unknown, which is common with MAC randomisation. It is not derivable from hwaddr without an OUI database the exporter does not ship. MODELLED 2026-07-28 (#482) and removed from this list: mac_info (as the 'vendor' label), client_id and valid_lifetime, all on the --exporter.enable-kea-details-gated opnsense_kea_dhcp4_lease_info. PRUNE TRIGGER for what remains: duid/iaid stay until Kea's lease4-get-all starts returning them (it does not today, so they are permanently defaulted rather than absent); if/if_name stay indefinitely, since modelling either would mean a second interface-naming convention alongside if_descr."
   },
   "keaLeases6": {
     "knownExtraPaths": [
-      "rows[].client_id",
       "rows[].duid",
       "rows[].iaid",
       "rows[].if",
-      "rows[].if_name",
-      "rows[].prefix_len"
+      "rows[].if_name"
     ],
-    "note": "knownExtraPaths (#457): keaLeaseRow (opnsense/kea.go) models 8 of 16 keys: address/hwaddr/hostname/expire/if_descr/is_reserved/type/state, consumed for per-lease and aggregate metrics. client_id/duid/iaid are DHCPv6 identity/association bookkeeping; if/if_name duplicate the already-modeled if_descr. CORRECTED 2026-07-28 (#480): this note originally said 'mac_info duplicates hwaddr' - it does NOT. mac_info is an offline IEEE OUI lookup done PHP-side in LeasesController.php against the DB from scripts/interfaces/list_macdb.py, so its value is a vendor-name string, empty when the OUI is unknown, and not derivable from hwaddr without an OUI database the exporter does not ship. See the keaLeases4 note for the full per-key triage; mac_info is an OPPORTUNITY on both endpoints, not a duplicate. OPPORTUNITY (this is the clearest opportunity in the whole #457 baseline, per the issue body): rows[].prefix_len is, for IA_PD (prefix-delegation) leases, the delegated prefix's block size - genuine per-lease state analogous to the already-modeled expire/state, currently invisible. rows[].valid_lifetime is the Kea-reported lease validity duration in seconds, directly comparable to the already-modeled expire field and arguably more precise for lease-expiry monitoring. MODELLED 2026-07-28 (#482) and removed from this list: mac_info (as 'vendor') and valid_lifetime, on the gated opnsense_kea_dhcp6_lease_info. rows[].client_id DELIBERATELY STAYS EXEMPT ON V6 ONLY, and the asymmetry with keaLeases4 is intentional: the shared row-builder emits the key for both protocols, but Kea's lease6-get-all has no 'client-id' at all (DHCPv6 identifies clients by DUID, not option 61), so on v6 the value is STRUCTURALLY always the empty string rather than merely often-empty. Modelling it here would add a label that can never carry information. PRUNE TRIGGER: prefix_len is still the clearest remaining opportunity on THIS endpoint (real IA_PD delegated block size) and should be dropped from this list once modelled - note it carries nothing on keaLeases4, where it is the hardcoded default 128. client_id prunes only if upstream ever populates it on v6."
+    "note": "knownExtraPaths (#457, PRUNED #588): rows[].client_id and rows[].prefix_len removed — keaLeaseRow (opnsense/kea.go) is the SAME struct registered for both keaLeases4 and keaLeases6 (schema_registry.go). #482's ClientID field decodes rows[].client_id on keaLeases6 exactly as it does on keaLeases4 (this ledger kept calling it unmodeled on v6, which described a metric-usage decision, not an actual decode gap); #584's PrefixLen field, added concurrently with #588's own fix (caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree), now decodes rows[].prefix_len and IS surfaced as a real v6 label — keaCollector.emitLeaseMetrics's includePrefixLen switch turns it on for v6 (real IA_PD delegated block size) and off for v4 (Kea has no v4 prefix-length concept; the shared row-builder papers over it with a hardcoded 128). keaLeaseRow decodes 10 of 16 keys: address/hwaddr/hostname/expire/if_descr/is_reserved/type/state/client_id/prefix_len. The first 8 plus prefix_len are consumed for per-lease and aggregate metrics; client_id is decoded but deliberately NOT surfaced as a v6 label, because Kea's lease6-get-all has no 'client-id' at all (DHCPv6 identifies clients by DUID, not option 61) — the field is STRUCTURALLY always the empty string on v6, so a label fed from it could never carry information (this is the one piece of the old note that was still true and is kept). duid/iaid are DHCPv6 identity/association bookkeeping with no such shared-struct escape hatch — genuinely unmodeled; if/if_name duplicate the already-modeled if_descr. CORRECTED 2026-07-28 (#480): this note originally said 'mac_info duplicates hwaddr' - it does NOT. mac_info is an offline IEEE OUI lookup done PHP-side in LeasesController.php against the DB from scripts/interfaces/list_macdb.py, so its value is a vendor-name string, empty when the OUI is unknown, and not derivable from hwaddr without an OUI database the exporter does not ship. See the keaLeases4 note for the full per-key triage; mac_info is an OPPORTUNITY on both endpoints, not a duplicate. MODELLED 2026-07-28 (#482) and removed from this list: mac_info (as 'vendor') and valid_lifetime, on the gated opnsense_kea_dhcp6_lease_info. PRUNE TRIGGER: none remaining on this endpoint — duid/iaid/if/if_name are the standing exclusions, per the reasoning above."
   },
   "ipsecPhase1": {
     "knownExtraPaths": [
@@ -1608,11 +1561,9 @@
   "gatewaysStatus": {
     "knownExtraPaths": [
       "rows[].gateway_interface",
-      "rows[].monitor_killstates",
-      "rows[].monitor_killstates_priority",
       "rows[].nosync"
     ],
-    "note": "knownExtraPaths (#457): gatewayConfigurationResponse (opnsense/gateways.go) already decodes HardwareInterface (interface), Interface (if), MonitorNoRoute, MonitorDisable, ForceDown, DefaultGateway as config/health signals for the Gateway struct. gateway_interface is a third interface-identity alias and nosync is an HA config-sync-exclusion flag; neither is consumed anywhere and neither has a live-state/counter meaning. OPPORTUNITY: monitor_killstates/monitor_killstates_priority are sibling monitor-behavior config in the same family as the already-modeled monitor_disable/monitor_noroute/force_down (whether pf states are killed when the gateway is marked down) - a parity gap rather than noise. PRUNE TRIGGER: remove an entry from this list once its field is modeled."
+    "note": "knownExtraPaths (#457, PRUNED #588): gatewayConfigurationResponse (opnsense/gateways.go) already decodes HardwareInterface (interface), Interface (if), MonitorNoRoute, MonitorDisable, ForceDown, DefaultGateway as config/health signals for the Gateway struct. gateway_interface is a third interface-identity alias and nosync is an HA config-sync-exclusion flag; neither is consumed anywhere and neither has a live-state/counter meaning. MODELLED (concurrent with #588 — caught by TestKnownExtraPathsNotModelled while both changes were in flight in the same tree) and removed from this list: rows[].monitor_killstates and rows[].monitor_killstates_priority — gatewayConfigurationResponse now decodes both as strings (\"1\"/other), converted to bool on Gateway.MonitorKillStates/.MonitorKillStatesPriority (opnsense/gateways.go:251-252), filling exactly the parity gap this note used to describe. PRUNE TRIGGER: none remaining — gateway_interface/nosync stay exempt as identity/HA-config noise."
   },
   "backupHistory": {
     "knownExtraPaths": [
@@ -1670,13 +1621,6 @@
       "[].username"
     ],
     "note": "knownExtraPaths (#457): captivePortalVoucherRow/CaptivePortalVoucherGroup (opnsense/captiveportal.go) is deliberately aggregate-only by design (a group can hold up to 10,000 vouchers, so rows are aggregated by state immediately and never held individually - see the doc comment). starttime/endtime are per-voucher instance timestamps; modeling them would mean per-row cardinality the code explicitly avoids, and the aggregate Counts by state (valid/unused/expired) already captures the operationally relevant summary. SECURITY (tracker #227, already documented in captiveportal.go): [].username is the voucher CODE itself - a bearer credential a guest redeems for network access, not an identifier - and is deliberately never modeled. Not a plain GUI-noise exemption; do not relax it. PRUNE TRIGGER: none for username (permanent security exclusion); starttime/endtime would need the aggregate design itself revisited, not a one-off model."
-  },
-  "netisrStatistics": {
-    "knownExtraPaths": [
-      "netisr.protocol[].flags",
-      "netisr.protocol[].policy-type"
-    ],
-    "note": "knownExtraPaths (#457): netisrProtocol/NetisrProtocolStats (opnsense/network_diagnostics.go) already models Name/Protocol/QueueLimit/Policy as the per-protocol identity+config fields, with the live counters (Dispatched/Queued/Handled/QueueDrops/etc.) coming from the workstream/work array. flags and policy-type look like further static protocol-dispatch configuration (not counters), parallel to the already-unmodeled-by-choice identity fields - no rate/counter/state semantics. PRUNE TRIGGER: none."
   },
   "keaPdPools6": {
     "knownExtraPaths": [

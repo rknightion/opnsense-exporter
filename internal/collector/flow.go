@@ -281,11 +281,13 @@ type flowCollector struct {
 	ifIndexUnmapped  *prometheus.Desc
 	ifIndexGuard     *prometheus.Desc
 
-	corrEntries *prometheus.Desc
-	corrEmitted *prometheus.Desc
-	corrMatched *prometheus.Desc
-	corrEvicted *prometheus.Desc
-	corrExpired *prometheus.Desc
+	corrEntries          *prometheus.Desc
+	corrEmitted          *prometheus.Desc
+	corrMatched          *prometheus.Desc
+	corrEvicted          *prometheus.Desc
+	corrExpired          *prometheus.Desc
+	corrEnrichOverwrites *prometheus.Desc
+	corrFragDisagree     *prometheus.Desc
 
 	logEmitted   *prometheus.Desc
 	logTruncated *prometheus.Desc
@@ -580,6 +582,21 @@ func (c *flowCollector) registerCorrelator() {
 	c.corrExpired = buildPrometheusDesc(c.subsystem, "correlator_expired_total",
 		"Entries emitted on the normal window-expiry path (the healthy path, as opposed to eviction).",
 		nil)
+	c.corrEnrichOverwrites = buildPrometheusDesc(c.subsystem, "correlator_enrichment_overwrites_total",
+		"A second Zenarmor conn document landing for a key that already held one (#590). The second "+
+			"REPLACES the first wholesale rather than merging - L7, verdict, enrichment and geo the "+
+			"first document carried and the second doesn't repeat are gone with no trace. Zero on "+
+			"every deployment where each conversation gets one conn document, which is the common "+
+			"case; a non-zero rate means Zenarmor is re-reporting a connection and only the latest "+
+			"report survives.",
+		nil)
+	c.corrFragDisagree = buildPrometheusDesc(c.subsystem, "correlator_fragment_disagreement_total",
+		"A NetFlow fragment whose interface, direction, VLAN or enrichment disagreed with the "+
+			"entry's first fragment (#590) - the copy finalize() emits verbatim for the life of the "+
+			"entry. The disagreeing fragment's bytes still count toward the emitted total; only its "+
+			"DIMENSIONS are dropped, silently until this counter. Excludes TCPFlags on purpose: that "+
+			"field is unioned across every fragment (#585), a merge, not a loss.",
+		nil)
 
 	c.logEmitted = buildPrometheusDesc(c.subsystem, "logs_emitted_total",
 		"Flow records shipped to the OTLP log pipeline. Zero when --flow.log-mode=off even though the "+
@@ -663,10 +680,13 @@ func (c *flowCollector) registerNetflow() {
 		resultLabel,
 	)
 	c.nfUnexpected = buildPrometheusDesc(c.subsystem, "netflow_unexpected_field_total",
-		"Records carrying a field the decoder asserts is always empty on this export. Today only "+
+		"Records carrying a field the decoder asserts is always empty on this export. "+
 			"field=\"out_bytes\": OUT_BYTES/OUT_PKTS are declared in the template but were zero across "+
 			"all 84,513 records of the reference capture, so they are ignored rather than added to the "+
-			"volume. A non-zero rate here means that assumption has expired and the decoder needs "+
+			"volume. field=\"src_as\"/\"dst_as\" (#586): ng_netflow hardcodes SRC_AS/DST_AS to zero on "+
+			"every export path under an explicit source comment, so the fields were deleted from the "+
+			"record entirely rather than stored - a better ASN already ships via the GeoIP asn label. "+
+			"A non-zero rate on ANY of these means that assumption has expired and the decoder needs "+
 			"revisiting - it does NOT mean volume is currently wrong.",
 		[]string{"field"},
 	)
@@ -878,6 +898,8 @@ func (c *flowCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.corrMatched
 	ch <- c.corrEvicted
 	ch <- c.corrExpired
+	ch <- c.corrEnrichOverwrites
+	ch <- c.corrFragDisagree
 	ch <- c.logEmitted
 	ch <- c.logTruncated
 	ch <- c.logDropped
@@ -967,6 +989,10 @@ func (c *flowCollector) collectCorrelator(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(c.corrMatched, prometheus.CounterValue, float64(st.Matched), c.instance)
 		ch <- prometheus.MustNewConstMetric(c.corrEvicted, prometheus.CounterValue, float64(st.Evicted), c.instance)
 		ch <- prometheus.MustNewConstMetric(c.corrExpired, prometheus.CounterValue, float64(st.Expired), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrEnrichOverwrites, prometheus.CounterValue,
+			float64(st.EnrichmentOverwrites), c.instance)
+		ch <- prometheus.MustNewConstMetric(c.corrFragDisagree, prometheus.CounterValue,
+			float64(st.FragmentDisagreements), c.instance)
 	}
 	if st, ok := c.store.flowLogStats(); ok {
 		ch <- prometheus.MustNewConstMetric(c.logEmitted, prometheus.CounterValue, float64(st.Emitted), c.instance)
@@ -1016,6 +1042,8 @@ func (c *flowCollector) collectNetflow(ch chan<- prometheus.Metric) {
 	counter(c.nfTemplates, nf.Decoder.TemplatesReplaced, "replaced")
 	counter(c.nfTemplates, nf.Decoder.TemplatesEvicted, "evicted")
 	counter(c.nfUnexpected, nf.Decoder.UnexpectedOutBytes, "out_bytes")
+	counter(c.nfUnexpected, nf.Decoder.UnexpectedSrcAS, "src_as")
+	counter(c.nfUnexpected, nf.Decoder.UnexpectedDstAS, "dst_as")
 	counter(c.nfUnidentified, nf.Decoder.UnknownFields, "unknown_field")
 	counter(c.nfUnidentified, nf.Decoder.OptionsTemplates, "options_template")
 	counter(c.nfUnidentified, nf.Decoder.UnknownFlowsets, "unknown_flowset")

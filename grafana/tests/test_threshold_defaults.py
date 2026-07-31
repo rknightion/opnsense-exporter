@@ -66,6 +66,11 @@ EXPLICIT_BARGAUGE_TITLES = {
     "Gateway Packet Loss",
     # percentunit ratio, pre-existing explicit thresholds (0.01 / 0.05) — unchanged.
     "HAProxy 5xx Ratio",
+    # percent of the jumbo pool's own configured ceiling (#579), explicit 80/90. The
+    # headroom panel the issue exists for: mbuf_failures_total{type="jumbo9"} reports
+    # exhaustion only AFTER it has dropped packets. Guarded `> 0` against the
+    # limit-0-means-no-ceiling trap, same as kernel_memory.py's Zone Saturation.
+    "Jumbo Pool Utilization %",
 }
 
 # The same allowlist for radial gauges (#467). Every entry here is on a
@@ -231,8 +236,9 @@ class GeneratedDashboardThresholdTest(unittest.TestCase):
         """Pins the real count so a stale '39' in old planning docs/issues cannot
         silently drift further from what the builder actually produces. 40 -> 41 when
         #557 added the Kea server-reported lease pool accounting bargauge; 41 -> 43
-        when #587 added the top-resolved and top-blocked domain leaderboards."""
-        self.assertEqual(len(_bargauge_panels(self.builder)), 43)
+        when #587 added the top-resolved and top-blocked domain leaderboards; 43 -> 44
+        when #579 added the jumbo mbuf pool utilization bargauge."""
+        self.assertEqual(len(_bargauge_panels(self.builder)), 44)
 
     def test_neutral_bytes_panel_has_no_severity_boundary(self):
         panel = self._panel("eve Log File Sizes")

@@ -26,7 +26,7 @@
       "description": "The FreeBSD UMA allocator has been failing to satisfy allocations in the {{ $labels.zone }} zone for 5m. This is silent, consequential loss: no new pf state means a dropped connection, no socket means a refused one, and neither produces a log line.",
       "runbook_url": "https://github.com/rknightion/opnsense-exporter/blob/main/grafana/runbooks.md#opnsensekernelzoneallocationfailure",
       "__dashboardUid__": "opnsense-exporter",
-      "__panelId__": "105"
+      "__panelId__": "109"
     },
     "expressions": {
       "A": {

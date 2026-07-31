@@ -151,9 +151,12 @@ def build(b: Builder):
         desc="templates \"learned\" settles to ~0 after startup; a steady \"replaced\" rate means the "
              "exporter is re-sending a template id with a DIFFERENT field shape, which invalidates the "
              "decoder's understanding of every record behind it. unexpected_field counts records "
-             "carrying a field asserted to be always-empty on this export (today OUT_BYTES, zero "
-             "across all 84,513 records of the reference capture): non-zero does NOT mean volume is "
-             "currently wrong, it means that assumption has expired and the decoder needs revisiting. "
+             "carrying a field asserted to be always-empty on this export: OUT_BYTES/OUT_PKTS (zero "
+             "across all 84,513 records of the reference capture) and SRC_AS/DST_AS (#586, zero across "
+             "all 131 records of the reference capture - ng_netflow hardcodes both under an explicit "
+             "source comment, and a better ASN already ships via the GeoIP asn label). Non-zero does "
+             "NOT mean volume is currently wrong, it means that assumption has expired and the decoder "
+             "needs revisiting. "
              "unidentified counts what the decoder stepped over rather than interpreted — an "
              "unmodelled template element, an options template, an unknown control flowset. Stepping "
              "over is CORRECT (assuming a width would corrupt every field behind it); a non-zero "
@@ -240,14 +243,27 @@ def build(b: Builder):
          (f'rate({sel("opnsense_flow_correlator_emitted_total")}[{RATE}])', "emitted/sec"),
          (f'rate({sel("opnsense_flow_correlator_matched_total")}[{RATE}])', "merged/sec"),
          (f'rate({sel("opnsense_flow_correlator_evicted_total")}[{RATE}])', "force-evicted/sec"),
-         (f'rate({sel("opnsense_flow_correlator_expired_total")}[{RATE}])', "expired/sec")],
+         (f'rate({sel("opnsense_flow_correlator_expired_total")}[{RATE}])', "expired/sec"),
+         (f'rate({sel("opnsense_flow_correlator_enrichment_overwrites_total")}[{RATE}])',
+          "enrichment overwrites/sec"),
+         (f'rate({sel("opnsense_flow_correlator_fragment_disagreement_total")}[{RATE}])',
+          "fragment disagreements/sec")],
         unit="short",
         desc="The correlator collapses NetFlow's 1:N fragmentation (mean 3.75 records per connection) "
              "into one record per connection-window and merges Zenarmor L7 where a conn document "
              "matched. merged/sec against emitted/sec is the join hit-rate, which #346 shows is "
              "materially lower for long flows whose NetFlow records arrive up to ~30m after the "
              "connection ended. A rising force-evicted rate means --flow.correlate.max-entries is "
-             "binding under load and should be raised; expired is the healthy path.",
+             "binding under load and should be raised; expired is the healthy path. enrichment "
+             "overwrites (#590) counts a second Zenarmor conn document for the same connection-window "
+             "replacing the first wholesale rather than merging - a non-zero rate means Zenarmor "
+             "re-reported a connection and only the latest report survived. fragment disagreements "
+             "(#590) counts a later NetFlow fragment reporting a different interface, direction, VLAN "
+             "or enrichment than the entry's first fragment, whose copy of those fields is what the "
+             "merged record actually carries for the connection's whole life - a non-zero rate means "
+             "that dimension silently disagreed and only the first fragment's answer survived. Neither "
+             "counter fires on the TCP-flags union across fragments (#585), which is a merge by "
+             "design, not a loss.",
     )
 
     flowlogs = b.ts(

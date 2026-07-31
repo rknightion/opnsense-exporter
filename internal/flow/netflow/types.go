@@ -47,9 +47,8 @@ type Record struct {
 	// FIRST_SWITCHED/LAST_SWITCHED (which are sysUpTime-relative milliseconds).
 	First, Last time.Time
 
-	TCPFlags     uint8
-	SrcAS, DstAS uint32 // 32-bit: this export declares len=4, not the usual 2 (#346)
-	VLANID       uint16
+	TCPFlags uint8
+	VLANID   uint16
 
 	TemplateID uint16 // 0 for v5; the v9 template this record was decoded with
 }
@@ -150,6 +149,21 @@ type Stats struct {
 	// so instead we assert and count: a non-zero rate here means the export shape
 	// changed and this decision needs revisiting.
 	UnexpectedOutBytes uint64
+
+	// UnexpectedSrcAS/UnexpectedDstAS count records carrying a non-zero SRC_AS/DST_AS
+	// (#586). ng_netflow hardcodes both to zero on every v9 export path under an
+	// explicit "not supported" source comment, confirmed zero across all 131 records
+	// of the reference capture — so, like OUT_BYTES/OUT_PKTS above, the fields are
+	// read to ASSERT, never stored: Record dropped SrcAS/DstAS entirely, because a
+	// better ASN already ships via flow.Record.Geo (#549, DB-IP-derived) and keeping
+	// an always-zero field was dead weight the audit tooling wrongly counted as
+	// modelled. FieldSrcAS/FieldDstAS stay in modelledFields for exactly this reason
+	// — so a template declaring them is still read here rather than reported as an
+	// unknown_field on every learn. ng_netflow has carried an unfulfilled "future
+	// releases" comment against this exact pair for ~20 years; a non-zero rate here
+	// is what will notice the day it finally lands.
+	UnexpectedSrcAS uint64
+	UnexpectedDstAS uint64
 
 	// The three things the decoder used to step over in TOTAL silence (#360). Each
 	// is counted per occurrence, not per record: UnknownFields at template-learn

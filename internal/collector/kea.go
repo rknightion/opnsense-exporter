@@ -116,12 +116,15 @@ func (c *keaCollector) Register(namespace, instanceLabel string, log *slog.Logge
 		[]string{"type"},
 	)
 	c.dhcp6LeaseInfo = buildPrometheusDesc(c.subsystem, "dhcp6_lease_info",
-		"Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set.",
+		"Per-lease DHCPv6 information (value is expire timestamp). Only emitted when --exporter.enable-kea-details is set. "+
+			"prefix_len is the delegated prefix's block size (e.g. 56 for a /56) for an IA_PD "+
+			"(prefix-delegation) lease; for an IA_NA (address) lease it carries Kea's fixed 128 "+
+			"(a single address has no delegated block).",
 		// No client_id label here: Kea's lease6-get-all response carries no
 		// "client-id" key (DHCPv6 identifies clients by DUID, not option
 		// 61), so on v6 it would always be an empty label — dropped rather
 		// than modeled as dead weight.
-		[]string{"address", "hostname", "hwaddr", "interface", "vendor", "valid_lifetime"},
+		[]string{"address", "hostname", "hwaddr", "interface", "vendor", "valid_lifetime", "prefix_len"},
 	)
 	c.dhcp6PoolStats = buildPrometheusDesc(c.subsystem, "dhcp6_lease_pool_stats",
 		"Kea's own DHCPv6 lease pool accounting (the response's top-level `stats` object, computed "+
@@ -205,7 +208,8 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			nil, // DHCPv4 leases have no lease-type concept
 			c.dhcp4LeaseInfo,
 			c.dhcp4PoolStats,
-			true, // includeClientID: genuine DHCPv4 option 61
+			true,  // includeClientID: genuine DHCPv4 option 61
+			false, // includePrefixLen: meaningless on v4 (Kea has no v4 prefix-length concept; the shared row-builder papers over it with a hardcoded 128 -- #584)
 		)
 	}
 
@@ -227,6 +231,7 @@ func (c *keaCollector) Update(ctx context.Context, client *opnsense.Client, ch c
 			c.dhcp6LeaseInfo,
 			c.dhcp6PoolStats,
 			false, // includeClientID: always "" on v6, dropped rather than modeled
+			true,  // includePrefixLen: real IA_PD delegated block size on v6 (#584)
 		)
 	}
 
@@ -330,6 +335,7 @@ func (c *keaCollector) emitLeaseMetrics(
 	data opnsense.KeaLeases,
 	leasesTotal, reservedTotal, dynamicTotal, leasesByIface, leasesByState, leasesByType, leaseInfo, poolStats *prometheus.Desc,
 	includeClientID bool,
+	includePrefixLen bool,
 ) {
 	ch <- prometheus.MustNewConstMetric(
 		leasesTotal,
@@ -404,6 +410,15 @@ func (c *keaCollector) emitLeaseMetrics(
 			}
 			if includeClientID {
 				labelValues = append(labelValues, lease.ClientID)
+			}
+			// Presence-gating doesn't apply here the way it does for e.g. the
+			// interface queue-drop counters: prefix_len is always a fixed,
+			// always-populated field on this shared row-builder response
+			// (#584) -- the "meaningless" case (v4) is excluded by NOT adding
+			// the label at all (includePrefixLen=false), rather than by
+			// checking a per-lease presence flag.
+			if includePrefixLen {
+				labelValues = append(labelValues, strconv.Itoa(lease.PrefixLen))
 			}
 			labelValues = append(labelValues, c.instance)
 

@@ -107,6 +107,78 @@ def build(b: Builder):
     )
 
     # ================================================================
+    # Row 3b: Configured Capacity (#584) — the limits the live gauges above
+    # are measured against, so "saturated or just busy?" has an answer.
+    # Presence-gated at the collector: an unconfigured/unparseable field
+    # (an "unlimited" pipe bandwidth, a field the box never sent) emits no
+    # series, so a row simply missing a value here means "not configured",
+    # never a fabricated zero.
+    # ================================================================
+    pipe_configured_bandwidth = b.ts(
+        "Pipe Configured Bandwidth",
+        [(sel("opnsense_trafficshaper_pipe_configured_bandwidth_bps"),
+          "{{pipe}} {{description}}")],
+        unit="bps", w=12, h=8,
+        desc=(
+            "Configured bandwidth limit per pipe, normalized to bits per second "
+            "regardless of the Kbit/Mbit/Gbit unit OPNsense reports it in. No "
+            "series for a pipe with no bandwidth cap configured (dnctl reports "
+            "\"unlimited\", not 0 bps)."
+        ),
+    )
+    pipe_configured_table = b.table(
+        "Pipe Configured Capacity",
+        [
+            sel("opnsense_trafficshaper_pipe_configured_delay_milliseconds"),
+            sel("opnsense_trafficshaper_pipe_configured_burst_bytes"),
+            sel("opnsense_trafficshaper_pipe_configured_queue_size"),
+            sel("opnsense_trafficshaper_pipe_configured_weight"),
+        ],
+        w=24, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "pipe": "Pipe",
+            "description": "Description",
+            "unit": "Queue Size Unit",
+            "Value #A": "Delay (ms)",
+            "Value #B": "Burst (bytes)",
+            "Value #C": "Queue Size",
+            "Value #D": "Weight",
+        },
+        sort_by="Pipe",
+        desc=(
+            "Configured delay, burst allowance, and the pipe's own auto-attached "
+            "queue depth/scheduling weight. Queue Size is in packets or bytes "
+            "depending on Queue Size Unit -- the two are different physical "
+            "quantities and must not be compared across a mixed selection. A "
+            "blank cell means that field is not configured for this pipe."
+        ),
+    )
+    queue_configured_table = b.table(
+        "Queue Configured Capacity",
+        [
+            sel("opnsense_trafficshaper_queue_configured_queue_size"),
+            sel("opnsense_trafficshaper_queue_configured_weight"),
+        ],
+        w=24, h=8,
+        excludes=["__name__", "job", "instance"],
+        renames={
+            "queue": "Queue",
+            "pipe": "Pipe",
+            "description": "Description",
+            "unit": "Queue Size Unit",
+            "Value #A": "Queue Size",
+            "Value #B": "Weight",
+        },
+        sort_by="Queue",
+        desc=(
+            "Configured depth and WF2Q+ scheduling weight for each standalone "
+            "(non-template) queue. Queue Size is in packets or bytes depending "
+            "on Queue Size Unit."
+        ),
+    )
+
+    # ================================================================
     # Row 4: Rules (ipfw rule counters — cumulative, use rate)
     # ================================================================
     rule_bytes = b.ts(
@@ -157,6 +229,9 @@ def build(b: Builder):
               present="has_trafficshaper"),
         b.row("Queues",
               [queue_flows, queue_bytes, queue_pkts],
+              present="has_trafficshaper"),
+        b.row("Configured Capacity",
+              [pipe_configured_bandwidth, pipe_configured_table, queue_configured_table],
               present="has_trafficshaper"),
         b.row("Rules",
               [rule_bytes, rule_pkts, rule_last_match],

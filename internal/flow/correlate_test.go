@@ -208,6 +208,130 @@ func TestCorrelator_ZenarmorBeforeNetflowStillMerges(t *testing.T) {
 	}
 }
 
+// #590 finding: when a Zenarmor document creates the entry FIRST, the corrEntry it
+// gets has no sample (observeZenarmorLocked never sets one) - and the old
+// observeNetflowLocked only ever wrote e.sample inside its "e == nil" branch, so an
+// entry that already existed from Zenarmor never received one from the NetFlow
+// fragment that landed afterwards. finalize() then emitted e.sample's ZERO VALUE:
+// an empty CommunityID, an invalid SrcAddr/DstAddr, and an empty Out interface -
+// not merely "took the first fragment's dimensions" as the issue described, but
+// "took no fragment's dimensions at all". This is worse than the described
+// staleness and is what fixed the entry's sample being set on whichever call is
+// the ENTRY's first NetFlow fragment, not just the call that created the entry.
+func TestCorrelator_ZenarmorFirstStillCarriesNetflowSample(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseZen("cid-A", 480, t0, t0))
+	c.Observe(baseNF("cid-A", 500, 5, t0, t0.Add(time.Second)))
+	c.Expire(t0.Add(4 * time.Minute))
+
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 merged record, got %d", len(sink.recs))
+	}
+	got := sink.recs[0]
+	if got.CommunityID != "cid-A" {
+		t.Errorf("CommunityID = %q, want cid-A (the NetFlow fragment's sample was never applied)", got.CommunityID)
+	}
+	if !got.SrcAddr.IsValid() {
+		t.Errorf("SrcAddr = %v, want the NetFlow fragment's address, not the zero value", got.SrcAddr)
+	}
+	if got.Out.Name != "WAN1" {
+		t.Errorf("Out.Name = %q, want WAN1 from the NetFlow fragment", got.Out.Name)
+	}
+	if got.Direction != DirectionOutbound {
+		t.Errorf("Direction = %v, want outbound from the NetFlow fragment", got.Direction)
+	}
+	if !got.Start.Equal(t0.Add(-time.Second)) || !got.End.Equal(t0) {
+		t.Errorf("start=%v end=%v, want the NetFlow fragment's window, not the zero value", got.Start, got.End)
+	}
+}
+
+// A second Zenarmor conn document for the same key OVERWRITES the first entirely
+// (#590) rather than merging: e.zen is replaced wholesale, so whatever the first
+// document carried that the second doesn't repeat is gone. This is the observable
+// side of that loss - the metric this test drives is the whole point of #590.
+func TestCorrelator_SecondZenarmorDocOverwritesAndIsCounted(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseNF("cid-A", 500, 5, t0, t0))
+
+	first := baseZen("cid-A", 100, t0, t0.Add(time.Second))
+	first.L7.AppCategory = "first-doc"
+	c.Observe(first)
+
+	if st := c.Stats(); st.EnrichmentOverwrites != 0 {
+		t.Fatalf("EnrichmentOverwrites = %d, want 0 before any overwrite happens", st.EnrichmentOverwrites)
+	}
+
+	second := baseZen("cid-A", 380, t0, t0.Add(2*time.Second))
+	second.L7.AppCategory = "second-doc"
+	c.Observe(second)
+
+	if st := c.Stats(); st.EnrichmentOverwrites != 1 {
+		t.Fatalf("EnrichmentOverwrites = %d, want 1", st.EnrichmentOverwrites)
+	}
+
+	c.Expire(t0.Add(4 * time.Minute))
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+	}
+	if got := sink.recs[0].L7.AppCategory; got != "second-doc" {
+		t.Errorf("L7.AppCategory = %q, want second-doc: the second document must win (overwrite, "+
+			"not a silent merge)", got)
+	}
+}
+
+// A later NetFlow fragment reporting a DIFFERENT egress interface than the sample
+// finalize() will emit is exactly the silent loss #590 exists to surface: the
+// dimension the merged record carries is frozen to the first fragment, and every
+// later disagreement vanishes with no trace today.
+func TestCorrelator_FragmentDisagreementCounted(t *testing.T) {
+	c, sink := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+	c.Observe(baseNF("cid-A", 100, 1, t0, t0)) // Out.Name == "WAN1"
+
+	disagree := baseNF("cid-A", 200, 2, t0, t0.Add(time.Second))
+	disagree.Out.Name = "WAN2"
+	c.Observe(disagree)
+
+	if st := c.Stats(); st.FragmentDisagreements != 1 {
+		t.Fatalf("FragmentDisagreements = %d, want 1", st.FragmentDisagreements)
+	}
+
+	c.Expire(t0.Add(4 * time.Minute))
+	if len(sink.recs) != 1 {
+		t.Fatalf("want 1 emitted record, got %d", len(sink.recs))
+	}
+	// The counter observes the loss; it does not change what is emitted. The first
+	// fragment's interface is still what wins, exactly as before this issue.
+	if got := sink.recs[0].Out.Name; got != "WAN1" {
+		t.Errorf("Out.Name = %q, want WAN1 (the first fragment still wins; only the disagreement "+
+			"is now counted)", got)
+	}
+}
+
+// #585 added TCP-flag OR-union accumulation across fragments in this same
+// accumulator. That is a MERGE - the field is explicitly designed to combine every
+// fragment's bits - and must never be counted as a fragment disagreement, which
+// exists to flag dimensions that are silently DROPPED, not combined.
+func TestCorrelator_TCPFlagUnionNotCountedAsFragmentDisagreement(t *testing.T) {
+	c, _ := newCorr(t, true, 3*time.Minute, 0)
+	t0 := time.Unix(1_700_000_000, 0)
+
+	syn := baseNF("cid-A", 60, 1, t0, t0)
+	syn.TCPFlags = 0x02
+	c.Observe(syn)
+
+	rstAck := baseNF("cid-A", 40, 1, t0, t0.Add(time.Second))
+	rstAck.TCPFlags = 0x14 // differs from the first fragment's flags on purpose
+	c.Observe(rstAck)
+
+	if st := c.Stats(); st.FragmentDisagreements != 0 {
+		t.Fatalf("FragmentDisagreements = %d, want 0: differing TCPFlags is a union (#585), not a "+
+			"dropped dimension", st.FragmentDisagreements)
+	}
+}
+
 // A Zenarmor document that never gains a NetFlow fragment emits NOTHING: the conn lane
 // owns it, so emitting here would double-ship the Zenarmor side.
 func TestCorrelator_ZenarmorOnlyNeverEmits(t *testing.T) {

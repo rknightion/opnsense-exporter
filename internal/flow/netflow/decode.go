@@ -232,10 +232,11 @@ func (d *Decoder) readDataFlowset(dg *Datagram, set []byte, exporter netip.Addr,
 // t.recLen bytes. Callers hold d.mu (only for the stats increment).
 func (d *Decoder) readRecord(buf []byte, t *template, exportTime time.Time, sysUpTime uint32) Record {
 	var (
-		rec                 Record
-		first, last         uint32
-		haveFirst, haveLast bool
-		outUnexpected       bool
+		rec                              Record
+		first, last                      uint32
+		haveFirst, haveLast              bool
+		outUnexpected                    bool
+		srcASUnexpected, dstASUnexpected bool
 	)
 
 	off := 0
@@ -268,10 +269,22 @@ func (d *Decoder) readRecord(buf []byte, t *template, exportTime time.Time, sysU
 			rec.InIfIndex = uint32(num(v))
 		case FieldOutputSNMP:
 			rec.OutIfIndex = uint32(num(v))
-		case FieldSrcAS:
-			rec.SrcAS = uint32(num(v))
-		case FieldDstAS:
-			rec.DstAS = uint32(num(v))
+		case FieldSrcAS, FieldDstAS:
+			// Read to assert, never to store (#586). ng_netflow hardcodes both to
+			// zero on every export path it has under an explicit "not supported"
+			// comment, confirmed zero across all 131 records of the reference
+			// capture; a better ASN already ships via flow.Record.Geo (#549,
+			// DB-IP-derived). Kept in modelledFields and read here, exactly like
+			// FieldOutBytes/FieldOutPkts below, so a non-zero value still surfaces
+			// as a counter rather than silently vanishing now that Record has
+			// nowhere to put it.
+			if num(v) != 0 {
+				if f.typ == FieldSrcAS {
+					srcASUnexpected = true
+				} else {
+					dstASUnexpected = true
+				}
+			}
 		case FieldFirstSwitched:
 			first, haveFirst = uint32(num(v)), true
 		case FieldLastSwitched:
@@ -304,6 +317,12 @@ func (d *Decoder) readRecord(buf []byte, t *template, exportTime time.Time, sysU
 		// The unit is the RECORD: a record with both OUT_BYTES and OUT_PKTS
 		// non-zero is one unexpected record, not two.
 		d.stats.UnexpectedOutBytes++
+	}
+	if srcASUnexpected {
+		d.stats.UnexpectedSrcAS++
+	}
+	if dstASUnexpected {
+		d.stats.UnexpectedDstAS++
 	}
 	if haveFirst {
 		rec.First = switchedAt(exportTime, sysUpTime, first)
@@ -363,9 +382,12 @@ func (d *Decoder) decodeV5(payload []byte, now time.Time) (*Datagram, error) {
 			DstPort:    binary.BigEndian.Uint16(r[34:]),
 			TCPFlags:   r[37],
 			Proto:      r[38],
-			// v5 predates 32-bit ASNs; the values widen without loss.
-			SrcAS: uint32(binary.BigEndian.Uint16(r[40:])),
-			DstAS: uint32(binary.BigEndian.Uint16(r[42:])),
+			// bytes 40-44 (SRC_AS/DST_AS) are deliberately NOT read: ng_netflow
+			// hardcodes both to zero on the v5 export path too (#586, same source
+			// comment as the v9 case), and a better ASN already ships via
+			// flow.Record.Geo (#549). v5 is fixed-format with no template to assert
+			// a width against, so — unlike the v9 case above — there is nothing
+			// useful to count here either; this is pure dead-byte skip.
 			First: switchedAt(dg.ExportTime, sysUpTime, binary.BigEndian.Uint32(r[24:])),
 			Last:  switchedAt(dg.ExportTime, sysUpTime, binary.BigEndian.Uint32(r[28:])),
 			// TemplateID stays 0: v5 has no templates, and 0 is not a valid v9

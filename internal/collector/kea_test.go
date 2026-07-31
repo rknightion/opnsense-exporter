@@ -738,6 +738,88 @@ func TestKeaCollector_Update_WithDetails_VendorClientIDValidLifetime(t *testing.
 	}
 }
 
+// TestKeaCollector_Update_WithDetails_PrefixLen guards #584: prefix_len (the
+// IA_PD delegated block size) must land as a label on dhcp6_lease_info ONLY
+// -- never on dhcp4_lease_info, since Kea's lease4-get-all has no
+// prefix-length concept and get_kea_leases.py's shared row-builder papers
+// over that with a hardcoded, meaningless 128 on every v4 row.
+func TestKeaCollector_Update_WithDetails_PrefixLen(t *testing.T) {
+	v4Response := `{
+		"total": 1,
+		"rowCount": 1,
+		"current": 1,
+		"rows": [
+			{
+				"address": "192.168.1.10",
+				"hwaddr": "00:11:22:33:44:55",
+				"hostname": "v4-client",
+				"expire": 1772401000,
+				"if_descr": "LAN",
+				"is_reserved": "0",
+				"prefix_len": 128
+			}
+		],
+		"interfaces": {"em0": "LAN"}
+	}`
+
+	v6Response := `{
+		"total": 1,
+		"rowCount": 1,
+		"current": 1,
+		"rows": [
+			{
+				"address": "fd00:172:16:9::",
+				"hwaddr": "11:22:33:44:55:66",
+				"hostname": "pd-client",
+				"expire": 1772501000,
+				"if_descr": "LAN",
+				"is_reserved": "0",
+				"type": "IA_PD",
+				"prefix_len": "56"
+			}
+		],
+		"interfaces": {"em0": "LAN"}
+	}`
+
+	mux := keaTestMux(t, v4Response, v6Response)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+
+	c := &keaCollector{subsystem: KeaSubsystem}
+	c.Register("opnsense", "test", promslog.NewNopLogger())
+	c.SetDetailsEnabled(true)
+
+	metrics := collectMetrics(t, c, client)
+	assertNoDuplicateSeries(t, metrics)
+
+	var sawV4Detail, sawV6Detail bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+
+		if strings.Contains(desc, "dhcp4_lease_info") && labels["address"] == "192.168.1.10" {
+			sawV4Detail = true
+			if _, ok := labels["prefix_len"]; ok {
+				t.Errorf("expected NO prefix_len label on dhcp4_lease_info (meaningless on v4), got %q", labels["prefix_len"])
+			}
+		}
+		if strings.Contains(desc, "dhcp6_lease_info") && labels["address"] == "fd00:172:16:9::" {
+			sawV6Detail = true
+			if labels["prefix_len"] != "56" {
+				t.Errorf("expected prefix_len label '56', got %q", labels["prefix_len"])
+			}
+		}
+	}
+	if !sawV4Detail {
+		t.Error("expected to find the v4 detail metric")
+	}
+	if !sawV6Detail {
+		t.Error("expected to find the v6 detail metric")
+	}
+}
+
 // TestKeaCollector_Update_WithDetails_DuplicateSeriesGuard covers the
 // cardinality risk flagged in #482: adding labels to a per-lease metric
 // changes series identity, and a duplicate label tuple fails the WHOLE

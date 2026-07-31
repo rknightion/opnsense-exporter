@@ -26,86 +26,102 @@ type gatewayConfigurationResponse struct {
 	RowCount int `json:"rowCount"`
 	Current  int `json:"current"`
 	Rows     []struct {
-		Disabled             bool   `json:"disabled"`
-		Name                 string `json:"name"`
-		Description          string `json:"descr"`
-		HardwareInterface    string `json:"interface"`
-		IPProtocol           string `json:"ipprotocol"`
-		Gateway              string `json:"gateway"`
-		DefaultGateway       bool   `json:"defaultgw"`
-		FarGateway           string `json:"fargw"`
-		MonitorDisable       string `json:"monitor_disable"`
-		MonitorNoRoute       string `json:"monitor_noroute"`
-		Monitor              string `json:"monitor"`
-		ForceDown            string `json:"force_down"`
-		Priority             any    `json:"priority"`
-		Weight               string `json:"weight"`
-		LatencyLow           string `json:"latencylow"`
-		CurrentLatencyLow    string `json:"current_latencylow"`
-		LatencyHigh          string `json:"latencyhigh"`
-		CurrentLatencyHigh   string `json:"current_latencyhigh"`
-		LossLow              string `json:"losslow"`
-		CurrentLossLow       string `json:"current_losslow"`
-		LossHigh             string `json:"losshigh"`
-		CurrentLossHigh      string `json:"current_losshigh"`
-		Interval             string `json:"interval"`
-		CurrentInterval      string `json:"current_interval"`
-		TimePeriod           string `json:"time_period"`
-		CurrentTimePeriod    string `json:"current_time_period"`
-		LossInterval         string `json:"loss_interval"`
-		CurrentLossInterval  string `json:"current_loss_interval"`
-		DataLength           string `json:"data_length"`
-		CurrentDataLength    string `json:"current_data_length"`
-		UUID                 string `json:"uuid"`
-		Interface            string `json:"if"`
-		Attribute            int    `json:"attribute"`
-		Dynamic              bool   `json:"dynamic"`
-		Virtual              bool   `json:"virtual"`
-		Upstream             bool   `json:"upstream"`
-		InterfaceDescription string `json:"interface_descr"`
-		Status               string `json:"status"`
-		Delay                string `json:"delay"`
-		StdDev               string `json:"stddev"`
-		Loss                 string `json:"loss"`
-		LabelClass           string `json:"label_class"`
+		Disabled          bool   `json:"disabled"`
+		Name              string `json:"name"`
+		Description       string `json:"descr"`
+		HardwareInterface string `json:"interface"`
+		IPProtocol        string `json:"ipprotocol"`
+		Gateway           string `json:"gateway"`
+		DefaultGateway    bool   `json:"defaultgw"`
+		FarGateway        string `json:"fargw"`
+		MonitorDisable    string `json:"monitor_disable"`
+		MonitorNoRoute    string `json:"monitor_noroute"`
+		// MonitorKillStates/MonitorKillStatesPriority are sibling monitor-
+		// behavior BooleanFields (Routing/Gateways.xml, verified against
+		// opnsense/core master 2026-07-31 -- same "0"/"1" string wire shape
+		// as MonitorNoRoute above): whether pf states get killed when this
+		// gateway is marked down. Neither carries a <Default> in the model
+		// (unlike monitor_disable's Default=1), so parsing uses the same
+		// "== "1"" convention as ForceDown below, NOT parseStringToBool --
+		// see the Gateway struct's doc comment for why (#584).
+		MonitorKillStates         string `json:"monitor_killstates"`
+		MonitorKillStatesPriority string `json:"monitor_killstates_priority"`
+		Monitor                   string `json:"monitor"`
+		ForceDown                 string `json:"force_down"`
+		Priority                  any    `json:"priority"`
+		Weight                    string `json:"weight"`
+		LatencyLow                string `json:"latencylow"`
+		CurrentLatencyLow         string `json:"current_latencylow"`
+		LatencyHigh               string `json:"latencyhigh"`
+		CurrentLatencyHigh        string `json:"current_latencyhigh"`
+		LossLow                   string `json:"losslow"`
+		CurrentLossLow            string `json:"current_losslow"`
+		LossHigh                  string `json:"losshigh"`
+		CurrentLossHigh           string `json:"current_losshigh"`
+		Interval                  string `json:"interval"`
+		CurrentInterval           string `json:"current_interval"`
+		TimePeriod                string `json:"time_period"`
+		CurrentTimePeriod         string `json:"current_time_period"`
+		LossInterval              string `json:"loss_interval"`
+		CurrentLossInterval       string `json:"current_loss_interval"`
+		DataLength                string `json:"data_length"`
+		CurrentDataLength         string `json:"current_data_length"`
+		UUID                      string `json:"uuid"`
+		Interface                 string `json:"if"`
+		Attribute                 int    `json:"attribute"`
+		Dynamic                   bool   `json:"dynamic"`
+		Virtual                   bool   `json:"virtual"`
+		Upstream                  bool   `json:"upstream"`
+		InterfaceDescription      string `json:"interface_descr"`
+		Status                    string `json:"status"`
+		Delay                     string `json:"delay"`
+		StdDev                    string `json:"stddev"`
+		Loss                      string `json:"loss"`
+		LabelClass                string `json:"label_class"`
 	} `json:"rows"`
 }
 
 type Gateway struct {
-	Name                 string
-	Description          string
-	Enabled              bool
-	HardwareInterface    string
-	IPProtocol           string
-	Gateway              string
-	DefaultGateway       bool
-	FarGateway           string
-	MonitorEnabled       bool
-	MonitorNoRoute       bool
-	Monitor              string
-	ForceDown            bool
-	Priority             string
-	Weight               string
-	LatencyLow           string
-	LatencyHigh          string
-	LossLow              string
-	LossHigh             string
-	Interval             string
-	TimePeriod           string
-	LossInterval         string
-	DataLength           string
-	UUID                 string
-	Interface            string
-	Attribute            int
-	Dynamic              bool
-	Virtual              bool
-	Upstream             bool
-	InterfaceDescription string
-	Status               GatewayStatusType
-	Delay                float64
-	StdDev               float64
-	Loss                 float64
-	LabelClass           string
+	Name              string
+	Description       string
+	Enabled           bool
+	HardwareInterface string
+	IPProtocol        string
+	Gateway           string
+	DefaultGateway    bool
+	FarGateway        string
+	MonitorEnabled    bool
+	MonitorNoRoute    bool
+	// MonitorKillStates/MonitorKillStatesPriority: whether pf states are
+	// killed when this gateway is marked down (and a priority-scoped
+	// variant of the same behavior). See gatewayConfigurationResponse's doc
+	// comment for the field/wire-shape provenance (#584).
+	MonitorKillStates         bool
+	MonitorKillStatesPriority bool
+	Monitor                   string
+	ForceDown                 bool
+	Priority                  string
+	Weight                    string
+	LatencyLow                string
+	LatencyHigh               string
+	LossLow                   string
+	LossHigh                  string
+	Interval                  string
+	TimePeriod                string
+	LossInterval              string
+	DataLength                string
+	UUID                      string
+	Interface                 string
+	Attribute                 int
+	Dynamic                   bool
+	Virtual                   bool
+	Upstream                  bool
+	InterfaceDescription      string
+	Status                    GatewayStatusType
+	Delay                     float64
+	StdDev                    float64
+	Loss                      float64
+	LabelClass                string
 }
 
 type Gateways struct {
@@ -225,7 +241,16 @@ func (c *Client) FetchGateways() (Gateways, *APICallError) {
 			FarGateway:        v.FarGateway,
 			MonitorEnabled:    !parseStringToBool(v.MonitorDisable),
 			MonitorNoRoute:    parseStringToBool(v.MonitorNoRoute),
-			Monitor:           v.Monitor,
+			// == "1", not parseStringToBool: both fields carry no <Default>
+			// in the model (Routing/Gateways.xml) and this exact struct
+			// already documents the same "can arrive as JSON null / decode
+			// to empty string" concern for force_down below --
+			// parseStringToBool("") is true ("" != "0"), which would invert
+			// an absent/null key to "kill states" instead of the safe
+			// "not configured" default (#584).
+			MonitorKillStates:         v.MonitorKillStates == "1",
+			MonitorKillStatesPriority: v.MonitorKillStatesPriority == "1",
+			Monitor:                   v.Monitor,
 			// force_down can be JSON null (decodes to ""); parseStringToBool
 			// would treat "" as true. Only the explicit "1" means forced down.
 			ForceDown:            v.ForceDown == "1",

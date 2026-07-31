@@ -24,6 +24,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].enabled",
+      "kind": "boolean"
+    },
+    {
       "path": "rows[].flags",
       "kind": "array"
     },

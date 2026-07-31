@@ -438,6 +438,111 @@ func TestFetchGateways_ProbeUnavailableAndNullForceDown(t *testing.T) {
 	}
 }
 
+// TestFetchGateways_MonitorKillStates guards #584: monitor_killstates and
+// monitor_killstates_priority are sibling monitor-behavior BooleanFields
+// (Routing/Gateways.xml, verified against opnsense/core master 2026-07-31,
+// same "0"/"1" string wire shape as the already-modeled monitor_disable/
+// monitor_noroute) controlling whether pf states get killed when this
+// gateway is marked down.
+func TestFetchGateways_MonitorKillStates(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{
+					"disabled": false,
+					"name": "WAN_GW",
+					"descr": "WAN Gateway",
+					"interface": "igb0",
+					"ipprotocol": "inet",
+					"gateway": "10.0.0.1",
+					"defaultgw": true,
+					"fargw": "",
+					"monitor_disable": "0",
+					"monitor_noroute": "0",
+					"monitor_killstates": "1",
+					"monitor_killstates_priority": "0",
+					"monitor": "10.0.0.1",
+					"force_down": "0",
+					"priority": 255,
+					"weight": "1",
+					"uuid": "uuid-wan-gw",
+					"if": "wan",
+					"attribute": 1,
+					"dynamic": false,
+					"virtual": false,
+					"upstream": true,
+					"interface_descr": "WAN",
+					"status": "Online",
+					"delay": "1.5 ms",
+					"stddev": "0.3 ms",
+					"loss": "0.0 %",
+					"label_class": "success"
+				},
+				{
+					"disabled": false,
+					"name": "BACKUP_GW",
+					"descr": "Backup Gateway",
+					"interface": "igb1",
+					"ipprotocol": "inet",
+					"gateway": "10.0.1.1",
+					"defaultgw": false,
+					"fargw": "",
+					"monitor_disable": "0",
+					"monitor_noroute": "0",
+					"monitor": "10.0.1.1",
+					"force_down": "0",
+					"priority": 128,
+					"weight": "1",
+					"uuid": "uuid-backup-gw",
+					"if": "opt1",
+					"attribute": 2,
+					"dynamic": false,
+					"virtual": false,
+					"upstream": true,
+					"interface_descr": "OPT1",
+					"status": "Online",
+					"delay": "1.5 ms",
+					"stddev": "0.3 ms",
+					"loss": "0.0 %",
+					"label_class": "success"
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchGateways()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Gateways) != 2 {
+		t.Fatalf("expected 2 gateways, got %d", len(data.Gateways))
+	}
+
+	wan := data.Gateways[0]
+	if !wan.MonitorKillStates {
+		t.Error("expected WAN_GW MonitorKillStates=true")
+	}
+	if wan.MonitorKillStatesPriority {
+		t.Error("expected WAN_GW MonitorKillStatesPriority=false")
+	}
+
+	// BACKUP_GW's fixture omits both keys entirely -- OPNsense's own
+	// BooleanField carries no <Default> for either (unlike monitor_disable's
+	// Default=1), so a genuinely absent key must decode to false, matching
+	// how the existing MonitorNoRoute/ForceDown fields already degrade.
+	backup := data.Gateways[1]
+	if backup.MonitorKillStates {
+		t.Error("expected BACKUP_GW MonitorKillStates=false (key absent from fixture)")
+	}
+	if backup.MonitorKillStatesPriority {
+		t.Error("expected BACKUP_GW MonitorKillStatesPriority=false (key absent from fixture)")
+	}
+}
+
 func TestConvertPriorityToString(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -62,6 +62,15 @@ type nginxVtsServerZone struct {
 	OutBytes           float64                     `json:"outBytes"`
 	Responses          nginxVtsServerZoneResponses `json:"responses"`
 	RequestMsecCounter float64                     `json:"requestMsecCounter"` // cumulative sum of request times, ms
+	// OverCounts is nginx-module-vts's own wrap-detection counter
+	// (ngx_http_vhost_traffic_status_add_oc(), src/ngx_http_vhost_traffic_
+	// status_module.h): incremented by 1 each time a worker-shard's raw
+	// counter is found to be LESS than the already-accumulated total for
+	// this zone, i.e. that shard's counter wrapped. It is itself
+	// monotonically increasing (a COUNTER, never reset except alongside
+	// every other vts counter on an nginx reload) -- verified against
+	// upstream source 2026-07-31, #584.
+	OverCounts float64 `json:"overCounts"`
 }
 
 // nginxVtsUpstream is one upstream server entry inside the upstreamZones map.
@@ -75,6 +84,9 @@ type nginxVtsUpstream struct {
 	RequestMsecCounter  float64           `json:"requestMsecCounter"`  // cumulative sum of request times, ms
 	ResponseMsecCounter float64           `json:"responseMsecCounter"` // cumulative sum of response times, ms
 	Down                bool              `json:"down"`
+	// OverCounts: see nginxVtsServerZone.OverCounts -- same wrap-detection
+	// counter, one per upstream server entry.
+	OverCounts float64 `json:"overCounts"`
 }
 
 // nginxVtsCacheZone is one entry from the cacheZones map in the VTS payload —
@@ -123,6 +135,11 @@ type NginxServerZone struct {
 	ResponsesByCode             map[string]float64 // keys: 1xx, 2xx, 3xx, 4xx, 5xx
 	CacheResponsesByCode        map[string]float64 // keys: hit, miss, bypass, expired, stale, updating, revalidated, scarce
 	RequestSecondsTotal         float64            // requestMsecCounter / 1000 (cumulative)
+	// CounterWraps is nginx-module-vts's own overCounts wrap-detection
+	// counter for this zone (see nginxVtsServerZone.OverCounts) -- a COUNTER,
+	// not a gauge: it only increases, and a non-zero value means one of this
+	// zone's other counters above wrapped and its rate() has a discontinuity.
+	CounterWraps float64
 }
 
 // NginxUpstreamServer holds normalised per-upstream-server statistics.
@@ -134,6 +151,9 @@ type NginxUpstreamServer struct {
 	ResponseTimeSeconds         float64 // responseMsec / 1000 (instantaneous moving average)
 	RequestSecondsTotal         float64 // requestMsecCounter / 1000 (cumulative)
 	ResponseSecondsTotal        float64 // responseMsecCounter / 1000 (cumulative)
+	// CounterWraps: see NginxServerZone.CounterWraps -- same wrap-detection
+	// counter, for this upstream server entry.
+	CounterWraps float64
 }
 
 // NginxCacheZone holds normalised per-proxy_cache_path statistics.
@@ -291,6 +311,7 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 			ResponsesByCode:      nginxVtsServerZoneHTTPResponsesToMap(sz.Responses),
 			CacheResponsesByCode: nginxVtsServerZoneCacheResponsesToMap(sz.Responses),
 			RequestSecondsTotal:  sz.RequestMsecCounter / 1000,
+			CounterWraps:         sz.OverCounts,
 		})
 	}
 
@@ -308,6 +329,7 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 				ResponseTimeSeconds:  srv.ResponseMsec / 1000,
 				RequestSecondsTotal:  srv.RequestMsecCounter / 1000,
 				ResponseSecondsTotal: srv.ResponseMsecCounter / 1000,
+				CounterWraps:         srv.OverCounts,
 			})
 		}
 	}

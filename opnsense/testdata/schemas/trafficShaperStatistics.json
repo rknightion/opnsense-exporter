@@ -17,6 +17,18 @@
       "kind": "object"
     },
     {
+      "path": "items[].burst",
+      "kind": "any"
+    },
+    {
+      "path": "items[].bw",
+      "kind": "any"
+    },
+    {
+      "path": "items[].delay",
+      "kind": "any"
+    },
+    {
       "path": "items[].description",
       "kind": "any"
     },
@@ -50,6 +62,10 @@
     },
     {
       "path": "items[].pipe",
+      "kind": "any"
+    },
+    {
+      "path": "items[].queue_size",
       "kind": "any"
     },
     {
@@ -90,6 +106,10 @@
     },
     {
       "path": "items[].type",
+      "kind": "any"
+    },
+    {
+      "path": "items[].weight",
       "kind": "any"
     },
     {

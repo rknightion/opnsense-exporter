@@ -28,8 +28,8 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Firewall Aliases | alias | 7 | Enabled | --exporter.disable-alias | OPNSENSE_EXPORTER_DISABLE_ALIAS |
 | Firewall Rules | firewall_rule | 7 | Enabled | --exporter.disable-firewall-rules | OPNSENSE_EXPORTER_DISABLE_FIREWALL_RULES |
 | Firmware | firmware | 15 | Enabled | --exporter.disable-firmware | OPNSENSE_EXPORTER_DISABLE_FIRMWARE |
-| Flow Volume | flow | 54 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
-| Gateways | gateways | 17 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
+| Flow Volume | flow | 56 | Enabled | --exporter.disable-flow | OPNSENSE_EXPORTER_DISABLE_FLOW |
+| Gateways | gateways | 19 | Enabled | --exporter.disable-gateways | OPNSENSE_EXPORTER_DISABLE_GATEWAYS |
 | HA Sync Status | hasync | 5 | Disabled | --exporter.enable-hasync | OPNSENSE_EXPORTER_ENABLE_HASYNC |
 | HAProxy | haproxy | 56 | Enabled | --exporter.disable-haproxy | OPNSENSE_EXPORTER_DISABLE_HAPROXY |
 | Hardware | hardware | 2 | Enabled | --exporter.disable-hardware | OPNSENSE_EXPORTER_DISABLE_HARDWARE |
@@ -38,13 +38,13 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | IPsec | ipsec | 33 | Enabled | --exporter.disable-ipsec | OPNSENSE_EXPORTER_DISABLE_IPSEC |
 | ISC DHCPv4 | dhcpv4 | 5 | Enabled | --exporter.disable-dhcpv4 | OPNSENSE_EXPORTER_DISABLE_DHCPV4 |
 | ISC DHCPv6 | dhcpv6 | 7 | Enabled | --exporter.disable-dhcpv6 | OPNSENSE_EXPORTER_DISABLE_DHCPV6 |
-| Interfaces | interfaces | 38 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
+| Interfaces | interfaces | 39 | Enabled | --exporter.disable-interfaces | OPNSENSE_EXPORTER_DISABLE_INTERFACES |
 | Kea DHCP | kea | 21 | Enabled | --exporter.disable-kea | OPNSENSE_EXPORTER_DISABLE_KEA |
 | Kernel Memory (UMA zones and malloc types) | kernel_memory | 12 | Enabled | --exporter.disable-kernel-memory | OPNSENSE_EXPORTER_DISABLE_KERNEL_MEMORY |
 | LLDP Neighbors | lldp | 2 | Enabled | --exporter.disable-lldpd | OPNSENSE_EXPORTER_DISABLE_LLDPD |
 | Local Auth | auth | 6 | Enabled | --exporter.disable-auth | OPNSENSE_EXPORTER_DISABLE_AUTH |
 | Log-derived Events | log_events | 31 | Enabled | --exporter.disable-log-events | OPNSENSE_EXPORTER_DISABLE_LOG_EVENTS |
-| Mbuf | mbuf | 15 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
+| Mbuf | mbuf | 20 | Enabled | --exporter.disable-mbuf | OPNSENSE_EXPORTER_DISABLE_MBUF |
 | Monit | monit | 17 | Enabled | --exporter.disable-monit | OPNSENSE_EXPORTER_DISABLE_MONIT |
 | NDP | ndp | 2 | Enabled | --exporter.disable-ndp | OPNSENSE_EXPORTER_DISABLE_NDP |
 | NTP | ntp | 11 | Enabled | --exporter.disable-ntp | OPNSENSE_EXPORTER_DISABLE_NTP |
@@ -52,8 +52,8 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | NetBird | netbird | 15 | Enabled | --exporter.disable-netbird | OPNSENSE_EXPORTER_DISABLE_NETBIRD |
 | NetFlow | netflow | 11 | Disabled | --exporter.enable-netflow | OPNSENSE_EXPORTER_ENABLE_NETFLOW |
 | Network Diagnostics | network_diag | 29 | Disabled | --exporter.enable-network-diagnostics | OPNSENSE_EXPORTER_ENABLE_NETWORK_DIAGNOSTICS |
-| Nginx | nginx | 33 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
-| OpenVPN | openvpn | 9 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
+| Nginx | nginx | 35 | Enabled | --exporter.disable-nginx | OPNSENSE_EXPORTER_DISABLE_NGINX |
+| OpenVPN | openvpn | 10 | Enabled | --exporter.disable-openvpn | OPNSENSE_EXPORTER_DISABLE_OPENVPN |
 | PF Statistics | pf_stats | 9 | Enabled | --exporter.disable-pf-stats | OPNSENSE_EXPORTER_DISABLE_PF_STATS |
 | Protocol Statistics | protocol | 77 | Enabled | --exporter.disable-protocol | OPNSENSE_EXPORTER_DISABLE_PROTOCOL |
 | Q-Feeds | qfeeds | 13 | Enabled | --exporter.disable-qfeeds | OPNSENSE_EXPORTER_DISABLE_QFEEDS |
@@ -66,7 +66,7 @@ This page provides a summary of all collectors in the OPNsense Exporter.
 | Tailscale | tailscale | 11 | Enabled | --exporter.disable-tailscale | OPNSENSE_EXPORTER_DISABLE_TAILSCALE |
 | Temperature | temperature | 1 | Enabled | --exporter.disable-temperature | OPNSENSE_EXPORTER_DISABLE_TEMPERATURE |
 | Tor | tor | 6 | Disabled | --exporter.enable-tor | OPNSENSE_EXPORTER_ENABLE_TOR |
-| Traffic Shaper | trafficshaper | 15 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
+| Traffic Shaper | trafficshaper | 22 | Enabled | --exporter.disable-trafficshaper | OPNSENSE_EXPORTER_DISABLE_TRAFFICSHAPER |
 | Unbound DNS | unbound_dns | 51 | Enabled | --exporter.disable-unbound | OPNSENSE_EXPORTER_DISABLE_UNBOUND |
 | Vnstat Traffic Accounting | vnstat | 3 | Disabled | --exporter.enable-vnstat | OPNSENSE_EXPORTER_ENABLE_VNSTAT |
 | Wireguard | wireguard | 7 | Enabled | --exporter.disable-wireguard | OPNSENSE_EXPORTER_DISABLE_WIREGUARD |

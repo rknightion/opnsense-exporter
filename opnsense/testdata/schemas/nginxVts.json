@@ -125,6 +125,10 @@
       "kind": "number"
     },
     {
+      "path": "serverZones.*.overCounts",
+      "kind": "number"
+    },
+    {
       "path": "serverZones.*.requestCounter",
       "kind": "number"
     },
@@ -226,6 +230,10 @@
     },
     {
       "path": "upstreamZones.*[].outBytes",
+      "kind": "number"
+    },
+    {
+      "path": "upstreamZones.*[].overCounts",
       "kind": "number"
     },
     {

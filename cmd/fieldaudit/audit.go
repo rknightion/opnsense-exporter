@@ -19,6 +19,49 @@ import (
 )
 
 // opnsensePkg is the API-client package whose response structs are audited.
+//
+// # Scope boundary (#588)
+//
+// This is a DELIBERATE, NARROW scope, not an oversight, but it is also the
+// tool's sharpest edge and the one most likely to surprise a future reader —
+// worth stating plainly here rather than only in an issue thread. Three
+// things to know before trusting a clean `go test ./cmd/fieldaudit/` as
+// "nothing is decoded and dropped":
+//
+//  1. Only package opnsense's own struct declarations become audited decls
+//     (collectDecls below is called exclusively for opnsensePkg). Wire/response
+//     structs declared in internal/flow (the NetFlow decoder, the correlator)
+//     and internal/logship (the syslog/Zenarmor parsers) are invisible to this
+//     tool — a dead field there produces no Finding, ever. This is exactly
+//     where NetFlow's TCPFlags hid unread for months (#585/#586): the field
+//     lived in internal/flow, not opnsense, so this audit — which already
+//     existed — had structurally no way to see it.
+//  2. collectReads, by contrast, scans EVERY first-party package (isFirstParty
+//     below has no such restriction), so a field declared in opnsense counts as
+//     "read" if ANYTHING anywhere selects it — including internal/webui, which
+//     renders the operator console from cached data rather than feeding a
+//     metric. A field surfaced only to a debug page is therefore
+//     indistinguishable here from one feeding a Prometheus series; the checker
+//     has no notion of "read by a metric" versus "read by a display".
+//  3. A whole-struct conversion (markAllFields, triggered by the *ast.CallExpr
+//     case in collectReads) marks EVERY field of the source type read, at any
+//     depth, the moment the conversion appears anywhere — even if the caller
+//     only consumes one field of the result afterward. This is deliberate (the
+//     alternative is false positives on legitimate carry-through), but it means
+//     a field can pass this gate while being effectively unused past the
+//     conversion site.
+//
+// Extending scope to internal/flow and internal/logship was assessed for #588
+// and declined for that pass: the tree was under heavy concurrent construction
+// at the time (multiple lanes landing #577-#587 simultaneously), and auditing
+// packages mid-rewrite would have produced findings that were really just
+// WIP wiring-in-progress, not settled dead code — exactly the false-positive
+// risk TestAuditIgnoresReadFields exists to guard against. Documenting the
+// boundary here was the safer choice for that pass; extending the scan set
+// (widen the collectDecls call site below to a small package list, and prefix
+// Finding.Key with the package name so opnsense.* and flow.* keys don't
+// collide) remains open for whoever picks it up next, once those lanes have
+// settled.
 const opnsensePkg = "github.com/rknightion/opnsense-exporter/opnsense"
 
 // Finding is one struct field that is populated by unmarshalling an OPNsense API

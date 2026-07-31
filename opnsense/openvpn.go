@@ -3,6 +3,7 @@ package opnsense
 import (
 	"encoding/json"
 	"github.com/rknightion/opnsense-exporter/internal/fetchshare"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,13 @@ type openVPNSearchResponse struct {
 		Role        string `json:"role"`
 		DevType     string `json:"dev_type"`
 		Enabled     string `json:"enabled"`
+		// MaxClients is the server's configured concurrent-client cap
+		// (OpenVPN.xml: IntegerField, MinimumValue 1, no Default). Genuinely
+		// optional config, not a plain int that happens to default to 0: an
+		// empty string (or the key absent entirely, which client-role
+		// instances always do -- maxclients is a server-only field) means "no
+		// cap configured", not "cap of 0" (#584). See parseOpenVPNMaxClients.
+		MaxClients string `json:"maxclients"`
 	} `json:"rows"`
 	RowCount int `json:"rowCount"`
 	Total    int `json:"total"`
@@ -72,6 +80,17 @@ type OpenVPN struct {
 	Role        string
 	DevType     string
 	Enabled     int64
+	// MaxClients is the configured concurrent-client cap; only meaningful
+	// when MaxClientsConfigured is true. Divided into the live per-instance
+	// session count (opnsense_openvpn_sessions_by_instance), it gives a
+	// utilization/headroom signal that did not exist before #584 -- nothing
+	// warned an operator before the server started refusing connections at
+	// cap.
+	MaxClients int64
+	// MaxClientsConfigured is false when the box sent no cap at all (empty
+	// string or the key omitted, e.g. every client-role row) -- "unlimited",
+	// not "capped at 0". Callers must check this before emitting a metric.
+	MaxClientsConfigured bool
 }
 type OpenVPNInstances struct {
 	Rows []OpenVPN
@@ -111,6 +130,22 @@ func (s Sessions) Identity() string {
 	return s.Username
 }
 
+// parseOpenVPNMaxClients parses the raw maxclients string. An empty string
+// (or the key absent entirely, which decodes identically since Go's encoding/
+// json leaves the string field at its zero value) means "no cap configured",
+// distinguished from a genuine configured value by the ok return -- never
+// fabricate MaxClients=0 for it (#584).
+func parseOpenVPNMaxClients(raw string) (value int64, ok bool) {
+	if raw == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
 func (c *Client) FetchOpenVPNInstances() (OpenVPNInstances, *APICallError) {
 	var resp openVPNSearchResponse
 	var data OpenVPNInstances
@@ -133,12 +168,15 @@ func (c *Client) FetchOpenVPNInstances() (OpenVPNInstances, *APICallError) {
 		if err != nil {
 			return data, err
 		}
+		maxClients, maxClientsConfigured := parseOpenVPNMaxClients(v.MaxClients)
 		data.Rows = append(data.Rows, OpenVPN{
-			UUID:        v.UUID,
-			Description: v.Description,
-			Role:        strings.ToLower(v.Role),
-			DevType:     v.DevType,
-			Enabled:     enabled,
+			UUID:                 v.UUID,
+			Description:          v.Description,
+			Role:                 strings.ToLower(v.Role),
+			DevType:              v.DevType,
+			Enabled:              enabled,
+			MaxClients:           maxClients,
+			MaxClientsConfigured: maxClientsConfigured,
 		})
 	}
 

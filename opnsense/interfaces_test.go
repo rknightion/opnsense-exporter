@@ -485,6 +485,12 @@ func TestFetchInterfacesOverview_Success(t *testing.T) {
 	if !lan.Physical {
 		t.Error("expected lan Physical=true")
 	}
+	// #584: Enabled is the config-level "administratively disabled" flag,
+	// distinct from AdminUp (derived from the ifconfig UP flag). This
+	// fixture's lan row carries the raw "enabled": true.
+	if !lan.Enabled {
+		t.Error("expected lan Enabled=true")
+	}
 
 	unassigned := data.Interfaces[1]
 	if unassigned.AdminUp {
@@ -493,6 +499,13 @@ func TestFetchInterfacesOverview_Success(t *testing.T) {
 	if unassigned.Status != "no carrier" {
 		t.Errorf("expected status 'no carrier', got %q", unassigned.Status)
 	}
+	// This fixture row omits "enabled" entirely; Go's zero value (false) is
+	// the conservative default. OverviewController's parseIfInfo always sets
+	// this key (!empty($config['enable'])), so an omission should never
+	// happen live -- this pins the decode behaviour if it ever does.
+	if unassigned.Enabled {
+		t.Error("expected unassigned Enabled=false (key absent from fixture)")
+	}
 
 	vlan := data.Interfaces[2]
 	if vlan.VlanTag != "100" || vlan.VlanParent != "ixl0" {
@@ -500,6 +513,48 @@ func TestFetchInterfacesOverview_Success(t *testing.T) {
 	}
 	if vlan.Physical {
 		t.Error("expected vlan Physical=false")
+	}
+}
+
+// TestFetchInterfacesOverview_EnabledIndependentOfAdminUp guards #584: Enabled
+// (the config-level admin-enabled flag, OverviewController's parseIfInfo:
+// `!empty($config['enable'])`) is genuinely independent of AdminUp (derived
+// from the ifconfig "up" flag) -- an interface can be link-up while
+// administratively disabled in config (e.g. a stale ifconfig read before the
+// disable takes effect) or vice versa, and the exporter must decode both
+// without deriving either from the other.
+func TestFetchInterfacesOverview_EnabledIndependentOfAdminUp(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{
+					"device": "ixl2",
+					"identifier": "opt5",
+					"description": "DMZ",
+					"status": "up",
+					"flags": ["up", "broadcast", "running", "multicast"],
+					"is_physical": true,
+					"enabled": false
+				}
+			]
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchInterfacesOverview()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Interfaces) != 1 {
+		t.Fatalf("expected 1 interface, got %d", len(data.Interfaces))
+	}
+	iface := data.Interfaces[0]
+	if !iface.AdminUp {
+		t.Error("expected AdminUp=true (flags contain 'up')")
+	}
+	if iface.Enabled {
+		t.Error("expected Enabled=false (\"enabled\": false in the fixture) -- must not be derived from AdminUp")
 	}
 }
 

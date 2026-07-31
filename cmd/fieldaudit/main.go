@@ -14,6 +14,12 @@
 //
 // The same analysis runs as a unit test (audit_test.go), so it rides `make test`
 // and CI with no workflow change.
+//
+// Scope: package opnsense's struct fields ONLY — internal/flow and
+// internal/logship's own wire/response structs are unaudited, and two other
+// sharp edges (a field read only for display, and whole-struct conversions
+// marking every field read) are worth knowing before trusting a clean run.
+// See the opnsensePkg doc comment in audit.go for the detail (#588).
 package main
 
 import (

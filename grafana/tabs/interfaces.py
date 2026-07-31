@@ -186,6 +186,19 @@ def build(b: Builder):
         desc="opnsense_interfaces_admin_up: 1 = administratively up (ifconfig UP flag), "
              "0 = admin down. Admin up + Link State down = no carrier.",
     )
+    # #584: the config-level counterpart to Admin Status above. A box with
+    # admin_enabled=0 for an interface is expected to also show admin_up=0 --
+    # this panel is what tells an operator "that's deliberate config, not an
+    # incident" instead of them having to go check the GUI.
+    admin_enabled_state = b.statetimeline(
+        "Admin Enabled (config)",
+        [(sel("opnsense_interfaces_admin_enabled", iface), "{{interface}} ({{device}})")],
+        UPDOWN, w=24, h=6,
+        desc="opnsense_interfaces_admin_enabled: 1 = enabled in Interfaces > [name] config, "
+             "0 = administratively disabled in config. Distinct from Admin Status above, "
+             "which is the ifconfig UP flag (runtime kernel state): a disabled-in-config "
+             "interface showing admin_up=0 is expected, not an incident.",
+    )
     iface_identity = b.table(
         "Interface Identity (media / VLAN / link type)",
         [sel("opnsense_interfaces_info", iface)],
@@ -485,7 +498,7 @@ def build(b: Builder):
         b.row("Packets & Errors", [rx_pkts, tx_pkts, multicasts, errors, collisions]),
         b.row("Queues", [queue_len, queue_drops]),
         b.row("Link State & Rates", [link_state, iface_info]),
-        b.row("Admin State & Identity", [admin_state, iface_identity]),
+        b.row("Admin State & Identity", [admin_state, admin_enabled_state, iface_identity]),
         b.row("LAGG (Link Aggregation)",
               [lagg_info, lagg_active_ports, lagg_flapping, lagg_port_state],
               present="has_lagg"),

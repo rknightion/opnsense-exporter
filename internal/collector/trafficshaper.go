@@ -27,6 +27,17 @@ type trafficShaperCollector struct {
 	ruleBytes     *prometheus.Desc
 	ruleLastMatch *prometheus.Desc
 
+	// Configured-capacity gauges (#584) -- the limits the live counters above
+	// are measured against. Presence-gated: an unconfigured/unparseable value
+	// (see opnsense.TrafficShaperEntity's *OK companions) emits no series.
+	pipeConfiguredBandwidth  *prometheus.Desc
+	pipeConfiguredBurst      *prometheus.Desc
+	pipeConfiguredDelay      *prometheus.Desc
+	pipeConfiguredQueueSize  *prometheus.Desc
+	pipeConfiguredWeight     *prometheus.Desc
+	queueConfiguredQueueSize *prometheus.Desc
+	queueConfiguredWeight    *prometheus.Desc
+
 	subsystem string
 	instance  string
 }
@@ -82,6 +93,52 @@ func (c *trafficShaperCollector) Register(namespace, instanceLabel string, log *
 	c.ruleLastMatch = buildPrometheusDesc(c.subsystem, "rule_last_match_timestamp_seconds",
 		"Unix timestamp of the last time this traffic shaper rule matched traffic. Absent for a rule that has never matched.",
 		ruleLabels)
+
+	// Configured-capacity gauges (#584): the limits the live counters above
+	// are measured against, so an operator can tell "saturated" from "just
+	// busy" rather than only seeing drop counters with no denominator.
+	//
+	// bandwidth/burst/delay are pipe-only (dn_link fields -- FreeBSD's
+	// dummynet.c never attaches them to a queue). queue_size/weight apply to
+	// BOTH kinds: a "queue" entity carries its own flowset config directly,
+	// while a "pipe" entity's queue_size/weight are folded from its
+	// auto-attached template queue (the same attribution the existing
+	// pipe_active_flows/pipe_packets/... gauges above already use for
+	// template-queue data) -- this is a deliberate naming split from the
+	// issue's literal "pipe_configured_*" for all five fields: queue_size and
+	// weight are genuinely per-QUEUE config (an explicit Queues-tab entry has
+	// its own independent depth/weight, unrelated to any pipe), so folding
+	// them under "pipe_configured_*" only for queues would either silently
+	// drop standalone queues' own capacity or conflate two different queues
+	// under one series.
+	c.pipeConfiguredBandwidth = buildPrometheusDesc(c.subsystem, "pipe_configured_bandwidth_bps",
+		"Configured bandwidth limit for this pipe, normalized to bits per second. Not emitted for "+
+			"a pipe with no bandwidth cap configured (dnctl reports \"unlimited\", not 0 bps).",
+		pipeLabels)
+	c.pipeConfiguredBurst = buildPrometheusDesc(c.subsystem, "pipe_configured_burst_bytes",
+		"Configured burst allowance for this pipe in bytes.",
+		pipeLabels)
+	c.pipeConfiguredDelay = buildPrometheusDesc(c.subsystem, "pipe_configured_delay_milliseconds",
+		"Configured added delay for this pipe in milliseconds. 0 is a real \"no added delay\" "+
+			"configuration, not an absence.",
+		pipeLabels)
+	queueSizeHelp := "Configured queue depth, either in packets (slot-count mode) or bytes " +
+		"(byte-count mode) -- see the unit label. The two modes are different physical " +
+		"quantities and must not be compared across a mixed unit selector."
+	c.pipeConfiguredQueueSize = buildPrometheusDesc(c.subsystem, "pipe_configured_queue_size",
+		queueSizeHelp+" Folded from this pipe's own auto-attached (template) queue.",
+		append(append([]string{}, pipeLabels...), "unit"))
+	c.pipeConfiguredWeight = buildPrometheusDesc(c.subsystem, "pipe_configured_weight",
+		"Configured WF2Q+ scheduling weight of this pipe's own auto-attached (template) queue. "+
+			"A relative value with meaning only alongside sibling weights on the same scheduler.",
+		pipeLabels)
+	c.queueConfiguredQueueSize = buildPrometheusDesc(c.subsystem, "queue_configured_queue_size",
+		queueSizeHelp,
+		append(append([]string{}, queueLabels...), "unit"))
+	c.queueConfiguredWeight = buildPrometheusDesc(c.subsystem, "queue_configured_weight",
+		"Configured WF2Q+ scheduling weight of this queue. A relative value with meaning only "+
+			"alongside sibling weights on the same scheduler.",
+		queueLabels)
 }
 
 func (c *trafficShaperCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -90,6 +147,9 @@ func (c *trafficShaperCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.pipeFlows, c.pipePackets, c.pipeBytes, c.pipeDropPkts, c.pipeDropBytes,
 		c.queueFlows, c.queuePackets, c.queueBytes, c.queueDropPkts, c.queueDropByt,
 		c.rulePackets, c.ruleBytes, c.ruleLastMatch,
+		c.pipeConfiguredBandwidth, c.pipeConfiguredBurst, c.pipeConfiguredDelay,
+		c.pipeConfiguredQueueSize, c.pipeConfiguredWeight,
+		c.queueConfiguredQueueSize, c.queueConfiguredWeight,
 	} {
 		ch <- d
 	}
@@ -131,6 +191,30 @@ func (c *trafficShaperCollector) Update(_ context.Context, client *opnsense.Clie
 			pipe.DropPackets, pipe.ID, pipe.Description, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.pipeDropBytes, prometheus.GaugeValue,
 			pipe.DropBytes, pipe.ID, pipe.Description, c.instance)
+
+		// Configured-capacity gauges (#584), each independently presence-gated:
+		// an "unlimited" bandwidth, or a field the box simply never sent,
+		// must emit no series rather than a fabricated 0/absent-as-zero.
+		if pipe.ConfiguredBandwidthOK {
+			ch <- prometheus.MustNewConstMetric(c.pipeConfiguredBandwidth, prometheus.GaugeValue,
+				pipe.ConfiguredBandwidthBps, pipe.ID, pipe.Description, c.instance)
+		}
+		if pipe.ConfiguredBurstOK {
+			ch <- prometheus.MustNewConstMetric(c.pipeConfiguredBurst, prometheus.GaugeValue,
+				pipe.ConfiguredBurstBytes, pipe.ID, pipe.Description, c.instance)
+		}
+		if pipe.ConfiguredDelayOK {
+			ch <- prometheus.MustNewConstMetric(c.pipeConfiguredDelay, prometheus.GaugeValue,
+				pipe.ConfiguredDelayMs, pipe.ID, pipe.Description, c.instance)
+		}
+		if pipe.ConfiguredQueueSizeOK {
+			ch <- prometheus.MustNewConstMetric(c.pipeConfiguredQueueSize, prometheus.GaugeValue,
+				pipe.ConfiguredQueueSize, pipe.ID, pipe.Description, pipe.ConfiguredQueueSizeUnit, c.instance)
+		}
+		if pipe.ConfiguredWeightOK {
+			ch <- prometheus.MustNewConstMetric(c.pipeConfiguredWeight, prometheus.GaugeValue,
+				pipe.ConfiguredWeight, pipe.ID, pipe.Description, c.instance)
+		}
 	}
 
 	for _, queue := range data.Queues {
@@ -144,6 +228,15 @@ func (c *trafficShaperCollector) Update(_ context.Context, client *opnsense.Clie
 			queue.DropPackets, queue.ID, queue.Pipe, queue.Description, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.queueDropByt, prometheus.GaugeValue,
 			queue.DropBytes, queue.ID, queue.Pipe, queue.Description, c.instance)
+
+		if queue.ConfiguredQueueSizeOK {
+			ch <- prometheus.MustNewConstMetric(c.queueConfiguredQueueSize, prometheus.GaugeValue,
+				queue.ConfiguredQueueSize, queue.ID, queue.Pipe, queue.Description, queue.ConfiguredQueueSizeUnit, c.instance)
+		}
+		if queue.ConfiguredWeightOK {
+			ch <- prometheus.MustNewConstMetric(c.queueConfiguredWeight, prometheus.GaugeValue,
+				queue.ConfiguredWeight, queue.ID, queue.Pipe, queue.Description, c.instance)
+		}
 	}
 
 	for _, rule := range data.Rules {

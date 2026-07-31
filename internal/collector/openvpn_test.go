@@ -546,3 +546,60 @@ func TestOpenVPNCollector_Name(t *testing.T) {
 		t.Errorf("expected %s, got %s", OpenVPNSubsystem, c.Name())
 	}
 }
+
+// TestOpenVPNCollector_MaxClients guards #584: the configured concurrent-
+// client cap must be exported as a default-on (no details flag) gauge, one
+// series per instance that actually has a cap configured -- a server with no
+// configured cap ("maxclients" empty/absent) must emit NO series, never a
+// fabricated 0 that would read as "server accepts no clients".
+func TestOpenVPNCollector_MaxClients(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/openvpn/instances/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"uuid": "vpn-uuid-1",
+					"description": "Capped VPN",
+					"role": "Server",
+					"dev_type": "tun",
+					"enabled": "1",
+					"maxclients": "25"
+				},
+				{
+					"uuid": "vpn-uuid-2",
+					"description": "Unlimited VPN",
+					"role": "Server",
+					"dev_type": "tun",
+					"enabled": "1",
+					"maxclients": ""
+				}
+			],
+			"rowCount": 2,
+			"total": 2,
+			"current": 1
+		}`))
+	})
+	mux.HandleFunc("/api/openvpn/service/search_sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"rows": [], "rowCount": 0, "total": 0, "current": 1}`))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	client := newCollectorTestClient(t, server)
+
+	c := &openVPNCollector{subsystem: OpenVPNSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	maxClients := metricsByDesc(metrics, "opnsense_openvpn_instance_max_clients")
+	if len(maxClients) != 1 {
+		t.Fatalf("expected exactly 1 instance_max_clients series (unlimited instance excluded), got %d", len(maxClients))
+	}
+	labels := getMetricLabels(maxClients[0])
+	if labels["description"] != "Capped VPN" {
+		t.Errorf("expected description='Capped VPN', got %q", labels["description"])
+	}
+	if v := getMetricValue(maxClients[0]); v != 25 {
+		t.Errorf("expected instance_max_clients=25, got %v", v)
+	}
+}

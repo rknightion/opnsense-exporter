@@ -100,6 +100,12 @@ func TestFetchNginxVTS_Normal(t *testing.T) {
 	if sz.ResponsesByCode["5xx"] != 20 {
 		t.Errorf("server zone 5xx: want 20, got %v", sz.ResponsesByCode["5xx"])
 	}
+	// #584: this fixture carries no overCounts key for "example.com" -- Go's
+	// zero value (0) is the correct "never wrapped" reading, same convention
+	// as every other vts counter here.
+	if sz.CounterWraps != 0 {
+		t.Errorf("server zone CounterWraps: want 0 (absent in fixture), got %v", sz.CounterWraps)
+	}
 
 	// upstream servers
 	if len(data.UpstreamServers) != 1 {
@@ -123,6 +129,60 @@ func TestFetchNginxVTS_Normal(t *testing.T) {
 	}
 	if us.ResponsesByCode["2xx"] != 1900 {
 		t.Errorf("upstream 2xx: want 1900, got %v", us.ResponsesByCode["2xx"])
+	}
+	if us.CounterWraps != 0 {
+		t.Errorf("upstream CounterWraps: want 0 (absent in fixture), got %v", us.CounterWraps)
+	}
+}
+
+// TestFetchNginxVTS_OverCounts guards #584: serverZones.*.overCounts and
+// upstreamZones.*[].overCounts are vhost-traffic-status's own wrap-detection
+// counters (nginx-module-vts ngx_http_vhost_traffic_status_add_oc(): each
+// incremented once whenever a shard's counter is found to have wrapped past
+// its own accumulated value -- itself monotonically increasing, i.e. a
+// COUNTER, never a gauge). A non-zero value here means the underlying
+// request/byte/response counters it accompanies wrapped and their rate()
+// series has a discontinuity -- correctness-relevant for series already shipped.
+func TestFetchNginxVTS_OverCounts(t *testing.T) {
+	const fixture = `{
+	  "connections": {"active": 1, "reading": 0, "writing": 0, "waiting": 0,
+	                  "accepted": 1, "handled": 1, "requests": 1},
+	  "sharedZones": {"maxSize": 1, "usedSize": 1, "usedNode": 1},
+	  "serverZones": {
+	    "example.com": {"requestCounter": 5000000000, "inBytes": 1, "outBytes": 1,
+	          "overCounts": 3,
+	          "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0}}
+	  },
+	  "upstreamZones": {
+	    "backend_pool": [
+	      {"server": "10.0.0.10:8080", "requestCounter": 1, "inBytes": 1, "outBytes": 1,
+	       "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0},
+	       "overCounts": 7, "down": false}
+	    ]
+	  }
+	}`
+
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/nginx/service/vts", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fixture))
+	})
+
+	data, err := client.FetchNginxVTS()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.ServerZones) != 1 {
+		t.Fatalf("expected 1 server zone, got %d", len(data.ServerZones))
+	}
+	if data.ServerZones[0].CounterWraps != 3 {
+		t.Errorf("server zone CounterWraps: want 3, got %v", data.ServerZones[0].CounterWraps)
+	}
+	if len(data.UpstreamServers) != 1 {
+		t.Fatalf("expected 1 upstream server, got %d", len(data.UpstreamServers))
+	}
+	if data.UpstreamServers[0].CounterWraps != 7 {
+		t.Errorf("upstream CounterWraps: want 7, got %v", data.UpstreamServers[0].CounterWraps)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 type openVPNCollector struct {
 	log                      *slog.Logger
 	instances                *prometheus.Desc
+	instanceMaxClients       *prometheus.Desc
 	sessions                 *prometheus.Desc
 	sessionsTotal            *prometheus.Desc
 	sessionsByInstance       *prometheus.Desc
@@ -43,6 +44,21 @@ func (c *openVPNCollector) Register(namespace, instanceLabel string, log *slog.L
 
 	c.instances = buildPrometheusDesc(c.subsystem, "instances",
 		"OpenVPN instances (1 = enabled, 0 = disabled) by role (server, client)",
+		[]string{"uuid", "role", "description", "device_type"},
+	)
+	// instanceMaxClients is default-on (config data, same cardinality profile
+	// as the "instances" gauge above -- bounded by configured instance count,
+	// not by connected clients) and shares that gauge's exact label surface
+	// for joinability. Only emitted for a server whose maxclients is actually
+	// configured: an IntegerField with no Default (OpenVPN.xml), so an empty
+	// value means "no cap", not "cap of 0" -- see opnsense.OpenVPN.
+	// MaxClientsConfigured (#584). Never sent for client-role instances,
+	// which have no maxclients concept at all.
+	c.instanceMaxClients = buildPrometheusDesc(c.subsystem, "instance_max_clients",
+		"Configured concurrent-client cap for this OpenVPN server instance. Divide "+
+			"opnsense_openvpn_sessions_by_instance by this (joined on description) for "+
+			"a utilization ratio. Only emitted for a server instance with a cap actually "+
+			"configured; an unlimited/uncapped server emits no series here.",
 		[]string{"uuid", "role", "description", "device_type"},
 	)
 	c.sessions = buildPrometheusDesc(c.subsystem, "sessions",
@@ -96,6 +112,7 @@ func (c *openVPNCollector) SetDetailsEnabled(enabled bool) {
 
 func (c *openVPNCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.instances
+	ch <- c.instanceMaxClients
 	ch <- c.sessions
 	ch <- c.sessionsTotal
 	ch <- c.sessionsByInstance
@@ -122,6 +139,21 @@ func (c *openVPNCollector) Update(ctx context.Context, client *opnsense.Client, 
 			instance.DevType,
 			c.instance,
 		)
+		// Presence-gated (#584): MaxClientsConfigured is false for an
+		// unlimited server (empty "maxclients") and for every client-role
+		// instance, which must emit no series rather than a fabricated 0.
+		if instance.MaxClientsConfigured {
+			ch <- prometheus.MustNewConstMetric(
+				c.instanceMaxClients,
+				prometheus.GaugeValue,
+				float64(instance.MaxClients),
+				instance.UUID,
+				instance.Role,
+				instance.Description,
+				instance.DevType,
+				c.instance,
+			)
+		}
 	}
 
 	sessions, err := client.FetchOpenVPNSessions()

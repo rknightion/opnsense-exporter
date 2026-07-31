@@ -305,6 +305,121 @@ func TestFetchMbufStatistics_FallsBackWhenExtendedAbsent(t *testing.T) {
 	}
 }
 
+// TestFetchMbufStatistics_JumboPoolUtilization covers #579: the jumbo9 (9k) / jumbo16
+// (16k) / packet secondary-zone pool utilization figures backing
+// opnsense_mbuf_pool_{current,cache,total,max}{pool=...}. Two things this specifically
+// pins down:
+//   - jumbo16's ceiling is read from netstat's "jumbo16-limit" key but lands in the SAME
+//     PoolMax entry shape as jumbo9's "jumbo9-max" -- proving the upstream key-naming
+//     asymmetry (verified against FreeBSD's usr.bin/netstat/mbuf.c) is normalised away
+//     rather than leaking into two differently-named metrics.
+//   - the packet pool has no total/max key upstream (it borrows memory from mbuf/
+//     cluster rather than owning a ceiling), so PoolTotal/PoolMax must never grow a
+//     "packet" entry even though PoolCurrent/PoolCache do.
+func TestFetchMbufStatistics_JumboPoolUtilization(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"mbuf-statistics": {` + modernMbufFields + `}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchMbufStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantCurrent := map[string]int{"jumbo9": 0, "jumbo16": 0, "packet": 12}
+	for pool, want := range wantCurrent {
+		if got := data.PoolCurrent[pool]; got != want {
+			t.Errorf("PoolCurrent[%q] = %d, want %d", pool, got, want)
+		}
+	}
+	wantCache := map[string]int{"jumbo9": 0, "jumbo16": 0, "packet": 13}
+	for pool, want := range wantCache {
+		if got := data.PoolCache[pool]; got != want {
+			t.Errorf("PoolCache[%q] = %d, want %d", pool, got, want)
+		}
+	}
+	wantTotal := map[string]int{"jumbo9": 0, "jumbo16": 0}
+	for pool, want := range wantTotal {
+		if got := data.PoolTotal[pool]; got != want {
+			t.Errorf("PoolTotal[%q] = %d, want %d", pool, got, want)
+		}
+	}
+	// jumbo9-max=9 and jumbo16-limit=6 in modernMbufFields -- different upstream key
+	// names, same PoolMax metric shape.
+	wantMax := map[string]int{"jumbo9": 9, "jumbo16": 6}
+	for pool, want := range wantMax {
+		if got := data.PoolMax[pool]; got != want {
+			t.Errorf("PoolMax[%q] = %d, want %d", pool, got, want)
+		}
+	}
+	// The packet pool must NEVER appear in PoolTotal/PoolMax: upstream reports no
+	// packet-total or packet-max/-limit key at all.
+	if _, ok := data.PoolTotal["packet"]; ok {
+		t.Error("expected no \"packet\" entry in PoolTotal (packet zone has no total upstream)")
+	}
+	if _, ok := data.PoolMax["packet"]; ok {
+		t.Error("expected no \"packet\" entry in PoolMax (packet zone has no ceiling upstream)")
+	}
+}
+
+// TestFetchMbufStatistics_JumboPoolAbsentOnLegacyRelease covers #579: on a release
+// whose systemMbuf response predates the jumbo9/jumbo16/packet pool keys (mirroring
+// baseMbufFields, which -- like a real ≤26.1.x box -- carries none of them), the pool
+// maps must come back initialised-but-empty rather than growing fabricated zero
+// entries. A fabricated zero here would be indistinguishable from a genuinely-empty
+// pool on a modern box, defeating the entire "no ceiling configured" vs "pool actually
+// at zero" distinction the collector relies on.
+func TestFetchMbufStatistics_JumboPoolAbsentOnLegacyRelease(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"mbuf-statistics": {` + baseMbufFields + `}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchMbufStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, pool := range []string{"jumbo9", "jumbo16", "packet"} {
+		if _, ok := data.PoolCurrent[pool]; ok {
+			t.Errorf("expected no PoolCurrent[%q] entry on a legacy release", pool)
+		}
+		if _, ok := data.PoolCache[pool]; ok {
+			t.Errorf("expected no PoolCache[%q] entry on a legacy release", pool)
+		}
+		if _, ok := data.PoolTotal[pool]; ok {
+			t.Errorf("expected no PoolTotal[%q] entry on a legacy release", pool)
+		}
+		if _, ok := data.PoolMax[pool]; ok {
+			t.Errorf("expected no PoolMax[%q] entry on a legacy release", pool)
+		}
+	}
+}
+
+// TestFetchMbufStatistics_BytesInCache covers #579: bytes-in-cache is decoded and
+// converted KB->bytes exactly like the already-modeled BytesInUse/BytesTotal, because
+// upstream's netstat -m emits all three in the SAME xo_emit call
+// ("bytes allocated to network (current/cache/total)") -- unlike the jumbo9/jumbo16/
+// packet pool fields, there is no legacy release that omits it, so this is a plain
+// unconditional field rather than a pointer.
+func TestFetchMbufStatistics_BytesInCache(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"mbuf-statistics": {` + modernMbufFields + `}}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchMbufStatistics()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// modernMbufFields carries "bytes-in-cache": 3000 (KB); API reports KB, exporter
+	// converts to bytes (x1024), matching BytesInUse/BytesTotal's existing convention.
+	if data.BytesInCache != 3000*1024 {
+		t.Errorf("BytesInCache = %d, want %d", data.BytesInCache, 3000*1024)
+	}
+}
+
 func TestFetchMbufStatistics_Success(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {

@@ -127,12 +127,14 @@ def build(b: Builder):
         desc="Gateway monitoring configuration (info metric — value is always 1).",
     )
     flags = b.table(
-        "Gateway Flags (force_down / virtual / dynamic / priority)",
+        "Gateway Flags (force_down / virtual / dynamic / priority / kill states)",
         [
             sel("opnsense_gateways_force_down"),
             sel("opnsense_gateways_virtual"),
             sel("opnsense_gateways_dynamic"),
             sel("opnsense_gateways_priority"),
+            sel("opnsense_gateways_monitor_killstates"),
+            sel("opnsense_gateways_monitor_killstates_priority"),
         ],
         w=24, h=10,
         excludes=["Value", "__name__", "job", "instance"],
@@ -143,9 +145,18 @@ def build(b: Builder):
             "Value #B": "Virtual",
             "Value #C": "Dynamic",
             "Value #D": "Priority",
+            "Value #E": "Kill States",
+            "Value #F": "Kill States (Priority)",
         },
         sort_by="Name",
-        desc="Per-gateway boolean flags and routing priority (lower value = higher priority).",
+        desc=(
+            "Per-gateway boolean flags and routing priority (lower value = higher "
+            "priority). Kill States: 1 = pf states for this gateway are killed when "
+            "its monitor marks it down (a failover then drops already-established "
+            "connections through it, rather than leaving them to time out). Kill "
+            "States (Priority) is the same behavior scoped to this gateway's routing "
+            "priority tier."
+        ),
     )
 
     # ---- Row 4: Probe Config ----------------------------------------------

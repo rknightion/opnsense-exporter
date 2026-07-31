@@ -36,6 +36,7 @@ type nginxCollector struct {
 	szResponses      *prometheus.Desc // labels: zone, code
 	szCacheResponses *prometheus.Desc // labels: zone, cache_status
 	szRequestSeconds *prometheus.Desc // labels: zone
+	szCounterWraps   *prometheus.Desc // labels: zone
 
 	// per-upstream-server counters + gauges
 	usRequests        *prometheus.Desc
@@ -46,6 +47,7 @@ type nginxCollector struct {
 	usResponseTime    *prometheus.Desc
 	usRequestSeconds  *prometheus.Desc // labels: upstream, server
 	usResponseSeconds *prometheus.Desc // labels: upstream, server
+	usCounterWraps    *prometheus.Desc // labels: upstream, server
 
 	// per-cache-zone gauges + counters (proxy_cache_path)
 	czMaxBytes  *prometheus.Desc // labels: zone
@@ -134,11 +136,23 @@ func (c *nginxCollector) Register(namespace, instanceLabel string, log *slog.Log
 		[]string{"zone", "cache_status"})
 	c.szRequestSeconds = buildPrometheusDesc(c.subsystem, "server_zone_request_seconds_total",
 		"Cumulative sum of request processing time in seconds for this server zone", zoneLabels)
+	c.szCounterWraps = buildPrometheusDesc(c.subsystem, "server_zone_counter_wraps_total",
+		"Cumulative count of times one of this server zone's own vts counters (requests/bytes/"+
+			"response-code/request-time) has been detected to wrap past its accumulated value "+
+			"(nginx-module-vts's own overCounts wrap-detection counter). A non-zero value here "+
+			"means a rate() over this zone's other counters has a discontinuity at the wrap point.",
+		zoneLabels)
 
 	c.usRequestSeconds = buildPrometheusDesc(c.subsystem, "upstream_server_request_seconds_total",
 		"Cumulative sum of request processing time in seconds for this upstream server", upstreamLabels)
 	c.usResponseSeconds = buildPrometheusDesc(c.subsystem, "upstream_server_response_seconds_total",
 		"Cumulative sum of response time in seconds for this upstream server", upstreamLabels)
+	c.usCounterWraps = buildPrometheusDesc(c.subsystem, "upstream_server_counter_wraps_total",
+		"Cumulative count of times one of this upstream server's own vts counters has been "+
+			"detected to wrap past its accumulated value (nginx-module-vts's own overCounts "+
+			"wrap-detection counter). See server_zone_counter_wraps_total for the sibling metric "+
+			"on server zones.",
+		upstreamLabels)
 
 	c.czMaxBytes = buildPrometheusDesc(c.subsystem, "cache_zone_max_bytes",
 		"Maximum size of this proxy_cache_path zone in bytes", zoneLabels)
@@ -168,9 +182,9 @@ func (c *nginxCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.connAccepted, c.connHandled, c.reqTotal,
 		c.sharedMaxBytes, c.sharedUsedBytes, c.sharedUsedNodes,
 		c.szRequests, c.szBytesIn, c.szBytesOut, c.szResponses,
-		c.szCacheResponses, c.szRequestSeconds,
+		c.szCacheResponses, c.szRequestSeconds, c.szCounterWraps,
 		c.usRequests, c.usBytesIn, c.usBytesOut, c.usResponses,
-		c.usDown, c.usResponseTime, c.usRequestSeconds, c.usResponseSeconds,
+		c.usDown, c.usResponseTime, c.usRequestSeconds, c.usResponseSeconds, c.usCounterWraps,
 		c.czMaxBytes, c.czUsedBytes, c.czBytesIn, c.czBytesOut, c.czResponses,
 		c.configLoadTimestamp, c.bansCount, c.banLastTimestamp,
 	} {
@@ -232,6 +246,12 @@ func (c *nginxCollector) Update(ctx context.Context, client *opnsense.Client, ch
 		}
 		ch <- prometheus.MustNewConstMetric(c.szRequestSeconds, prometheus.CounterValue,
 			sz.RequestSecondsTotal, sz.Zone, c.instance)
+		// Unconditional, like every other zone counter above: overCounts is
+		// always present in the wire payload (nginx-module-vts initializes
+		// every zone's _oc fields to 0), so 0 here is a genuine "never
+		// wrapped" reading, not an absence (#584).
+		ch <- prometheus.MustNewConstMetric(c.szCounterWraps, prometheus.CounterValue,
+			sz.CounterWraps, sz.Zone, c.instance)
 		// Cache-status counters only mean something when this vts build
 		// actually reports cache status (see NginxVTS.CacheStatusPresent) —
 		// otherwise they'd just be a wall of meaningless zeros.
@@ -267,6 +287,8 @@ func (c *nginxCollector) Update(ctx context.Context, client *opnsense.Client, ch
 			us.RequestSecondsTotal, us.Upstream, us.Server, c.instance)
 		ch <- prometheus.MustNewConstMetric(c.usResponseSeconds, prometheus.CounterValue,
 			us.ResponseSecondsTotal, us.Upstream, us.Server, c.instance)
+		ch <- prometheus.MustNewConstMetric(c.usCounterWraps, prometheus.CounterValue,
+			us.CounterWraps, us.Upstream, us.Server, c.instance)
 	}
 
 	// Per-cache-zone metrics (proxy_cache_path); empty slice when none

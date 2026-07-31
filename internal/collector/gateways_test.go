@@ -77,7 +77,7 @@ func TestGatewaysCollector_Update_EnabledWithMonitor(t *testing.T) {
 	// For an enabled gateway with monitoring enabled:
 	// 1 info + 1 monitor + 10 monitoring metrics (rtt, rttd, rttLow, rttHigh, loss, lossLow, lossHigh, interval, period, timeout) + 1 status
 	// + 3 new unconditional (force_down, virtual, dynamic) + 1 priority = 17
-	expectedCount := 17
+	expectedCount := 19
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -148,7 +148,7 @@ func TestGatewaysCollector_Update_Disabled(t *testing.T) {
 
 	// Disabled gateway: 1 info + 3 new unconditional (force_down, virtual, dynamic) + 1 priority = 5
 	// (no monitor, no monitoring metrics, no status)
-	expectedCount := 5
+	expectedCount := 7
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -217,10 +217,11 @@ func TestGatewaysCollector_Update_EnabledWithoutMonitor(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Enabled but monitor disabled: 1 info + 1 monitor + 3 new unconditional
-	// (force_down, virtual, dynamic) + 1 priority + 1 status = 7. status is now
-	// emitted from the API-reported value even without monitoring (#77).
-	expectedCount := 7
+	// Enabled but monitor disabled: 1 info + 1 monitor + 5 new unconditional
+	// (force_down, virtual, dynamic, monitor_killstates, monitor_killstates_priority)
+	// + 1 priority + 1 status = 9. status is now emitted from the API-reported
+	// value even without monitoring (#77).
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -344,8 +345,8 @@ func TestGatewaysCollector_Update_NewMetrics_BoolFields(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Enabled, monitor disabled, force_down=true, virtual=true, dynamic=true, priority=10
-	// 1 info + 3 bool metrics + 1 priority + 1 monitor = 6
-	expectedCount := 7
+	// 1 info + 3 bool metrics + 1 priority + 1 monitor + 2 monitor_killstates* = 9
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -450,8 +451,8 @@ func TestGatewaysCollector_Update_NewMetrics_ZeroBools(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Enabled, monitor disabled, force_down=false, virtual=false, dynamic=false, priority=255
-	// 1 info + 3 bool metrics + 1 priority + 1 monitor = 6
-	expectedCount := 7
+	// 1 info + 3 bool metrics + 1 priority + 1 monitor + 2 monitor_killstates* = 9
+	expectedCount := 9
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics, got %d", expectedCount, len(metrics))
 	}
@@ -538,8 +539,9 @@ func TestGatewaysCollector_Update_Priority_Empty(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// Enabled, monitor disabled, priority="" (empty) — priority metric must be skipped
-	// 1 info + 3 bool metrics (force_down, virtual, dynamic) + 1 monitor = 5 (no priority)
-	expectedCount := 6
+	// 1 info + 5 bool metrics (force_down, virtual, dynamic, monitor_killstates,
+	// monitor_killstates_priority) + 1 monitor = 7 (no priority)
+	expectedCount := 8
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics (priority skipped when empty; status now always emitted), got %d", expectedCount, len(metrics))
 	}
@@ -617,9 +619,9 @@ func TestGatewaysCollector_Update_ProbeUnavailableSkipped(t *testing.T) {
 
 	metrics := collectMetrics(t, c, client)
 
-	// Same shape as TestGatewaysCollector_Update_EnabledWithMonitor (17 metrics)
-	// minus rtt, rttd and loss_percentage (skipped): 14.
-	expectedCount := 14
+	// Same shape as TestGatewaysCollector_Update_EnabledWithMonitor (19 metrics)
+	// minus rtt, rttd and loss_percentage (skipped): 16.
+	expectedCount := 16
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics (rtt/rttd/loss skipped), got %d", expectedCount, len(metrics))
 	}
@@ -664,6 +666,8 @@ func TestGatewaysCollector_Describe_CoversUpdateMetrics(t *testing.T) {
 		"opnsense_gateways_virtual",
 		"opnsense_gateways_dynamic",
 		"opnsense_gateways_priority",
+		"opnsense_gateways_monitor_killstates",
+		"opnsense_gateways_monitor_killstates_priority",
 	}
 
 	for _, name := range wantNames {
@@ -751,8 +755,8 @@ func TestGatewaysCollector_Update_ThresholdInvalidSkipped(t *testing.T) {
 
 	// All 7 threshold metrics (rttLow/rttHigh/lossLow/lossHigh/interval/period/
 	// timeout) are skipped because their values are empty or unparseable:
-	// 17 (full monitor case) - 7 = 10.
-	expectedCount := 10
+	// 19 (full monitor case) - 7 = 12.
+	expectedCount := 12
 	if len(metrics) != expectedCount {
 		t.Errorf("expected %d metrics (invalid thresholds skipped), got %d", expectedCount, len(metrics))
 	}
@@ -773,6 +777,66 @@ func TestGatewaysCollector_Update_ThresholdInvalidSkipped(t *testing.T) {
 				t.Errorf("threshold metric %s should have been skipped for invalid/empty value", skipped)
 			}
 		}
+	}
+}
+
+// TestGatewaysCollector_MonitorKillStates guards #584: monitor_killstates and
+// monitor_killstates_priority must surface as their own 0/1 gauges, keyed the
+// same way (name, address) as the pre-existing force_down/virtual/dynamic
+// gauges, and emitted UNCONDITIONALLY per gateway -- same convention as those
+// three siblings, not gated behind Enabled/MonitorEnabled.
+func TestGatewaysCollector_MonitorKillStates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 1, "rowCount": 1, "current": 1,
+			"rows": [
+				{"disabled": false, "name": "WAN_GW", "descr": "WAN Gateway",
+				 "interface": "igb0", "ipprotocol": "inet", "gateway": "1.2.3.4",
+				 "defaultgw": true, "monitor_disable": "0", "monitor_noroute": "0",
+				 "monitor_killstates": "1", "monitor_killstates_priority": "0",
+				 "monitor": "1.1.1.1", "force_down": "0", "priority": 255, "weight": "1",
+				 "uuid": "abc-123", "if": "wan", "dynamic": false, "virtual": false,
+				 "upstream": true, "interface_descr": "WAN", "status": "Online",
+				 "delay": "1.2 ms", "stddev": "0.3 ms", "loss": "0.0 %", "label_class": "success"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := newCollectorTestClient(t, server)
+	c := &gatewaysCollector{subsystem: GatewaysSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	var killStates, killStatesPriority *float64
+	var killStatesLabels map[string]string
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		if strings.Contains(desc, `fqName: "opnsense_gateways_monitor_killstates"`) {
+			v := getMetricValue(m)
+			killStates = &v
+			killStatesLabels = getMetricLabels(m)
+		}
+		if strings.Contains(desc, `fqName: "opnsense_gateways_monitor_killstates_priority"`) {
+			v := getMetricValue(m)
+			killStatesPriority = &v
+		}
+	}
+	if killStates == nil {
+		t.Fatal("expected opnsense_gateways_monitor_killstates to be emitted")
+	}
+	if *killStates != 1 {
+		t.Errorf("expected monitor_killstates=1, got %v", *killStates)
+	}
+	if killStatesLabels["name"] != "WAN_GW" || killStatesLabels["address"] != "1.2.3.4" {
+		t.Errorf("expected name=WAN_GW address=1.2.3.4, got %+v", killStatesLabels)
+	}
+	if killStatesPriority == nil {
+		t.Fatal("expected opnsense_gateways_monitor_killstates_priority to be emitted")
+	}
+	if *killStatesPriority != 0 {
+		t.Errorf("expected monitor_killstates_priority=0, got %v", *killStatesPriority)
 	}
 }
 

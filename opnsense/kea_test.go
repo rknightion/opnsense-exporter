@@ -199,6 +199,65 @@ func TestFetchKeaLeases6_Success(t *testing.T) {
 	}
 }
 
+// TestFetchKeaLeases6_PrefixLen guards #584: rows[].prefix_len is the
+// delegated block size for an IA_PD (prefix-delegation) lease -- "the
+// clearest opportunity in the whole #457 baseline" per the exemptions
+// ledger. Confirmed against a real captured PD pool row (dhcpv6_search_pd_pool.json,
+// issue #208) that prefix_len can arrive as a quoted numeric string; flexInt
+// must accept that as well as a bare JSON number.
+func TestFetchKeaLeases6_PrefixLen(t *testing.T) {
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+
+	mux.HandleFunc("/api/kea/leases6/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"total": 2,
+			"rowCount": 2,
+			"current": 1,
+			"rows": [
+				{
+					"address": "fd00:172:16:9::",
+					"hwaddr": "aa:bb:cc:dd:ee:10",
+					"hostname": "pd-client",
+					"expire": 1772501000,
+					"if_descr": "LAN",
+					"is_reserved": "0",
+					"type": "IA_PD",
+					"prefix_len": "56"
+				},
+				{
+					"address": "fd00::20",
+					"hwaddr": "aa:bb:cc:dd:ee:20",
+					"hostname": "workstation1",
+					"expire": 1772502000,
+					"if_descr": "LAN",
+					"is_reserved": "0",
+					"type": "IA_NA",
+					"prefix_len": 128
+				}
+			]
+		}`))
+	})
+
+	data, err := client.FetchKeaLeases6()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Leases) != 2 {
+		t.Fatalf("expected 2 leases, got %d", len(data.Leases))
+	}
+
+	pd := data.Leases[0]
+	if pd.PrefixLen != 56 {
+		t.Errorf("expected PrefixLen=56 (quoted-string wire shape) for the IA_PD lease, got %d", pd.PrefixLen)
+	}
+
+	na := data.Leases[1]
+	if na.PrefixLen != 128 {
+		t.Errorf("expected PrefixLen=128 (bare-number wire shape) for the IA_NA lease, got %d", na.PrefixLen)
+	}
+}
+
 func TestFetchKeaLeases4_KeaDisabled(t *testing.T) {
 	server, mux, client := newTestClientWithMux(t)
 	defer server.Close()

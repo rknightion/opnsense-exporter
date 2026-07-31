@@ -65,6 +65,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].prefix_len",
+      "kind": "any"
+    },
+    {
       "path": "rows[].state",
       "kind": "any"
     },

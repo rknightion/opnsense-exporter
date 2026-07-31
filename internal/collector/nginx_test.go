@@ -102,8 +102,9 @@ func TestNginxCollector_Update_Normal(t *testing.T) {
 	//   1 config_load_timestamp_seconds gauge
 	//   1 service_running gauge
 	//   2 ban gauges (bans, ban_last_timestamp_seconds)
-	// total = 4+3+3 + (8+1+8) + (10+2) + (12) + 1 + 1 + 2 = 55
-	expected := 55
+	//   2 counter_wraps_total counters (#584): 1 per server zone, 1 per upstream server
+	// total = 4+3+3 + (8+1+8) + (10+2) + (12) + 1 + 1 + 2 + 2 = 57
+	expected := 57
 	if len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 		for _, m := range metrics {
@@ -178,6 +179,14 @@ func TestNginxCollector_Update_Normal(t *testing.T) {
 		case strings.Contains(desc, "nginx_server_zone_responses_total"):
 			if labels["zone"] == "example.com" && labels["code"] == "2xx" && val != 3800 {
 				t.Errorf("server_zone_responses_total{zone=example.com,code=2xx}: want 3800, got %v", val)
+			}
+		case strings.Contains(desc, "nginx_server_zone_counter_wraps_total"),
+			strings.Contains(desc, "nginx_upstream_server_counter_wraps_total"):
+			// #584: fixture carries no overCounts key -- zero is the correct
+			// "never wrapped" reading, emitted unconditionally like every
+			// other zone/upstream counter in this collector.
+			if val != 0 {
+				t.Errorf("%s: want 0 (absent overCounts in fixture), got %v (labels=%v)", desc, val, labels)
 			}
 		}
 	}
@@ -276,6 +285,74 @@ func TestNginxCollector_Update_PluginAbsent(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 	if len(metrics) != 0 {
 		t.Errorf("expected 0 metrics when plugin absent, got %d", len(metrics))
+	}
+}
+
+// TestNginxCollector_CounterWraps guards #584: overCounts must surface as a
+// COUNTER (nginx-module-vts's ngx_http_vhost_traffic_status_add_oc()
+// increments it, itself monotonically increasing -- never a gauge), split
+// into server_zone_counter_wraps_total / upstream_server_counter_wraps_total
+// to match this collector's existing server_zone_* / upstream_server_*
+// naming split for every other stat, rather than one shared metric that
+// cannot cleanly label both a zone name and an (upstream, server) pair.
+func TestNginxCollector_CounterWraps(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/nginx/service/vts", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+		  "connections": {"active": 1, "reading": 0, "writing": 0, "waiting": 0,
+		                  "accepted": 1, "handled": 1, "requests": 1},
+		  "sharedZones": {"maxSize": 1, "usedSize": 1, "usedNode": 1},
+		  "serverZones": {
+		    "example.com": {"requestCounter": 1, "inBytes": 1, "outBytes": 1,
+		          "overCounts": 3,
+		          "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0}}
+		  },
+		  "upstreamZones": {
+		    "backend_pool": [
+		      {"server": "10.0.0.10:8080", "requestCounter": 1, "inBytes": 1, "outBytes": 1,
+		       "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0},
+		       "overCounts": 7, "down": false}
+		    ]
+		  }
+		}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newCollectorTestClient(t, server)
+
+	c := &nginxCollector{subsystem: NginxSubsystem}
+	c.Register(namespace, "test", promslog.NewNopLogger())
+
+	metrics := collectMetrics(t, c, client)
+
+	var sawServerZone, sawUpstream bool
+	for _, m := range metrics {
+		desc := m.Desc().String()
+		labels := getMetricLabels(m)
+		if strings.Contains(desc, `fqName: "opnsense_nginx_server_zone_counter_wraps_total"`) {
+			sawServerZone = true
+			if labels["zone"] != "example.com" {
+				t.Errorf("expected zone=example.com, got %q", labels["zone"])
+			}
+			if v := getMetricValue(m); v != 3 {
+				t.Errorf("expected server_zone_counter_wraps_total=3, got %v", v)
+			}
+		}
+		if strings.Contains(desc, `fqName: "opnsense_nginx_upstream_server_counter_wraps_total"`) {
+			sawUpstream = true
+			if labels["upstream"] != "backend_pool" || labels["server"] != "10.0.0.10:8080" {
+				t.Errorf("expected upstream=backend_pool server=10.0.0.10:8080, got %+v", labels)
+			}
+			if v := getMetricValue(m); v != 7 {
+				t.Errorf("expected upstream_server_counter_wraps_total=7, got %v", v)
+			}
+		}
+	}
+	if !sawServerZone {
+		t.Error("expected opnsense_nginx_server_zone_counter_wraps_total to be emitted")
+	}
+	if !sawUpstream {
+		t.Error("expected opnsense_nginx_upstream_server_counter_wraps_total to be emitted")
 	}
 }
 

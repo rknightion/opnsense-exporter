@@ -31,8 +31,9 @@ type interfacesCollector struct {
 	unknownProtocolPackets  *prometheus.Desc
 	attachOrStatResetUptime *prometheus.Desc
 
-	adminUp *prometheus.Desc
-	info    *prometheus.Desc
+	adminUp      *prometheus.Desc
+	adminEnabled *prometheus.Desc
+	info         *prometheus.Desc
 
 	familyReceivedPackets *prometheus.Desc
 	familyReceivedBytes   *prometheus.Desc
@@ -149,6 +150,16 @@ func (c *interfacesCollector) Register(namespace, instanceLabel string, log *slo
 	)
 	c.adminUp = buildPrometheusDesc(c.subsystem, "admin_up",
 		"Administrative status of this interface (1 = configured up / ifconfig UP flag set, 0 = admin down). Compare with link_state for carrier detection. Join with other interfaces metrics on the device label; the interface label here is the overview description, which can differ from the traffic-based metrics' interface name for unassigned/pseudo devices.",
+		[]string{"interface", "device"},
+	)
+	c.adminEnabled = buildPrometheusDesc(c.subsystem, "admin_enabled",
+		"OPNsense config-level enabled flag for this interface (1 = enabled in Interfaces > [name], "+
+			"0 = administratively disabled in config). Distinct from admin_up, which reflects the "+
+			"ifconfig UP flag (kernel/runtime state) rather than configuration: use admin_enabled to "+
+			"separate a deliberately-disabled interface (expected, not an incident) from one that is "+
+			"enabled in config but down (a real problem). This endpoint's response is cached for "+
+			"--exporter.cache-ttl (#573); that is fine here since this is config data, not a live "+
+			"status the cache would stale-freeze.",
 		[]string{"interface", "device"},
 	)
 	c.info = buildPrometheusDesc(c.subsystem, "info",
@@ -268,6 +279,7 @@ func (c *interfacesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.unknownProtocolPackets
 	ch <- c.attachOrStatResetUptime
 	ch <- c.adminUp
+	ch <- c.adminEnabled
 	ch <- c.info
 	ch <- c.familyReceivedPackets
 	ch <- c.familyReceivedBytes
@@ -369,6 +381,19 @@ func (c *interfacesCollector) Update(ctx context.Context, client *opnsense.Clien
 			adminVal = 1.0
 		}
 		c.update(ch, c.adminUp, prometheus.GaugeValue, adminVal,
+			iface.Description, iface.Device, c.instance)
+
+		// admin_enabled is unconditional, like admin_up above: Enabled is a
+		// plain always-populated config bool (OverviewController's
+		// parseIfInfo sets it on every row unconditionally), not sparse
+		// hardware-dependent data like the LAGG/bridge/SFP blocks below, so
+		// there is no legitimate "absent" state to presence-gate against
+		// (#584).
+		enabledVal := 0.0
+		if iface.Enabled {
+			enabledVal = 1.0
+		}
+		c.update(ch, c.adminEnabled, prometheus.GaugeValue, enabledVal,
 			iface.Description, iface.Device, c.instance)
 
 		physical := "false"

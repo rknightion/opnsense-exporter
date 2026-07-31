@@ -28,8 +28,16 @@ type gatewaysCollector struct {
 	virtual        *prometheus.Desc
 	dynamic        *prometheus.Desc
 	priority       *prometheus.Desc
-	subsystem      string
-	instance       string
+
+	// killStates/killStatesPriority: whether pf states are killed when this
+	// gateway is marked down (#584). Same label surface and unconditional
+	// (Enabled-independent) emission convention as forceDown/virtual/dynamic
+	// above -- see Update()'s doc comment on why they are not presence-gated.
+	killStates         *prometheus.Desc
+	killStatesPriority *prometheus.Desc
+
+	subsystem string
+	instance  string
 }
 
 func init() {
@@ -132,6 +140,19 @@ func (c *gatewaysCollector) Register(namespace, instanceLabel string, log *slog.
 		"Gateway priority (lower value = higher priority)",
 		[]string{"name", "address"},
 	)
+	c.killStates = buildPrometheusDesc(
+		c.subsystem, "monitor_killstates",
+		"1 if pf states are killed for this gateway when its monitor marks it down, 0 otherwise. "+
+			"Determines what a failover actually does to already-established connections through "+
+			"this gateway.",
+		[]string{"name", "address"},
+	)
+	c.killStatesPriority = buildPrometheusDesc(
+		c.subsystem, "monitor_killstates_priority",
+		"1 if this gateway's state-killing on down is priority-scoped, 0 otherwise. Sibling "+
+			"configuration to monitor_killstates.",
+		[]string{"name", "address"},
+	)
 }
 
 func (c *gatewaysCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -152,6 +173,8 @@ func (c *gatewaysCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.virtual
 	ch <- c.dynamic
 	ch <- c.priority
+	ch <- c.killStates
+	ch <- c.killStatesPriority
 }
 
 // emitThreshold parses a string gateway threshold/probe value (e.g. latency or
@@ -264,6 +287,40 @@ func (c *gatewaysCollector) Update(ctx context.Context, client *opnsense.Client,
 		} else {
 			c.log.Debug("skipping gateway priority metric: empty value", "gateway", v.Name)
 		}
+
+		// monitor_killstates/monitor_killstates_priority (#584): emitted
+		// unconditionally per gateway, same as force_down/virtual/dynamic
+		// above and for the same reason -- both are BooleanField config
+		// values with no legitimate "absent" state distinct from a
+		// deliberately-unset false (the model carries no third state), and
+		// the "== \"1\"" parse above already turns a genuinely missing/null
+		// wire value into the safe false default rather than a fabricated
+		// true. Not gated on v.Enabled: a disabled gateway still has a real
+		// (if inert) kill-states configuration.
+		killStatesFloat := 0.0
+		if v.MonitorKillStates {
+			killStatesFloat = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.killStates,
+			prometheus.GaugeValue,
+			killStatesFloat,
+			v.Name,
+			v.Gateway,
+			c.instance,
+		)
+		killStatesPriorityFloat := 0.0
+		if v.MonitorKillStatesPriority {
+			killStatesPriorityFloat = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			c.killStatesPriority,
+			prometheus.GaugeValue,
+			killStatesPriorityFloat,
+			v.Name,
+			v.Gateway,
+			c.instance,
+		)
 
 		if v.Enabled {
 			ch <- prometheus.MustNewConstMetric(

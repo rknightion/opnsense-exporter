@@ -328,6 +328,16 @@ type interfaceOverviewRow struct {
 	} `json:"vlan"`
 	IsPhysical bool `json:"is_physical"`
 
+	// Enabled is the config-level admin-enabled flag: OverviewController's
+	// parseIfInfo sets it as `!empty($config['enable'])` (opnsense/core,
+	// src/opnsense/mvc/app/controllers/OPNsense/Interfaces/Api/
+	// OverviewController.php, verified against master 2026-07-31) -- a
+	// genuine PHP bool, serialized as JSON true/false. Distinct from
+	// AdminUp below, which is the ifconfig "up" flag (runtime OS state):
+	// this is "configured enabled in Interfaces > [name]", independent of
+	// whatever the kernel currently reports (#584).
+	Enabled bool `json:"enabled"`
+
 	// Configured addresses. OPNsense serves these as arrays of objects, one per
 	// address, each carrying the address in CIDR form ("ipaddr": "10.0.0.114/24").
 	// An interface with no address of a family omits the key entirely (or sends
@@ -406,6 +416,13 @@ type InterfaceOverview struct {
 	VlanParent  string // parent device for VLAN interfaces
 	AdminUp     bool   // ifconfig UP flag present
 	Physical    bool
+
+	// Enabled is the OPNsense config-level admin-enabled flag (Interfaces >
+	// [name] > Enable checkbox), independent of AdminUp (the ifconfig UP
+	// flag, i.e. runtime OS state) and of Status. Separates "configured but
+	// administratively disabled" (expected, not an incident) from "enabled
+	// but down" (#584).
+	Enabled bool
 
 	// IPv4/IPv6 are the interface's configured addresses in CIDR form
 	// (e.g. "10.0.0.114/24", "fe80::1a2b:3cff:fe4d:5e6f/64"), in the order the
@@ -750,6 +767,7 @@ func (c *Client) FetchInterfacesOverview() (InterfacesOverview, *APICallError) {
 			VlanTag:     row.VlanTag,
 			AdminUp:     adminUp,
 			Physical:    row.IsPhysical,
+			Enabled:     row.Enabled,
 			IPv4:        parseInterfaceAddresses(row.IPv4Addrs),
 			IPv6:        parseInterfaceAddresses(row.IPv6Addrs),
 		}

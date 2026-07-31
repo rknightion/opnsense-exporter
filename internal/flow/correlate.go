@@ -42,6 +42,13 @@ type Correlator struct {
 	matched uint64
 	evicted uint64
 	expired uint64
+
+	// enrichmentOverwrites and fragmentDisagreement are #590's self-observability
+	// counters: every other bounded/lossy path in this pipeline counts its
+	// refusals, and these two were the correlator's silent ones. See
+	// observeZenarmorLocked and fragmentDisagrees for what each counts.
+	enrichmentOverwrites uint64
+	fragmentDisagreement uint64
 }
 
 // corrKey groups fragments of one conversation whose flow-end falls in the same
@@ -80,6 +87,21 @@ type CorrelatorStats struct {
 	Matched uint64 // subset emitted as merged (Zenarmor enrichment found)
 	Evicted uint64 // entries force-emitted early because the map hit MaxEntries
 	Expired uint64 // entries emitted on the normal window-expiry path
+
+	// EnrichmentOverwrites counts a second Zenarmor conn document landing for a key
+	// that already held one: the second REPLACES the first wholesale (#590), so
+	// whatever the first carried and the second didn't repeat is gone. Zero on
+	// every deployment where each conversation gets one conn document, which is
+	// the common case; a non-zero rate means Zenarmor is re-reporting a connection
+	// and the correlator is silently keeping only the latest report.
+	EnrichmentOverwrites uint64
+	// FragmentDisagreements counts a NetFlow fragment whose interface, direction,
+	// VLAN or enrichment dimensions differ from the entry's sample - the first
+	// fragment, whose copy of those fields finalize() emits verbatim (#590). The
+	// disagreeing fragment's bytes still count toward the emitted total; only its
+	// DIMENSIONS are dropped, silently until this counter. Excludes TCPFlags on
+	// purpose: that field is unioned across fragments (#585), a merge, not a loss.
+	FragmentDisagreements uint64
 }
 
 // CorrelatorConfig sizes the correlator.
@@ -160,9 +182,30 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 				c.entries--
 			}
 		}
-		e = &corrEntry{key: k, sample: r, firstSeen: r.Observed, start: r.Start, end: r.End}
+		e = &corrEntry{key: k, firstSeen: r.Observed}
 		c.cells[k] = e
 		c.entries++
+	}
+	if !e.hasNF {
+		// The entry's FIRST NetFlow fragment - whether this call created the entry
+		// or a Zenarmor conn document created it earlier (order is not guaranteed;
+		// see observeZenarmorLocked). This establishes the sample every non-volume
+		// dimension (tuple, addresses, interfaces, direction, VLAN) comes from for
+		// the entry's whole life, and the start/end window the loop below only
+		// ever widens.
+		//
+		// #590: the OLD code set e.sample only inside the "e == nil" branch above,
+		// so an entry a Zenarmor document created first NEVER received a sample
+		// from the NetFlow fragment that landed afterwards - finalize() then
+		// emitted the sample's ZERO VALUE (empty CommunityID, invalid SrcAddr,
+		// empty interfaces), not merely "the first fragment's now-stale
+		// dimensions" as originally reported. Proven by
+		// TestCorrelator_ZenarmorFirstStillCarriesNetflowSample.
+		e.sample = r
+		e.start = r.Start
+		e.end = r.End
+	} else if fragmentDisagrees(e.sample, r) {
+		c.fragmentDisagreement++
 	}
 	e.nf.TxBytes += r.NF.TxBytes
 	e.nf.RxBytes += r.NF.RxBytes
@@ -179,6 +222,22 @@ func (c *Correlator) observeNetflowLocked(r Record) []Record {
 		e.end = r.End
 	}
 	return pending
+}
+
+// fragmentDisagrees reports whether r's non-volume dimensions - the ones
+// finalize() takes wholesale from the entry's sample and never merges across
+// fragments - differ from what the sample already recorded (#590). Interface,
+// direction and VLAN are each resolved once per NetFlow record from a FIB/VLAN
+// lookup that should agree fragment to fragment for one real conversation, so a
+// mismatch means the fragments disagree about the conversation's own identity -
+// today dropped with no trace, since only the sample's copy is ever emitted.
+//
+// TCPFlags is deliberately NOT compared: it is unioned across fragments (#585),
+// a merge by design, not a dimension finalize() takes from the sample alone.
+func fragmentDisagrees(sample, r Record) bool {
+	return sample.In != r.In || sample.Out != r.Out ||
+		sample.Direction != r.Direction || sample.VLANID != r.VLANID ||
+		sample.Enrich != r.Enrich
 }
 
 // observeZenarmorLocked stashes a Zenarmor conn document as enrichment for a matching
@@ -199,6 +258,16 @@ func (c *Correlator) observeZenarmorLocked(r Record) {
 		e = &corrEntry{key: k, firstSeen: r.Observed}
 		c.cells[k] = e
 		c.entries++
+	}
+	if e.zen != nil {
+		// A second Zenarmor conn document for the same key OVERWRITES the first
+		// rather than merging (#590): zc below replaces e.zen wholesale, so
+		// anything the first document carried that the second doesn't repeat -
+		// L7, verdict, enrichment, geo - is gone with no trace. A conn document is
+		// a point-in-time close event, not a fragment stream like NetFlow, so
+		// there is no established merge rule to apply here; counting the
+		// overwrite is what makes the loss visible instead of invisible.
+		c.enrichmentOverwrites++
 	}
 	zc := r
 	e.zen = &zc
@@ -259,11 +328,13 @@ func (c *Correlator) Stats() CorrelatorStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return CorrelatorStats{
-		Entries: c.entries,
-		Emitted: c.emitted,
-		Matched: c.matched,
-		Evicted: c.evicted,
-		Expired: c.expired,
+		Entries:               c.entries,
+		Emitted:               c.emitted,
+		Matched:               c.matched,
+		Evicted:               c.evicted,
+		Expired:               c.expired,
+		EnrichmentOverwrites:  c.enrichmentOverwrites,
+		FragmentDisagreements: c.fragmentDisagreement,
 	}
 }
 

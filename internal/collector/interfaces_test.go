@@ -399,7 +399,7 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 					"device": "ixl0", "identifier": "lan", "description": "LAN",
 					"status": "up", "flags": ["up", "broadcast", "running"],
 					"media": "10Gbase-SR <full-duplex>", "link_type": "static",
-					"vlan_tag": null, "is_physical": true
+					"vlan_tag": null, "is_physical": true, "enabled": true
 				},
 				{
 					"device": "ixl0_vlan100", "identifier": "opt3", "description": "MGMT",
@@ -407,7 +407,7 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 					"media": "10Gbase-SR <full-duplex>", "link_type": "static",
 					"vlan_tag": "100",
 					"vlan": {"tag": "100", "proto": "802.1q", "pcp": "7", "parent": "ixl0"},
-					"is_physical": false
+					"is_physical": false, "enabled": false
 				}
 			]
 		}`))
@@ -421,8 +421,8 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 	metrics := collectMetrics(t, c, client)
 
 	// 17 traffic metrics for ixl0 (marker is "" so no attach/reset gauge) +
-	// (admin_up + info) × 2 overview rows = 21
-	if expected := 21; len(metrics) != expected {
+	// (admin_up + admin_enabled + info) × 2 overview rows = 23
+	if expected := 23; len(metrics) != expected {
 		t.Errorf("expected %d metrics, got %d", expected, len(metrics))
 	}
 
@@ -441,6 +441,26 @@ func TestInterfacesCollector_Update_OverviewMetrics(t *testing.T) {
 	}
 	if adminVals["ixl0_vlan100"] != 0 {
 		t.Errorf("expected admin_up=0 for ixl0_vlan100, got %v", adminVals["ixl0_vlan100"])
+	}
+
+	// #584: admin_enabled is the config-level flag (fixture: ixl0 enabled=true,
+	// ixl0_vlan100 enabled=false), independent of admin_up above -- both rows
+	// here have admin_up derived purely from their "flags" array.
+	adminEnabledVals := map[string]float64{}
+	for _, m := range metrics {
+		if strings.Contains(m.Desc().String(), `fqName: "opnsense_interfaces_admin_enabled"`) {
+			labels := getMetricLabels(m)
+			adminEnabledVals[labels["device"]] = getMetricValue(m)
+			if labels["interface"] == "" {
+				t.Error("expected interface label on admin_enabled")
+			}
+		}
+	}
+	if adminEnabledVals["ixl0"] != 1 {
+		t.Errorf("expected admin_enabled=1 for ixl0, got %v", adminEnabledVals["ixl0"])
+	}
+	if adminEnabledVals["ixl0_vlan100"] != 0 {
+		t.Errorf("expected admin_enabled=0 for ixl0_vlan100, got %v", adminEnabledVals["ixl0_vlan100"])
 	}
 
 	foundVlanInfo := false

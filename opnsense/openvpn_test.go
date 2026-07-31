@@ -70,6 +70,82 @@ func TestFetchOpenVPNInstances_Success(t *testing.T) {
 	}
 }
 
+// TestFetchOpenVPNInstances_MaxClients guards #584: maxclients is the
+// server's configured concurrent-client cap (OpenVPN.xml: IntegerField,
+// MinimumValue 1, no Default -- so it is genuinely OPTIONAL config, not just
+// an int that happens to be 0 when unset). A configured cap must parse to its
+// value with Configured=true; an unconfigured (empty-string) cap must yield
+// Configured=false rather than a fabricated MaxClients=0, since 0 would read
+// as "server accepts no clients" when the real meaning is "no cap at all".
+func TestFetchOpenVPNInstances_MaxClients(t *testing.T) {
+	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{
+			"rows": [
+				{
+					"uuid": "vpn-uuid-1",
+					"description": "Road Warrior VPN",
+					"role": "Server",
+					"dev_type": "tun",
+					"enabled": "1",
+					"maxclients": "50"
+				},
+				{
+					"uuid": "vpn-uuid-2",
+					"description": "Unlimited VPN",
+					"role": "Server",
+					"dev_type": "tun",
+					"enabled": "1",
+					"maxclients": ""
+				},
+				{
+					"uuid": "vpn-uuid-3",
+					"description": "Client instance",
+					"role": "Client",
+					"dev_type": "tun",
+					"enabled": "1"
+				}
+			],
+			"rowCount": 3,
+			"total": 3,
+			"current": 1
+		}`))
+	})
+	defer server.Close()
+
+	data, err := client.FetchOpenVPNInstances()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.Rows) != 3 {
+		t.Fatalf("expected 3 instances, got %d", len(data.Rows))
+	}
+
+	configured := data.Rows[0]
+	if !configured.MaxClientsConfigured {
+		t.Error("expected MaxClientsConfigured=true for maxclients:\"50\"")
+	}
+	if configured.MaxClients != 50 {
+		t.Errorf("expected MaxClients=50, got %d", configured.MaxClients)
+	}
+
+	unlimited := data.Rows[1]
+	if unlimited.MaxClientsConfigured {
+		t.Error("expected MaxClientsConfigured=false for an empty-string maxclients (no cap configured)")
+	}
+	if unlimited.MaxClients != 0 {
+		t.Errorf("expected MaxClients=0 (unread) when unconfigured, got %d", unlimited.MaxClients)
+	}
+
+	// A row that omits the "maxclients" key entirely (client-role instances
+	// never send it -- confirmed against OpenVPN.xml, maxclients is a
+	// server-only field) must degrade identically to the empty-string case,
+	// never fail the scrape.
+	absent := data.Rows[2]
+	if absent.MaxClientsConfigured {
+		t.Error("expected MaxClientsConfigured=false when the key is absent entirely")
+	}
+}
+
 func TestFetchOpenVPNInstances_InvalidEnabled(t *testing.T) {
 	server, client := newTestClientWithServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{

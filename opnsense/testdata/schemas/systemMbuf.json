@@ -12,6 +12,10 @@
       "kind": "object"
     },
     {
+      "path": "mbuf-statistics.bytes-in-cache",
+      "kind": "number"
+    },
+    {
       "path": "mbuf-statistics.bytes-in-use",
       "kind": "number"
     },
@@ -60,7 +64,19 @@
       "kind": "number"
     },
     {
+      "path": "mbuf-statistics.jumbo16-cache",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo16-count",
+      "kind": "number"
+    },
+    {
       "path": "mbuf-statistics.jumbo16-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo16-limit",
       "kind": "number"
     },
     {
@@ -68,11 +84,31 @@
       "kind": "number"
     },
     {
+      "path": "mbuf-statistics.jumbo16-total",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo9-cache",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo9-count",
+      "kind": "number"
+    },
+    {
       "path": "mbuf-statistics.jumbo9-failures",
       "kind": "number"
     },
     {
+      "path": "mbuf-statistics.jumbo9-max",
+      "kind": "number"
+    },
+    {
       "path": "mbuf-statistics.jumbo9-sleeps",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.jumbo9-total",
       "kind": "number"
     },
     {
@@ -128,7 +164,15 @@
       "kind": "number"
     },
     {
+      "path": "mbuf-statistics.packet-count",
+      "kind": "number"
+    },
+    {
       "path": "mbuf-statistics.packet-failures",
+      "kind": "number"
+    },
+    {
+      "path": "mbuf-statistics.packet-free",
       "kind": "number"
     },
     {

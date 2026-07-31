@@ -1093,11 +1093,16 @@ def build(b: Builder):
         [
             (sel("opnsense_mbuf_bytes_in_use"), "In Use"),
             (sel("opnsense_mbuf_bytes_total"), "Total"),
+            (sel("opnsense_mbuf_bytes_in_cache"), "In Cache"),
         ],
         unit="bytes",
         w=12,
         h=7,
-        desc="opnsense_mbuf_bytes_*: mbuf memory in bytes (RAW).",
+        desc=(
+            "opnsense_mbuf_bytes_*: mbuf memory in bytes (RAW). in_cache (#579) is memory already "
+            "charged to the mbuf/cluster/jumbo pools but not currently in use -- reusable without a "
+            "new system allocation; upstream emits it in the same netstat -m line as in_use/total."
+        ),
     )
 
     mbuf_failures_ts = b.ts(
@@ -1135,6 +1140,93 @@ def build(b: Builder):
         desc="opnsense_mbuf_sendfile_*_total: sendfile throughput rates.",
     )
 
+    # Secondary mbuf pools (jumbo9 9k / jumbo16 16k jumbo clusters, and the packet
+    # secondary zone) — #579. These pools are only reported on OPNsense releases
+    # whose underlying FreeBSD netstat -m emits them; a pool missing from a panel
+    # means the box's release predates it, not that the pool is empty.
+    mbuf_pool_current_ts = b.ts(
+        "mbuf Secondary Pool Current",
+        [
+            (sel("opnsense_mbuf_pool_current"), "{{pool}}"),
+        ],
+        unit="short",
+        w=12,
+        h=7,
+        desc=(
+            "opnsense_mbuf_pool_current{pool}: items currently in use in each secondary mbuf pool "
+            "-- jumbo9 (9k jumbo clusters), jumbo16 (16k jumbo clusters), packet (the secondary zone "
+            "that pre-combines an mbuf+cluster for m_getcl()) (RAW, #579)."
+        ),
+    )
+
+    mbuf_pool_cache_ts = b.ts(
+        "mbuf Secondary Pool Cache",
+        [
+            (sel("opnsense_mbuf_pool_cache"), "{{pool}}"),
+        ],
+        unit="short",
+        w=12,
+        h=7,
+        desc=(
+            "opnsense_mbuf_pool_cache{pool}: items sitting free in each secondary mbuf pool's cache, "
+            "ready for immediate reuse (RAW, #579). pool=\"packet\" resolves netstat's packet-free "
+            "field, which upstream's own human-readable text labels \"(current/cache)\" -- the same "
+            "current/cache shape as the jumbo9/jumbo16 pools, just a differently-spelled JSON key."
+        ),
+    )
+
+    mbuf_pool_capacity_ts = b.ts(
+        "mbuf Secondary Pool Capacity",
+        [
+            (sel("opnsense_mbuf_pool_total"), "{{pool}} total"),
+            (sel("opnsense_mbuf_pool_max"), "{{pool}} max"),
+        ],
+        unit="short",
+        w=12,
+        h=7,
+        desc=(
+            "opnsense_mbuf_pool_{total,max}{pool}: allocated-so-far and configured ceiling for the "
+            "jumbo9/jumbo16 pools (RAW, #579). Neither series ever carries pool=\"packet\": that zone "
+            "borrows memory from the mbuf and cluster zones rather than owning its own allocation or "
+            "ceiling. jumbo16's max series is read from upstream's differently-named jumbo16-limit "
+            "key and normalised onto this same metric as jumbo9's jumbo9-max -- verified against "
+            "FreeBSD's usr.bin/netstat/mbuf.c: both keys come from an otherwise-identical xo_emit "
+            "format string labelled \"(current/cache/total/max)\" in both cases, so this is an "
+            "upstream naming inconsistency, not two different quantities."
+        ),
+    )
+
+    jumbo9_current = sel("opnsense_mbuf_pool_current", 'pool="jumbo9"')
+    jumbo9_max = sel("opnsense_mbuf_pool_max", 'pool="jumbo9"')
+    jumbo16_current = sel("opnsense_mbuf_pool_current", 'pool="jumbo16"')
+    jumbo16_max = sel("opnsense_mbuf_pool_max", 'pool="jumbo16"')
+    mbuf_jumbo_utilization_bg = b.bargauge(
+        "Jumbo Pool Utilization %",
+        [
+            (f"100 * {jumbo9_current} / ({jumbo9_max} > 0)", "jumbo9"),
+            (f"100 * {jumbo16_current} / ({jumbo16_max} > 0)", "jumbo16"),
+        ],
+        unit="percent",
+        w=12,
+        h=6,
+        mx=100,
+        thresholds=[
+            {"color": "green", "value": None},
+            {"color": "yellow", "value": 80},
+            {"color": "red", "value": 90},
+        ],
+        desc=(
+            "100 * opnsense_mbuf_pool_current / opnsense_mbuf_pool_max for the jumbo9 (9k) and "
+            "jumbo16 (16k) jumbo-cluster pools (#579) -- headroom BEFORE the pool exhausts and the "
+            "box starts dropping jumbo-frame traffic, complementing "
+            "opnsense_mbuf_failures_total{type=\"jumbo9\"|\"jumbo16\"} above, which only reports a "
+            "failure AFTER it already happened. The `> 0` guard is load-bearing, same lesson as "
+            "kernel_memory's Zone Saturation panel (#543): a pool reporting max=0 has NO CEILING "
+            "CONFIGURED, not a ceiling of zero, so an unguarded division would read +Inf. Thresholds "
+            "80/90 match the proposed alert (fire above 90%)."
+        ),
+    )
+
     row_mbuf = b.row("mbuf", [
         mbuf_ts,
         mbuf_cluster_ts,
@@ -1142,6 +1234,10 @@ def build(b: Builder):
         mbuf_failures_ts,
         mbuf_sleeps_ts,
         mbuf_sendfile_ts,
+        mbuf_pool_current_ts,
+        mbuf_pool_cache_ts,
+        mbuf_pool_capacity_ts,
+        mbuf_jumbo_utilization_bg,
     ])
 
     # =========================================================================

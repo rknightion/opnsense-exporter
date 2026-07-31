@@ -138,6 +138,23 @@ def build(b: Builder):
         unit="ops", w=24, h=8, stack=True,
         desc="HTTP response rate by status code class (1xx–5xx) per server zone.",
     )
+    # #584: correctness of the counters above, not a new traffic signal.
+    # nginx-module-vts's own overCounts wrap-detection counter: a non-zero
+    # rate here means one of this zone's requests/bytes/response-code
+    # counters wrapped, so a rate()/increase() spanning that point on those
+    # series is briefly wrong (the same class of correctness gap as 12abef6).
+    zone_counter_wraps = b.ts(
+        "Server Zone Counter Wraps",
+        [(f'rate({sel("opnsense_nginx_server_zone_counter_wraps_total")}[{RATE}])',
+          "{{zone}}")],
+        unit="ops", w=24, h=6,
+        desc=(
+            "Rate of detected counter-wrap events per server zone (vhost-traffic-"
+            "status's own overCounts field). Normally flat at zero; a nonzero "
+            "reading flags a wrap in one of this zone's other counters around "
+            "that time, which briefly distorts any rate()/increase() spanning it."
+        ),
+    )
 
     # ------------------------------------------------------------------ #
     # Row 4: Upstream Servers                                              #
@@ -199,6 +216,17 @@ def build(b: Builder):
         unit="s", w=12, h=8,
         desc="Average upstream response time per upstream server, derived from the "
              "cumulative response-time counter (rate/rate).",
+    )
+    # #584: upstream twin of Server Zone Counter Wraps above.
+    upstream_counter_wraps = b.ts(
+        "Upstream Server Counter Wraps",
+        [(f'rate({sel("opnsense_nginx_upstream_server_counter_wraps_total")}[{RATE}])',
+          "{{upstream}}/{{server}}")],
+        unit="ops", w=24, h=6,
+        desc=(
+            "Rate of detected counter-wrap events per upstream server (vhost-"
+            "traffic-status's own overCounts field). Normally flat at zero."
+        ),
     )
 
     # ------------------------------------------------------------------ #
@@ -285,11 +313,11 @@ def build(b: Builder):
               [shm_max, shm_used, shm_nodes, shm_util],
               present="has_nginx"),
         b.row("Server Zones",
-              [zone_req_rate, zone_bytes, zone_responses],
+              [zone_req_rate, zone_bytes, zone_responses, zone_counter_wraps],
               present="has_nginx"),
         b.row("Upstream Servers",
               [up_down, up_req_rate, up_bytes, up_resp_time, up_responses,
-               up_req_latency, up_resp_latency],
+               up_req_latency, up_resp_latency, upstream_counter_wraps],
               present="has_nginx"),
         b.row("Server Zone Cache Status & Latency",
               [zone_cache_responses, zone_avg_latency],

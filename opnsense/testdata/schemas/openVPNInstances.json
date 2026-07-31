@@ -39,6 +39,10 @@
       "kind": "string"
     },
     {
+      "path": "rows[].maxclients",
+      "kind": "string"
+    },
+    {
       "path": "rows[].role",
       "kind": "string"
     },
