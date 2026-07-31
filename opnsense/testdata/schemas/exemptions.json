@@ -2001,5 +2001,27 @@
       "rows[].name"
     ],
     "note": "NEWLY VISIBLE 2026-07-31 (#589): same shared crowdsecSearchEnvelope RawMessage seam as the bouncer/machine entries above - see opnsense/crowdsec.go:22. All six hub-item controllers upstream emit a byte-identical row shape ('name','status','local_version','local_path', 'description') and only status is consumed, deliberately: a single collection pulls in 50-200 scenarios/parsers, so per-item name labels would be a cardinality trap (the reason is on crowdsecHubItemRow). PRUNE TRIGGER: remove an entry once its field is modelled."
+  },
+  "firewallStates": {
+    "knownExtraPaths": [
+      "rows[].age",
+      "rows[].bytes",
+      "rows[].descr",
+      "rows[].expires",
+      "rows[].flags",
+      "rows[].gateway",
+      "rows[].id",
+      "rows[].iface",
+      "rows[].interface",
+      "rows[].ipproto",
+      "rows[].label",
+      "rows[].nat_addr",
+      "rows[].nat_port",
+      "rows[].pkts",
+      "rows[].reply-to",
+      "rows[].rule",
+      "rows[].state"
+    ],
+    "note": "#603: the pf state table is read for ONE thing - route-to, the egress device pf actually applied - so the row struct models only the pre-NAT 5-tuple, the direction and route-to. Everything listed here is deliberately unmodelled and each is a decision, not an oversight. IDENTITY: id, label, rule, descr, iface, interface (the rule and interface this state was created by; unbounded, and the exporter already exports firewall rule metrics from firewallRules). VOLUME: bytes and pkts are per-state [in,out] pairs, which is the same traffic ng_netflow already exports per flow - counting it twice from two sources with no way to reconcile them is exactly what #346 decision 3 exists to avoid. LIFECYCLE: age, expires, state (the TCP state string). NAT: nat_addr/nat_port are the post-NAT binding, and the whole point of the pf mechanism over the destination-match design is that NO NAT join is needed - the direction=\"in\" row IS the pre-NAT view. ROUTING: gateway is null on every row observed live (the routing decision travels in route-to), flags is a small array of pf state flags, ipproto is the address family, and reply-to is route-to's inbound twin, present on 126 of 6,602 rows and not the direction this repair acts on. OPPORTUNITY, if any of it is ever wanted: a per-state-table breakdown by TCP state or by rule would be a genuine metric, and reply-to would extend the repair to inbound policy routing. PRUNE TRIGGER: remove an entry once its field is modelled. Verified against a live production OPNsense 26.7.1_1 on 2026-07-31 (6,602 rows)."
   }
 }
