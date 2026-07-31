@@ -452,11 +452,11 @@ Every shipped line then carries a `sampled="true"` attribute so a consumer knows
 stream is incomplete and must use the counters for totals. Turn that stamp off with
 `--logs.syslog.sampled-attribute=false` if you would rather not have it.
 
-### WireGuard and Tailscale tunnel lifecycle attributes
+### WireGuard, Tailscale and NetBird tunnel lifecycle attributes
 
-`wireguard` and `tailscaled` lines also carry `vpn.backend`, `vpn.event` and
-`vpn.result`, so the dashboard's **Tunnel lifecycle** annotation layer marks them the
-same way it marks IPsec and OpenVPN. They are **not counted into
+`wireguard`, `tailscaled` and `/usr/local/bin/netbird` lines also carry `vpn.backend`,
+`vpn.event` and `vpn.result`, so the dashboard's **Tunnel lifecycle** annotation layer
+marks them the same way it marks IPsec and OpenVPN. They are **not counted into
 `opnsense_log_events_vpn_total`**: that counter's `backend` label stays `ipsec` or
 `openvpn`, and its `connection` label is resolved from an IPsec or OpenVPN id that
 these lines do not contain. The records are unaffected, and because they are not
@@ -474,11 +474,13 @@ The granularity is different and it matters when you read a marker: these are
 | `tailscaled` | `Switching ipn state <from> -> Running (WantRunning=…, nm=…)` | `established` |
 | `tailscaled` | `Switching ipn state Running -> <to> (WantRunning=…, nm=…)` | `terminated` |
 | `tailscaled` | `Destroying <dev> adapter` (the rc script's service-stop teardown) | `terminated` |
+| `/usr/local/bin/netbird` | `Netbird engine started, the IP is: <addr>` | `established` |
+| `/usr/local/bin/netbird` | `stopped NetBird client` | `terminated` |
 
-`vpn.result` is always `success`: neither app-name states an authentication,
+`vpn.result` is always `success`: none of these app-names states an authentication,
 certificate or liveness verdict.
 
-Three things to know before expecting these to appear:
+Four things to know before expecting these to appear:
 
 - **WireGuard's per-peer handshakes are not events, and they are not even here.** They
   come from the FreeBSD kernel driver, so they arrive under program `kernel`, and they
@@ -494,14 +496,23 @@ Three things to know before expecting these to appear:
   OPNsense's config regeneration), the only line you will see is the service-stop
   teardown. The two never double-count one event: a `service tailscaled stop` produces
   no ipn state line, and `tailscale down` produces no teardown line.
-- **`netbird` still has no parser**, and that is a finding rather than a to-do. Its
-  daemon publishes to syslog under the app-name `/usr/local/bin/netbird` — Go's
-  `log/syslog` substitutes `argv[0]` when the tag is empty, and NetBird passes an empty
-  tag — so nothing registered for `netbird` can reach it; only the three lines the rc
-  script writes with `logger -t netbird` really carry that app-name, and none is a
-  tunnel transition. Its per-peer open/close lines are also driven by the
-  lazy-connection idle timer (15 minutes by default, toggled by a server-side feature
-  flag the exporter cannot see), so they say nothing about tunnel health.
+- **NetBird's app-name is a PATH, not a program name, and that is not a typo above.**
+  The daemon passes an empty syslog tag, Go's `log/syslog` substitutes `argv[0]`, and
+  the rc script starts it as `/usr/local/bin/netbird` — so that is what arrives on the
+  wire, confirmed against an enrolled box. If you filter your own log pipeline by
+  program name, `netbird` matches only the rc script's service-start notice; the
+  daemon's several thousand lines a day are under the path.
+- **NetBird's markers are the ENGINE, and its per-peer lines are deliberately not
+  events.** `client/internal/lazyconn` closes and reopens an idle peer on a 15-minute
+  inactivity threshold, and whether it does so at all is decided by a **server-side
+  management feature flag** the firewall cannot see, so `peer connection closed` means
+  different things on different tenants and the log cannot tell them apart. The engine
+  pair above is immune to that: both lines come from one function, and the terminated
+  line sits strictly downstream of the established one, so a teardown marker can never
+  appear without a matching bring-up. Note also that `starting`/`stopped NetBird
+  service` are the **daemon process**, not the overlay — an unenrolled box logs those
+  all day and never establishes a tunnel — and `stopped Netbird Engine` is logged
+  **twice** per teardown from two call sites upstream. Neither is an event here.
 
 ## TLS transport (optional)
 
@@ -545,7 +556,7 @@ record with its message body verbatim and its envelope as metadata.
 | `kernel` | FreeBSD CARP transitions only: `carp.event`, `carp.state.previous`, `carp.state.current`, `carp.interface`, `carp.vhid`, `carp.reason`, `carp.demotion.delta`, `carp.demotion.total`. **Every other kernel line stays a generic record** - link state, watchdogs, ZFS, USB and the rest are not claimed. |
 | `miniupnpd` | UPnP/NAT-PMP mapping expiries and failures: `upnp.event`, `upnp.result`, `upnp.protocol`, `upnp.port.external`, `upnp.port.internal`. **No successful add or delete, and no active-mapping count** - see above. Request, response and daemon-lifecycle lines stay generic records. |
 | `charon`, `openvpn_*` | IPsec and OpenVPN tunnel lifecycle: `vpn.backend`, `vpn.event`, `vpn.result` and nothing else - no username, certificate subject, IKE identity, address or port is extracted. `openvpn_*` is matched by PREFIX because OPNsense names one program per configured instance. Only the captured grammar above is parsed; everything else stays a generic record. |
-| `wireguard`, `tailscaled` | The same three `vpn.*` attributes, at **service** granularity rather than per peer: a WireGuard instance started/stopped/switched by CARP, and this node's own Tailscale ipn state entering or leaving `Running`. **Not counted** into `opnsense_log_events_vpn_total` - see [WireGuard and Tailscale tunnel lifecycle attributes](#wireguard-and-tailscale-tunnel-lifecycle-attributes). No instance name, device, node key or peer is extracted. |
+| `wireguard`, `tailscaled`, `/usr/local/bin/netbird` | The same three `vpn.*` attributes, at **service** granularity rather than per peer: a WireGuard instance started/stopped/switched by CARP, this node's own Tailscale ipn state entering or leaving `Running`, and the NetBird engine coming up with an overlay address or its connect loop finishing teardown. NetBird's app-name is `argv[0]`, not `netbird` - see below. **Not counted** into `opnsense_log_events_vpn_total` - see [WireGuard, Tailscale and NetBird tunnel lifecycle attributes](#wireguard-tailscale-and-netbird-tunnel-lifecycle-attributes). No instance name, device, node key, peer or overlay address is extracted. |
 | `suricata` | Suricata EVE **alerts only**, when the `syslog_eve` setting is forwarding them: `event_type`, `signature`, `alert_sid`, `alert_action`, `alert_category`, `alert_severity`, resolved `src`/`dest` endpoints. See [Suricata alerts](#suricata-alerts-pick-one-path) below. Non-JSON `suricata` lines (engine text) stay generic. |
 | `cron`, `/usr/sbin/cron` | `cron.user`, `cron.action` (`cmd`/`mail`), `cron.command` (CMD lines only, never set for MAIL). |
 | `radvd` | `radvd.event` (`polling`/`timer`), `interface`, `interface.name`, `radvd.interval_seconds` (polling lines only). |
@@ -590,9 +601,10 @@ So the line above arrives looking like this:
 
 Every other program OPNsense routes through syslog-ng - the bare `configd` daemon (as
 opposed to `configd.py`'s authorisation/RPC lines, parsed above), routing daemons
-(`bgpd`, `ospfd`, `zebra`), `netbird` (the one VPN backend with no parser, for the
-reasons above), package installs, `su`, `sudo`, and a catch-all for everything else -
-ships as a generic record with its raw body and its envelope attributes.
+(`bgpd`, `ospfd`, `zebra`), `netbird` (the rc script's app-name, which carries only a
+service-start notice; the daemon's own lines are parsed under `argv[0]` as above),
+package installs, `su`, `sudo`, and a catch-all for everything else - ships as a generic
+record with its raw body and its envelope attributes.
 
 ## Querying it in Loki
 

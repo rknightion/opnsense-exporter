@@ -304,14 +304,23 @@ func TestNginxCollector_CounterWraps(t *testing.T) {
 		  "sharedZones": {"maxSize": 1, "usedSize": 1, "usedNode": 1},
 		  "serverZones": {
 		    "example.com": {"requestCounter": 1, "inBytes": 1, "outBytes": 1,
-		          "overCounts": 3,
+		          "overCounts": {"maxIntegerSize": 18446744073709551615,
+		                         "requestCounter": 3, "inBytes": 0, "outBytes": 0,
+		                         "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0,
+		                         "miss": 0, "bypass": 0, "expired": 0, "stale": 0,
+		                         "updating": 0, "revalidated": 0, "hit": 0, "scarce": 0,
+		                         "requestMsecCounter": 0},
 		          "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0}}
 		  },
 		  "upstreamZones": {
 		    "backend_pool": [
 		      {"server": "10.0.0.10:8080", "requestCounter": 1, "inBytes": 1, "outBytes": 1,
 		       "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0},
-		       "overCounts": 7, "down": false}
+		       "overCounts": {"maxIntegerSize": 18446744073709551615,
+		                      "requestCounter": 7, "inBytes": 0, "outBytes": 0,
+		                      "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0,
+		                      "requestMsecCounter": 0, "responseMsecCounter": 0},
+		       "down": false}
 		    ]
 		  }
 		}`))

@@ -45,6 +45,11 @@ const (
 	vpnBackendWireGuard = "wireguard"
 	vpnBackendTailscale = "tailscale"
 
+	// The third SERVICE-LIFECYCLE backend, added by #601 once a live capture settled
+	// netbird's app-name and its lifecycle edge (netbird.go). Same treatment as the two
+	// above: a RECORD attribute value only, never a metric label.
+	vpnBackendNetBird = "netbird"
+
 	vpnEventEstablished          = "established"
 	vpnEventTerminated           = "terminated"
 	vpnEventAuthenticationFailed = "authentication_failed"
@@ -480,32 +485,34 @@ var nonDerivedPrograms = map[string]bool{
 	"radvd":          true,
 	"unbound":        true,
 
-	// wireguard and tailscaled (#596) are the awkward pair here, and the decision is
-	// deliberate rather than an oversight: both DO write the vpn.event attribute, so
-	// they feed the dashboard's Tunnel lifecycle annotation layer (a Loki query over
-	// log records, which is what #596 was filed to fix), but neither is counted into
-	// opnsense_log_events_vpn_total.
+	// wireguard, tailscaled (#596) and netbird (#601) are the awkward group here, and the
+	// decision is deliberate rather than an oversight: all three DO write the vpn.event
+	// attribute, so they feed the dashboard's Tunnel lifecycle annotation layer (a Loki
+	// query over log records, which is what #596 was filed to fix), but none is counted
+	// into opnsense_log_events_vpn_total.
 	//
 	// Why not: that counter is #406's FROZEN tuple. Its backend dimension is a closed
 	// two-value vocabulary, its help text states in so many words that it counts "IPsec
 	// (charon) and OpenVPN tunnel lifecycle transitions" from the grammar captured on
 	// OPNsense 27.1.a_40, and its `connection` label is resolved from an IPsec ikeid or
-	// an OpenVPN instance UUID — identifiers a WireGuard or Tailscale line does not
-	// contain, so both would count under a permanently empty connection. Adding a
-	// backend value without moving the help text, the generated metrics reference and
-	// the log_events panel description in the same change would leave the metric
-	// documenting something it no longer does, which is exactly the class of silent
-	// drift attrHTTPResponseStatusCode above exists to prevent.
+	// an OpenVPN instance UUID — an identifier a WireGuard, Tailscale or NetBird line
+	// does not contain, so all three would count under a permanently empty connection.
+	// Adding a backend value without moving the help text, the generated metrics
+	// reference and the log_events panel description in the same change would leave the
+	// metric documenting something it no longer does, which is exactly the class of
+	// silent drift attrHTTPResponseStatusCode above exists to prevent.
 	//
 	// Consequence to know about: observeDerived returns false for these programs, so
 	// sampleKeep NEVER drops their lines (an uncounted line is always kept). The
 	// records themselves are unaffected — they ship with the full vpn triple.
 	//
-	// Promoting them later is one coherent piece of work, not a one-line edit: add both
-	// to programFamily, widen the counter's help text, regenerate docs, and update the
-	// panel description that names the two backends.
+	// Promoting them later is one coherent piece of work, not a one-line edit: add all
+	// three to programFamily, widen the counter's help text, regenerate docs, and update
+	// the panel description that names the two counted backends.
 	"wireguard":  true,
 	"tailscaled": true,
+	// netbird's key here is argv[0], not a program name — see netbirdDaemonProgram.
+	netbirdDaemonProgram: true,
 }
 
 // deriveFamily reports the derived metric family for a syslog program name.

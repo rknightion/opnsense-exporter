@@ -55,6 +55,76 @@ type nginxVtsCacheZoneResponses struct {
 	Scarce      float64 `json:"scarce"`
 }
 
+// nginxVtsOverCounts is an overCounts group: nginx-module-vts's own
+// wrap-detection counters. The add_oc macro
+// (ngx_http_vhost_traffic_status_module.h) bumps a dedicated _oc field by 1 each
+// time a worker-shard's raw counter is found to be LESS than the already-
+// accumulated total, i.e. that shard's counter wrapped. Each _oc field is
+// itself monotonic and resets only alongside every other vts counter on an
+// nginx reload, so all of these are COUNTERS.
+//
+// #609: there is one wrap counter PER underlying counter, and
+// display_json.h emits them as an OBJECT keyed exactly like the counters they
+// shadow. #584 modelled the group as a single float64, which made the entire
+// payload fail to unmarshal — and since unmarshalBody turns any decode error
+// into an APICallError, that lost every VTS metric rather than just this one.
+//
+// Which keys are present varies by build and by zone kind, and absent is NOT
+// the same as zero-that-was-sent: the eight cache keys appear only on an
+// NGX_HTTP_CACHE build, responseMsecCounter only on upstream zones. Absent keys
+// decode to 0 and contribute 0 to total(), which is the correct reading — a
+// counter that cannot wrap has not wrapped.
+type nginxVtsOverCounts struct {
+	// MaxIntegerSize is the build's counter ceiling (2^64-1 on a 64-bit box),
+	// emitted with a %s conversion as a bare literal. It overflows int64, so it
+	// is carried as a flexString: it is a capability constant, never exported,
+	// and modelled only so the canary does not report it as unmodelled drift.
+	MaxIntegerSize flexString `json:"maxIntegerSize"`
+
+	RequestCounter float64 `json:"requestCounter"`
+	InBytes        float64 `json:"inBytes"`
+	OutBytes       float64 `json:"outBytes"`
+
+	R1xx float64 `json:"1xx"`
+	R2xx float64 `json:"2xx"`
+	R3xx float64 `json:"3xx"`
+	R4xx float64 `json:"4xx"`
+	R5xx float64 `json:"5xx"`
+
+	// Cache-status wrap counters: NGX_HTTP_CACHE builds only, server zones and
+	// cache zones only.
+	Miss        float64 `json:"miss"`
+	Bypass      float64 `json:"bypass"`
+	Expired     float64 `json:"expired"`
+	Stale       float64 `json:"stale"`
+	Updating    float64 `json:"updating"`
+	Revalidated float64 `json:"revalidated"`
+	Hit         float64 `json:"hit"`
+	Scarce      float64 `json:"scarce"`
+
+	RequestMsecCounter float64 `json:"requestMsecCounter"`
+	// ResponseMsecCounter is emitted for upstream zones only.
+	ResponseMsecCounter float64 `json:"responseMsecCounter"`
+}
+
+// total sums every wrap counter in the group, excluding MaxIntegerSize (a
+// capability constant, not a wrap count). This is what the exported
+// *_counter_wraps_total metrics carry, and it matches what they already
+// promise: the number of times ONE OF this zone's counters was seen to wrap.
+//
+// A per-sub-counter breakdown was considered and rejected (#609): it would be
+// more faithful but multiplies series ~17x per zone for values that are
+// permanently 0 on any 64-bit box, and the operational question — did anything
+// wrap in this zone, so is a rate() here discontinuous — is answered exactly by
+// the sum.
+func (o nginxVtsOverCounts) total() float64 {
+	return o.RequestCounter + o.InBytes + o.OutBytes +
+		o.R1xx + o.R2xx + o.R3xx + o.R4xx + o.R5xx +
+		o.Miss + o.Bypass + o.Expired + o.Stale +
+		o.Updating + o.Revalidated + o.Hit + o.Scarce +
+		o.RequestMsecCounter + o.ResponseMsecCounter
+}
+
 // nginxVtsServerZone is one entry from the serverZones map in the VTS payload.
 type nginxVtsServerZone struct {
 	RequestCounter     float64                     `json:"requestCounter"`
@@ -62,15 +132,8 @@ type nginxVtsServerZone struct {
 	OutBytes           float64                     `json:"outBytes"`
 	Responses          nginxVtsServerZoneResponses `json:"responses"`
 	RequestMsecCounter float64                     `json:"requestMsecCounter"` // cumulative sum of request times, ms
-	// OverCounts is nginx-module-vts's own wrap-detection counter
-	// (ngx_http_vhost_traffic_status_add_oc(), src/ngx_http_vhost_traffic_
-	// status_module.h): incremented by 1 each time a worker-shard's raw
-	// counter is found to be LESS than the already-accumulated total for
-	// this zone, i.e. that shard's counter wrapped. It is itself
-	// monotonically increasing (a COUNTER, never reset except alongside
-	// every other vts counter on an nginx reload) -- verified against
-	// upstream source 2026-07-31, #584.
-	OverCounts float64 `json:"overCounts"`
+	// OverCounts is this zone's wrap-detection group -- see nginxVtsOverCounts.
+	OverCounts nginxVtsOverCounts `json:"overCounts"`
 }
 
 // nginxVtsUpstream is one upstream server entry inside the upstreamZones map.
@@ -84,9 +147,10 @@ type nginxVtsUpstream struct {
 	RequestMsecCounter  float64           `json:"requestMsecCounter"`  // cumulative sum of request times, ms
 	ResponseMsecCounter float64           `json:"responseMsecCounter"` // cumulative sum of response times, ms
 	Down                bool              `json:"down"`
-	// OverCounts: see nginxVtsServerZone.OverCounts -- same wrap-detection
-	// counter, one per upstream server entry.
-	OverCounts float64 `json:"overCounts"`
+	// OverCounts: see nginxVtsOverCounts -- same wrap-detection group, one per
+	// upstream server entry. An upstream group additionally carries
+	// responseMsecCounter and never carries the cache keys.
+	OverCounts nginxVtsOverCounts `json:"overCounts"`
 }
 
 // nginxVtsCacheZone is one entry from the cacheZones map in the VTS payload —
@@ -311,7 +375,7 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 			ResponsesByCode:      nginxVtsServerZoneHTTPResponsesToMap(sz.Responses),
 			CacheResponsesByCode: nginxVtsServerZoneCacheResponsesToMap(sz.Responses),
 			RequestSecondsTotal:  sz.RequestMsecCounter / 1000,
-			CounterWraps:         sz.OverCounts,
+			CounterWraps:         sz.OverCounts.total(),
 		})
 	}
 
@@ -329,7 +393,7 @@ func (c *Client) FetchNginxVTS() (NginxVTS, *APICallError) {
 				ResponseTimeSeconds:  srv.ResponseMsec / 1000,
 				RequestSecondsTotal:  srv.RequestMsecCounter / 1000,
 				ResponseSecondsTotal: srv.ResponseMsecCounter / 1000,
-				CounterWraps:         srv.OverCounts,
+				CounterWraps:         srv.OverCounts.total(),
 			})
 		}
 	}

@@ -76,6 +76,20 @@ func TestTunnelLifecycleAnnotationMatchesEveryVPNLifecycleParser(t *testing.T) {
 			event:   "terminated",
 			message: `Switching ipn state Running -> Stopped (WantRunning=false, nm=true)`,
 		},
+		// netbird's program is argv[0], captured live rather than predicted (#601). It is
+		// the case this test most needs, because the app-name being a PATH is what made
+		// subsystemFor miss it: this row fails without the registry entry even though the
+		// parser matches, which is exactly the two-sided drift the test exists to catch.
+		{
+			program: netbirdDaemonProgram,
+			event:   "established",
+			message: `Netbird engine started, the IP is: 100.64.0.5/16`,
+		},
+		{
+			program: netbirdDaemonProgram,
+			event:   "terminated",
+			message: `stopped NetBird client`,
+		},
 	}
 
 	for _, tc := range cases {

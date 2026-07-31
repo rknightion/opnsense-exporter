@@ -19,6 +19,12 @@ const minReasonLen = 20
 //
 // Regenerate the report with `make fieldaudit`.
 var Exemptions = map[string]string{
+	// opnsense/nginx.go:82  json:"maxIntegerSize"
+	"opnsense.nginxVtsOverCounts.MaxIntegerSize": "Modelled deliberately so the canary does not report it as unmodelled drift, and " +
+		"deliberately never read (#609). It is nginx-module-vts's build-time counter " +
+		"ceiling (2^64-1 on any 64-bit box), a capability constant rather than a reading, " +
+		"so it is excluded from nginxVtsOverCounts.total() and never reaches a metric. " +
+		"Carried as flexString because the bare literal overflows int64.",
 	// opnsense/schema_coverage.go:83  json:"pruneTrigger"
 	"opnsense.CoveragePath.PruneTrigger": "Documentary field in a committed ledger/golden file, not an OPNsense response: it is " +
 		"round-tripped by json so a reviewer reading the JSON knows why an entry exists, and " +

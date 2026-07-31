@@ -202,24 +202,29 @@ var subsystems = map[string]string{
 	"charon":    "ipsec",
 	"openvpn":   "vpn",
 	"wireguard": "vpn",
-	// `netbird` has NO parser, and that is a blocked finding rather than a gap waiting
-	// for someone with an afternoon (#596). This entry only ever reaches the THREE lines
-	// the FreeBSD port's rc script emits with `logger -s -t netbird` ("Starting
-	// netbird.", the orphaned-interface destroy, the poststop destroy) — none of which is
-	// a tunnel transition.
+	// NETBIRD PUTS TWO APP-NAMES ON THE WIRE AND ONLY ONE OF THEM LOOKS LIKE A PROGRAM.
+	// `netbird` is the rc script's own `logger -s -t netbird` tag; the DAEMON logs under
+	// `/usr/local/bin/netbird`, because netbird's syslog hook passes an EMPTY tag
+	// (util/syslog_nonwindows.go:17) and Go's log/syslog substitutes `os.Args[0]`, which
+	// the rc script sets to `%%PREFIX%%/bin/netbird`. Captured live on the enrolled devel
+	// testbed 2026-07-31 (#601): 4,817 of 4,888 retained lines carry the path, 12 carry
+	// `netbird`, and all 12 are `Starting netbird.`
 	//
-	// The daemon's own lines do not arrive under this program name at all. OPNsense's
-	// plugin starts it with `netbird_logfile="syslog"`, netbird then calls
-	// `lSyslog.NewSyslogHook("", "", syslog.LOG_INFO, "")` with an EMPTY tag
-	// (util/syslog_nonwindows.go), and Go's log/syslog substitutes `os.Args[0]` for an
-	// empty tag — which the rc script sets to the full path — so the app-name on the wire
-	// is `/usr/local/bin/netbird`. Neither an exact nor a prefix registration on
-	// `netbird` can reach it. (Verified in the Go standard library, not inferred.)
-	// Registering the full path would be guessing at PREFIX and argv, and would need a
-	// live capture first; see #596 for the rest of the reasoning, including why netbird's
-	// peer open/close lines are idle-driven churn rather than lifecycle edges.
-	"netbird":    "vpn",
-	"tailscaled": "vpn",
+	// Both entries are needed and only one of them existed. Until #601 this map held
+	// `netbird` alone, so subsystemFor returned EMPTY for the daemon's app-name and every
+	// one of those 4,817 lines shipped UNATTRIBUTED — not, as #596 assumed, as generic
+	// records carrying a subsystem. That also meant the Tunnel lifecycle annotation's
+	// deliberately wide `opnsense_subsystem=~"vpn|ipsec"` filter could not select netbird
+	// records even as a denominator, so the "a wide regex keeps the gap observable"
+	// argument silently did not hold for this one program. Same class of miss as
+	// `tailscale` without the trailing `d` below, with a worse blast radius.
+	//
+	// The parser (netbird.go) is registered for the DAEMON name only. `netbird` gets
+	// attribution and deliberately no parser: a service-start notice is not a tunnel
+	// transition, exactly as for `tailscale`.
+	"netbird":                "vpn",
+	"/usr/local/bin/netbird": "vpn",
+	"tailscaled":             "vpn",
 	// The Tailscale plugin puts TWO app-names on the wire: the daemon logs as
 	// `tailscaled`, and its rc script logs as `tailscale` via `logger -s -t
 	// tailscale` ("Enabling Exit node mode", "Opting out of client logging

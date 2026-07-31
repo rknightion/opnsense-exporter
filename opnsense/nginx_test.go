@@ -135,29 +135,52 @@ func TestFetchNginxVTS_Normal(t *testing.T) {
 	}
 }
 
-// TestFetchNginxVTS_OverCounts guards #584: serverZones.*.overCounts and
-// upstreamZones.*[].overCounts are vhost-traffic-status's own wrap-detection
-// counters (nginx-module-vts ngx_http_vhost_traffic_status_add_oc(): each
-// incremented once whenever a shard's counter is found to have wrapped past
-// its own accumulated value -- itself monotonically increasing, i.e. a
-// COUNTER, never a gauge). A non-zero value here means the underlying
-// request/byte/response counters it accompanies wrapped and their rate()
-// series has a discontinuity -- correctness-relevant for series already shipped.
+// TestFetchNginxVTS_OverCounts guards #584 as corrected by #609:
+// serverZones.*.overCounts and upstreamZones.*[].overCounts are vhost-traffic-
+// status's own wrap-detection counters (nginx-module-vts's add_oc macro
+// increments a per-counter _oc field whenever a shard's counter is found to
+// have wrapped past its own accumulated value -- itself monotonically
+// increasing, i.e. a COUNTER, never a gauge).
+//
+// The shape is an OBJECT carrying one wrap counter PER underlying counter, not
+// a single number: display_json.h emits "overCounts":{"maxIntegerSize":...,
+// "requestCounter":...,"inBytes":...,...}. #584 modelled it as a float64,
+// which made the whole payload fail to unmarshal and took every VTS metric
+// with it (unmarshalBody turns any decode error into an APICallError). The
+// fixture below is the real emitter shape; the previous one encoded
+// "overCounts": 3, a shape upstream cannot produce.
+//
+// CounterWraps is the SUM across those sub-counters -- exactly what the
+// exported metric already claims ("count of times ONE OF this server zone's
+// own vts counters ... has been detected to wrap"). maxIntegerSize is excluded:
+// it is a build capability constant (2^64-1 on a 64-bit box), not a wrap count.
 func TestFetchNginxVTS_OverCounts(t *testing.T) {
+	// maxIntegerSize is 2^64-1, which overflows int64 -- it is deliberately
+	// carried as a flexString so a bare huge literal cannot fail the decode.
 	const fixture = `{
 	  "connections": {"active": 1, "reading": 0, "writing": 0, "waiting": 0,
 	                  "accepted": 1, "handled": 1, "requests": 1},
 	  "sharedZones": {"maxSize": 1, "usedSize": 1, "usedNode": 1},
 	  "serverZones": {
-	    "example.com": {"requestCounter": 5000000000, "inBytes": 1, "outBytes": 1,
-	          "overCounts": 3,
-	          "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0}}
+	    "example.com": {"requestCounter": 5000000000, "inBytes": 11, "outBytes": 22,
+	          "requestMsecCounter": 33,
+	          "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0},
+	          "overCounts": {"maxIntegerSize": 18446744073709551615,
+	                         "requestCounter": 3, "inBytes": 1, "outBytes": 2,
+	                         "1xx": 0, "2xx": 4, "3xx": 0, "4xx": 0, "5xx": 0,
+	                         "miss": 0, "bypass": 0, "expired": 0, "stale": 0,
+	                         "updating": 0, "revalidated": 0, "hit": 0, "scarce": 0,
+	                         "requestMsecCounter": 5}}
 	  },
 	  "upstreamZones": {
 	    "backend_pool": [
 	      {"server": "10.0.0.10:8080", "requestCounter": 1, "inBytes": 1, "outBytes": 1,
 	       "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0},
-	       "overCounts": 7, "down": false}
+	       "down": false,
+	       "overCounts": {"maxIntegerSize": 18446744073709551615,
+	                      "requestCounter": 7, "inBytes": 1, "outBytes": 1,
+	                      "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 2,
+	                      "requestMsecCounter": 3, "responseMsecCounter": 4}}
 	    ]
 	  }
 	}`
@@ -175,14 +198,71 @@ func TestFetchNginxVTS_OverCounts(t *testing.T) {
 	if len(data.ServerZones) != 1 {
 		t.Fatalf("expected 1 server zone, got %d", len(data.ServerZones))
 	}
-	if data.ServerZones[0].CounterWraps != 3 {
-		t.Errorf("server zone CounterWraps: want 3, got %v", data.ServerZones[0].CounterWraps)
+	sz := data.ServerZones[0]
+	// 3 + 1 + 2 + 4 + 5, with maxIntegerSize excluded.
+	if sz.CounterWraps != 15 {
+		t.Errorf("server zone CounterWraps: want 15, got %v", sz.CounterWraps)
+	}
+	// The regression that mattered was collateral: a failed decode lost every
+	// sibling counter too, so assert they survived rather than only the sum.
+	if sz.Requests != 5000000000 {
+		t.Errorf("server zone Requests: want 5000000000, got %v", sz.Requests)
+	}
+	if sz.BytesIn != 11 || sz.BytesOut != 22 {
+		t.Errorf("server zone bytes: want 11/22, got %v/%v", sz.BytesIn, sz.BytesOut)
+	}
+	if sz.RequestSecondsTotal != 0.033 {
+		t.Errorf("server zone RequestSecondsTotal: want 0.033, got %v", sz.RequestSecondsTotal)
 	}
 	if len(data.UpstreamServers) != 1 {
 		t.Fatalf("expected 1 upstream server, got %d", len(data.UpstreamServers))
 	}
-	if data.UpstreamServers[0].CounterWraps != 7 {
-		t.Errorf("upstream CounterWraps: want 7, got %v", data.UpstreamServers[0].CounterWraps)
+	us := data.UpstreamServers[0]
+	// 7 + 1 + 1 + 2 + 3 + 4, with maxIntegerSize excluded.
+	if us.CounterWraps != 18 {
+		t.Errorf("upstream CounterWraps: want 18, got %v", us.CounterWraps)
+	}
+	if us.Requests != 1 {
+		t.Errorf("upstream Requests: want 1, got %v", us.Requests)
+	}
+}
+
+// TestFetchNginxVTS_OverCountsCacheBuildOmitsCacheKeys guards the other half of
+// #609's shape finding: display_json.h emits the eight cache wrap keys (miss,
+// bypass, expired, stale, updating, revalidated, hit, scarce) ONLY on an
+// NGX_HTTP_CACHE build, and never for upstream zones. A non-cache build's
+// shorter object must decode without error, and the sum must simply skip the
+// absent keys rather than reading Go zero values as a different total.
+func TestFetchNginxVTS_OverCountsCacheBuildOmitsCacheKeys(t *testing.T) {
+	const fixture = `{
+	  "connections": {"active": 1, "reading": 0, "writing": 0, "waiting": 0,
+	                  "accepted": 1, "handled": 1, "requests": 1},
+	  "sharedZones": {"maxSize": 1, "usedSize": 1, "usedNode": 1},
+	  "serverZones": {
+	    "example.com": {"requestCounter": 1, "inBytes": 1, "outBytes": 1,
+	          "responses": {"1xx":0,"2xx":1,"3xx":0,"4xx":0,"5xx":0},
+	          "overCounts": {"maxIntegerSize": 18446744073709551615,
+	                         "requestCounter": 2, "inBytes": 0, "outBytes": 0,
+	                         "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0,
+	                         "requestMsecCounter": 1}}
+	  }
+	}`
+
+	server, mux, client := newTestClientWithMux(t)
+	defer server.Close()
+	mux.HandleFunc("/api/nginx/service/vts", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fixture))
+	})
+
+	data, err := client.FetchNginxVTS()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(data.ServerZones) != 1 {
+		t.Fatalf("expected 1 server zone, got %d", len(data.ServerZones))
+	}
+	if got := data.ServerZones[0].CounterWraps; got != 3 {
+		t.Errorf("server zone CounterWraps: want 3 (2+1, no cache keys), got %v", got)
 	}
 }
 
